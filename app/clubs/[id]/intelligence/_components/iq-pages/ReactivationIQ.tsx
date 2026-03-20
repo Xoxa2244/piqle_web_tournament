@@ -622,6 +622,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
       </div>
 
       {/* Campaign History */}
+      {displayCampaignHistory.length > 0 && (
       <Card>
         <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Recent Reactivation Campaigns</h3>
         <div className="overflow-x-auto">
@@ -649,6 +650,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
           </table>
         </div>
       </Card>
+      )}
     </motion.div>
   );
 }

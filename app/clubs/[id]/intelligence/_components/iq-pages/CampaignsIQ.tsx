@@ -414,14 +414,14 @@ function ChannelIcon({ channel }: { channel: string }) {
             value: `${avgOpenRate}%`,
             icon: Eye,
             gradient: 'from-cyan-500 to-teal-500',
-            sub: 'Industry avg: 45%',
+            sub: 'Current period',
           },
           {
             label: 'Avg Conversion',
             value: `${avgConvRate}%`,
             icon: Target,
             gradient: 'from-emerald-500 to-green-500',
-            sub: '+4% vs last month',
+            sub: 'Current period',
           },
           {
             label: 'Campaign Revenue',
@@ -518,6 +518,7 @@ function ChannelIcon({ channel }: { channel: string }) {
           </div>{' '}
         </Card>{' '}
         {/* AI Suggestions */}{' '}
+        {isDemo && (
         <Card>
           {' '}
           <div className="flex items-center gap-2 mb-4">
@@ -583,9 +584,11 @@ function ChannelIcon({ channel }: { channel: string }) {
               </motion.div>
             ))}{' '}
           </div>{' '}
-        </Card>{' '}
+        </Card>
+        )}{' '}
       </div>{' '}
       {/* Channel Performance */}{' '}
+      {isDemo && (
       <Card>
         {' '}
         <h3 className="mb-4" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--heading)' }}>
@@ -635,9 +638,10 @@ function ChannelIcon({ channel }: { channel: string }) {
             </div>
           ))}{' '}
         </div>{' '}
-      </Card>{' '}
+      </Card>
+      )}{' '}
       {/* Message Variant Performance */}
-      <Card>
+      {isDemo && <Card>
         <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Message Variant Performance</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -687,10 +691,10 @@ function ChannelIcon({ channel }: { channel: string }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
 
       {/* LLM vs Template Comparison */}
-      <div className="grid md:grid-cols-2 gap-4">
+      {isDemo && <div className="grid md:grid-cols-2 gap-4">
         <Card className="relative">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #06B6D4, #8B5CF6)" }}>
@@ -755,10 +759,10 @@ function ChannelIcon({ channel }: { channel: string }) {
             </div>
           </div>
         </Card>
-      </div>
+      </div>}
 
       {/* Recent Activity */}
-      <Card>
+      {isDemo && <Card>
         <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Recent Activity</h3>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -804,7 +808,7 @@ function ChannelIcon({ channel }: { channel: string }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </Card>}
 
       {/* Campaign List */}
       <div>

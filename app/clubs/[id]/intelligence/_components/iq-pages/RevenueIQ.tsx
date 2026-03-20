@@ -152,7 +152,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
       ].map(l => ({ ...l, pct: revenueData.lostRevenue.total > 0 ? Math.round((l.amount / revenueData.lostRevenue.total) * 100) : 0 }))
     : (isDemo ? lostRevenue : []);
 
-  const totalRevenue = revenueData?.totalRevenue ?? 19450;
+  const totalRevenue = revenueData?.totalRevenue ?? (isDemo ? 19450 : 0);
   const totalLost = displayLostRevenue.reduce((s: number, l: any) => s + l.amount, 0);
   const totalRecoverable = displayLostRevenue.reduce((s: number, l: any) => s + l.recoverable, 0);
 
@@ -260,12 +260,20 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Monthly Revenue", value: `$${(totalRevenue / 1000).toFixed(1)}K`, change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500" },
-          { label: "Lost Revenue", value: `$${(totalLost / 1000).toFixed(1)}K`, change: "-8.2%", up: true, icon: AlertTriangle, gradient: "from-red-500 to-orange-500" },
-          { label: "Recoverable", value: `$${(totalRecoverable / 1000).toFixed(1)}K`, change: "AI estimated", up: true, icon: Sparkles, gradient: "from-violet-500 to-purple-600" },
-          { label: "Rev per Member", value: "$153", change: "+6.3%", up: true, icon: Users, gradient: "from-cyan-500 to-teal-500" },
-        ].map((kpi, i) => {
+        {(() => {
+          const activeMembers = revenueData?.activeMembers || 0;
+          const revPerMember = activeMembers > 0 ? Math.round(totalRevenue / activeMembers) : 0;
+          const prevRevPerMember = revenueData?.prevActiveMembers > 0 && revenueData?.prevTotalRevenue ? Math.round(revenueData.prevTotalRevenue / revenueData.prevActiveMembers) : 0;
+          const revPerMemberChange = prevRevPerMember > 0 ? ((revPerMember - prevRevPerMember) / prevRevPerMember * 100).toFixed(1) : null;
+          const prevTotalRevenue = revenueData?.prevTotalRevenue || 0;
+          const revenueChange = prevTotalRevenue > 0 ? ((totalRevenue - prevTotalRevenue) / prevTotalRevenue * 100).toFixed(1) : null;
+          return [
+            { label: "Monthly Revenue", value: `$${(totalRevenue / 1000).toFixed(1)}K`, change: revenueChange ? `${Number(revenueChange) >= 0 ? '+' : ''}${revenueChange}%` : "—", up: revenueChange ? Number(revenueChange) >= 0 : true, icon: DollarSign, gradient: "from-emerald-500 to-green-500" },
+            { label: "Lost Revenue", value: `$${(totalLost / 1000).toFixed(1)}K`, change: "Current period", up: true, icon: AlertTriangle, gradient: "from-red-500 to-orange-500" },
+            { label: "Recoverable", value: `$${(totalRecoverable / 1000).toFixed(1)}K`, change: "AI estimated", up: true, icon: Sparkles, gradient: "from-violet-500 to-purple-600" },
+            { label: "Rev per Member", value: activeMembers > 0 ? `$${revPerMember}` : "—", change: revPerMemberChange ? `${Number(revPerMemberChange) >= 0 ? '+' : ''}${revPerMemberChange}%` : "—", up: revPerMemberChange ? Number(revPerMemberChange) >= 0 : true, icon: Users, gradient: "from-cyan-500 to-teal-500" },
+          ];
+        })().map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
@@ -298,14 +306,17 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
               <Heart className="w-4 h-4 text-emerald-400" />
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Player Health Overview</h3>
             </div>
+            {isDemo && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.15)" }}>
               <span className="text-[11px]" style={{ color: "var(--t3)" }}>Avg:</span>
               <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{healthMetrics.avgScore}</span>
               <span className="text-[10px] text-emerald-400" style={{ fontWeight: 600 }}>(+{healthMetrics.avgScore - healthMetrics.avgScorePrev})</span>
             </div>
+            )}
           </div>
 
           {/* Mini metrics row */}
+          {isDemo && (
           <div className="grid grid-cols-3 gap-3 mb-5">
             {[
               { label: "Improved", value: healthMetrics.improved, sub: `+${healthMetrics.improvedPct}%`, color: "#10B981" },
@@ -321,6 +332,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
               </div>
             ))}
           </div>
+          )}
 
           {/* Health distribution bars */}
           <div className="space-y-3">
@@ -555,6 +567,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
       {/* Data Upload History + Period Comparison */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Data Upload History */}
+        {isDemo && (
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <Upload className="w-4 h-4" style={{ color: "var(--t3)" }} />
@@ -582,6 +595,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
             ))}
           </div>
         </Card>
+        )}
 
         {/* Period Comparison */}
         <Card>

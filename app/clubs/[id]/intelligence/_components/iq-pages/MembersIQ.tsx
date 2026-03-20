@@ -243,7 +243,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         const ranges = [{ range: "0", min: 0, max: 0 }, { range: "1-2", min: 1, max: 2 }, { range: "3-4", min: 3, max: 4 }, { range: "5-6", min: 5, max: 6 }, { range: "7-8", min: 7, max: 8 }, { range: "9+", min: 9, max: 999 }];
         return ranges.map(r => ({ range: r.range, count: realMembers.filter((m: any) => m.sessionsThisMonth >= r.min && m.sessionsThisMonth <= r.max).length }));
       })()
-    : activityDistribution;
+    : (isDemo ? activityDistribution : []);
 
   const filtered = allMembers
     .filter((m) => {
@@ -355,7 +355,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       </div>
 
       {/* Charts */}
+      {(displayMemberGrowth.length > 0 || displayActivityDistribution.length > 0) && (
       <div className="grid lg:grid-cols-2 gap-4">
+        {displayMemberGrowth.length > 0 && (
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Growth</h3>
           <ResponsiveContainer width="100%" height={200}>
@@ -370,7 +372,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
             </LineChart>
           </ResponsiveContainer>
         </Card>
+        )}
 
+        {displayActivityDistribution.length > 0 && (
         <Card>
           <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>How Often Members Play</h3>
           <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>Members grouped by sessions per week (last 30 days)</p>
@@ -384,7 +388,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
             </BarChart>
           </ResponsiveContainer>
         </Card>
+        )}
       </div>
+      )}
 
       {/* Filters + Table */}
       <div className="flex items-center justify-between flex-wrap gap-4">

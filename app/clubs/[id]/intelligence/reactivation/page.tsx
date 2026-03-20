@@ -53,10 +53,11 @@ export default function ReactivationPage() {
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
   const [selectedMessageId, setSelectedMessageId] = useState<string>('')
 
-  const { data, isLoading, error } = useReactivationCandidates(clubId, inactivityDays)
-  const { data: churnTrendData } = useChurnTrend(clubId)
-  const { data: campaignListData } = useCampaignList(clubId)
+  const { data, isLoading: candidatesLoading, error } = useReactivationCandidates(clubId, inactivityDays)
+  const { data: churnTrendData, isLoading: churnLoading } = useChurnTrend(clubId)
+  const { data: campaignListData, isLoading: campaignListLoading } = useCampaignList(clubId)
   const sendReactivation = useSendReactivation()
+  const isLoading = candidatesLoading || churnLoading || campaignListLoading
   const { toast } = useToast()
 
   const setPageContext = useSetPageContext()

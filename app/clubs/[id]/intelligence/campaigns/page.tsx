@@ -204,10 +204,11 @@ export default function CampaignsPage() {
   const [activityPage, setActivityPage] = useState(0)
   const ACTIVITY_PER_PAGE = 10
 
-  const { data, isLoading, error } = useCampaignAnalytics(clubId, days)
-  const { data: variantData } = useVariantAnalytics(clubId, days)
-  const { data: sequenceData } = useSequenceAnalytics(clubId)
-  const { data: campaignListData } = useCampaignList(clubId)
+  const { data, isLoading: analyticsLoading, error } = useCampaignAnalytics(clubId, days)
+  const { data: variantData, isLoading: variantLoading } = useVariantAnalytics(clubId, days)
+  const { data: sequenceData, isLoading: sequenceLoading } = useSequenceAnalytics(clubId)
+  const { data: campaignListData, isLoading: campaignListLoading } = useCampaignList(clubId)
+  const isLoading = analyticsLoading || variantLoading || sequenceLoading || campaignListLoading
 
   const setPageContext = useSetPageContext()
   useEffect(() => {

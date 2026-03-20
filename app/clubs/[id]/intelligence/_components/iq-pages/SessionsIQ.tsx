@@ -127,7 +127,7 @@ function mapCalendarToSessions(calendarData: any): typeof recentSessions {
 }
 
 function deriveWeeklyData(calendarData: any) {
-  if (!calendarData?.sessions?.length) return weeklyData;
+  if (!calendarData?.sessions?.length) return [];
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const buckets: Record<string, { count: number; occSum: number; revSum: number }> = {};
   days.forEach(d => buckets[d] = { count: 0, occSum: 0, revSum: 0 });
@@ -144,7 +144,7 @@ function deriveWeeklyData(calendarData: any) {
 }
 
 function deriveFormatBreakdown(calendarData: any) {
-  if (!calendarData?.sessions?.length) return formatBreakdown;
+  if (!calendarData?.sessions?.length) return [];
   const buckets: Record<string, { sessions: number; revenue: number }> = {};
   calendarData.sessions.forEach((s: RealSession) => {
     if (!buckets[s.format]) buckets[s.format] = { sessions: 0, revenue: 0 };
@@ -165,7 +165,7 @@ function deriveFormatBreakdown(calendarData: any) {
 }
 
 function deriveCourtStats(calendarData: any) {
-  if (!calendarData?.sessions?.length) return courtStats;
+  if (!calendarData?.sessions?.length) return [];
   const buckets: Record<string, { sessions: number; occSum: number; revSum: number }> = {};
   calendarData.sessions.forEach((s: RealSession) => {
     if (!buckets[s.court]) buckets[s.court] = { sessions: 0, occSum: 0, revSum: 0 };
@@ -185,7 +185,7 @@ function deriveCourtStats(calendarData: any) {
 }
 
 function deriveHourlyPattern(calendarData: any) {
-  if (!calendarData?.sessions?.length) return hourlyPattern;
+  if (!calendarData?.sessions?.length) return [];
   const times = ['6AM','7AM','8AM','9AM','10AM','11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM'];
   const buckets: Record<string, { sum: number; count: number }> = {};
   times.forEach(t => { buckets[t] = { sum: 0, count: 0 }; });
@@ -268,10 +268,14 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   const realSessions = useMemo(() => mapCalendarToSessions(calendarData), [calendarData]);
   const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
   const hasData = displaySessions.length > 0;
-  const displayWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
-  const displayFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
-  const displayCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
-  const displayHourly = useMemo(() => deriveHourlyPattern(calendarData), [calendarData]);
+  const derivedWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
+  const displayWeekly = derivedWeekly.length > 0 ? derivedWeekly : (isDemo ? weeklyData : []);
+  const derivedFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
+  const displayFormats = derivedFormats.length > 0 ? derivedFormats : (isDemo ? formatBreakdown : []);
+  const derivedCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
+  const displayCourts = derivedCourts.length > 0 ? derivedCourts : (isDemo ? courtStats : []);
+  const derivedHourly = useMemo(() => deriveHourlyPattern(calendarData), [calendarData]);
+  const displayHourly = derivedHourly.length > 0 ? derivedHourly : (isDemo ? hourlyPattern : []);
 
   const filteredSessions = useMemo(() => {
     return displaySessions.filter((s) => {

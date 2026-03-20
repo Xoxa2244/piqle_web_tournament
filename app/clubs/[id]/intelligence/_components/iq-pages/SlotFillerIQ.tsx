@@ -191,7 +191,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           { label: "Empty Slots", value: displaySlots.length.toString(), icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
           { label: "Spots to Fill", value: displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString(), icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
           { label: "AI Matches Found", value: displaySlots.reduce((s, sl) => s + sl.matches.length, 0).toString(), icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
-          { label: "Fill Rate (7d)", value: "78%", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "+12% vs last week" },
+          { label: "Fill Rate (7d)", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / slot.spotsTotal) * 100, 0) / displaySlots.length)}%` : "—", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Current period" },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
@@ -413,18 +413,23 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
               </div>
               <div className="text-right">
                 <div className="text-[10px]" style={{ color: "var(--t4)" }}>Fill rate for this slot type</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{ background: "linear-gradient(90deg, #10B981, #06B6D4)", width: "82%" }}
-                      initial={{ width: 0 }}
-                      animate={{ width: "82%" }}
-                      transition={{ duration: 1, delay: 0.3 }}
-                    />
-                  </div>
-                  <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>82%</span>
-                </div>
+                {(() => {
+                  const slotFillPct = activeSlot ? Math.round(((activeSlot.spotsTotal - activeSlot.spotsNeeded) / activeSlot.spotsTotal) * 100) : 0;
+                  return (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: "linear-gradient(90deg, #10B981, #06B6D4)", width: `${slotFillPct}%` }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${slotFillPct}%` }}
+                          transition={{ duration: 1, delay: 0.3 }}
+                        />
+                      </div>
+                      <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{slotFillPct}%</span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </Card>
