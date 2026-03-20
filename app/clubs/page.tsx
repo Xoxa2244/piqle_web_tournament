@@ -123,6 +123,139 @@ function ClubsPageContent() {
     return initials || 'CL'
   }
 
+  // IQ brand: auto-redirect if exactly 1 club, or show welcome screen if 0 clubs
+  useEffect(() => {
+    if (brand.key !== 'iqsport' || !isLoggedIn || isLoading) return
+    const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
+    if (myClubs.length === 1) {
+      router.replace(`/clubs/${myClubs[0].id}/intelligence`)
+    }
+  }, [brand.key, isLoggedIn, isLoading, clubs, router])
+
+  // IQ brand welcome screen
+  if (brand.key === 'iqsport' && isLoggedIn && !isLoading) {
+    const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
+
+    // 0 clubs — welcome screen
+    if (myClubs.length === 0) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-8" style={{ background: '#0B0D17' }}>
+          <div className="w-full max-w-md text-center space-y-8">
+            <div>
+              <div className="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', boxShadow: '0 8px 30px rgba(139,92,246,0.3)' }}>
+                <span className="text-3xl font-black text-white">IQ</span>
+              </div>
+              <h1 className="text-3xl font-extrabold text-white mb-2">Welcome to IQSport</h1>
+              <p className="text-sm text-gray-400">AI-powered intelligence for your racquet sports club</p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => setCreateClubModalOpen(true)}
+                className="w-full flex items-center gap-3 p-5 rounded-2xl text-left transition-all hover:scale-[1.02]"
+                style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))', border: '1px solid rgba(139,92,246,0.2)' }}
+              >
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
+                  <Plus className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-white">Create New Club</div>
+                  <div className="text-xs text-gray-400">Set up your venue and start getting AI insights</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setQuery('')}
+                className="w-full flex items-center gap-3 p-5 rounded-2xl text-left transition-all hover:scale-[1.02]"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <Search className="w-6 h-6 text-gray-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-white">Join Existing Club</div>
+                  <div className="text-xs text-gray-400">Find and request to join a club near you</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <CreateClubModal
+            isOpen={createClubModalOpen}
+            onClose={() => setCreateClubModalOpen(false)}
+            onSuccess={(club) => {
+              utils.club.list.invalidate()
+              router.push(brand.postClubCreateRoute(club.id))
+            }}
+          />
+        </div>
+      )
+    }
+
+    // 1 club — auto-redirect handled by useEffect above, show loading
+    if (myClubs.length === 1) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0D17' }}>
+          <div className="text-gray-400 text-sm">Loading your club...</div>
+        </div>
+      )
+    }
+
+    // 2+ clubs — show IQ-styled list
+    return (
+      <div className="min-h-screen p-8" style={{ background: '#0B0D17' }}>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-extrabold text-white">Your Clubs</h1>
+            <p className="text-sm text-gray-400 mt-1">Select a club to view its intelligence dashboard</p>
+          </div>
+
+          <div className="space-y-3">
+            {myClubs.map((club: any) => (
+              <button
+                key={club.id}
+                onClick={() => router.push(`/clubs/${club.id}/intelligence`)}
+                className="w-full flex items-center gap-4 p-5 rounded-2xl text-left transition-all hover:scale-[1.01]"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #6D28D9)' }}>
+                  <span className="text-sm font-bold text-white">{getInitials(club.name)}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">{club.name}</div>
+                  <div className="text-xs text-gray-400">
+                    {club.city ? `${club.city}${club.state ? `, ${club.state}` : ''}` : 'Location not set'}
+                    {club.isAdmin ? ' · Admin' : ''}
+                  </div>
+                </div>
+                <div className="text-gray-500">→</div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setCreateClubModalOpen(true)}
+            className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl text-sm font-medium transition-all"
+            style={{ color: '#A78BFA', border: '1px dashed rgba(139,92,246,0.3)' }}
+          >
+            <Plus className="w-4 h-4" /> Add Another Club
+          </button>
+
+          <CreateClubModal
+            isOpen={createClubModalOpen}
+            onClose={() => setCreateClubModalOpen(false)}
+            onSuccess={(club) => {
+              utils.club.list.invalidate()
+              router.push(brand.postClubCreateRoute(club.id))
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
   const ClubLogo = ({ name, logoUrl }: { name: string; logoUrl?: string | null }) => {
     if (logoUrl) {
       return (
