@@ -125,16 +125,56 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
   const displaySlots = realSlots.length > 0 ? realSlots : (isDemo ? emptySlots : []);
-  const [selectedSlot, setSelectedSlot] = useState(displaySlots[0]?.id || emptySlots[0].id);
+  const [selectedSlot, setSelectedSlot] = useState(displaySlots[0]?.id || '');
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
-  const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0];
+  const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0] || null;
 
+  /* --- Loading state --- */
+  if (externalLoading) {
+    return (
+      <div className="space-y-6 max-w-[1400px] mx-auto animate-pulse">
+        <div className="h-8 rounded-lg w-48" style={{ background: "var(--subtle)" }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="rounded-2xl p-5 space-y-3" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl" style={{ background: "var(--subtle)" }} />
+                <div className="space-y-2 flex-1">
+                  <div className="h-5 rounded w-12" style={{ background: "var(--subtle)" }} />
+                  <div className="h-3 rounded w-20" style={{ background: "var(--subtle)" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="space-y-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-2xl p-4 h-28" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }} />
+            ))}
+          </div>
+          <div className="lg:col-span-2 space-y-2">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="rounded-xl p-3 h-14" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* --- Empty state for real clubs with no data --- */
   const hasData = displaySlots.length > 0;
-  if (!hasData && !isDemo && !externalLoading) {
+  if (!hasData && !isDemo) {
+    return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
+
+  /* If somehow still no activeSlot (shouldn't happen after checks above), bail */
+  if (!activeSlot) {
     return <EmptyStateIQ icon={Zap} title="No slot recommendations yet" description="Import session data to get AI-powered recommendations for filling empty court time." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

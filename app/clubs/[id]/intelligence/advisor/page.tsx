@@ -18,6 +18,16 @@ import { useBrand } from '@/components/BrandProvider'
 import { AdvisorIQ } from '../_components/iq-pages/AdvisorIQ'
 
 export default function AIAdvisorPage() {
+  const brand = useBrand()
+
+  // IQ brand uses its own self-contained mock advisor — render early
+  // to avoid tRPC calls that require auth + valid UUID club ID
+  if (brand.key === 'iqsport') return <AdvisorIQ />
+
+  return <PiqleAdvisorPage />
+}
+
+function PiqleAdvisorPage() {
   const params = useParams()
   const clubId = params.id as string
   const { toast } = useToast()
@@ -196,9 +206,6 @@ export default function AIAdvisorPage() {
   const handleMemberImportCancel = () => {
     setState(dataStatus?.hasData ? 'chat_ready' : 'onboarding')
   }
-
-  const brand = useBrand()
-  if (brand.key === 'iqsport') return <AdvisorIQ />
 
   // ── Render ──
 

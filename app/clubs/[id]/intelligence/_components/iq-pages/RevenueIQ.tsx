@@ -14,6 +14,23 @@ import {
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 
+/* --- Helpers --- */
+/** Safely extract a numeric value — guards against objects like {time, value} leaking from API */
+function toNum(v: any): number {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'object' && 'value' in v) return toNum(v.value);
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+function toStr(v: any): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'object' && 'value' in v) return toStr(v.value);
+  return String(v);
+}
+
 /* --- Mock Data --- */
 const playerHealthDistribution = [
   { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
@@ -139,59 +156,88 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
 
   // Use real data when available, mocks only in demo mode
   const displayRevenueByFormat = revenueData?.revenueByFormat?.length
-    ? revenueData.revenueByFormat.map((f: any) => ({ name: f.format, value: f.revenue, pct: f.pct, color: ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899"][revenueData.revenueByFormat.indexOf(f) % 6] }))
+    ? revenueData.revenueByFormat.map((f: any, idx: number) => ({ name: toStr(f.format), value: toNum(f.revenue), pct: toNum(f.pct), color: ["#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444", "#EC4899"][idx % 6] }))
     : (isDemo ? revenueByFormat : []);
   const displayDailyRevenue = revenueData?.dailyRevenue?.length
-    ? revenueData.dailyRevenue.slice(-7).map((d: any) => ({ day: new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' }), revenue: d.revenue, target: Math.round(d.revenue * 1.15) }))
+    ? revenueData.dailyRevenue.slice(-7).map((d: any) => {
+        const rev = toNum(d.revenue);
+        return { day: new Date(toStr(d.date)).toLocaleDateString('en-US', { weekday: 'short' }), revenue: rev, target: Math.round(rev * 1.15) };
+      })
     : (isDemo ? dailyRevenue : []);
   const displayLostRevenue = revenueData?.lostRevenue
-    ? [
-        { category: "Empty Slots", amount: revenueData.lostRevenue.emptySlots, pct: 0, recoverable: Math.round(revenueData.lostRevenue.emptySlots * 0.6) },
-        { category: "Cancelled", amount: revenueData.lostRevenue.cancelled, pct: 0, recoverable: Math.round(revenueData.lostRevenue.cancelled * 0.3) },
-        { category: "No-Shows", amount: revenueData.lostRevenue.noShows, pct: 0, recoverable: Math.round(revenueData.lostRevenue.noShows * 0.5) },
-      ].map(l => ({ ...l, pct: revenueData.lostRevenue.total > 0 ? Math.round((l.amount / revenueData.lostRevenue.total) * 100) : 0 }))
+    ? (() => {
+        const es = toNum(revenueData.lostRevenue.emptySlots);
+        const cn = toNum(revenueData.lostRevenue.cancelled);
+        const ns = toNum(revenueData.lostRevenue.noShows);
+        const tot = toNum(revenueData.lostRevenue.total);
+        return [
+          { category: "Empty Slots", amount: es, pct: 0, recoverable: Math.round(es * 0.6) },
+          { category: "Cancelled", amount: cn, pct: 0, recoverable: Math.round(cn * 0.3) },
+          { category: "No-Shows", amount: ns, pct: 0, recoverable: Math.round(ns * 0.5) },
+        ].map(l => ({ ...l, pct: tot > 0 ? Math.round((l.amount / tot) * 100) : 0 }));
+      })()
     : (isDemo ? lostRevenue : []);
 
-  const totalRevenue = revenueData?.totalRevenue ?? (isDemo ? 19450 : 0);
+  const totalRevenue = toNum(revenueData?.totalRevenue) || (isDemo ? 19450 : 0);
   const totalLost = displayLostRevenue.reduce((s: number, l: any) => s + l.amount, 0);
   const totalRecoverable = displayLostRevenue.reduce((s: number, l: any) => s + l.recoverable, 0);
 
   // Health distribution from dashboard data
   const displayHealthDistribution = dashboardData?.metrics
-    ? [
-        { level: "Healthy", count: Math.round(revenueData?.activeMembers * 0.57 || 72), pct: 57, color: "#10B981" },
-        { level: "Watch", count: Math.round(revenueData?.activeMembers * 0.2 || 25), pct: 20, color: "#F59E0B" },
-        { level: "At-Risk", count: Math.round(revenueData?.activeMembers * 0.14 || 18), pct: 14, color: "#F97316" },
-        { level: "Critical", count: Math.round(revenueData?.activeMembers * 0.09 || 12), pct: 9, color: "#EF4444" },
-      ]
+    ? (() => {
+        const am = toNum(revenueData?.activeMembers);
+        return [
+          { level: "Healthy", count: Math.round(am * 0.57) || 72, pct: 57, color: "#10B981" },
+          { level: "Watch", count: Math.round(am * 0.2) || 25, pct: 20, color: "#F59E0B" },
+          { level: "At-Risk", count: Math.round(am * 0.14) || 18, pct: 14, color: "#F97316" },
+          { level: "Critical", count: Math.round(am * 0.09) || 12, pct: 9, color: "#EF4444" },
+        ];
+      })()
     : (isDemo ? playerHealthDistribution : []);
 
   // Period comparison from revenue data (values must be numbers for delta calc)
   const displayPeriodComparison = revenueData
-    ? [
-        { metric: "Total Revenue", current: revenueData.totalRevenue, previous: revenueData.prevTotalRevenue || 1, format: "currency" },
-        { metric: "Active Members", current: revenueData.activeMembers, previous: revenueData.prevActiveMembers || 1, format: "number" },
-        { metric: "Rev/Member", current: revenueData.activeMembers > 0 ? Math.round(revenueData.totalRevenue / revenueData.activeMembers) : 0, previous: revenueData.prevActiveMembers > 0 ? Math.round(revenueData.prevTotalRevenue / revenueData.prevActiveMembers) : 1, format: "currency" },
-        { metric: "Court Utilization", current: revenueData.avgOccupancy, previous: revenueData.avgOccupancy, format: "percent" },
-        { metric: "Total Sessions", current: revenueData.totalSessions, previous: revenueData.prevTotalSessions || 1, format: "number" },
-        { metric: "Lost Revenue", current: revenueData.lostRevenue?.total || 0, previous: 1, format: "currency" },
-      ]
+    ? (() => {
+        const tr = toNum(revenueData.totalRevenue);
+        const ptr = toNum(revenueData.prevTotalRevenue) || 1;
+        const am = toNum(revenueData.activeMembers);
+        const pam = toNum(revenueData.prevActiveMembers) || 1;
+        const occ = toNum(revenueData.avgOccupancy);
+        const ts = toNum(revenueData.totalSessions);
+        const pts = toNum(revenueData.prevTotalSessions) || 1;
+        const lr = toNum(revenueData.lostRevenue?.total);
+        return [
+          { metric: "Total Revenue", current: tr, previous: ptr, format: "currency" as const },
+          { metric: "Active Members", current: am, previous: pam, format: "number" as const },
+          { metric: "Rev/Member", current: am > 0 ? Math.round(tr / am) : 0, previous: pam > 0 ? Math.round(ptr / pam) : 1, format: "currency" as const },
+          { metric: "Court Utilization", current: occ, previous: occ, format: "percent" as const },
+          { metric: "Total Sessions", current: ts, previous: pts, format: "number" as const },
+          { metric: "Lost Revenue", current: lr, previous: 1, format: "currency" as const },
+        ];
+      })()
     : (isDemo ? periodComparison : []);
 
   // Pricing opportunities from real endpoint
   const displayPricingOpportunities = pricingData?.opportunities?.length
-    ? pricingData.opportunities
+    ? pricingData.opportunities.map((o: any) => ({
+        slot: toStr(o.slot),
+        current: toNum(o.current),
+        suggested: toNum(o.suggested),
+        demand: toStr(o.demand),
+        impact: toStr(o.impact),
+        confidence: toNum(o.confidence),
+      }))
     : (isDemo ? pricingOpportunities : []);
 
   // Revenue forecast from real endpoint
   const displayFullForecast = forecastProp?.actual?.length
     ? [
-        ...forecastProp.actual.map((a: any) => ({ month: a.month, actual: a.actual })),
-        ...forecastProp.forecast.map((f: any) => ({ month: f.month, forecast: f.forecast, low: f.low, high: f.high })),
+        ...forecastProp.actual.map((a: any) => ({ month: toStr(a.month), actual: toNum(a.actual) })),
+        ...(forecastProp.forecast || []).map((f: any) => ({ month: toStr(f.month), forecast: toNum(f.forecast), low: toNum(f.low), high: toNum(f.high) })),
       ]
     : (isDemo ? fullForecast : []);
 
-  const hasData = displayRevenueByFormat.length > 0;
+  const hasData = displayRevenueByFormat.length > 0 || (revenueData && toNum(revenueData.totalRevenue) > 0);
   if (!hasData && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={DollarSign} title="No revenue data yet" description="Import session data with pricing to unlock revenue analytics, forecasts, and pricing optimization." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
@@ -261,11 +307,13 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {(() => {
-          const activeMembers = revenueData?.activeMembers || 0;
+          const activeMembers = toNum(revenueData?.activeMembers);
           const revPerMember = activeMembers > 0 ? Math.round(totalRevenue / activeMembers) : 0;
-          const prevRevPerMember = revenueData?.prevActiveMembers > 0 && revenueData?.prevTotalRevenue ? Math.round(revenueData.prevTotalRevenue / revenueData.prevActiveMembers) : 0;
+          const prevActiveMembers = toNum(revenueData?.prevActiveMembers);
+          const prevTotalRevenueVal = toNum(revenueData?.prevTotalRevenue);
+          const prevRevPerMember = prevActiveMembers > 0 && prevTotalRevenueVal ? Math.round(prevTotalRevenueVal / prevActiveMembers) : 0;
           const revPerMemberChange = prevRevPerMember > 0 ? ((revPerMember - prevRevPerMember) / prevRevPerMember * 100).toFixed(1) : null;
-          const prevTotalRevenue = revenueData?.prevTotalRevenue || 0;
+          const prevTotalRevenue = prevTotalRevenueVal;
           const revenueChange = prevTotalRevenue > 0 ? ((totalRevenue - prevTotalRevenue) / prevTotalRevenue * 100).toFixed(1) : null;
           return [
             { label: "Monthly Revenue", value: `$${(totalRevenue / 1000).toFixed(1)}K`, change: revenueChange ? `${Number(revenueChange) >= 0 ? '+' : ''}${revenueChange}%` : "—", up: revenueChange ? Number(revenueChange) >= 0 : true, icon: DollarSign, gradient: "from-emerald-500 to-green-500" },

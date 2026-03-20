@@ -45,11 +45,12 @@ export default function RevenueIntelligencePage() {
   useEffect(() => {
     if (!dashboard) return
     const { metrics, occupancy } = dashboard
+    const sv = (v: any) => (typeof v === 'object' && v !== null && 'value' in v) ? v.value : v
     const parts = [
       'Page: Revenue Intelligence',
-      `Lost Revenue: ${metrics.lostRevenue.value} (${metrics.lostRevenue.subtitle})`,
-      `Occupancy: ${metrics.occupancy.value} (${metrics.occupancy.subtitle})`,
-      `Bookings: ${metrics.bookings.value} (${metrics.bookings.subtitle})`,
+      `Lost Revenue: ${sv(metrics.lostRevenue.value)} (${metrics.lostRevenue.subtitle})`,
+      `Occupancy: ${sv(metrics.occupancy.value)} (${metrics.occupancy.subtitle})`,
+      `Bookings: ${sv(metrics.bookings.value)} (${metrics.bookings.subtitle})`,
       `Occupancy by time: ${occupancy.byTimeSlot.map((s: any) => s.slot + ' ' + s.avgOccupancy + '% (' + s.sessionCount + ' sessions)').join(', ')}`,
       `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
       `Occupancy by format: ${occupancy.byFormat.map((f: any) => f.format + ' ' + f.avgOccupancy + '% (' + f.sessionCount + ' sessions)').join(', ')}`,
@@ -58,7 +59,10 @@ export default function RevenueIntelligencePage() {
   }, [dashboard, setPageContext])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={isLoading} clubId={clubId} />
+  if (brand.key === 'iqsport') {
+    if (isLoading) return <RevenueIQ isLoading={true} clubId={clubId} />
+    return <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={false} clubId={clubId} />
+  }
 
   if (isLoading) return <DashboardSkeleton />
 
