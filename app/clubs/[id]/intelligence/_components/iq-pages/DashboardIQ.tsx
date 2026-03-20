@@ -668,7 +668,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             {displayHeatmap.map((row: any) => (
               <div key={row.day} className="flex items-center gap-1.5">
                 <div className="w-8 text-right text-[10px] shrink-0" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.day}</div>
-                {row.slots.map((val: any, i: number) => (
+                {row.slots.map((slot: any, i: number) => {
+                  const val = typeof slot === 'number' ? slot : (slot?.value ?? 0);
+                  return (
                   <motion.div
                     key={i}
                     className="flex-1 rounded-md flex items-center justify-center text-[9px] cursor-pointer"
@@ -683,7 +685,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   >
                     {val}%
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             ))}
           </div>
