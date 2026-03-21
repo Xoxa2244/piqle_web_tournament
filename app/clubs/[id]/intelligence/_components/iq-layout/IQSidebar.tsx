@@ -321,57 +321,53 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                     {/* Backdrop */}
                     <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
 
-                    {/* Dropdown */}
+                    {/* Dropdown — all colors hardcoded, no CSS vars */}
                     <motion.div
                       initial={{ opacity: 0, y: -8, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-12 w-72 rounded-2xl overflow-hidden"
+                      className="fixed right-4 top-14 w-72 rounded-2xl overflow-hidden"
                       style={{
-                        zIndex: 9999,
-                        background: isDark ? "#1a1c2e" : "#ffffff",
-                        border: "1px solid rgba(139,92,246,0.2)",
-                        boxShadow: "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(139,92,246,0.15)",
-                        isolation: "isolate",
+                        zIndex: 99999,
+                        background: isDark ? "#1e2035" : "#ffffff",
+                        border: `1px solid ${isDark ? "rgba(139,92,246,0.25)" : "rgba(0,0,0,0.1)"}`,
+                        boxShadow: isDark ? "0 25px 80px rgba(0,0,0,0.9)" : "0 25px 80px rgba(0,0,0,0.15)",
                       }}
                     >
                       {/* User info */}
-                      <div className="p-4" style={{ borderBottom: "1px solid var(--divider)" }}>
+                      <div className="p-4" style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}>
                             {userInitials}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm truncate" style={{ fontWeight: 600, color: "var(--heading)" }}>{userName}</div>
-                            <div className="text-xs truncate" style={{ color: "var(--t4)" }}>{userEmail}</div>
+                            <div className="text-sm truncate" style={{ fontWeight: 600, color: isDark ? "#E2E8F0" : "#1E293B" }}>{userName}</div>
+                            <div className="text-xs truncate" style={{ color: isDark ? "#64748B" : "#94A3B8" }}>{userEmail}</div>
                           </div>
                         </div>
                       </div>
 
                       {/* My Clubs */}
                       {myClubs.length > 0 && (
-                        <div className="p-2" style={{ borderBottom: "1px solid var(--divider)" }}>
-                          <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>My Clubs</div>
+                        <div className="p-2" style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
+                          <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: isDark ? "#64748B" : "#94A3B8", fontWeight: 600 }}>My Clubs</div>
                           {myClubs.map((club: any) => (
                             <button
                               key={club.id}
                               onClick={() => { router.push(`/clubs/${club.id}/intelligence`); setProfileOpen(false); }}
                               className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
-                              style={{ background: club.id === clubId ? "var(--pill-active)" : "transparent" }}
+                              style={{ background: club.id === clubId ? (isDark ? "rgba(139,92,246,0.15)" : "rgba(139,92,246,0.08)") : "transparent" }}
                             >
                               <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] text-white flex-shrink-0" style={{ background: club.id === clubId ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "rgba(139,92,246,0.2)", fontWeight: 700 }}>
                                 {(club.name || "C").charAt(0).toUpperCase()}
                               </div>
-                              <span className="text-sm truncate" style={{ fontWeight: club.id === clubId ? 600 : 400, color: club.id === clubId ? "var(--heading)" : "var(--t2)" }}>{club.name}</span>
+                              <span className="text-sm truncate" style={{ fontWeight: club.id === clubId ? 600 : 400, color: isDark ? (club.id === clubId ? "#E2E8F0" : "#CBD5E1") : (club.id === clubId ? "#1E293B" : "#475569") }}>{club.name || "Unnamed Club"}</span>
                               {club.id === clubId && <Check className="w-4 h-4 ml-auto flex-shrink-0" style={{ color: "#8B5CF6" }} />}
                             </button>
                           ))}
                           <button
-                            onClick={async () => {
-                              setProfileOpen(false);
-                              router.push("/clubs");
-                            }}
+                            onClick={() => { setProfileOpen(false); router.push("/clubs"); }}
                             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
                           >
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ border: "1px dashed rgba(139,92,246,0.3)" }}>
@@ -386,32 +382,32 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                       <div className="p-2">
                         <button
                           onClick={() => { router.push(`/clubs/${clubId}/intelligence/settings`); setProfileOpen(false); }}
-                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
-                          style={{ color: "var(--t2)" }}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
+                          style={{ color: isDark ? "#CBD5E1" : "#475569" }}
                         >
-                          <Settings className="w-4 h-4" style={{ color: "var(--t3)" }} />
+                          <Settings className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
                           <span className="text-sm" style={{ fontWeight: 500 }}>Club Settings</span>
                         </button>
                         <button
                           onClick={() => { router.push(`/clubs/${clubId}/intelligence/team`); setProfileOpen(false); }}
-                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
-                          style={{ color: "var(--t2)" }}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
+                          style={{ color: isDark ? "#CBD5E1" : "#475569" }}
                         >
-                          <UsersRound className="w-4 h-4" style={{ color: "var(--t3)" }} />
+                          <UsersRound className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
                           <span className="text-sm" style={{ fontWeight: 500 }}>Team Management</span>
                         </button>
                         <button
                           onClick={toggleTheme}
-                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
-                          style={{ color: "var(--t2)" }}
+                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
+                          style={{ color: isDark ? "#CBD5E1" : "#475569" }}
                         >
-                          {isDark ? <Sun className="w-4 h-4" style={{ color: "var(--t3)" }} /> : <Moon className="w-4 h-4" style={{ color: "var(--t3)" }} />}
+                          {isDark ? <Sun className="w-4 h-4" style={{ color: "#64748B" }} /> : <Moon className="w-4 h-4" style={{ color: "#94A3B8" }} />}
                           <span className="text-sm" style={{ fontWeight: 500 }}>{isDark ? "Light Mode" : "Dark Mode"}</span>
                         </button>
                       </div>
 
                       {/* Sign out */}
-                      <div className="p-2" style={{ borderTop: "1px solid var(--divider)" }}>
+                      <div className="p-2" style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
                         <button
                           onClick={() => signOut({ callbackUrl: "/" })}
                           className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
