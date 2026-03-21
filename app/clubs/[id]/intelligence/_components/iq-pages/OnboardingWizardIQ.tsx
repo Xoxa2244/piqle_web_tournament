@@ -203,6 +203,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const toggleGoal = (g: string) => setGoals(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
 
   const handleComplete = async () => {
+    hasCsvRef.current = !!csvFile
     setProcessing(true)
 
     // 1. Create or update club
@@ -278,7 +279,6 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     }
 
     // 3. Upload CSV if provided
-    hasCsvRef.current = !!csvFile
     if (csvFile) {
       try {
         setImportStatus('Parsing CSV file...')
@@ -348,10 +348,14 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       }
     }
 
-    // Done — set progress to 100
+    // Done — set progress to 100 and auto-redirect after delay
     setImportProgress(100)
     setImportStatus('System ready')
     setImportDone(true)
+
+    // Wait for animation to show "Ready!" then redirect
+    await new Promise(r => setTimeout(r, 2000))
+    onComplete()
   }
 
   const steps = [
@@ -516,10 +520,8 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     return (
       <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
         <AILoadingAnimation
-          onComplete={onComplete}
           progress={hasCsvRef.current ? importProgress : undefined}
           statusMessage={hasCsvRef.current ? importStatus : undefined}
-          waitForCompletion={hasCsvRef.current}
         />
       </div>
     )
