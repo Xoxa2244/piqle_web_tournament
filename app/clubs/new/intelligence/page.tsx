@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { OnboardingWizardIQ } from '@/app/clubs/[id]/intelligence/_components/iq-pages/OnboardingWizardIQ'
@@ -10,10 +10,10 @@ import '@/app/clubs/[id]/intelligence/iqsport-theme.css'
 export default function NewClubWizardPage() {
   const router = useRouter()
   const [clubId, setClubId] = useState<string | null>(null)
+  const clubIdRef = useRef<string | null>(null)
   const createClub = trpc.club.create.useMutation()
 
-  // Wizard calls this before saving settings
-  const handleCreateAndComplete = async (wizardData: {
+  const handleCreateAndComplete = useCallback(async (wizardData: {
     name: string
     kind: 'VENUE' | 'COMMUNITY'
     address?: string
@@ -21,7 +21,7 @@ export default function NewClubWizardPage() {
     state?: string
     country?: string
   }) => {
-    if (clubId) return clubId // already created
+    if (clubIdRef.current) return clubIdRef.current
 
     const club = await createClub.mutateAsync({
       name: wizardData.name || 'My Club',
@@ -32,9 +32,20 @@ export default function NewClubWizardPage() {
       state: wizardData.state,
       country: wizardData.country,
     })
+    clubIdRef.current = club.id
     setClubId(club.id)
     return club.id
-  }
+  }, [createClub])
+
+  const handleComplete = useCallback(() => {
+    const id = clubIdRef.current
+    if (id) {
+      router.push(`/clubs/${id}/intelligence`)
+    } else {
+      // Fallback — go to clubs list
+      router.push('/clubs')
+    }
+  }, [router])
 
   return (
     <IQThemeProvider>
@@ -42,11 +53,7 @@ export default function NewClubWizardPage() {
         clubId={clubId || 'pending'}
         isNewClub
         onCreateClub={handleCreateAndComplete}
-        onComplete={() => {
-          if (clubId) {
-            router.push(`/clubs/${clubId}/intelligence`)
-          }
-        }}
+        onComplete={handleComplete}
       />
     </IQThemeProvider>
   )
