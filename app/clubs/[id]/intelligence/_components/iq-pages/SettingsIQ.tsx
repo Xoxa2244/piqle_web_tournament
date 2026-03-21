@@ -5,9 +5,11 @@ import { motion } from "motion/react";
 import {
   Settings, Globe, Dumbbell, Calendar, Clock, DollarSign,
   Target, Mail, Smartphone, Volume2, Zap, Check, Bell,
-  Shield, ChevronDown,
+  Shield, ChevronDown, Trash2, AlertTriangle,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { useRouter } from "next/navigation";
+import { trpc } from "@/lib/trpc";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -352,6 +354,103 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
           {saved ? <><Check className="w-4 h-4" /> Saved</> : "Save Changes"}
         </motion.button>
       </div>
+
+      {/* Danger Zone */}
+      {clubId && <DangerZone clubId={clubId} />}
     </motion.div>
+  );
+}
+
+function DangerZone({ clubId }: { clubId: string }) {
+  const { isDark } = useTheme();
+  const router = useRouter();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const deleteClub = trpc.club.delete.useMutation();
+
+  const handleDelete = async () => {
+    if (confirmText !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await deleteClub.mutateAsync({ clubId });
+      router.replace("/clubs");
+    } catch (err: any) {
+      console.error("[Settings] Delete failed:", err?.message || err);
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="pb-8">
+      <div className="rounded-2xl p-5" style={{
+        background: isDark ? "rgba(239,68,68,0.05)" : "rgba(239,68,68,0.03)",
+        border: "1px solid rgba(239,68,68,0.2)",
+      }}>
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className="w-4 h-4" style={{ color: "#EF4444" }} />
+          <span className="text-sm" style={{ fontWeight: 700, color: "#EF4444" }}>Danger Zone</span>
+        </div>
+        <p className="text-sm mb-4" style={{ color: "var(--t3)" }}>
+          Permanently delete this club and all its data. This action cannot be undone.
+        </p>
+
+        {!showConfirm ? (
+          <button
+            onClick={() => setShowConfirm(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all"
+            style={{
+              background: "rgba(239,68,68,0.1)",
+              color: "#EF4444",
+              fontWeight: 600,
+              border: "1px solid rgba(239,68,68,0.2)",
+            }}
+          >
+            <Trash2 className="w-4 h-4" /> Delete Club
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs" style={{ color: "var(--t3)" }}>
+              Type <strong style={{ color: "#EF4444" }}>DELETE</strong> to confirm:
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={e => setConfirmText(e.target.value)}
+              placeholder="Type DELETE"
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+              style={{
+                background: "var(--subtle)",
+                color: "var(--t1)",
+                border: confirmText === "DELETE" ? "1px solid rgba(239,68,68,0.5)" : "1px solid var(--card-border)",
+              }}
+              autoFocus
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={confirmText !== "DELETE" || deleting}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-white transition-all"
+                style={{
+                  background: confirmText === "DELETE" ? "#EF4444" : "rgba(239,68,68,0.3)",
+                  fontWeight: 600,
+                  cursor: confirmText === "DELETE" && !deleting ? "pointer" : "not-allowed",
+                  opacity: deleting ? 0.5 : 1,
+                }}
+              >
+                <Trash2 className="w-4 h-4" /> {deleting ? "Deleting..." : "Confirm Delete"}
+              </button>
+              <button
+                onClick={() => { setShowConfirm(false); setConfirmText(""); }}
+                className="px-4 py-2 rounded-xl text-sm"
+                style={{ color: "var(--t3)", fontWeight: 500 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
