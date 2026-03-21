@@ -327,11 +327,13 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-12 w-72 z-50 rounded-2xl overflow-hidden"
+                      className="absolute right-0 top-12 w-72 rounded-2xl overflow-hidden"
                       style={{
+                        zIndex: 9999,
                         background: isDark ? "#1a1c2e" : "#ffffff",
-                        border: "1px solid var(--card-border)",
-                        boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.1)",
+                        border: "1px solid rgba(139,92,246,0.2)",
+                        boxShadow: "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(139,92,246,0.15)",
+                        isolation: "isolate",
                       }}
                     >
                       {/* User info */}

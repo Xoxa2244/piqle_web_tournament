@@ -199,20 +199,29 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
     setProcessing(true)
 
     // 1. Update club info
+    const updatePayload = {
+      id: clubId,
+      name: (clubName || '').trim().length >= 2 ? clubName.trim() : 'My Club',
+      kind: clubKind,
+      joinPolicy: 'OPEN' as const,
+      address: address || undefined,
+      city: city || undefined,
+      state: state || undefined,
+      country: country || 'United States',
+    }
+    console.log('[Onboarding] Updating club with:', JSON.stringify(updatePayload))
     try {
-      await updateClub.mutateAsync({
-        id: clubId,
-        name: clubName || 'My Club',
-        kind: clubKind,
-        joinPolicy: 'OPEN',
-        address: address || undefined,
-        city: city || undefined,
-        state: state || undefined,
-        country: country || 'United States',
-      })
-      console.log('[Onboarding] Club updated')
-    } catch (err) {
-      console.error('[Onboarding] Club update failed:', err)
+      await updateClub.mutateAsync(updatePayload)
+      console.log('[Onboarding] Club updated successfully')
+    } catch (err: any) {
+      console.error('[Onboarding] Club update failed:', err?.message || err)
+      // Try name-only update as fallback
+      try {
+        await updateClub.mutateAsync({ id: clubId, name: updatePayload.name, kind: clubKind, joinPolicy: 'OPEN' })
+        console.log('[Onboarding] Fallback name-only update succeeded')
+      } catch (err2) {
+        console.error('[Onboarding] Fallback update also failed:', err2)
+      }
     }
 
     // 2. Save intelligence settings
