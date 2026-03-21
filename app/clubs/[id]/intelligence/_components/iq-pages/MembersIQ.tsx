@@ -53,21 +53,26 @@ interface Member {
   trend: "up" | "down" | "stable";
   favoriteTime: string;
   favoriteFormat: string;
+  activityLevel: 'power' | 'regular' | 'casual' | 'occasional';
+  engagementTrend: 'growing' | 'stable' | 'declining' | 'churning';
+  valueTier: 'high' | 'medium' | 'low';
+  avgSessionsPerWeek: number;
+  totalRevenue: number;
 }
 
 const members: Member[] = [
-  { id: "m1", name: "Sarah Mitchell", avatar: "SM", email: "sarah.m@email.com", phone: "+1 (555) 100-2001", rating: 3.8, sport: "Pickleball", segment: "power", healthScore: 95, sessionsThisMonth: 12, totalSessions: 156, memberSince: "Jun 2023", lastPlayed: "Today", revenue: 2840, trend: "up", favoriteTime: "Morning", favoriteFormat: "League" },
-  { id: "m2", name: "James Wilson", avatar: "JW", email: "james.w@email.com", phone: "+1 (555) 100-2002", rating: 3.5, sport: "Pickleball", segment: "power", healthScore: 92, sessionsThisMonth: 10, totalSessions: 134, memberSince: "Aug 2023", lastPlayed: "Yesterday", revenue: 2450, trend: "up", favoriteTime: "Evening", favoriteFormat: "Open Play" },
-  { id: "m3", name: "Emma Johnson", avatar: "EJ", email: "emma.j@email.com", phone: "+1 (555) 100-2003", rating: 3.2, sport: "Padel", segment: "regular", healthScore: 78, sessionsThisMonth: 6, totalSessions: 89, memberSince: "Oct 2023", lastPlayed: "2 days ago", revenue: 1680, trend: "stable", favoriteTime: "Afternoon", favoriteFormat: "Doubles" },
-  { id: "m4", name: "Michael Chen", avatar: "MC", email: "michael.c@email.com", phone: "+1 (555) 100-2004", rating: 2.8, sport: "Pickleball", segment: "regular", healthScore: 72, sessionsThisMonth: 5, totalSessions: 67, memberSince: "Jan 2024", lastPlayed: "3 days ago", revenue: 1120, trend: "stable", favoriteTime: "Morning", favoriteFormat: "Clinic" },
-  { id: "m5", name: "Lisa Park", avatar: "LP", email: "lisa.p@email.com", phone: "+1 (555) 100-2005", rating: 3.0, sport: "Tennis", segment: "regular", healthScore: 75, sessionsThisMonth: 5, totalSessions: 72, memberSince: "Dec 2023", lastPlayed: "1 day ago", revenue: 1340, trend: "up", favoriteTime: "Evening", favoriteFormat: "Singles" },
-  { id: "m6", name: "David Brown", avatar: "DB", email: "david.b@email.com", phone: "+1 (555) 100-2006", rating: 2.5, sport: "Pickleball", segment: "casual", healthScore: 55, sessionsThisMonth: 2, totalSessions: 28, memberSince: "May 2024", lastPlayed: "8 days ago", revenue: 420, trend: "down", favoriteTime: "Weekend", favoriteFormat: "Open Play" },
-  { id: "m7", name: "Anna Garcia", avatar: "AG", email: "anna.g@email.com", phone: "+1 (555) 100-2007", rating: 2.2, sport: "Padel", segment: "casual", healthScore: 48, sessionsThisMonth: 1, totalSessions: 15, memberSince: "Aug 2024", lastPlayed: "12 days ago", revenue: 240, trend: "down", favoriteTime: "Morning", favoriteFormat: "Clinic" },
-  { id: "m8", name: "Tom Rivera", avatar: "TR", email: "tom.r@email.com", phone: "+1 (555) 100-2008", rating: 3.4, sport: "Pickleball", segment: "at-risk", healthScore: 28, sessionsThisMonth: 1, totalSessions: 92, memberSince: "Sep 2023", lastPlayed: "18 days ago", revenue: 1780, trend: "down", favoriteTime: "Evening", favoriteFormat: "Round Robin" },
-  { id: "m9", name: "Maria Santos", avatar: "MS", email: "maria.s@email.com", phone: "+1 (555) 100-2009", rating: 3.2, sport: "Pickleball", segment: "at-risk", healthScore: 18, sessionsThisMonth: 0, totalSessions: 86, memberSince: "Jan 2024", lastPlayed: "42 days ago", revenue: 1240, trend: "down", favoriteTime: "Morning", favoriteFormat: "League" },
-  { id: "m10", name: "Kevin Lee", avatar: "KL", email: "kevin.l@email.com", phone: "+1 (555) 100-2010", rating: 2.6, sport: "Tennis", segment: "critical", healthScore: 8, sessionsThisMonth: 0, totalSessions: 34, memberSince: "Mar 2024", lastPlayed: "65 days ago", revenue: 560, trend: "down", favoriteTime: "Afternoon", favoriteFormat: "Singles" },
-  { id: "m11", name: "Rachel Kim", avatar: "RK", email: "rachel.k@email.com", phone: "+1 (555) 100-2011", rating: 3.6, sport: "Pickleball", segment: "power", healthScore: 88, sessionsThisMonth: 9, totalSessions: 112, memberSince: "Jul 2023", lastPlayed: "Today", revenue: 2200, trend: "up", favoriteTime: "Morning", favoriteFormat: "Tournament" },
-  { id: "m12", name: "Chris Taylor", avatar: "CT", email: "chris.t@email.com", phone: "+1 (555) 100-2012", rating: 2.9, sport: "Padel", segment: "regular", healthScore: 68, sessionsThisMonth: 4, totalSessions: 48, memberSince: "Feb 2024", lastPlayed: "4 days ago", revenue: 860, trend: "stable", favoriteTime: "Evening", favoriteFormat: "Doubles" },
+  { id: "m1", name: "Sarah Mitchell", avatar: "SM", email: "sarah.m@email.com", phone: "+1 (555) 100-2001", rating: 3.8, sport: "Pickleball", segment: "power", healthScore: 95, sessionsThisMonth: 12, totalSessions: 156, memberSince: "Jun 2023", lastPlayed: "Today", revenue: 2840, trend: "up", favoriteTime: "Morning", favoriteFormat: "League", activityLevel: "power", engagementTrend: "stable", valueTier: "high", avgSessionsPerWeek: 3.2, totalRevenue: 2840 },
+  { id: "m2", name: "James Wilson", avatar: "JW", email: "james.w@email.com", phone: "+1 (555) 100-2002", rating: 3.5, sport: "Pickleball", segment: "power", healthScore: 92, sessionsThisMonth: 10, totalSessions: 134, memberSince: "Aug 2023", lastPlayed: "Yesterday", revenue: 2450, trend: "up", favoriteTime: "Evening", favoriteFormat: "Open Play", activityLevel: "power", engagementTrend: "growing", valueTier: "high", avgSessionsPerWeek: 2.8, totalRevenue: 2450 },
+  { id: "m3", name: "Emma Johnson", avatar: "EJ", email: "emma.j@email.com", phone: "+1 (555) 100-2003", rating: 3.2, sport: "Padel", segment: "regular", healthScore: 78, sessionsThisMonth: 6, totalSessions: 89, memberSince: "Oct 2023", lastPlayed: "2 days ago", revenue: 1680, trend: "stable", favoriteTime: "Afternoon", favoriteFormat: "Doubles", activityLevel: "regular", engagementTrend: "stable", valueTier: "medium", avgSessionsPerWeek: 1.5, totalRevenue: 1680 },
+  { id: "m4", name: "Michael Chen", avatar: "MC", email: "michael.c@email.com", phone: "+1 (555) 100-2004", rating: 2.8, sport: "Pickleball", segment: "regular", healthScore: 72, sessionsThisMonth: 5, totalSessions: 67, memberSince: "Jan 2024", lastPlayed: "3 days ago", revenue: 1120, trend: "stable", favoriteTime: "Morning", favoriteFormat: "Clinic", activityLevel: "regular", engagementTrend: "growing", valueTier: "medium", avgSessionsPerWeek: 1.3, totalRevenue: 1120 },
+  { id: "m5", name: "Lisa Park", avatar: "LP", email: "lisa.p@email.com", phone: "+1 (555) 100-2005", rating: 3.0, sport: "Tennis", segment: "regular", healthScore: 75, sessionsThisMonth: 5, totalSessions: 72, memberSince: "Dec 2023", lastPlayed: "1 day ago", revenue: 1340, trend: "up", favoriteTime: "Evening", favoriteFormat: "Singles", activityLevel: "regular", engagementTrend: "growing", valueTier: "high", avgSessionsPerWeek: 1.4, totalRevenue: 1340 },
+  { id: "m6", name: "David Brown", avatar: "DB", email: "david.b@email.com", phone: "+1 (555) 100-2006", rating: 2.5, sport: "Pickleball", segment: "casual", healthScore: 55, sessionsThisMonth: 2, totalSessions: 28, memberSince: "May 2024", lastPlayed: "8 days ago", revenue: 420, trend: "down", favoriteTime: "Weekend", favoriteFormat: "Open Play", activityLevel: "casual", engagementTrend: "declining", valueTier: "low", avgSessionsPerWeek: 0.5, totalRevenue: 420 },
+  { id: "m7", name: "Anna Garcia", avatar: "AG", email: "anna.g@email.com", phone: "+1 (555) 100-2007", rating: 2.2, sport: "Padel", segment: "casual", healthScore: 48, sessionsThisMonth: 1, totalSessions: 15, memberSince: "Aug 2024", lastPlayed: "12 days ago", revenue: 240, trend: "down", favoriteTime: "Morning", favoriteFormat: "Clinic", activityLevel: "occasional", engagementTrend: "declining", valueTier: "low", avgSessionsPerWeek: 0.3, totalRevenue: 240 },
+  { id: "m8", name: "Tom Rivera", avatar: "TR", email: "tom.r@email.com", phone: "+1 (555) 100-2008", rating: 3.4, sport: "Pickleball", segment: "at-risk", healthScore: 28, sessionsThisMonth: 1, totalSessions: 92, memberSince: "Sep 2023", lastPlayed: "18 days ago", revenue: 1780, trend: "down", favoriteTime: "Evening", favoriteFormat: "Round Robin", activityLevel: "regular", engagementTrend: "declining", valueTier: "medium", avgSessionsPerWeek: 0.3, totalRevenue: 1780 },
+  { id: "m9", name: "Maria Santos", avatar: "MS", email: "maria.s@email.com", phone: "+1 (555) 100-2009", rating: 3.2, sport: "Pickleball", segment: "at-risk", healthScore: 18, sessionsThisMonth: 0, totalSessions: 86, memberSince: "Jan 2024", lastPlayed: "42 days ago", revenue: 1240, trend: "down", favoriteTime: "Morning", favoriteFormat: "League", activityLevel: "occasional", engagementTrend: "churning", valueTier: "medium", avgSessionsPerWeek: 0, totalRevenue: 1240 },
+  { id: "m10", name: "Kevin Lee", avatar: "KL", email: "kevin.l@email.com", phone: "+1 (555) 100-2010", rating: 2.6, sport: "Tennis", segment: "critical", healthScore: 8, sessionsThisMonth: 0, totalSessions: 34, memberSince: "Mar 2024", lastPlayed: "65 days ago", revenue: 560, trend: "down", favoriteTime: "Afternoon", favoriteFormat: "Singles", activityLevel: "occasional", engagementTrend: "churning", valueTier: "low", avgSessionsPerWeek: 0, totalRevenue: 560 },
+  { id: "m11", name: "Rachel Kim", avatar: "RK", email: "rachel.k@email.com", phone: "+1 (555) 100-2011", rating: 3.6, sport: "Pickleball", segment: "power", healthScore: 88, sessionsThisMonth: 9, totalSessions: 112, memberSince: "Jul 2023", lastPlayed: "Today", revenue: 2200, trend: "up", favoriteTime: "Morning", favoriteFormat: "Tournament", activityLevel: "power", engagementTrend: "stable", valueTier: "high", avgSessionsPerWeek: 2.5, totalRevenue: 2200 },
+  { id: "m12", name: "Chris Taylor", avatar: "CT", email: "chris.t@email.com", phone: "+1 (555) 100-2012", rating: 2.9, sport: "Padel", segment: "regular", healthScore: 68, sessionsThisMonth: 4, totalSessions: 48, memberSince: "Feb 2024", lastPlayed: "4 days ago", revenue: 860, trend: "stable", favoriteTime: "Evening", favoriteFormat: "Doubles", activityLevel: "casual", engagementTrend: "stable", valueTier: "medium", avgSessionsPerWeek: 1.0, totalRevenue: 860 },
 ];
 
 const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string; tooltip: string }> = {
@@ -76,6 +81,20 @@ const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string
   casual: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Casual", tooltip: "1 session/week or less, still active" },
   "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At-Risk", tooltip: "Declining frequency, health score 25-49" },
   critical: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Critical", tooltip: "Health score below 25, immediate attention needed" },
+};
+
+const activityColors: Record<string, { bg: string; text: string }> = {
+  power: { bg: "rgba(139,92,246,0.15)", text: "#A78BFA" },
+  regular: { bg: "rgba(6,182,212,0.15)", text: "#22D3EE" },
+  casual: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
+  occasional: { bg: "rgba(148,163,184,0.15)", text: "#94A3B8" },
+};
+const activityLabels: Record<string, string> = { power: 'Power Player', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' };
+const trendColors: Record<string, { bg: string; text: string }> = {
+  growing: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
+  stable: { bg: "rgba(6,182,212,0.1)", text: "#67E8F9" },
+  declining: { bg: "rgba(245,158,11,0.15)", text: "#F59E0B" },
+  churning: { bg: "rgba(239,68,68,0.15)", text: "#EF4444" },
 };
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -188,13 +207,21 @@ function mapRealMembers(data: any): Member[] {
     trend: m.trend === "improving" ? "up" as const : m.trend === "declining" ? "down" as const : "stable" as const,
     favoriteTime: "",
     favoriteFormat: "",
+    activityLevel: m.segment?.activityLevel || (m.riskLevel === 'healthy' ? 'regular' : 'casual') as Member['activityLevel'],
+    engagementTrend: (m.segment?.trend || m.trend || 'stable') as Member['engagementTrend'],
+    valueTier: (m.segment?.valueTier || 'medium') as Member['valueTier'],
+    avgSessionsPerWeek: m.avgSessionsPerWeek || 0,
+    totalRevenue: m.totalRevenue || 0,
   }));
 }
 
 export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: externalLoading, sendOutreach, clubId }: MembersIQProps = {}) {
   const { isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
-  const [segmentFilter, setSegmentFilter] = useState<Segment>("all");
+  const [filterActivity, setFilterActivity] = useState<string>("all");
+  const [filterRisk, setFilterRisk] = useState<string>("all");
+  const [filterTrend, setFilterTrend] = useState<string>("all");
+  const [filterValue, setFilterValue] = useState<string>("all");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -247,7 +274,10 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
 
   const filtered = allMembers
     .filter((m) => {
-      if (segmentFilter !== "all" && m.segment !== segmentFilter) return false;
+      if (filterActivity !== "all" && m.activityLevel !== filterActivity) return false;
+      if (filterRisk !== "all" && m.segment !== filterRisk) return false;
+      if (filterTrend !== "all" && m.engagementTrend !== filterTrend) return false;
+      if (filterValue !== "all" && m.valueTier !== filterValue) return false;
       if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     })
@@ -393,8 +423,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       )}
 
       {/* Filters + Table */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
+      <div className="space-y-3">
+        {/* Search + Sort + View toggle */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 240 }}>
             <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
             <input
@@ -405,53 +436,85 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
               style={{ color: "var(--t1)" }}
             />
           </div>
-          <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-            {(["all", "power", "regular", "casual", "at-risk", "critical"] as Segment[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSegmentFilter(s)}
-                className="px-3 py-2 text-[11px] capitalize transition-all"
-                style={{
-                  background: segmentFilter === s ? "var(--pill-active)" : "transparent",
-                  color: segmentFilter === s ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-                  fontWeight: segmentFilter === s ? 600 : 500,
-                }}
-              >
-                {s === "at-risk" ? "At-Risk" : s === "critical" ? "Critical" : s}
-              </button>
-            ))}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--t3)" }}>
+              <span>Sort by:</span>
+              {(["health", "revenue", "sessions", "name"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSortBy(s)}
+                  className="px-2 py-1 rounded-lg capitalize transition-all"
+                  style={{
+                    background: sortBy === s ? "var(--pill-active)" : "transparent",
+                    color: sortBy === s ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t4)",
+                    fontWeight: sortBy === s ? 600 : 400,
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+              {([{ mode: "grid" as const, Icon: LayoutGrid }, { mode: "list" as const, Icon: List }]).map(({ mode, Icon }) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className="p-2 transition-all"
+                  style={{
+                    background: viewMode === mode ? "var(--pill-active)" : "transparent",
+                    color: viewMode === mode ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t4)",
+                  }}
+                >
+                  <Icon className="w-4 h-4" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--t3)" }}>
-            <span>Sort by:</span>
-            {(["health", "revenue", "sessions", "name"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSortBy(s)}
-                className="px-2 py-1 rounded-lg capitalize transition-all"
-                style={{
-                  background: sortBy === s ? "var(--pill-active)" : "transparent",
-                  color: sortBy === s ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t4)",
-                  fontWeight: sortBy === s ? 600 : 400,
-                }}
-              >
-                {s}
+
+        {/* Segment Filters */}
+        <div className="space-y-2">
+          {/* Activity */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Activity</span>
+            {["all", "power", "regular", "casual", "occasional"].map(v => (
+              <button key={v} onClick={() => setFilterActivity(v)}
+                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
+                style={{ background: filterActivity === v ? "var(--pill-active)" : "transparent", color: filterActivity === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterActivity === v ? 600 : 400 }}>
+                {v === 'all' ? 'All' : v === 'power' ? 'Power' : v === 'regular' ? 'Regular' : v === 'casual' ? 'Casual' : 'Occasional'}
               </button>
             ))}
           </div>
-          <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-            {([{ mode: "grid" as const, Icon: LayoutGrid }, { mode: "list" as const, Icon: List }]).map(({ mode, Icon }) => (
-              <button
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className="p-2 transition-all"
-                style={{
-                  background: viewMode === mode ? "var(--pill-active)" : "transparent",
-                  color: viewMode === mode ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t4)",
-                }}
-              >
-                <Icon className="w-4 h-4" />
+          {/* Risk */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Risk</span>
+            {["all", "healthy", "watch", "at-risk", "critical"].map(v => (
+              <button key={v} onClick={() => setFilterRisk(v === "healthy" ? "power" : v === "watch" ? "regular" : v)}
+                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
+                style={{ background: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "var(--pill-active)" : "transparent", color: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "#C4B5FD" : "var(--t3)", fontWeight: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? 600 : 400 }}>
+                {v === 'all' ? 'All' : v === 'healthy' ? 'Healthy' : v === 'watch' ? 'Watch' : v === 'at-risk' ? 'At-Risk' : 'Critical'}
+              </button>
+            ))}
+          </div>
+          {/* Trend */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Trend</span>
+            {["all", "growing", "stable", "declining", "churning"].map(v => (
+              <button key={v} onClick={() => setFilterTrend(v)}
+                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
+                style={{ background: filterTrend === v ? "var(--pill-active)" : "transparent", color: filterTrend === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterTrend === v ? 600 : 400 }}>
+                {v === 'all' ? 'All' : v}
+              </button>
+            ))}
+          </div>
+          {/* Value */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Value</span>
+            {["all", "high", "medium", "low"].map(v => (
+              <button key={v} onClick={() => setFilterValue(v)}
+                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
+                style={{ background: filterValue === v ? "var(--pill-active)" : "transparent", color: filterValue === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterValue === v ? 600 : 400 }}>
+                {v === 'all' ? 'All' : v === 'high' ? 'High LTV' : v === 'medium' ? 'Mid' : 'Low'}
               </button>
             ))}
           </div>
@@ -482,9 +545,19 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                       {member.trend === "up" && <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />}
                       {member.trend === "down" && <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <SegmentBadge segment={member.segment} />
-                      <span className="text-[10px]" style={{ color: "var(--t4)" }}>{member.sport}</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: activityColors[member.activityLevel].bg, color: activityColors[member.activityLevel].text, fontWeight: 600 }}>
+                        {activityLabels[member.activityLevel]}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>
+                        {member.engagementTrend === 'growing' ? '\u2191 Growing' : member.engagementTrend === 'declining' ? '\u2193 Declining' : member.engagementTrend === 'churning' ? '\u23F8 Churning' : '\u2192 Stable'}
+                      </span>
+                      {member.valueTier === 'high' && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", fontWeight: 600 }}>
+                          \u2605 High LTV
+                        </span>
+                      )}
+                      <span className="text-[9px] self-center" style={{ color: "var(--t4)" }}>{member.sport}</span>
                     </div>
                   </div>
                   <HealthBar score={member.healthScore} />
@@ -591,7 +664,10 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                   </div>
                   <div className="text-[10px]" style={{ color: "var(--t4)" }}>{member.sport}</div>
                 </div>
-                <div className="hidden md:block"><SegmentBadge segment={member.segment} /></div>
+                <div className="hidden md:flex flex-wrap gap-0.5">
+                  <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: activityColors[member.activityLevel].bg, color: activityColors[member.activityLevel].text, fontWeight: 600 }}>{activityLabels[member.activityLevel]}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>{member.engagementTrend === 'growing' ? '\u2191' : member.engagementTrend === 'declining' ? '\u2193' : member.engagementTrend === 'churning' ? '\u23F8' : '\u2192'}</span>
+                </div>
                 <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{member.rating}</div>
                 <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{getSessionsForPeriod(member, period)}</div>
                 <div className="text-right text-xs hidden sm:block" style={{ color: "#10B981", fontWeight: 700 }}>${member.revenue.toLocaleString()}</div>
