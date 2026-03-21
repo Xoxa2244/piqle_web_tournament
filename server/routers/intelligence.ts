@@ -2268,7 +2268,7 @@ export const intelligenceRouter = createTRPCRouter({
           contentType: batch.entries[0].contentType,
           source: 'CSV Import',
           embeddingIds: batch.entries.map(e => e.id),
-          sessionSourceIds: [...new Set(sourceIds)],
+          sessionSourceIds: Array.from(new Set(sourceIds)),
         }
       })
 
