@@ -15,9 +15,9 @@ export default function LayoutWithOptionalHeader({
   const brand = useBrand()
   const isEmbed = pathname ? EMBED_PATH_REGEX.test(pathname) : false
   const isChatsPage = pathname === '/chats'
-  const isIQIntelligence = brand.key === 'iqsport' && pathname?.includes('/intelligence')
+  const isIQ = brand.key === 'iqsport'
 
-  if (isEmbed || isIQIntelligence) {
+  if (isEmbed || isIQ) {
     return <main className="min-h-screen">{children}</main>
   }
 
