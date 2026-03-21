@@ -40,12 +40,12 @@ export default function NewClubWizardPage() {
   const handleComplete = useCallback(() => {
     const id = clubIdRef.current
     if (id) {
-      router.push(`/clubs/${id}/intelligence`)
+      // Full page reload to ensure fresh tRPC cache
+      window.location.href = `/clubs/${id}/intelligence`
     } else {
-      // Fallback — go to clubs list
-      router.push('/clubs')
+      window.location.href = '/clubs'
     }
-  }, [router])
+  }, [])
 
   return (
     <IQThemeProvider>
