@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { OnboardingWizardIQ } from '@/app/clubs/[id]/intelligence/_components/iq-pages/OnboardingWizardIQ'
 import { IQThemeProvider } from '@/app/clubs/[id]/intelligence/_components/IQThemeProvider'
+import '@/app/clubs/[id]/intelligence/iqsport-theme.css'
 
 export default function NewClubWizardPage() {
   const router = useRouter()
