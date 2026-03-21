@@ -647,7 +647,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           </div>
         </Card>
 
-        {/* AI Weekly Summary */}
+        {/* AI Weekly Summary — generated from real data */}
         <Card className="relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 pointer-events-none" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.08), transparent 70%)" }} />
           <div className="relative">
@@ -657,23 +657,73 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Weekly Summary</h3>
-                <p className="text-[10px]" style={{ color: "var(--t4)" }}>Generated just now</p>
+                <p className="text-[10px]" style={{ color: "var(--t4)" }}>Generated from your data</p>
               </div>
             </div>
 
             <div className="space-y-4 text-sm" style={{ color: "var(--t2)", lineHeight: 1.7 }}>
-              <p>
-                <span style={{ fontWeight: 600, color: "var(--heading)" }}>Great week overall.</span>{" "}
-                Revenue is up 12.5% vs last month, driven by strong weekend bookings and the Thursday mixer event.
-              </p>
-              <p>
-                <span className="text-amber-400" style={{ fontWeight: 600 }}>Watch out:</span>{" "}
-                Tuesday mornings are consistently under 40% occupancy. Consider a recurring beginner clinic — I&apos;ve identified 23 members who&apos;d be a good fit.
-              </p>
-              <p>
-                <span className="text-emerald-400" style={{ fontWeight: 600 }}>Quick win:</span>{" "}
-                12 dormant members haven&apos;t played in 30+ days. A reactivation campaign could recover ~$1,800/mo.
-              </p>
+              {(() => {
+                const m = dashboardData?.metrics;
+                const hs = healthData?.summary;
+                const totalMembers = hs ? (hs.healthy + hs.watch + hs.atRisk + hs.critical) : 0;
+                const atRiskCount = hs?.atRisk || 0;
+                const criticalCount = hs?.critical || 0;
+                const occupancy = m?.occupancy?.value || "0%";
+                const occNum = parseInt(String(occupancy).replace('%','')) || 0;
+                const revenueVal = m?.bookings?.value || 0;
+                const revChange = m?.bookings?.trend?.changePercent || 0;
+                const revDir = m?.bookings?.trend?.direction || 'up';
+
+                if (!m || totalMembers === 0) {
+                  return (
+                    <p>
+                      <span style={{ fontWeight: 600, color: "var(--heading)" }}>Getting started.</span>{" "}
+                      Import your session data to unlock AI-powered weekly insights about your club performance, member health, and revenue opportunities.
+                    </p>
+                  );
+                }
+
+                const headline = revDir === 'up' && revChange > 5
+                  ? `Strong performance.`
+                  : revDir === 'up'
+                  ? `Steady growth.`
+                  : revChange < -10
+                  ? `Needs attention.`
+                  : `Holding steady.`;
+
+                const revText = revDir === 'up'
+                  ? `Revenue is up ${revChange}% vs last period with ${totalMembers} active members tracked.`
+                  : `Revenue is down ${Math.abs(revChange)}% vs last period. ${totalMembers} members are being tracked.`;
+
+                const occText = occNum >= 80
+                  ? `Court occupancy is strong at ${occupancy}.`
+                  : occNum >= 50
+                  ? `Court occupancy at ${occupancy} — room to grow.`
+                  : `Court occupancy is low at ${occupancy}. Consider promotions or schedule adjustments.`;
+
+                const riskText = atRiskCount + criticalCount > 0
+                  ? `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help recover revenue.`
+                  : `All members are in good health — keep up the engagement!`;
+
+                return (
+                  <>
+                    <p>
+                      <span style={{ fontWeight: 600, color: "var(--heading)" }}>{headline}</span>{" "}
+                      {revText}
+                    </p>
+                    <p>
+                      <span className="text-cyan-400" style={{ fontWeight: 600 }}>Occupancy:</span>{" "}
+                      {occText}
+                    </p>
+                    <p>
+                      <span className={atRiskCount + criticalCount > 0 ? "text-amber-400" : "text-emerald-400"} style={{ fontWeight: 600 }}>
+                        {atRiskCount + criticalCount > 0 ? "Watch out:" : "Looking good:"}
+                      </span>{" "}
+                      {riskText}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
