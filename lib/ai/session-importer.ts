@@ -204,7 +204,7 @@ export async function importSessionsToDB(
     })
 
     await prisma.$executeRawUnsafe(
-      `INSERT INTO play_sessions (id, club_id, court_id, title, date, start_time, end_time, format, skill_level, max_players, registered_count, status, created_at, updated_at)
+      `INSERT INTO play_sessions (id, "clubId", "courtId", title, date, "startTime", "endTime", format, "skillLevel", "maxPlayers", "registeredCount", status, "createdAt", "updatedAt")
        VALUES ${valuesClauses.map(v => v.replace(/\)$/, `, '${nowISO}'::timestamp, '${nowISO}'::timestamp)`)).join(', ')}
        ON CONFLICT DO NOTHING`,
       ...params,
@@ -260,9 +260,9 @@ export async function importSessionsToDB(
       })
 
       const inserted = await prisma.$executeRawUnsafe(
-        `INSERT INTO play_session_bookings (id, session_id, user_id, status, booked_at)
+        `INSERT INTO play_session_bookings (id, "sessionId", "userId", status, "bookedAt")
          VALUES ${valuesClauses.join(', ')}
-         ON CONFLICT (session_id, user_id) DO NOTHING`,
+         ON CONFLICT ("sessionId", "userId") DO NOTHING`,
         ...params,
       )
       result.bookingsCreated += typeof inserted === 'number' ? inserted : 0
@@ -377,9 +377,9 @@ export async function rematchSessionBookings(
       })
 
       const inserted = await prisma.$executeRawUnsafe(
-        `INSERT INTO play_session_bookings (id, session_id, user_id, status, booked_at)
+        `INSERT INTO play_session_bookings (id, "sessionId", "userId", status, "bookedAt")
          VALUES ${valuesClauses.join(', ')}
-         ON CONFLICT (session_id, user_id) DO NOTHING`,
+         ON CONFLICT ("sessionId", "userId") DO NOTHING`,
         ...params,
       )
       matched += typeof inserted === 'number' ? inserted : 0
