@@ -15,6 +15,8 @@ import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 type Props = {
   clubId: string
   onComplete: () => void
+  isNewClub?: boolean
+  onCreateClub?: (data: { name: string; kind: 'VENUE' | 'COMMUNITY'; address?: string; city?: string; state?: string; country?: string }) => Promise<string>
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -94,7 +96,8 @@ function InputField({ label, value, onChange, placeholder, type = 'text', inputM
   )
 }
 
-export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
+export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClub, onCreateClub }: Props) {
+  const [resolvedClubId, setResolvedClubId] = useState(initialClubId)
   const { isDark } = useTheme()
   const [step, setStep] = useState(0)
   const [processing, setProcessing] = useState(false)
@@ -198,29 +201,43 @@ export function OnboardingWizardIQ({ clubId, onComplete }: Props) {
   const handleComplete = async () => {
     setProcessing(true)
 
-    // 1. Update club info
-    const updatePayload = {
-      id: clubId,
-      name: (clubName || '').trim().length >= 2 ? clubName.trim() : 'My Club',
-      kind: clubKind,
-      joinPolicy: 'OPEN' as const,
-      address: address || undefined,
-      city: city || undefined,
-      state: state || undefined,
-      country: country || 'United States',
-    }
-    console.log('[Onboarding] Updating club with:', JSON.stringify(updatePayload))
-    try {
-      await updateClub.mutateAsync(updatePayload)
-      console.log('[Onboarding] Club updated successfully')
-    } catch (err: any) {
-      console.error('[Onboarding] Club update failed:', err?.message || err)
-      // Try name-only update as fallback
+    // 1. Create or update club
+    let clubId = resolvedClubId
+    const clubName_ = (clubName || '').trim().length >= 2 ? clubName.trim() : 'My Club'
+
+    if (isNewClub && onCreateClub) {
+      // New club flow — create first
       try {
-        await updateClub.mutateAsync({ id: clubId, name: updatePayload.name, kind: clubKind, joinPolicy: 'OPEN' })
-        console.log('[Onboarding] Fallback name-only update succeeded')
-      } catch (err2) {
-        console.error('[Onboarding] Fallback update also failed:', err2)
+        clubId = await onCreateClub({
+          name: clubName_,
+          kind: clubKind,
+          address: address || undefined,
+          city: city || undefined,
+          state: state || undefined,
+          country: country || 'United States',
+        })
+        setResolvedClubId(clubId)
+        console.log('[Onboarding] Club created:', clubId)
+      } catch (err: any) {
+        console.error('[Onboarding] Club creation failed:', err?.message || err)
+        return // can't continue without clubId
+      }
+    } else if (clubId && clubId !== 'pending') {
+      // Existing club — update info
+      try {
+        await updateClub.mutateAsync({
+          id: clubId,
+          name: clubName_,
+          kind: clubKind,
+          joinPolicy: 'OPEN',
+          address: address || undefined,
+          city: city || undefined,
+          state: state || undefined,
+          country: country || 'United States',
+        })
+        console.log('[Onboarding] Club updated')
+      } catch (err: any) {
+        console.error('[Onboarding] Club update failed:', err?.message || err)
       }
     }
 

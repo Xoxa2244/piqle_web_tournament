@@ -39,21 +39,9 @@ function ClubsPageContent() {
   const [isCreatingClub, setIsCreatingClub] = useState(false)
   const createClubMutation = trpc.club.create.useMutation()
 
-  // IQ brand: skip modal, create empty club and go to wizard
-  const handleIQCreateClub = async () => {
-    if (isCreatingClub) return
-    setIsCreatingClub(true)
-    try {
-      const club = await createClubMutation.mutateAsync({
-        name: 'My Club',
-        kind: 'VENUE',
-        joinPolicy: 'OPEN',
-      })
-      router.push(`/clubs/${club.id}/intelligence?setup=true`)
-    } catch (err) {
-      console.error('[IQ] Failed to create club:', err)
-      setIsCreatingClub(false)
-    }
+  // IQ brand: go to standalone wizard page (no club created yet)
+  const handleIQCreateClub = () => {
+    router.push('/clubs/new/intelligence')
   }
 
   useEffect(() => {
@@ -244,8 +232,8 @@ function ClubsPageContent() {
             className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl text-sm font-medium transition-all"
             style={{ color: '#A78BFA', border: '1px dashed rgba(139,92,246,0.3)', opacity: isCreatingClub ? 0.6 : 1 }}
           >
-            {isCreatingClub ? <div className="w-4 h-4 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" /> : <Plus className="w-4 h-4" />}
-            {isCreatingClub ? 'Creating...' : 'Add Another Club'}
+            <Plus className="w-4 h-4" />
+            Add Another Club
           </button>
         </div>
       </div>
