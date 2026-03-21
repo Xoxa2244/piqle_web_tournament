@@ -149,7 +149,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       if (!autocompleteRef.current) {
         autocompleteRef.current = new googleApi.maps.places.Autocomplete(addressInputRef.current, {
           fields: ['formatted_address', 'geometry', 'place_id', 'address_components'],
-          types: ['geocode'],
+          types: ['address'],
         })
       }
       listenerRef.current?.remove?.()
