@@ -370,10 +370,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
 
   // Determine if club has real data or is still empty
-  // Check actual session count — if 0 sessions, treat as empty regardless of what metrics say
-  const totalSessions = dashboardData?.metrics?.bookings?.raw ?? dashboardData?.totalSessions ?? 0;
+  const bookingsVal = dashboardData?.metrics?.bookings?.value;
+  const totalSessions = typeof bookingsVal === 'number' ? bookingsVal : (typeof bookingsVal === 'string' && bookingsVal !== 'N/A' ? parseInt(bookingsVal, 10) || 0 : 0);
   const totalMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0);
-  const hasRealData = !!realData && !!dashboardData && (totalSessions > 0 || totalMembers > 5);
+  const hasRealData = !!realData && !!dashboardData && (totalSessions > 0 || totalMembers > 0);
   const hasSessions = hasRealData && totalSessions > 0;
   const hasMembers = totalMembers > 0;
   const hasUploads = !!uploadHistoryData?.uploads?.length;
