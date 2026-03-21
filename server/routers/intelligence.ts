@@ -2244,20 +2244,24 @@ export const intelligenceRouter = createTRPCRouter({
         orderBy: { createdAt: 'desc' },
       })
 
-      // Group by sourceId to form "uploads"
-      const uploadMap = new Map<string, any[]>()
-      embeddings.forEach((e: any) => {
-        const key = e.sourceId || e.id
-        if (!uploadMap.has(key)) uploadMap.set(key, [])
-        uploadMap.get(key)!.push(e)
-      })
+      // Group by import batch: embeddings created within 5 minutes = same import
+      const sorted = [...embeddings].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      const batches: Array<{ start: Date; entries: typeof sorted }> = []
+      for (const e of sorted) {
+        const lastBatch = batches[batches.length - 1]
+        if (lastBatch && e.createdAt.getTime() - lastBatch.entries[lastBatch.entries.length - 1].createdAt.getTime() < 5 * 60 * 1000) {
+          lastBatch.entries.push(e)
+        } else {
+          batches.push({ start: e.createdAt, entries: [e] })
+        }
+      }
 
-      const uploads = Array.from(uploadMap.entries()).map(([sourceId, entries]) => ({
-        id: sourceId,
-        date: entries[0].createdAt.toISOString(),
-        records: entries.length,
-        contentType: entries[0].contentType,
-        source: entries[0].sourceTable || 'CSV Import',
+      const uploads = batches.reverse().map((batch, i) => ({
+        id: `import-${i}`,
+        date: batch.start.toISOString(),
+        records: batch.entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session').length || batch.entries.length,
+        contentType: batch.entries[0].contentType,
+        source: 'CSV Import',
       }))
 
       return { uploads, totalUploads: uploads.length }
