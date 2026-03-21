@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -316,18 +317,18 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
               </button>
 
               <AnimatePresence>
-                {profileOpen && (
+                {profileOpen && typeof document !== 'undefined' && createPortal(
                   <>
                     {/* Backdrop */}
-                    <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+                    <div className="fixed inset-0" style={{ zIndex: 99998 }} onClick={() => setProfileOpen(false)} />
 
-                    {/* Dropdown — all colors hardcoded, no CSS vars */}
+                    {/* Dropdown — rendered via portal to escape sidebar stacking context */}
                     <motion.div
                       initial={{ opacity: 0, y: -8, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
-                      className="fixed right-4 top-14 w-72 rounded-2xl overflow-hidden"
+                      className="fixed right-4 top-14 w-72 rounded-2xl overflow-y-auto max-h-[80vh]"
                       style={{
                         zIndex: 99999,
                         background: isDark ? "#1e2035" : "#ffffff",
@@ -351,7 +352,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                       {/* My Clubs */}
                       {myClubs.length > 0 && (
                         <div className="p-2" style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
-                          <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: isDark ? "#64748B" : "#94A3B8", fontWeight: 600 }}>My Clubs</div>
+                          <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider" style={{ color: isDark ? "#64748B" : "#94A3B8", fontWeight: 600 }}>My Clubs ({myClubs.length})</div>
                           {myClubs.map((club: any) => (
                             <button
                               key={club.id}
@@ -418,7 +419,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                         </button>
                       </div>
                     </motion.div>
-                  </>
+                  </>,
+                  document.body
                 )}
               </AnimatePresence>
             </div>
