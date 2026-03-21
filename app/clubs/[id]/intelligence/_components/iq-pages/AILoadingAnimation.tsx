@@ -286,15 +286,15 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
           <span className="text-xs text-white/20 ml-2">iqsport-ai-engine</span>
         </div>
         <div className="space-y-1.5">
-          {visibleLines.map((line, idx) => (
+          {visibleLines.filter(Boolean).map((line, idx) => (
             <motion.div
               key={`${line}-${idx}`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3 }}
               style={{
-                color: line.includes("ready") || line.includes("97.3") ? "#06B6D4" : "#8B5CF6",
-                textShadow: `0 0 8px ${line.includes("ready") ? "rgba(6,182,212,0.5)" : "rgba(139,92,246,0.3)"}`,
+                color: (line || '').includes("ready") || (line || '').includes("97.3") ? "#06B6D4" : "#8B5CF6",
+                textShadow: `0 0 8px ${(line || '').includes("ready") ? "rgba(6,182,212,0.5)" : "rgba(139,92,246,0.3)"}`,
               }}
             >
               {line}

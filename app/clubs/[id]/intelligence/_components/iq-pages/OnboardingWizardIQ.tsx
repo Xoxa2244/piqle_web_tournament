@@ -104,6 +104,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const [importProgress, setImportProgress] = useState(0)
   const [importStatus, setImportStatus] = useState('')
   const [importDone, setImportDone] = useState(false)
+  const hasCsvRef = useRef(false)
 
   // Step 1: Club Info
   const [clubName, setClubName] = useState('')
@@ -277,6 +278,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     }
 
     // 3. Upload CSV if provided
+    hasCsvRef.current = !!csvFile
     if (csvFile) {
       try {
         setImportStatus('Parsing CSV file...')
@@ -515,9 +517,9 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
         <AILoadingAnimation
           onComplete={onComplete}
-          progress={csvFile ? importProgress : undefined}
-          statusMessage={csvFile ? importStatus : undefined}
-          waitForCompletion={!!csvFile}
+          progress={hasCsvRef.current ? importProgress : undefined}
+          statusMessage={hasCsvRef.current ? importStatus : undefined}
+          waitForCompletion={hasCsvRef.current}
         />
       </div>
     )
