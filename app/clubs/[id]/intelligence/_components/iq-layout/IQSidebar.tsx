@@ -316,26 +316,21 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                 {userInitials}
               </button>
 
-              <AnimatePresence>
-                {profileOpen && typeof document !== 'undefined' && createPortal(
-                  <>
-                    {/* Backdrop */}
-                    <div className="fixed inset-0" style={{ zIndex: 99998 }} onClick={() => setProfileOpen(false)} />
+              {profileOpen && typeof document !== 'undefined' && createPortal(
+                <>
+                  {/* Backdrop */}
+                  <div className="fixed inset-0" style={{ zIndex: 99998 }} onClick={() => setProfileOpen(false)} />
 
-                    {/* Dropdown — rendered via portal to escape sidebar stacking context */}
-                    <motion.div
-                      initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="fixed right-4 top-14 w-72 rounded-2xl overflow-y-auto max-h-[80vh]"
-                      style={{
-                        zIndex: 99999,
-                        background: isDark ? "#1e2035" : "#ffffff",
-                        border: `1px solid ${isDark ? "rgba(139,92,246,0.25)" : "rgba(0,0,0,0.1)"}`,
-                        boxShadow: isDark ? "0 25px 80px rgba(0,0,0,0.9)" : "0 25px 80px rgba(0,0,0,0.15)",
-                      }}
-                    >
+                  {/* Dropdown — rendered via portal to escape sidebar stacking context */}
+                  <div
+                    className="fixed right-4 top-14 w-72 rounded-2xl overflow-y-auto max-h-[80vh]"
+                    style={{
+                      zIndex: 99999,
+                      background: isDark ? "#1e2035" : "#ffffff",
+                      border: `1px solid ${isDark ? "rgba(139,92,246,0.25)" : "rgba(0,0,0,0.1)"}`,
+                      boxShadow: isDark ? "0 25px 80px rgba(0,0,0,0.9)" : "0 25px 80px rgba(0,0,0,0.15)",
+                    }}
+                  >
                       {/* User info */}
                       <div className="p-4" style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
                         <div className="flex items-center gap-3">
@@ -418,11 +413,10 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                           <span className="text-sm" style={{ fontWeight: 500 }}>Sign Out</span>
                         </button>
                       </div>
-                    </motion.div>
-                  </>,
-                  document.body
-                )}
-              </AnimatePresence>
+                  </div>
+                </>,
+                document.body
+              )}
             </div>
           </div>
         </header>
