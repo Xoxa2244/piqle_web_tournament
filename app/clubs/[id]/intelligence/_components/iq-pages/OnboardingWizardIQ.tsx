@@ -101,6 +101,9 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const { isDark } = useTheme()
   const [step, setStep] = useState(0)
   const [processing, setProcessing] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState('')
+  const [importDone, setImportDone] = useState(false)
 
   // Step 1: Club Info
   const [clubName, setClubName] = useState('')
@@ -276,6 +279,8 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     // 3. Upload CSV if provided
     if (csvFile) {
       try {
+        setImportStatus('Parsing CSV file...')
+        setImportProgress(5)
         const text = await csvFile.text()
         const parseRes = await fetch('/api/ai/parse-csv', {
           method: 'POST',
@@ -283,19 +288,68 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           body: JSON.stringify({ csvContent: text, fileName: csvFile.name }),
         })
         if (parseRes.ok) {
-          const { sessions } = await parseRes.json()
+          const { sessions, totalParsed } = await parseRes.json()
+          setImportStatus(`Parsed ${totalParsed || sessions?.length || 0} sessions`)
+          setImportProgress(20)
+
           if (sessions?.length) {
-            await fetch('/api/ai/import-sessions', {
+            setImportStatus('Importing sessions to database...')
+            const importRes = await fetch('/api/ai/import-sessions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ clubId, sessions, fileName: csvFile.name }),
             })
+
+            // Read SSE progress stream
+            if (importRes.ok && importRes.body) {
+              const reader = importRes.body.getReader()
+              const decoder = new TextDecoder()
+              let buffer = ''
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split('\n')
+                buffer = lines.pop() || ''
+                for (const line of lines) {
+                  const trimmed = line.trim()
+                  if (!trimmed) continue
+                  try {
+                    const evt = JSON.parse(trimmed)
+                    if (evt.phase === 'session' && evt.total) {
+                      const pct = 20 + Math.round((evt.current / evt.total) * 30)
+                      setImportProgress(pct)
+                      setImportStatus(evt.message || `Importing sessions... (${evt.current}/${evt.total})`)
+                    } else if (evt.phase === 'campaign') {
+                      setImportProgress(55)
+                      setImportStatus(evt.message || 'Calculating health scores...')
+                    } else if (evt.phase === 'embedding' && evt.total) {
+                      const pct = 60 + Math.round((evt.current / evt.total) * 35)
+                      setImportProgress(pct)
+                      setImportStatus(evt.message || `Generating AI embeddings... (${evt.current}/${evt.total})`)
+                    } else if (evt.message) {
+                      setImportStatus(evt.message)
+                    }
+                  } catch { /* not JSON */ }
+                }
+              }
+            }
+            setImportProgress(98)
+            setImportStatus('Finalizing...')
           }
+        } else {
+          setImportStatus('CSV parsing failed')
         }
       } catch (err) {
         console.error('[Onboarding] CSV import failed:', err)
+        setImportStatus('Import failed')
       }
     }
+
+    // Done — set progress to 100
+    setImportProgress(100)
+    setImportStatus('System ready')
+    setImportDone(true)
   }
 
   const steps = [
@@ -459,7 +513,12 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   if (processing) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
-        <AILoadingAnimation onComplete={onComplete} />
+        <AILoadingAnimation
+          onComplete={onComplete}
+          progress={csvFile ? importProgress : undefined}
+          statusMessage={csvFile ? importStatus : undefined}
+          waitForCompletion={!!csvFile}
+        />
       </div>
     )
   }

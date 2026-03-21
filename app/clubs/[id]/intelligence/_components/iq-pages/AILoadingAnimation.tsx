@@ -28,15 +28,24 @@ const terminalLines = [
 
 type Props = {
   onComplete?: () => void;
+  /** External progress 0-100. When provided, controls the progress bar and stage instead of timer. */
+  progress?: number;
+  /** External status message to show in terminal */
+  statusMessage?: string;
+  /** When true, animation waits for external signal instead of auto-completing */
+  waitForCompletion?: boolean;
 };
 
-export function AILoadingAnimation({ onComplete }: Props) {
+export function AILoadingAnimation({ onComplete, progress: externalProgress, statusMessage, waitForCompletion }: Props) {
   const [currentStage, setCurrentStage] = useState(0);
   const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; size: number; delay: number }>>([]);
   const [visibleLines, setVisibleLines] = useState<string[]>([]);
   const [matrixRain, setMatrixRain] = useState<Array<{ id: number; x: number; char: string; speed: number }>>([]);
+  const [internalDone, setInternalDone] = useState(false);
 
+  // Auto-advance stages with timer (when no external progress)
   useEffect(() => {
+    if (externalProgress !== undefined) return; // controlled externally
     const stageInterval = setInterval(() => {
       setCurrentStage((prev) => {
         if (prev < stages.length - 1) return prev + 1;
@@ -45,15 +54,40 @@ export function AILoadingAnimation({ onComplete }: Props) {
       });
     }, 1600);
     return () => clearInterval(stageInterval);
-  }, []);
+  }, [externalProgress]);
+
+  // Sync stage from external progress
+  useEffect(() => {
+    if (externalProgress === undefined) return;
+    const stageIdx = Math.min(Math.floor((externalProgress / 100) * stages.length), stages.length - 1);
+    setCurrentStage(stageIdx);
+  }, [externalProgress]);
+
+  // Add external status messages to terminal
+  useEffect(() => {
+    if (statusMessage) {
+      setVisibleLines((prev) => [...prev.slice(-7), `> ${statusMessage}`]);
+    }
+  }, [statusMessage]);
 
   // Call onComplete when done
   useEffect(() => {
-    if (currentStage === stages.length - 1 && onComplete) {
+    if (waitForCompletion && externalProgress !== undefined) {
+      // Wait for external progress to reach 100
+      if (externalProgress >= 100 && !internalDone) {
+        setInternalDone(true);
+        setCurrentStage(stages.length - 1);
+        if (onComplete) {
+          const t = setTimeout(onComplete, 1200);
+          return () => clearTimeout(t);
+        }
+      }
+    } else if (currentStage === stages.length - 1 && onComplete && !internalDone) {
+      setInternalDone(true);
       const t = setTimeout(onComplete, 1200);
       return () => clearTimeout(t);
     }
-  }, [currentStage, onComplete]);
+  }, [currentStage, onComplete, externalProgress, waitForCompletion, internalDone]);
 
   // Terminal lines
   useEffect(() => {
@@ -89,7 +123,7 @@ export function AILoadingAnimation({ onComplete }: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  const progress = ((currentStage + 1) / stages.length) * 100;
+  const progress = externalProgress !== undefined ? externalProgress : ((currentStage + 1) / stages.length) * 100;
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
