@@ -2256,15 +2256,61 @@ export const intelligenceRouter = createTRPCRouter({
         }
       }
 
-      const uploads = batches.reverse().map((batch, i) => ({
-        id: `import-${i}`,
-        date: batch.start.toISOString(),
-        records: batch.entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session').length || batch.entries.length,
-        contentType: batch.entries[0].contentType,
-        source: 'CSV Import',
-      }))
+      const uploads = batches.reverse().map((batch, i) => {
+        const sessionEntries = batch.entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session')
+        const sourceIds = batch.entries.filter(e => e.sourceId).map(e => e.sourceId!)
+        const dates = batch.entries.map(e => e.createdAt.getTime())
+        return {
+          id: `import-${i}`,
+          date: batch.start.toISOString(),
+          dateEnd: new Date(Math.max(...dates)).toISOString(),
+          records: sessionEntries.length || batch.entries.length,
+          contentType: batch.entries[0].contentType,
+          source: 'CSV Import',
+          embeddingIds: batch.entries.map(e => e.id),
+          sessionSourceIds: [...new Set(sourceIds)],
+        }
+      })
 
       return { uploads, totalUploads: uploads.length }
+    }),
+
+  deleteImport: protectedProcedure
+    .input(z.object({
+      clubId: z.string(),
+      embeddingIds: z.array(z.string()),
+      sessionSourceIds: z.array(z.string()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      let sessionsDeleted = 0
+      let bookingsDeleted = 0
+      let embeddingsDeleted = 0
+
+      // 1. Delete bookings for these sessions
+      if (input.sessionSourceIds.length > 0) {
+        const bookingResult = await ctx.prisma.playSessionBooking.deleteMany({
+          where: { sessionId: { in: input.sessionSourceIds } },
+        })
+        bookingsDeleted = bookingResult.count
+
+        // 2. Delete sessions
+        const sessionResult = await ctx.prisma.playSession.deleteMany({
+          where: { id: { in: input.sessionSourceIds } },
+        })
+        sessionsDeleted = sessionResult.count
+      }
+
+      // 3. Delete embeddings
+      if (input.embeddingIds.length > 0) {
+        const embeddingResult = await ctx.prisma.documentEmbedding.deleteMany({
+          where: { id: { in: input.embeddingIds } },
+        })
+        embeddingsDeleted = embeddingResult.count
+      }
+
+      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted }
     }),
 
   // 2.1 Pricing Opportunities (demand-based price suggestions)

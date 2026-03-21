@@ -16,7 +16,8 @@ import { useTheme } from "../IQThemeProvider";
 import { useParams, useRouter } from "next/navigation";
 import { IQFileDropZone } from "./IQFileDropZone";
 import { AILoadingAnimation } from "./AILoadingAnimation";
-import { X, Check, ChevronRight } from "lucide-react";
+import { X, Check, ChevronRight, Trash2 } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
@@ -325,6 +326,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     missing: string[];
     notes?: string;
   } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ upload: any; index: number } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -860,21 +863,29 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08 }}
-                className="flex items-center gap-3 p-2.5 rounded-xl"
+                className="flex items-center gap-3 p-2.5 rounded-xl group"
                 style={{ background: "var(--subtle)" }}
               >
                 <div
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: u.status === "success" ? "#10B981" : "#F59E0B" }}
+                  style={{ background: "#10B981" }}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate" style={{ color: "var(--t1)", fontWeight: 500 }}>{u.source}</p>
                   <p className="text-[10px]" style={{ color: "var(--t4)" }}>{u.date}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-[10px]" style={{ color: "var(--t2)", fontWeight: 600 }}>{u.records.toLocaleString()} rows</p>
-                  <p className="text-[10px]" style={{ color: u.quality >= 95 ? "#10B981" : "#F59E0B", fontWeight: 500 }}>{u.quality}% quality</p>
+                  <p className="text-[10px]" style={{ color: "var(--t2)", fontWeight: 600 }}>{u.records.toLocaleString()} sessions</p>
                 </div>
+                {u.embeddingIds && (
+                  <button
+                    onClick={() => setDeleteConfirm({ upload: u, index: i })}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-500/10"
+                    title="Delete this import"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" style={{ color: "#EF4444" }} />
+                  </button>
+                )}
               </motion.div>
             ))}
           </div>
@@ -1151,6 +1162,95 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     </div>
                   </motion.div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Import Confirmation */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+            onClick={() => !deleting && setDeleteConfirm(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl p-6"
+              style={{ background: "var(--card-bg, #1a1a2e)", border: "1px solid rgba(239,68,68,0.2)" }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239,68,68,0.15)" }}>
+                  <Trash2 className="w-5 h-5" style={{ color: "#EF4444" }} />
+                </div>
+                <div>
+                  <h3 className="text-base" style={{ fontWeight: 700, color: "var(--heading)" }}>Delete Import</h3>
+                  <p className="text-xs" style={{ color: "var(--t4)" }}>This action cannot be undone</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl p-4 mb-5" style={{ background: "var(--subtle)" }}>
+                <p className="text-sm" style={{ color: "var(--t2)" }}>
+                  Are you sure you want to delete this import?
+                </p>
+                <div className="mt-2 space-y-1 text-xs" style={{ color: "var(--t3)" }}>
+                  <p>Imported: <strong style={{ color: "var(--t1)" }}>{deleteConfirm.upload.date}</strong></p>
+                  <p>Sessions: <strong style={{ color: "var(--t1)" }}>{deleteConfirm.upload.records}</strong></p>
+                </div>
+                <p className="mt-3 text-xs" style={{ color: "#F59E0B" }}>
+                  This will delete all sessions, bookings, and AI embeddings from this import.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-sm"
+                  style={{ color: "var(--t3)", fontWeight: 500 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!clubId || !deleteConfirm.upload.embeddingIds) return
+                    setDeleting(true)
+                    try {
+                      const deleteMutation = await fetch('/api/trpc/intelligence.deleteImport', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          json: {
+                            clubId,
+                            embeddingIds: deleteConfirm.upload.embeddingIds,
+                            sessionSourceIds: deleteConfirm.upload.sessionSourceIds || [],
+                          },
+                        }),
+                      })
+                      if (deleteMutation.ok) {
+                        setDeleteConfirm(null)
+                        window.location.reload()
+                      }
+                    } catch (err) {
+                      console.error('[Delete Import] Failed:', err)
+                    } finally {
+                      setDeleting(false)
+                    }
+                  }}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-sm text-white flex items-center gap-2"
+                  style={{ background: deleting ? "rgba(239,68,68,0.5)" : "#EF4444", fontWeight: 600 }}
+                >
+                  {deleting ? "Deleting..." : "Delete Import"}
+                </button>
               </div>
             </motion.div>
           </motion.div>
