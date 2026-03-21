@@ -164,7 +164,7 @@ const defaultAiInsights = [
   { title: "Reactivation Opportunity", desc: "12 members haven't played in 30+ days. Personalized win-back campaign ready to launch.", priority: "medium", icon: Users },
 ];
 
-function generateInsights(dashboardData: any, healthData: any, heatmapData: any): typeof defaultAiInsights {
+function generateInsights(dashboardData: any, healthData: any, heatmapData: any, goals?: string[]): typeof defaultAiInsights {
   const insights: typeof defaultAiInsights = [];
   // 1. Find peak slots from heatmap
   if (heatmapData?.heatmap) {
@@ -198,7 +198,38 @@ function generateInsights(dashboardData: any, healthData: any, heatmapData: any)
       insights.push({ title: "Revenue Recovery", desc: `You're losing ${lost.value} from empty slots. Slot Filler can recover up to 60% of this.`, priority: "medium", icon: DollarSign });
     }
   }
-  return insights.length > 0 ? insights.slice(0, 3) : defaultAiInsights;
+
+  // 4. Goal-specific insights
+  if (goals?.length) {
+    const occVal = dashboardData?.metrics?.occupancy?.value;
+    const occNum = parseInt(String(occVal || '0').replace('%', '')) || 0;
+    const atRisk = (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0);
+
+    if (goals.includes('fill_sessions') && occNum < 70 && !insights.some(i => i.title === "Low Demand Slot")) {
+      insights.push({ title: "Fill Empty Slots", desc: `Occupancy is ${occNum}% — below your 70% target. Use Slot Filler to send targeted invites and fill open sessions.`, priority: "high", icon: Target });
+    }
+    if (goals.includes('improve_retention') && atRisk > 0 && !insights.some(i => i.title === "Reactivation Opportunity")) {
+      insights.push({ title: "Retention Alert", desc: `${atRisk} members are at risk of churning. Launch a reactivation campaign to bring them back before they leave.`, priority: "high", icon: Heart });
+    }
+    if (goals.includes('increase_revenue')) {
+      const lostVal = dashboardData?.metrics?.lostRevenue?.value;
+      const lostNum = lostVal ? parseInt(String(lostVal).replace(/[^0-9]/g, '')) : 0;
+      if (lostNum > 0 && !insights.some(i => i.title === "Revenue Recovery")) {
+        insights.push({ title: "Revenue Opportunity", desc: `${lostVal} in potential revenue is being left on the table. Dynamic pricing and targeted promotions can help capture it.`, priority: "medium", icon: DollarSign });
+      }
+    }
+    if (goals.includes('reduce_no_shows')) {
+      insights.push({ title: "No-Show Prevention", desc: `Enable automated reminders 24h and 2h before sessions to reduce no-shows and protect your revenue.`, priority: "medium", icon: Clock });
+    }
+    if (goals.includes('grow_membership')) {
+      const totalMembers = healthData?.summary ? (healthData.summary.healthy + healthData.summary.watch + healthData.summary.atRisk + healthData.summary.critical) : 0;
+      if (totalMembers > 0) {
+        insights.push({ title: "Growth Opportunity", desc: `You have ${totalMembers} active members. Referral incentives and trial session offers can accelerate growth.`, priority: "medium", icon: Users });
+      }
+    }
+  }
+
+  return insights.length > 0 ? insights.slice(0, 4) : defaultAiInsights;
 }
 
 /* --- Sparkline Mini Chart --- */
@@ -283,6 +314,7 @@ type DashboardIQProps = {
   heatmapData?: any; // from getOccupancyHeatmap
   memberGrowthData?: any; // from getMemberGrowth
   uploadHistoryData?: any; // from getUploadHistory
+  settingsData?: any; // from useIntelligenceSettings — contains goals[]
   isLoading?: boolean;
   clubId?: string;
 };
@@ -309,7 +341,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof period
   };
 }
 
-export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
+export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, settingsData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
   const { isDark } = useTheme();
   const params = useParams();
   const router = useRouter();
@@ -369,8 +401,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       }))
     : dataUploadHistory;
 
-  // AI Insights — generated from real data
-  const displayInsights = generateInsights(dashboardData, healthData, heatmapData);
+  // AI Insights — generated from real data + goals
+  const clubGoals: string[] = settingsData?.settings?.goals || [];
+  const displayInsights = generateInsights(dashboardData, healthData, heatmapData, clubGoals.length > 0 ? clubGoals : undefined);
 
   // Determine if club has real data or is still empty
   const bookingsVal = dashboardData?.metrics?.bookings?.value;
@@ -708,6 +741,52 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   ? `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help recover revenue.`
                   : `All members are in good health — keep up the engagement!`;
 
+                // Goal-specific summary paragraphs
+                const goalParas: React.ReactNode[] = [];
+                if (clubGoals.includes('fill_sessions') && occNum < 70) {
+                  goalParas.push(
+                    <p key="goal-fill">
+                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Fill Sessions:</span>{" "}
+                      Occupancy is at {occupancy}, below your target. Use Slot Filler to send targeted invites for underbooked sessions.
+                    </p>
+                  );
+                }
+                if (clubGoals.includes('improve_retention') && (atRiskCount + criticalCount) > 0) {
+                  goalParas.push(
+                    <p key="goal-retention">
+                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Retention:</span>{" "}
+                      {atRiskCount + criticalCount} members need attention. Consider personalized outreach before they churn.
+                    </p>
+                  );
+                }
+                if (clubGoals.includes('increase_revenue')) {
+                  const lostVal = m?.lostRevenue?.value;
+                  if (lostVal && lostVal !== '$0' && lostVal !== 'N/A') {
+                    goalParas.push(
+                      <p key="goal-revenue">
+                        <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Revenue:</span>{" "}
+                        {lostVal} in lost revenue detected. Dynamic pricing and fill campaigns can help recover it.
+                      </p>
+                    );
+                  }
+                }
+                if (clubGoals.includes('reduce_no_shows')) {
+                  goalParas.push(
+                    <p key="goal-noshows">
+                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — No-Shows:</span>{" "}
+                      Automated reminders before sessions can reduce no-shows by up to 30%.
+                    </p>
+                  );
+                }
+                if (clubGoals.includes('grow_membership') && totalMembers > 0) {
+                  goalParas.push(
+                    <p key="goal-growth">
+                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Growth:</span>{" "}
+                      With {totalMembers} members, referral programs and trial offers can drive the next wave of signups.
+                    </p>
+                  );
+                }
+
                 return (
                   <>
                     <p>
@@ -724,6 +803,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                       </span>{" "}
                       {riskText}
                     </p>
+                    {goalParas.length > 0 && goalParas}
                   </>
                 );
               })()}

@@ -114,7 +114,7 @@ export default function IntelligenceDashboardPage() {
     if (error) {
       console.error('[IQ Dashboard] tRPC error:', error.message)
     }
-    return <DashboardIQ dashboardData={data || undefined} healthData={healthData || undefined} heatmapData={heatmapData || undefined} memberGrowthData={memberGrowthData || undefined} uploadHistoryData={uploadHistoryData || undefined} isLoading={isLoading || !!error} clubId={clubId} />
+    return <DashboardIQ dashboardData={data || undefined} healthData={healthData || undefined} heatmapData={heatmapData || undefined} memberGrowthData={memberGrowthData || undefined} uploadHistoryData={uploadHistoryData || undefined} settingsData={settingsData || undefined} isLoading={isLoading || !!error} clubId={clubId} />
   }
 
   if (isLoading) return <DashboardSkeleton />

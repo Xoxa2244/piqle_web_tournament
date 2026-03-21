@@ -31,8 +31,10 @@ interface MemberHealthInput {
 
 // ── Segmentation Classifiers ──
 
-function classifyActivityLevel(confirmedLast30: number): ActivityLevel {
-  const sessionsPerWeek = confirmedLast30 / 4.3
+function classifyActivityLevel(confirmedLast30: number, daySpan: number = 30): ActivityLevel {
+  const sessionsPerWeek = daySpan < 7
+    ? confirmedLast30
+    : confirmedLast30 / (daySpan / 7)
   if (sessionsPerWeek >= 4) return 'power'
   if (sessionsPerWeek >= 2) return 'regular'
   if (sessionsPerWeek >= 0.5) return 'casual'
@@ -41,21 +43,23 @@ function classifyActivityLevel(confirmedLast30: number): ActivityLevel {
 
 function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: number | null): EngagementTrend {
   if (daysSinceLast != null && daysSinceLast >= 21) return 'churning'
-  if (prev30 === 0) return last30 > 0 ? 'growing' : 'stable'
-  const change = (last30 - prev30) / prev30
-  if (change > 0.15) return 'growing'
-  if (change < -0.15) return 'declining'
+  if (prev30 === 0 && last30 > 0) return 'growing'
+  if (prev30 === 0 && last30 === 0) return 'churning'
+  const changePct = ((last30 - prev30) / Math.max(prev30, 1)) * 100
+  if (changePct > 15) return 'growing'
+  if (changePct < -15) return 'declining'
   return 'stable'
 }
 
 function classifyValueTier(revenue: number, allRevenues: number[]): ValueTier {
-  if (allRevenues.length === 0) return 'medium'
-  const sorted = [...allRevenues].sort((a, b) => a - b)
-  const idx = sorted.findIndex(r => r >= revenue)
-  const percentile = (idx >= 0 ? idx : sorted.length) / sorted.length
-  if (percentile >= 0.8) return 'high'
-  if (percentile <= 0.2) return 'low'
-  return 'medium'
+  if (allRevenues.length === 0 || allRevenues.every(r => r === 0)) return 'low'
+  const sorted = [...allRevenues].sort((a, b) => b - a) // descending
+  const rank = sorted.findIndex(r => r <= revenue)
+  const percentile = (rank >= 0 ? rank : sorted.length) / sorted.length
+  // percentile 0 = top, 1 = bottom (descending sort)
+  if (percentile < 0.2) return 'high'    // top 20%
+  if (percentile >= 0.8) return 'low'     // bottom 20%
+  return 'medium'                          // middle 60%
 }
 
 function classifyBehavioral(bookings: BookingWithSession[]): MemberSegment['behavioral'] {
