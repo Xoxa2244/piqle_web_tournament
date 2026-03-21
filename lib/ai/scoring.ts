@@ -23,10 +23,11 @@ export function getTimeSlotLabel(slot: TimeSlot): string {
 // Format display label
 export function getFormatLabel(format: string): string {
   const labels: Record<string, string> = {
-    OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill Session',
-    LEAGUE_PLAY: 'League Play', SOCIAL: 'Social Play'
+    OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+    LEAGUE_PLAY: 'League', LEAGUE: 'League', SOCIAL: 'Social',
+    TOURNAMENT: 'Tournament', LADDER: 'Ladder', ROUND_ROBIN: 'Round Robin',
   };
-  return labels[format] || format;
+  return labels[format?.toUpperCase()] || format;
 }
 
 // Skill level from DUPR rating
