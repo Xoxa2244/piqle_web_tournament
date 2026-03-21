@@ -3,20 +3,118 @@ import {
   MemberHealthResult, MemberHealthData, MemberHealthSummary,
   HealthScoreComponent, LifecycleStage, RiskLevel,
   DayOfWeek,
+  ActivityLevel, EngagementTrend, ValueTier, MemberSegment, SegmentLabel,
+  TimePref, DayPattern, FormatPref,
 } from '../../types/intelligence';
 import { clamp, getDayName, getTimeSlot } from './scoring';
 
 // ── Input Types ──
+
+export interface BookingWithSession {
+  date: Date;
+  startTime: string;
+  format: string;
+  pricePerSlot: number | null;
+  status: 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW';
+}
 
 interface MemberHealthInput {
   member: MemberData;
   preference: UserPlayPreferenceData | null;
   history: BookingHistory;
   joinedAt: Date;
-  // Detailed booking dates for pattern analysis
   bookingDates: { date: Date; status: 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW' }[];
-  // Bookings in the 30-60 day window (for trend comparison)
   previousPeriodBookings: number;
+  // Extended: session-level data for segmentation
+  bookingsWithSessions?: BookingWithSession[];
+}
+
+// ── Segmentation Classifiers ──
+
+function classifyActivityLevel(confirmedLast30: number): ActivityLevel {
+  const sessionsPerWeek = confirmedLast30 / 4.3
+  if (sessionsPerWeek >= 4) return 'power'
+  if (sessionsPerWeek >= 2) return 'regular'
+  if (sessionsPerWeek >= 0.5) return 'casual'
+  return 'occasional'
+}
+
+function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: number | null): EngagementTrend {
+  if (daysSinceLast != null && daysSinceLast >= 21) return 'churning'
+  if (prev30 === 0) return last30 > 0 ? 'growing' : 'stable'
+  const change = (last30 - prev30) / prev30
+  if (change > 0.15) return 'growing'
+  if (change < -0.15) return 'declining'
+  return 'stable'
+}
+
+function classifyValueTier(revenue: number, allRevenues: number[]): ValueTier {
+  if (allRevenues.length === 0) return 'medium'
+  const sorted = [...allRevenues].sort((a, b) => a - b)
+  const idx = sorted.findIndex(r => r >= revenue)
+  const percentile = (idx >= 0 ? idx : sorted.length) / sorted.length
+  if (percentile >= 0.8) return 'high'
+  if (percentile <= 0.2) return 'low'
+  return 'medium'
+}
+
+function classifyBehavioral(bookings: BookingWithSession[]): MemberSegment['behavioral'] {
+  const confirmed = bookings.filter(b => b.status === 'CONFIRMED')
+  if (confirmed.length < 3) return { timePreference: 'mixed', dayPattern: 'both', formatPreference: 'mixed' }
+
+  // Time preference
+  const timeCounts: Record<string, number> = { morning: 0, afternoon: 0, evening: 0 }
+  for (const b of confirmed) {
+    const slot = getTimeSlot(b.startTime)
+    timeCounts[slot] = (timeCounts[slot] || 0) + 1
+  }
+  const topTime = Object.entries(timeCounts).sort((a, b) => b[1] - a[1])[0]
+  const timePreference: TimePref = topTime && topTime[1] / confirmed.length >= 0.5
+    ? topTime[0] as TimePref : 'mixed'
+
+  // Day pattern
+  let weekday = 0, weekend = 0
+  for (const b of confirmed) {
+    const day = b.date.getDay()
+    if (day === 0 || day === 6) weekend++; else weekday++
+  }
+  const dayPattern: DayPattern = weekday / confirmed.length >= 0.7 ? 'weekday'
+    : weekend / confirmed.length >= 0.5 ? 'weekend' : 'both'
+
+  // Format preference
+  const fmtCounts: Record<string, number> = {}
+  for (const b of confirmed) {
+    const fmt = normalizeFormat(b.format)
+    fmtCounts[fmt] = (fmtCounts[fmt] || 0) + 1
+  }
+  const topFmt = Object.entries(fmtCounts).sort((a, b) => b[1] - a[1])[0]
+  const formatPreference: FormatPref = topFmt && topFmt[1] / confirmed.length >= 0.5
+    ? topFmt[0] as FormatPref : 'mixed'
+
+  return { timePreference, dayPattern, formatPreference }
+}
+
+function normalizeFormat(format: string): string {
+  const map: Record<string, string> = {
+    'OPEN_PLAY': 'Open Play', 'LEAGUE_PLAY': 'League', 'LEAGUE': 'League',
+    'DRILL': 'Drill', 'CLINIC': 'Clinic', 'SOCIAL': 'Social',
+    'TOURNAMENT': 'Tournament', 'LADDER': 'Ladder', 'ROUND_ROBIN': 'Round Robin',
+  }
+  return map[format.toUpperCase()] || format
+}
+
+function buildSegmentLabel(segment: MemberSegment): SegmentLabel {
+  const activityLabels: Record<ActivityLevel, string> = { power: 'Power Player', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' }
+  const riskLabels: Record<RiskLevel, string> = { healthy: 'Healthy', watch: 'Watch', at_risk: 'At-Risk', critical: 'Critical' }
+  const trendIcons: Record<EngagementTrend, SegmentLabel['trendIcon']> = { growing: 'up', stable: 'stable', declining: 'down', churning: 'inactive' }
+  const valueLabels: Record<ValueTier, string> = { high: 'High LTV', medium: 'Mid', low: 'Low' }
+
+  return {
+    primary: activityLabels[segment.activityLevel],
+    riskBadge: riskLabels[segment.risk],
+    trendIcon: trendIcons[segment.trend],
+    valueBadge: valueLabels[segment.valueTier],
+  }
 }
 
 // ── Main Entry Point ──
@@ -25,9 +123,19 @@ export function generateMemberHealth(
   members: MemberHealthInput[],
   avgSubscriptionPrice: number = 99, // default $99/month
 ): MemberHealthData {
-  const results = members
-    .map(m => calculateHealthScore(m))
-    .sort((a, b) => a.healthScore - b.healthScore); // critical first
+  // Pass 1: compute health scores + segments (valueTier = placeholder)
+  const results = members.map(m => calculateHealthScore(m));
+
+  // Pass 2: classify value tier based on revenue distribution
+  const revenues = results.map(r => r.totalRevenue || 0)
+  for (const r of results) {
+    if (r.segment) {
+      r.segment.valueTier = classifyValueTier(r.totalRevenue || 0, revenues)
+      r.segmentLabel = buildSegmentLabel(r.segment)
+    }
+  }
+
+  results.sort((a, b) => a.healthScore - b.healthScore); // critical first
 
   const summary = buildSummary(results, avgSubscriptionPrice);
 
@@ -88,6 +196,20 @@ function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
   // Suggested action
   const suggestedAction = getSuggestedAction(riskLevel, lifecycleStage, topRisks);
 
+  // ── Multi-dimensional segmentation ──
+  const bws = input.bookingsWithSessions || []
+  const confirmedBws = bws.filter(b => b.status === 'CONFIRMED')
+  const totalRevenue = confirmedBws.reduce((sum, b) => sum + (b.pricePerSlot || 0), 0)
+  const avgSessionsPerWeek = joinedDaysAgo > 0 ? (history.totalBookings / (joinedDaysAgo / 7)) : 0
+
+  const segment: MemberSegment = {
+    activityLevel: classifyActivityLevel(history.bookingsLastMonth),
+    risk: riskLevel,
+    trend: classifyEngagementTrend(history.bookingsLastMonth, previousPeriodBookings, history.daysSinceLastConfirmedBooking),
+    valueTier: 'medium', // placeholder — set in 2nd pass by generateMemberHealth
+    behavioral: classifyBehavioral(bws),
+  }
+
   return {
     memberId: member.id,
     member,
@@ -101,6 +223,10 @@ function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
     daysSinceLastBooking: history.daysSinceLastConfirmedBooking,
     totalBookings: history.totalBookings,
     joinedDaysAgo,
+    segment,
+    segmentLabel: buildSegmentLabel(segment),
+    avgSessionsPerWeek: Math.round(avgSessionsPerWeek * 10) / 10,
+    totalRevenue,
   };
 }
 
@@ -308,6 +434,18 @@ function buildSummary(
 
   const revenueAtRisk = (atRisk + critical) * avgSubscriptionPrice;
 
+  // Segment distribution counts
+  const byActivity: Record<ActivityLevel, number> = { power: 0, regular: 0, casual: 0, occasional: 0 }
+  const byTrend: Record<EngagementTrend, number> = { growing: 0, stable: 0, declining: 0, churning: 0 }
+  const byValue: Record<ValueTier, number> = { high: 0, medium: 0, low: 0 }
+  for (const m of members) {
+    if (m.segment) {
+      byActivity[m.segment.activityLevel]++
+      byTrend[m.segment.trend]++
+      byValue[m.segment.valueTier]++
+    }
+  }
+
   return {
     total,
     healthy,
@@ -316,6 +454,9 @@ function buildSummary(
     critical,
     avgHealthScore,
     revenueAtRisk,
-    trendVsPrevWeek: 0, // computed externally if needed
+    trendVsPrevWeek: 0,
+    byActivity,
+    byTrend,
+    byValue,
   };
 }

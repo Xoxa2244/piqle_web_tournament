@@ -1266,6 +1266,9 @@ export const intelligenceRouter = createTRPCRouter({
           },
           select: {
             userId: true, status: true, bookedAt: true,
+            playSession: {
+              select: { date: true, startTime: true, format: true, pricePerSlot: true },
+            },
           },
           orderBy: { bookedAt: 'desc' },
         })
@@ -1343,6 +1346,13 @@ export const intelligenceRouter = createTRPCRouter({
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
             previousPeriodBookings: bookings30to60,
+            bookingsWithSessions: userBookings.map(b => ({
+              date: (b as any).playSession?.date ?? b.bookedAt,
+              startTime: (b as any).playSession?.startTime ?? '12:00',
+              format: (b as any).playSession?.format ?? 'OPEN_PLAY',
+              pricePerSlot: (b as any).playSession?.pricePerSlot ?? null,
+              status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
+            })),
           }
         })
 

@@ -334,6 +334,34 @@ export type LifecycleStage =
 
 export type RiskLevel = 'healthy' | 'watch' | 'at_risk' | 'critical'
 
+// ── Multi-dimensional Segmentation ──
+
+export type ActivityLevel = 'power' | 'regular' | 'casual' | 'occasional'
+export type EngagementTrend = 'growing' | 'stable' | 'declining' | 'churning'
+export type ValueTier = 'high' | 'medium' | 'low'
+export type DayPattern = 'weekday' | 'weekend' | 'both'
+export type TimePref = 'morning' | 'afternoon' | 'evening' | 'mixed'
+export type FormatPref = 'Open Play' | 'League' | 'Clinic' | 'Drill' | 'Social' | 'Tournament' | 'Ladder' | 'Round Robin' | 'mixed'
+
+export interface MemberSegment {
+  activityLevel: ActivityLevel
+  risk: RiskLevel
+  trend: EngagementTrend
+  valueTier: ValueTier
+  behavioral: {
+    timePreference: TimePref
+    dayPattern: DayPattern
+    formatPreference: FormatPref
+  }
+}
+
+export interface SegmentLabel {
+  primary: string        // "Power Player", "Regular", "Casual", "Occasional"
+  riskBadge: string      // "Healthy", "Watch", "At-Risk", "Critical"
+  trendIcon: 'up' | 'down' | 'stable' | 'inactive'
+  valueBadge: string     // "High LTV", "Mid", "Low"
+}
+
 export interface HealthScoreComponent {
   score: number       // 0-100
   weight: number      // percentage weight (e.g. 35 = 35%)
@@ -359,6 +387,11 @@ export interface MemberHealthResult {
   daysSinceLastBooking: number | null
   totalBookings: number
   joinedDaysAgo: number
+  // Multi-dimensional segmentation
+  segment?: MemberSegment
+  segmentLabel?: SegmentLabel
+  avgSessionsPerWeek?: number
+  totalRevenue?: number
 }
 
 export interface MemberHealthSummary {
@@ -370,6 +403,10 @@ export interface MemberHealthSummary {
   avgHealthScore: number
   revenueAtRisk: number         // at-risk + critical members × avg subscription
   trendVsPrevWeek: number       // change in at-risk count vs last week
+  // Multi-dimensional counts
+  byActivity?: Record<ActivityLevel, number>
+  byTrend?: Record<EngagementTrend, number>
+  byValue?: Record<ValueTier, number>
 }
 
 export interface MemberHealthData {
