@@ -90,18 +90,56 @@ export async function importSessionsToDB(
     }
   }
 
-  // 2. Load club followers for player matching
+  // 2. Load or create users for player matching
+  // First check existing followers
   const followers = await prisma.clubFollower.findMany({
     where: { clubId },
     include: { user: { select: { id: true, name: true, email: true } } },
   })
-  // Build name→userId map (lowercase full name)
   const nameToUser = new Map<string, string>()
   followers.forEach((f: any) => {
     if (f.user.name) {
       nameToUser.set(f.user.name.toLowerCase().trim(), f.user.id)
     }
   })
+
+  // Collect all unique player names from CSV
+  const allPlayerNames = new Set<string>()
+  for (const s of sessions) {
+    for (const name of s.playerNames) {
+      const trimmed = name.trim()
+      if (trimmed && !nameToUser.has(trimmed.toLowerCase())) {
+        allPlayerNames.add(trimmed)
+      }
+    }
+  }
+
+  // Create placeholder users for unmatched names
+  if (allPlayerNames.size > 0 && onProgress) {
+    onProgress(0, allPlayerNames.size, `Creating ${allPlayerNames.size} player profiles...`)
+  }
+  for (const playerName of Array.from(allPlayerNames)) {
+    try {
+      // Create user with name (no email/password — placeholder for imported data)
+      const slug = playerName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const placeholderEmail = `imported-${slug}-${randomUUID().slice(0, 8)}@placeholder.iqsport.ai`
+      const user = await prisma.user.create({
+        data: {
+          id: randomUUID(),
+          name: playerName,
+          email: placeholderEmail,
+        },
+      })
+      // Add as club follower
+      await prisma.clubFollower.create({
+        data: { clubId, userId: user.id },
+      }).catch(() => {}) // ignore if already exists
+      nameToUser.set(playerName.toLowerCase().trim(), user.id)
+    } catch (err) {
+      // User creation might fail for various reasons — skip silently
+      console.warn(`[Import] Failed to create user "${playerName}":`, err instanceof Error ? err.message : err)
+    }
+  }
 
   const now = new Date()
 
@@ -270,7 +308,82 @@ export async function importSessionsToDB(
   }
 
   if (onProgress) {
-    onProgress(sessionRows.length, sessionRows.length, 'Session records created')
+    onProgress(sessionRows.length, sessionRows.length, 'Creating member health snapshots...')
+  }
+
+  // 7. Create MemberHealthSnapshot for each unique player
+  const uniqueUserIds = new Set<string>()
+  for (const row of sessionRows) {
+    for (const playerName of row.playerNames) {
+      const userId = nameToUser.get(playerName.toLowerCase().trim())
+      if (userId) uniqueUserIds.add(userId)
+    }
+  }
+
+  if (uniqueUserIds.size > 0) {
+    // Calculate basic health metrics per player
+    const playerSessions = new Map<string, { count: number; lastDate: string; firstDate: string }>()
+    for (const row of sessionRows) {
+      for (const playerName of row.playerNames) {
+        const userId = nameToUser.get(playerName.toLowerCase().trim())
+        if (!userId) continue
+        const existing = playerSessions.get(userId) || { count: 0, lastDate: '1970-01-01', firstDate: '2999-01-01' }
+        existing.count++
+        if (row.date > existing.lastDate) existing.lastDate = row.date
+        if (row.date < existing.firstDate) existing.firstDate = row.date
+        playerSessions.set(userId, existing)
+      }
+    }
+
+    const nowDate = new Date().toISOString().slice(0, 10)
+    const healthBatch: unknown[] = []
+    const healthValues: string[] = []
+
+    for (const [userId, stats] of Array.from(playerSessions)) {
+      const daysSinceLastPlay = Math.max(0, Math.floor((Date.now() - new Date(stats.lastDate).getTime()) / 86400000))
+      // Simple health score: 100 - (days since last play * 2) + (session count bonus)
+      const rawScore = Math.max(0, Math.min(100, 100 - daysSinceLastPlay * 2 + Math.min(stats.count, 20)))
+      const riskLevel = rawScore >= 70 ? 'HEALTHY' : rawScore >= 50 ? 'WATCH' : rawScore >= 25 ? 'AT_RISK' : 'CRITICAL'
+
+      const offset = healthBatch.length
+      const lifecycleStage = rawScore >= 70 ? 'active' : rawScore >= 50 ? 'at_risk' : rawScore >= 25 ? 'at_risk' : 'churned'
+      const features = JSON.stringify({ sessionsTotal: stats.count, daysSinceLastPlay, importedAt: nowDate })
+
+      const hOffset = healthBatch.length
+      healthValues.push(
+        `(gen_random_uuid(), $${hOffset + 1}::uuid, $${hOffset + 2}, $${hOffset + 3}::int, $${hOffset + 4}, $${hOffset + 5}, $${hOffset + 6}::jsonb, $${hOffset + 7}::timestamp)`
+      )
+      healthBatch.push(
+        clubId,
+        userId,
+        rawScore,
+        riskLevel.toLowerCase(),
+        lifecycleStage,
+        features,
+        nowDate + 'T00:00:00',
+      )
+    }
+
+    if (healthValues.length > 0) {
+      try {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO member_health_snapshots (id, club_id, user_id, health_score, risk_level, lifecycle_stage, features, date)
+           VALUES ${healthValues.join(', ')}
+           ON CONFLICT DO NOTHING`,
+          ...healthBatch,
+        )
+      } catch (err) {
+        console.warn('[Import] Health snapshot insert failed:', err instanceof Error ? err.message : err)
+      }
+    }
+
+    if (onProgress) {
+      onProgress(sessionRows.length, sessionRows.length, `${uniqueUserIds.size} member profiles created`)
+    }
+  }
+
+  if (onProgress) {
+    onProgress(sessionRows.length, sessionRows.length, 'Import complete')
   }
 
   return result
