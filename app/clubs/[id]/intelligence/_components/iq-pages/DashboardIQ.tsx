@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import { useRef } from "react";
 import {
@@ -21,6 +21,18 @@ import { trpc } from "@/lib/trpc";
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
+
+/** Safety net: auto-fires onComplete after 3s if animation callback didn't fire */
+function SafetyAutoComplete({ onComplete }: { onComplete: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      console.log('[Import] Safety auto-complete fired (animation callback missed)')
+      onComplete()
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [onComplete])
+  return null
+}
 
 function getPeriodLabel(p: Period): { current: string; previous: string } {
   if (p === "week") return { current: "Mar 10 – 17", previous: "Mar 3 – 10" };
@@ -1190,10 +1202,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                                 }
                               }
                             }
-                            if (importProgress < 100) {
-                              setImportProgress(100);
-                              setImportStatus("Import complete!");
-                            }
+                            setImportProgress(100);
+                            setImportStatus("Import complete!");
                             console.log('[Import] Complete!');
                           }
                         } catch (err) {
@@ -1211,8 +1221,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     progress={importProgress}
                     statusMessage={importStatus}
                     waitForCompletion
-                    onComplete={() => setImportModal("done")}
+                    onComplete={() => {
+                      console.log('[Import] Animation onComplete fired')
+                      setImportModal("done")
+                    }}
                   />
+                )}
+
+                {/* Safety: if progress hit 100 but animation didn't fire onComplete */}
+                {importModal === "processing" && importProgress >= 100 && (
+                  <SafetyAutoComplete onComplete={() => setImportModal("done")} />
                 )}
 
                 {importModal === "done" && (
