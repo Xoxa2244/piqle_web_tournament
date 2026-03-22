@@ -1,15 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { useCallback, useState } from 'react'
-import {
-  Image,
-  Linking,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native'
+import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -25,6 +16,8 @@ import {
   SurfaceCard,
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
+import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
+import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { buildWebUrl } from '../../../src/lib/config'
@@ -362,17 +355,11 @@ export default function ClubDetailScreen() {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
         <TopBar />
-        <ScrollView
+        <PickleRefreshScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={pullToRefresh.refreshing}
-              onRefresh={pullToRefresh.onRefresh}
-              tintColor={palette.primary}
-              colors={[palette.primary]}
-            />
-          }
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
           bounces
         >
           <Hero />
@@ -405,20 +392,7 @@ export default function ClubDetailScreen() {
                     <SurfaceCard key={req.userId} padded={false} style={styles.pendingCard}>
                       <View style={styles.pendingCardTopRow}>
                         <View style={styles.pendingLeftRow}>
-                          <View style={styles.pendingAvatar}>
-                            {req.user?.image ? (
-                              <Image source={{ uri: req.user.image }} style={styles.pendingAvatarImage} />
-                            ) : (
-                              <Text style={styles.pendingAvatarText}>
-                                {(req.user?.name || req.user?.emailMasked || '?')
-                                  .split(/\s+/)
-                                  .filter(Boolean)
-                                  .slice(0, 2)
-                                  .map((p: string) => p[0]?.toUpperCase())
-                                  .join('')}
-                              </Text>
-                            )}
-                          </View>
+                          <RemoteUserAvatar uri={req.user?.image} size={52} />
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={styles.pendingName} numberOfLines={1}>
                               {req.user?.name || 'User'}
@@ -498,20 +472,7 @@ export default function ClubDetailScreen() {
                       style={[styles.memberCard, isOwner && styles.memberCardOwner]}
                     >
                       <View style={styles.memberCardRow}>
-                        <View style={styles.memberAvatar}>
-                          {member.user?.image ? (
-                            <Image source={{ uri: member.user.image }} style={styles.memberAvatarImage} />
-                          ) : (
-                            <Text style={styles.memberAvatarText}>
-                              {(member.user?.name || member.user?.emailMasked || 'M')
-                                .split(/\s+/)
-                                .filter(Boolean)
-                                .slice(0, 2)
-                                .map((p: string) => p[0]?.toUpperCase())
-                                .join('')}
-                            </Text>
-                          )}
-                        </View>
+                        <RemoteUserAvatar uri={member.user?.image} size={56} />
 
                         <View style={styles.memberMain}>
                           <View style={styles.memberTopRow}>
@@ -546,7 +507,7 @@ export default function ClubDetailScreen() {
               </View>
             </View>
           )}
-        </ScrollView>
+        </PickleRefreshScrollView>
         {clubSheets}
       </SafeAreaView>
     )
@@ -555,17 +516,11 @@ export default function ClubDetailScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <TopBar />
-      <ScrollView
+      <PickleRefreshScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={pullToRefresh.refreshing}
-            onRefresh={pullToRefresh.onRefresh}
-            tintColor={palette.primary}
-            colors={[palette.primary]}
-          />
-        }
+        refreshing={pullToRefresh.refreshing}
+        onRefresh={pullToRefresh.onRefresh}
         bounces
       >
         <Hero />
@@ -827,7 +782,7 @@ export default function ClubDetailScreen() {
         ) : null}
 
         {tab === 'members' ? null : null}
-      </ScrollView>
+      </PickleRefreshScrollView>
       {clubSheets}
     </SafeAreaView>
   )
@@ -985,24 +940,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     minWidth: 0,
-  },
-  pendingAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: palette.surfaceMuted,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  pendingAvatarText: {
-    color: palette.text,
-    fontWeight: '800',
-    fontSize: 14,
   },
   pendingName: {
     color: palette.text,
@@ -1347,24 +1284,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingVertical: 8,
-  },
-  memberAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: palette.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  memberAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  memberAvatarText: {
-    color: palette.white,
-    fontWeight: '800',
-    fontSize: 14,
   },
   memberName: {
     color: palette.text,

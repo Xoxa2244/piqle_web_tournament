@@ -1,27 +1,16 @@
 import { useCallback } from 'react'
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import { formatChatTime, groupMessagesByDate } from '../lib/chatMessages'
 import { palette } from '../lib/theme'
+import { RemoteUserAvatar } from './RemoteUserAvatar'
 
 const AVATAR = 32
 const LONG_PRESS_MS = 450
 
 function UserAvatar({ user }: { user?: ChatMessage['user'] }) {
-  const initial = (user?.name || 'U').trim().charAt(0).toUpperCase() || 'U'
-  if (user?.image) {
-    return (
-      <View style={styles.avatarRing}>
-        <Image source={{ uri: user.image }} style={styles.avatarImg} />
-      </View>
-    )
-  }
-  return (
-    <View style={[styles.avatarRing, styles.avatarFallback]}>
-      <Text style={styles.avatarLetter}>{initial}</Text>
-    </View>
-  )
+  return <RemoteUserAvatar uri={user?.image} size={AVATAR} />
 }
 
 type Props = {
@@ -153,28 +142,6 @@ const styles = StyleSheet.create({
   rowNewAuthor: {
     marginTop: 12,
   },
-  avatarRing: {
-    width: AVATAR,
-    height: AVATAR,
-    borderRadius: AVATAR / 2,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.9)',
-    backgroundColor: '#f1f5f9',
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarLetter: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
   avatarSpacer: {
     width: AVATAR,
     height: AVATAR,
@@ -184,15 +151,15 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
+  },
+  bubbleMine: {
+    borderBottomRightRadius: 6,
+    backgroundColor: palette.primary,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
-  },
-  bubbleMine: {
-    borderBottomRightRadius: 6,
-    backgroundColor: palette.primary,
   },
   bubbleOther: {
     borderBottomLeftRadius: 6,

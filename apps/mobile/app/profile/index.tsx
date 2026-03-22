@@ -1,12 +1,13 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
 import { DUPR_CLIENT_KEY } from '../../src/lib/config'
@@ -18,14 +19,6 @@ const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
   year: 'numeric',
 })
-
-const getInitials = (label: string) =>
-  label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'P'
 
 const parseNumberish = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -89,22 +82,10 @@ const ProfileAvatar = ({
   onCameraPress?: () => void
 }) => {
   const size = 96
-  const borderRadius = size / 2
 
   return (
     <View style={styles.avatarWrap}>
-      {image ? (
-        <Image source={{ uri: image }} style={[styles.avatarImage, { width: size, height: size, borderRadius }]} />
-      ) : (
-        <OptionalLinearGradient
-          colors={[palette.purple, palette.primary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.avatarFallback, { width: size, height: size, borderRadius }]}
-        >
-          <Text style={styles.avatarInitials}>{getInitials(label)}</Text>
-        </OptionalLinearGradient>
-      )}
+      <RemoteUserAvatar uri={image} size={size} fallback="initials" initialsLabel={label} />
 
       <Pressable onPress={onCameraPress} style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}>
         <Feather name="camera" size={14} color={palette.white} />
@@ -514,18 +495,6 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     position: 'relative',
-  },
-  avatarImage: {
-    backgroundColor: palette.surfaceMuted,
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    color: palette.white,
-    fontSize: 26,
-    fontWeight: '700',
   },
   cameraButton: {
     position: 'absolute',

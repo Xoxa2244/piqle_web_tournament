@@ -1,5 +1,6 @@
-import { Feather } from '@expo/vector-icons'
-import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
+import { Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { palette, radius } from '../lib/theme'
 
@@ -12,6 +13,8 @@ export type ChatComposerProps = {
   paddingBottom?: number
   /** Например 16 на вкладке AI, где родитель без chatScreenBody */
   paddingHorizontal?: number
+  /** Только для полноэкранных стеков без tab bar: нижний safe area (home indicator). На вкладке AI не включать — таб-бар уже даёт отступ. */
+  safeAreaBottom?: boolean
   multiline?: boolean
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
@@ -25,12 +28,18 @@ export const ChatComposer = ({
   sendDisabled = false,
   paddingBottom = 16,
   paddingHorizontal = 0,
+  safeAreaBottom = false,
   multiline = false,
   returnKeyType,
   onSubmitEditing,
 }: ChatComposerProps) => {
+  const insets = useSafeAreaInsets()
+  const bottom =
+    paddingBottom +
+    (safeAreaBottom && Platform.OS === 'ios' ? insets.bottom : 0)
+
   return (
-    <View style={[styles.wrap, { paddingBottom, paddingHorizontal }]}>
+    <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal }]}>
       <View style={styles.row}>
         <TextInput
           value={value}
@@ -47,7 +56,9 @@ export const ChatComposer = ({
           disabled={sendDisabled}
           onPress={onSend}
         >
-          <Feather name="send" size={18} color={palette.white} />
+          <View style={styles.sendIconWrap}>
+            <MaterialCommunityIcons name="send" size={24} color={palette.white} />
+          </View>
         </Pressable>
       </View>
     </View>
@@ -90,6 +101,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: palette.primary,
+  },
+  /** Самолётик визуально «смотрит» вправо-вверх — лёгкий сдвиг для оптического центра в круге */
+  sendIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 2,
+    paddingBottom: 1,
   },
   sendBtnDisabled: {
     opacity: 0.55,

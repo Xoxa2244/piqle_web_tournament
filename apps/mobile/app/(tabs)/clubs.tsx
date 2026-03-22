@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { ClubCard } from '../../src/components/ClubCard'
 import {
   EmptyState,
@@ -71,71 +72,96 @@ export default function ClubsTab() {
   const clubsInitialLoading = clubsQuery.isLoading && clubsQuery.data === undefined
 
   return (
-    <PageLayout pullToRefresh={pullToRefresh}>
-      <View style={styles.headerCard}>
-        <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
+    <PageLayout scroll={false} contentStyle={styles.layoutContent}>
+      <View style={styles.page}>
+        <View style={styles.headerCard}>
+          <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
 
-        <SegmentedControl
-          value={mode}
-          onChange={setMode}
-          options={[
-            { value: 'discover', label: 'Discover' },
-            { value: 'my-clubs', label: 'My Clubs' },
-            { value: 'nearby', label: 'Nearby' },
-          ]}
-        />
+          <SegmentedControl
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'discover', label: 'Discover' },
+              { value: 'my-clubs', label: 'My Clubs' },
+              { value: 'nearby', label: 'Nearby' },
+            ]}
+          />
+        </View>
+
+        <PickleRefreshScrollView
+          style={styles.listScroll}
+          contentContainerStyle={styles.listScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          bounces
+        >
+          {clubsInitialLoading ? <LoadingBlock label="Loading clubs…" /> : null}
+
+          {clubsQuery.isError ? (
+            <EmptyState
+              title="Could not load clubs"
+              body="Check your connection and API settings (EXPO_PUBLIC_API_URL), then pull to refresh."
+            />
+          ) : null}
+
+          {!clubsInitialLoading && !clubsQuery.isError && (clubsQuery.data?.length ?? 0) === 0 ? (
+            <EmptyState title="No clubs found" body="Try another search term or check back later." />
+          ) : null}
+
+          {isAuthenticated && visibleMyClubs.length > 0 ? (
+            <View style={{ gap: 12 }}>
+              <Text style={styles.sectionTitle}>My clubs</Text>
+              {visibleMyClubs.map((club) => (
+                <View key={club.id} style={{ gap: 10 }}>
+                  <ClubCard club={club} onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })} />
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {visibleDiscoverClubs.length > 0 ? (
+            <View style={{ gap: 12 }}>
+              <Text style={styles.sectionTitle}>{isAuthenticated ? 'Discover clubs' : 'All clubs'}</Text>
+              {visibleDiscoverClubs.map((club) => (
+                <View key={club.id} style={{ gap: 10 }}>
+                  <ClubCard
+                    club={club}
+                    onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
+                    onJoin={
+                      isAuthenticated
+                        ? () => {
+                            router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
+                            toggleFollow.mutate({ clubId: club.id })
+                          }
+                        : () => router.push('/sign-in')
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </PickleRefreshScrollView>
       </View>
-
-      {clubsInitialLoading ? <LoadingBlock label="Loading clubs…" /> : null}
-
-      {clubsQuery.isError ? (
-        <EmptyState
-          title="Could not load clubs"
-          body="Check your connection and API settings (EXPO_PUBLIC_API_URL), then pull to refresh."
-        />
-      ) : null}
-
-      {!clubsInitialLoading && !clubsQuery.isError && (clubsQuery.data?.length ?? 0) === 0 ? (
-        <EmptyState title="No clubs found" body="Try another search term or check back later." />
-      ) : null}
-
-      {isAuthenticated && visibleMyClubs.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>My clubs</Text>
-          {visibleMyClubs.map((club) => (
-            <View key={club.id} style={{ gap: 10 }}>
-              <ClubCard club={club} onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })} />
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {visibleDiscoverClubs.length > 0 ? (
-        <View style={{ gap: 12 }}>
-          <Text style={styles.sectionTitle}>{isAuthenticated ? 'Discover clubs' : 'All clubs'}</Text>
-          {visibleDiscoverClubs.map((club) => (
-            <View key={club.id} style={{ gap: 10 }}>
-              <ClubCard
-                club={club}
-                onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
-                onJoin={
-                  isAuthenticated
-                    ? () => {
-                        router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
-                        toggleFollow.mutate({ clubId: club.id })
-                      }
-                    : () => router.push('/sign-in')
-                }
-              />
-            </View>
-          ))}
-        </View>
-      ) : null}
     </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
+  layoutContent: {
+    paddingBottom: 0,
+  },
+  page: {
+    flex: 1,
+    gap: spacing.md,
+  },
+  listScroll: {
+    flex: 1,
+  },
+  listScrollContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xxl,
+  },
   headerCard: {
     gap: spacing.md,
   },

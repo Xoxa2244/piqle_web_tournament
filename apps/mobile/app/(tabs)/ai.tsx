@@ -5,7 +5,9 @@ import { router } from 'expo-router'
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../src/components/ChatComposer'
 import { ChatThreadRoot } from '../../src/components/ChatThreadRoot'
+import { useChatKeyboardVerticalOffset } from '../../src/hooks/useChatKeyboardVerticalOffset'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { ReloadIcon } from '../../src/components/icons/ReloadIcon'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
@@ -98,6 +100,7 @@ const renderInlineMarkdown = (input: string, keyPrefix: string) => {
 export default function AITab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
+  const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
   const scrollRef = useRef<ScrollView | null>(null)
   const initialMessages = useMemo(() => {
@@ -249,6 +252,8 @@ export default function AITab() {
       contentStyle={styles.screen}
       topBarTitleAccessory={
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Reset AI chat"
           onPress={resetChat}
           disabled={resetPending}
           hitSlop={10}
@@ -258,14 +263,14 @@ export default function AITab() {
             pressed && !resetPending && { opacity: 0.8 },
           ]}
         >
-          <Feather name="trash-2" size={18} color={palette.textMuted} />
+          <ReloadIcon size={20} color={palette.textMuted} />
         </Pressable>
       }
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: 'transparent' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <ChatThreadRoot
           ref={scrollRef}
@@ -438,11 +443,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: 'rgba(0,0,0,0.12)',
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
   messageCol: {
     flex: 1,

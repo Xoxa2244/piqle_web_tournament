@@ -1,18 +1,20 @@
-import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatDateTime } from '../lib/formatters'
 import { palette, radius, spacing } from '../lib/theme'
-import { AvatarBadge, Pill } from './ui'
+import { TournamentThumbnail } from './TournamentThumbnail'
 
 export const ChatPreviewCard = ({
   title,
   subtitle,
+  imageUri,
   unreadCount,
   onPress,
 }: {
   title: string
   subtitle: string
+  /** Логотип клуба; без него — тот же плейсхолдер, что и для обложки ивента */
+  imageUri?: string | null
   unreadCount?: number
   onPress: () => void
 }) => {
@@ -20,15 +22,12 @@ export const ChatPreviewCard = ({
     <Pressable onPress={onPress}>
       <View style={styles.item}>
         <View style={styles.row}>
-          <AvatarBadge label={title} size={48} />
+          <TournamentThumbnail imageUri={imageUri} size={48} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.titleRow}>
-              <View style={styles.titleWithIcon}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {title}
-                </Text>
-                <Feather name="message-circle" size={14} color={palette.textMuted} />
-              </View>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
               <Text style={styles.time} numberOfLines={1}>
                 {''}
               </Text>
@@ -77,8 +76,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
     backgroundColor: palette.background,
-    borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
   },
   row: {
     flexDirection: 'row',
@@ -91,17 +90,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  titleWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-  },
   title: {
     color: palette.text,
     fontSize: 16,
     fontWeight: '700',
+    flex: 1,
+    minWidth: 0,
   },
   time: {
     color: palette.textMuted,

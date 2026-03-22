@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatEventStartInTimezone, getEventTimezoneLabel } from '../lib/formatters'
 import { palette, radius, spacing } from '../lib/theme'
+import { TournamentThumbnail } from './TournamentThumbnail'
 
 export type EventChatDivision = {
   id: string
@@ -13,6 +14,8 @@ export type EventChatDivision = {
 export type EventChatListEvent = {
   id: string
   title: string
+  /** Обложка турнира; если нет — в UI тот же плейсхолдер, что на вебе (`tournament-placeholder.png`) */
+  image?: string | null
   startDate: string
   endDate: string
   timezone?: string | null
@@ -48,23 +51,26 @@ export function EventChatListItemActive({
   return (
     <View style={styles.card}>
       <Pressable onPress={onOpenGeneral} style={({ pressed }) => [styles.mainPress, pressed && styles.mainPressPressed]}>
-        <Text style={styles.eventTitle} numberOfLines={2}>
-          {event.title}
-        </Text>
-        {event.unreadCount > 0 ? (
-          <View style={styles.unreadRow}>
-            <UnreadBadge count={event.unreadCount} />
+        <View style={styles.headerRow}>
+          <TournamentThumbnail imageUri={event.image} size={48} />
+          <View style={styles.headerTextCol}>
+            <View style={styles.titleUnreadRow}>
+              <Text style={styles.eventTitle} numberOfLines={2}>
+                {event.title}
+              </Text>
+              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} /> : null}
+            </View>
+            <Text style={styles.meta}>{meta}</Text>
+            {event.club?.name ? (
+              <View style={styles.clubRow}>
+                <Feather name="map-pin" size={12} color={palette.textMuted} />
+                <Text style={styles.clubName} numberOfLines={1}>
+                  {event.club.name}
+                </Text>
+              </View>
+            ) : null}
           </View>
-        ) : null}
-        <Text style={styles.meta}>{meta}</Text>
-        {event.club?.name ? (
-          <View style={styles.clubRow}>
-            <Feather name="map-pin" size={12} color={palette.textMuted} />
-            <Text style={styles.clubName} numberOfLines={1}>
-              {event.club.name}
-            </Text>
-          </View>
-        ) : null}
+        </View>
       </Pressable>
 
       {hasDivisions ? (
@@ -114,15 +120,14 @@ export function EventChatListItemArchived({
         style={({ pressed }) => [styles.mainPress, pressed && styles.mainPressPressed]}
       >
         <View style={styles.archivedTitleRow}>
+          <TournamentThumbnail imageUri={event.image} size={48} />
           <View style={styles.archivedTitleText}>
-            <Text style={styles.eventTitle} numberOfLines={2}>
-              {event.title}
-            </Text>
-            {event.unreadCount > 0 ? (
-              <View style={styles.unreadRow}>
-                <UnreadBadge count={event.unreadCount} />
-              </View>
-            ) : null}
+            <View style={styles.titleUnreadRow}>
+              <Text style={styles.eventTitle} numberOfLines={2}>
+                {event.title}
+              </Text>
+              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} /> : null}
+            </View>
             <Text style={styles.meta}>{meta}</Text>
             {event.club?.name ? (
               <View style={styles.clubRow}>
@@ -162,8 +167,8 @@ export function EventChatListItemArchived({
 const styles = StyleSheet.create({
   card: {
     borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: palette.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
     backgroundColor: palette.surface,
     padding: spacing.sm,
   },
@@ -174,15 +179,27 @@ const styles = StyleSheet.create({
   mainPressPressed: {
     backgroundColor: palette.surfaceElevated,
   },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: palette.text,
-  },
-  unreadRow: {
+  headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  headerTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  titleUnreadRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: palette.text,
+    flex: 1,
+    minWidth: 0,
   },
   unreadBadge: {
     minWidth: 22,
@@ -208,20 +225,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   meta: {
-    marginTop: 6,
-    fontSize: 12,
+    marginTop: 4,
+    fontSize: 13,
     color: palette.textMuted,
-    lineHeight: 16,
+    lineHeight: 18,
   },
   clubRow: {
-    marginTop: 6,
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
   clubName: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: palette.textMuted,
   },
   nested: {
@@ -246,7 +263,7 @@ const styles = StyleSheet.create({
   },
   divisionName: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: palette.text,
   },

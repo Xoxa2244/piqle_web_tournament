@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
@@ -9,10 +9,15 @@ import { ChatComposer } from '../../../../../src/components/ChatComposer'
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
 import type { ChatMessage } from '../../../../../src/lib/chatMessages'
-import { ActionButton, EmptyState, IconButton, LoadingBlock, Screen } from '../../../../../src/components/ui'
+import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
+import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
 import { trpc } from '../../../../../src/lib/trpc'
-import { palette, radius } from '../../../../../src/lib/theme'
+import { palette, radius, spacing } from '../../../../../src/lib/theme'
+import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
+
+/** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
+const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function TournamentChatScreen() {
   const params = useLocalSearchParams<{ tournamentId: string; title?: string; divisionId?: string }>()
@@ -25,6 +30,14 @@ export default function TournamentChatScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
+
+  const scrollToBottom = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated })
+    })
+  }, [])
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
@@ -99,10 +112,21 @@ export default function TournamentChatScreen() {
 
   const messagesLen = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []).length
   useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true })
-    })
-  }, [messagesLen, activeDivisionId])
+    scrollToBottom(true)
+  }, [messagesLen, activeDivisionId, scrollToBottom])
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const s = Keyboard.addListener(showEv, () => setKeyboardVisible(true))
+    const h = Keyboard.addListener(hideEv, () => setKeyboardVisible(false))
+    const didShow = Keyboard.addListener('keyboardDidShow', () => scrollToBottom(true))
+    return () => {
+      s.remove()
+      h.remove()
+      didShow.remove()
+    }
+  }, [scrollToBottom])
 
   if (!isAuthenticated) {
     return (
@@ -151,6 +175,7 @@ export default function TournamentChatScreen() {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.topicBar}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topicBarItem}>
           <Pressable
@@ -188,7 +213,10 @@ export default function TournamentChatScreen() {
               style={[styles.topicPill, activeDivisionId === d.id && styles.topicPillActive]}
             >
               <Feather name="hash" size={16} color={activeDivisionId === d.id ? palette.white : palette.textMuted} />
-              <Text style={styles.topicPillText} numberOfLines={1}>
+              <Text
+                style={[styles.topicPillText, activeDivisionId === d.id && styles.topicPillTextActive]}
+                numberOfLines={1}
+              >
                 {d.name}
               </Text>
             </Pressable>
@@ -204,19 +232,18 @@ export default function TournamentChatScreen() {
   )
 
   return (
-    <Screen
+    <PageLayout
       chatAmbient
-      left={<IconButton icon={<Feather name="arrow-left" size={20} color={palette.text} />} onPress={() => router.back()} />}
-      title={title}
-      subtitle="Tournament Chat"
       scroll={false}
+      contentStyle={styles.screen}
+      topBarTitle={title}
     >
-      {topicBar}
       <KeyboardAvoidingView
-        style={styles.keyboardWrap}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 2 : 0}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
+        {topicBar}
         <View style={styles.contextRow}>
           <View style={styles.contextLeft}>
             <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={palette.textMuted} />
@@ -229,7 +256,7 @@ export default function TournamentChatScreen() {
 
         <ChatThreadRoot
           ref={scrollRef}
-          contentContainerStyle={[styles.messages, (isEmpty || messagesLoading) && styles.messagesEmpty]}
+          contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -267,6 +294,9 @@ export default function TournamentChatScreen() {
             sendDisabled={
               (activeDivisionId ? sendDivisionMessage.isPending : sendMessage.isPending) || draft.trim().length === 0
             }
+            paddingHorizontal={16}
+            paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
+            multiline={false}
           />
         ) : null}
       </KeyboardAvoidingView>
@@ -297,13 +327,16 @@ export default function TournamentChatScreen() {
           />
         }
       />
-    </Screen>
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  keyboardWrap: {
-    flex: 1,
+  screen: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
   },
   topicBarWrap: {
     backgroundColor: 'transparent',
@@ -311,9 +344,9 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0,0,0,0.08)',
   },
   topicBar: {
-    paddingHorizontal: 0,
-    paddingTop: 20,
-    paddingBottom: 18,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 12,
+    paddingBottom: 12,
     gap: 12,
     flexGrow: 1,
     justifyContent: 'flex-start',
@@ -365,9 +398,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   contextRow: {
-    paddingHorizontal: 0,
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   contextLeft: {
     flexDirection: 'row',
@@ -389,9 +422,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  messages: {
-    paddingHorizontal: 0,
-    paddingBottom: 16,
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: 72,
     gap: 12,
   },
   messagesEmpty: {

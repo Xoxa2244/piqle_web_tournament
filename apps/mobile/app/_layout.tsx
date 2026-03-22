@@ -26,7 +26,14 @@ const RootNavigator = () => {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: palette.background },
+          /** Иначе при swipe-back подложка без шапки: pathname в expo-router обновляется с задержкой, см. useEffectivePathname */
+          detachInactiveScreens: false,
+        }}
+      >
         <Stack.Screen name="index" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />

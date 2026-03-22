@@ -1,17 +1,17 @@
-import { StyleSheet } from 'react-native'
+import { useState } from 'react'
 
 import { PageLayout } from '../src/components/navigation/PageLayout'
 import { EmptyState, SearchField } from '../src/components/ui'
-import { palette, radius } from '../src/lib/theme'
 
 export default function SearchScreen() {
+  const [query, setQuery] = useState('')
+
   return (
     <PageLayout>
       <SearchField
-        value=""
-        onChangeText={() => {}}
+        value={query}
+        onChangeText={setQuery}
         placeholder="Search tournaments, clubs, and players"
-        containerStyle={styles.searchField}
       />
       <EmptyState
         title="Search is not wired yet"
@@ -20,13 +20,3 @@ export default function SearchScreen() {
     </PageLayout>
   )
 }
-
-const styles = StyleSheet.create({
-  searchField: {
-    minHeight: 44,
-    borderWidth: 0,
-    backgroundColor: palette.surfaceElevated,
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
-  },
-})

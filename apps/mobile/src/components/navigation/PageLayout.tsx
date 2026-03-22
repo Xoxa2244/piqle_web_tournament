@@ -1,9 +1,10 @@
 import type { PropsWithChildren } from 'react'
 import React from 'react'
-import { RefreshControl, ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
+import { ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from '../chatAmbient'
+import { PickleRefreshScrollView } from '../PickleRefreshScrollView'
 import { palette, spacing } from '../../lib/theme'
 import { TopBar } from './TopBar'
 
@@ -17,37 +18,45 @@ export const PageLayout = ({
   scroll = true,
   contentStyle,
   topBarTitleAccessory,
+  topBarTitle,
   pullToRefresh,
   chatAmbient = false,
 }: PropsWithChildren<{
   scroll?: boolean
   contentStyle?: StyleProp<ViewStyle>
   topBarTitleAccessory?: React.ReactNode
+  /** Переопределение заголовка TopBar (иначе из pathname) */
+  topBarTitle?: string
   pullToRefresh?: PageLayoutPullToRefresh
   /** Полноэкранный едва заметный градиент (например AI Coach) */
   chatAmbient?: boolean
 }>) => {
   const main = (
     <>
-      <TopBar titleAccessory={topBarTitleAccessory} ambient={chatAmbient} />
+      <TopBar titleAccessory={topBarTitleAccessory} titleOverride={topBarTitle} ambient={chatAmbient} />
       {scroll ? (
-        <ScrollView
-          contentContainerStyle={[styles.content, contentStyle]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            pullToRefresh ? (
-              <RefreshControl
-                refreshing={pullToRefresh.refreshing}
-                onRefresh={pullToRefresh.onRefresh}
-                tintColor={palette.primary}
-                colors={[palette.primary]}
-              />
-            ) : undefined
-          }
-          bounces
-        >
-          {children}
-        </ScrollView>
+        pullToRefresh ? (
+          <View style={styles.fill}>
+            <PickleRefreshScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={[styles.content, contentStyle]}
+              showsVerticalScrollIndicator={false}
+              refreshing={pullToRefresh.refreshing}
+              onRefresh={pullToRefresh.onRefresh}
+              bounces
+            >
+              {children}
+            </PickleRefreshScrollView>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={[styles.content, contentStyle]}
+            showsVerticalScrollIndicator={false}
+            bounces
+          >
+            {children}
+          </ScrollView>
+        )
       ) : (
         <View
           style={[

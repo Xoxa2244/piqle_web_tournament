@@ -4,7 +4,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
 import { formatDateRange, formatLocation } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
@@ -191,39 +193,48 @@ export default function HomeTab() {
   const myEventStatusFor = (eventId: string) => statusData[eventId]?.status
 
   return (
-    <PageLayout pullToRefresh={pullToRefresh}>
-      <View style={styles.headerSection}>
-        <Text style={styles.welcomeTitle}>Welcome back!</Text>
-        <Text style={styles.welcomeSubtitle}>Here&apos;s what&apos;s coming up</Text>
-      </View>
+    <PageLayout scroll={false} contentStyle={styles.layoutContent}>
+      <View style={styles.page}>
+        <View style={styles.headerSection}>
+          <Text style={styles.welcomeTitle}>Welcome back!</Text>
+          <Text style={styles.welcomeSubtitle}>Here&apos;s what&apos;s coming up</Text>
+        </View>
 
-      <Pressable onPress={() => router.push('/ai')}>
-        <SurfaceCard style={styles.aiBanner}>
-          <OptionalLinearGradient
-            pointerEvents="none"
-            colors={['rgba(82, 224, 104, 0.20)', 'rgba(31, 160, 53, 0.14)', 'rgba(255, 255, 255, 0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bannerGradient}
-          />
-          <View style={styles.aiRow}>
-            <View style={styles.aiIcon}>
-              <Feather name="zap" size={20} color={palette.white} />
+        <Pressable onPress={() => router.push('/ai')}>
+          <SurfaceCard style={styles.aiBanner}>
+            <OptionalLinearGradient
+              pointerEvents="none"
+              colors={['rgba(82, 224, 104, 0.20)', 'rgba(31, 160, 53, 0.14)', 'rgba(255, 255, 255, 0)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bannerGradient}
+            />
+            <View style={styles.aiRow}>
+              <View style={styles.aiIcon}>
+                <Feather name="zap" size={20} color={palette.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.aiTitle}>AI Assistant</Text>
+                <Text style={styles.aiSubtitle}>Get help with strategies, rules, and more</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={palette.textMuted} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.aiTitle}>AI Assistant</Text>
-              <Text style={styles.aiSubtitle}>Get help with strategies, rules, and more</Text>
-            </View>
-            <Feather name="chevron-right" size={18} color={palette.textMuted} />
-          </View>
-        </SurfaceCard>
-      </Pressable>
+          </SurfaceCard>
+        </Pressable>
 
-      <SectionTitle
-        title="My Events"
-        action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
-      />
+        <SectionTitle
+          title="My Events"
+          action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
+        />
 
+        <PickleRefreshScrollView
+          style={styles.listScroll}
+          contentContainerStyle={styles.listScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          bounces
+        >
       {tournamentsQuery.isError ? (
         <EmptyState
           title="Could not load events"
@@ -262,9 +273,7 @@ export default function HomeTab() {
           >
             <SurfaceCard>
               <View style={styles.eventRow}>
-                <View style={styles.eventIcon}>
-                  <Feather name="award" size={20} color={palette.primary} />
-                </View>
+                <TournamentThumbnail imageUri={event.image} size={48} />
                 <View style={{ flex: 1 }}>
                   <View style={styles.eventTopRow}>
                     <Text style={styles.eventTitle}>{event.title}</Text>
@@ -320,11 +329,27 @@ export default function HomeTab() {
         </View>
       </SurfaceCard>
       ) : null}
+        </PickleRefreshScrollView>
+      </View>
     </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
+  layoutContent: {
+    paddingBottom: 0,
+  },
+  page: {
+    flex: 1,
+    gap: spacing.md,
+  },
+  listScroll: {
+    flex: 1,
+  },
+  listScrollContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xxl,
+  },
   headerSection: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
@@ -378,16 +403,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-  },
-  eventIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
-    borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
   },
   monthCard: {
     position: 'relative',

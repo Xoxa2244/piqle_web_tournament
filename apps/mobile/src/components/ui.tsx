@@ -86,7 +86,8 @@ export const Screen = ({
   return (
     <View style={styles.chatAmbientRoot}>
       <ChatAmbientBackground />
-      <SafeAreaView style={styles.safeAreaChatAmbientFill} edges={['top', 'bottom']}>
+      {/* bottom убран: иначе с KAV на iOS суммируется «домашняя» зона и клавиатура — инпут уезжает вверх */}
+      <SafeAreaView style={styles.safeAreaChatAmbientFill} edges={['top']}>
         <View style={styles.chatAmbientForeground}>{body}</View>
       </SafeAreaView>
     </View>
@@ -296,6 +297,9 @@ export const InputField = ({
   )
 }
 
+/**
+ * Строка поиска для вкладок и экрана Search: единый вид (как на Events) — 44pt, без обводки, иконка слева.
+ */
 export const SearchField = ({
   value,
   onChangeText,
@@ -313,7 +317,7 @@ export const SearchField = ({
       onChangeText={onChangeText}
       placeholder={placeholder}
       autoCapitalize="none"
-      containerStyle={containerStyle}
+      containerStyle={[styles.searchFieldShell, containerStyle]}
       left={<Feather name="search" size={18} color={palette.textMuted} />}
     />
   )
@@ -584,6 +588,17 @@ const styles = StyleSheet.create({
   },
   inputDisabled: {
     opacity: 0.6,
+  },
+  /** Базовый вид SearchField (вкладка Events): переопределяет inputShell */
+  searchFieldShell: {
+    minHeight: 44,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: palette.surfaceElevated,
+    paddingHorizontal: 14,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   emptyTitle: {
     fontSize: 18,

@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
 import { useCallback, useMemo, useState } from 'react'
-import { Dimensions, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { AppBottomSheet } from '../../src/components/AppBottomSheet'
+import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
 import {
@@ -374,12 +375,7 @@ export default function TournamentsTab() {
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
       <View style={styles.page}>
         <View style={styles.headerPanel}>
-          <SearchField
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search tournaments..."
-            containerStyle={styles.searchField}
-          />
+          <SearchField value={search} onChangeText={setSearch} placeholder="Search tournaments..." />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -410,17 +406,12 @@ export default function TournamentsTab() {
           />
         </View>
 
-        <ScrollView
+        <PickleRefreshScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={pullToRefresh.refreshing}
-              onRefresh={pullToRefresh.onRefresh}
-              tintColor={palette.primary}
-              colors={[palette.primary]}
-            />
-          }
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
           bounces
         >
           {isAuthenticated && invitationItems.length > 0 ? (
@@ -517,7 +508,7 @@ export default function TournamentsTab() {
               />
             )
           })}
-        </ScrollView>
+        </PickleRefreshScrollView>
 
         <AppBottomSheet
           open={showFilters}
@@ -625,13 +616,6 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     padding: 0,
     gap: spacing.md,
-  },
-  searchField: {
-    minHeight: 44,
-    borderWidth: 0,
-    backgroundColor: palette.surfaceElevated,
-    paddingHorizontal: 14,
-    gap: 8,
   },
   quickFilters: {
     flexDirection: 'row',

@@ -6,6 +6,8 @@ import { Feather } from '@expo/vector-icons'
 import { ChatPreviewCard } from '../../src/components/ChatPreviewCard'
 import { EventChatListItemActive, EventChatListItemArchived, type EventChatListEvent } from '../../src/components/EventChatListItem'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
+import { SegmentedControl } from '../../src/components/SegmentedControl'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SurfaceCard } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
@@ -27,10 +29,9 @@ export default function ChatsTab() {
 
   const filteredClubChats = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return clubChatsQuery.data ?? []
-    return ((clubChatsQuery.data ?? []) as { id: string; name: string }[]).filter((club) =>
-      club.name.toLowerCase().includes(term)
-    )
+    const list = clubChatsQuery.data ?? []
+    if (!term) return list
+    return list.filter((club) => club.name.toLowerCase().includes(term))
   }, [clubChatsQuery.data, search])
 
   const filteredEventChats = useMemo(() => {
@@ -126,38 +127,30 @@ export default function ChatsTab() {
   }
 
   return (
-    <PageLayout contentStyle={{ paddingHorizontal: 0, paddingTop: 0, gap: 0 }} pullToRefresh={pullToRefresh}>
-      <View style={styles.searchGutter}>
-        <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
-      </View>
+    <PageLayout scroll={false} contentStyle={styles.pageLayout}>
+      <View style={styles.page}>
+        <View style={styles.searchGutter}>
+          <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
+        </View>
 
-      <View style={styles.segmentWrap}>
-        <Pressable
-          onPress={() => setSegment('clubs')}
-          style={({ pressed }) => [
-            styles.segmentBtn,
-            segment === 'clubs' && styles.segmentBtnActive,
-            pressed && styles.segmentBtnPressed,
+        <SegmentedControl<Segment>
+          options={[
+            { value: 'clubs', label: `Club chats${clubTotal > 0 ? ` (${clubTotal})` : ''}` },
+            { value: 'events', label: `Event chats${eventTotal > 0 ? ` (${eventTotal})` : ''}` },
           ]}
-        >
-          <Text style={[styles.segmentLabel, segment === 'clubs' && styles.segmentLabelActive]}>
-            Club chats{clubTotal > 0 ? ` (${clubTotal})` : ''}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setSegment('events')}
-          style={({ pressed }) => [
-            styles.segmentBtn,
-            segment === 'events' && styles.segmentBtnActive,
-            pressed && styles.segmentBtnPressed,
-          ]}
-        >
-          <Text style={[styles.segmentLabel, segment === 'events' && styles.segmentLabelActive]}>
-            Event chats{eventTotal > 0 ? ` (${eventTotal})` : ''}
-          </Text>
-        </Pressable>
-      </View>
+          value={segment}
+          onChange={setSegment}
+          trackStyle={styles.segmentTrack}
+        />
 
+        <PickleRefreshScrollView
+          style={styles.listScroll}
+          contentContainerStyle={styles.listScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          bounces
+        >
       {showFullChatLoading ? (
         <View style={styles.bodyGutter}>
           <LoadingBlock label="Loading chats…" />
@@ -199,6 +192,7 @@ export default function ChatsTab() {
                 <ChatPreviewCard
                   key={`club-${club.id}`}
                   title={club.name}
+                  imageUri={club.logoUrl}
                   subtitle={
                     [club.city, club.state].filter(Boolean).join(', ') || 'Club chat'
                   }
@@ -280,52 +274,38 @@ export default function ChatsTab() {
           )}
         </View>
       ) : null}
+        </PickleRefreshScrollView>
+      </View>
     </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
+  pageLayout: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
+  },
+  page: {
+    flex: 1,
+    gap: 0,
+  },
+  listScroll: {
+    flex: 1,
+  },
+  listScrollContent: {
+    gap: 0,
+    paddingBottom: spacing.xxl,
+  },
   searchGutter: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  segmentWrap: {
-    flexDirection: 'row',
+  segmentTrack: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
-    padding: 4,
-    borderRadius: radius.md,
-    backgroundColor: palette.secondary,
-    gap: 4,
-  },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentBtnActive: {
-    backgroundColor: palette.surface,
-    shadowColor: palette.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  segmentBtnPressed: {
-    opacity: 0.92,
-  },
-  segmentLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: palette.textMuted,
-    textAlign: 'center',
-  },
-  segmentLabelActive: {
-    color: palette.text,
   },
   bodyGutter: {
     paddingHorizontal: spacing.lg,

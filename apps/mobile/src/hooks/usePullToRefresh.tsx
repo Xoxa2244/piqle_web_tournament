@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import { Platform } from 'react-native'
 
 /**
- * Состояние для <RefreshControl>. Сам контрол ренерят PageLayout / ScrollView.
+ * Состояние для pull-to-refresh (`PickleRefreshScrollView` / `PageLayout` с `pullToRefresh`).
  * При смене вкладки экран теряет фокус — сбрасываем refreshing, иначе индикатор
  * залипает у шапки после возврата (RN + скрытый таб).
  */

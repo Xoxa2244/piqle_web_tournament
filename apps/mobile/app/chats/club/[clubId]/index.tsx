@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
-import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import type { ChatMessage } from '../../../../src/lib/chatMessages'
-import { ActionButton, EmptyState, IconButton, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
+import { PageLayout } from '../../../../src/components/navigation/PageLayout'
+import { ActionButton, EmptyState, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { trpc } from '../../../../src/lib/trpc'
-import { palette } from '../../../../src/lib/theme'
+import { palette, spacing } from '../../../../src/lib/theme'
+import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
+
+/** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
+const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function ClubChatScreen() {
   const params = useLocalSearchParams<{ clubId: string; name?: string }>()
@@ -24,6 +28,14 @@ export default function ClubChatScreen() {
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const scrollRef = useRef<ScrollView>(null)
+  const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
+
+  const scrollToBottom = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated })
+    })
+  }, [])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
   const isAdmin = Boolean(myChatClubsQuery.data?.find((c) => c.id === clubId)?.isAdmin)
 
@@ -57,10 +69,23 @@ export default function ClubChatScreen() {
   }, [clubId, isAuthenticated])
 
   useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true })
+    scrollToBottom(true)
+  }, [messagesQuery.data?.length, scrollToBottom])
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const s = Keyboard.addListener(showEv, () => setKeyboardVisible(true))
+    const h = Keyboard.addListener(hideEv, () => setKeyboardVisible(false))
+    const didShow = Keyboard.addListener('keyboardDidShow', () => {
+      scrollToBottom(true)
     })
-  }, [messagesQuery.data?.length])
+    return () => {
+      s.remove()
+      h.remove()
+      didShow.remove()
+    }
+  }, [scrollToBottom])
 
   if (!isAuthenticated) {
     return (
@@ -79,12 +104,11 @@ export default function ClubChatScreen() {
   const isEmpty = messages.length === 0
 
   return (
-    <Screen
+    <PageLayout
       chatAmbient
-      left={<IconButton icon={<Feather name="arrow-left" size={20} color={palette.text} />} onPress={() => router.back()} />}
-      title={clubName}
-      subtitle="Club Chat"
       scroll={false}
+      contentStyle={styles.screen}
+      topBarTitle={clubName}
     >
       {messagesQuery.error ? (
         <SurfaceCard tone="soft">
@@ -93,13 +117,13 @@ export default function ClubChatScreen() {
       ) : null}
 
       <KeyboardAvoidingView
-        style={styles.keyboardWrap}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 2 : 0}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <ChatThreadRoot
           ref={scrollRef}
-          contentContainerStyle={[styles.messages, isEmpty && styles.messagesEmpty]}
+          contentContainerStyle={[styles.scrollContent, isEmpty && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -128,6 +152,8 @@ export default function ClubChatScreen() {
           onSend={() => sendMessage.mutate({ clubId, text: draft.trim() })}
           sendDisabled={sendMessage.isPending || draft.trim().length === 0}
           multiline={false}
+          paddingHorizontal={16}
+          paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}
         />
       </KeyboardAvoidingView>
 
@@ -153,21 +179,25 @@ export default function ClubChatScreen() {
           />
         }
       />
-    </Screen>
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  keyboardWrap: {
-    flex: 1,
+  screen: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
   },
   error: {
     color: palette.danger,
     lineHeight: 20,
   },
-  messages: {
-    paddingHorizontal: 0,
-    paddingBottom: 16,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: spacing.lg,
+    paddingBottom: 72,
     gap: 12,
   },
   messagesEmpty: {

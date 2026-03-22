@@ -6,8 +6,6 @@ import {
   Image,
   Linking,
   Pressable,
-  RefreshControl,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -18,9 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
+import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
+import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
 import {
   ActionButton,
-  AvatarBadge,
   EmptyState,
   LoadingBlock,
   SectionTitle,
@@ -28,8 +27,10 @@ import {
 } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
+import { tournamentPlaceholder } from '../../../src/constants/images'
 import { fetchWithTimeout } from '../../../src/lib/apiFetch'
 import { buildApiUrl, buildWebUrl } from '../../../src/lib/config'
+import { isRemoteImageUri } from '../../../src/lib/imageUri'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
@@ -502,31 +503,18 @@ export default function TournamentDetailScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <TopBar />
-      <ScrollView
+      <PickleRefreshScrollView
         contentContainerStyle={[styles.scrollContent, !shouldShowStickyCta && styles.scrollContentNoCta]}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={pullToRefresh.refreshing}
-            onRefresh={pullToRefresh.onRefresh}
-            tintColor={palette.primary}
-            colors={[palette.primary]}
-          />
-        }
+        refreshing={pullToRefresh.refreshing}
+        onRefresh={pullToRefresh.onRefresh}
         bounces
       >
         <View style={styles.hero}>
-          {tournament.image ? (
+          {tournament.image && isRemoteImageUri(tournament.image) ? (
             <Image source={{ uri: tournament.image }} style={styles.heroImage} />
           ) : (
-            <OptionalLinearGradient
-              colors={[palette.surfaceMuted, palette.surfaceElevated, palette.hero]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroFallback}
-            >
-              <Feather name="award" size={42} color={palette.primary} />
-            </OptionalLinearGradient>
+            <Image source={tournamentPlaceholder} style={styles.heroImage} resizeMode="cover" />
           )}
           <View pointerEvents="none" style={styles.heroOverlay} />
 
@@ -707,7 +695,7 @@ export default function TournamentDetailScreen() {
               <SurfaceCard style={styles.detailCard}>
                 <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Organizer</Text>
                 <View style={styles.organizerRow}>
-                  <AvatarBadge label={organizerLabel} size={48} />
+                  <RemoteUserAvatar uri={tournament.user?.image} size={48} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.organizerName}>{organizerLabel}</Text>
                     <Text style={styles.organizerMeta}>{organizerMetaLabel}</Text>
@@ -884,7 +872,7 @@ export default function TournamentDetailScreen() {
           ) : null}
 
         </View>
-      </ScrollView>
+      </PickleRefreshScrollView>
 
       {shouldShowStickyCta ? (
         <View style={styles.ctaShell}>
@@ -998,11 +986,6 @@ const styles = StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
-  },
-  heroFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,

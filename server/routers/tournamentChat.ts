@@ -370,6 +370,7 @@ export const tournamentChatRouter = createTRPCRouter({
       select: {
         id: true,
         title: true,
+        image: true,
         startDate: true,
         endDate: true,
         timezone: true,
@@ -468,6 +469,7 @@ export const tournamentChatRouter = createTRPCRouter({
         return {
           id: tournament.id,
           title: tournament.title,
+          image: tournament.image,
           startDate: tournament.startDate,
           endDate: tournament.endDate,
           timezone: tournament.timezone,
