@@ -2315,37 +2315,71 @@ export const intelligenceRouter = createTRPCRouter({
 
       const embeddings = await ctx.prisma.documentEmbedding.findMany({
         where: { clubId: input.clubId },
-        select: { id: true, contentType: true, createdAt: true, sourceId: true, sourceTable: true },
+        select: { id: true, contentType: true, createdAt: true, sourceId: true, sourceTable: true, metadata: true },
         orderBy: { createdAt: 'desc' },
       })
 
-      // Group by import batch: embeddings created within 5 minutes = same import
-      const sorted = [...embeddings].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      const batches: Array<{ start: Date; entries: typeof sorted }> = []
-      for (const e of sorted) {
-        const lastBatch = batches[batches.length - 1]
-        if (lastBatch && e.createdAt.getTime() - lastBatch.entries[lastBatch.entries.length - 1].createdAt.getTime() < 5 * 60 * 1000) {
-          lastBatch.entries.push(e)
+      // Group by importBatchId (reliable) with fallback to time-based grouping (legacy)
+      const batchMap = new Map<string, typeof embeddings>()
+      const orphans: typeof embeddings = []
+
+      for (const e of embeddings) {
+        const meta = (e.metadata && typeof e.metadata === 'object') ? (e.metadata as Record<string, unknown>) : {}
+        const batchId = meta.importBatchId as string | undefined
+        if (batchId) {
+          if (!batchMap.has(batchId)) batchMap.set(batchId, [])
+          batchMap.get(batchId)!.push(e)
         } else {
-          batches.push({ start: e.createdAt, entries: [e] })
+          orphans.push(e)
         }
       }
 
-      const uploads = batches.reverse().map((batch, i) => {
-        const sessionEntries = batch.entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session')
-        const sourceIds = batch.entries.filter(e => e.sourceId).map(e => e.sourceId!)
-        const dates = batch.entries.map(e => e.createdAt.getTime())
-        return {
-          id: `import-${i}`,
-          date: batch.start.toISOString(),
-          dateEnd: new Date(Math.max(...dates)).toISOString(),
-          records: sessionEntries.length || batch.entries.length,
-          contentType: batch.entries[0].contentType,
-          source: 'CSV Import',
-          embeddingIds: batch.entries.map(e => e.id),
-          sessionSourceIds: Array.from(new Set(sourceIds)),
+      // Group orphans (legacy imports without batchId) by 5-min windows
+      const sortedOrphans = [...orphans].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      for (const e of sortedOrphans) {
+        let added = false
+        const keys = Array.from(batchMap.keys())
+        for (const key of keys) {
+          if (key.startsWith('legacy-')) {
+            const entries = batchMap.get(key)!
+            const lastEntry = entries[entries.length - 1]
+            if (Math.abs(e.createdAt.getTime() - lastEntry.createdAt.getTime()) < 5 * 60 * 1000) {
+              entries.push(e)
+              added = true
+              break
+            }
+          }
         }
-      })
+        if (!added) {
+          const legacyKey = `legacy-${e.createdAt.getTime()}`
+          batchMap.set(legacyKey, [e])
+        }
+      }
+
+      const batchEntries: Array<[string, typeof embeddings]> = []
+      batchMap.forEach((v, k) => batchEntries.push([k, v]))
+
+      const uploads = batchEntries
+        .map(([batchId, entries]) => {
+          const sessionEntries = entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session')
+          const sourceIds = entries.filter(e => e.sourceId).map(e => e.sourceId!)
+          const dates = entries.map(e => e.createdAt.getTime())
+          const meta = entries[0].metadata as Record<string, unknown> | null
+          const fileName = (meta?.sourceFileName as string) || null
+
+          return {
+            id: batchId,
+            date: new Date(Math.min(...dates)).toISOString(),
+            dateEnd: new Date(Math.max(...dates)).toISOString(),
+            records: sessionEntries.length || entries.length,
+            contentType: entries[0].contentType,
+            source: fileName || 'CSV Import',
+            embeddingIds: entries.map(e => e.id),
+            sessionSourceIds: Array.from(new Set(sourceIds)),
+            importBatchId: batchId.startsWith('legacy-') ? null : batchId,
+          }
+        })
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
       return { uploads, totalUploads: uploads.length }
     }),
@@ -2355,6 +2389,7 @@ export const intelligenceRouter = createTRPCRouter({
       clubId: z.string(),
       embeddingIds: z.array(z.string()),
       sessionSourceIds: z.array(z.string()),
+      importBatchId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -2362,30 +2397,60 @@ export const intelligenceRouter = createTRPCRouter({
       let sessionsDeleted = 0
       let bookingsDeleted = 0
       let embeddingsDeleted = 0
+      let healthDeleted = 0
 
-      // 1. Delete bookings for these sessions
-      if (input.sessionSourceIds.length > 0) {
-        const bookingResult = await ctx.prisma.playSessionBooking.deleteMany({
-          where: { sessionId: { in: input.sessionSourceIds } },
-        })
-        bookingsDeleted = bookingResult.count
-
-        // 2. Delete sessions
-        const sessionResult = await ctx.prisma.playSession.deleteMany({
-          where: { id: { in: input.sessionSourceIds } },
-        })
-        sessionsDeleted = sessionResult.count
-      }
-
-      // 3. Delete embeddings
-      if (input.embeddingIds.length > 0) {
+      // 1. Delete embeddings — prefer batchId (reliable), fallback to ID list
+      if (input.importBatchId) {
+        // Delete ALL embeddings with this batchId via raw SQL (JSONB query)
+        const result = await ctx.prisma.$executeRaw`
+          DELETE FROM document_embeddings
+          WHERE club_id = ${input.clubId}::uuid
+            AND metadata->>'importBatchId' = ${input.importBatchId}
+        `
+        embeddingsDeleted = typeof result === 'number' ? result : 0
+      } else if (input.embeddingIds.length > 0) {
         const embeddingResult = await ctx.prisma.documentEmbedding.deleteMany({
           where: { id: { in: input.embeddingIds } },
         })
         embeddingsDeleted = embeddingResult.count
       }
 
-      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted }
+      // 2. Delete bookings → sessions
+      if (input.sessionSourceIds.length > 0) {
+        const bookingResult = await ctx.prisma.playSessionBooking.deleteMany({
+          where: { sessionId: { in: input.sessionSourceIds } },
+        })
+        bookingsDeleted = bookingResult.count
+
+        const sessionResult = await ctx.prisma.playSession.deleteMany({
+          where: { id: { in: input.sessionSourceIds } },
+        })
+        sessionsDeleted = sessionResult.count
+      }
+
+      // 3. If no sessions to delete but we have a batchId, delete ALL club sessions + bookings
+      // (import creates sessions outside embedding flow, so batchId won't be on sessions)
+      if (sessionsDeleted === 0 && input.importBatchId) {
+        const bResult = await ctx.prisma.$executeRaw`
+          DELETE FROM play_session_bookings WHERE "sessionId" IN (
+            SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
+          )
+        `
+        bookingsDeleted = typeof bResult === 'number' ? bResult : 0
+
+        const sResult = await ctx.prisma.$executeRaw`
+          DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
+        `
+        sessionsDeleted = typeof sResult === 'number' ? sResult : 0
+
+        // Also clean health snapshots
+        const hResult = await ctx.prisma.$executeRaw`
+          DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
+        `
+        healthDeleted = typeof hResult === 'number' ? hResult : 0
+      }
+
+      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted }
     }),
 
   // 2.1 Pricing Opportunities (demand-based price suggestions)

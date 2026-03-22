@@ -476,6 +476,9 @@ export async function POST(req: Request) {
         // Phase 2: Build chunks
         send({ phase: 'preparing', message: 'Preparing data...' });
 
+        // Generate unique batch ID for this import — used for reliable grouping and deletion
+        const importBatchId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
         const chunks: { text: string; contentType: string; metadata: Record<string, unknown>; sourceId: string }[] = [];
 
         const allPlayersSet = new Set<string>();
@@ -486,6 +489,7 @@ export async function POST(req: Request) {
           contentType: 'club_info',
           metadata: {
             type: 'import_summary',
+            importBatchId,
             sessionCount: sessions.length,
             playerCount: allPlayersSet.size,
             sourceFileName: fileName || null,
@@ -499,6 +503,7 @@ export async function POST(req: Request) {
             text: sessionToText(s, i),
             contentType: 'session',
             metadata: {
+              importBatchId,
               date: s.date, startTime: s.startTime, endTime: s.endTime,
               court: s.court, format: s.format, skillLevel: s.skillLevel,
               registered: s.registered, capacity: s.capacity,
@@ -531,7 +536,7 @@ export async function POST(req: Request) {
           chunks.push({
             text: `Player: ${name}. Registered for ${data.count} sessions. Plays ${Array.from(data.formats).join(', ')}. Active days: ${Array.from(data.days).join(', ')}.`,
             contentType: 'member_pattern',
-            metadata: { playerName: name, sessionCount: data.count },
+            metadata: { importBatchId, playerName: name, sessionCount: data.count },
             sourceId: `import-player-${name}`,
           });
         });
@@ -542,7 +547,7 @@ export async function POST(req: Request) {
           chunks.push({
             text: ac.text,
             contentType: ac.contentType,
-            metadata: { type: 'analytics' },
+            metadata: { type: 'analytics', importBatchId },
             sourceId: ac.sourceId,
           });
         });

@@ -1366,14 +1366,15 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                       // Delete all club embeddings, sessions, and bookings from this import
                       const embeddingIds = deleteConfirm.upload.embeddingIds || []
                       const sessionSourceIds = deleteConfirm.upload.sessionSourceIds || []
+                      const importBatchId = deleteConfirm.upload.importBatchId || undefined
 
-                      console.log('[Delete Import] Starting...', { embeddingIds: embeddingIds.length, sessionSourceIds: sessionSourceIds.length })
+                      console.log('[Delete Import] Starting...', { importBatchId, embeddingIds: embeddingIds.length, sessionSourceIds: sessionSourceIds.length })
 
                       // Use tRPC batch format
                       const res = await fetch('/api/trpc/intelligence.deleteImport', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ json: { clubId, embeddingIds, sessionSourceIds } }),
+                        body: JSON.stringify({ json: { clubId, embeddingIds, sessionSourceIds, importBatchId } }),
                       })
 
                       console.log('[Delete Import] Response:', res.status)
