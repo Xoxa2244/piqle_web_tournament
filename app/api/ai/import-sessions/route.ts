@@ -742,9 +742,31 @@ export async function DELETE(req: Request) {
       DELETE FROM member_health_snapshots WHERE club_id = ${clubId}::uuid
     `;
 
-    console.log(`[Delete Import] Club ${clubId}: ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${embeddingsDeleted} embeddings, ${healthDeleted} health snapshots deleted`);
+    // 5. Delete placeholder users created by import (and their club follower records)
+    const followersDeleted = await prisma.$executeRaw`
+      DELETE FROM club_followers
+      WHERE club_id = ${clubId}::uuid
+        AND user_id IN (SELECT id FROM users WHERE email LIKE '%@placeholder.iqsport.ai')
+    `;
 
-    return Response.json({ sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted });
+    // 6. Delete AI conversations
+    await prisma.$executeRaw`
+      DELETE FROM ai_messages WHERE conversation_id IN (
+        SELECT id FROM ai_conversations WHERE club_id = ${clubId}::uuid
+      )
+    `.catch(() => 0);
+    await prisma.$executeRaw`
+      DELETE FROM ai_conversations WHERE club_id = ${clubId}::uuid
+    `.catch(() => 0);
+
+    // 7. Delete AI recommendation logs
+    await prisma.$executeRaw`
+      DELETE FROM ai_recommendation_logs WHERE "clubId" = ${clubId}::uuid
+    `.catch(() => 0);
+
+    console.log(`[Delete Import] Club ${clubId}: ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${embeddingsDeleted} embeddings, ${healthDeleted} health, ${followersDeleted} placeholder users deleted`);
+
+    return Response.json({ sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted, followersDeleted });
   } catch (err) {
     console.error('[Delete Import] Error:', err);
     return Response.json({ error: 'Failed to delete' }, { status: 500 });

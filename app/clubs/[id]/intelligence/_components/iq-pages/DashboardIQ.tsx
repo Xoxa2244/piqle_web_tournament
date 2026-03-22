@@ -1381,32 +1381,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     if (!clubId) return
                     setDeleting(true)
                     try {
-                      // Delete all club embeddings, sessions, and bookings from this import
-                      const embeddingIds = deleteConfirm.upload.embeddingIds || []
-                      const sessionSourceIds = deleteConfirm.upload.sessionSourceIds || []
-                      const importBatchId = deleteConfirm.upload.importBatchId || undefined
+                      console.log('[Delete Import] Deleting all data for club', clubId)
 
-                      console.log('[Delete Import] Starting...', { importBatchId, embeddingIds: embeddingIds.length, sessionSourceIds: sessionSourceIds.length })
-
-                      // Use tRPC batch format
-                      const res = await fetch('/api/trpc/intelligence.deleteImport', {
-                        method: 'POST',
+                      const res = await fetch('/api/ai/import-sessions', {
+                        method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ json: { clubId, embeddingIds, sessionSourceIds, importBatchId } }),
+                        body: JSON.stringify({ clubId }),
                       })
 
-                      console.log('[Delete Import] Response:', res.status)
-
-                      if (!res.ok) {
-                        // Fallback: direct SQL cleanup via separate endpoint
-                        console.warn('[Delete Import] tRPC failed, trying direct cleanup...')
-                        // Delete embeddings
-                        await fetch('/api/ai/import-sessions', {
-                          method: 'DELETE',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ clubId }),
-                        }).catch(() => {})
-                      }
+                      const result = await res.json().catch(() => ({}))
+                      console.log('[Delete Import] Result:', result)
 
                       setDeleteConfirm(null)
                       window.location.reload()
