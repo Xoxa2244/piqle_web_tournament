@@ -103,12 +103,17 @@ export async function importSessionsToDB(
     }
   })
 
-  // Collect all unique player names from CSV
+  // Collect all unique player names from CSV (filter garbage)
+  const GARBAGE_NAMES = new Set(['confirmed', 'cancelled', 'canceled', 'no-show', 'noshow', 'pending',
+    'beginner', 'intermediate', 'advanced', 'all levels', 'open play', 'clinic', 'drill', 'league', 'social'])
   const allPlayerNames = new Set<string>()
   for (const s of sessions) {
     for (const name of s.playerNames) {
       const trimmed = name.trim()
-      if (trimmed && !nameToUser.has(trimmed.toLowerCase())) {
+      if (!trimmed || trimmed.length < 2 || trimmed.length > 50) continue
+      if (GARBAGE_NAMES.has(trimmed.toLowerCase())) continue
+      if (/^\d+(\.\d+)?$/.test(trimmed)) continue // pure numbers
+      if (!nameToUser.has(trimmed.toLowerCase())) {
         allPlayerNames.add(trimmed)
       }
     }
@@ -223,7 +228,7 @@ export async function importSessionsToDB(
     batch.forEach((row, j) => {
       const offset = j * 13
       valuesClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13})`
+        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13}::float)`
       )
       params.push(
         row.id,
