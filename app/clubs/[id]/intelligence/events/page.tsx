@@ -205,7 +205,7 @@ export default function EventGeneratorPage() {
   // isCsvPlayer is now imported from shared component
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SessionsIQ initialTab="events" clubId={clubId} />
+  if (brand.key === 'iqsport') return <SessionsIQ initialTab="events" clubId={clubId} aiEvents={aiEvents} eventsList={eventsListData} isLoading={isLoading} />
 
   // ── Loading ──
   if (isLoading) return <ListSkeleton rows={4} />

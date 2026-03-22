@@ -147,7 +147,7 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 /*            SLOT FILLER PAGE                    */
 /* ============================================= */
-export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, sendInvites, clubId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; sendInvites?: any; clubId?: string } = {}) {
+export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null } = {}) {
   const { isDark } = useTheme();
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
@@ -291,7 +291,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
               <motion.div
                 key={slot.id}
                 whileHover={{ scale: 1.01 }}
-                onClick={() => { setSelectedSlot(slot.id); }}
+                onClick={() => { setSelectedSlot(slot.id); if (onSelectSession && slot.id !== selectedSessionId) onSelectSession(slot.id); }}
                 className="cursor-pointer rounded-2xl p-4 transition-all"
                 style={{
                   background: active ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "var(--card-bg)",
@@ -378,6 +378,24 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           </div>
 
           <div className="space-y-2">
+            {loadingRecs && activeSlot.matches.length === 0 && (
+              <div className="space-y-2 animate-pulse">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                    <div className="w-10 h-10 rounded-full" style={{ background: "var(--card-border)" }} />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 rounded w-32" style={{ background: "var(--card-border)" }} />
+                      <div className="h-3 rounded w-48" style={{ background: "var(--card-border)" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!loadingRecs && activeSlot.matches.length === 0 && (
+              <div className="text-center py-8 text-sm" style={{ color: "var(--t3)" }}>
+                Click a slot to load AI player recommendations
+              </div>
+            )}
             {activeSlot.matches.map((player, i) => {
               const isSent = !!sentInvites[player.id];
               return (

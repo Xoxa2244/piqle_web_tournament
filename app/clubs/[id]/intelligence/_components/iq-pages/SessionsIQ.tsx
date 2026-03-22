@@ -248,7 +248,7 @@ function StatusBadge({ status }: { status: string }) {
 /* ============================================= */
 /*              SESSIONS PAGE                     */
 /* ============================================= */
-export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoading, clubId }: { initialTab?: "analytics" | "list" | "events"; calendarData?: any; isLoading?: boolean; clubId?: string } = {}) {
+export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoading, clubId, aiEvents, eventsList }: { initialTab?: "analytics" | "list" | "events"; calendarData?: any; isLoading?: boolean; clubId?: string; aiEvents?: any[]; eventsList?: any } = {}) {
   const { isDark } = useTheme();
   const [view, setView] = useState<"list" | "analytics">(initialTab === "events" ? "analytics" : (initialTab || "analytics"));
   const [searchQuery, setSearchQuery] = useState("");

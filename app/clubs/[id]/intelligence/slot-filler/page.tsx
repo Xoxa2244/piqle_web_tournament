@@ -198,7 +198,7 @@ export default function SlotFillerPage() {
     })
   }
 
-  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={loadingDashboard || (!!selectedSessionId && loadingRecs)} sendInvites={sendInvitesMutationRaw} clubId={clubId} />
+  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={loadingDashboard || (!!selectedSessionId && loadingRecs)} loadingRecs={loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} onSelectSession={(id: string) => { setSelectedSessionId(id); setInviteSent(false); setSelectedUserIds(new Set()); }} selectedSessionId={selectedSessionId} />
 
   // ── Session selector state ──
   if (!selectedSessionId) {
