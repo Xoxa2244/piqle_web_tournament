@@ -16,6 +16,9 @@ const client =
  * to our webhook endpoint at /api/webhooks/twilio, allowing us to
  * track delivered/failed/undelivered statuses in AIRecommendationLog.
  */
+/** Validate E.164 phone format: +{1-3 digits}{4-14 digits} */
+const E164_RE = /^\+[1-9]\d{4,14}$/
+
 export async function sendSms({
   to,
   body,
@@ -26,6 +29,12 @@ export async function sendSms({
   /** AIRecommendationLog.id — enables delivery status tracking via webhook */
   logId?: string
 }): Promise<{ status: string; sid: string }> {
+  // Validate phone number format before attempting to send
+  if (!E164_RE.test(to)) {
+    console.warn(`[SMS] Invalid phone number format (not E.164): ${to}`)
+    return { status: 'invalid_phone', sid: '' }
+  }
+
   if (!client || (!fromNumber && !messagingServiceSid)) {
     console.log(`[SMS MOCK] To: ${to}\n  Body: ${body}`)
     return { status: 'mock', sid: 'mock_sid' }

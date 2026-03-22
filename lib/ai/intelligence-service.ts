@@ -188,28 +188,46 @@ export async function getSlotFillerRecommendations(
     },
   });
 
-  // Build member data with preferences (DB or inferred) and histories
+  // Batch-load preferences and bookings to avoid N+1 queries
+  const memberUserIds = clubMembers.map((cf: any) => cf.user.id)
+
+  const [allPreferences, allBookingsRaw] = await Promise.all([
+    prisma.userPlayPreference.findMany({
+      where: { userId: { in: memberUserIds }, clubId: session.clubId },
+    }),
+    prisma.playSessionBooking.findMany({
+      where: { userId: { in: memberUserIds } },
+      select: {
+        userId: true, status: true, bookedAt: true,
+        playSession: { select: { date: true, startTime: true, format: true } },
+      },
+      orderBy: { bookedAt: 'desc' },
+    }),
+  ])
+
+  const prefMap = new Map(allPreferences.map((p: any) => [p.userId, p]))
+
+  // Group bookings by userId
+  const bookingsByUser = new Map<string, typeof allBookingsRaw>()
+  for (const b of allBookingsRaw) {
+    if (!bookingsByUser.has(b.userId)) bookingsByUser.set(b.userId, [])
+    bookingsByUser.get(b.userId)!.push(b)
+  }
+
+  // Build member data with batch-loaded preferences and histories
   const membersWithData = await Promise.all(
     clubMembers.map(async (cf: any) => {
-      const preference = await prisma.userPlayPreference.findUnique({
-        where: { userId_clubId: { userId: cf.user.id, clubId: session.clubId } },
-      });
-      const history = await buildBookingHistory(prisma, cf.user.id);
-      // Load bookings with session data for preference inference
-      const bookingsRaw = await prisma.playSessionBooking.findMany({
-        where: { userId: cf.user.id },
-        select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
-        orderBy: { bookedAt: 'desc' },
-        take: 50,
-      });
-      const bookingsForInference: BookingWithSession[] = bookingsRaw
+      const preference = prefMap.get(cf.user.id) || null
+      const history = await buildBookingHistory(prisma, cf.user.id)
+      const userBookings = (bookingsByUser.get(cf.user.id) || []).slice(0, 50)
+      const bookingsForInference: BookingWithSession[] = userBookings
         .filter((b: any) => b.playSession)
-        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }));
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
       return {
         member: toMemberData(cf.user),
         preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
         history,
-      };
+      }
     })
   );
 
@@ -765,6 +783,7 @@ async function buildCsvReactivationData(
       format: s.format,
       skillLevel: s.skillLevel || 'ALL_LEVELS',
       maxPlayers: s.capacity,
+      priceInCents: s.pricePerPlayer ? Math.round(s.pricePerPlayer * 100) : null,
       confirmedCount: s.registered,
       status: 'SCHEDULED',
       spotsRemaining: s.capacity - s.registered,

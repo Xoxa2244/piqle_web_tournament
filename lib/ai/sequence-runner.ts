@@ -37,6 +37,7 @@ export interface ActiveSequence {
     id: string
     userId: string
     clubId: string
+    sessionId: string | null
     type: string
     createdAt: Date
     variantId: string | null
@@ -143,6 +144,7 @@ export async function findActiveSequences(
       id: true,
       userId: true,
       clubId: true,
+      sessionId: true,
       type: true,
       createdAt: true,
       variantId: true,
@@ -492,6 +494,14 @@ export async function processSequences(
       continue // Skip non-campaign sequences
     }
 
+    // Guard against concurrent processing: skip if latest step was created less than 1 hour ago
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    if (sequence.latestStep.createdAt > oneHourAgo && sequence.latestStep.sequenceStep > 0) {
+      summary.waits++
+      summary.decisions.push({ userId, sequenceType, action: 'wait', reason: 'Recent step detected (concurrency guard)' })
+      continue
+    }
+
     // Check exit conditions
     const exitCheck = await checkExitConditions(prisma, sequence, sequenceType)
     if (exitCheck.shouldExit) {
@@ -502,6 +512,28 @@ export async function processSequences(
         action: `exit:${exitCheck.exitType}`,
         reason: exitCheck.reason || 'Exit condition met',
       })
+      // Log exit event for audit trail
+      try {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId: sequence.rootLog.clubId,
+            userId,
+            sessionId: sequence.rootLog.sessionId,
+            type: sequence.rootLog.type,
+            channel: 'system',
+            status: 'exited',
+            reasoning: {
+              exitType: exitCheck.exitType,
+              exitReason: exitCheck.reason,
+              sequenceType,
+              parentLogId: sequence.rootLog.id,
+              sequenceStep: sequence.latestStep.sequenceStep,
+            },
+          },
+        })
+      } catch (err) {
+        console.warn(`[Sequence] Failed to log exit event:`, (err as Error).message?.slice(0, 80))
+      }
       continue
     }
 

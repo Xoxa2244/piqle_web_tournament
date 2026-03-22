@@ -23,6 +23,7 @@ function mockSequence(overrides: {
     id: 'root-log-id',
     userId: 'user-1',
     clubId: 'club-1',
+    sessionId: null,
     type: 'CHECK_IN',
     createdAt: rootCreatedAt,
     variantId: 'checkin_pattern',

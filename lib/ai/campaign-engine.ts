@@ -224,11 +224,21 @@ async function executeSequenceStep(
     ? `Only ${matched.spotsLeft} spot${matched.spotsLeft !== 1 ? 's' : ''} left`
     : ''
 
+  // Compute days since last activity from booking history
+  const lastConfirmedBooking = await prisma.playSessionBooking.findFirst({
+    where: { userId, status: 'CONFIRMED' },
+    orderBy: { bookedAt: 'desc' },
+    select: { bookedAt: true },
+  })
+  const daysSinceLastActivity = lastConfirmedBooking
+    ? Math.floor((Date.now() - new Date(lastConfirmedBooking.bookedAt).getTime()) / 86400000)
+    : null
+
   const templateValues: Record<string, string> = {
     name: firstName,
     club: club.name,
     session: matched?.session.title || 'our next session',
-    days: '0', // TODO: compute from latest snapshot
+    days: String(daysSinceLastActivity ?? 0),
     proof: socialProofText,
     spots: spotsText,
   }
@@ -237,7 +247,7 @@ async function executeSequenceStep(
   let message = generateSequenceMessage(action.messageType!, {
     memberName,
     clubName: club.name,
-    daysSinceLastActivity: null,
+    daysSinceLastActivity,
     suggestedSessionTitle: matched?.session.title,
     suggestedSessionDate: matched ? formatSessionDate(new Date(matched.session.date)) : undefined,
     suggestedSessionTime: matched ? formatSessionTime(matched.session.startTime, matched.session.endTime) : undefined,
@@ -361,6 +371,15 @@ async function executeSequenceStep(
     }
   } else if (action.action === 'send_sms') {
     try {
+      // Anti-spam check for SMS
+      const smsSpamCheck = await checkAntiSpam({
+        prisma, userId, clubId, type: sequence.rootLog.type as any,
+      })
+      if (!smsSpamCheck.allowed) {
+        console.warn(`[Campaign] SMS blocked by anti-spam for user ${userId}`)
+        return false
+      }
+
       const { sendSms, isTwilioConfigured } = await import('../sms')
       // Try to get user's phone
       const phone = user.phone
@@ -682,6 +701,23 @@ export async function runHealthCampaign(
     if (!spamCheck.allowed) {
       transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: outreachType, status: 'skipped' })
       messagesSkipped++
+      // Log anti-spam rejection for audit trail
+      try {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId,
+            userId: member.memberId,
+            type: outreachType,
+            channel: 'system',
+            status: 'blocked',
+            reasoning: {
+              reason: 'anti_spam',
+              spamCheckReason: spamCheck.reason,
+              riskTransition: { from: prevRisk, to: newRisk },
+            },
+          },
+        })
+      } catch { /* non-critical */ }
       continue
     }
 
@@ -944,7 +980,7 @@ export async function runHealthCampaign(
       })
       snapshotsSaved++
     } catch (err) {
-      // Ignore individual snapshot failures
+      console.warn(`[Campaign] Snapshot failed for ${member.memberId}:`, (err as Error).message?.slice(0, 80))
     }
   }
 
