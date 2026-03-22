@@ -18,6 +18,12 @@ import { useBrand } from '@/components/BrandProvider'
 import { AdvisorIQ } from '../_components/iq-pages/AdvisorIQ'
 
 export default function AIAdvisorPage() {
+  const brand = useBrand()
+  const params = useParams()
+  const clubId = params.id as string
+
+  if (brand.key === 'iqsport') return <AdvisorIQ clubId={clubId} />
+
   return <PiqleAdvisorPage />
 }
 
