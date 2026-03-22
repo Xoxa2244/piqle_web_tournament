@@ -18,15 +18,21 @@ export async function middleware(req: NextRequest) {
   if (brandKey === 'iqsport') {
     const pathname = req.nextUrl.pathname
 
-    // demo.iqsport.ai → auto-append ?demo=true for intelligence routes
-    if (host.startsWith('demo.') && (pathname.includes('/intelligence') || pathname === '/onboarding') && !req.nextUrl.searchParams.has('demo')) {
-      const url = req.nextUrl.clone()
-      url.searchParams.set('demo', 'true')
-      return NextResponse.redirect(url)
+    // demo.iqsport.ai → redirect root to intelligence dashboard with demo mode
+    if (host.startsWith('demo.')) {
+      if (pathname === '/' || pathname === '/clubs') {
+        return NextResponse.redirect(new URL('/clubs/demo-club/intelligence?demo=true', req.url))
+      }
+      // Auto-append ?demo=true for intelligence routes
+      if ((pathname.includes('/intelligence') || pathname === '/onboarding') && !req.nextUrl.searchParams.has('demo')) {
+        const url = req.nextUrl.clone()
+        url.searchParams.set('demo', 'true')
+        return NextResponse.redirect(url)
+      }
     }
 
     // Redirect root to /clubs (IQ brand skips onboarding page)
-    if (pathname === '/' || pathname === '/onboarding') {
+    if (!host.startsWith('demo.') && (pathname === '/' || pathname === '/onboarding')) {
       return NextResponse.redirect(new URL('/clubs', req.url))
     }
 
