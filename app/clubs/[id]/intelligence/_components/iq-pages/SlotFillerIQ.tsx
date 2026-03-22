@@ -159,6 +159,8 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   const ref = useRef(null);
 
   const activeSlot = displaySlots.find((s) => s.id === effectiveSlot) || displaySlots[0] || null;
+  // Detect when we're loading recommendations for a DIFFERENT slot than what's displayed
+  const isLoadingNewSlot = !!loadingRecs && !!selectedSessionId && recommendations?.session?.id !== selectedSessionId;
 
   /* --- Loading state --- */
   if (externalLoading) {
@@ -378,7 +380,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           </div>
 
           <div className="space-y-2">
-            {loadingRecs && activeSlot.matches.length === 0 && (
+            {(isLoadingNewSlot || (loadingRecs && activeSlot.matches.length === 0)) && (
               <div className="space-y-2 animate-pulse">
                 {[1,2,3,4].map(i => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
@@ -391,7 +393,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                 ))}
               </div>
             )}
-            {!loadingRecs && activeSlot.matches.length === 0 && (
+            {!loadingRecs && !isLoadingNewSlot && activeSlot.matches.length === 0 && (
               <div className="text-center py-8 text-sm" style={{ color: "var(--t3)" }}>
                 Click a slot to load AI player recommendations
               </div>

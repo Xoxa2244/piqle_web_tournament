@@ -132,7 +132,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clubId,
-          messages: [...messages.map(m => ({ role: m.role as string, content: m.content })), { role: 'user', content: text }],
+          messages: [...messages.map(m => ({ role: m.role as string, content: m.content, parts: [{ type: 'text', text: m.content }] })), { role: 'user', content: text, parts: [{ type: 'text', text }] }],
           conversationId,
         }),
       });

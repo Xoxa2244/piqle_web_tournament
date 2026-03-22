@@ -74,7 +74,7 @@ export function useSlotFillerRecommendations(sessionId: string | null, limit: nu
       limit,
       ...(sessionId?.startsWith('csv-') && clubId ? { clubId } : {}),
     },
-    { enabled: !!sessionId && !isDemo }
+    { enabled: !!sessionId && !isDemo, staleTime: 2 * 60 * 1000 }
   )
 
   if (isDemo && sessionId) {

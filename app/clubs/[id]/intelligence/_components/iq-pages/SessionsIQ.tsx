@@ -265,16 +265,44 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
   // Use real data — no mock fallback for real clubs
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
-  const realSessions = useMemo(() => mapCalendarToSessions(calendarData), [calendarData]);
+
+  // Cache last successful data to prevent empty-state flash on re-fetch
+  const lastGoodData = useRef<{ sessions: any[]; weekly: any[]; formats: any[]; courts: any[]; hourly: any[] }>({ sessions: [], weekly: [], formats: [], courts: [], hourly: [] });
+
+  const realSessions = useMemo(() => {
+    const mapped = mapCalendarToSessions(calendarData);
+    if (mapped.length > 0) lastGoodData.current.sessions = mapped;
+    return mapped.length > 0 ? mapped : lastGoodData.current.sessions;
+  }, [calendarData]);
   const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
   const hasData = displaySessions.length > 0;
-  const derivedWeekly = useMemo(() => deriveWeeklyData(calendarData), [calendarData]);
+
+  const derivedWeekly = useMemo(() => {
+    const d = deriveWeeklyData(calendarData);
+    if (d.length > 0) lastGoodData.current.weekly = d;
+    return d.length > 0 ? d : lastGoodData.current.weekly;
+  }, [calendarData]);
   const displayWeekly = derivedWeekly.length > 0 ? derivedWeekly : (isDemo ? weeklyData : []);
-  const derivedFormats = useMemo(() => deriveFormatBreakdown(calendarData), [calendarData]);
+
+  const derivedFormats = useMemo(() => {
+    const d = deriveFormatBreakdown(calendarData);
+    if (d.length > 0) lastGoodData.current.formats = d;
+    return d.length > 0 ? d : lastGoodData.current.formats;
+  }, [calendarData]);
   const displayFormats = derivedFormats.length > 0 ? derivedFormats : (isDemo ? formatBreakdown : []);
-  const derivedCourts = useMemo(() => deriveCourtStats(calendarData), [calendarData]);
+
+  const derivedCourts = useMemo(() => {
+    const d = deriveCourtStats(calendarData);
+    if (d.length > 0) lastGoodData.current.courts = d;
+    return d.length > 0 ? d : lastGoodData.current.courts;
+  }, [calendarData]);
   const displayCourts = derivedCourts.length > 0 ? derivedCourts : (isDemo ? courtStats : []);
-  const derivedHourly = useMemo(() => deriveHourlyPattern(calendarData), [calendarData]);
+
+  const derivedHourly = useMemo(() => {
+    const d = deriveHourlyPattern(calendarData);
+    if (d.length > 0) lastGoodData.current.hourly = d;
+    return d.length > 0 ? d : lastGoodData.current.hourly;
+  }, [calendarData]);
   const displayHourly = derivedHourly.length > 0 ? derivedHourly : (isDemo ? hourlyPattern : []);
 
   const filteredSessions = useMemo(() => {
