@@ -30,7 +30,7 @@ export function useDashboard(clubId: string) {
 
   const query = trpc.intelligence.getDashboard.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -50,7 +50,7 @@ export function useDashboardV2(clubId: string, dateFrom?: string, dateTo?: strin
 
   const query = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, dateFrom, dateTo },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -94,7 +94,7 @@ export function useReactivationCandidates(clubId: string, inactivityDays: number
 
   const query = trpc.intelligence.getReactivationCandidates.useQuery(
     { clubId, inactivityDays, limit: 20 },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -114,7 +114,7 @@ export function useListSessions(clubId: string) {
 
   const query = trpc.intelligence.listSessions.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -134,7 +134,7 @@ export function useEventRecommendations(clubId: string) {
 
   const query = trpc.intelligence.getEventRecommendations.useQuery(
     { clubId, limit: 5 },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -191,7 +191,7 @@ export function useSessionsCalendar(clubId: string) {
 
   const query = trpc.intelligence.getSessionsCalendar.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -211,7 +211,7 @@ export function useMemberHealth(clubId: string) {
 
   const query = trpc.intelligence.getMemberHealth.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -292,7 +292,7 @@ export function useCampaignAnalytics(clubId: string, days: number = 30) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getCampaignAnalytics.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return { data: mockCampaignAnalytics, isLoading: false, error: null } as any
@@ -318,7 +318,7 @@ export function useVariantAnalytics(clubId: string, days: number = 30) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getVariantAnalytics.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return { data: mockVariantAnalytics, isLoading: false, error: null } as any
@@ -331,7 +331,7 @@ export function useSequenceAnalytics(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getSequenceAnalytics.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return { data: mockSequenceAnalytics, isLoading: false, error: null } as any
@@ -344,7 +344,7 @@ export function useWeeklySummary(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getWeeklySummary.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return {
@@ -382,7 +382,7 @@ export function useRevenueAnalytics(clubId: string, days = 30) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getRevenueAnalytics.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -392,7 +392,7 @@ export function useCampaignList(clubId: string, days = 90) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getCampaignList.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -402,7 +402,7 @@ export function useOccupancyHeatmap(clubId: string, days = 90) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getOccupancyHeatmap.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -412,7 +412,7 @@ export function useMemberGrowth(clubId: string, months = 6) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getMemberGrowth.useQuery(
     { clubId, months },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -422,7 +422,7 @@ export function useChurnTrend(clubId: string, months = 6) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getChurnTrend.useQuery(
     { clubId, months },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -432,7 +432,7 @@ export function useEventsList(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getEventsList.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -442,7 +442,7 @@ export function useUploadHistory(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getUploadHistory.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -452,7 +452,7 @@ export function usePricingOpportunities(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getPricingOpportunities.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -462,7 +462,7 @@ export function useRevenueForecast(clubId: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getRevenueForecast.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query

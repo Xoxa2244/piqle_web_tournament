@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef } from "react";
-import { motion, useInView } from "motion/react";
+import { motion } from "motion/react";
 import {
   DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   CreditCard, PieChart as PieIcon, BarChart3, Zap, Target,
@@ -151,7 +151,6 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
   // Use real data when available, mocks only in demo mode

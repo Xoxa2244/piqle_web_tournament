@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef } from "react";
-import { motion, useInView, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Puzzle, Users, Clock, MapPin, Star, Zap, Send, Check,
   ChevronDown, Filter, ArrowUpRight, CalendarDays, Target,
@@ -152,13 +152,13 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
   const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
   const displaySlots = realSlots.length > 0 ? realSlots : (isDemo ? emptySlots : []);
-  const [selectedSlot, setSelectedSlot] = useState(displaySlots[0]?.id || '');
+  // Use selectedSessionId from parent as source of truth, fallback to first slot
+  const effectiveSlot = selectedSessionId || displaySlots[0]?.id || '';
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
 
-  const activeSlot = displaySlots.find((s) => s.id === selectedSlot) || displaySlots[0] || null;
+  const activeSlot = displaySlots.find((s) => s.id === effectiveSlot) || displaySlots[0] || null;
 
   /* --- Loading state --- */
   if (externalLoading) {
@@ -286,12 +286,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         <div className="space-y-3">
           <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Empty Slots</h3>
           {displaySlots.map((slot) => {
-            const active = slot.id === selectedSlot;
+            const active = slot.id === effectiveSlot;
             return (
               <motion.div
                 key={slot.id}
                 whileHover={{ scale: 1.01 }}
-                onClick={() => { setSelectedSlot(slot.id); if (onSelectSession && slot.id !== selectedSessionId) onSelectSession(slot.id); }}
+                onClick={() => { if (onSelectSession) onSelectSession(slot.id); }}
                 className="cursor-pointer rounded-2xl p-4 transition-all"
                 style={{
                   background: active ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "var(--card-bg)",

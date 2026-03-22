@@ -1,6 +1,16 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, Component, type ReactNode } from 'react'
+
+class ErrorBoundaryRevenue extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
+  constructor(props: { children: ReactNode }) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error) { console.error('[Revenue Crash]', error); }
+  render() {
+    if (this.state.hasError) return <div className="p-8 text-center"><h2 className="text-lg font-bold text-red-400">Revenue page crashed</h2><p className="text-sm mt-2 text-gray-400">{this.state.error?.message}</p></div>;
+    return this.props.children;
+  }
+}
 import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -61,7 +71,11 @@ export default function RevenueIntelligencePage() {
   const brand = useBrand()
   if (brand.key === 'iqsport') {
     if (isLoading) return <RevenueIQ isLoading={true} clubId={clubId} />
-    return <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={false} clubId={clubId} />
+    return (
+      <ErrorBoundaryRevenue>
+        <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={false} clubId={clubId} />
+      </ErrorBoundaryRevenue>
+    )
   }
 
   if (isLoading) return <DashboardSkeleton />
