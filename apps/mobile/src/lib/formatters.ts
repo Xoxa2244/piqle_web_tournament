@@ -15,6 +15,43 @@ export const formatDateTime = (value?: string | Date | null) => {
   return dateTimeFormatter.format(new Date(value))
 }
 
+/** Дата/время старта ивента в таймзоне турнира (как на вебе в списке чатов). */
+export const formatEventStartInTimezone = (value?: string | Date | null, timeZone?: string | null) => {
+  const date = value ? new Date(value) : null
+  if (!date || Number.isNaN(date.getTime())) return 'TBD'
+  const tz = String(timeZone || '').trim()
+  try {
+    if (tz) {
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: tz,
+      }).format(date)
+    }
+  } catch {
+    // fall through
+  }
+  return dateTimeFormatter.format(date)
+}
+
+/** Короткая подпись таймзоны (как на вебе). */
+export const getEventTimezoneLabel = (timeZone?: string | null) => {
+  const tz = String(timeZone || '').trim()
+  if (!tz) return 'Local time'
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'short',
+      hour: '2-digit',
+    }).formatToParts(new Date())
+    return parts.find((p) => p.type === 'timeZoneName')?.value ?? tz
+  } catch {
+    return tz
+  }
+}
+
 export const formatDate = (value?: string | Date | null) => {
   if (!value) return 'TBD'
   return dateFormatter.format(new Date(value))

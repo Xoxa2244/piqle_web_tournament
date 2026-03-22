@@ -1,10 +1,11 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
+import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
@@ -142,23 +143,29 @@ export default function ProfileTab() {
   const api = trpc as any
   const utils = trpc.useUtils() as any
   const [showDuprConnect, setShowDuprConnect] = useState(false)
+  const [duprInfoMessage, setDuprInfoMessage] = useState<{ title: string; body: string } | null>(null)
   const linkDupr = api.user.linkDupr.useMutation({
     onSuccess: async () => {
       await utils.user.getProfile.invalidate()
       setShowDuprConnect(false)
-      Alert.alert('DUPR connected', 'Your DUPR account is now linked.')
+      setDuprInfoMessage({ title: 'DUPR connected', body: 'Your DUPR account is now linked.' })
     },
     onError: (err: any) => {
-      Alert.alert('DUPR connect failed', err?.message || 'Unable to connect DUPR right now.')
+      setShowDuprConnect(false)
+      setDuprInfoMessage({
+        title: 'DUPR connect failed',
+        body: err?.message || 'Unable to connect DUPR right now.',
+      })
     },
   })
 
   const startDuprConnect = () => {
     if (!DUPR_CLIENT_KEY) {
-      Alert.alert(
-        'DUPR not configured',
-        'Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.'
-      )
+      setDuprInfoMessage({
+        title: 'DUPR not configured',
+        body:
+          'Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.',
+      })
       return
     }
     setShowDuprConnect(true)
@@ -342,66 +349,63 @@ export default function ProfileTab() {
             </View>
           </View>
 
-          <Modal
-            animationType="slide"
-            transparent
-            visible={showDuprConnect}
-            onRequestClose={() => setShowDuprConnect(false)}
+          <AppBottomSheet
+            open={showDuprConnect}
+            onClose={() => setShowDuprConnect(false)}
+            title="Connect DUPR"
+            titleAccessory={
+              <Pressable onPress={() => setShowDuprConnect(false)} hitSlop={12}>
+                <Feather name="x" size={20} color={palette.textMuted} />
+              </Pressable>
+            }
           >
-            <View style={styles.duprModalOverlay}>
-              <View style={styles.duprModal}>
-                <View style={styles.duprModalHeader}>
-                  <Text style={styles.duprModalTitle}>Connect DUPR</Text>
-                  <Pressable
-                    onPress={() => setShowDuprConnect(false)}
-                    style={({ pressed }) => [styles.duprModalClose, pressed && { opacity: 0.85 }]}
-                  >
-                    <Feather name="x" size={18} color={palette.textMuted} />
-                  </Pressable>
-                </View>
+            {duprLoginUrl ? (
+              <WebView
+                style={{ height: 420 }}
+                source={{ uri: duprLoginUrl }}
+                originWhitelist={['*']}
+                injectedJavaScript={duprBridgeJs}
+                onMessage={(event) => {
+                  try {
+                    const payload = JSON.parse(event.nativeEvent.data)
+                    const data = payload?.data ?? {}
+                    const numericId = data.id || data.userId
+                    const duprId = data.duprId || data.dupr_id
+                    const accessToken = data.userToken || data.accessToken || data.access_token
+                    const refreshToken = data.refreshToken || data.refresh_token
+                    const stats = data.stats || {
+                      rating: data.rating,
+                      singlesRating: data.singlesRating || data.singles_rating,
+                      doublesRating: data.doublesRating || data.doubles_rating,
+                      name: data.name,
+                    }
 
-                {duprLoginUrl ? (
-                  <WebView
-                    source={{ uri: duprLoginUrl }}
-                    originWhitelist={['*']}
-                    injectedJavaScript={duprBridgeJs}
-                    onMessage={(event) => {
-                      try {
-                        const payload = JSON.parse(event.nativeEvent.data)
-                        const data = payload?.data ?? {}
-                        const numericId = data.id || data.userId
-                        const duprId = data.duprId || data.dupr_id
-                        const accessToken = data.userToken || data.accessToken || data.access_token
-                        const refreshToken = data.refreshToken || data.refresh_token
-                        const stats = data.stats || {
-                          rating: data.rating,
-                          singlesRating: data.singlesRating || data.singles_rating,
-                          doublesRating: data.doublesRating || data.doubles_rating,
-                          name: data.name,
-                        }
-
-                        if ((duprId || numericId) && accessToken && refreshToken) {
-                          linkDupr.mutate({
-                            duprId: duprId ? String(duprId) : undefined,
-                            numericId: numericId ? Number(numericId) : undefined,
-                            accessToken: String(accessToken),
-                            refreshToken: String(refreshToken),
-                            stats,
-                          })
-                        }
-                      } catch {}
-                    }}
-                  />
-                ) : (
-                  <View style={{ padding: spacing.lg }}>
-                    <Text style={{ color: palette.textMuted }}>
-                      DUPR client key is missing.
-                    </Text>
-                  </View>
-                )}
+                    if ((duprId || numericId) && accessToken && refreshToken) {
+                      linkDupr.mutate({
+                        duprId: duprId ? String(duprId) : undefined,
+                        numericId: numericId ? Number(numericId) : undefined,
+                        accessToken: String(accessToken),
+                        refreshToken: String(refreshToken),
+                        stats,
+                      })
+                    }
+                  } catch {}
+                }}
+              />
+            ) : (
+              <View style={{ paddingVertical: spacing.md }}>
+                <Text style={{ color: palette.textMuted }}>DUPR client key is missing.</Text>
               </View>
-            </View>
-          </Modal>
+            )}
+          </AppBottomSheet>
+
+          <AppBottomSheet
+            open={Boolean(duprInfoMessage)}
+            onClose={() => setDuprInfoMessage(null)}
+            title={duprInfoMessage?.title}
+            subtitle={duprInfoMessage?.body}
+            footer={<AppInfoFooter onPress={() => setDuprInfoMessage(null)} />}
+          />
 
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>Recent Tournaments</Text>
@@ -654,40 +658,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     alignSelf: 'flex-start',
     fontVariant: ['tabular-nums'],
-  },
-  duprModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 10, 10, 0.28)',
-    justifyContent: 'flex-end',
-  },
-  duprModal: {
-    height: '85%',
-    backgroundColor: palette.background,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    overflow: 'hidden',
-  },
-  duprModalHeader: {
-    height: 54,
-    paddingHorizontal: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: palette.border,
-    backgroundColor: palette.surfaceOverlay,
-  },
-  duprModalTitle: {
-    color: palette.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  duprModalClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sectionBlock: {
     gap: spacing.md,

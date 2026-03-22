@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
 import { Feather } from '@expo/vector-icons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ChatMessageBubble } from '../../../../src/components/ChatPreviewCard'
+import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
+import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
+import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
+import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { ActionButton, EmptyState, IconButton, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { trpc } from '../../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../../src/lib/theme'
+import { palette } from '../../../../src/lib/theme'
 import { useAuth } from '../../../../src/providers/AuthProvider'
 
 export default function ClubChatScreen() {
@@ -19,7 +22,10 @@ export default function ClubChatScreen() {
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
-  const insets = useSafeAreaInsets()
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const scrollRef = useRef<ScrollView>(null)
+  const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
+  const isAdmin = Boolean(myChatClubsQuery.data?.find((c) => c.id === clubId)?.isAdmin)
 
   const messagesQuery = trpc.clubChat.list.useQuery(
     { clubId, limit: 100 },
@@ -50,6 +56,12 @@ export default function ClubChatScreen() {
     markRead.mutate({ clubId })
   }, [clubId, isAuthenticated])
 
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [messagesQuery.data?.length])
+
   if (!isAuthenticated) {
     return (
       <Screen title={clubName} subtitle="Sign in to access club messages.">
@@ -68,11 +80,11 @@ export default function ClubChatScreen() {
 
   return (
     <Screen
+      chatAmbient
       left={<IconButton icon={<Feather name="arrow-left" size={20} color={palette.text} />} onPress={() => router.back()} />}
       title={clubName}
       subtitle="Club Chat"
       scroll={false}
-      contentStyle={{ paddingHorizontal: 24, paddingTop: 0, paddingBottom: 0 }}
     >
       {messagesQuery.error ? (
         <SurfaceCard tone="soft">
@@ -80,73 +92,75 @@ export default function ClubChatScreen() {
         </SurfaceCard>
       ) : null}
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[styles.messages, isEmpty && styles.messagesEmpty]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 2 : 0}
       >
-        {isEmpty ? (
-          <View style={{ gap: spacing.sm }}>
-            <Text style={styles.emptyTitle}>No messages yet</Text>
-            <EmptyState title="" body="Start the conversation or wait for the next club update." />
-          </View>
-        ) : null}
+        <ChatThreadRoot
+          ref={scrollRef}
+          contentContainerStyle={[styles.messages, isEmpty && styles.messagesEmpty]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {isEmpty ? (
+            <EmptyState
+              title="No messages yet"
+              body="Start the conversation or wait for the next club update."
+            />
+          ) : (
+            <ChatThreadMessageList
+              messages={messages as ChatMessage[]}
+              currentUserId={user?.id}
+              canDelete={(m) =>
+                Boolean((user?.id && m.userId === user?.id) || isAdmin) && !m.isDeleted
+              }
+              onRequestDelete={(m) => setDeleteTargetId(m.id)}
+              deleteDisabled={deleteMessage.isPending}
+            />
+          )}
+        </ChatThreadRoot>
 
-        {messages.map((message) => (
-          <View key={message.id} style={{ gap: 8 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: message.userId === user?.id ? 'flex-end' : 'flex-start',
-                gap: 10,
-              }}
-            >
-              {message.userId === user?.id && !message.isDeleted ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Delete message"
-                  disabled={deleteMessage.isPending}
-                  onPress={() => deleteMessage.mutate({ messageId: message.id })}
-                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-                >
-                  <Feather name="trash-2" size={16} color={palette.textMuted} />
-                </Pressable>
-              ) : null}
-
-              <ChatMessageBubble
-                author={message.user?.name || 'Player'}
-                text={message.isDeleted ? 'Message removed' : message.text || ''}
-                createdAt={message.createdAt}
-                isMine={message.userId === user?.id}
-              />
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={[styles.composer, { paddingBottom: 16 + insets.bottom }]}>
-        <TextInput
+        <ChatComposer
           value={draft}
           onChangeText={setDraft}
           placeholder="Message club..."
-          placeholderTextColor={palette.textMuted}
-          style={styles.composerInput}
+          onSend={() => sendMessage.mutate({ clubId, text: draft.trim() })}
+          sendDisabled={sendMessage.isPending || draft.trim().length === 0}
           multiline={false}
         />
-        <Pressable
-          style={({ pressed }) => [styles.sendBtn, pressed && { opacity: 0.9 }]}
-          disabled={sendMessage.isPending || draft.trim().length === 0}
-          onPress={() => sendMessage.mutate({ clubId, text: draft.trim() })}
-        >
-          <Feather name="send" size={18} color={palette.white} />
-        </Pressable>
-      </View>
+      </KeyboardAvoidingView>
+
+      <AppBottomSheet
+        open={Boolean(deleteTargetId)}
+        onClose={() => setDeleteTargetId(null)}
+        title="Delete this message?"
+        subtitle="This message will be permanently removed."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
+            onCancel={() => setDeleteTargetId(null)}
+            onConfirm={() => {
+              if (!deleteTargetId) return
+              void deleteMessage
+                .mutateAsync({ messageId: deleteTargetId })
+                .then(() => setDeleteTargetId(null))
+                .catch(() => setDeleteTargetId(null))
+            }}
+            confirmLoading={deleteMessage.isPending}
+          />
+        }
+      />
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
+  keyboardWrap: {
+    flex: 1,
+  },
   error: {
     color: palette.danger,
     lineHeight: 20,
@@ -159,41 +173,7 @@ const styles = StyleSheet.create({
   messagesEmpty: {
     flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingBottom: 0,
-  },
-  emptyTitle: {
-    color: '#6B7280',
-    fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 0,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: palette.border,
-    backgroundColor: palette.background,
-  },
-  composerInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: radius.pill,
-    paddingHorizontal: 16,
-    backgroundColor: '#EEF0F2',
-    color: palette.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.primary,
   },
 })

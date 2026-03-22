@@ -1,6 +1,15 @@
 import { Feather } from '@expo/vector-icons'
-import { useState } from 'react'
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useState } from 'react'
+import {
+  Image,
+  Linking,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -12,8 +21,10 @@ import {
   LoadingBlock,
   Pill,
   SectionTitle,
+  SegmentedControl,
   SurfaceCard,
 } from '../../../src/components/ui'
+import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { buildWebUrl } from '../../../src/lib/config'
@@ -21,6 +32,7 @@ import { formatDateRange, formatDateTime, formatLocation } from '../../../src/li
 import { trpc } from '../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 
 const formatTournamentFormat = (format: string) => {
   switch (format) {
@@ -62,13 +74,20 @@ export default function ClubDetailScreen() {
     { enabled: Boolean(clubId) && canViewMembers }
   )
   const toggleFollow = trpc.club.toggleFollow.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
+    onSuccess: () => {
+      void Promise.all([
+        utils.club.get.invalidate({ id: clubId as string }),
+        utils.club.list.invalidate(),
+        utils.club.listMyChatClubs.invalidate(),
+      ])
     },
   })
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.club.get.invalidate({ id: clubId }), utils.club.list.invalidate()])
+    onSuccess: () => {
+      void Promise.all([
+        utils.club.get.invalidate({ id: clubId as string }),
+        utils.club.list.invalidate(),
+      ])
     },
   })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation({
@@ -107,6 +126,14 @@ export default function ClubDetailScreen() {
   const [announcementForm, setAnnouncementForm] = useState({ title: '', body: '' })
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
   const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
+  const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
+  const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
+
+  const onRefreshClubDetail = useCallback(async () => {
+    await Promise.all([clubQuery.refetch(), membersQuery.refetch()])
+  }, [clubQuery, membersQuery])
+
+  const pullToRefresh = usePullToRefresh(onRefreshClubDetail)
 
   if (clubQuery.isLoading) {
     return (
@@ -133,26 +160,16 @@ export default function ClubDetailScreen() {
   const heroSubtitle = `${formatLocation([club.city, club.state])}  ·  ${club.followersCount} members`
 
   const Segment = () => (
-    <View style={styles.segment}>
-      {([
-        { key: 'feed', label: 'Feed' },
-        { key: 'events', label: 'Events' },
-        { key: 'members', label: 'Members' },
-      ] as const).map((item) => {
-        const active = tab === item.key
-        return (
-          <Pressable
-            key={item.key}
-            onPress={() => setTab(item.key)}
-            style={[styles.segmentItem, active && styles.segmentItemActive]}
-          >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-              {item.label}
-            </Text>
-          </Pressable>
-        )
-      })}
-    </View>
+    <SegmentedControl
+      value={tab}
+      onChange={setTab}
+      trackStyle={styles.segmentTrack}
+      options={[
+        { value: 'feed', label: 'Feed' },
+        { value: 'events', label: 'Events' },
+        { value: 'members', label: 'Members' },
+      ]}
+    />
   )
 
   const Hero = () => (
@@ -194,6 +211,15 @@ export default function ClubDetailScreen() {
         >
           <Feather name="share-2" size={18} color={palette.white} />
         </Pressable>
+        {isAuthenticated && club.isFollowing && !club.isAdmin ? (
+          <Pressable
+            onPress={() => setLeaveClubSheetOpen(true)}
+            style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
+            accessibilityLabel="Leave club"
+          >
+            <Feather name="log-out" size={18} color={palette.white} />
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.heroBottom}>
@@ -204,6 +230,97 @@ export default function ClubDetailScreen() {
         </View>
       </View>
     </View>
+  )
+
+  const MembershipActions = () => {
+    const id = String(clubId ?? '')
+    if (!id) return null
+    if (isAuthenticated && club.isFollowing && !club.isAdmin) {
+      return null
+    }
+    return (
+      <View style={styles.membershipRow}>
+        {!isAuthenticated ? (
+          <ActionButton label="Sign in to join" variant="secondary" onPress={() => router.push('/sign-in')} />
+        ) : club.isAdmin ? (
+          <Text style={styles.membershipHint}>You manage this club</Text>
+        ) : club.isJoinPending ? (
+          <ActionButton
+            label="Cancel join request"
+            variant="secondary"
+            loading={cancelJoinRequest.isPending}
+            onPress={() => cancelJoinRequest.mutate({ clubId: id })}
+          />
+        ) : (
+          <ActionButton
+            label={club.joinPolicy === 'APPROVAL' ? 'Request to join' : 'Join club'}
+            loading={toggleFollow.isPending}
+            onPress={() => toggleFollow.mutate({ clubId: id })}
+          />
+        )}
+      </View>
+    )
+  }
+
+  const clubSheets = (
+    <>
+      <AppBottomSheet
+        open={leaveClubSheetOpen}
+        onClose={() => setLeaveClubSheetOpen(false)}
+        title="Leave club?"
+        subtitle="You will lose access to club chat and members-only content until you join again."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel="Leave club"
+            onCancel={() => setLeaveClubSheetOpen(false)}
+            onConfirm={() => {
+              const cid = String(clubId ?? '')
+              if (!cid) return
+              toggleFollow.mutate(
+                { clubId: cid },
+                {
+                  onSuccess: () => setLeaveClubSheetOpen(false),
+                }
+              )
+            }}
+            confirmLoading={toggleFollow.isPending}
+          />
+        }
+      />
+      <AppBottomSheet
+        open={Boolean(announcementToDelete)}
+        onClose={() => setAnnouncementToDelete(null)}
+        title="Delete announcement?"
+        subtitle="This announcement will be permanently removed."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel="Delete"
+            onCancel={() => setAnnouncementToDelete(null)}
+            onConfirm={() => {
+              const aid = announcementToDelete
+              if (!aid) return
+              deleteAnnouncement.mutate(
+                { clubId, announcementId: aid },
+                {
+                  onSuccess: () => {
+                    setAnnouncementToDelete(null)
+                    if (editingAnnouncementId === aid) {
+                      setEditingAnnouncementId(null)
+                      setEditingAnnouncementForm({ title: '', body: '' })
+                    }
+                  },
+                }
+              )
+            }}
+            confirmLoading={deleteAnnouncement.isPending}
+          />
+        }
+      />
+    </>
   )
 
   if (tab === 'members') {
@@ -248,9 +365,19 @@ export default function ClubDetailScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={pullToRefresh.refreshing}
+              onRefresh={pullToRefresh.onRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+            />
+          }
+          bounces
         >
           <Hero />
           <Segment />
+          <MembershipActions />
           <View style={styles.membersSearchWrap}>
             <InputField
               value={membersSearch}
@@ -420,6 +547,7 @@ export default function ClubDetailScreen() {
             </View>
           )}
         </ScrollView>
+        {clubSheets}
       </SafeAreaView>
     )
   }
@@ -427,10 +555,23 @@ export default function ClubDetailScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <TopBar />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={pullToRefresh.refreshing}
+            onRefresh={pullToRefresh.onRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+          />
+        }
+        bounces
+      >
         <Hero />
 
         <Segment />
+        <MembershipActions />
 
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
@@ -572,32 +713,7 @@ export default function ClubDetailScreen() {
                                 <Feather name="edit-2" size={16} color={palette.primary} />
                               </Pressable>
                               <Pressable
-                                onPress={() => {
-                                  Alert.alert(
-                                    'Delete announcement?',
-                                    'This announcement will be permanently removed.',
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      {
-                                        text: 'Delete',
-                                        style: 'destructive',
-                                        onPress: () => {
-                                          deleteAnnouncement.mutate(
-                                            { clubId, announcementId: announcement.id },
-                                            {
-                                              onSuccess: () => {
-                                                if (editingAnnouncementId === announcement.id) {
-                                                  setEditingAnnouncementId(null)
-                                                  setEditingAnnouncementForm({ title: '', body: '' })
-                                                }
-                                              },
-                                            }
-                                          )
-                                        },
-                                      },
-                                    ]
-                                  )
-                                }}
+                                onPress={() => setAnnouncementToDelete(announcement.id)}
                                 disabled={deleteAnnouncement.isPending}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
@@ -712,6 +828,7 @@ export default function ClubDetailScreen() {
 
         {tab === 'members' ? null : null}
       </ScrollView>
+      {clubSheets}
     </SafeAreaView>
   )
 }
@@ -785,31 +902,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  segment: {
+  segmentTrack: {
     marginTop: spacing.md,
     marginHorizontal: spacing.lg,
-    flexDirection: 'row',
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: 999,
-    padding: 4,
-    gap: 4,
   },
-  segmentItem: {
-    flex: 1,
-    minHeight: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
+  membershipRow: {
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
-  segmentItemActive: {
-    backgroundColor: palette.surface,
-  },
-  segmentLabel: {
+  membershipHint: {
     color: palette.textMuted,
-    fontWeight: '600',
-  },
-  segmentLabelActive: {
-    color: palette.text,
+    fontSize: 14,
+    paddingVertical: spacing.sm,
   },
   tabContent: {
     marginTop: spacing.md,

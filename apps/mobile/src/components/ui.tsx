@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { palette, radius, spacing } from '../lib/theme'
+import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from './chatAmbient'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 
 type ScreenProps = PropsWithChildren<{
@@ -24,9 +25,20 @@ type ScreenProps = PropsWithChildren<{
   title?: string
   subtitle?: string
   contentStyle?: StyleProp<ViewStyle>
+  /** Полноэкранный едва заметный градиент (чаты): под заголовком, областью сообщений и полем ввода */
+  chatAmbient?: boolean
 }>
 
-export const Screen = ({ children, scroll = true, left, right, title, subtitle, contentStyle }: ScreenProps) => {
+export const Screen = ({
+  children,
+  scroll = true,
+  left,
+  right,
+  title,
+  subtitle,
+  contentStyle,
+  chatAmbient = false,
+}: ScreenProps) => {
   const content = (
     <>
       {title ? (
@@ -43,19 +55,41 @@ export const Screen = ({ children, scroll = true, left, right, title, subtitle, 
     </>
   )
 
+  const body =
+    scroll ? (
+      <ScrollView
+        contentContainerStyle={[styles.content, contentStyle]}
+        showsVerticalScrollIndicator={false}
+      >
+        {content}
+      </ScrollView>
+    ) : (
+      <View
+        style={[
+          chatAmbient ? styles.chatScreenBody : styles.content,
+          styles.flexContent,
+          contentStyle,
+        ]}
+      >
+        {content}
+      </View>
+    )
+
+  if (!chatAmbient) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        {body}
+      </SafeAreaView>
+    )
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {scroll ? (
-        <ScrollView
-          contentContainerStyle={[styles.content, contentStyle]}
-          showsVerticalScrollIndicator={false}
-        >
-          {content}
-        </ScrollView>
-      ) : (
-        <View style={[styles.content, styles.flexContent, contentStyle]}>{content}</View>
-      )}
-    </SafeAreaView>
+    <View style={styles.chatAmbientRoot}>
+      <ChatAmbientBackground />
+      <SafeAreaView style={styles.safeAreaChatAmbientFill} edges={['top', 'bottom']}>
+        <View style={styles.chatAmbientForeground}>{body}</View>
+      </SafeAreaView>
+    </View>
   )
 }
 
@@ -150,12 +184,16 @@ export const ActionButton = ({
   onPress?: () => void
   disabled?: boolean
   loading?: boolean
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'neutral'
   icon?: ReactNode
 }) => {
   const pressedColor =
     variant === 'secondary'
       ? palette.secondaryPressed
+      : variant === 'outline'
+      ? palette.secondaryPressed
+      : variant === 'neutral'
+      ? '#9ca3af'
       : variant === 'danger'
       ? '#eb0067'
       : variant === 'ghost'
@@ -164,12 +202,21 @@ export const ActionButton = ({
   const baseStyle =
     variant === 'secondary'
       ? { backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }
+      : variant === 'outline'
+      ? { backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }
+      : variant === 'neutral'
+      ? { backgroundColor: '#cbd5e1', borderWidth: 0, borderColor: 'transparent' }
       : variant === 'danger'
       ? { backgroundColor: palette.danger }
       : variant === 'ghost'
       ? { backgroundColor: 'transparent', borderWidth: 0, borderColor: 'transparent' }
       : { backgroundColor: palette.primary }
-  const textColor = variant === 'secondary' || variant === 'ghost' ? palette.text : palette.white
+  const textColor =
+    variant === 'secondary' || variant === 'ghost' || variant === 'outline'
+      ? palette.text
+      : variant === 'neutral'
+      ? '#1f2937'
+      : palette.white
 
   return (
     <Pressable
@@ -287,10 +334,11 @@ export const IconButton = ({
 }
 
 export const EmptyState = ({ title, body }: { title: string; body: string }) => {
+  const hasTitle = Boolean(title?.trim())
   return (
     <SurfaceCard tone="soft">
-      <Text style={styles.emptyTitle}>{title}</Text>
-      <Text style={styles.emptyBody}>{body}</Text>
+      {hasTitle ? <Text style={styles.emptyTitle}>{title}</Text> : null}
+      <Text style={[styles.emptyBody, !hasTitle && styles.emptyBodyLead]}>{body}</Text>
     </SurfaceCard>
   )
 }
@@ -376,11 +424,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.background,
   },
+  chatAmbientRoot: {
+    flex: 1,
+    backgroundColor: CHAT_AMBIENT_FALLBACK,
+  },
+  safeAreaChatAmbientFill: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  chatAmbientForeground: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
     gap: spacing.md,
+  },
+  /** Экран чата (scroll=false): ровно 16px от левого/правого края экрана */
+  chatScreenBody: {
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
   },
   flexContent: {
     flex: 1,
@@ -528,6 +595,9 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     lineHeight: 20,
   },
+  emptyBodyLead: {
+    marginTop: 0,
+  },
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -610,5 +680,7 @@ const styles = StyleSheet.create({
   },
 })
 
+export { SegmentedControl } from './SegmentedControl'
+export type { SegmentedOption } from './SegmentedControl'
 
 

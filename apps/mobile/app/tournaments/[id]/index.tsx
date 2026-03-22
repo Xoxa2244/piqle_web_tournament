@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Alert,
   Image,
   Linking,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
+import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
 import {
   ActionButton,
   AvatarBadge,
@@ -27,12 +28,15 @@ import {
 } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
+import { fetchWithTimeout } from '../../../src/lib/apiFetch'
 import { buildApiUrl, buildWebUrl } from '../../../src/lib/config'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
+import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 
 const longDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -94,7 +98,7 @@ type StatusMeta = {
 }
 
 const fetchTournamentBoardById = async (id: string) => {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     buildApiUrl(`/api/trpc/public.getBoardById?input=${encodeURIComponent(JSON.stringify({ id }))}`)
   )
   const payload = await response.json()
@@ -107,7 +111,7 @@ const fetchTournamentBoardById = async (id: string) => {
 }
 
 const fetchFullTournamentById = async (id: string) => {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     buildApiUrl(`/api/trpc/public.getTournamentById?input=${encodeURIComponent(JSON.stringify({ id }))}`)
   )
   const payload = await response.json()
@@ -188,6 +192,8 @@ export default function TournamentDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
   const [isFavorite, setIsFavorite] = useState(false)
+  const [leaveTournamentSheetOpen, setLeaveTournamentSheetOpen] = useState(false)
+  const [paymentErrorMessage, setPaymentErrorMessage] = useState<string | null>(null)
 
   const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
   const cachedTournament = useMemo(
@@ -220,10 +226,7 @@ export default function TournamentDetailScreen() {
     { tournamentId },
     { enabled: protectedQueriesEnabled }
   )
-  const accessQuery = api.tournament.get.useQuery(
-    { id: tournamentId },
-    { enabled: protectedQueriesEnabled, retry: false }
-  )
+  const accessQuery = useTournamentAccessInfo(tournamentId, protectedQueriesEnabled)
   const myInvitationQuery = api.tournamentInvitation.getMineByTournament.useQuery(
     { tournamentId },
     { enabled: protectedQueriesEnabled }
@@ -312,12 +315,39 @@ export default function TournamentDetailScreen() {
     utils.registration.getMyStatuses,
   ])
 
+  const onRefreshTournamentDetail = useCallback(async () => {
+    await Promise.all([
+      tournamentQuery.refetch(),
+      fullTournamentQuery.refetch(),
+      myStatusQuery.refetch(),
+      accessQuery.refetch(),
+      myInvitationQuery.refetch(),
+    ])
+  }, [accessQuery, fullTournamentQuery, myInvitationQuery, myStatusQuery, tournamentQuery])
+
+  const pullToRefresh = usePullToRefresh(onRefreshTournamentDetail)
+
   if (tournamentQuery.isLoading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
         <TopBar />
         <View style={styles.loadingWrap}>
           <LoadingBlock label="Loading tournament..." />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (tournamentQuery.isError) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <TopBar />
+        <View style={[styles.loadingWrap, { gap: 16 }]}>
+          <EmptyState
+            title="Could not load tournament"
+            body="Check your network and EXPO_PUBLIC_API_URL, then try again."
+          />
+          <ActionButton label="Try again" onPress={() => tournamentQuery.refetch()} />
         </View>
       </SafeAreaView>
     )
@@ -409,24 +439,6 @@ export default function TournamentDetailScreen() {
     ? (((fullTournamentQuery.data as any)?.divisions ?? []) as any[])
     : ((tournament.divisions ?? []) as any[])
 
-  const handleLeaveTournament = () => {
-    Alert.alert(
-      'Leave tournament?',
-      'Your registration will be cancelled and your slot will be released.',
-      [
-        {
-          text: 'Keep spot',
-          style: 'cancel',
-        },
-        {
-          text: 'Leave Tournament',
-          style: 'destructive',
-          onPress: () => cancelRegistration.mutate({ tournamentId }),
-        },
-      ]
-    )
-  }
-
   const handlePayNow = async () => {
     try {
       const result = await createCheckout.mutateAsync({
@@ -437,7 +449,7 @@ export default function TournamentDetailScreen() {
         await Linking.openURL(result.url)
       }
     } catch (error: any) {
-      Alert.alert('Payment unavailable', error?.message || 'Unable to open checkout right now.')
+      setPaymentErrorMessage(error?.message || 'Unable to open checkout right now.')
     }
   }
 
@@ -453,7 +465,7 @@ export default function TournamentDetailScreen() {
     }
 
     if (canLeaveTournament) {
-      handleLeaveTournament()
+      setLeaveTournamentSheetOpen(true)
       return
     }
 
@@ -493,6 +505,15 @@ export default function TournamentDetailScreen() {
       <ScrollView
         contentContainerStyle={[styles.scrollContent, !shouldShowStickyCta && styles.scrollContentNoCta]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={pullToRefresh.refreshing}
+            onRefresh={pullToRefresh.onRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+          />
+        }
+        bounces
       >
         <View style={styles.hero}>
           {tournament.image ? (
@@ -922,6 +943,33 @@ export default function TournamentDetailScreen() {
           </SafeAreaView>
         </View>
       ) : null}
+
+      <AppBottomSheet
+        open={leaveTournamentSheetOpen}
+        onClose={() => setLeaveTournamentSheetOpen(false)}
+        title="Leave tournament?"
+        subtitle="Your registration will be cancelled and your slot will be released."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Keep spot"
+            confirmLabel="Leave Tournament"
+            onCancel={() => setLeaveTournamentSheetOpen(false)}
+            onConfirm={() => {
+              setLeaveTournamentSheetOpen(false)
+              cancelRegistration.mutate({ tournamentId })
+            }}
+            confirmLoading={cancelRegistration.isPending}
+          />
+        }
+      />
+      <AppBottomSheet
+        open={Boolean(paymentErrorMessage)}
+        onClose={() => setPaymentErrorMessage(null)}
+        title="Payment unavailable"
+        subtitle={paymentErrorMessage ?? ''}
+        footer={<AppInfoFooter onPress={() => setPaymentErrorMessage(null)} />}
+      />
     </SafeAreaView>
   )
 }

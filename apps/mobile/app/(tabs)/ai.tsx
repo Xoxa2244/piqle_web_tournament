@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-
+import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../src/components/AppBottomSheet'
+import { ChatComposer } from '../../src/components/ChatComposer'
+import { ChatThreadRoot } from '../../src/components/ChatThreadRoot'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { trpc } from '../../src/lib/trpc'
@@ -98,7 +99,6 @@ export default function AITab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
-  const insets = useSafeAreaInsets()
   const scrollRef = useRef<ScrollView | null>(null)
   const initialMessages = useMemo(() => {
     const history = (historyQuery.data ?? []) as Array<{
@@ -135,6 +135,8 @@ export default function AITab() {
     },
   ])
   const [input, setInput] = useState('')
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null)
   const chatMutation = trpc.aiCoach.chat.useMutation({
     onError: (err) => {
       setMessages((prev) => [
@@ -200,40 +202,33 @@ export default function AITab() {
 
   const resetChat = () => {
     if (resetPending) return
-    Alert.alert(
-      'Reset AI Coach?',
-      'This will delete your AI Coach chat history and saved memory for onboarding questions. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    setResetConfirmOpen(true)
+  }
+
+  const performResetChat = async () => {
+    try {
+      await resetMutation.mutateAsync()
+      setResetConfirmOpen(false)
+      setInput('')
+      setMessages([
         {
-          text: resetPending ? 'Resetting...' : 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await resetMutation.mutateAsync()
-              setInput('')
-              setMessages([
-                {
-                  id: 'welcome',
-                  role: 'assistant',
-                  content: WELCOME_MESSAGE,
-                  time: 'now',
-                },
-              ])
-              await historyQuery.refetch()
-              scrollToBottom(false)
-            } catch (err: any) {
-              Alert.alert('Reset failed', err?.message || 'Unable to reset right now. Please try again.')
-            }
-          },
+          id: 'welcome',
+          role: 'assistant',
+          content: WELCOME_MESSAGE,
+          time: 'now',
         },
-      ]
-    )
+      ])
+      await historyQuery.refetch()
+      scrollToBottom(false)
+    } catch (err: any) {
+      setResetConfirmOpen(false)
+      setResetErrorMessage(err?.message || 'Unable to reset right now. Please try again.')
+    }
   }
 
   if (!isAuthenticated) {
     return (
-      <PageLayout>
+      <PageLayout chatAmbient>
         <View style={styles.unauthWrap}>
           <Text style={styles.unauthBody}>Sign in to chat with your pickleball AI coach.</Text>
           <Pressable
@@ -249,6 +244,7 @@ export default function AITab() {
 
   return (
     <PageLayout
+      chatAmbient
       scroll={false}
       contentStyle={styles.screen}
       topBarTitleAccessory={
@@ -267,13 +263,12 @@ export default function AITab() {
       }
     >
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
-        <ScrollView
+        <ChatThreadRoot
           ref={scrollRef}
-          style={{ flex: 1 }}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollToBottom(false)}
@@ -365,40 +360,43 @@ export default function AITab() {
               </View>
             </View>
           ) : null}
-        </ScrollView>
+        </ChatThreadRoot>
 
-        <View style={[styles.composerWrap, { paddingBottom: Math.max(spacing.md, insets.bottom + 10) }]}>
-          <View style={styles.composerRow}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ask me anything..."
-              placeholderTextColor={palette.textMuted}
-              style={styles.composerInput}
-              returnKeyType="send"
-              onSubmitEditing={() => void send()}
-            />
-            <Pressable
-              onPress={() => void send()}
-              disabled={!input.trim() || typing}
-              style={({ pressed }) => [
-                styles.sendBtn,
-                (!input.trim() || typing) && styles.sendBtnDisabled,
-                pressed && input.trim() && !typing && { opacity: 0.92 },
-              ]}
-            >
-              <OptionalLinearGradient
-                colors={['#a855f7', '#7c3aed', '#4f46e5']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.sendGradient}
-              >
-                <Feather name="send" size={18} color={palette.white} />
-              </OptionalLinearGradient>
-            </Pressable>
-          </View>
-        </View>
+        <ChatComposer
+          value={input}
+          onChangeText={setInput}
+          placeholder="Ask me anything..."
+          onSend={() => void send()}
+          sendDisabled={!input.trim() || typing}
+          paddingHorizontal={16}
+          returnKeyType="send"
+          onSubmitEditing={() => void send()}
+        />
       </KeyboardAvoidingView>
+
+      <AppBottomSheet
+        open={resetConfirmOpen}
+        onClose={() => setResetConfirmOpen(false)}
+        title="Reset AI Coach?"
+        subtitle="This will delete your AI Coach chat history and saved memory for onboarding questions. This cannot be undone."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={resetPending ? 'Resetting...' : 'Reset'}
+            onCancel={() => setResetConfirmOpen(false)}
+            onConfirm={() => void performResetChat()}
+            confirmLoading={resetPending}
+          />
+        }
+      />
+      <AppBottomSheet
+        open={Boolean(resetErrorMessage)}
+        onClose={() => setResetErrorMessage(null)}
+        title="Reset failed"
+        subtitle={resetErrorMessage ?? ''}
+        footer={<AppInfoFooter onPress={() => setResetErrorMessage(null)} />}
+      />
     </PageLayout>
   )
 }
@@ -418,7 +416,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 16,
     paddingTop: spacing.lg,
     paddingBottom: 120,
     gap: spacing.lg,
@@ -533,44 +531,6 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontSize: 14,
     fontWeight: '600',
-  },
-  composerWrap: {
-    borderTopWidth: 1,
-    borderTopColor: palette.border,
-    backgroundColor: palette.surfaceOverlay,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  composerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  composerInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    backgroundColor: palette.surfaceElevated,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    color: palette.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-  sendBtnDisabled: {
-    opacity: 0.55,
-  },
-  sendGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   unauthWrap: {
     padding: spacing.lg,

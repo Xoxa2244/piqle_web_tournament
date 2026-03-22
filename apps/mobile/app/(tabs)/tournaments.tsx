@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons'
-import { useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { Dimensions, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
+import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
 import {
@@ -11,12 +12,14 @@ import {
   LoadingBlock,
   SearchField,
   SectionTitle,
+  SegmentedControl,
   SurfaceCard,
 } from '../../src/components/ui'
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 type CardTone = 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 
@@ -164,13 +167,13 @@ export default function TournamentsTab() {
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([])
   const [maxFee, setMaxFee] = useState<number | null>(null)
   const api = trpc as any
-  const utils = trpc.useUtils() as any
+  const utils = (trpc as any).useUtils()
 
   const tournamentsQuery = api.public.listBoards.useQuery()
-  const tournamentIds = useMemo(
-    () => ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id),
-    [tournamentsQuery.data]
-  )
+  const tournamentIds = useMemo(() => {
+    const ids = ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id as string)
+    return [...new Set(ids)].sort()
+  }, [tournamentsQuery.data])
   const registrationStatusesQuery = api.registration.getMyStatuses.useQuery(
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
@@ -320,6 +323,7 @@ export default function TournamentsTab() {
   const invitationItems = ((notificationsQuery.data?.items ?? []) as any[]).filter(
     (item) => item.type === 'TOURNAMENT_INVITATION'
   )
+  const tournamentsInitialLoading = tournamentsQuery.isLoading && tournamentsQuery.data === undefined
   const isStatusContextLoading =
     mode === 'registered' &&
     isAuthenticated &&
@@ -350,6 +354,22 @@ export default function TournamentsTab() {
     setMaxFee(null)
   }
 
+  const onRefreshTournaments = useCallback(async () => {
+    const boards = await tournamentsQuery.refetch()
+    const freshIds = ((boards.data ?? []) as any[]).map((item: any) => item.id as string).sort()
+    const parallel: Promise<unknown>[] = [
+      accessibleTournamentsQuery.refetch(),
+      eventChatsQuery.refetch(),
+      isAuthenticated ? notificationsQuery.refetch() : Promise.resolve(),
+    ]
+    if (isAuthenticated && freshIds.length > 0) {
+      parallel.push(utils.registration.getMyStatuses.fetch({ tournamentIds: freshIds }))
+    }
+    await Promise.all(parallel)
+  }, [accessibleTournamentsQuery, eventChatsQuery, isAuthenticated, notificationsQuery, tournamentsQuery, utils])
+
+  const pullToRefresh = usePullToRefresh(onRefreshTournaments)
+
   return (
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
       <View style={styles.page}>
@@ -379,25 +399,30 @@ export default function TournamentsTab() {
               onPress={() => setThisMonthOnly((current) => !current)}
             />
           </ScrollView>
-          <View style={styles.modeSwitch}>
-            {(['upcoming', 'registered', 'past'] as const).map((value) => {
-              const active = mode === value
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => setMode(value)}
-                  style={[styles.modeButton, active && styles.modeButtonActive]}
-                >
-                  <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
-                    {value === 'upcoming' ? 'Upcoming' : value === 'registered' ? 'Registered' : 'Past'}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
+          <SegmentedControl
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'upcoming', label: 'Upcoming' },
+              { value: 'registered', label: 'Registered' },
+              { value: 'past', label: 'Past' },
+            ]}
+          />
         </View>
 
-        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={pullToRefresh.refreshing}
+              onRefresh={pullToRefresh.onRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+            />
+          }
+          bounces
+        >
           {isAuthenticated && invitationItems.length > 0 ? (
             <View style={styles.invitationSection}>
               <SectionTitle
@@ -437,9 +462,16 @@ export default function TournamentsTab() {
             </View>
           ) : null}
 
-          {tournamentsQuery.isLoading || isStatusContextLoading ? <LoadingBlock label="Loading tournaments..." /> : null}
+          {tournamentsQuery.isError ? (
+            <EmptyState
+              title="Could not load tournaments"
+              body="Check your connection and EXPO_PUBLIC_API_URL, then pull down to refresh."
+            />
+          ) : tournamentsInitialLoading || isStatusContextLoading ? (
+            <LoadingBlock label="Loading tournaments..." />
+          ) : null}
 
-          {!tournamentsQuery.isLoading && !isStatusContextLoading && filtered.length === 0 ? (
+          {!tournamentsQuery.isError && !tournamentsInitialLoading && !isStatusContextLoading && filtered.length === 0 ? (
             <EmptyState
               title={mode === 'registered' ? 'No tournaments yet' : 'Nothing matched this search'}
               body={
@@ -452,7 +484,8 @@ export default function TournamentsTab() {
             />
           ) : null}
 
-          {filtered.map((tournament) => {
+          {!tournamentsQuery.isError &&
+            filtered.map((tournament) => {
             const myStatusInfo = registrationStatusesQuery.data?.[tournament.id]
             const myStatus = myStatusInfo?.status
             const permission = eventPermissions[tournament.id]
@@ -486,94 +519,92 @@ export default function TournamentsTab() {
           })}
         </ScrollView>
 
-        <Modal
-          transparent
-          visible={showFilters}
-          animationType="fade"
-          onRequestClose={() => setShowFilters(false)}
-        >
-          <View style={styles.sheetOverlay}>
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setShowFilters(false)} />
-            <View style={styles.sheet}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>Filters</Text>
-              <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.sheetSection}>
-                  <Text style={styles.sheetSectionTitle}>Entry fee</Text>
-                  <View style={styles.sheetChipWrap}>
-                    {[
-                      { label: 'Any', value: null as number | null },
-                      { label: 'Free', value: 0 },
-                      { label: 'Under $50', value: 50 },
-                      { label: 'Under $100', value: 100 },
-                    ].map((option) => {
-                      const active = maxFee === option.value
-                      return (
-                        <Pressable
-                          key={option.label}
-                          onPress={() => setMaxFee(option.value)}
-                          style={[styles.sheetChip, active && styles.sheetChipActive]}
-                        >
-                          <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      )
-                    })}
-                  </View>
-                </View>
-
-                <View style={styles.sheetSection}>
-                  <Text style={styles.sheetSectionTitle}>Format</Text>
-                  <View style={styles.sheetChipWrap}>
-                    {availableFormats.map((value) => {
-                      const active = selectedFormats.includes(value)
-                      return (
-                        <Pressable
-                          key={value}
-                          onPress={() => toggleFormat(value)}
-                          style={[styles.sheetChip, active && styles.sheetChipActive]}
-                        >
-                          <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
-                            {value}
-                          </Text>
-                        </Pressable>
-                      )
-                    })}
-                  </View>
-                </View>
-
-                <View style={styles.sheetSection}>
-                  <Text style={styles.sheetSectionTitle}>Divisions</Text>
-                  <View style={styles.sheetChipWrap}>
-                    {availableDivisions.map((value) => {
-                      const active = selectedDivisions.includes(value)
-                      return (
-                        <Pressable
-                          key={value}
-                          onPress={() => toggleDivision(value)}
-                          style={[styles.sheetChip, active && styles.sheetChipActive]}
-                        >
-                          <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
-                            {value}
-                          </Text>
-                        </Pressable>
-                      )
-                    })}
-                  </View>
-                </View>
-              </ScrollView>
-              <View style={styles.sheetActions}>
-                <View style={{ flex: 1 }}>
-                  <ActionButton label="Clear All" variant="secondary" onPress={clearFilters} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <ActionButton label="Apply Filters" onPress={() => setShowFilters(false)} />
-                </View>
+        <AppBottomSheet
+          open={showFilters}
+          onClose={() => setShowFilters(false)}
+          title="Filters"
+          footer={
+            <View style={styles.sheetActions}>
+              <View style={{ flex: 1 }}>
+                <ActionButton label="Clear All" variant="outline" onPress={clearFilters} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <ActionButton label="Apply Filters" variant="primary" onPress={() => setShowFilters(false)} />
               </View>
             </View>
-          </View>
-        </Modal>
+          }
+        >
+          <ScrollView
+            style={{ maxHeight: Math.round(Dimensions.get('window').height * 0.5) }}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.sheetSection}>
+              <Text style={styles.sheetSectionTitle}>Entry fee</Text>
+              <View style={styles.sheetChipWrap}>
+                {[
+                  { label: 'Any', value: null as number | null },
+                  { label: 'Free', value: 0 },
+                  { label: 'Under $50', value: 50 },
+                  { label: 'Under $100', value: 100 },
+                ].map((option) => {
+                  const active = maxFee === option.value
+                  return (
+                    <Pressable
+                      key={option.label}
+                      onPress={() => setMaxFee(option.value)}
+                      style={[styles.sheetChip, active && styles.sheetChipActive]}
+                    >
+                      <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+
+            <View style={styles.sheetSection}>
+              <Text style={styles.sheetSectionTitle}>Format</Text>
+              <View style={styles.sheetChipWrap}>
+                {availableFormats.map((value) => {
+                  const active = selectedFormats.includes(value)
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => toggleFormat(value)}
+                      style={[styles.sheetChip, active && styles.sheetChipActive]}
+                    >
+                      <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
+                        {value}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+
+            <View style={styles.sheetSection}>
+              <Text style={styles.sheetSectionTitle}>Divisions</Text>
+              <View style={styles.sheetChipWrap}>
+                {availableDivisions.map((value) => {
+                  const active = selectedDivisions.includes(value)
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => toggleDivision(value)}
+                      style={[styles.sheetChip, active && styles.sheetChipActive]}
+                    >
+                      <Text style={[styles.sheetChipLabel, active && styles.sheetChipLabelActive]}>
+                        {value}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            </View>
+          </ScrollView>
+        </AppBottomSheet>
       </View>
     </PageLayout>
   )
@@ -610,7 +641,7 @@ const styles = StyleSheet.create({
   filterChip: {
     minHeight: 36,
     paddingHorizontal: 12,
-    borderRadius: radius.pill,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: 'transparent',
@@ -635,34 +666,6 @@ const styles = StyleSheet.create({
   },
   filterChipLabelActive: {
     color: palette.white,
-  },
-  modeSwitch: {
-    flexDirection: 'row',
-    gap: 4,
-    minHeight: 36,
-    backgroundColor: palette.surfaceMuted,
-    padding: 3,
-    borderRadius: radius.sm,
-  },
-  modeButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 30,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
-  },
-  modeButtonActive: {
-    backgroundColor: palette.surface,
-  },
-  modeLabel: {
-    color: palette.textMuted,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  modeLabelActive: {
-    color: palette.text,
   },
   listContent: {
     paddingBottom: spacing.xxl,
@@ -699,35 +702,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 10, 10, 0.22)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: palette.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-    maxHeight: '80%',
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 42,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: palette.border,
-    marginBottom: spacing.md,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: palette.text,
-  },
   sheetContent: {
-    paddingTop: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.lg,
   },

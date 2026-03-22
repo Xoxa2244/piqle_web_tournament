@@ -1,15 +1,16 @@
 import { Feather } from '@expo/vector-icons'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { ActionButton, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
+import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
 import { formatDateRange, formatLocation } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 const statusLabel = (status?: string | null, hasPrivilegedAccess = false) => {
   if (hasPrivilegedAccess) return 'Admin'
@@ -74,12 +75,14 @@ export default function HomeTab() {
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
+  const utils = (trpc as any).useUtils()
 
   const tournamentsQuery = api.public.listBoards.useQuery()
-  const tournamentIds = useMemo(
-    () => ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id),
-    [tournamentsQuery.data]
-  )
+  /** Стабильный порядок id — иначе меняется ключ getMyStatuses и запросы зацикливаются */
+  const tournamentIds = useMemo(() => {
+    const ids = ((tournamentsQuery.data ?? []) as any[]).map((item) => item.id as string)
+    return [...new Set(ids)].sort()
+  }, [tournamentsQuery.data])
   const registrationStatusesQuery = api.registration.getMyStatuses.useQuery(
     { tournamentIds },
     { enabled: isAuthenticated && tournamentIds.length > 0 }
@@ -95,6 +98,20 @@ export default function HomeTab() {
     string,
     { status?: string; isPaid?: boolean; playerId?: string }
   >
+
+  const onRefreshHome = useCallback(async () => {
+    const boards = await tournamentsQuery.refetch()
+    const freshIds = ((boards.data ?? []) as any[])
+      .map((item: any) => item.id as string)
+      .sort()
+    const tasks: Promise<unknown>[] = [accessibleTournamentsQuery.refetch()]
+    if (isAuthenticated && freshIds.length > 0) {
+      tasks.push(utils.registration.getMyStatuses.fetch({ tournamentIds: freshIds }))
+    }
+    await Promise.all(tasks)
+  }, [accessibleTournamentsQuery, isAuthenticated, tournamentsQuery, utils])
+
+  const pullToRefresh = usePullToRefresh(onRefreshHome)
 
   const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
@@ -151,12 +168,14 @@ export default function HomeTab() {
 
   const myEvents = useMemo(() => allMyEvents.slice(0, 3), [allMyEvents])
 
+  const needRegistrationStatuses = isAuthenticated && tournamentIds.length > 0
+  const boardsInitialLoading = tournamentsQuery.isLoading && tournamentsQuery.data === undefined
+  const accessibleInitialLoading =
+    isAuthenticated && accessibleTournamentsQuery.isLoading && accessibleTournamentsQuery.data === undefined
   const isMyEventsLoading =
-    tournamentsQuery.isLoading ||
-    (myEvents.length === 0 &&
-      isAuthenticated &&
-      tournamentIds.length > 0 &&
-      registrationStatusesQuery.isLoading)
+    boardsInitialLoading ||
+    accessibleInitialLoading ||
+    (needRegistrationStatuses && registrationStatusesQuery.isLoading)
 
   const confirmed = monthlyEvents.filter(
     (item) => statuses[item.id]?.status === 'active'
@@ -172,7 +191,7 @@ export default function HomeTab() {
   const myEventStatusFor = (eventId: string) => statusData[eventId]?.status
 
   return (
-    <PageLayout>
+    <PageLayout pullToRefresh={pullToRefresh}>
       <View style={styles.headerSection}>
         <Text style={styles.welcomeTitle}>Welcome back!</Text>
         <Text style={styles.welcomeSubtitle}>Here&apos;s what&apos;s coming up</Text>
@@ -205,9 +224,16 @@ export default function HomeTab() {
         action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
       />
 
-      {isMyEventsLoading ? <LoadingBlock label="Loading events…" /> : null}
+      {tournamentsQuery.isError ? (
+        <EmptyState
+          title="Could not load events"
+          body="Check your connection and EXPO_PUBLIC_API_URL, then pull down to refresh."
+        />
+      ) : isMyEventsLoading ? (
+        <LoadingBlock label="Loading events…" />
+      ) : null}
 
-      {!isMyEventsLoading && myEvents.length === 0 ? (
+      {!tournamentsQuery.isError && !isMyEventsLoading && myEvents.length === 0 ? (
         <SurfaceCard tone="soft">
           <Text style={styles.emptyEventsTitle}>No upcoming events right now</Text>
           <Text style={styles.emptyEventsBody}>
@@ -219,7 +245,8 @@ export default function HomeTab() {
         </SurfaceCard>
       ) : null}
 
-      {myEvents.map((event) => {
+      {!tournamentsQuery.isError &&
+        myEvents.map((event) => {
         const status = myEventStatusFor(event.id)
         const isOwner = Boolean(user?.id && event.user?.id === user.id)
         const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(event.id))
@@ -272,6 +299,7 @@ export default function HomeTab() {
         )
       })}
 
+      {!tournamentsQuery.isError ? (
       <SurfaceCard tone="hero" style={styles.monthCard}>
         <Text style={styles.monthTitle}>This Month</Text>
         <View style={styles.statsRow}>
@@ -291,6 +319,7 @@ export default function HomeTab() {
           </View>
         </View>
       </SurfaceCard>
+      ) : null}
     </PageLayout>
   )
 }

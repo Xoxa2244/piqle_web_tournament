@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
 import { Feather } from '@expo/vector-icons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { ChatMessageBubble } from '../../../../../src/components/ChatPreviewCard'
+import { AppBottomSheet, AppConfirmActions } from '../../../../../src/components/AppBottomSheet'
+import { ChatComposer } from '../../../../../src/components/ChatComposer'
+import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
+import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
+import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { ActionButton, EmptyState, IconButton, LoadingBlock, Screen } from '../../../../../src/components/ui'
 import { trpc } from '../../../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../../../src/lib/theme'
+import { palette, radius } from '../../../../../src/lib/theme'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
 
 export default function TournamentChatScreen() {
@@ -19,8 +22,9 @@ export default function TournamentChatScreen() {
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
-  const insets = useSafeAreaInsets()
+  const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
@@ -92,6 +96,13 @@ export default function TournamentChatScreen() {
       markRead.mutate({ tournamentId })
     }
   }, [tournamentId, isAuthenticated, activeDivisionId])
+
+  const messagesLen = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []).length
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [messagesLen, activeDivisionId])
 
   if (!isAuthenticated) {
     return (
@@ -194,102 +205,110 @@ export default function TournamentChatScreen() {
 
   return (
     <Screen
+      chatAmbient
       left={<IconButton icon={<Feather name="arrow-left" size={20} color={palette.text} />} onPress={() => router.back()} />}
       title={title}
       subtitle="Tournament Chat"
       scroll={false}
-      contentStyle={{ paddingHorizontal: 24, paddingTop: 0, paddingBottom: 0 }}
     >
       {topicBar}
-      <View style={styles.contextRow}>
-        <View style={styles.contextLeft}>
-          <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={palette.textMuted} />
-          <Text style={styles.contextTitle}>{activeLabel}</Text>
-          <Text style={styles.contextDot}>·</Text>
-          <Feather name="users" size={16} color={palette.textMuted} />
-          <Text style={styles.contextMeta}>Tournament Chat</Text>
-        </View>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={[styles.messages, (isEmpty || messagesLoading) && styles.messagesEmpty]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 2 : 0}
       >
-        {messagesLoading ? (
-          <Text style={styles.emptyTitle}>Loading…</Text>
-        ) : isEmpty ? (
-          <Text style={styles.emptyTitle}>No messages yet</Text>
-        ) : null}
-
-        {!messagesLoading && messages.map((message) => (
-          <View key={message.id} style={{ gap: 8 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: message.userId === user?.id ? 'flex-end' : 'flex-start',
-                gap: 10,
-              }}
-            >
-              {message.userId === user?.id && !message.isDeleted ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Delete message"
-                  disabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
-                  onPress={() =>
-                    activeDivisionId
-                      ? deleteDivisionMessage.mutate({ messageId: message.id })
-                      : deleteMessage.mutate({ messageId: message.id })
-                  }
-                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-                >
-                  <Feather name="trash-2" size={16} color={palette.textMuted} />
-                </Pressable>
-              ) : null}
-
-              <ChatMessageBubble
-                author={message.user?.name || 'Player'}
-                text={message.isDeleted ? 'Message removed' : message.text || ''}
-                createdAt={message.createdAt}
-                isMine={message.userId === user?.id}
-              />
-            </View>
+        <View style={styles.contextRow}>
+          <View style={styles.contextLeft}>
+            <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={palette.textMuted} />
+            <Text style={styles.contextTitle}>{activeLabel}</Text>
+            <Text style={styles.contextDot}>·</Text>
+            <Feather name="users" size={16} color={palette.textMuted} />
+            <Text style={styles.contextMeta}>Tournament Chat</Text>
           </View>
-        ))}
-      </ScrollView>
+        </View>
 
-      {canPost ? (
-        <View style={[styles.composer, { paddingBottom: 16 + insets.bottom }]}>
-          <TextInput
+        <ChatThreadRoot
+          ref={scrollRef}
+          contentContainerStyle={[styles.messages, (isEmpty || messagesLoading) && styles.messagesEmpty]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {messagesLoading ? (
+            <Text style={styles.emptyTitle}>Loading…</Text>
+          ) : isEmpty ? (
+            <EmptyState
+              title="No messages yet"
+              body="Say hi to other players or ask the organizer a question."
+            />
+          ) : (
+            <ChatThreadMessageList
+              messages={messages as ChatMessage[]}
+              currentUserId={user?.id}
+              canDelete={(m) => {
+                const mine = Boolean(user?.id && m.userId === user?.id)
+                return Boolean((mine || canModerate) && !m.isDeleted)
+              }}
+              onRequestDelete={(m) => setDeleteTargetId(m.id)}
+              deleteDisabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
+            />
+          )}
+        </ChatThreadRoot>
+
+        {canPost ? (
+          <ChatComposer
             value={draft}
             onChangeText={setDraft}
             placeholder={`Message ${activeLabel}...`}
-            placeholderTextColor={palette.textMuted}
-            style={styles.composerInput}
-          />
-          <Pressable
-            style={({ pressed }) => [styles.sendBtn, pressed && { opacity: 0.9 }]}
-            disabled={(activeDivisionId ? sendDivisionMessage.isPending : sendMessage.isPending) || draft.trim().length === 0}
-            onPress={() =>
+            onSend={() =>
               activeDivisionId
                 ? sendDivisionMessage.mutate({ divisionId: activeDivisionId, text: draft.trim() })
                 : sendMessage.mutate({ tournamentId, text: draft.trim() })
             }
-          >
-            <Feather name="send" size={18} color={palette.white} />
-          </Pressable>
-        </View>
-      ) : null}
+            sendDisabled={
+              (activeDivisionId ? sendDivisionMessage.isPending : sendMessage.isPending) || draft.trim().length === 0
+            }
+          />
+        ) : null}
+      </KeyboardAvoidingView>
+
+      <AppBottomSheet
+        open={Boolean(deleteTargetId)}
+        onClose={() => setDeleteTargetId(null)}
+        title="Delete this message?"
+        subtitle="This message will be permanently removed."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={
+              (activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending)
+                ? 'Deleting…'
+                : 'Delete'
+            }
+            onCancel={() => setDeleteTargetId(null)}
+            onConfirm={() => {
+              if (!deleteTargetId) return
+              const run = activeDivisionId
+                ? deleteDivisionMessage.mutateAsync({ messageId: deleteTargetId })
+                : deleteMessage.mutateAsync({ messageId: deleteTargetId })
+              void run.then(() => setDeleteTargetId(null)).catch(() => setDeleteTargetId(null))
+            }}
+            confirmLoading={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
+          />
+        }
+      />
     </Screen>
   )
 }
 
 const styles = StyleSheet.create({
+  keyboardWrap: {
+    flex: 1,
+  },
   topicBarWrap: {
-    backgroundColor: palette.background,
-    borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    backgroundColor: 'transparent',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
   },
   topicBar: {
     paddingHorizontal: 0,
@@ -378,40 +397,12 @@ const styles = StyleSheet.create({
   messagesEmpty: {
     flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingBottom: 0,
   },
   emptyTitle: {
     color: '#6B7280',
     fontSize: 18,
     fontWeight: '800',
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 0,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: palette.border,
-    backgroundColor: palette.background,
-  },
-  composerInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    backgroundColor: '#EEF0F2',
-    color: palette.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.primary,
   },
 })

@@ -14,6 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { fromCents, toCents } from '@/lib/payment'
 import { formatUsDateShort, formatUsDateTimeShort, formatUsTimeShort } from '@/lib/dateFormat'
+import type { ChatMessage } from '@/lib/chatMessages'
+import { groupMessagesByDate } from '@/lib/chatMessages'
+import { ChatMessageRows } from '@/components/chat/ChatMessageRows'
+import { chatScrollAreaStyle } from '@/components/chat/chatBackground'
 import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { toUtcIsoFromLocalInput } from '@/lib/timezone'
@@ -1841,112 +1845,26 @@ function ClubChatCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 pt-0">
-        {isLoading && canView ? (
-          <div className="text-sm text-muted-foreground">Loading chat…</div>
-        ) : null}
-        {error && canView ? (
-          <div className="text-sm text-destructive">{error.message}</div>
-        ) : null}
-
         {canView ? (
-          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 px-2 py-1.5 space-y-1">
-            {!isLoading && (!messages || messages.length === 0) ? (
+          <div
+            ref={listRef}
+            className="flex-1 min-h-0 overflow-y-auto rounded-lg px-2 py-1.5"
+            style={chatScrollAreaStyle()}
+          >
+            {isLoading ? (
+              <div className="py-4 text-center text-sm text-muted-foreground">Loading chat…</div>
+            ) : error ? (
+              <div className="p-3 text-sm text-destructive">{error.message}</div>
+            ) : !messages || messages.length === 0 ? (
               <div className="py-4 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
-            ) : (() => {
-              const todayKey = toLocalYmd(new Date())
-              const yesterday = new Date()
-              yesterday.setDate(yesterday.getDate() - 1)
-              const yesterdayKey = toLocalYmd(yesterday)
-              const groups: { dateKey: string; dateLabel: string; list: any[] }[] = []
-              let currentKey = ''
-              for (const m of messages ?? []) {
-                const d = m.createdAt ? new Date(m.createdAt) : new Date()
-                const key = toLocalYmd(d)
-                if (key !== currentKey) {
-                  currentKey = key
-                  groups.push({
-                    dateKey: key,
-                    dateLabel: key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatUsDateShort(d),
-                    list: [],
-                  })
-                }
-                groups[groups.length - 1]!.list.push(m)
-              }
-              return (
-                <div className="space-y-2">
-                  {groups.map((g) => (
-                    <div key={g.dateKey} className="space-y-1">
-                      <div className="text-center">
-                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
-                          {g.dateLabel}
-                        </span>
-                      </div>
-                      {g.list.map((m: any) => {
-                        const isMine = currentUserId && m.userId === currentUserId
-                        const canDelete = Boolean(isAdmin || isMine)
-                        return (
-                          <div
-                            key={m.id}
-                            className={cn(
-                              'flex items-end gap-1.5',
-                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
-                            )}
-                          >
-                            {!isMine ? (
-                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
-                                {m.user?.image ? (
-                                  <Image src={m.user.image} alt="" fill className="object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
-                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                            ) : null}
-                            <div
-                              className={cn(
-                                'group relative max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
-                                isMine
-                                  ? 'rounded-br-md bg-blue-600 text-white'
-                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
-                              )}
-                            >
-                              {!isMine ? (
-                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
-                                  {m.user?.name || 'User'}
-                                </div>
-                              ) : null}
-                              <div className={cn(m.isDeleted && 'italic text-inherit opacity-80')}>
-                                {m.isDeleted ? 'Message removed' : m.text}
-                              </div>
-                              <div className={cn(
-                                'text-[10px] mt-1',
-                                isMine ? 'text-blue-100' : 'text-gray-500'
-                              )}>
-                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
-                              </div>
-                            </div>
-                            {canDelete && !m.isDeleted ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
-                                disabled={deleteMessage.isPending}
-                                onClick={() => setMessageToDelete(m.id)}
-                                title="Delete"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
+            ) : (
+              <ChatMessageRows
+                groups={groupMessagesByDate(messages as ChatMessage[])}
+                currentUserId={currentUserId}
+                canDelete={(m) => Boolean(isAdmin || (currentUserId && m.userId === currentUserId))}
+                onRequestDelete={(id) => setMessageToDelete(id)}
+              />
+            )}
           </div>
         ) : (
           <div className="rounded-md border bg-gray-50 p-3 text-sm text-muted-foreground">

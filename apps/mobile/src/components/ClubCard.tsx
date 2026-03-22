@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation } from '../lib/formatters'
 import { palette, radius, spacing } from '../lib/theme'
@@ -137,9 +137,18 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
                 end={{ x: 1, y: 0 }}
                 style={styles.joinButtonGradient}
               >
-                <Text style={styles.joinButtonLabel}>
-                  {joinLoading ? '…' : club.joinPolicy === 'APPROVAL' ? 'Request to join' : 'Join Club'}
-                </Text>
+                {joinLoading ? (
+                  <View style={styles.joinButtonLoadingRow}>
+                    <ActivityIndicator color={palette.white} size="small" />
+                    <Text style={styles.joinButtonLabel}>
+                      {club.joinPolicy === 'APPROVAL' ? 'Sending request…' : 'Joining…'}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.joinButtonLabel}>
+                    {club.joinPolicy === 'APPROVAL' ? 'Request to join' : 'Join Club'}
+                  </Text>
+                )}
               </OptionalLinearGradient>
             </Pressable>
           ) : null}
@@ -274,6 +283,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: spacing.md,
+  },
+  joinButtonLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
   },
   joinButtonLabel: {
     color: palette.white,

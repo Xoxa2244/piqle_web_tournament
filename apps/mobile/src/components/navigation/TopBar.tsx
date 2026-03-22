@@ -1,14 +1,16 @@
+import { useNavigation } from '@react-navigation/native'
 import { Feather } from '@expo/vector-icons'
 import { router, usePathname } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { ReactNode } from 'react'
 
 import { palette, spacing } from '../../lib/theme'
+import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
 
 const getTitle = (pathname: string) => {
   if (pathname === '/') return 'Piqle'
-  if (pathname.startsWith('/tournaments')) return 'Tournaments'
+  if (pathname.startsWith('/tournaments')) return 'Events'
   if (pathname.startsWith('/clubs')) return 'Clubs'
   if (pathname.startsWith('/chats')) return pathname === '/chats/ai-assistant' ? 'AI Assistant' : 'Messages'
   if (pathname.startsWith('/ai')) return 'AI Assistant'
@@ -25,10 +27,29 @@ const IconBubble = ({ icon, onPress, showDot }: { icon: keyof typeof Feather.gly
   </Pressable>
 )
 
-export const TopBar = ({ titleAccessory }: { titleAccessory?: ReactNode }) => {
+const wantsTopBarBack = (pathname: string) =>
+  pathname === '/notifications' ||
+  pathname === '/search' ||
+  pathname === '/profile' ||
+  pathname.startsWith('/profile/')
+
+export const TopBar = ({
+  titleAccessory,
+  ambient = false,
+}: {
+  titleAccessory?: ReactNode
+  /** Прозрачный фон под градиентом чата (AI и т.п.) */
+  ambient?: boolean
+}) => {
   const pathname = usePathname()
-  const { user } = useAuth()
+  const navigation = useNavigation()
+  const { user, token } = useAuth()
+  const api = trpc as any
+  const notificationsQuery = api.notification.list.useQuery(undefined, { enabled: Boolean(token) })
+  const unreadCount = Number(notificationsQuery.data?.unreadCount ?? 0)
+  const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = getTitle(pathname)
+  const showBack = wantsTopBarBack(pathname) && navigation.canGoBack()
   const initials = (user?.name || user?.email || 'P')
     .split(/\s+/)
     .filter(Boolean)
@@ -37,15 +58,47 @@ export const TopBar = ({ titleAccessory }: { titleAccessory?: ReactNode }) => {
     .join('')
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, ambient && styles.headerAmbient]}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>{title}</Text>
+        {showBack ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={() => navigation.goBack()}
+            hitSlop={12}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+          >
+            <Feather name="arrow-left" size={22} color={palette.text} />
+          </Pressable>
+        ) : null}
+        <Text style={[styles.title, showBack && styles.titleWithBack]} numberOfLines={1}>
+          {title}
+        </Text>
         {titleAccessory ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
       </View>
       <View style={styles.actions}>
-        <IconBubble icon="search" onPress={() => router.push('/search')} />
-        <IconBubble icon="bell" onPress={() => router.push('/notifications')} showDot />
-        <Pressable onPress={() => router.push('/profile')} style={({ pressed }) => [styles.avatar, pressed && styles.avatarPressed]}>
+        <IconBubble
+          icon="search"
+          onPress={() => {
+            if (pathname === '/search') return
+            router.push('/search')
+          }}
+        />
+        <IconBubble
+          icon="bell"
+          onPress={() => {
+            if (pathname === '/notifications') return
+            router.push('/notifications')
+          }}
+          showDot={showNotificationDot}
+        />
+        <Pressable
+          onPress={() => {
+            if (pathname === '/profile') return
+            router.push('/profile')
+          }}
+          style={({ pressed }) => [styles.avatar, pressed && styles.avatarPressed]}
+        >
           <Text style={styles.avatarText}>{initials || 'P'}</Text>
         </Pressable>
       </View>
@@ -64,11 +117,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: palette.border,
   },
+  headerAmbient: {
+    backgroundColor: 'transparent',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
   titleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     minWidth: 0,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -4,
+  },
+  backBtnPressed: {
+    backgroundColor: palette.surfaceMuted,
+  },
+  titleWithBack: {
+    flex: 1,
   },
   titleAccessory: {
     alignItems: 'center',

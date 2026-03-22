@@ -4,10 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSession } from 'next-auth/react'
-import { MessageCircle, Send, Trash2, CalendarDays, Building2, ChevronRight } from 'lucide-react'
+import { MessageCircle, Send, CalendarDays, Building2, ChevronRight } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
-import { formatUsDateTimeShort, formatUsDateShort, formatUsTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
+import { formatUsDateTimeShort, formatUsDateShort, getTimezoneLabel } from '@/lib/dateFormat'
+import type { ChatMessage } from '@/lib/chatMessages'
+import { groupMessagesByDate } from '@/lib/chatMessages'
+import { ChatMessageRows } from '@/components/chat/ChatMessageRows'
+import { chatScrollAreaStyle } from '@/components/chat/chatBackground'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -27,49 +31,6 @@ type ChatPermission = {
   isClubAdmin: boolean
   isParticipant: boolean
   reason?: string
-}
-
-type ChatMessage = {
-  id: string
-  userId: string
-  text: string | null
-  isDeleted: boolean
-  createdAt: string | Date
-  user?: {
-    id: string
-    name: string | null
-    image: string | null
-  }
-}
-
-function toLocalYmd(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function groupMessagesByDate(messages: ChatMessage[]): { dateKey: string; dateLabel: string; list: ChatMessage[] }[] {
-  const todayKey = toLocalYmd(new Date())
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayKey = toLocalYmd(yesterday)
-  const groups: { dateKey: string; dateLabel: string; list: ChatMessage[] }[] = []
-  let currentKey = ''
-  for (const m of messages) {
-    const d = m.createdAt ? new Date(m.createdAt) : new Date()
-    const key = toLocalYmd(d)
-    if (key !== currentKey) {
-      currentKey = key
-      groups.push({
-        dateKey: key,
-        dateLabel: key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatUsDateShort(d),
-        list: [],
-      })
-    }
-    groups[groups.length - 1]!.list.push(m)
-  }
-  return groups
 }
 
 type ClubChatListItem = {
@@ -662,7 +623,11 @@ function ClubChatPanel({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col flex-1 min-h-0 space-y-3">
-        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
+        <div
+          ref={listRef}
+          className="flex-1 min-h-0 overflow-y-auto rounded-lg"
+          style={chatScrollAreaStyle()}
+        >
           {isLoading ? (
             <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
           ) : error ? (
@@ -670,78 +635,12 @@ function ClubChatPanel({
           ) : !messages || messages.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">No messages yet. Start the conversation.</div>
           ) : (
-            <div className="space-y-3">
-              {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
-                <div key={g.dateKey} className="space-y-1.5">
-                  <div className="text-center">
-                    <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
-                      {g.dateLabel}
-                    </span>
-                  </div>
-                  {g.list.map((m) => {
-                    const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                    const canDelete = Boolean(isMine || isAdmin)
-                    return (
-                      <div
-                        key={m.id}
-                        className={cn(
-                          'flex items-end gap-1.5',
-                          isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
-                        )}
-                      >
-                        {!isMine ? (
-                          <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
-                            {m.user?.image ? (
-                              <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
-                                {(m.user?.name || 'U').charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
-                        <div
-                          className={cn(
-                            'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
-                            isMine
-                              ? 'rounded-br-md bg-blue-600 text-white'
-                              : 'rounded-bl-md bg-gray-200/90 text-gray-900'
-                          )}
-                        >
-                          {!isMine ? (
-                            <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
-                              {m.user?.name || 'User'}
-                            </div>
-                          ) : null}
-                          <div className={cn(m.isDeleted && 'italic opacity-80')}>
-                            {m.isDeleted ? 'Message removed' : m.text}
-                          </div>
-                          <div className={cn(
-                            'text-[10px] mt-1',
-                            isMine ? 'text-blue-100' : 'text-gray-500'
-                          )}>
-                            {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
-                          </div>
-                        </div>
-                        {canDelete && !m.isDeleted ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
-                            disabled={deleteMessage.isPending}
-                            onClick={() => setMessageToDelete(m.id)}
-                            title="Delete message"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
+            <ChatMessageRows
+              groups={groupMessagesByDate(messages as ChatMessage[])}
+              currentUserId={currentUserId}
+              canDelete={(m) => Boolean((currentUserId && m.userId === currentUserId) || isAdmin) && !m.isDeleted}
+              onRequestDelete={(id) => setMessageToDelete(id)}
+            />
           )}
         </div>
 
@@ -869,7 +768,11 @@ function TournamentChatPanel({
           </div>
         ) : (
           <>
-            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
+            <div
+              ref={listRef}
+              className="flex-1 min-h-0 overflow-y-auto rounded-lg"
+              style={chatScrollAreaStyle()}
+            >
               {isLoading ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
               ) : error ? (
@@ -877,78 +780,12 @@ function TournamentChatPanel({
               ) : !messages || messages.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">No messages yet.</div>
               ) : (
-                <div className="space-y-3">
-                  {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
-                    <div key={g.dateKey} className="space-y-1.5">
-                      <div className="text-center">
-                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
-                          {g.dateLabel}
-                        </span>
-                      </div>
-                      {g.list.map((m) => {
-                        const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                        const canDelete = Boolean(isMine || canModerate)
-                        return (
-                          <div
-                            key={m.id}
-                            className={cn(
-                              'flex items-end gap-1.5',
-                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
-                            )}
-                          >
-                            {!isMine ? (
-                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
-                                {m.user?.image ? (
-                                  <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
-                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                            ) : null}
-                            <div
-                              className={cn(
-                                'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
-                                isMine
-                                  ? 'rounded-br-md bg-blue-600 text-white'
-                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
-                              )}
-                            >
-                              {!isMine ? (
-                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
-                                  {m.user?.name || 'User'}
-                                </div>
-                              ) : null}
-                              <div className={cn(m.isDeleted && 'italic opacity-80')}>
-                                {m.isDeleted ? 'Message removed' : m.text}
-                              </div>
-                              <div className={cn(
-                                'text-[10px] mt-1',
-                                isMine ? 'text-blue-100' : 'text-gray-500'
-                              )}>
-                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
-                              </div>
-                            </div>
-                            {isMine && canDelete && !m.isDeleted ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
-                                disabled={deleteMessage.isPending}
-                                onClick={() => setMessageToDelete(m.id)}
-                                title="Delete message"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
+                <ChatMessageRows
+                  groups={groupMessagesByDate(messages as ChatMessage[])}
+                  currentUserId={currentUserId}
+                  canDelete={(m) => Boolean((currentUserId && m.userId === currentUserId) || canModerate)}
+                  onRequestDelete={(id) => setMessageToDelete(id)}
+                />
               )}
             </div>
 
@@ -1086,7 +923,11 @@ function DivisionChatPanel({
           </div>
         ) : (
           <>
-            <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto bg-gray-50/50 p-2 space-y-2">
+            <div
+              ref={listRef}
+              className="flex-1 min-h-0 overflow-y-auto rounded-lg"
+              style={chatScrollAreaStyle()}
+            >
               {isLoading ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">Loading chat…</div>
               ) : error ? (
@@ -1094,78 +935,12 @@ function DivisionChatPanel({
               ) : !messages || messages.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">No messages yet.</div>
               ) : (
-                <div className="space-y-3">
-                  {groupMessagesByDate(messages as ChatMessage[]).map((g) => (
-                    <div key={g.dateKey} className="space-y-1.5">
-                      <div className="text-center">
-                        <span className="text-[11px] text-muted-foreground bg-gray-200/80 rounded-full px-2 py-0.5">
-                          {g.dateLabel}
-                        </span>
-                      </div>
-                      {g.list.map((m) => {
-                        const isMine = Boolean(currentUserId && m.userId === currentUserId)
-                        const canDelete = Boolean(isMine || canModerate)
-                        return (
-                          <div
-                            key={m.id}
-                            className={cn(
-                              'flex items-end gap-1.5',
-                              isMine ? 'flex-row-reverse justify-start group' : 'flex-row group'
-                            )}
-                          >
-                            {!isMine ? (
-                              <div className="relative w-6 h-6 flex-shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-200">
-                                {m.user?.image ? (
-                                  <Image src={m.user.image} alt="" fill className="object-cover" sizes="24px" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[10px] font-medium text-gray-500">
-                                    {(m.user?.name || 'U').charAt(0).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                            ) : null}
-                            <div
-                              className={cn(
-                                'max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words',
-                                isMine
-                                  ? 'rounded-br-md bg-blue-600 text-white'
-                                  : 'rounded-bl-md bg-gray-200/90 text-gray-900'
-                              )}
-                            >
-                              {!isMine ? (
-                                <div className="text-xs font-medium text-gray-700 mb-0.5 truncate">
-                                  {m.user?.name || 'User'}
-                                </div>
-                              ) : null}
-                              <div className={cn(m.isDeleted && 'italic opacity-80')}>
-                                {m.isDeleted ? 'Message removed' : m.text}
-                              </div>
-                              <div className={cn(
-                                'text-[10px] mt-1',
-                                isMine ? 'text-blue-100' : 'text-gray-500'
-                              )}>
-                                {m.createdAt ? formatUsTimeShort(m.createdAt) : ''}
-                              </div>
-                            </div>
-                            {isMine && canDelete && !m.isDeleted ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-red-600"
-                                disabled={deleteMessage.isPending}
-                                onClick={() => setMessageToDelete(m.id)}
-                                title="Delete message"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
+                <ChatMessageRows
+                  groups={groupMessagesByDate(messages as ChatMessage[])}
+                  currentUserId={currentUserId}
+                  canDelete={(m) => Boolean((currentUserId && m.userId === currentUserId) || canModerate)}
+                  onRequestDelete={(id) => setMessageToDelete(id)}
+                />
               )}
             </div>
 

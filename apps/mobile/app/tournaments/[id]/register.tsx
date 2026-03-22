@@ -7,6 +7,7 @@ import { ActionButton, EmptyState, LoadingBlock, Pill, Screen, SectionTitle, Sur
 import { formatDateRange, formatMoney, formatPlayerName } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, spacing } from '../../../src/lib/theme'
+import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 import { useAuth } from '../../../src/providers/AuthProvider'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
@@ -64,7 +65,6 @@ export default function TournamentRegistrationScreen() {
   const paymentState = typeof params.payment === 'string' ? params.payment : null
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
-  const api = trpc as any
   const utils = trpc.useUtils()
 
   const seatMapQuery = trpc.registration.getSeatMap.useQuery(
@@ -77,10 +77,7 @@ export default function TournamentRegistrationScreen() {
     { tournamentId },
     { enabled: protectedQueriesEnabled }
   )
-  const accessQuery = api.tournament.get.useQuery(
-    { id: tournamentId },
-    { enabled: protectedQueriesEnabled, retry: false }
-  )
+  const accessQuery = useTournamentAccessInfo(String(tournamentId ?? ''), protectedQueriesEnabled)
 
   const claimSlot = trpc.registration.claimSlot.useMutation({
     onSuccess: async () => {

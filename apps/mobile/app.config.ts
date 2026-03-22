@@ -40,6 +40,8 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.piqle.player',
+    /** Чат и формы: окно подстраивается под клавиатуру, а не перекрывает инпут. */
+    softwareKeyboardLayoutMode: 'resize',
   },
   ios: {
     bundleIdentifier: 'com.piqle.player',

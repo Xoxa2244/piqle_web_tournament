@@ -1,6 +1,11 @@
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { ActivityIndicator, Text, View } from 'react-native'
+import { ActivityIndicator, LogBox, Text, View } from 'react-native'
+
+/** Отмена fetch (новый refetch, уход с экрана) — не баг API; RN всё равно шумит в логах. */
+if (__DEV__) {
+  LogBox.ignoreLogs(['TRPCClientError: Aborted'])
+}
 
 import { palette } from '../src/lib/theme'
 import { AppProviders } from '../src/providers/AppProviders'
@@ -25,6 +30,9 @@ const RootNavigator = () => {
         <Stack.Screen name="index" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="search" />
+        <Stack.Screen name="profile/index" />
         <Stack.Screen name="profile/edit" />
         <Stack.Screen name="profile/settings" />
         <Stack.Screen name="tournaments/[id]/index" />

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
@@ -8,10 +8,12 @@ import {
   EmptyState,
   LoadingBlock,
   SearchField,
+  SegmentedControl,
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { palette, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 export default function ClubsTab() {
   const { token } = useAuth()
@@ -19,19 +21,23 @@ export default function ClubsTab() {
   const [search, setSearch] = useState('')
   const [mode, setMode] = useState<'discover' | 'my-clubs' | 'nearby'>('discover')
   const api = trpc as any
-  const utils = trpc.useUtils() as any
+  const utils = (trpc as any).useUtils()
 
   const clubsQuery = api.club.list.useQuery(
     search.trim() ? { query: search.trim() } : undefined
   )
   const toggleFollow = api.club.toggleFollow.useMutation({
-    onSuccess: async () => {
-      await Promise.all([utils.club.list.invalidate(), utils.club.listMyChatClubs.invalidate()])
+    onSuccess: (_data: unknown, variables: { clubId: string }) => {
+      void Promise.all([
+        utils.club.list.invalidate(),
+        utils.club.listMyChatClubs.invalidate(),
+        utils.club.get.invalidate({ id: variables.clubId }),
+      ])
     },
   })
   const cancelRequest = api.club.cancelJoinRequest.useMutation({
-    onSuccess: async () => {
-      await utils.club.list.invalidate()
+    onSuccess: () => {
+      void utils.club.list.invalidate()
     },
   })
 
@@ -56,36 +62,40 @@ export default function ClubsTab() {
     return discoverClubs
   }, [discoverClubs, mode])
 
+  const onRefreshClubs = useCallback(async () => {
+    await clubsQuery.refetch()
+  }, [clubsQuery])
+
+  const pullToRefresh = usePullToRefresh(onRefreshClubs)
+
+  const clubsInitialLoading = clubsQuery.isLoading && clubsQuery.data === undefined
+
   return (
-    <PageLayout>
+    <PageLayout pullToRefresh={pullToRefresh}>
       <View style={styles.headerCard}>
         <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
 
-        <View style={styles.segment}>
-          {([
-            { key: 'discover', label: 'Discover' },
-            { key: 'my-clubs', label: 'My Clubs' },
-            { key: 'nearby', label: 'Nearby' },
-          ] as const).map((item) => {
-            const active = mode === item.key
-            return (
-              <Pressable
-                key={item.key}
-                onPress={() => setMode(item.key)}
-                style={[styles.segmentItem, active && styles.segmentItemActive]}
-              >
-                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            )
-          })}
-        </View>
+        <SegmentedControl
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'discover', label: 'Discover' },
+            { value: 'my-clubs', label: 'My Clubs' },
+            { value: 'nearby', label: 'Nearby' },
+          ]}
+        />
       </View>
 
-      {clubsQuery.isLoading ? <LoadingBlock label="Loading clubs…" /> : null}
+      {clubsInitialLoading ? <LoadingBlock label="Loading clubs…" /> : null}
 
-      {!clubsQuery.isLoading && (clubsQuery.data?.length ?? 0) === 0 ? (
+      {clubsQuery.isError ? (
+        <EmptyState
+          title="Could not load clubs"
+          body="Check your connection and API settings (EXPO_PUBLIC_API_URL), then pull to refresh."
+        />
+      ) : null}
+
+      {!clubsInitialLoading && !clubsQuery.isError && (clubsQuery.data?.length ?? 0) === 0 ? (
         <EmptyState title="No clubs found" body="Try another search term or check back later." />
       ) : null}
 
@@ -107,13 +117,15 @@ export default function ClubsTab() {
             <View key={club.id} style={{ gap: 10 }}>
               <ClubCard
                 club={club}
-                onPress={() => router.push(`/clubs/${club.id}`)}
+                onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
                 onJoin={
                   isAuthenticated
-                    ? () => toggleFollow.mutate({ clubId: club.id })
+                    ? () => {
+                        router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
+                        toggleFollow.mutate({ clubId: club.id })
+                      }
                     : () => router.push('/sign-in')
                 }
-                joinLoading={toggleFollow.isPending}
               />
             </View>
           ))}
@@ -126,37 +138,6 @@ export default function ClubsTab() {
 const styles = StyleSheet.create({
   headerCard: {
     gap: spacing.md,
-  },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: 999,
-    padding: 4,
-    gap: 4,
-  },
-  segmentItem: {
-    flex: 1,
-    minHeight: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  segmentItemActive: {
-    backgroundColor: palette.surface,
-    shadowColor: palette.black,
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  segmentLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: palette.textMuted,
-  },
-  segmentLabelActive: {
-    color: palette.text,
   },
   sectionTitle: {
     color: palette.text,
