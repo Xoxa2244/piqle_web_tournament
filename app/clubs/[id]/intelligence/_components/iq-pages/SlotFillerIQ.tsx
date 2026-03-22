@@ -68,35 +68,62 @@ const emptySlots = [
   },
 ];
 
-/* --- Map real recommendations to SlotFillerIQ format --- */
+/* --- Map real data to SlotFillerIQ format --- */
 function mapRecommendationsToSlots(recommendations: any, dashboardData: any): typeof emptySlots {
-  if (!recommendations?.recommendations?.length || !recommendations?.session) return [];
-  const s = recommendations.session;
   const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  return [{
-    id: s.id || 'slot-real',
-    court: s.court || 'Court 1',
-    sport: s.format || 'Pickleball',
-    date: s.date || 'Upcoming',
-    time: s.startTime || '',
-    duration: `${s.duration || 60} min`,
-    format: s.format || 'Open Play',
-    spotsNeeded: Math.max(0, (s.capacity || 8) - (s.registered || 0)),
-    spotsTotal: s.capacity || 8,
-    pricePerPlayer: s.pricePerPlayer || 15,
-    matches: recommendations.recommendations.slice(0, 8).map((r: any) => ({
-      id: r.member?.id || r.memberId || `m-${Math.random()}`,
-      name: r.member?.name || 'Unknown',
-      rating: r.member?.duprRating ?? 3.0,
-      matchScore: Math.round((r.score ?? 0.8) * 100),
-      lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
-      preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
-      status: r.score >= 0.9 ? 'available' : 'tentative',
-      avatar: initials(r.member?.name || 'XX'),
-      phone: '',
-      email: r.member?.email || '',
-    })),
-  }];
+  const slots: typeof emptySlots = [];
+
+  // 1. Add the selected session with AI recommendations
+  if (recommendations?.recommendations?.length && recommendations?.session) {
+    const s = recommendations.session;
+    slots.push({
+      id: s.id || 'slot-real',
+      court: s.court || s.courtName || 'Court 1',
+      sport: 'Pickleball',
+      date: s.date || 'Upcoming',
+      time: s.startTime || '',
+      duration: `${s.duration || 90} min`,
+      format: s.format?.replace(/_/g, ' ') || 'Open Play',
+      spotsNeeded: Math.max(0, (s.capacity || s.maxPlayers || 8) - (s.registered || s.confirmedCount || 0)),
+      spotsTotal: s.capacity || s.maxPlayers || 8,
+      pricePerPlayer: s.pricePerPlayer || 15,
+      matches: recommendations.recommendations.slice(0, 8).map((r: any) => ({
+        id: r.member?.id || r.memberId || `m-${Math.random()}`,
+        name: r.member?.name || 'Unknown',
+        rating: r.member?.duprRating ?? 3.0,
+        matchScore: Math.round(r.score ?? 80), // score already 0-100, don't multiply
+        lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
+        preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
+        status: (r.score ?? 0) >= 70 ? 'available' as const : 'tentative' as const,
+        avatar: initials(r.member?.name || 'XX'),
+        phone: '',
+        email: r.member?.email || '',
+      })),
+    });
+  }
+
+  // 2. Add other underfilled sessions from dashboard (without recommendations yet)
+  const problematic = dashboardData?.sessions?.problematicSessions || [];
+  for (const sess of problematic) {
+    if (slots.some(s => s.id === sess.id)) continue; // skip if already added
+    const occ = sess.occupancyPercent ?? 0;
+    if (occ >= 80) continue; // only show truly underfilled
+    slots.push({
+      id: sess.id,
+      court: sess.courtName || 'Court',
+      sport: 'Pickleball',
+      date: sess.date || '',
+      time: sess.startTime || '',
+      duration: '90 min',
+      format: (sess.format || 'Open Play').replace(/_/g, ' '),
+      spotsNeeded: Math.max(0, (sess.maxPlayers || 8) - (sess.confirmedCount || 0)),
+      spotsTotal: sess.maxPlayers || 8,
+      pricePerPlayer: 15,
+      matches: [], // no recommendations loaded yet for these
+    });
+  }
+
+  return slots;
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
