@@ -162,6 +162,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
+          console.log('[AdvisorIQ stream chunk]', JSON.stringify(chunk).slice(0, 500));
           const lines = chunk.split('\n');
           for (const line of lines) {
             const trimmed = line.trim();
