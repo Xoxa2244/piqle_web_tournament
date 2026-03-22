@@ -959,15 +959,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 <div className="text-right shrink-0">
                   <p className="text-[10px]" style={{ color: "var(--t2)", fontWeight: 600 }}>{u.records.toLocaleString()} sessions</p>
                 </div>
-                {u.embeddingIds && (
-                  <button
-                    onClick={() => setDeleteConfirm({ upload: u, index: i })}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg hover:bg-red-500/10"
-                    title="Delete this import"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" style={{ color: "#EF4444" }} />
-                  </button>
-                )}
+                <button
+                  onClick={() => setDeleteConfirm({ upload: u, index: i })}
+                  className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors shrink-0"
+                  title="Delete this import"
+                >
+                  <Trash2 className="w-3.5 h-3.5" style={{ color: "#EF4444" }} />
+                </button>
               </motion.div>
             ))}
           </div>
