@@ -870,7 +870,7 @@ export const tournamentRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
       if (!isOwner && !access) {
-        return { userAccessInfo: null as const }
+        return { userAccessInfo: null }
       }
       return {
         userAccessInfo: {
