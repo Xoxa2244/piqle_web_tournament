@@ -18,11 +18,12 @@ export function createChatTools(clubId: string): ToolSet {
       description:
         'Get member health scores and churn risk for all club members. Returns summary (total, healthy, watch, at_risk, critical counts) and top at-risk members with their scores. Use when the user asks about member health, churn risk, at-risk members, engagement, or who hasn\'t been coming.',
       parameters: jsonSchema({
-        type: 'object',
+        type: 'object' as const,
         properties: {
-          filter: { type: 'string', enum: ['all', 'at_risk', 'critical', 'watch', 'healthy'], description: 'Filter by risk level. Default: all' },
-          limit: { type: 'number', description: 'Max members to return. Default: 10' },
+          filter: { type: 'string' as const, enum: ['all', 'at_risk', 'critical', 'watch', 'healthy'], description: 'Filter by risk level. Default: all' },
+          limit: { type: 'number' as const, description: 'Max members to return. Default: 10' },
         },
+        required: [] as string[],
       }),
       execute: async ({ filter, limit }: { filter?: string; limit?: number }) => {
         const f = filter ?? 'all'
@@ -132,11 +133,12 @@ export function createChatTools(clubId: string): ToolSet {
       description:
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
       parameters: jsonSchema({
-        type: 'object',
+        type: 'object' as const,
         properties: {
-          onlyUnderfilled: { type: 'boolean', description: 'Only return sessions below 50% capacity. Default: false' },
-          limit: { type: 'number', description: 'Max sessions to return. Default: 10' },
+          onlyUnderfilled: { type: 'boolean' as const, description: 'Only return sessions below 50% capacity. Default: false' },
+          limit: { type: 'number' as const, description: 'Max sessions to return. Default: 10' },
         },
+        required: [] as string[],
       }),
       execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
@@ -193,7 +195,7 @@ export function createChatTools(clubId: string): ToolSet {
     getClubMetrics: t({
       description:
         'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
-      parameters: jsonSchema({ type: 'object', properties: {} }),
+      parameters: jsonSchema({ type: 'object' as const, properties: {}, required: [] as string[] }),
       execute: async () => {
         try {
           const now = new Date()
@@ -269,10 +271,11 @@ export function createChatTools(clubId: string): ToolSet {
       description:
         'Get members who have been inactive and are candidates for re-engagement outreach. Use when the user asks about inactive members, who to re-engage, reactivation, or members who stopped coming.',
       parameters: jsonSchema({
-        type: 'object',
+        type: 'object' as const,
         properties: {
-          limit: { type: 'number', description: 'Max candidates to return. Default: 10' },
+          limit: { type: 'number' as const, description: 'Max candidates to return. Default: 10' },
         },
+        required: [] as string[],
       }),
       execute: async ({ limit }: { limit?: number }) => {
         const l = limit ?? 10
