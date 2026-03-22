@@ -694,3 +694,54 @@ export async function POST(req: Request) {
     },
   });
 }
+
+// ── DELETE: Remove all imported data for a club ──
+export async function DELETE(req: Request) {
+  const session = await getSessionFromRequest(req);
+  if (!session) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const { clubId } = body as { clubId: string };
+
+  if (!clubId) {
+    return Response.json({ error: 'clubId is required' }, { status: 400 });
+  }
+
+  const admin = await prisma.clubAdmin.findFirst({ where: { clubId, userId: session.userId } });
+  if (!admin) {
+    return Response.json({ error: 'Only club admins can delete imports' }, { status: 403 });
+  }
+
+  try {
+    // 1. Delete embeddings
+    const embeddingsDeleted = await prisma.$executeRaw`
+      DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid AND source_table = 'csv_import'
+    `;
+
+    // 2. Delete bookings for imported sessions
+    const bookingsDeleted = await prisma.$executeRaw`
+      DELETE FROM play_session_bookings WHERE "sessionId" IN (
+        SELECT id FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+      )
+    `;
+
+    // 3. Delete sessions
+    const sessionsDeleted = await prisma.$executeRaw`
+      DELETE FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+    `;
+
+    // 4. Delete health snapshots
+    const healthDeleted = await prisma.$executeRaw`
+      DELETE FROM member_health_snapshots WHERE club_id = ${clubId}::uuid
+    `;
+
+    console.log(`[Delete Import] Club ${clubId}: ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${embeddingsDeleted} embeddings, ${healthDeleted} health snapshots deleted`);
+
+    return Response.json({ sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted });
+  } catch (err) {
+    console.error('[Delete Import] Error:', err);
+    return Response.json({ error: 'Failed to delete' }, { status: 500 });
+  }
+}

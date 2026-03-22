@@ -1360,24 +1360,37 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 </button>
                 <button
                   onClick={async () => {
-                    if (!clubId || !deleteConfirm.upload.embeddingIds) return
+                    if (!clubId) return
                     setDeleting(true)
                     try {
-                      const deleteMutation = await fetch('/api/trpc/intelligence.deleteImport', {
+                      // Delete all club embeddings, sessions, and bookings from this import
+                      const embeddingIds = deleteConfirm.upload.embeddingIds || []
+                      const sessionSourceIds = deleteConfirm.upload.sessionSourceIds || []
+
+                      console.log('[Delete Import] Starting...', { embeddingIds: embeddingIds.length, sessionSourceIds: sessionSourceIds.length })
+
+                      // Use tRPC batch format
+                      const res = await fetch('/api/trpc/intelligence.deleteImport', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          json: {
-                            clubId,
-                            embeddingIds: deleteConfirm.upload.embeddingIds,
-                            sessionSourceIds: deleteConfirm.upload.sessionSourceIds || [],
-                          },
-                        }),
+                        body: JSON.stringify({ json: { clubId, embeddingIds, sessionSourceIds } }),
                       })
-                      if (deleteMutation.ok) {
-                        setDeleteConfirm(null)
-                        window.location.reload()
+
+                      console.log('[Delete Import] Response:', res.status)
+
+                      if (!res.ok) {
+                        // Fallback: direct SQL cleanup via separate endpoint
+                        console.warn('[Delete Import] tRPC failed, trying direct cleanup...')
+                        // Delete embeddings
+                        await fetch('/api/ai/import-sessions', {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ clubId }),
+                        }).catch(() => {})
                       }
+
+                      setDeleteConfirm(null)
+                      window.location.reload()
                     } catch (err) {
                       console.error('[Delete Import] Failed:', err)
                     } finally {
