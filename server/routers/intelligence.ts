@@ -1233,6 +1233,33 @@ export const intelligenceRouter = createTRPCRouter({
         console.warn('[Intelligence] getSessionsCalendar query failed:', (err as Error).message?.slice(0, 80))
       }
 
+      // Fallback: if no embeddings, read from play_sessions table directly
+      if (csvSessions.length === 0) {
+        try {
+          const dbSessions = await ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId },
+            include: {
+              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+              clubCourt: { select: { name: true } },
+            },
+          })
+          csvSessions = dbSessions.map((s: any) => ({
+            date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+            startTime: s.startTime,
+            endTime: s.endTime,
+            court: s.clubCourt?.name || '',
+            format: s.format,
+            skillLevel: s.skillLevel,
+            registered: s._count.bookings,
+            capacity: s.maxPlayers,
+            occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
+            playerNames: [],
+          }))
+        } catch (fallbackErr) {
+          console.warn('[Intelligence] getSessionsCalendar play_sessions fallback failed:', (fallbackErr as Error).message?.slice(0, 80))
+        }
+      }
+
       const { buildSessionCalendarData } = await import('@/lib/ai/session-analysis')
       return buildSessionCalendarData(csvSessions, input.clubId)
     }),

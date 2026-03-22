@@ -266,8 +266,8 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
     );
   }
 
-  const hasData = displayRevenueByFormat.length > 0 || (revenueData && toNum(revenueData.totalRevenue) > 0);
-  if (!hasData && !isDemo) {
+  const hasData = !!revenueData || isDemo;
+  if (!hasData) {
     return <EmptyStateIQ icon={DollarSign} title="No revenue data yet" description="Import session data with pricing to unlock revenue analytics, forecasts, and pricing optimization." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
@@ -444,6 +444,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Revenue by Format</h3>
           <div className="flex items-center justify-center" style={{ height: 180 }}>
+            {displayRevenueByFormat.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={displayRevenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value" strokeWidth={0}>
@@ -452,6 +453,9 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
                 <Tooltip content={<CustomTooltip />} />
               </PieChart>
             </ResponsiveContainer>
+            ) : (
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t4)', width: '100%' }}><span style={{ fontSize: '0.75rem' }}>No data for this period</span></div>
+            )}
           </div>
           <div className="space-y-2.5 mt-2">
             {displayRevenueByFormat.map((s: any) => (
@@ -475,6 +479,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         {/* Daily */}
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Daily Revenue vs Target</h3>
+          {displayDailyRevenue.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={displayDailyRevenue}>
               <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
@@ -485,6 +490,9 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
               <Line type="monotone" dataKey="target" name="Target" stroke="#F59E0B" strokeWidth={2} strokeDasharray="6 3" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
+          ) : (
+          <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t4)' }}><span style={{ fontSize: '0.75rem' }}>No data for this period</span></div>
+          )}
         </Card>
 
         {/* Lost Revenue */}
@@ -596,6 +604,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
             <Sparkles className="w-4 h-4 text-cyan-400" />
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Revenue Forecast</h3>
           </div>
+          {displayFullForecast.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={displayFullForecast}>
               <defs>
@@ -618,6 +627,9 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
               <Area type="monotone" dataKey="forecast" name="Forecast" stroke="#06B6D4" fill="url(#foreGrad)" strokeWidth={2} strokeDasharray="6 3" connectNulls={false} />
             </AreaChart>
           </ResponsiveContainer>
+          ) : (
+          <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t4)' }}><span style={{ fontSize: '0.75rem' }}>No data for this period</span></div>
+          )}
           <div className="flex items-center gap-4 mt-3 text-[10px]">
             {[
               { label: "Actual", color: "#10B981", dash: false },

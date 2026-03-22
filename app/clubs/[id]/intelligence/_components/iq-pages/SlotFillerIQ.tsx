@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Puzzle, Users, Clock, MapPin, Star, Zap, Send, Check,
@@ -68,44 +68,12 @@ const emptySlots = [
   },
 ];
 
-/* --- Map real data to SlotFillerIQ format --- */
-function mapRecommendationsToSlots(recommendations: any, dashboardData: any): typeof emptySlots {
-  const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+/* --- Build stable slot list from dashboard data (NOT from recommendations) --- */
+function buildSlotsFromDashboard(dashboardData: any): typeof emptySlots {
+  const problematic = dashboardData?.sessions?.problematicSessions || [];
   const slots: typeof emptySlots = [];
 
-  // 1. Add the selected session with AI recommendations
-  if (recommendations?.recommendations?.length && recommendations?.session) {
-    const s = recommendations.session;
-    slots.push({
-      id: s.id || 'slot-real',
-      court: s.court || s.courtName || 'Court 1',
-      sport: 'Pickleball',
-      date: s.date || 'Upcoming',
-      time: s.startTime || '',
-      duration: `${s.duration || 90} min`,
-      format: s.format?.replace(/_/g, ' ') || 'Open Play',
-      spotsNeeded: Math.max(0, (s.capacity || s.maxPlayers || 8) - (s.registered || s.confirmedCount || 0)),
-      spotsTotal: s.capacity || s.maxPlayers || 8,
-      pricePerPlayer: s.pricePerPlayer || 15,
-      matches: recommendations.recommendations.slice(0, 8).map((r: any) => ({
-        id: r.member?.id || r.memberId || `m-${Math.random()}`,
-        name: r.member?.name || 'Unknown',
-        rating: r.member?.duprRating ?? 3.0,
-        matchScore: Math.round(r.score ?? 80), // score already 0-100, don't multiply
-        lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
-        preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
-        status: (r.score ?? 0) >= 70 ? 'available' as const : 'tentative' as const,
-        avatar: initials(r.member?.name || 'XX'),
-        phone: '',
-        email: r.member?.email || '',
-      })),
-    });
-  }
-
-  // 2. Add other underfilled sessions from dashboard (without recommendations yet)
-  const problematic = dashboardData?.sessions?.problematicSessions || [];
   for (const sess of problematic) {
-    if (slots.some(s => s.id === sess.id)) continue; // skip if already added
     const occ = sess.occupancyPercent ?? 0;
     if (occ >= 80) continue; // only show truly underfilled
     slots.push({
@@ -119,11 +87,30 @@ function mapRecommendationsToSlots(recommendations: any, dashboardData: any): ty
       spotsNeeded: Math.max(0, (sess.maxPlayers || 8) - (sess.confirmedCount || 0)),
       spotsTotal: sess.maxPlayers || 8,
       pricePerPlayer: 15,
-      matches: [], // no recommendations loaded yet for these
+      matches: [], // matches come from recommendations, loaded per-slot
     });
   }
 
   return slots;
+}
+
+/* --- Map recommendations to player matches for the selected slot --- */
+function mapRecommendationsToMatches(recommendations: any): typeof emptySlots[0]['matches'] {
+  if (!recommendations?.recommendations?.length) return [];
+  const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+  return recommendations.recommendations.slice(0, 8).map((r: any) => ({
+    id: r.member?.id || r.memberId || `m-${Math.random()}`,
+    name: r.member?.name || 'Unknown',
+    rating: r.member?.duprRating ?? 3.0,
+    matchScore: Math.round(r.score ?? 80),
+    lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
+    preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
+    status: (r.score ?? 0) >= 70 ? 'available' as const : 'tentative' as const,
+    avatar: initials(r.member?.name || 'XX'),
+    phone: '',
+    email: r.member?.email || '',
+  }));
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -150,17 +137,30 @@ function MatchScoreBadge({ score }: { score: number }) {
 export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null } = {}) {
   const { isDark } = useTheme();
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
-  const realSlots = mapRecommendationsToSlots(recommendations, dashboardData);
-  const displaySlots = realSlots.length > 0 ? realSlots : (isDemo ? emptySlots : []);
+
+  // Build slot list from dashboard data (stable — does NOT depend on recommendations)
+  const dashboardSlots = useMemo(() => buildSlotsFromDashboard(dashboardData), [dashboardData]);
+  const displaySlots = dashboardSlots.length > 0 ? dashboardSlots : (isDemo ? emptySlots : []);
+
+  // Player matches come from recommendations (only for the selected slot)
+  const currentMatches = useMemo(() => mapRecommendationsToMatches(recommendations), [recommendations]);
+  // Check if recommendations are for the currently selected slot
+  const recsMatchSelectedSlot = recommendations?.session?.id === selectedSessionId;
+
   // Use selectedSessionId from parent as source of truth, fallback to first slot
   const effectiveSlot = selectedSessionId || displaySlots[0]?.id || '';
   const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
   const [showSuccess, setShowSuccess] = useState(false);
   const ref = useRef(null);
 
-  const activeSlot = displaySlots.find((s) => s.id === effectiveSlot) || displaySlots[0] || null;
+  // Build activeSlot: use stable slot info from dashboard, overlay matches only if recs are for this slot
+  const baseSlot = displaySlots.find((s) => s.id === effectiveSlot) || displaySlots[0] || null;
+  const activeSlot = baseSlot ? {
+    ...baseSlot,
+    matches: recsMatchSelectedSlot ? currentMatches : [],
+  } : null;
   // Detect when we're loading recommendations for a DIFFERENT slot than what's displayed
-  const isLoadingNewSlot = !!loadingRecs && !!selectedSessionId && recommendations?.session?.id !== selectedSessionId;
+  const isLoadingNewSlot = !!loadingRecs || (!!selectedSessionId && !recsMatchSelectedSlot);
 
   /* --- Loading state --- */
   if (externalLoading) {
@@ -380,7 +380,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           </div>
 
           <div className="space-y-2">
-            {(isLoadingNewSlot || (loadingRecs && activeSlot.matches.length === 0)) && (
+            {isLoadingNewSlot && (
               <div className="space-y-2 animate-pulse">
                 {[1,2,3,4].map(i => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
@@ -393,12 +393,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                 ))}
               </div>
             )}
-            {!loadingRecs && !isLoadingNewSlot && activeSlot.matches.length === 0 && (
+            {!isLoadingNewSlot && activeSlot.matches.length === 0 && (
               <div className="text-center py-8 text-sm" style={{ color: "var(--t3)" }}>
                 Click a slot to load AI player recommendations
               </div>
             )}
-            {activeSlot.matches.map((player, i) => {
+            {!isLoadingNewSlot && activeSlot.matches.map((player, i) => {
               const isSent = !!sentInvites[player.id];
               return (
                 <motion.div

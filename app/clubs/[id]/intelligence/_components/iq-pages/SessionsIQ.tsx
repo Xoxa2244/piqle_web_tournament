@@ -275,7 +275,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
     return mapped.length > 0 ? mapped : lastGoodData.current.sessions;
   }, [calendarData]);
   const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
-  const hasData = displaySessions.length > 0;
+  const hasData = displaySessions.length > 0 || (calendarData != null && calendarData.sessions != null);
 
   const derivedWeekly = useMemo(() => {
     const d = deriveWeeklyData(calendarData);

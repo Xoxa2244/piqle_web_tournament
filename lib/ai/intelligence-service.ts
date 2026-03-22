@@ -1532,6 +1532,35 @@ async function buildCsvEventData(
     return null
   }
 
+  // Fallback: if no embeddings, check play_sessions table directly
+  if (csvSessions.length === 0) {
+    try {
+      const dbSessions = await prisma.playSession.findMany({
+        where: { clubId },
+        include: {
+          _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+          clubCourt: { select: { name: true } },
+        },
+      })
+      if (dbSessions.length > 0) {
+        csvSessions = dbSessions.map((s: any) => ({
+          date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          court: s.clubCourt?.name || '',
+          format: s.format,
+          skillLevel: s.skillLevel,
+          registered: s._count.bookings,
+          capacity: s.maxPlayers,
+          occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
+          playerNames: [],
+        }))
+      }
+    } catch (err) {
+      console.warn('[Events] buildCsvEventData play_sessions fallback failed for club', clubId, err)
+    }
+  }
+
   if (csvSessions.length === 0) return null
 
   // Build player activity map from CSV (same logic as buildCsvReactivationData)
@@ -1728,7 +1757,7 @@ export async function getEventRecommendations(
     totalPlayersAnalyzed: membersWithData.length,
     totalSessionsAnalyzed: csvSessions.length,
     generatedAt: new Date().toISOString(),
-    needsCsvImport: csvSessions.length === 0 && !hasRealBookings,
+    needsCsvImport: csvSessions.length === 0 && !hasRealBookings && !(await prisma.playSession.findFirst({ where: { clubId }, select: { id: true } })),
   }
 }
 

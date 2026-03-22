@@ -62,9 +62,9 @@ export default function SlotFillerPage() {
   // V2: problematicSessions = underfilled, topSessions = well-performing
   const problematic = dashboard?.sessions?.problematicSessions || []
   const topSessions = dashboard?.sessions?.topSessions || []
-  const allSessions = [...problematic, ...topSessions]
-    .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i) // dedupe
-  const sessionsToShow = problematic.length > 0 ? problematic : allSessions
+  const allSessions = useMemo(() => [...problematic, ...topSessions]
+    .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i), [problematic, topSessions]) // dedupe
+  const sessionsToShow = useMemo(() => problematic.length > 0 ? problematic : allSessions, [problematic, allSessions])
 
   // Auto-select first problematic session for IQ brand (only once on initial load)
   const hasAutoSelected = useRef(false)
