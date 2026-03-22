@@ -174,7 +174,24 @@ IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`
         const playerNamesRaw = getCol(m.playerNames?.column ?? -1)
         let playerNames: string[] = []
         if (playerNamesRaw) {
-          playerNames = playerNamesRaw.split(/[;,|]/).map(n => n.trim()).filter(Boolean)
+          playerNames = playerNamesRaw
+            .split(/[;|]/) // split by semicolon or pipe (NOT comma — names like "O'Brien, Jr." exist)
+            .map(n => n.trim())
+            .filter(Boolean)
+            .filter(name => {
+              // Filter out values that are clearly not player names
+              const lower = name.toLowerCase()
+              if (/^\d+(\.\d+)?$/.test(name)) return false // pure numbers like "4.0", "15"
+              if (/^\$?\d/.test(name)) return false // prices like "$15"
+              if (['confirmed', 'cancelled', 'canceled', 'no-show', 'noshow', 'no show',
+                   'pending', 'waitlisted', 'active', 'inactive', 'yes', 'no', 'true', 'false',
+                   'beginner', 'intermediate', 'advanced', 'all levels', 'all_levels',
+                   'open play', 'open_play', 'clinic', 'drill', 'league', 'social',
+                  ].includes(lower)) return false
+              if (name.length < 2) return false // single chars
+              if (name.length > 50) return false // too long to be a name
+              return true
+            })
           if (m.registered?.transform === 'count_names' || registered === 0) {
             registered = playerNames.length
           }
