@@ -350,6 +350,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStatus, setImportStatus] = useState("");
   const [importFileName, setImportFileName] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{
     totalParsed: number;
@@ -1066,10 +1068,14 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     onFile={async (file) => {
                       setImportFileName(file.name);
                       setImportModal("processing");
+                      setImportProgress(0);
+                      setImportStatus("Reading file...");
 
                       if (clubId) {
                         try {
                           const text = await file.text();
+                          setImportProgress(5);
+                          setImportStatus("Parsing CSV columns...");
 
                           // Step 1: Smart parse CSV with LLM column mapping
                           console.log('[Import] Parsing CSV with smart mapper...');
@@ -1115,8 +1121,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
                           if (!parseResult.sessions?.length) {
                             console.error('[Import] No sessions parsed');
+                            setImportProgress(100);
+                            setImportStatus("No sessions found in file");
                             return;
                           }
+
+                          setImportProgress(20);
+                          setImportStatus(`Parsed ${parseResult.sessions.length} sessions. Importing...`);
 
                           // Step 2: Import parsed sessions
                           console.log('[Import] Importing sessions to database...');
@@ -1128,22 +1139,51 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
                           if (!importResponse.ok) {
                             console.error('[Import] Import API error:', importResponse.status);
+                            setImportProgress(100);
+                            setImportStatus("Import failed");
                           } else {
-                            // SSE stream — read progress
+                            // SSE stream — read progress and update animation
                             const reader = importResponse.body?.getReader();
                             if (reader) {
                               const decoder = new TextDecoder();
+                              const totalSessions = parseResult.sessions?.length || 1;
+                              let imported = 0;
                               while (true) {
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 const text = decoder.decode(value);
                                 console.log('[Import]', text.trim());
+
+                                // Parse progress from SSE lines
+                                for (const line of text.split('\n')) {
+                                  const trimmed = line.trim();
+                                  // Try to extract count from messages like "Imported 50/500 sessions"
+                                  const countMatch = trimmed.match(/(\d+)\s*\/\s*(\d+)/);
+                                  if (countMatch) {
+                                    imported = parseInt(countMatch[1]);
+                                    const total = parseInt(countMatch[2]);
+                                    // Map import progress to 20-90% range
+                                    const pct = 20 + Math.round((imported / total) * 70);
+                                    setImportProgress(Math.min(90, pct));
+                                    setImportStatus(`Importing sessions: ${imported}/${total}`);
+                                  } else if (trimmed.includes('member') || trimmed.includes('Member')) {
+                                    setImportProgress(85);
+                                    setImportStatus("Processing member data...");
+                                  } else if (trimmed.includes('complete') || trimmed.includes('Complete') || trimmed.includes('done') || trimmed.includes('Done')) {
+                                    setImportProgress(95);
+                                    setImportStatus("Finalizing...");
+                                  }
+                                }
                               }
                             }
+                            setImportProgress(100);
+                            setImportStatus("Import complete!");
                             console.log('[Import] Complete!');
                           }
                         } catch (err) {
                           console.error('[Import] Failed:', err);
+                          setImportProgress(100);
+                          setImportStatus("Import failed");
                         }
                       }
                     }}
@@ -1152,6 +1192,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
                 {importModal === "processing" && (
                   <AILoadingAnimation
+                    progress={importProgress}
+                    statusMessage={importStatus}
+                    waitForCompletion
                     onComplete={() => setImportModal("done")}
                   />
                 )}
