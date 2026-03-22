@@ -1142,42 +1142,60 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                             setImportProgress(100);
                             setImportStatus("Import failed");
                           } else {
-                            // SSE stream — read progress and update animation
+                            // SSE stream — parse JSON events and update progress
                             const reader = importResponse.body?.getReader();
                             if (reader) {
                               const decoder = new TextDecoder();
-                              const totalSessions = parseResult.sessions?.length || 1;
-                              let imported = 0;
+                              // Phase progress ranges: deleting 20-25, preparing 25-30, creating_sessions 30-50, campaign 50-55, embedding 55-85, saving 85-95, done 100
+                              const phaseRanges: Record<string, [number, number]> = {
+                                deleting: [20, 25],
+                                preparing: [25, 30],
+                                creating_sessions: [30, 50],
+                                campaign: [50, 55],
+                                embedding: [55, 85],
+                                saving: [85, 95],
+                                done: [100, 100],
+                              };
+
                               while (true) {
                                 const { done, value } = await reader.read();
                                 if (done) break;
                                 const text = decoder.decode(value);
-                                console.log('[Import]', text.trim());
 
-                                // Parse progress from SSE lines
+                                // Parse SSE events: "data: {...}\n\n"
                                 for (const line of text.split('\n')) {
-                                  const trimmed = line.trim();
-                                  // Try to extract count from messages like "Imported 50/500 sessions"
-                                  const countMatch = trimmed.match(/(\d+)\s*\/\s*(\d+)/);
-                                  if (countMatch) {
-                                    imported = parseInt(countMatch[1]);
-                                    const total = parseInt(countMatch[2]);
-                                    // Map import progress to 20-90% range
-                                    const pct = 20 + Math.round((imported / total) * 70);
-                                    setImportProgress(Math.min(90, pct));
-                                    setImportStatus(`Importing sessions: ${imported}/${total}`);
-                                  } else if (trimmed.includes('member') || trimmed.includes('Member')) {
-                                    setImportProgress(85);
-                                    setImportStatus("Processing member data...");
-                                  } else if (trimmed.includes('complete') || trimmed.includes('Complete') || trimmed.includes('done') || trimmed.includes('Done')) {
-                                    setImportProgress(95);
-                                    setImportStatus("Finalizing...");
-                                  }
+                                  if (!line.startsWith('data: ')) continue;
+                                  try {
+                                    const evt = JSON.parse(line.slice(6));
+                                    const range = phaseRanges[evt.phase] || [20, 95];
+
+                                    if (evt.current != null && evt.total != null && evt.total > 0) {
+                                      // Interpolate within phase range
+                                      const phasePct = evt.current / evt.total;
+                                      const pct = Math.round(range[0] + phasePct * (range[1] - range[0]));
+                                      setImportProgress(Math.min(95, pct));
+                                    } else {
+                                      setImportProgress(range[0]);
+                                    }
+
+                                    if (evt.message) {
+                                      setImportStatus(evt.message);
+                                    }
+
+                                    if (evt.phase === 'done') {
+                                      setImportProgress(100);
+                                      setImportStatus("Import complete!");
+                                    }
+
+                                    console.log(`[Import] ${evt.phase}: ${evt.message || ''}`);
+                                  } catch { /* skip non-JSON lines */ }
                                 }
                               }
                             }
-                            setImportProgress(100);
-                            setImportStatus("Import complete!");
+                            if (importProgress < 100) {
+                              setImportProgress(100);
+                              setImportStatus("Import complete!");
+                            }
                             console.log('[Import] Complete!');
                           }
                         } catch (err) {
