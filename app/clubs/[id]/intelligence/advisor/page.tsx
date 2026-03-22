@@ -18,12 +18,6 @@ import { useBrand } from '@/components/BrandProvider'
 import { AdvisorIQ } from '../_components/iq-pages/AdvisorIQ'
 
 export default function AIAdvisorPage() {
-  const brand = useBrand()
-
-  // IQ brand uses its own self-contained mock advisor — render early
-  // to avoid tRPC calls that require auth + valid UUID club ID
-  if (brand.key === 'iqsport') return <AdvisorIQ />
-
   return <PiqleAdvisorPage />
 }
 
