@@ -8,6 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, Puzzle, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
+  Menu, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -66,6 +67,7 @@ const navSections: NavSection[] = [
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpand, setHoverExpand] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [profileOpen, setProfileOpen] = useState(false);
   const { theme, toggleTheme, isDark } = useTheme();
@@ -85,6 +87,11 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
 
   const expanded = !collapsed || hoverExpand;
 
+  // Close mobile sidebar on navigation
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "b") {
@@ -96,26 +103,16 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  return (
-    <div className="flex h-screen overflow-hidden" style={{ background: "var(--page-bg)" }}>
-      {/* SIDEBAR */}
-      <motion.aside
-        animate={{ width: expanded ? 260 : 72 }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        onMouseEnter={() => collapsed && setHoverExpand(true)}
-        onMouseLeave={() => setHoverExpand(false)}
-        className="relative flex flex-col shrink-0 h-full z-30"
-        style={{
-          background: "var(--sidebar-bg)",
-          borderRight: "1px solid var(--sidebar-border-color)",
-          backdropFilter: "var(--sidebar-blur)",
-        }}
-      >
+  // Shared nav content rendered inside sidebar (desktop) or mobile drawer
+  const sidebarNav = (isMobile: boolean) => {
+    const showExpanded = isMobile ? true : expanded;
+    return (
+      <>
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-16 shrink-0" style={{ borderBottom: "1px solid var(--divider)" }}>
           <LogoIcon size={32} />
           <AnimatePresence>
-            {expanded && (
+            {showExpanded && (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: "auto" }}
@@ -129,6 +126,11 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
               </motion.div>
             )}
           </AnimatePresence>
+          {isMobile && (
+            <button onClick={() => setMobileOpen(false)} className="ml-auto p-1.5 rounded-lg" style={{ color: "var(--t3)" }}>
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Nav */}
@@ -139,7 +141,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
             return (
               <div key={section.id}>
                 {/* Section header */}
-                {expanded ? (
+                {showExpanded ? (
                   <button
                     onClick={() => setCollapsedSections(prev => ({ ...prev, [section.id]: !prev[section.id] }))}
                     className="w-full flex items-center gap-2 px-3 py-1.5 mb-1 group"
@@ -182,15 +184,15 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                             onClick={() => router.push(`${fullPath}${demoParam}`)}
                             className="w-full flex items-center gap-3 rounded-xl transition-all relative group"
                             style={{
-                              padding: expanded ? "10px 12px" : "10px 0",
-                              justifyContent: expanded ? "flex-start" : "center",
+                              padding: showExpanded ? "10px 12px" : "10px 0",
+                              justifyContent: showExpanded ? "flex-start" : "center",
                               background: active ? "var(--pill-active)" : "transparent",
                               color: active ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
                             }}
                           >
                             {active && (
                               <motion.div
-                                layoutId="sidebar-active"
+                                layoutId={isMobile ? "sidebar-active-mobile" : "sidebar-active"}
                                 className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full"
                                 style={{ height: 24, background: "linear-gradient(180deg, #8B5CF6, #06B6D4)" }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -198,7 +200,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                             )}
                             <Icon className="w-5 h-5 shrink-0" />
                             <AnimatePresence>
-                              {expanded && (
+                              {showExpanded && (
                                 <motion.span
                                   initial={{ opacity: 0, width: 0 }}
                                   animate={{ opacity: 1, width: "auto" }}
@@ -210,7 +212,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                                 </motion.span>
                               )}
                             </AnimatePresence>
-                            {expanded && item.isAI && (
+                            {showExpanded && item.isAI && (
                               <span
                                 className="ml-auto text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
                                 style={{
@@ -239,54 +241,124 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
             onClick={toggleTheme}
             className="w-full flex items-center gap-3 rounded-xl transition-all"
             style={{
-              padding: expanded ? "10px 12px" : "10px 0",
-              justifyContent: expanded ? "flex-start" : "center",
+              padding: showExpanded ? "10px 12px" : "10px 0",
+              justifyContent: showExpanded ? "flex-start" : "center",
               color: "var(--t3)",
             }}
           >
             {isDark ? <Sun className="w-5 h-5 shrink-0" /> : <Moon className="w-5 h-5 shrink-0" />}
-            {expanded && <span className="text-sm" style={{ fontWeight: 500 }}>{isDark ? "Light Mode" : "Dark Mode"}</span>}
+            {showExpanded && <span className="text-sm" style={{ fontWeight: 500 }}>{isDark ? "Light Mode" : "Dark Mode"}</span>}
           </button>
 
           <button
             onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)}
             className="w-full flex items-center gap-3 rounded-xl transition-all"
             style={{
-              padding: expanded ? "10px 12px" : "10px 0",
-              justifyContent: expanded ? "flex-start" : "center",
+              padding: showExpanded ? "10px 12px" : "10px 0",
+              justifyContent: showExpanded ? "flex-start" : "center",
               color: pathname.endsWith("/settings") ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
               background: pathname.endsWith("/settings") ? "var(--pill-active)" : "transparent",
             }}
           >
             <Settings className="w-5 h-5 shrink-0" />
-            {expanded && <span className="text-sm" style={{ fontWeight: 500 }}>Settings</span>}
+            {showExpanded && <span className="text-sm" style={{ fontWeight: 500 }}>Settings</span>}
           </button>
 
-          <button
-            onClick={() => setCollapsed((p) => !p)}
-            className="w-full flex items-center gap-3 rounded-xl transition-all"
-            style={{
-              padding: expanded ? "10px 12px" : "10px 0",
-              justifyContent: expanded ? "flex-start" : "center",
-              color: "var(--t3)",
-            }}
-          >
-            {collapsed ? <ChevronRight className="w-5 h-5 shrink-0" /> : <ChevronLeft className="w-5 h-5 shrink-0" />}
-            {expanded && <span className="text-sm" style={{ fontWeight: 500 }}>Collapse</span>}
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => setCollapsed((p) => !p)}
+              className="w-full flex items-center gap-3 rounded-xl transition-all"
+              style={{
+                padding: showExpanded ? "10px 12px" : "10px 0",
+                justifyContent: showExpanded ? "flex-start" : "center",
+                color: "var(--t3)",
+              }}
+            >
+              {collapsed ? <ChevronRight className="w-5 h-5 shrink-0" /> : <ChevronLeft className="w-5 h-5 shrink-0" />}
+              {showExpanded && <span className="text-sm" style={{ fontWeight: 500 }}>Collapse</span>}
+            </button>
+          )}
         </div>
+      </>
+    );
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden" style={{ background: "var(--page-bg)" }}>
+      {/* DESKTOP SIDEBAR (hidden on mobile) */}
+      <motion.aside
+        animate={{ width: expanded ? 260 : 72 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        onMouseEnter={() => collapsed && setHoverExpand(true)}
+        onMouseLeave={() => setHoverExpand(false)}
+        className="relative hidden md:flex flex-col shrink-0 h-full z-30"
+        style={{
+          background: "var(--sidebar-bg)",
+          borderRight: "1px solid var(--sidebar-border-color)",
+          backdropFilter: "var(--sidebar-blur)",
+        }}
+      >
+        {sidebarNav(false)}
       </motion.aside>
+
+      {/* MOBILE SIDEBAR OVERLAY */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileOpen(false)}
+              className="fixed inset-0 z-40 md:hidden"
+              style={{ background: "rgba(0,0,0,0.6)" }}
+            />
+            {/* Drawer */}
+            <motion.aside
+              initial={{ x: -280 }}
+              animate={{ x: 0 }}
+              exit={{ x: -280 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed inset-y-0 left-0 z-50 w-[280px] flex flex-col md:hidden"
+              style={{
+                background: "var(--sidebar-bg)",
+                borderRight: "1px solid var(--sidebar-border-color)",
+                backdropFilter: "var(--sidebar-blur)",
+              }}
+            >
+              {sidebarNav(true)}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
         <header
-          className="h-16 shrink-0 flex items-center justify-between px-6"
+          className="h-14 md:h-16 shrink-0 flex items-center justify-between px-4 md:px-6"
           style={{ borderBottom: "1px solid var(--divider)", background: "var(--sidebar-bg)", backdropFilter: "var(--glass-blur)" }}
         >
           <div className="flex items-center gap-3">
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-1.5 rounded-lg md:hidden"
+              style={{ color: "var(--t2)" }}
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            {/* Mobile logo */}
+            <div className="flex items-center gap-2 md:hidden">
+              <LogoIcon size={24} />
+              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--heading)" }}>
+                IQ<span style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Sport</span>
+              </span>
+            </div>
+            {/* Desktop search */}
             <div
-              className="flex items-center gap-2 px-3 py-2 rounded-xl"
+              className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl"
               style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 240 }}
             >
               <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
@@ -298,7 +370,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {/* Club name */}
             {(() => {
               const currentClub = myClubs.find((c: any) => c.id === clubId)
@@ -312,7 +384,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
               <Bell className="w-5 h-5" />
               <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
             </button>
-            <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
+            <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="hidden md:block p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
               <Settings className="w-5 h-5" />
             </button>
             {/* User Avatar + Dropdown */}
@@ -437,7 +509,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
             <div className="absolute top-[-15%] right-[-10%] w-[500px] h-[500px] rounded-full blur-[120px]" style={{ background: "var(--orb-violet)" }} />
             <div className="absolute bottom-[-10%] left-[10%] w-[400px] h-[400px] rounded-full blur-[120px]" style={{ background: "var(--orb-cyan)" }} />
           </div>
-          <div className="relative z-10 p-6">
+          <div className="relative z-10 p-4 md:p-6">
             {children}
           </div>
         </main>
