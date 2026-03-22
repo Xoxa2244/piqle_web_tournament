@@ -242,7 +242,7 @@ export async function importSessionsToDB(
     })
 
     await prisma.$executeRawUnsafe(
-      `INSERT INTO play_sessions (id, "clubId", "courtId", title, date, "startTime", "endTime", format, "skillLevel", "maxPlayers", "registeredCount", status, "createdAt", "updatedAt")
+      `INSERT INTO play_sessions (id, "clubId", "courtId", title, date, "startTime", "endTime", format, "skillLevel", "maxPlayers", registered_count, status, "createdAt", "updatedAt")
        VALUES ${valuesClauses.map(v => v.replace(/\)$/, `, '${nowISO}'::timestamp, '${nowISO}'::timestamp)`)).join(', ')}
        ON CONFLICT DO NOTHING`,
       ...params,
