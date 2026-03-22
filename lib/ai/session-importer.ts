@@ -191,15 +191,21 @@ export async function importSessionsToDB(
     }
     existingKeys.add(dedupKey)
 
-    const sessionDate = new Date(s.date + 'T00:00:00')
-    const isPast = sessionDate < now
+    // Parse MM/DD/YYYY or YYYY-MM-DD formats
+    let isoDate = s.date
+    const mdyMatch = s.date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (mdyMatch) {
+      isoDate = `${mdyMatch[3]}-${mdyMatch[1].padStart(2, '0')}-${mdyMatch[2].padStart(2, '0')}`
+    }
+    const sessionDate = new Date(isoDate + 'T00:00:00')
+    const isPast = isNaN(sessionDate.getTime()) || sessionDate < now
     const formatLabel = format.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
 
     sessionRows.push({
       id: randomUUID(),
       courtId,
       title: `${formatLabel} @ ${s.court || 'TBD'}`,
-      date: s.date,
+      date: isoDate,
       startTime: s.startTime,
       endTime: s.endTime,
       format,
