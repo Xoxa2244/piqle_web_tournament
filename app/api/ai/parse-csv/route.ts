@@ -198,7 +198,8 @@ IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`
         }
 
         if (registered === 0 && playerNames.length > 0) registered = playerNames.length
-        if (capacity < registered) capacity = registered
+        // Don't inflate capacity to match registered — keep original CSV value
+        // This preserves real occupancy rates (e.g., 6/8 = 75%, not 6/6 = 100%)
 
         // Price
         let pricePerPlayer: number | null = null
