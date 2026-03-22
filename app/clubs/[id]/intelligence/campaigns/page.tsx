@@ -257,7 +257,7 @@ export default function CampaignsPage() {
     )
   }
 
-  const { summary, byType, byDay, recentLogs } = data
+  const { summary, byType, byDay, byPersona, alerts, recentLogs } = data as any
 
   return (
     <div className="space-y-6">
@@ -295,8 +295,28 @@ export default function CampaignsPage() {
         </div>
       )}
 
+      {/* ── Campaign Alerts ── */}
+      {alerts && alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((alert: any, i: number) => (
+            <div
+              key={i}
+              className={cn(
+                'flex items-start gap-3 rounded-lg border p-3 text-sm',
+                alert.severity === 'critical'
+                  ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-800 dark:text-red-300'
+                  : 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300'
+              )}
+            >
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{alert.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           label="Total Sent"
           value={summary.totalSent}
@@ -304,6 +324,15 @@ export default function CampaignsPage() {
           variant="default"
           subtitle={`Last ${days} days`}
           sparkline={byDay.slice(-14).map((d: any) => d.sent)}
+        />
+        <MetricCard
+          label="Converted"
+          value={summary.totalConverted || 0}
+          icon={CheckCircle2}
+          variant={summary.totalConverted > 0 ? 'success' : 'default'}
+          subtitle={summary.totalSent > 0
+            ? `${((summary.totalConverted || 0) / summary.totalSent * 100).toFixed(1)}% rate`
+            : 'No data yet'}
         />
         <MetricCard
           label="This Week"
@@ -365,6 +394,109 @@ export default function CampaignsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ══ Conversion by Persona ══ */}
+      {byPersona && byPersona.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              Conversion by Player Persona
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {byPersona.map((p: any) => {
+                const personaConfig: Record<string, { emoji: string; label: string }> = {
+                  COMPETITIVE: { emoji: '🏆', label: 'Competitor' },
+                  SOCIAL: { emoji: '🤝', label: 'Social' },
+                  IMPROVER: { emoji: '📈', label: 'Improver' },
+                  CASUAL: { emoji: '☀️', label: 'Casual' },
+                  TEAM_PLAYER: { emoji: '👥', label: 'Team Player' },
+                  UNKNOWN: { emoji: '❓', label: 'Unknown' },
+                }
+                const cfg = personaConfig[p.persona] || personaConfig.UNKNOWN
+
+                return (
+                  <div key={p.persona} className="space-y-1.5">
+                    {/* Persona header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{cfg.emoji}</span>
+                        <span className="text-sm font-medium">{cfg.label}</span>
+                        <span className="text-xs text-muted-foreground">({p.sent} sent)</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs tabular-nums">
+                        <span className="text-muted-foreground">
+                          Open {p.openRate}%
+                        </span>
+                        <span className="text-muted-foreground">
+                          Click {p.clickRate}%
+                        </span>
+                        <span className={cn(
+                          'font-semibold',
+                          p.conversionRate >= 8 ? 'text-emerald-600' :
+                          p.conversionRate >= 3 ? 'text-amber-600' :
+                          'text-red-500'
+                        )}>
+                          {p.conversionRate}% conv
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Funnel bar */}
+                    <div className="flex h-2 rounded-full overflow-hidden bg-muted/50">
+                      {p.sent > 0 && (
+                        <>
+                          <div
+                            className="bg-blue-400 transition-all"
+                            style={{ width: `${(p.delivered / p.sent) * 100}%` }}
+                            title={`Delivered: ${p.delivered}`}
+                          />
+                          <div
+                            className="bg-amber-400 transition-all"
+                            style={{ width: `${(p.opened / p.sent) * 100}%` }}
+                            title={`Opened: ${p.opened}`}
+                          />
+                          <div
+                            className="bg-purple-500 transition-all"
+                            style={{ width: `${(p.clicked / p.sent) * 100}%` }}
+                            title={`Clicked: ${p.clicked}`}
+                          />
+                          <div
+                            className="bg-emerald-500 transition-all"
+                            style={{ width: `${(p.converted / p.sent) * 100}%` }}
+                            title={`Converted: ${p.converted}`}
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    {/* Funnel numbers */}
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-blue-400" /> {p.delivered} delivered
+                      </span>
+                      <ArrowRight className="h-2.5 w-2.5" />
+                      <span className="flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-amber-400" /> {p.opened} opened
+                      </span>
+                      <ArrowRight className="h-2.5 w-2.5" />
+                      <span className="flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-purple-500" /> {p.clicked} clicked
+                      </span>
+                      <ArrowRight className="h-2.5 w-2.5" />
+                      <span className="flex items-center gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-emerald-500" /> {p.converted} booked
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ══ Section A: Variant Performance ══ */}
       {variantData && variantData.variants.length > 0 && (
