@@ -715,9 +715,9 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    // 1. Delete embeddings
+    // 1. Delete ALL embeddings for this club (csv_import + analytics + player patterns)
     const embeddingsDeleted = await prisma.$executeRaw`
-      DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid AND source_table = 'csv_import'
+      DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid
     `;
 
     // 2. Delete bookings for imported sessions
