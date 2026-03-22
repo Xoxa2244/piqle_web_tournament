@@ -316,6 +316,31 @@ export function generatePersonalizedInvite(ctx: InviteContext): {
   }
 }
 
+// ── Persist Persona to DB ──
+
+export async function persistPersona(
+  prisma: any,
+  userId: string,
+  clubId: string,
+  profile: PersonaProfile
+): Promise<void> {
+  await prisma.userPlayPreference.upsert({
+    where: { userId_clubId: { userId, clubId } },
+    create: {
+      userId,
+      clubId,
+      detectedPersona: profile.persona,
+      personaConfidence: profile.confidence,
+      personaUpdatedAt: new Date(),
+    },
+    update: {
+      detectedPersona: profile.persona,
+      personaConfidence: profile.confidence,
+      personaUpdatedAt: new Date(),
+    },
+  });
+}
+
 // ── Persona Labels for UI ──
 
 export const PERSONA_OPTIONS: Array<{ value: PlayerPersona; label: string; emoji: string; description: string }> = [

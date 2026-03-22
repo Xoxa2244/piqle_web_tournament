@@ -9,11 +9,68 @@ import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
 import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
 import { classifyArchetype } from './reactivation-messages';
+import { detectPersona, persistPersona, type BehaviorSignals } from './persona';
 import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail } from '../email';
 import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
 import { checkAntiSpam } from './anti-spam';
 import { resolvePreferences } from './inferred-preferences';
 import type { BookingHistory, UserPlayPreferenceData, MemberData, BookingWithSession } from '../../types/intelligence';
+
+// ── Persona Detection & Persistence ──
+
+/**
+ * Detect personas for a batch of members and persist to DB.
+ * Called during slot filler / reactivation scoring.
+ * Non-blocking — errors don't affect main flow.
+ */
+async function detectAndPersistPersonas(
+  prisma: any,
+  clubId: string,
+  membersWithData: Array<{ member: MemberData; history: BookingHistory; preference?: UserPlayPreferenceData | null }>
+): Promise<void> {
+  try {
+    const updates = membersWithData
+      .filter(m => m.history.totalBookings >= 3) // Need enough data
+      .map(m => {
+        const h = m.history;
+        // Build signals from available BookingHistory fields
+        // Fields not in BookingHistory default to 0/false — persona detection
+        // will still work with partial data (lower confidence)
+        const signals: BehaviorSignals = {
+          formatCounts: {},
+          totalBookings: h.totalBookings,
+          cancelRate: h.cancelledCount / Math.max(h.totalBookings, 1),
+          noShowRate: h.noShowCount / Math.max(h.totalBookings, 1),
+          averageBookingsPerWeek: h.bookingsLastMonth / 4,
+          clinicCount: 0,
+          drillCount: 0,
+          openPlayCount: h.totalBookings, // assume open play if no format breakdown
+          leaguePlayCount: 0,
+          socialCount: 0,
+          tournamentCount: 0,
+          hasDuprLinked: !!m.member.duprRatingDoubles,
+          duprRating: m.member.duprRatingDoubles ?? null,
+          weeklyConsistencyScore: 0,
+          prefersSameTimeSlots: false,
+          booksWithSamePeople: false,
+          joinedViaInvite: Math.round(h.inviteAcceptanceRate * h.totalBookings),
+        };
+        const profile = detectPersona(signals);
+        return { userId: m.member.id, profile };
+      });
+
+    // Batch persist (fire-and-forget, don't await all)
+    await Promise.allSettled(
+      updates.map(u => persistPersona(prisma, u.userId, clubId, u.profile))
+    );
+
+    if (updates.length > 0) {
+      console.log(`[Persona] Detected & persisted ${updates.length} personas for club ${clubId}`);
+    }
+  } catch (err) {
+    console.error('[Persona] Failed to detect/persist personas:', err);
+  }
+}
 
 // ── Input Schemas ──
 
@@ -239,6 +296,9 @@ export async function getSlotFillerRecommendations(
     members: membersWithData,
     alreadyBookedUserIds,
   });
+
+  // Detect & persist personas (non-blocking)
+  detectAndPersistPersonas(prisma, session.clubId, membersWithData);
 
   // Log the recommendation
   await prisma.aIRecommendationLog.create({
@@ -919,6 +979,9 @@ export async function getReactivationCandidates(
       preferredFormats: c.preference?.preferredFormats,
     })
   }
+
+  // Detect & persist personas (non-blocking)
+  detectAndPersistPersonas(prisma, clubId, membersWithData);
 
   // Enrich with last outreach tracking from AIRecommendationLog
   try {

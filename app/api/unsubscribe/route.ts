@@ -29,6 +29,18 @@ async function processUnsubscribe(token: string): Promise<{ userId: string; club
     },
   })
 
+  // Mark any pending/sent recommendations as unsubscribed
+  await prisma.aIRecommendationLog.updateMany({
+    where: {
+      userId: payload.userId,
+      clubId: payload.clubId,
+      status: { in: ['PENDING', 'SENT'] },
+    },
+    data: { status: 'UNSUBSCRIBED' },
+  })
+
+  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}`)
+
   return payload
 }
 
