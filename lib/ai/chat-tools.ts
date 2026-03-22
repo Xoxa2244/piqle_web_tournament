@@ -6,23 +6,22 @@
  * formats into a human-readable response.
  */
 
-import { tool, type ToolSet } from 'ai'
+import { tool } from 'ai'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
-// AI SDK tool() overloads are strict — cast to bypass TS union return types
-const t = tool as (...args: any[]) => any
+const defineTool = (config: { description: string; parameters: z.ZodObject<any>; execute: (...args: any[]) => Promise<any> }) => tool(config as any)
 
-export function createChatTools(clubId: string): ToolSet {
+export function createChatTools(clubId: string) {
   return {
-    getMemberHealth: t({
+    getMemberHealth: defineTool({
       description:
         'Get member health scores and churn risk for all club members. Returns summary (total, healthy, watch, at_risk, critical counts) and top at-risk members with their scores. Use when the user asks about member health, churn risk, at-risk members, engagement, or who hasn\'t been coming.',
       parameters: z.object({
         filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).default('all').describe('Filter by risk level'),
         limit: z.number().int().min(1).default(10).describe('Max members to return'),
       }),
-      execute: async ({ filter, limit }: { filter?: string; limit?: number }) => {
+      execute: async ({ filter, limit }) => {
         const f = filter ?? 'all'
         const l = limit ?? 10
         try {
@@ -126,14 +125,14 @@ export function createChatTools(clubId: string): ToolSet {
       },
     }),
 
-    getUpcomingSessions: t({
+    getUpcomingSessions: defineTool({
       description:
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
       parameters: z.object({
         onlyUnderfilled: z.boolean().default(false).describe('Only return sessions below 50% capacity'),
         limit: z.number().int().min(1).default(10).describe('Max sessions to return'),
       }),
-      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
+      execute: async ({ onlyUnderfilled, limit }) => {
         const uf = onlyUnderfilled ?? false
         const l = limit ?? 10
         try {
@@ -185,7 +184,7 @@ export function createChatTools(clubId: string): ToolSet {
       },
     }),
 
-    getClubMetrics: t({
+    getClubMetrics: defineTool({
       description:
         'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
       parameters: z.object({}),
@@ -260,13 +259,13 @@ export function createChatTools(clubId: string): ToolSet {
       },
     }),
 
-    getReactivationCandidates: t({
+    getReactivationCandidates: defineTool({
       description:
         'Get members who have been inactive and are candidates for re-engagement outreach. Use when the user asks about inactive members, who to re-engage, reactivation, or members who stopped coming.',
       parameters: z.object({
         limit: z.number().int().min(1).default(10).describe('Max candidates to return'),
       }),
-      execute: async ({ limit }: { limit?: number }) => {
+      execute: async ({ limit }) => {
         const l = limit ?? 10
         try {
           const now = new Date()
