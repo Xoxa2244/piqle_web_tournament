@@ -14,6 +14,7 @@ import {
   upsertPreferences,
   getPreferences,
 } from '@/lib/ai/intelligence-service'
+import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
@@ -1581,16 +1582,80 @@ export const intelligenceRouter = createTRPCRouter({
       const weekAgo = new Date(Date.now() - 7 * 86400000)
       const thisWeek = allLogs.filter(l => l.createdAt >= weekAgo && l.status === 'sent').length
 
+      // ── Conversion by persona ──
+      // Join recommendation logs with user preferences to get persona breakdown
+      const logsWithPersona = await ctx.prisma.$queryRaw<Array<{
+        persona: string | null
+        total: bigint
+        sent: bigint
+        delivered: bigint
+        opened: bigint
+        clicked: bigint
+        converted: bigint
+      }>>`
+        SELECT
+          upp.detected_persona as persona,
+          COUNT(*)::bigint as total,
+          COUNT(*) FILTER (WHERE arl.status IN ('SENT', 'DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as sent,
+          COUNT(*) FILTER (WHERE arl.status IN ('DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as delivered,
+          COUNT(*) FILTER (WHERE arl.status IN ('OPENED', 'CLICKED', 'CONVERTED'))::bigint as opened,
+          COUNT(*) FILTER (WHERE arl.status IN ('CLICKED', 'CONVERTED'))::bigint as clicked,
+          COUNT(*) FILTER (WHERE arl.status = 'CONVERTED')::bigint as converted
+        FROM ai_recommendation_logs arl
+        LEFT JOIN user_play_preferences upp
+          ON arl.user_id = upp.user_id AND arl.club_id = upp.club_id
+        WHERE arl.club_id = ${input.clubId}
+          AND arl.created_at >= ${since}
+        GROUP BY upp.detected_persona
+        ORDER BY total DESC
+      `
+
+      const byPersona = logsWithPersona.map(row => ({
+        persona: row.persona || 'UNKNOWN',
+        total: Number(row.total),
+        sent: Number(row.sent),
+        delivered: Number(row.delivered),
+        opened: Number(row.opened),
+        clicked: Number(row.clicked),
+        converted: Number(row.converted),
+        conversionRate: Number(row.sent) > 0
+          ? Math.round((Number(row.converted) / Number(row.sent)) * 100)
+          : 0,
+        openRate: Number(row.delivered) > 0
+          ? Math.round((Number(row.opened) / Number(row.delivered)) * 100)
+          : 0,
+        clickRate: Number(row.opened) > 0
+          ? Math.round((Number(row.clicked) / Number(row.opened)) * 100)
+          : 0,
+      }))
+
+      // ── Campaign Alerts ──
+      const totalSentNum = byStatus.find((s: any) => s.status === 'sent')?._count || 0
+      const totalConvertedNum = byPersona.reduce((s, p) => s + p.converted, 0)
+      const totalBouncedNum = byStatus.find((s: any) => s.status === 'bounced')?._count || 0
+      const totalUnsubscribedNum = byStatus.find((s: any) => s.status === 'unsubscribed')?._count || 0
+
+      const alerts = checkCampaignAlerts({
+        totalSent: totalSentNum,
+        totalConverted: totalConvertedNum,
+        totalBounced: totalBouncedNum,
+        totalUnsubscribed: totalUnsubscribedNum,
+        byPersona: byPersona.map(p => ({ persona: p.persona, sent: p.sent, converted: p.converted })),
+      })
+
       return {
         summary: {
-          totalSent: byStatus.find(s => s.status === 'sent')?._count || 0,
-          totalFailed: byStatus.find(s => s.status === 'failed')?._count || 0,
-          totalPending: byStatus.find(s => s.status === 'pending')?._count || 0,
+          totalSent: totalSentNum,
+          totalFailed: byStatus.find((s: any) => s.status === 'failed')?._count || 0,
+          totalPending: byStatus.find((s: any) => s.status === 'pending')?._count || 0,
+          totalConverted: totalConvertedNum,
           thisWeek,
           activeTriggers,
         },
         byType: byType.map(t => ({ type: t.type, count: t._count })),
         byDay: Object.entries(byDay).map(([date, counts]) => ({ date, ...counts })),
+        byPersona,
+        alerts,
         recentLogs: recentLogs.map(l => ({
           id: l.id,
           type: l.type,

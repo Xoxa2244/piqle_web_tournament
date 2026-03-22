@@ -519,6 +519,7 @@ export async function sendSlotFillerInviteEmail({
   spotsLeft,
   bookingUrl,
   customMessage,
+  customSubject,
 }: {
   to: string
   memberName: string
@@ -529,9 +530,10 @@ export async function sendSlotFillerInviteEmail({
   spotsLeft: number
   bookingUrl: string
   customMessage?: string
+  customSubject?: string
 }): Promise<{ messageId: string }> {
   const firstName = memberName.split(' ')[0] || 'there'
-  const subject = `${firstName}, you're invited to ${sessionTitle}! 🎾`
+  const subject = customSubject || `${firstName}, you're invited to ${sessionTitle}! 🎾`
   const text = customMessage
     ? `${customMessage}\n\n${sessionTitle} — ${sessionDate}, ${sessionTime}. ${spotsLeft} spots left.\n\nJoin now: ${bookingUrl}`
     : `Hey ${firstName}! You've been matched for ${sessionTitle} at ${clubName} on ${sessionDate}, ${sessionTime}. ${spotsLeft} spots left. Join now: ${bookingUrl}`

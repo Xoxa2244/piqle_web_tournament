@@ -9,7 +9,8 @@ import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
 import { generateEventRecommendations, type CsvSessionMeta as EventCsvMeta } from './event-recommendations';
 import { classifyArchetype } from './reactivation-messages';
-import { detectPersona, persistPersona, type BehaviorSignals } from './persona';
+import { detectPersona, persistPersona, generatePersonalizedInvite, type BehaviorSignals, type PlayerPersona } from './persona';
+import { selectBestVariant } from './variant-optimizer';
 import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail } from '../email';
 import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
 import { checkAntiSpam } from './anti-spam';
@@ -1089,6 +1090,17 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
   })
   const usersById = new Map(users.map(u => [u.id, u]))
 
+  // Load personas for personalized messaging
+  const preferences = await prisma.userPlayPreference.findMany({
+    where: { userId: { in: memberIds }, clubId },
+    select: { userId: true, detectedPersona: true },
+  })
+  const personaByUserId = new Map<string, PlayerPersona>(
+    preferences
+      .filter((p: any) => p.detectedPersona)
+      .map((p: any) => [p.userId, p.detectedPersona as PlayerPersona])
+  )
+
   const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
 
   for (const candidate of realCandidates) {
@@ -1111,6 +1123,29 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
       continue
     }
 
+    // Generate persona-aware message (falls back to default if no persona)
+    const persona = personaByUserId.get(user.id)
+    let personalizedSubject: string | undefined
+    let personalizedBody: string | undefined
+
+    if (persona && !candidate.customMessage) {
+      const invite = generatePersonalizedInvite({
+        playerName: user.name || 'there',
+        persona,
+        sessionTitle: sessionData.title,
+        sessionDate: sessionData.date,
+        sessionTime: sessionData.time,
+        sessionFormat: 'OPEN_PLAY',
+        skillLevel: 'ALL_LEVELS',
+        confirmedCount: 0,
+        maxPlayers: 8,
+        spotsRemaining: sessionData.spotsLeft,
+        duprRating: null,
+      })
+      personalizedSubject = invite.subject
+      personalizedBody = invite.body
+    }
+
     // Send email
     if (candidate.channel === 'email' || candidate.channel === 'both') {
       try {
@@ -1124,7 +1159,8 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           sessionTime: sessionData.time,
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
-          customMessage: candidate.customMessage,
+          customMessage: candidate.customMessage || personalizedBody,
+          customSubject: personalizedSubject,
         })
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {
@@ -1145,7 +1181,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           sessionTime: sessionData.time,
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
-          customMessage: candidate.customMessage,
+          customMessage: candidate.customMessage || personalizedBody,
         })
         await sendSms({ to: phone, body })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
@@ -1166,6 +1202,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           reasoning: {
             sessionTitle: sessionData.title,
             sessionDate: sessionData.date,
+            persona: persona || null,
             customMessage: candidate.customMessage || null,
           },
           status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
@@ -1830,10 +1867,22 @@ export async function sendOutreachMessage(
     totalBookings,
   })
 
-  // Pick variant
-  const variant = variantId
-    ? variants.find(v => v.id === variantId) || variants.find(v => v.recommended) || variants[0]
-    : variants.find(v => v.recommended) || variants[0]
+  // Pick variant — use A/B optimizer when no explicit variantId is provided
+  let variant: typeof variants[0]
+  let optimizationReason: string = 'manual'
+  if (variantId) {
+    variant = variants.find(v => v.id === variantId) || variants.find(v => v.recommended) || variants[0]
+    optimizationReason = 'manual'
+  } else {
+    try {
+      const optimization = await selectBestVariant(prisma, clubId, type as any, variants)
+      variant = variants.find(v => v.id === optimization.recommendedVariantId) || variants[0]
+      optimizationReason = optimization.reason
+    } catch {
+      variant = variants.find(v => v.recommended) || variants[0]
+      optimizationReason = 'default'
+    }
+  }
 
   const bookingUrl = matched?.deepLinkUrl || genericBookingUrl
 
@@ -1885,6 +1934,7 @@ export async function sendOutreachMessage(
         channel,
         reasoning: {
           variantId: variant.id,
+          optimizationReason,
           healthScore,
           riskLevel,
           lowComponents,
