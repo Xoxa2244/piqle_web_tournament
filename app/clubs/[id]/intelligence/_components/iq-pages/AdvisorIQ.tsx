@@ -162,18 +162,51 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
-          // Parse SSE data chunks
           const lines = chunk.split('\n');
           for (const line of lines) {
-            if (line.startsWith('0:')) {
-              // AI SDK text chunk format: 0:"text content"
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // AI SDK v6 UI Message Stream format: 0:"text" (text delta)
+            if (trimmed.startsWith('0:')) {
               try {
-                const textChunk = JSON.parse(line.slice(2));
-                assistantContent += textChunk;
-                setMessages(prev => prev.map(m =>
-                  m.id === assistantId ? { ...m, content: assistantContent } : m
-                ));
-              } catch { /* skip non-JSON lines */ }
+                const textChunk = JSON.parse(trimmed.slice(2));
+                if (typeof textChunk === 'string') {
+                  assistantContent += textChunk;
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, content: assistantContent } : m
+                  ));
+                }
+              } catch { /* skip */ }
+            }
+            // AI SDK v6 data stream format: data: {"type":"text-delta","textDelta":"..."}
+            else if (trimmed.startsWith('data:')) {
+              try {
+                const json = JSON.parse(trimmed.slice(5).trim());
+                if (json.type === 'text-delta' && json.textDelta) {
+                  assistantContent += json.textDelta;
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, content: assistantContent } : m
+                  ));
+                }
+              } catch { /* skip */ }
+            }
+            // Vercel AI SDK format: f: (finish), e: (error), d: (data)
+            else if (trimmed.startsWith('2:')) {
+              // 2: = data message, may contain tool results
+              try {
+                const data = JSON.parse(trimmed.slice(2));
+                if (Array.isArray(data)) {
+                  for (const item of data) {
+                    if (item.type === 'text-delta' && item.textDelta) {
+                      assistantContent += item.textDelta;
+                    }
+                  }
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantId ? { ...m, content: assistantContent } : m
+                  ));
+                }
+              } catch { /* skip */ }
             }
           }
         }

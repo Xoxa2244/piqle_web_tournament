@@ -30,7 +30,7 @@ export function useDashboard(clubId: string) {
 
   const query = trpc.intelligence.getDashboard.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000, keepPreviousData: true }
   )
 
   if (isDemo) {
@@ -50,7 +50,7 @@ export function useDashboardV2(clubId: string, dateFrom?: string, dateTo?: strin
 
   const query = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, dateFrom, dateTo },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000, keepPreviousData: true }
   )
 
   if (isDemo) {
@@ -191,7 +191,7 @@ export function useSessionsCalendar(clubId: string) {
 
   const query = trpc.intelligence.getSessionsCalendar.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000, keepPreviousData: true }
   )
 
   if (isDemo) {
