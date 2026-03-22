@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useSearchParams } from 'next/navigation'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,12 +66,14 @@ export default function SlotFillerPage() {
     .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i) // dedupe
   const sessionsToShow = problematic.length > 0 ? problematic : allSessions
 
-  // Auto-select first problematic session for IQ brand
+  // Auto-select first problematic session for IQ brand (only once on initial load)
+  const hasAutoSelected = useRef(false)
   useEffect(() => {
-    if (!selectedSessionId && sessionsToShow.length > 0 && brand.key === 'iqsport') {
+    if (!hasAutoSelected.current && !selectedSessionId && sessionsToShow.length > 0 && brand.key === 'iqsport') {
+      hasAutoSelected.current = true
       setSelectedSessionId(sessionsToShow[0].id)
     }
-  }, [sessionsToShow, selectedSessionId, brand.key])
+  }, [sessionsToShow.length, brand.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter recommendations by search
   const filteredRecs = useMemo(() => {
