@@ -200,9 +200,37 @@ IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`
       }
     }
 
+    // ── Group rows by session (same date + startTime + court = one session) ──
+    // CSV may have one row per player-per-session, so we merge them
+    const sessionMap = new Map<string, typeof sessions[0]>()
+    for (const s of sessions) {
+      const key = `${s.date}|${s.startTime}|${s.court}`
+      const existing = sessionMap.get(key)
+      if (existing) {
+        // Merge player names (deduplicate)
+        for (const name of s.playerNames) {
+          if (name && !existing.playerNames.includes(name)) {
+            existing.playerNames.push(name)
+          }
+        }
+        existing.registered = existing.playerNames.length
+        // Keep the higher capacity
+        if (s.capacity > existing.capacity) existing.capacity = s.capacity
+        // Keep price if set
+        if (s.pricePerPlayer != null && existing.pricePerPlayer == null) {
+          existing.pricePerPlayer = s.pricePerPlayer
+        }
+      } else {
+        sessionMap.set(key, { ...s, playerNames: [...s.playerNames] })
+      }
+    }
+
+    const groupedSessions = Array.from(sessionMap.values())
+
     return Response.json({
-      sessions,
-      totalParsed: sessions.length,
+      sessions: groupedSessions,
+      totalParsed: groupedSessions.length,
+      totalRows: sessions.length,
       totalErrors: errors.length,
       errors: errors.slice(0, 10),
       mapping: mapping.mapping,
