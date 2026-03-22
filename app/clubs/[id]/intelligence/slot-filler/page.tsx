@@ -65,6 +65,13 @@ export default function SlotFillerPage() {
     .filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i) // dedupe
   const sessionsToShow = problematic.length > 0 ? problematic : allSessions
 
+  // Auto-select first problematic session for IQ brand
+  useEffect(() => {
+    if (!selectedSessionId && sessionsToShow.length > 0 && brand.key === 'iqsport') {
+      setSelectedSessionId(sessionsToShow[0].id)
+    }
+  }, [sessionsToShow, selectedSessionId, brand.key])
+
   // Filter recommendations by search
   const filteredRecs = useMemo(() => {
     if (!recommendations?.recommendations) return []
