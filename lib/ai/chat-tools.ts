@@ -10,7 +10,12 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
-const defineTool = (config: { description: string; parameters: z.ZodObject<any>; execute: (...args: any[]) => Promise<any> }) => tool(config as any)
+// AI SDK tool() has strict TS overloads that reject union return types.
+// We wrap with 'as any' on the execute to satisfy TypeScript while
+// keeping proper zod schema conversion for the AI provider.
+function defineTool(config: { description: string; parameters: z.ZodObject<any>; execute: (...args: any[]) => Promise<any> }) {
+  return tool({ description: config.description, parameters: config.parameters, execute: config.execute } as any)
+}
 
 export function createChatTools(clubId: string) {
   return {
@@ -18,10 +23,10 @@ export function createChatTools(clubId: string) {
       description:
         'Get member health scores and churn risk for all club members. Returns summary (total, healthy, watch, at_risk, critical counts) and top at-risk members with their scores. Use when the user asks about member health, churn risk, at-risk members, engagement, or who hasn\'t been coming.',
       parameters: z.object({
-        filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).default('all').describe('Filter by risk level'),
-        limit: z.number().int().min(1).default(10).describe('Max members to return'),
+        filter: z.enum(['all', 'at_risk', 'critical', 'watch', 'healthy']).optional().describe('Filter by risk level. Default: all'),
+        limit: z.number().int().min(1).optional().describe('Max members to return. Default: 10'),
       }),
-      execute: async ({ filter, limit }) => {
+      execute: async ({ filter, limit }: { filter?: string; limit?: number }) => {
         const f = filter ?? 'all'
         const l = limit ?? 10
         try {
@@ -129,10 +134,10 @@ export function createChatTools(clubId: string) {
       description:
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
       parameters: z.object({
-        onlyUnderfilled: z.boolean().default(false).describe('Only return sessions below 50% capacity'),
-        limit: z.number().int().min(1).default(10).describe('Max sessions to return'),
+        onlyUnderfilled: z.boolean().optional().describe('Only return sessions below 50% capacity. Default: false'),
+        limit: z.number().int().min(1).optional().describe('Max sessions to return. Default: 10'),
       }),
-      execute: async ({ onlyUnderfilled, limit }) => {
+      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
         const l = limit ?? 10
         try {
@@ -263,9 +268,9 @@ export function createChatTools(clubId: string) {
       description:
         'Get members who have been inactive and are candidates for re-engagement outreach. Use when the user asks about inactive members, who to re-engage, reactivation, or members who stopped coming.',
       parameters: z.object({
-        limit: z.number().int().min(1).default(10).describe('Max candidates to return'),
+        limit: z.number().int().min(1).optional().describe('Max candidates to return. Default: 10'),
       }),
-      execute: async ({ limit }) => {
+      execute: async ({ limit }: { limit?: number }) => {
         const l = limit ?? 10
         try {
           const now = new Date()
