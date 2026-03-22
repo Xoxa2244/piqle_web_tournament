@@ -28,6 +28,7 @@ export default function SlotFillerPage() {
   const clubId = params.id as string
   const preSelectedSessionId = searchParams.get('session')
 
+  const brand = useBrand()
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(preSelectedSessionId)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
@@ -197,7 +198,6 @@ export default function SlotFillerPage() {
     })
   }
 
-  const brand = useBrand()
   if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={loadingDashboard || (!!selectedSessionId && loadingRecs)} sendInvites={sendInvitesMutationRaw} clubId={clubId} />
 
   // ── Session selector state ──
