@@ -269,7 +269,7 @@ function smartSplit(line: string, delimiter: string): string[] {
   let inQuotes = false
   for (let i = 0; i < line.length; i++) {
     const ch = line[i]
-    if (ch === '"' || ch === "'") {
+    if (ch === '"') {
       inQuotes = !inQuotes
     } else if (ch === delimiter && !inQuotes) {
       result.push(current)
