@@ -35,11 +35,24 @@ export default function RevenueIntelligencePage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data: dashboard, isLoading: dashLoading } = useDashboardV2(clubId)
-  const { data: revenueData, isLoading: revLoading } = useRevenueAnalytics(clubId)
-  const { data: pricingData, isLoading: priceLoading } = usePricingOpportunities(clubId)
-  const { data: forecastData, isLoading: fcLoading } = useRevenueForecast(clubId)
+  const { data: dashboard, isLoading: dashLoading, error: dashErr } = useDashboardV2(clubId)
+  const { data: revenueData, isLoading: revLoading, error: revErr } = useRevenueAnalytics(clubId)
+  const { data: pricingData, isLoading: priceLoading, error: priceErr } = usePricingOpportunities(clubId)
+  const { data: forecastData, isLoading: fcLoading, error: fcErr } = useRevenueForecast(clubId)
   const isLoading = dashLoading || revLoading || priceLoading || fcLoading
+
+  // Debug: log query results
+  useEffect(() => {
+    if (!isLoading) {
+      console.log('[Revenue Page]', {
+        dashboard: dashboard ? 'OK' : 'null',
+        revenueData: revenueData ? 'OK' : 'null',
+        pricingData: pricingData ? 'OK' : 'null',
+        forecastData: forecastData ? 'OK' : 'null',
+        errors: { dashErr: dashErr?.message, revErr: revErr?.message, priceErr: priceErr?.message, fcErr: fcErr?.message },
+      })
+    }
+  }, [isLoading, dashboard, revenueData, pricingData, forecastData, dashErr, revErr, priceErr, fcErr])
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
