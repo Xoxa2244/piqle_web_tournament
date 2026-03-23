@@ -324,8 +324,10 @@ Use the data above to answer the user's question. If the data doesn't contain re
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
-    // Tools re-enabled — using jsonSchema() instead of Zod to bypass schema issue
-    const chatTools = createChatTools(clubId);
+    // Tools disabled for now — AI SDK v6 streamText doesn't support maxSteps,
+    // so tool results can't be fed back to LLM for text generation.
+    // RAG context provides all club data the LLM needs to answer questions.
+    // TODO: Re-enable when AI SDK adds maxSteps support to streamText.
 
     let result;
     try {
@@ -333,8 +335,6 @@ Use the data above to answer the user's question. If the data doesn't contain re
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: chatTools,
-        toolChoice: 'auto',
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
@@ -345,8 +345,6 @@ Use the data above to answer the user's question. If the data doesn't contain re
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
-        tools: chatTools,
-        toolChoice: 'auto',
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
