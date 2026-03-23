@@ -1,5 +1,7 @@
 'use client'
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Brain, Send, Sparkles, TrendingUp, Users, CalendarDays,
@@ -20,13 +22,6 @@ const suggestedPrompts = [
 ];
 
 /* --- Types --- */
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-}
-
 interface Conversation {
   id: string;
   title: string;
@@ -64,29 +59,106 @@ function formatRelative(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+/* --- Extract suggested follow-up questions from <suggested> tags --- */
+function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
+  const match = text.match(/<suggested>\s*([\s\S]*?)\s*<\/suggested>/i);
+  if (match) {
+    const suggestions = match[1]
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && s.length < 80);
+    const cleanText = text.replace(/<suggested>[\s\S]*?<\/suggested>/gi, '').trimEnd();
+    return { cleanText, suggestions };
+  }
+  // Incomplete block (during streaming): hide partial <suggested> tag
+  const lowerText = text.toLowerCase();
+  const partialIdx = lowerText.indexOf('<suggested>');
+  if (partialIdx !== -1) {
+    return { cleanText: text.slice(0, partialIdx).trimEnd(), suggestions: [] };
+  }
+  return { cleanText: text, suggestions: [] };
+}
+
+/* --- Get text content from a message (parts-first, then content fallback) --- */
+function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
+  if (message.parts && Array.isArray(message.parts)) {
+    const fromParts = message.parts
+      .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
+    if (fromParts) return fromParts;
+  }
+  if (typeof message.content === 'string') return message.content;
+  return '';
+}
+
 /* ============================================= */
-/*             AI ADVISOR PAGE — REAL API         */
+/*       AI ADVISOR PAGE — useChat() version      */
 /* ============================================= */
 export function AdvisorIQ({ clubId }: { clubId: string }) {
   const { isDark } = useTheme();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  // Track conversation ID from API response without re-creating transport mid-stream
+  const convIdRef = useRef<string | null>(null);
+  const pendingConvIdRef = useRef<string | null>(null);
+  const loadFromDbRef = useRef(false);
+  convIdRef.current = conversationId;
 
+  // Build transport (memoized on clubId)
+  const transport = useMemo(() => {
+    return new DefaultChatTransport({
+      api: '/api/ai/chat',
+      body: { clubId },
+      fetch: async (url: RequestInfo | URL, init?: RequestInit) => {
+        // Inject current conversationId from ref
+        if (init?.body) {
+          try {
+            const bodyObj = JSON.parse(init.body as string);
+            bodyObj.conversationId = convIdRef.current;
+            init = { ...init, body: JSON.stringify(bodyObj) };
+          } catch { /* keep original body */ }
+        }
+        const response = await globalThis.fetch(url, init);
+        const newConvId = response.headers.get('X-Conversation-Id');
+        if (newConvId && !convIdRef.current) {
+          pendingConvIdRef.current = newConvId;
+        }
+        return response;
+      },
+    });
+  }, [clubId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const {
+    messages,
+    sendMessage,
+    status,
+    error,
+    setMessages,
+  } = useChat({ transport });
+
+  const isBusy = status === 'submitted' || status === 'streaming';
+
+  // Apply pending conversation ID after streaming ends
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping]);
+    if (!isBusy && pendingConvIdRef.current) {
+      setConversationId(pendingConvIdRef.current);
+      setActiveConvId(pendingConvIdRef.current);
+      pendingConvIdRef.current = null;
+      // Refresh conversation list
+      fetch(`/api/ai/conversations?clubId=${clubId}`)
+        .then(r => r.ok ? r.json() : { conversations: [] })
+        .then(data => setConversations(data.conversations || []))
+        .catch(() => {});
+    }
+  }, [isBusy, clubId]);
 
-  // Load conversation list
+  // Load conversation list on mount
   useEffect(() => {
     fetch(`/api/ai/conversations?clubId=${clubId}`)
       .then(r => r.ok ? r.json() : { conversations: [] })
@@ -94,159 +166,50 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       .catch(() => {});
   }, [clubId]);
 
-  // Load a specific conversation's messages
+  // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
     try {
       const res = await fetch(`/api/ai/conversations/${convId}/messages`);
       if (!res.ok) return;
       const data = await res.json();
-      setMessages((data.messages || []).map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        timestamp: formatRelative(m.createdAt),
-      })));
+      setMessages(
+        (data.messages || [])
+          .filter((m: any) => m.role !== 'system')
+          .map((m: any) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            parts: [{ type: 'text' as const, text: m.content }],
+            createdAt: new Date(m.createdAt),
+          }))
+      );
       setConversationId(convId);
       setActiveConvId(convId);
     } catch { /* ignore */ }
-  }, []);
+  }, [setMessages]);
 
-  // Send message to real API
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isTyping) return;
-
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: text,
-      timestamp: "Just now",
-    };
-
-    setMessages(prev => [...prev, userMsg]);
-    setInput("");
-    setIsTyping(true);
-
-    try {
-      const res = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clubId,
-          messages: [...messages.map(m => ({ role: m.role as string, content: m.content, parts: [{ type: 'text', text: m.content }] })), { role: 'user', content: text, parts: [{ type: 'text', text }] }],
-          conversationId,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
-
-      // Handle streaming response
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let assistantContent = '';
-      const assistantId = `resp-${Date.now()}`;
-
-      // Add empty assistant message that we'll stream into
-      setMessages(prev => [...prev, {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        timestamp: 'Just now',
-      }]);
-      setIsTyping(false);
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          console.log('[AdvisorIQ stream chunk]', JSON.stringify(chunk).slice(0, 500));
-          const lines = chunk.split('\n');
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            // AI SDK v6 UI Message Stream format: 0:"text" (text delta)
-            if (trimmed.startsWith('0:')) {
-              try {
-                const textChunk = JSON.parse(trimmed.slice(2));
-                if (typeof textChunk === 'string') {
-                  assistantContent += textChunk;
-                  setMessages(prev => prev.map(m =>
-                    m.id === assistantId ? { ...m, content: assistantContent } : m
-                  ));
-                }
-              } catch { /* skip */ }
-            }
-            // AI SDK v6 data stream format: data: {"type":"text-delta","delta":"..."} or {"textDelta":"..."}
-            else if (trimmed.startsWith('data:')) {
-              try {
-                const json = JSON.parse(trimmed.slice(5).trim());
-                const deltaText = json.delta || json.textDelta;
-                if (json.type === 'text-delta' && deltaText) {
-                  assistantContent += deltaText;
-                  setMessages(prev => prev.map(m =>
-                    m.id === assistantId ? { ...m, content: assistantContent } : m
-                  ));
-                }
-              } catch { /* skip */ }
-            }
-            // Vercel AI SDK format: f: (finish), e: (error), d: (data)
-            else if (trimmed.startsWith('2:')) {
-              // 2: = data message, may contain tool results
-              try {
-                const data = JSON.parse(trimmed.slice(2));
-                if (Array.isArray(data)) {
-                  for (const item of data) {
-                    const itemDelta = item.delta || item.textDelta;
-                    if (item.type === 'text-delta' && itemDelta) {
-                      assistantContent += itemDelta;
-                    }
-                  }
-                  setMessages(prev => prev.map(m =>
-                    m.id === assistantId ? { ...m, content: assistantContent } : m
-                  ));
-                }
-              } catch { /* skip */ }
-            }
-          }
-        }
-      }
-
-      // Extract conversation ID from response headers
-      const newConvId = res.headers.get('x-conversation-id');
-      if (newConvId && !conversationId) {
-        setConversationId(newConvId);
-        setActiveConvId(newConvId);
-        // Refresh conversation list
-        fetch(`/api/ai/conversations?clubId=${clubId}`)
-          .then(r => r.ok ? r.json() : { conversations: [] })
-          .then(data => setConversations(data.conversations || []))
-          .catch(() => {});
-      }
-
-    } catch (err) {
-      setIsTyping(false);
-      setMessages(prev => [...prev, {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Sorry, I encountered an error. Please try again.\n\n_${(err as Error).message}_`,
-        timestamp: 'Just now',
-      }]);
-    }
-  }, [clubId, conversationId, isTyping]);
+  // Auto-scroll on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isBusy]);
 
   const startNewChat = () => {
     setActiveConvId(null);
     setConversationId(null);
     setMessages([]);
+    setInputValue("");
+    inputRef.current?.focus();
   };
+
+  const handleSend = useCallback((text?: string) => {
+    const msg = text || inputValue.trim();
+    if (!msg || isBusy) return;
+    sendMessage({ text: msg });
+    setInputValue("");
+  }, [inputValue, isBusy, sendMessage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    sendMessage(input);
+    handleSend();
   };
 
   return (
@@ -324,7 +287,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Empty state */}
-          {messages.length === 0 && !isTyping && (
+          {messages.length === 0 && !isBusy && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
                 <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
@@ -339,7 +302,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                   return (
                     <button
                       key={p.text}
-                      onClick={() => sendMessage(p.text)}
+                      onClick={() => handleSend(p.text)}
                       className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left transition-all hover:scale-[1.02]"
                       style={{
                         background: "var(--subtle)",
@@ -358,119 +321,129 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           )}
 
           <AnimatePresence>
-            {messages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
-              >
-                {msg.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
-                    <Sparkles className="w-4 h-4 text-white" />
-                  </div>
-                )}
-                <div className={`max-w-[75%] ${msg.role === "user" ? "order-first" : ""}`}>
-                  {(() => {
-                    // Parse out <suggested> block
-                    const suggestedMatch = msg.content.match(/<suggested>([\s\S]*?)<\/suggested>/);
-                    const cleanContent = msg.content.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd();
-                    const suggestions = suggestedMatch
-                      ? suggestedMatch[1].split('\n').map(s => s.trim()).filter(s => s.length > 0 && !s.startsWith('<'))
-                      : [];
+            {messages.map((msg, msgIdx) => {
+              const text = getMessageText(msg);
+              const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
+              const { cleanText, suggestions } = msg.role === 'assistant'
+                ? extractSuggestions(text)
+                : { cleanText: text, suggestions: [] };
 
-                    return (
-                      <>
-                        <div
-                          className="rounded-2xl px-5 py-4 text-sm"
-                          style={{
-                            background: msg.role === "user"
-                              ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
-                              : "var(--subtle)",
-                            border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
-                            color: "var(--t1)",
-                            lineHeight: 1.7,
-                          }}
-                        >
-                          {cleanContent.split("\n").map((line, i) => {
-                            const boldRegex = /\*\*(.*?)\*\*/g;
-                            const parts = line.split(boldRegex);
-                            return (
-                              <p key={i} className={line === "" ? "h-2" : ""}>
-                                {parts.map((part, j) =>
-                                  j % 2 === 1 ? (
-                                    <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
-                                  ) : (
-                                    <span key={j}>{part}</span>
-                                  )
-                                )}
-                              </p>
-                            );
-                          })}
-                        </div>
-
-                        {/* Suggested follow-up questions */}
-                        {suggestions.length > 0 && msg.role === "assistant" && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {suggestions.map((q, qi) => (
-                              <button
-                                key={qi}
-                                onClick={() => sendMessage(q)}
-                                className="px-3 py-1.5 rounded-xl text-xs transition-all hover:scale-[1.02]"
-                                style={{
-                                  background: "rgba(139,92,246,0.08)",
-                                  border: "1px solid rgba(139,92,246,0.2)",
-                                  color: "var(--t2)",
-                                  fontWeight: 500,
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.15)"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.08)"; }}
-                              >
-                                {q}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-
-                  {/* Message meta */}
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}
+                >
                   {msg.role === "assistant" && (
-                    <div className="flex items-center gap-3 mt-2 ml-1">
-                      <span className="text-[10px]" style={{ color: "var(--t4)" }}>{msg.timestamp}</span>
-                      <div className="flex items-center gap-1">
-                        {[ThumbsUp, ThumbsDown, Copy].map((Icon, idx) => (
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  <div className={`max-w-[75%] ${msg.role === "user" ? "order-first" : ""}`}>
+                    <div
+                      className="rounded-2xl px-5 py-4 text-sm"
+                      style={{
+                        background: msg.role === "user"
+                          ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
+                          : "var(--subtle)",
+                        border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
+                        color: "var(--t1)",
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      {cleanText.split("\n").map((line, i) => {
+                        const boldRegex = /\*\*(.*?)\*\*/g;
+                        const parts = line.split(boldRegex);
+                        return (
+                          <p key={i} className={line === "" ? "h-2" : ""}>
+                            {parts.map((part, j) =>
+                              j % 2 === 1 ? (
+                                <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
+                              ) : (
+                                <span key={j}>{part}</span>
+                              )
+                            )}
+                          </p>
+                        );
+                      })}
+                    </div>
+
+                    {/* Suggested follow-up questions */}
+                    {suggestions.length > 0 && msg.role === "assistant" && isLastAssistant && !isBusy && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {suggestions.map((q, qi) => (
                           <button
-                            key={idx}
-                            className="p-1 rounded hover:bg-white/5 transition-colors"
-                            onClick={idx === 2 ? () => navigator.clipboard.writeText(msg.content) : undefined}
+                            key={qi}
+                            onClick={() => handleSend(q)}
+                            className="px-3 py-1.5 rounded-xl text-xs transition-all hover:scale-[1.02]"
+                            style={{
+                              background: "rgba(139,92,246,0.08)",
+                              border: "1px solid rgba(139,92,246,0.2)",
+                              color: "var(--t2)",
+                              fontWeight: 500,
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.15)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.08)"; }}
                           >
-                            <Icon className="w-3 h-3" style={{ color: "var(--t4)" }} />
+                            {q}
                           </button>
                         ))}
                       </div>
+                    )}
+
+                    {/* Message meta */}
+                    {msg.role === "assistant" && (
+                      <div className="flex items-center gap-3 mt-2 ml-1">
+                        <span className="text-[10px]" style={{ color: "var(--t4)" }}>Just now</span>
+                        <div className="flex items-center gap-1">
+                          {[ThumbsUp, ThumbsDown, Copy].map((Icon, idx) => (
+                            <button
+                              key={idx}
+                              className="p-1 rounded hover:bg-white/5 transition-colors"
+                              onClick={idx === 2 ? () => navigator.clipboard.writeText(text) : undefined}
+                            >
+                              <Icon className="w-3 h-3" style={{ color: "var(--t4)" }} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {msg.role === "user" && (
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs text-white" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}>
+                      You
                     </div>
                   )}
-                </div>
-
-                {msg.role === "user" && (
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs text-white" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 700 }}>
-                    You
-                  </div>
-                )}
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
 
-          {isTyping && (
+          {/* Loading indicator when waiting for first response chunk */}
+          {isBusy && messages[messages.length - 1]?.role === 'user' && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div className="rounded-2xl px-4 py-2" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
                 <TypingIndicator />
+              </div>
+            </div>
+          )}
+
+          {/* Error display */}
+          {error && (
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div className="rounded-2xl px-5 py-4 text-sm" style={{ background: "var(--subtle)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--t1)" }}>
+                Sorry, I encountered an error. Please try again.
+                <br />
+                <span style={{ color: "var(--t4)", fontSize: "12px" }}>{error.message}</span>
               </div>
             </div>
           )}
@@ -487,24 +460,24 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             >
               <input
                 ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
                 placeholder="Ask about your club data..."
                 className="flex-1 bg-transparent border-none outline-none text-sm"
                 style={{ color: "var(--t1)" }}
-                disabled={isTyping}
+                disabled={isBusy}
               />
             </div>
             <motion.button
               type="submit"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              disabled={!input.trim() || isTyping}
+              disabled={!inputValue.trim() || isBusy}
               className="p-3 rounded-xl text-white transition-all"
               style={{
-                background: input.trim() ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
-                opacity: input.trim() ? 1 : 0.5,
-                boxShadow: input.trim() ? "0 4px 15px rgba(139, 92, 246, 0.3)" : "none",
+                background: inputValue.trim() ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
+                opacity: inputValue.trim() ? 1 : 0.5,
+                boxShadow: inputValue.trim() ? "0 4px 15px rgba(139, 92, 246, 0.3)" : "none",
               }}
             >
               <Send className="w-5 h-5" />
