@@ -926,6 +926,7 @@ export async function getReactivationCandidates(
           member: toMemberData(cf.user),
           preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
           history,
+          bookings: bookingsForInference,
         };
       })
     );
@@ -1278,6 +1279,7 @@ export async function sendReactivationMessages(
         member: toMemberData(cf.user),
         preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
         history,
+        bookings: bookingsForInference,
       }
     })
   )

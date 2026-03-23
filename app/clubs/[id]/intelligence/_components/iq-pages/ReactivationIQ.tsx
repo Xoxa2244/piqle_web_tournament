@@ -209,8 +209,10 @@ function mapRealCandidates(data: any): AtRiskMember[] {
     totalSessions: c.totalHistoricalBookings || 0,
     memberSince: "N/A",
     revenue: 0,
-    churnReason: c.reasoning?.summary || "Declining engagement",
-    suggestedAction: c.suggestedSessions?.[0]?.title ? `Invite to ${c.suggestedSessions[0].title}` : "Send personalized win-back message",
+    churnReason: c.churnReasons && c.churnReasons.length > 0
+      ? c.churnReasons.map((r: any) => r.summary).join('. ')
+      : (c.reasoning?.summary || "Declining engagement"),
+    suggestedAction: c.suggestedAction || (c.suggestedSessions?.[0]?.title ? `Invite to ${c.suggestedSessions[0].title}` : "Send personalized win-back message"),
     email: c.member?.email || "",
     phone: "",
     contacted: !!c.lastContactedAt,

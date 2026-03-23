@@ -130,6 +130,21 @@ export type PlayerArchetype =
   | 'flaky_player'      // High no-show rate (>15%)
   | 'social_butterfly'  // Prefers SOCIAL format, hasn't been around
 
+export interface ScoredSession {
+  session: PlaySessionData;
+  totalScore: number;
+  formatScore: number;
+  timeScore: number;
+  dayScore: number;
+  availabilityScore: number;
+  explanation: string;
+}
+
+export interface ChurnReason {
+  pattern: 'schedule_change' | 'frequency_decline' | 'format_abandonment' | 'cancel_spike' | 'seasonal_gap' | 'new_member_dropout';
+  summary: string;
+}
+
 export interface ReactivationCandidate {
   member: MemberData;
   daysSinceLastActivity: number;
@@ -137,6 +152,9 @@ export interface ReactivationCandidate {
   score: number;
   reasoning: RecommendationScore;
   suggestedSessions: PlaySessionData[];
+  scoredSessions?: ScoredSession[];
+  suggestedAction?: string;
+  churnReasons?: ChurnReason[];
   // Hyper-personalized messaging data
   preference?: UserPlayPreferenceData | null;
   bookingHistory?: BookingHistory | null;
