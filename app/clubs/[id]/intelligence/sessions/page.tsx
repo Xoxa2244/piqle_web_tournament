@@ -477,8 +477,6 @@ export default function SessionsCalendarPage() {
   const weekStart = getWeekStart(navDate)
   const monthStart = getMonthStart(navDate)
 
-  console.log('[Sessions Page]', { hasData: !!calendarData, sessionCount: calendarData?.sessions?.length, isLoading })
-
   const brand = useBrand()
   if (brand.key === 'iqsport') return <SessionsIQ calendarData={calendarData} isLoading={isLoading} clubId={clubId} />
 
