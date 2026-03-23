@@ -2552,7 +2552,7 @@ export const intelligenceRouter = createTRPCRouter({
       return { opportunities }
     }),
 
-  // 2.2 Revenue Forecast (linear regression)
+  // 2.2 Revenue Forecast (weighted moving average)
   getRevenueForecast: protectedProcedure
     .input(z.object({ clubId: z.string(), monthsBack: z.number().optional().default(6), monthsForward: z.number().optional().default(3) }))
     .query(async ({ ctx, input }) => {
@@ -2565,28 +2565,43 @@ export const intelligenceRouter = createTRPCRouter({
         select: { date: true, pricePerSlot: true, registeredCount: true },
       })
 
-      // Aggregate monthly revenue
+      if (sessions.length === 0) {
+        return { actual: [], forecast: [], summary: null }
+      }
+
+      // Calculate fallback price from non-null sessions
+      const nonNullPrices = sessions
+        .filter((s: any) => s.pricePerSlot != null && s.pricePerSlot > 0)
+        .map((s: any) => s.pricePerSlot as number)
+      const avgPriceFromSessions = nonNullPrices.length > 0
+        ? nonNullPrices.reduce((sum, p) => sum + p, 0) / nonNullPrices.length
+        : null
+
+      // If no session has a price, try club settings (automationSettings.intelligence.avgSessionPriceCents)
+      let fallbackPrice = avgPriceFromSessions
+      if (fallbackPrice == null) {
+        const club: any = await ctx.prisma.club.findUnique({ where: { id: input.clubId } })
+        const avgCents = club?.automationSettings?.intelligence?.avgSessionPriceCents
+        fallbackPrice = avgCents != null ? avgCents / 100 : 15 // default $15 as last resort
+      }
+
+      // Aggregate monthly revenue using fallback for null pricePerSlot
       const monthlyRevenue = new Map<string, number>()
+      const monthlySessionCount = new Map<string, number>()
       sessions.forEach((s: any) => {
         const month = s.date.toISOString().slice(0, 7)
-        monthlyRevenue.set(month, (monthlyRevenue.get(month) || 0) + (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0))
+        const price = (s.pricePerSlot != null && s.pricePerSlot > 0) ? s.pricePerSlot : fallbackPrice!
+        const registered = s.registeredCount ?? 0
+        monthlyRevenue.set(month, (monthlyRevenue.get(month) || 0) + price * registered)
+        monthlySessionCount.set(month, (monthlySessionCount.get(month) || 0) + 1)
       })
 
       const sortedMonths = Array.from(monthlyRevenue.entries()).sort(([a], [b]) => a.localeCompare(b))
-      if (sortedMonths.length < 2) {
-        return { actual: [], forecast: [] }
+      if (sortedMonths.length < 1) {
+        return { actual: [], forecast: [], summary: null }
       }
 
-      // Linear regression
-      const n = sortedMonths.length
-      const xs = sortedMonths.map((_, i) => i)
       const ys = sortedMonths.map(([, rev]) => rev)
-      const sumX = xs.reduce((s, x) => s + x, 0)
-      const sumY = ys.reduce((s, y) => s + y, 0)
-      const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0)
-      const sumX2 = xs.reduce((s, x) => s + x * x, 0)
-      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
-      const intercept = (sumY - slope * sumX) / n
 
       // Actual months
       const actual = sortedMonths.map(([month, rev]) => ({
@@ -2594,22 +2609,98 @@ export const intelligenceRouter = createTRPCRouter({
         actual: Math.round(rev),
       }))
 
-      // Forecast months
+      // If only 1 month of data, return actuals with flat forecast
+      if (sortedMonths.length < 2) {
+        const lastRev = ys[0]
+        const lastDate = new Date(sortedMonths[0][0] + '-01')
+        const forecast: Array<{ month: string; forecast: number; low: number; high: number }> = []
+        for (let m = 1; m <= input.monthsForward; m++) {
+          const futureDate = new Date(lastDate)
+          futureDate.setMonth(futureDate.getMonth() + m)
+          forecast.push({
+            month: futureDate.toLocaleDateString('en-US', { month: 'short' }),
+            forecast: Math.round(lastRev),
+            low: Math.round(lastRev * 0.75),
+            high: Math.round(lastRev * 1.25),
+          })
+        }
+        return {
+          actual,
+          forecast,
+          summary: `Based on 1 month of data, forecast is estimated at $${Math.round(lastRev).toLocaleString()}/mo. More data will improve accuracy.`,
+        }
+      }
+
+      // Calculate month-over-month growth rates
+      const momGrowth: number[] = []
+      for (let i = 1; i < ys.length; i++) {
+        if (ys[i - 1] > 0) {
+          momGrowth.push((ys[i] - ys[i - 1]) / ys[i - 1])
+        }
+      }
+
+      // Weighted growth rate: recent months weighted more heavily (exponential)
+      let weightedGrowthRate = 0
+      if (momGrowth.length > 0) {
+        const recentCount = Math.min(3, momGrowth.length)
+        const recentGrowth = momGrowth.slice(-recentCount)
+        let totalWeight = 0
+        let weightedSum = 0
+        recentGrowth.forEach((g, i) => {
+          const weight = Math.pow(2, i) // exponential: 1, 2, 4
+          weightedSum += g * weight
+          totalWeight += weight
+        })
+        weightedGrowthRate = weightedSum / totalWeight
+      }
+
+      // Clamp growth rate to prevent wild forecasts
+      weightedGrowthRate = Math.max(-0.3, Math.min(0.5, weightedGrowthRate))
+
+      // Calculate standard deviation of monthly revenue for confidence bands
+      const mean = ys.reduce((s, y) => s + y, 0) / ys.length
+      const variance = ys.reduce((s, y) => s + Math.pow(y - mean, 2), 0) / ys.length
+      const stddev = Math.sqrt(variance)
+
+      // Forecast months using weighted moving average growth
       const forecast: Array<{ month: string; forecast: number; low: number; high: number }> = []
       const lastDate = new Date(sortedMonths[sortedMonths.length - 1][0] + '-01')
+      let lastRev = ys[ys.length - 1]
+
       for (let m = 1; m <= input.monthsForward; m++) {
         const futureDate = new Date(lastDate)
         futureDate.setMonth(futureDate.getMonth() + m)
-        const predicted = Math.max(0, Math.round(intercept + slope * (n - 1 + m)))
-        const spread = 0.1 + m * 0.05 // wider confidence for further out
+        const predicted = Math.max(0, Math.round(lastRev * (1 + weightedGrowthRate)))
+
+        // Confidence bands: stddev * multiplier that grows with forecast horizon
+        const bandMultiplier = m === 1 ? 1.5 : m === 2 ? 2.0 : 2.5
+        const band = stddev * bandMultiplier
+
         forecast.push({
           month: futureDate.toLocaleDateString('en-US', { month: 'short' }),
           forecast: predicted,
-          low: Math.round(predicted * (1 - spread)),
-          high: Math.round(predicted * (1 + spread)),
+          low: Math.max(0, Math.round(predicted - band)),
+          high: Math.round(predicted + band),
         })
+        lastRev = predicted
       }
 
-      return { actual, forecast }
+      // Build summary text
+      const lastActual = ys[ys.length - 1]
+      const finalForecast = forecast[forecast.length - 1]
+      const finalMonth = finalForecast.month
+      const growthPct = Math.round(weightedGrowthRate * 100)
+      const growthDir = growthPct >= 0 ? 'growth' : 'decline'
+      const pricingUplift = Math.round(lastActual * 0.12) // estimate 12% uplift from pricing optimization
+      const optimizedForecast = finalForecast.forecast + pricingUplift * input.monthsForward
+
+      let summary: string
+      if (Math.abs(growthPct) < 2) {
+        summary = `Revenue is holding steady at ~$${Math.round(lastActual).toLocaleString()}/mo. You're projected to stay around $${finalForecast.forecast.toLocaleString()} by ${finalMonth}. Implementing pricing suggestions could push this to $${optimizedForecast.toLocaleString()}.`
+      } else {
+        summary = `Based on ${Math.abs(growthPct)}% monthly ${growthDir}, you're projected to hit $${finalForecast.forecast.toLocaleString()} by ${finalMonth}. Implementing pricing suggestions could push this to $${optimizedForecast.toLocaleString()}.`
+      }
+
+      return { actual, forecast, summary }
     }),
 })
