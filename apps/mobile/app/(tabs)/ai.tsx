@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons'
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
@@ -101,6 +102,7 @@ export default function AITab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
+  const tabBarHeight = useBottomTabBarHeight()
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
   const scrollRef = useRef<ScrollView | null>(null)
   const initialMessages = useMemo(() => {
@@ -140,7 +142,6 @@ export default function AITab() {
   const [input, setInput] = useState('')
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null)
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
   const chatMutation = trpc.aiCoach.chat.useMutation({
     onError: (err) => {
       setMessages((prev) => [
@@ -205,16 +206,10 @@ export default function AITab() {
   }, [isAuthenticated, messages.length, typing])
 
   useEffect(() => {
-    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const s = Keyboard.addListener(showEv, () => setKeyboardVisible(true))
-    const h = Keyboard.addListener(hideEv, () => setKeyboardVisible(false))
     const didShow = Keyboard.addListener('keyboardDidShow', () => {
       scrollToBottom(true)
     })
     return () => {
-      s.remove()
-      h.remove()
       didShow.remove()
     }
   }, [])
@@ -290,7 +285,7 @@ export default function AITab() {
       >
         <ChatThreadRoot
           ref={scrollRef}
-          contentContainerStyle={[styles.scrollContent, keyboardVisible && styles.scrollContentKeyboard]}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollToBottom(false)}
         >
@@ -389,6 +384,7 @@ export default function AITab() {
           onSend={() => void send()}
           sendDisabled={!input.trim() || typing}
           paddingHorizontal={16}
+          androidKeyboardInset={Platform.OS === 'android' ? tabBarHeight : 0}
           returnKeyType="send"
           onSubmitEditing={() => void send()}
         />
@@ -438,11 +434,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: spacing.lg,
-    paddingBottom: 120,
+    paddingBottom: 0,
     gap: spacing.lg,
-  },
-  scrollContentKeyboard: {
-    paddingBottom: 160,
   },
   messages: {
     gap: 14,

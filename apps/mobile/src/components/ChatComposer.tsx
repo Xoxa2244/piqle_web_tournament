@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import { Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
+import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { palette, radius } from '../lib/theme'
@@ -15,6 +16,8 @@ export type ChatComposerProps = {
   paddingHorizontal?: number
   /** Только для полноэкранных стеков без tab bar: нижний safe area (home indicator). На вкладке AI не включать — таб-бар уже даёт отступ. */
   safeAreaBottom?: boolean
+  /** На Android можно вычесть уже занятое снизу пространство, например высоту tab bar. */
+  androidKeyboardInset?: number
   multiline?: boolean
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
@@ -29,14 +32,37 @@ export const ChatComposer = ({
   paddingBottom = 16,
   paddingHorizontal = 0,
   safeAreaBottom = false,
+  androidKeyboardInset = 0,
   multiline = false,
   returnKeyType,
   onSubmitEditing,
 }: ChatComposerProps) => {
   const insets = useSafeAreaInsets()
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0)
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setAndroidKeyboardHeight(e.endCoordinates?.height ?? 0)
+    })
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      setAndroidKeyboardHeight(0)
+    })
+    return () => {
+      show.remove()
+      hide.remove()
+    }
+  }, [])
+
+  const androidBottomInset =
+    Platform.OS === 'android'
+      ? Math.max(androidKeyboardHeight - androidKeyboardInset, 0)
+      : 0
+
   const bottom =
     paddingBottom +
-    (safeAreaBottom && Platform.OS === 'ios' ? insets.bottom : 0)
+    (safeAreaBottom && Platform.OS === 'ios' ? insets.bottom : 0) +
+    androidBottomInset
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal }]}>

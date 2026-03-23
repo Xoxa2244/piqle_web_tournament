@@ -9,7 +9,7 @@ type Props = Omit<ScrollViewProps, 'children'> & {
  * Прокрутка ленты сообщений; фон — полноэкранный градиент родителя (`Screen chatAmbient`).
  */
 export const ChatThreadRoot = forwardRef<ScrollView, Props>(function ChatThreadRoot(
-  { children, onContentSizeChange, style, ...scrollProps },
+  { children, onContentSizeChange, style, contentContainerStyle, ...scrollProps },
   ref
 ) {
   return (
@@ -18,6 +18,7 @@ export const ChatThreadRoot = forwardRef<ScrollView, Props>(function ChatThreadR
         ref={ref}
         {...scrollProps}
         style={[styles.scroll, style]}
+        contentContainerStyle={[styles.contentContainer, contentContainerStyle]}
         onContentSizeChange={onContentSizeChange}
       >
         {children}
@@ -34,5 +35,9 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  contentContainer: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
 })

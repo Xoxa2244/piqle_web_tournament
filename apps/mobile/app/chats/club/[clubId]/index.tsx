@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native'
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: spacing.lg,
-    paddingBottom: 72,
+    paddingBottom: 0,
     gap: 12,
   },
   messagesEmpty: {

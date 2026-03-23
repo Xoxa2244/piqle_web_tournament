@@ -9,14 +9,7 @@ const GOOGLE_IOS_URL_SCHEME =
 
 const plugins: NonNullable<ExpoConfig['plugins']> = [
   'expo-router',
-  [
-    'expo-build-properties',
-    {
-      android: {
-        kotlinVersion: '1.9.25',
-      },
-    },
-  ],
+  'expo-build-properties',
   GOOGLE_IOS_URL_SCHEME
     ? [
         '@react-native-google-signin/google-signin',

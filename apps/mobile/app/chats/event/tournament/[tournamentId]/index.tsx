@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: 72,
+    paddingBottom: 0,
     gap: 12,
   },
   messagesEmpty: {
