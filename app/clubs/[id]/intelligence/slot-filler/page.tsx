@@ -200,7 +200,8 @@ export default function SlotFillerPage() {
     })
   }
 
-  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={loadingDashboard || (!!selectedSessionId && loadingRecs)} loadingRecs={loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} onSelectSession={(id: string) => { setSelectedSessionId(id); setInviteSent(false); setSelectedUserIds(new Set()); }} selectedSessionId={selectedSessionId} />
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai')
+  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={isDemo ? false : (loadingDashboard || (!!selectedSessionId && loadingRecs))} loadingRecs={loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} onSelectSession={(id: string) => { setSelectedSessionId(id); setInviteSent(false); setSelectedUserIds(new Set()); }} selectedSessionId={selectedSessionId} />
 
   // ── Session selector state ──
   if (!selectedSessionId) {
