@@ -217,10 +217,10 @@ function mapRealCandidates(data: any): AtRiskMember[] {
     responded: c.lastContactStatus === "responded",
     healthFactors: c.reasoning?.components
       ? Object.entries(c.reasoning.components).map(([key, comp]: [string, any]) => ({
-          name: key.charAt(0).toUpperCase() + key.slice(1),
+          name: key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
           score: comp.score || 0,
-          weight: 20,
-          label: `Score: ${comp.score || 0}`,
+          weight: comp.weight || 20,
+          label: comp.explanation || `Score: ${comp.score || 0}`,
         }))
       : [],
   }));
