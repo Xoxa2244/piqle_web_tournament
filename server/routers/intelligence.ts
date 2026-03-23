@@ -16,6 +16,9 @@ import {
 } from '@/lib/ai/intelligence-service'
 import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 
+// ── In-memory caches (per serverless instance, 5 min TTL) ──
+const calendarCache = new Map<string, { data: any; ts: number }>()
+
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
   const admin = await prisma.clubAdmin.findFirst({
@@ -1218,50 +1221,65 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      let csvSessions: any[] = []
-      try {
-        const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
-          SELECT metadata FROM document_embeddings
-          WHERE club_id = ${input.clubId}::uuid
-            AND content_type = 'session'
-            AND source_table = 'csv_import'
-        `
-        csvSessions = rows
-          .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata))
-          .filter((m: any) => m && m.date && m.capacity > 0)
-      } catch (err) {
-        console.warn('[Intelligence] getSessionsCalendar query failed:', (err as Error).message?.slice(0, 80))
+      // In-memory cache: 5 min TTL per club
+      const cacheKey = `calendar:${input.clubId}`
+      const cached = calendarCache.get(cacheKey)
+      if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+        return cached.data
       }
 
-      // Fallback: if no embeddings, read from play_sessions table directly
+      let csvSessions: any[] = []
+
+      // Primary: fast Prisma query on play_sessions (indexed, no JSON parsing)
+      try {
+        const dbSessions = await ctx.prisma.playSession.findMany({
+          where: { clubId: input.clubId },
+          include: {
+            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+            clubCourt: { select: { name: true } },
+          },
+        })
+        csvSessions = dbSessions.map((s: any) => ({
+          date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          court: s.clubCourt?.name || '',
+          format: s.format,
+          skillLevel: s.skillLevel,
+          registered: s._count.bookings,
+          capacity: s.maxPlayers,
+          occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
+          pricePerPlayer: s.pricePerSlot != null ? Number(s.pricePerSlot) : null,
+          playerNames: [],
+        }))
+      } catch (err) {
+        console.warn('[Intelligence] getSessionsCalendar play_sessions query failed:', (err as Error).message?.slice(0, 80))
+      }
+
+      // Fallback: embeddings (only if no play_sessions found)
       if (csvSessions.length === 0) {
         try {
-          const dbSessions = await ctx.prisma.playSession.findMany({
-            where: { clubId: input.clubId },
-            include: {
-              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
-              clubCourt: { select: { name: true } },
-            },
-          })
-          csvSessions = dbSessions.map((s: any) => ({
-            date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
-            startTime: s.startTime,
-            endTime: s.endTime,
-            court: s.clubCourt?.name || '',
-            format: s.format,
-            skillLevel: s.skillLevel,
-            registered: s._count.bookings,
-            capacity: s.maxPlayers,
-            occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
-            playerNames: [],
-          }))
-        } catch (fallbackErr) {
-          console.warn('[Intelligence] getSessionsCalendar play_sessions fallback failed:', (fallbackErr as Error).message?.slice(0, 80))
+          const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
+            SELECT metadata FROM document_embeddings
+            WHERE club_id = ${input.clubId}::uuid
+              AND content_type = 'session'
+              AND source_table = 'csv_import'
+          `
+          csvSessions = rows
+            .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata))
+            .filter((m: any) => m && m.date && m.capacity > 0)
+        } catch (err) {
+          console.warn('[Intelligence] getSessionsCalendar embeddings fallback failed:', (err as Error).message?.slice(0, 80))
         }
       }
 
       const { buildSessionCalendarData } = await import('@/lib/ai/session-analysis')
-      return buildSessionCalendarData(csvSessions, input.clubId)
+      const result = buildSessionCalendarData(csvSessions, input.clubId)
+
+      // Cache result
+      calendarCache.set(cacheKey, { data: result, ts: Date.now() })
+
+      return result
     }),
 
   // ── Member Health: AI-powered churn prediction ──
