@@ -275,7 +275,9 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
     return mapped.length > 0 ? mapped : lastGoodData.current.sessions;
   }, [calendarData]);
   const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
-  const hasData = displaySessions.length > 0 || (calendarData != null && calendarData.sessions != null);
+  // hasData: true when we have sessions to display, OR calendarData was fetched and has at least 1 session
+  const hasData = displaySessions.length > 0
+    || (calendarData != null && Array.isArray(calendarData.sessions) && calendarData.sessions.length > 0);
 
   const derivedWeekly = useMemo(() => {
     const d = deriveWeeklyData(calendarData);
@@ -316,9 +318,13 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
       const matchesStatus = !filterStatus || s.status === filterStatus;
       return matchesSearch && matchesFormat && matchesCourt && matchesStatus;
     });
-  }, [searchQuery, filterFormat, filterCourt, filterStatus]);
+  }, [displaySessions, searchQuery, filterFormat, filterCourt, filterStatus]);
 
-  if (!hasData && !isDemo && !externalLoading) {
+  // Only show empty state if we have a definitive "no data" signal:
+  // calendarData must have been loaded (not undefined) and contain no sessions,
+  // AND we're not currently loading, AND we're not in demo mode.
+  const definitelyEmpty = calendarData !== undefined && !hasData;
+  if (definitelyEmpty && !isDemo && !externalLoading) {
     return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
   }
 

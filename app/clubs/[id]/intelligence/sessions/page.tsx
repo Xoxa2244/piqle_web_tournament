@@ -442,7 +442,10 @@ export default function SessionsCalendarPage() {
   const params = useParams()
   const clubId = params.id as string
 
-  const { data: calendarData, isLoading } = useSessionsCalendar(clubId)
+  const queryResult = useSessionsCalendar(clubId)
+  const calendarData = queryResult.data
+  const isLoading = queryResult.isLoading
+  const isFetching = 'isFetching' in queryResult ? (queryResult as any).isFetching : false
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -479,7 +482,7 @@ export default function SessionsCalendarPage() {
   const brand = useBrand()
   if (brand.key === 'iqsport') return <SessionsIQ calendarData={calendarData} isLoading={isLoading} clubId={clubId} />
 
-  if (isLoading) return <DashboardSkeleton />
+  if (isLoading || (!calendarData && isFetching)) return <DashboardSkeleton />
 
   if (!calendarData || calendarData.sessions.length === 0) {
     return (

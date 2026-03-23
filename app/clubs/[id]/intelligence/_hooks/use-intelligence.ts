@@ -74,7 +74,7 @@ export function useSlotFillerRecommendations(sessionId: string | null, limit: nu
       limit,
       ...(sessionId?.startsWith('csv-') && clubId ? { clubId } : {}),
     },
-    { enabled: !!sessionId && !isDemo, staleTime: 2 * 60 * 1000 }
+    { enabled: !!sessionId && !isDemo, staleTime: 2 * 60 * 1000, keepPreviousData: true }
   )
 
   if (isDemo && sessionId) {
@@ -191,7 +191,14 @@ export function useSessionsCalendar(clubId: string) {
 
   const query = trpc.intelligence.getSessionsCalendar.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000, keepPreviousData: true }
+    {
+      enabled: !!clubId && !isDemo,
+      staleTime: 5 * 60 * 1000,
+      cacheTime: 10 * 60 * 1000,
+      keepPreviousData: true,
+      refetchOnMount: false,       // Don't refetch when navigating back — serve from cache
+      refetchOnWindowFocus: false,
+    }
   )
 
   if (isDemo) {

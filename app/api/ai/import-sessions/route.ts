@@ -460,13 +460,26 @@ export async function POST(req: Request) {
         // Flush: send a comment to force proxy to start streaming
         controller.enqueue(encoder.encode(': stream start\n\n'));
 
-        // Phase 1: Delete old data
+        // Phase 1: Delete old data (ALL embeddings, sessions, bookings, health)
         send({ phase: 'deleting', message: 'Removing old data...' });
         try {
+          // Delete ALL embeddings for this club (csv_import + analytics + player patterns + club_info)
           await prisma.$executeRaw`
             DELETE FROM document_embeddings
-            WHERE club_id = ${clubId}::uuid AND source_table = 'csv_import'
+            WHERE club_id = ${clubId}::uuid
           `;
+          // Delete bookings → sessions → health snapshots from previous imports
+          await prisma.$executeRaw`
+            DELETE FROM play_session_bookings WHERE "sessionId" IN (
+              SELECT id FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+            )
+          `.catch(() => 0);
+          await prisma.$executeRaw`
+            DELETE FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+          `.catch(() => 0);
+          await prisma.$executeRaw`
+            DELETE FROM member_health_snapshots WHERE club_id = ${clubId}::uuid
+          `.catch(() => 0);
         } catch (deleteErr) {
           send({ phase: 'error', message: `Failed to delete old data: ${deleteErr instanceof Error ? deleteErr.message : String(deleteErr)}` });
           controller.close();

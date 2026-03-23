@@ -225,10 +225,13 @@ IMPORTANT: Return ONLY the JSON object, no markdown, no explanation.`
       const key = `${s.date}|${s.startTime}|${s.court}`
       const existing = sessionMap.get(key)
       if (existing) {
-        // Merge player names (deduplicate)
+        // Merge player names (deduplicate case-insensitively)
+        const existingLower = new Set(existing.playerNames.map(n => n.toLowerCase().trim()))
         for (const name of s.playerNames) {
-          if (name && !existing.playerNames.includes(name)) {
+          const nameLower = name.toLowerCase().trim()
+          if (name && !existingLower.has(nameLower)) {
             existing.playerNames.push(name)
+            existingLower.add(nameLower)
           }
         }
         existing.registered = existing.playerNames.length

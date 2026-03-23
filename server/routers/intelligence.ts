@@ -2436,48 +2436,43 @@ export const intelligenceRouter = createTRPCRouter({
         `
         embeddingsDeleted = typeof result === 'number' ? result : 0
       } else if (input.embeddingIds.length > 0) {
+        // Legacy: delete by explicit embedding IDs (for imports without batchId)
         const embeddingResult = await ctx.prisma.documentEmbedding.deleteMany({
           where: { id: { in: input.embeddingIds } },
         })
         embeddingsDeleted = embeddingResult.count
       }
 
-      // 2. Delete bookings → sessions
-      if (input.sessionSourceIds.length > 0) {
-        const bookingResult = await ctx.prisma.playSessionBooking.deleteMany({
-          where: { sessionId: { in: input.sessionSourceIds } },
-        })
-        bookingsDeleted = bookingResult.count
+      // 2. Check if there are any remaining embeddings for this club
+      const remainingEmbeddings = await ctx.prisma.documentEmbedding.count({
+        where: { clubId: input.clubId },
+      })
 
-        const sessionResult = await ctx.prisma.playSession.deleteMany({
-          where: { id: { in: input.sessionSourceIds } },
-        })
-        sessionsDeleted = sessionResult.count
-      }
+      // 3. Delete ALL club sessions + bookings + health
+      // Sessions don't carry importBatchId, so we can't scope deletion to a specific import.
+      // If no embeddings remain, this was the last/only import — clean everything.
+      // If embeddings remain (other imports exist), still delete all sessions because
+      // the remaining import's re-import will recreate them.
+      // This is safe because sessions are always rebuilt from CSV data on import.
+      const bResult = await ctx.prisma.$executeRaw`
+        DELETE FROM play_session_bookings WHERE "sessionId" IN (
+          SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
+        )
+      `
+      bookingsDeleted = typeof bResult === 'number' ? bResult : 0
 
-      // 3. If no sessions to delete but we have a batchId, delete ALL club sessions + bookings
-      // (import creates sessions outside embedding flow, so batchId won't be on sessions)
-      if (sessionsDeleted === 0 && input.importBatchId) {
-        const bResult = await ctx.prisma.$executeRaw`
-          DELETE FROM play_session_bookings WHERE "sessionId" IN (
-            SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
-          )
-        `
-        bookingsDeleted = typeof bResult === 'number' ? bResult : 0
+      const sResult = await ctx.prisma.$executeRaw`
+        DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
+      `
+      sessionsDeleted = typeof sResult === 'number' ? sResult : 0
 
-        const sResult = await ctx.prisma.$executeRaw`
-          DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
-        `
-        sessionsDeleted = typeof sResult === 'number' ? sResult : 0
+      // 4. Clean health snapshots (derived from sessions, must be regenerated)
+      const hResult = await ctx.prisma.$executeRaw`
+        DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
+      `
+      healthDeleted = typeof hResult === 'number' ? hResult : 0
 
-        // Also clean health snapshots
-        const hResult = await ctx.prisma.$executeRaw`
-          DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
-        `
-        healthDeleted = typeof hResult === 'number' ? hResult : 0
-      }
-
-      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted }
+      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted, remainingEmbeddings }
     }),
 
   // 2.1 Pricing Opportunities (demand-based price suggestions)

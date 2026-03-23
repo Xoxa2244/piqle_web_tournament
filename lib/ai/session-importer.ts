@@ -105,17 +105,21 @@ export async function importSessionsToDB(
 
   // Collect all unique player names from CSV (filter garbage)
   const GARBAGE_NAMES = new Set(['confirmed', 'cancelled', 'canceled', 'no-show', 'noshow', 'pending',
-    'beginner', 'intermediate', 'advanced', 'all levels', 'open play', 'clinic', 'drill', 'league', 'social'])
-  const allPlayerNames = new Set<string>()
+    'beginner', 'intermediate', 'advanced', 'all levels', 'open play', 'clinic', 'drill', 'league', 'social',
+    'waitlisted', 'active', 'inactive', 'yes', 'no', 'true', 'false', 'no show',
+    'open_play', 'all_levels', 'league_play', 'round robin', 'round_robin'])
+  const allPlayerNames = new Map<string, string>() // lowercased → original (first-seen form)
   for (const s of sessions) {
     for (const name of s.playerNames) {
       const trimmed = name.trim()
       if (!trimmed || trimmed.length < 2 || trimmed.length > 50) continue
-      if (GARBAGE_NAMES.has(trimmed.toLowerCase())) continue
-      if (/^\d+(\.\d+)?$/.test(trimmed)) continue // pure numbers
-      if (!nameToUser.has(trimmed.toLowerCase())) {
-        allPlayerNames.add(trimmed)
-      }
+      const lower = trimmed.toLowerCase()
+      if (GARBAGE_NAMES.has(lower)) continue
+      if (/^\d+(\.\d+)?$/.test(trimmed)) continue // pure numbers like "4.0"
+      if (/^\$?\d/.test(trimmed)) continue // prices like "$15"
+      if (nameToUser.has(lower)) continue // already exists in DB
+      if (allPlayerNames.has(lower)) continue // already collected (case-insensitive dedup)
+      allPlayerNames.set(lower, trimmed)
     }
   }
 
@@ -123,7 +127,7 @@ export async function importSessionsToDB(
   if (allPlayerNames.size > 0 && onProgress) {
     onProgress(0, allPlayerNames.size, `Creating ${allPlayerNames.size} player profiles...`)
   }
-  for (const playerName of Array.from(allPlayerNames)) {
+  for (const [, playerName] of Array.from(allPlayerNames)) {
     try {
       // Create user with name (no email/password — placeholder for imported data)
       const slug = playerName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')

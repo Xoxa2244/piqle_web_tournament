@@ -374,6 +374,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ upload: any; index: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const deleteImportMutation = trpc.intelligence.deleteImport.useMutation();
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -412,6 +413,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         status: "processed" as const,
         source: u.source || "CSV Import",
         duration: "—",
+        // Preserve fields needed for per-import deletion
+        embeddingIds: u.embeddingIds || [],
+        sessionSourceIds: u.sessionSourceIds || [],
+        importBatchId: u.importBatchId || null,
       }))
     : dataUploadHistory;
 
@@ -1378,18 +1383,23 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 </button>
                 <button
                   onClick={async () => {
-                    if (!clubId) return
+                    if (!clubId || !deleteConfirm) return
                     setDeleting(true)
                     try {
-                      console.log('[Delete Import] Deleting all data for club', clubId)
-
-                      const res = await fetch('/api/ai/import-sessions', {
-                        method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ clubId }),
+                      const upload = deleteConfirm.upload
+                      console.log('[Delete Import] Deleting import batch', {
+                        clubId,
+                        importBatchId: upload.importBatchId,
+                        embeddingIds: upload.embeddingIds?.length,
                       })
 
-                      const result = await res.json().catch(() => ({}))
+                      const result = await deleteImportMutation.mutateAsync({
+                        clubId,
+                        embeddingIds: upload.embeddingIds || [],
+                        sessionSourceIds: upload.sessionSourceIds || [],
+                        importBatchId: upload.importBatchId || undefined,
+                      })
+
                       console.log('[Delete Import] Result:', result)
 
                       setDeleteConfirm(null)
