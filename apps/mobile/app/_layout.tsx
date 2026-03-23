@@ -38,7 +38,6 @@ const RootNavigator = () => {
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="notifications" />
-        <Stack.Screen name="search" />
         <Stack.Screen name="profile/index" />
         <Stack.Screen name="profile/edit" />
         <Stack.Screen name="profile/settings" />

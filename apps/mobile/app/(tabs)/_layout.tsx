@@ -15,6 +15,7 @@ const tabIcons = {
   clubs: { outline: 'people-outline' as const, filled: 'people' as const },
   chats: { outline: 'chatbubbles-outline' as const, filled: 'chatbubbles' as const },
   ai: { outline: 'flash-outline' as const, filled: 'flash' as const },
+  search: { outline: 'search-outline' as const, filled: 'search' as const },
 }
 
 const labelByRoute: Record<keyof typeof tabIcons, string> = {
@@ -23,6 +24,7 @@ const labelByRoute: Record<keyof typeof tabIcons, string> = {
   clubs: 'Clubs',
   chats: 'Chats',
   ai: 'AI',
+  search: 'Search',
 }
 
 export default function TabsLayout() {
@@ -58,7 +60,7 @@ export default function TabsLayout() {
         tabBarIcon: ({ focused }) => {
           const name = route.name as keyof typeof tabIcons
           const label = labelByRoute[name] ?? ''
-          const pair = tabIcons[name]
+          const pair = tabIcons[name] ?? tabIcons.index
           const iconName = focused ? pair.filled : pair.outline
           const color = focused ? tabActive : tabInactive
           return (
@@ -79,6 +81,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="clubs" options={{ title: 'Clubs' }} />
       <Tabs.Screen name="chats" options={{ title: 'Chats' }} />
       <Tabs.Screen name="ai" options={{ title: 'AI' }} />
+      <Tabs.Screen name="search" options={{ href: null }} />
     </Tabs>
     </Fragment>
   )

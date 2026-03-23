@@ -19,6 +19,9 @@ const isHomeRoute = (pathname: string) =>
   pathname === '/(tabs)/' ||
   pathname === '/(tabs)/index'
 
+const usesBrandHeader = (pathname: string) =>
+  isHomeRoute(pathname) || pathname === '/search'
+
 const getTitle = (pathname: string) => {
   if (pathname === '/') return 'Piqle'
   if (pathname.startsWith('/tournaments')) return 'Events'
@@ -51,7 +54,6 @@ const IconBubble = ({
 
 const wantsTopBarBack = (pathname: string) =>
   pathname === '/notifications' ||
-  pathname === '/search' ||
   pathname === '/profile' ||
   pathname.startsWith('/profile/') ||
   pathname.startsWith('/chats/club/') ||
@@ -187,14 +189,15 @@ export const TopBar = ({
   const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = titleOverride ?? getTitle(pathname)
   const showBack = wantsTopBarBack(pathname) && navigation.canGoBack()
-  const showHomeLogo = !titleOverride && !showBack && isHomeRoute(pathname)
+  const showBrandLogo = !titleOverride && !showBack && usesBrandHeader(pathname)
   const hasTitleAccessory = Boolean(titleAccessory)
   const profile = profileQuery.data as { name?: string | null; email?: string | null; image?: string | null } | undefined
   const avatarUri = profile?.image ?? user?.image ?? null
   const initialsLabel = profile?.name || profile?.email || user?.name || user?.email || ''
+  const searchReturnTo = routePathname || pathname || '/'
 
   /** С аксессуаром заголовок не должен иметь flexGrow: иначе строка растягивается и кнопка уезжает к иконке поиска. */
-  const titleBesideAccessory = hasTitleAccessory && (Boolean(titleOverride) || !showHomeLogo)
+  const titleBesideAccessory = hasTitleAccessory && (Boolean(titleOverride) || !showBrandLogo)
 
   return (
     <View style={[styles.header, ambient && styles.headerAmbient]}>
@@ -225,10 +228,10 @@ export const TopBar = ({
               </Text>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
-          ) : hasTitleAccessory && showHomeLogo ? (
+          ) : hasTitleAccessory && showBrandLogo ? (
             <View style={styles.titleWithAccessoryRow}>
               <View style={styles.titleLogoSlot}>
-                <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
+                <AnimatedHomeTitle showLogo={showBrandLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
               </View>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
@@ -245,17 +248,16 @@ export const TopBar = ({
               {title}
             </Text>
           ) : (
-            <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
+            <AnimatedHomeTitle showLogo={showBrandLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
           )}
         </View>
       </View>
       <View style={styles.actions}>
         <IconBubble
           icon="search"
-          active={routePathname === '/search'}
           onPress={() => {
             if (routePathname === '/search') return
-            router.push('/search')
+            router.push({ pathname: '/search', params: { returnTo: searchReturnTo } })
           }}
         />
         <IconBubble
