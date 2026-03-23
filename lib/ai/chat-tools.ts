@@ -10,11 +10,10 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 
-// AI SDK tool() has strict TS overloads that reject union return types.
-// We wrap with 'as any' on the execute to satisfy TypeScript while
-// keeping proper zod schema conversion for the AI provider.
+// AI SDK v6 renamed "parameters" → "inputSchema" on the Tool type.
+// tool() is an identity function, so we must pass { inputSchema } directly.
 function defineTool(config: { description: string; parameters: z.ZodObject<any>; execute: (...args: any[]) => Promise<any> }) {
-  return tool({ description: config.description, parameters: config.parameters, execute: config.execute } as any)
+  return tool({ description: config.description, inputSchema: config.parameters, execute: config.execute } as any)
 }
 
 export function createChatTools(clubId: string) {
