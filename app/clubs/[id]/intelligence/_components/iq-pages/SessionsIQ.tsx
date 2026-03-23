@@ -266,6 +266,17 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   // Use real data — no mock fallback for real clubs
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
+  // Debug: check what data we receive
+  if (typeof window !== 'undefined') {
+    console.log('[SessionsIQ]', {
+      hasCalendarData: !!calendarData,
+      sessionCount: calendarData?.sessions?.length ?? 'N/A',
+      summaryTotal: calendarData?.summary?.totalSessions ?? 'N/A',
+      isLoading: externalLoading,
+      isDemo,
+    });
+  }
+
   // Cache last successful data to prevent empty-state flash on re-fetch
   const lastGoodData = useRef<{ sessions: any[]; weekly: any[]; formats: any[]; courts: any[]; hourly: any[] }>({ sessions: [], weekly: [], formats: [], courts: [], hourly: [] });
 
