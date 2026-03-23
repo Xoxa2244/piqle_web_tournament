@@ -334,6 +334,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         system: systemPrompt,
         messages: modelMessages,
         tools: chatTools,
+        maxSteps: 3,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
@@ -345,6 +346,7 @@ Use the data above to answer the user's question. If the data doesn't contain re
         system: systemPrompt,
         messages: modelMessages,
         tools: chatTools,
+        maxSteps: 3,
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
