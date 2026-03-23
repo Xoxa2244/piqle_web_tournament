@@ -400,35 +400,47 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             {/* Weekly Sessions Bar */}
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Weekly Sessions</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={displayWeekly}>
-                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-                  <XAxis dataKey="day" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-                  <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="sessions" name="Sessions" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {displayWeekly.length > 0 ? (
+                <div style={{ width: '100%', height: 240 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={displayWeekly}>
+                      <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+                      <XAxis dataKey="day" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                      <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="sessions" name="Sessions" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)' }}>No data for this period</div>
+              )}
             </Card>
 
             {/* Hourly Pattern */}
             <Card>
               <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Hourly Occupancy Pattern</h3>
-              <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={displayHourly}>
-                  <defs>
-                    <linearGradient id="hourGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-                  <XAxis dataKey="time" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 10 }} interval={2} />
-                  <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="avg" name="Avg Occupancy" stroke="#06B6D4" fill="url(#hourGrad)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
+              {displayHourly.length > 0 ? (
+                <div style={{ width: '100%', height: 240 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={displayHourly}>
+                      <defs>
+                        <linearGradient id="hourGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#06B6D4" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#06B6D4" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+                      <XAxis dataKey="time" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 10 }} interval={2} />
+                      <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Area type="monotone" dataKey="avg" name="Avg Occupancy" stroke="#06B6D4" fill="url(#hourGrad)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--t3)' }}>No data for this period</div>
+              )}
             </Card>
           </div>
 
