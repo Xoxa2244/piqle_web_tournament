@@ -63,7 +63,7 @@ const computeTopChips = (rows: Array<{ chips: string[] }>) => {
       freq.set(key, (freq.get(key) ?? 0) + 1)
     }
   }
-  return [...freq.entries()]
+  return Array.from(freq.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([label, count]) => ({ label, count }))
@@ -100,7 +100,7 @@ export const feedbackRouter = createTRPCRouter({
       const isPositive = input.rating >= 4
       const comment = input.rating < 5 ? input.comment?.trim() || null : null
       const chipsAllowed = new Set(surveyChips[input.entityType]?.[input.rating] ?? [])
-      const normalizedChips = [...new Set((input.chips ?? []).map((x) => x.trim()).filter(Boolean))]
+      const normalizedChips = Array.from(new Set((input.chips ?? []).map((x) => x.trim()).filter(Boolean)))
       const chips = normalizedChips.filter((chip) => chipsAllowed.has(chip))
 
       let tournamentId: string | null = null
@@ -313,7 +313,7 @@ export const feedbackRouter = createTRPCRouter({
         })
       }
 
-      for (const tournament of tournamentsById.values()) {
+      for (const tournament of Array.from(tournamentsById.values())) {
         if (tournament.endDate > tournamentCutoff) continue
         if (!rated.has(`TOURNAMENT:${tournament.id}`)) {
           prompts.push({
@@ -344,7 +344,7 @@ export const feedbackRouter = createTRPCRouter({
         const prev = clubJoinedAt.get(row.clubId)
         if (!prev || row.createdAt < prev) clubJoinedAt.set(row.clubId, row.createdAt)
       }
-      for (const [clubId, joinedAt] of clubJoinedAt.entries()) {
+      for (const [clubId, joinedAt] of Array.from(clubJoinedAt.entries())) {
         if (rated.has(`CLUB:${clubId}`)) continue
         if (joinedAt <= clubCutoff) {
           prompts.push({
@@ -358,7 +358,7 @@ export const feedbackRouter = createTRPCRouter({
           })
           continue
         }
-        const hadEvent = [...tournamentsById.values()].some((t) => t.clubId === clubId)
+        const hadEvent = Array.from(tournamentsById.values()).some((t) => t.clubId === clubId)
         if (hadEvent) {
           prompts.push({
             promptId: `prompt:club:event:${clubId}`,

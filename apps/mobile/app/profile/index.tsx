@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
   },
   statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
   statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  profileDuprRow: { flexDirection: 'row', gap: spacing.sm },
+  profileDuprRow: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
   profileDuprPill: {
     flex: 1,
     borderRadius: radius.md,
