@@ -180,12 +180,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                 }
               } catch { /* skip */ }
             }
-            // AI SDK v6 data stream format: data: {"type":"text-delta","textDelta":"..."}
+            // AI SDK v6 data stream format: data: {"type":"text-delta","delta":"..."} or {"textDelta":"..."}
             else if (trimmed.startsWith('data:')) {
               try {
                 const json = JSON.parse(trimmed.slice(5).trim());
-                if (json.type === 'text-delta' && json.textDelta) {
-                  assistantContent += json.textDelta;
+                const deltaText = json.delta || json.textDelta;
+                if (json.type === 'text-delta' && deltaText) {
+                  assistantContent += deltaText;
                   setMessages(prev => prev.map(m =>
                     m.id === assistantId ? { ...m, content: assistantContent } : m
                   ));
@@ -199,8 +200,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                 const data = JSON.parse(trimmed.slice(2));
                 if (Array.isArray(data)) {
                   for (const item of data) {
-                    if (item.type === 'text-delta' && item.textDelta) {
-                      assistantContent += item.textDelta;
+                    const itemDelta = item.delta || item.textDelta;
+                    if (item.type === 'text-delta' && itemDelta) {
+                      assistantContent += itemDelta;
                     }
                   }
                   setMessages(prev => prev.map(m =>
