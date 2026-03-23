@@ -26,7 +26,7 @@ export default function NewClubWizardPage() {
     const club = await createClub.mutateAsync({
       name: wizardData.name || 'My Club',
       kind: wizardData.kind,
-      joinPolicy: 'OPEN',
+      joinPolicy: 'APPROVAL',
       address: wizardData.address,
       city: wizardData.city,
       state: wizardData.state,
