@@ -2425,35 +2425,26 @@ export const intelligenceRouter = createTRPCRouter({
       let bookingsDeleted = 0
       let embeddingsDeleted = 0
       let healthDeleted = 0
+      let followersDeleted = 0
+      let aiRecsDeleted = 0
 
-      // 1. Delete embeddings — prefer batchId (reliable), fallback to ID list
-      if (input.importBatchId) {
-        // Delete ALL embeddings with this batchId via raw SQL (JSONB query)
-        const result = await ctx.prisma.$executeRaw`
-          DELETE FROM document_embeddings
-          WHERE club_id = ${input.clubId}::uuid
-            AND metadata->>'importBatchId' = ${input.importBatchId}
+      // 1. Delete AI recommendation logs
+      try {
+        const arResult = await ctx.prisma.$executeRaw`
+          DELETE FROM ai_recommendation_logs WHERE "clubId" = ${input.clubId}::uuid
         `
-        embeddingsDeleted = typeof result === 'number' ? result : 0
-      } else if (input.embeddingIds.length > 0) {
-        // Legacy: delete by explicit embedding IDs (for imports without batchId)
-        const embeddingResult = await ctx.prisma.documentEmbedding.deleteMany({
-          where: { id: { in: input.embeddingIds } },
-        })
-        embeddingsDeleted = embeddingResult.count
+        aiRecsDeleted = typeof arResult === 'number' ? arResult : 0
+      } catch (err) {
+        console.warn('[Delete Import] ai_recommendation_logs cleanup failed:', err)
       }
 
-      // 2. Check if there are any remaining embeddings for this club
-      const remainingEmbeddings = await ctx.prisma.documentEmbedding.count({
-        where: { clubId: input.clubId },
-      })
+      // 2. Delete health snapshots
+      const hResult = await ctx.prisma.$executeRaw`
+        DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
+      `
+      healthDeleted = typeof hResult === 'number' ? hResult : 0
 
-      // 3. Delete ALL club sessions + bookings + health
-      // Sessions don't carry importBatchId, so we can't scope deletion to a specific import.
-      // If no embeddings remain, this was the last/only import — clean everything.
-      // If embeddings remain (other imports exist), still delete all sessions because
-      // the remaining import's re-import will recreate them.
-      // This is safe because sessions are always rebuilt from CSV data on import.
+      // 3. Delete bookings for all sessions of this club
       const bResult = await ctx.prisma.$executeRaw`
         DELETE FROM play_session_bookings WHERE "sessionId" IN (
           SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
@@ -2461,18 +2452,47 @@ export const intelligenceRouter = createTRPCRouter({
       `
       bookingsDeleted = typeof bResult === 'number' ? bResult : 0
 
+      // 4. Delete all play sessions for this club
       const sResult = await ctx.prisma.$executeRaw`
         DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
       `
       sessionsDeleted = typeof sResult === 'number' ? sResult : 0
 
-      // 4. Clean health snapshots (derived from sessions, must be regenerated)
-      const hResult = await ctx.prisma.$executeRaw`
-        DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
+      // 5. Delete ALL document_embeddings for this club (not just one batch)
+      const eResult = await ctx.prisma.$executeRaw`
+        DELETE FROM document_embeddings WHERE club_id = ${input.clubId}::uuid
       `
-      healthDeleted = typeof hResult === 'number' ? hResult : 0
+      embeddingsDeleted = typeof eResult === 'number' ? eResult : 0
 
-      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted, remainingEmbeddings }
+      // 6. Delete placeholder users created during import (email like %@placeholder.iqsport.ai)
+      try {
+        const fResult = await ctx.prisma.$executeRaw`
+          DELETE FROM club_followers
+          WHERE club_id = ${input.clubId}::uuid
+            AND user_id IN (SELECT id FROM users WHERE email LIKE '%@placeholder.iqsport.ai')
+        `
+        followersDeleted = typeof fResult === 'number' ? fResult : 0
+      } catch (err) {
+        console.warn('[Delete Import] placeholder followers cleanup failed:', err)
+      }
+
+      // 7. Delete AI conversations and messages (reset AI advisor history)
+      try {
+        await ctx.prisma.$executeRaw`
+          DELETE FROM ai_messages WHERE conversation_id IN (
+            SELECT id FROM ai_conversations WHERE club_id = ${input.clubId}::uuid
+          )
+        `
+        await ctx.prisma.$executeRaw`
+          DELETE FROM ai_conversations WHERE club_id = ${input.clubId}::uuid
+        `
+      } catch (err) {
+        console.warn('[Delete Import] AI conversations cleanup failed:', err)
+      }
+
+      console.log(`[Delete Import] Club ${input.clubId}: ${embeddingsDeleted} embeddings, ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${healthDeleted} health, ${followersDeleted} placeholder users, ${aiRecsDeleted} ai recs deleted`)
+
+      return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted, followersDeleted, remainingEmbeddings: 0 }
     }),
 
   // 2.1 Pricing Opportunities (demand-based price suggestions)
