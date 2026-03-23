@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
@@ -114,6 +114,15 @@ export default function HomeTab() {
   }, [accessibleTournamentsQuery, isAuthenticated, tournamentsQuery, utils])
 
   const pullToRefresh = usePullToRefresh(onRefreshHome)
+  const [topBarRefreshPulseKey, setTopBarRefreshPulseKey] = useState(0)
+  const prevRefreshingRef = useRef(false)
+
+  useEffect(() => {
+    if (pullToRefresh.refreshing && !prevRefreshingRef.current) {
+      setTopBarRefreshPulseKey((k) => k + 1)
+    }
+    prevRefreshingRef.current = pullToRefresh.refreshing
+  }, [pullToRefresh.refreshing])
 
   const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
@@ -193,7 +202,11 @@ export default function HomeTab() {
   const myEventStatusFor = (eventId: string) => statusData[eventId]?.status
 
   return (
-    <PageLayout scroll={false} contentStyle={styles.layoutContent}>
+    <PageLayout
+      scroll={false}
+      contentStyle={styles.layoutContent}
+      topBarRefreshPulseKey={topBarRefreshPulseKey}
+    >
       <View style={styles.page}>
         <View style={styles.headerSection}>
           <Text style={styles.welcomeTitle}>Welcome back!</Text>

@@ -1,4 +1,5 @@
 import { BlurView } from 'expo-blur'
+import * as Haptics from 'expo-haptics'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
@@ -9,6 +10,17 @@ import { palette, radius, spacing } from '../lib/theme'
 import { ActionButton } from './ui'
 
 const SHEET_OFF_Y = 560
+
+const triggerModalOpenHaptic = async () => {
+  try {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    setTimeout(() => {
+      void Haptics.selectionAsync()
+    }, 45)
+  } catch {
+    // ignore haptic failures on unsupported devices
+  }
+}
 
 export type AppBottomSheetProps = PropsWithChildren<{
   open: boolean
@@ -46,6 +58,7 @@ export function AppBottomSheet({
     if (open) {
       wasOpen.current = true
       setMounted(true)
+      void triggerModalOpenHaptic()
       backdropOp.setValue(0)
       sheetY.setValue(SHEET_OFF_Y)
       requestAnimationFrame(() => {

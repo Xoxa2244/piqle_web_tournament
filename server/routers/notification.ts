@@ -74,6 +74,17 @@ export const notificationRouter = createTRPCRouter({
         clubName: string
         targetUrl: string
       }> = []
+      let feedbackPromptItems: Array<{
+        id: string
+        type: 'FEEDBACK_PROMPT'
+        title: string
+        body: string
+        createdAt: string
+        readAt: string | null
+        targetUrl: string
+        entityType: 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
+        entityId: string
+      }> = []
       const clubIds = adminClubs.map((a) => a.clubId)
       if (clubIds.length > 0) {
         try {
@@ -123,14 +134,129 @@ export const notificationRouter = createTRPCRouter({
         }
       }
 
+      try {
+        const now = new Date()
+        const tournamentCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+        const clubCutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+        const appCutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+        const [ratings, played, follows, me] = await Promise.all([
+          ctx.prisma.feedback.findMany({
+            where: { userId },
+            select: { entityType: true, entityId: true },
+          }),
+          ctx.prisma.player.findMany({
+            where: { userId },
+            select: {
+              tournament: {
+                select: {
+                  id: true,
+                  title: true,
+                  endDate: true,
+                  clubId: true,
+                  userId: true,
+                },
+              },
+            },
+          }),
+          ctx.prisma.clubFollower.findMany({
+            where: { userId },
+            select: { clubId: true, createdAt: true },
+          }),
+          ctx.prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true } }),
+        ])
+        const rated = new Set(ratings.map((r) => `${r.entityType}:${r.entityId}`))
+        const seenTournament = new Set<string>()
+        const seenClub = new Set<string>()
+        for (const row of played) {
+          const tournament = row.tournament
+          if (!tournament) continue
+          if (tournament.endDate <= tournamentCutoff) {
+            if (!rated.has(`TOURNAMENT:${tournament.id}`) && !seenTournament.has(`TOURNAMENT:${tournament.id}`)) {
+              seenTournament.add(`TOURNAMENT:${tournament.id}`)
+              feedbackPromptItems.push({
+                id: `feedback-prompt-tournament-${tournament.id}`,
+                type: 'FEEDBACK_PROMPT',
+                title: 'Rate tournament',
+                body: `How was "${tournament.title}"?`,
+                createdAt: tournament.endDate.toISOString(),
+                readAt: null,
+                targetUrl: `/tournaments/${tournament.id}`,
+                entityType: 'TOURNAMENT',
+                entityId: tournament.id,
+              })
+            }
+            if (!rated.has(`TD:${tournament.userId}`) && !seenTournament.has(`TD:${tournament.userId}`)) {
+              seenTournament.add(`TD:${tournament.userId}`)
+              feedbackPromptItems.push({
+                id: `feedback-prompt-td-${tournament.userId}-${tournament.id}`,
+                type: 'FEEDBACK_PROMPT',
+                title: 'Rate tournament director',
+                body: `How did the director perform at "${tournament.title}"?`,
+                createdAt: tournament.endDate.toISOString(),
+                readAt: null,
+                targetUrl: `/tournaments/${tournament.id}`,
+                entityType: 'TD',
+                entityId: tournament.userId,
+              })
+            }
+          }
+          if (tournament.clubId && !rated.has(`CLUB:${tournament.clubId}`) && !seenClub.has(tournament.clubId)) {
+            seenClub.add(tournament.clubId)
+            feedbackPromptItems.push({
+              id: `feedback-prompt-club-event-${tournament.clubId}`,
+              type: 'FEEDBACK_PROMPT',
+              title: 'Rate club',
+              body: 'You attended a club event. Share your feedback.',
+              createdAt: tournament.endDate.toISOString(),
+              readAt: null,
+              targetUrl: `/clubs/${tournament.clubId}`,
+              entityType: 'CLUB',
+              entityId: tournament.clubId,
+            })
+          }
+        }
+        for (const follow of follows) {
+          if (follow.createdAt > clubCutoff) continue
+          if (rated.has(`CLUB:${follow.clubId}`) || seenClub.has(follow.clubId)) continue
+          seenClub.add(follow.clubId)
+          feedbackPromptItems.push({
+            id: `feedback-prompt-club-joined-${follow.clubId}`,
+            type: 'FEEDBACK_PROMPT',
+            title: 'Rate club',
+            body: 'You have been in this club for a few days. Share your feedback.',
+            createdAt: follow.createdAt.toISOString(),
+            readAt: null,
+            targetUrl: `/clubs/${follow.clubId}`,
+            entityType: 'CLUB',
+            entityId: follow.clubId,
+          })
+        }
+        if (me?.createdAt && me.createdAt <= appCutoff && !rated.has('APP:GLOBAL')) {
+          feedbackPromptItems.push({
+            id: 'feedback-prompt-app-global',
+            type: 'FEEDBACK_PROMPT',
+            title: 'Rate app experience',
+            body: 'Tell us how your app experience is going.',
+            createdAt: me.createdAt.toISOString(),
+            readAt: null,
+            targetUrl: '/profile',
+            entityType: 'APP',
+            entityId: 'GLOBAL',
+          })
+        }
+      } catch (err) {
+        if (!isMissingDbRelation(err, 'feedback')) throw err
+      }
+
       const allItems = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...feedbackPromptItems.map((i) => ({ ...i, _sort: i.createdAt })),
       ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
       const items = allItems.slice(0, limit).map(({ _sort, ...rest }) => rest)
 
       return {
-        unreadCount: invitationCount + clubJoinItems.length,
+        unreadCount: invitationCount + clubJoinItems.length + feedbackPromptItems.length,
         items,
       }
     }),

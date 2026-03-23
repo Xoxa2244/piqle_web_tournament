@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../src/components/ChatComposer'
@@ -140,6 +140,7 @@ export default function AITab() {
   const [input, setInput] = useState('')
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null)
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
   const chatMutation = trpc.aiCoach.chat.useMutation({
     onError: (err) => {
       setMessages((prev) => [
@@ -202,6 +203,21 @@ export default function AITab() {
     // Auto-follow new messages and typing indicator.
     scrollToBottom(true)
   }, [isAuthenticated, messages.length, typing])
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const s = Keyboard.addListener(showEv, () => setKeyboardVisible(true))
+    const h = Keyboard.addListener(hideEv, () => setKeyboardVisible(false))
+    const didShow = Keyboard.addListener('keyboardDidShow', () => {
+      scrollToBottom(true)
+    })
+    return () => {
+      s.remove()
+      h.remove()
+      didShow.remove()
+    }
+  }, [])
 
   const resetChat = () => {
     if (resetPending) return
@@ -274,14 +290,52 @@ export default function AITab() {
       >
         <ChatThreadRoot
           ref={scrollRef}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, keyboardVisible && styles.scrollContentKeyboard]}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollToBottom(false)}
         >
-          <View style={styles.messages}>
-            {messages.map((msg) => (
-              <View key={msg.id} style={[styles.messageLine, msg.role === 'user' && styles.messageLineMine]}>
-                {msg.role === 'assistant' ? (
+            <View style={styles.messages}>
+              {messages.map((msg) => (
+                <View key={msg.id} style={[styles.messageLine, msg.role === 'user' && styles.messageLineMine]}>
+                  {msg.role === 'assistant' ? (
+                    <OptionalLinearGradient
+                      colors={['#a855f7', '#7c3aed', '#4f46e5']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.assistantAvatar}
+                    >
+                      <Feather name="zap" size={16} color={palette.white} />
+                    </OptionalLinearGradient>
+                  ) : null}
+
+                  <View style={[styles.messageCol, msg.role === 'user' && styles.messageColMine]}>
+                    <OptionalLinearGradient
+                      colors={
+                        msg.role === 'user'
+                          ? [palette.primary, palette.purple]
+                          : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
+                      }
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      fallbackColor={msg.role === 'user' ? palette.primary : palette.surfaceElevated}
+                      style={[
+                        styles.bubble,
+                        msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
+                      ]}
+                    >
+                      <Text
+                        style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
+                      >
+                        {renderInlineMarkdown(msg.content, msg.id)}
+                      </Text>
+                    </OptionalLinearGradient>
+                    <Text style={styles.time}>{msg.time}</Text>
+                  </View>
+                </View>
+              ))}
+
+              {typing ? (
+                <View style={styles.messageLine}>
                   <OptionalLinearGradient
                     colors={['#a855f7', '#7c3aed', '#4f46e5']}
                     start={{ x: 0, y: 0 }}
@@ -290,83 +344,44 @@ export default function AITab() {
                   >
                     <Feather name="zap" size={16} color={palette.white} />
                   </OptionalLinearGradient>
-                ) : null}
-
-                <View style={[styles.messageCol, msg.role === 'user' && styles.messageColMine]}>
-                  <OptionalLinearGradient
-                    colors={
-                      msg.role === 'user'
-                        ? [palette.primary, palette.purple]
-                        : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    fallbackColor={msg.role === 'user' ? palette.primary : palette.surfaceElevated}
-                    style={[
-                      styles.bubble,
-                      msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
-                    ]}
-                  >
-                    <Text
-                      style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
-                    >
-                      {renderInlineMarkdown(msg.content, msg.id)}
-                    </Text>
-                  </OptionalLinearGradient>
-                  <Text style={styles.time}>{msg.time}</Text>
-                </View>
-              </View>
-            ))}
-
-            {typing ? (
-              <View style={styles.messageLine}>
-                <OptionalLinearGradient
-                  colors={['#a855f7', '#7c3aed', '#4f46e5']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.assistantAvatar}
-                >
-                  <Feather name="zap" size={16} color={palette.white} />
-                </OptionalLinearGradient>
-                <View style={styles.messageCol}>
-                  <View style={[styles.bubble, styles.bubbleAssistant, styles.typingBubble]}>
-                    <View style={styles.typingDots}>
-                      <View style={[styles.dot, { opacity: 0.6 }]} />
-                      <View style={[styles.dot, { opacity: 0.45 }]} />
-                      <View style={[styles.dot, { opacity: 0.3 }]} />
+                  <View style={styles.messageCol}>
+                    <View style={[styles.bubble, styles.bubbleAssistant, styles.typingBubble]}>
+                      <View style={styles.typingDots}>
+                        <View style={[styles.dot, { opacity: 0.6 }]} />
+                        <View style={[styles.dot, { opacity: 0.45 }]} />
+                        <View style={[styles.dot, { opacity: 0.3 }]} />
+                      </View>
                     </View>
                   </View>
                 </View>
+              ) : null}
+            </View>
+
+            {messages.length === 1 ? (
+              <View style={styles.suggestions}>
+                <Text style={styles.suggestionsLabel}>Suggested questions:</Text>
+                <View style={{ gap: 10 }}>
+                  {suggestedQuestions.map((q) => (
+                    <Pressable
+                      key={q.text}
+                      onPress={() => setInput(q.text)}
+                      style={({ pressed }) => [styles.suggestionCard, pressed && { opacity: 0.9 }]}
+                    >
+                      <OptionalLinearGradient
+                        colors={['#a855f7', '#7c3aed']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.suggestionIcon}
+                      >
+                        <Feather name={q.icon} size={16} color={palette.white} />
+                      </OptionalLinearGradient>
+                      <Text style={styles.suggestionText}>{q.text}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ) : null}
-          </View>
-
-          {messages.length === 1 ? (
-            <View style={styles.suggestions}>
-              <Text style={styles.suggestionsLabel}>Suggested questions:</Text>
-              <View style={{ gap: 10 }}>
-                {suggestedQuestions.map((q) => (
-                  <Pressable
-                    key={q.text}
-                    onPress={() => setInput(q.text)}
-                    style={({ pressed }) => [styles.suggestionCard, pressed && { opacity: 0.9 }]}
-                  >
-                    <OptionalLinearGradient
-                      colors={['#a855f7', '#7c3aed']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={styles.suggestionIcon}
-                    >
-                      <Feather name={q.icon} size={16} color={palette.white} />
-                    </OptionalLinearGradient>
-                    <Text style={styles.suggestionText}>{q.text}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ) : null}
-        </ChatThreadRoot>
-
+          </ChatThreadRoot>
         <ChatComposer
           value={input}
           onChangeText={setInput}
@@ -425,6 +440,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: 120,
     gap: spacing.lg,
+  },
+  scrollContentKeyboard: {
+    paddingBottom: 160,
   },
   messages: {
     gap: 14,

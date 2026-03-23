@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
@@ -79,6 +79,11 @@ type TournamentSummary = {
     name?: string | null
     email?: string | null
   } | null
+  feedbackSummary?: {
+    averageRating: number | null
+    total: number
+    canPublish: boolean
+  } | null
 }
 
 export const TournamentCard = ({
@@ -121,6 +126,7 @@ export const TournamentCard = ({
       ? `${playerCount} players registered`
       : 'Open registration'
   const progressWidth = progress > 0 ? `${Math.max(progress, 8)}%` : '0%'
+  const showPublicRating = Boolean(tournament.feedbackSummary?.canPublish && tournament.feedbackSummary?.averageRating)
 
   return (
     <Pressable onPress={onPress}>
@@ -164,6 +170,15 @@ export const TournamentCard = ({
                 {formatLocation([tournament.venueName, tournament.venueAddress])}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.ratingRow}>
+            <MaterialIcons name="star" size={16} color="#F4B000" />
+            {showPublicRating ? (
+              <Text style={styles.ratingText}>{tournament.feedbackSummary!.averageRating!.toFixed(1)}</Text>
+            ) : (
+              <Text style={styles.ratingTextMuted}>No rating yet</Text>
+            )}
           </View>
 
           {tournament.divisions?.length ? (
@@ -277,6 +292,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ratingText: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  ratingTextMuted: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
   },
   progressBlock: {
     gap: 10,

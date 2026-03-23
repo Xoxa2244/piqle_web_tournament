@@ -12,6 +12,7 @@ import {
   SegmentedControl,
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
+import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { palette, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
@@ -62,6 +63,41 @@ export default function ClubsTab() {
     // Nearby mode is visual-only until we have geolocation + backend distance support.
     return discoverClubs
   }, [discoverClubs, mode])
+
+  const visibleClubIds = useMemo(
+    () =>
+      [...new Set([...visibleMyClubs.map((c) => c.id), ...visibleDiscoverClubs.map((c) => c.id)])].slice(0, 200),
+    [visibleMyClubs, visibleDiscoverClubs],
+  )
+
+  const clubFeedbackSummariesQuery = api.feedback.getBatchSummaries.useQuery(
+    { entityType: 'CLUB', entityIds: visibleClubIds },
+    { enabled: FEEDBACK_API_ENABLED && visibleClubIds.length > 0 && isAuthenticated },
+  )
+
+  const feedbackByClubId = (clubFeedbackSummariesQuery.data?.map ?? {}) as Record<
+    string,
+    { total: number; averageRating: number | null; canPublish: boolean }
+  >
+
+  const feedbackWithDevFallback = useMemo(() => {
+    const map = { ...feedbackByClubId }
+    if (!__DEV__) return map
+    for (const clubId of visibleClubIds) {
+      if (map[clubId]) continue
+      const seed = clubId
+        .split('')
+        .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+      const total = 5 + (seed % 21) // 5..25
+      const avg = 3.8 + ((seed % 13) / 20) // 3.8..4.4
+      map[clubId] = {
+        total,
+        averageRating: Number(avg.toFixed(1)),
+        canPublish: true,
+      }
+    }
+    return map
+  }, [feedbackByClubId, visibleClubIds])
 
   const onRefreshClubs = useCallback(async () => {
     await clubsQuery.refetch()
@@ -114,7 +150,10 @@ export default function ClubsTab() {
               <Text style={styles.sectionTitle}>My clubs</Text>
               {visibleMyClubs.map((club) => (
                 <View key={club.id} style={{ gap: 10 }}>
-                  <ClubCard club={club} onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })} />
+                  <ClubCard
+                    club={{ ...club, feedbackSummary: feedbackWithDevFallback[club.id] ?? null }}
+                    onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
+                  />
                 </View>
               ))}
             </View>
@@ -126,7 +165,7 @@ export default function ClubsTab() {
               {visibleDiscoverClubs.map((club) => (
                 <View key={club.id} style={{ gap: 10 }}>
                   <ClubCard
-                    club={club}
+                    club={{ ...club, feedbackSummary: feedbackWithDevFallback[club.id] ?? null }}
                     onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
                     onJoin={
                       isAuthenticated

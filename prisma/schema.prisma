@@ -66,6 +66,8 @@ model User {
   stripeDefaultCardLast4         String?                   @map("stripe_default_card_last4")
   aiCoachMessages                AiCoachMessage[]
   aiCoachState                   AiCoachState?
+  feedbacksAuthored              Feedback[]                 @relation("FeedbackAuthor")
+  feedbacksAboutTd               Feedback[]                 @relation("FeedbackTdSubject")
 
   @@map("users")
 }
@@ -158,6 +160,7 @@ model Tournament {
   tournamentAccesses      TournamentAccess[]
   tournamentRatings       TournamentRating[]
   tournamentComments      TournamentComment[]
+  feedbacks               Feedback[]                 @relation("FeedbackTournament")
   user                    User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tournaments_userid_fkey")
   TournamentAccessRequest TournamentAccessRequest[]
   matchDays               MatchDay[]
@@ -217,6 +220,7 @@ model Club {
   chatReadStates      ClubChatReadState[]
   invites             ClubInvite[]
   bans                ClubBan[]
+  feedbacks           Feedback[]               @relation("FeedbackClub")
 
   @@map("clubs")
 }
@@ -954,6 +958,32 @@ model TournamentComment {
   @@map("tournament_comments")
 }
 
+model Feedback {
+  id             String              @id @default(uuid())
+  entityType     FeedbackEntityType  @map("entity_type")
+  entityId       String              @map("entity_id")
+  rating         Int
+  chips          String[]            @default([])
+  comment        String?
+  isPositive     Boolean             @default(false) @map("is_positive")
+  userId         String              @map("user_id")
+  tournamentId   String?             @map("tournament_id")
+  clubId         String?             @map("club_id")
+  tdUserId       String?             @map("td_user_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  user           User                @relation("FeedbackAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  tournament     Tournament?         @relation("FeedbackTournament", fields: [tournamentId], references: [id], onDelete: Cascade)
+  club           Club?               @relation("FeedbackClub", fields: [clubId], references: [id], onDelete: Cascade)
+  tdUser         User?               @relation("FeedbackTdSubject", fields: [tdUserId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, entityType, entityId])
+  @@index([entityType, entityId, createdAt])
+  @@index([isPositive, entityType, entityId])
+  @@map("feedback")
+}
+
 model MatchDay {
   id           String         @id @default(uuid())
   tournamentId String         @map("tournament_id")
@@ -1232,6 +1262,13 @@ enum PaymentStatus {
 enum PaymentTiming {
   PAY_IN_15_MIN
   PAY_BY_DEADLINE
+}
+
+enum FeedbackEntityType {
+  TOURNAMENT
+  CLUB
+  TD
+  APP
 }
 
 enum PartnerWebhookEvent {

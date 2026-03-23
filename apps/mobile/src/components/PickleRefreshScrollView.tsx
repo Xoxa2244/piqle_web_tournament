@@ -41,12 +41,8 @@ const REFRESH_ZONE_H = 80
 
 /** Доп. отступ контента сверху, пока идёт refresh — лента ниже, не «маячит» под мячом. */
 const REFRESH_CONTENT_SHIFT_PX = 40
-
-/**
- * Нативный индикатор оставляем (жест), но делаем ~невидимым.
- * Полный `transparent` на части iOS/Android даёт снова системную иконку — alpha ~1% надёжнее.
- */
-const NATIVE_REFRESH_INVISIBLE = 'rgba(255,255,255,0.01)'
+/** Полностью прозрачный нативный спиннер, чтобы не пробивался под кастомным мячом. */
+const NATIVE_SPINNER_INVISIBLE = 'rgba(0,0,0,0.01)'
 
 /** ScrollView + pull-to-refresh: нативный индикатор скрыт, показывается анимированный мяч пиклбола. */
 export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrollViewProps>(
@@ -141,6 +137,7 @@ export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrol
 
     const showOverlay = nativeRefreshing || pullRevealed || postNativeMask
     const maskBg = refreshMaskColor ?? palette.background
+    const nativeSpinnerColor = NATIVE_SPINNER_INVISIBLE
 
     return (
       <View style={styles.host}>
@@ -166,13 +163,13 @@ export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrol
               onRefresh={onRefresh}
               {...Platform.select({
                 ios: {
-                  tintColor: NATIVE_REFRESH_INVISIBLE,
+                  tintColor: nativeSpinnerColor,
                   title: '',
-                  titleColor: NATIVE_REFRESH_INVISIBLE,
+                  titleColor: nativeSpinnerColor,
                 },
                 android: {
-                  colors: [NATIVE_REFRESH_INVISIBLE],
-                  progressBackgroundColor: NATIVE_REFRESH_INVISIBLE,
+                  colors: [nativeSpinnerColor],
+                  progressBackgroundColor: nativeSpinnerColor,
                 },
               })}
             />

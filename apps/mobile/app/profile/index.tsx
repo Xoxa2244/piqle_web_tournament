@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -10,7 +10,7 @@ import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradi
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
-import { DUPR_CLIENT_KEY } from '../../src/lib/config'
+import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -125,6 +125,7 @@ export default function ProfileTab() {
   const utils = trpc.useUtils() as any
   const [showDuprConnect, setShowDuprConnect] = useState(false)
   const [duprInfoMessage, setDuprInfoMessage] = useState<{ title: string; body: string } | null>(null)
+  const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const linkDupr = api.user.linkDupr.useMutation({
     onSuccess: async () => {
       await utils.user.getProfile.invalidate()
@@ -176,6 +177,10 @@ export default function ProfileTab() {
   `
 
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
+  const tdSummaryQuery = api.feedback.getEntitySummary.useQuery(
+    { entityType: 'TD', entityId: user?.id ?? '' },
+    { enabled: FEEDBACK_API_ENABLED && isAuthenticated && Boolean(user?.id), retry: false },
+  )
   const tournamentsQuery = api.public.listBoards.useQuery(undefined, { enabled: isAuthenticated })
 
   const tournamentIds = useMemo(
@@ -203,12 +208,17 @@ export default function ProfileTab() {
     return items
       .filter((item) => {
         const status = statuses[item.id]?.status
-        return status === 'active' || status === 'waitlisted'
+        const isHostedByMe = Boolean(user?.id && item.user?.id === user.id)
+        return status === 'active' || status === 'waitlisted' || isHostedByMe
       })
       .sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime())
       .slice(0, 3)
       .map((item) => ({ ...item, myStatus: statuses[item.id]?.status }))
-  }, [statuses, tournamentsQuery.data])
+  }, [statuses, tournamentsQuery.data, user?.id])
+  const hostedByMeCount = useMemo(() => {
+    const items = (tournamentsQuery.data ?? []) as any[]
+    return items.filter((item) => Boolean(user?.id && item.user?.id === user.id)).length
+  }, [tournamentsQuery.data, user?.id])
 
   if (!isAuthenticated) {
     return (
@@ -263,6 +273,28 @@ export default function ProfileTab() {
   const doublesNum = parseNumberish(profile.duprRatingDoubles)
   const singlesRatingLabel = singlesNum !== null ? singlesNum.toFixed(2) : '—'
   const doublesRatingLabel = doublesNum !== null ? doublesNum.toFixed(2) : '—'
+  const hostedCount = Number(profile?.tournamentsCreatedCount ?? 0)
+  const hostedCountEffective = Math.max(hostedCount, hostedByMeCount)
+  const isTd = hostedCountEffective > 0
+  const tdAverage = tdSummaryQuery.data?.averageRating
+  const tdTotal = tdSummaryQuery.data?.total ?? 0
+  const tdCanPublish = Boolean(tdSummaryQuery.data?.canPublish)
+  const tdFallbackSeed = String(user?.id ?? '')
+    .split('')
+    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  const tdAverageEffective = tdAverage ?? (__DEV__ && isTd ? Number((4 + (tdFallbackSeed % 9) / 20).toFixed(1)) : null)
+  const tdTotalEffective = tdTotal > 0 ? tdTotal : __DEV__ && isTd ? 5 + (tdFallbackSeed % 17) : 0
+  const tdCanPublishEffective = tdCanPublish || (__DEV__ && tdTotalEffective >= 5)
+  const tdAchievements =
+    tdSummaryQuery.data?.achievements?.length || !__DEV__
+      ? tdSummaryQuery.data?.achievements ?? []
+      : isTd
+      ? [
+          { id: 'dev-td-1', title: 'Fast Resolver' },
+          { id: 'dev-td-2', title: 'Clear Communicator' },
+          { id: 'dev-td-3', title: 'Conflict Solver' },
+        ]
+      : []
   const handleLabel = `@${String(profile.email || '').split('@')[0] || 'piqle'}`
   const memberSinceLabel = profile.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
   const locationLabel = formatLocation([profile.city])
@@ -301,6 +333,34 @@ export default function ProfileTab() {
               </View>
             </View>
 
+            <SurfaceCard>
+              <View style={styles.statsGrid}>
+                <View style={styles.statsItem}>
+                  <Text style={styles.statsValue}>{profile?.clubsJoinedCount ?? 0}</Text>
+                  <Text style={styles.statsLabel}>Clubs</Text>
+                </View>
+                <View style={styles.statsItem}>
+                  <Text style={styles.statsValue}>{profile?.tournamentsPlayedCount ?? 0}</Text>
+                  <Text style={styles.statsLabel}>Played</Text>
+                </View>
+                <View style={styles.statsItem}>
+                  <Text style={styles.statsValue}>{profile?.tournamentsCreatedCount ?? 0}</Text>
+                  <Text style={styles.statsLabel}>Hosted</Text>
+                </View>
+              </View>
+
+              <View style={styles.profileDuprRow}>
+                <View style={styles.profileDuprPill}>
+                  <Text style={styles.profileDuprPillLabel}>Singles</Text>
+                  <Text style={styles.profileDuprPillValue}>{singlesRatingLabel}</Text>
+                </View>
+                <View style={styles.profileDuprPill}>
+                  <Text style={styles.profileDuprPillLabel}>Doubles</Text>
+                  <Text style={styles.profileDuprPillValue}>{doublesRatingLabel}</Text>
+                </View>
+              </View>
+            </SurfaceCard>
+
             <View style={styles.duprCardOuter}>
               <View style={styles.duprHeaderRow}>
                 <View style={styles.duprCircleIcon}>
@@ -328,6 +388,41 @@ export default function ProfileTab() {
                 />
               ) : null}
             </View>
+
+            {isTd ? (
+              <SurfaceCard>
+                <Text style={styles.tdRatingTitle}>Tournament director rating</Text>
+                <Pressable
+                  onPress={() => setTdFeedbackInfoOpen(true)}
+                  style={({ pressed }) => [styles.tdRatingRowBtn, pressed && styles.profileActionButtonPressed]}
+                >
+                  <View style={styles.tdStarsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <MaterialIcons
+                        key={star}
+                        name={tdCanPublishEffective && tdAverageEffective && star <= Math.round(tdAverageEffective) ? 'star' : 'star-border'}
+                        size={19}
+                        color="#F4B000"
+                      />
+                    ))}
+                  </View>
+                  {tdCanPublishEffective && tdAverageEffective ? (
+                    <Text style={styles.tdRatingValue}>{tdAverageEffective.toFixed(1)}</Text>
+                  ) : (
+                    <Text style={styles.tdRatingMuted}>No rating yet</Text>
+                  )}
+                </Pressable>
+                {tdAchievements.length > 0 ? (
+                  <View style={styles.tdAchievementsWordsRow}>
+                    {tdAchievements.map((item: { id: string; title: string }) => (
+                      <View key={item.id} style={styles.tdAchievementWordChip}>
+                        <Text style={styles.tdAchievementWordText}>{item.title}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </SurfaceCard>
+            ) : null}
           </View>
 
           <AppBottomSheet
@@ -387,6 +482,35 @@ export default function ProfileTab() {
             subtitle={duprInfoMessage?.body}
             footer={<AppInfoFooter onPress={() => setDuprInfoMessage(null)} />}
           />
+          <AppBottomSheet
+            open={tdFeedbackInfoOpen}
+            onClose={() => setTdFeedbackInfoOpen(false)}
+            title="Tournament director rating"
+            subtitle={
+              tdCanPublishEffective && tdAverageEffective
+                ? `Average ${tdAverageEffective.toFixed(1)}`
+                : 'No public rating yet. Need at least 5 ratings.'
+            }
+          >
+            <View style={styles.feedbackChipsWrap}>
+              {(tdSummaryQuery.data?.topChips ?? []).length > 0 || (__DEV__ && isTd) ? (
+                (tdSummaryQuery.data?.topChips?.length
+                  ? tdSummaryQuery.data.topChips
+                  : [
+                      { label: 'Clear communication', count: 10 },
+                      { label: 'Fair decisions', count: 8 },
+                      { label: 'On-time schedule', count: 7 },
+                    ]
+                ).map((chip: { label: string; count: number }) => (
+                  <View key={chip.label} style={styles.feedbackChip}>
+                    <Text style={styles.feedbackChipText}>{chip.label}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyCardBody}>Not enough public data yet.</Text>
+              )}
+            </View>
+          </AppBottomSheet>
 
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>Recent Tournaments</Text>
@@ -545,6 +669,33 @@ const styles = StyleSheet.create({
   userInfoBlock: {
     gap: 4,
   },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  statsItem: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
+  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
+  profileDuprRow: { flexDirection: 'row', gap: spacing.sm },
+  profileDuprPill: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  profileDuprPillLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
+  profileDuprPillValue: { marginTop: 3, color: palette.text, fontSize: 22, fontWeight: '800' },
   userName: {
     color: palette.text,
     fontSize: 28,
@@ -628,6 +779,50 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     fontVariant: ['tabular-nums'],
   },
+  tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
+  tdRatingRowBtn: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'flex-start',
+  },
+  tdStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  tdRatingValue: { color: palette.text, fontSize: 16, fontWeight: '800' },
+  tdRatingMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },
+  tdAchievementsWordsRow: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tdAchievementWordChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tdAchievementWordText: {
+    color: '#1E7A32',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  feedbackChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: spacing.xs },
+  feedbackChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  feedbackChipText: { color: '#1E7A32', fontSize: 13, fontWeight: '600' },
   sectionBlock: {
     gap: spacing.md,
   },

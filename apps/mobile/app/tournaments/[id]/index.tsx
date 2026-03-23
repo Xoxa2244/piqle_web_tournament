@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
+import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
 import {
@@ -29,7 +30,7 @@ import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { tournamentPlaceholder } from '../../../src/constants/images'
 import { fetchWithTimeout } from '../../../src/lib/apiFetch'
-import { buildApiUrl, buildWebUrl } from '../../../src/lib/config'
+import { buildApiUrl, buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
 import { isRemoteImageUri } from '../../../src/lib/imageUri'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
@@ -195,6 +196,10 @@ export default function TournamentDetailScreen() {
   const [isFavorite, setIsFavorite] = useState(false)
   const [leaveTournamentSheetOpen, setLeaveTournamentSheetOpen] = useState(false)
   const [paymentErrorMessage, setPaymentErrorMessage] = useState<string | null>(null)
+  const [tournamentFeedbackOpen, setTournamentFeedbackOpen] = useState(false)
+  const [tournamentFeedbackInfoOpen, setTournamentFeedbackInfoOpen] = useState(false)
+  const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
+  const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
 
   const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
   const cachedTournament = useMemo(
@@ -368,6 +373,42 @@ export default function TournamentDetailScreen() {
   }
 
   const tournament = tournamentQuery.data as any
+  const tdUserId = typeof tournament?.user?.id === 'string' ? tournament.user.id : null
+  const feedbackSummaryQuery = api.feedback.getEntitySummary.useQuery(
+    { entityType: 'TOURNAMENT', entityId: tournamentId },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(tournamentId) && isAuthenticated, retry: false },
+  )
+  const hasRatedQuery = api.feedback.hasRated.useQuery(
+    { targets: [{ entityType: 'TOURNAMENT', entityId: tournamentId }] },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(tournamentId) && isAuthenticated, retry: false },
+  )
+  const hasRatedTournament = Boolean(hasRatedQuery.data?.map?.[`TOURNAMENT:${tournamentId}`])
+  const tdSummaryQuery = api.feedback.getEntitySummary.useQuery(
+    { entityType: 'TD', entityId: tdUserId ?? '' },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(tdUserId) && isAuthenticated, retry: false },
+  )
+  const tdHasRatedQuery = api.feedback.hasRated.useQuery(
+    { targets: tdUserId ? [{ entityType: 'TD', entityId: tdUserId }] : [] },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(tdUserId) && isAuthenticated, retry: false },
+  )
+  const hasRatedTd = Boolean(tdUserId && tdHasRatedQuery.data?.map?.[`TD:${tdUserId}`])
+  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
+  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
+  const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
+  const fallbackSeed = String(tournamentId).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  const feedbackAverageEffective =
+    feedbackAverage ?? (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
+  const feedbackTotalEffective = feedbackTotal > 0 ? feedbackTotal : __DEV__ ? 5 + (fallbackSeed % 21) : 0
+  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
+  const tdAverage = tdSummaryQuery.data?.averageRating
+  const tdTotal = tdSummaryQuery.data?.total ?? 0
+  const tdCanPublish = Boolean(tdSummaryQuery.data?.canPublish)
+  const tdFallbackSeed = String(tdUserId ?? tournamentId)
+    .split('')
+    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  const tdAverageEffective = tdAverage ?? (__DEV__ ? Number((4 + (tdFallbackSeed % 9) / 20).toFixed(1)) : null)
+  const tdTotalEffective = tdTotal > 0 ? tdTotal : __DEV__ ? 5 + (tdFallbackSeed % 17) : 0
+  const tdCanPublishEffective = tdCanPublish || (__DEV__ && tdTotalEffective >= 5)
   const myStatus = myStatusQuery.data?.status
   const accessInfo = accessQuery.data?.userAccessInfo
   const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
@@ -497,7 +538,7 @@ export default function TournamentDetailScreen() {
 
   const handleOpenOrganizerProfile = () => {
     if (!tournament.user?.id) return
-    void Linking.openURL(buildWebUrl(`/profile/${tournament.user.id}`))
+    router.push({ pathname: '/profile/[id]', params: { id: tournament.user.id } })
   }
 
   return (
@@ -695,25 +736,62 @@ export default function TournamentDetailScreen() {
               <SurfaceCard style={styles.detailCard}>
                 <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Organizer</Text>
                 <View style={styles.organizerRow}>
-                  <RemoteUserAvatar uri={tournament.user?.image} size={48} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.organizerName}>{organizerLabel}</Text>
-                    <Text style={styles.organizerMeta}>{organizerMetaLabel}</Text>
-                  </View>
-                </View>
-                <View style={styles.organizerButtonRow}>
                   <Pressable
                     disabled={!tournament.user?.id}
                     onPress={handleOpenOrganizerProfile}
-                    style={({ pressed }) => [
-                      styles.outlineButton,
-                      pressed && tournament.user?.id && styles.outlineButtonPressed,
-                      !tournament.user?.id && styles.outlineButtonDisabled,
-                    ]}
+                    style={({ pressed }) => [pressed && tournament.user?.id && styles.organizerAvatarPressed]}
                   >
-                    <Text style={styles.outlineButtonText}>View Profile</Text>
+                    <RemoteUserAvatar uri={tournament.user?.image} size={48} />
+                  </Pressable>
+                  <Pressable
+                    disabled={!tournament.user?.id}
+                    onPress={handleOpenOrganizerProfile}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.organizerInfoTap, pressed && tournament.user?.id && styles.organizerNamePressed]}
+                  >
+                    <Text style={styles.organizerName}>{organizerLabel}</Text>
+                    <Text style={styles.organizerMeta}>{organizerMetaLabel}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setTdFeedbackInfoOpen(true)}
+                    style={({ pressed }) => [styles.ratingPillBtn, pressed && styles.ratingPillBtnPressed]}
+                  >
+                    <MaterialIcons name="star" size={17} color="#F4B000" />
+                    {tdCanPublishEffective && tdAverageEffective ? (
+                      <Text style={styles.feedbackValue}>{tdAverageEffective.toFixed(1)}</Text>
+                    ) : (
+                      <Text style={styles.feedbackValueMuted}>No rating yet</Text>
+                    )}
                   </Pressable>
                 </View>
+              </SurfaceCard>
+
+              <SurfaceCard style={styles.detailCard}>
+                <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Tournament rating</Text>
+                <View style={styles.feedbackHeadRow}>
+                  <View style={styles.feedbackLeft}>
+                    <MaterialIcons name="star" size={18} color="#F4B000" />
+                    {feedbackCanPublishEffective && feedbackAverageEffective ? (
+                      <Text style={styles.feedbackValue}>{feedbackAverageEffective.toFixed(1)}</Text>
+                    ) : (
+                      <Text style={styles.feedbackValueMuted}>No rating yet</Text>
+                    )}
+                    {feedbackCanPublishEffective ? null : <Text style={styles.feedbackCount}>min 5 ratings</Text>}
+                  </View>
+                  <Pressable onPress={() => setTournamentFeedbackInfoOpen(true)} style={styles.feedbackInfoBtn}>
+                    <Text style={styles.feedbackInfoBtnText}>Details</Text>
+                  </Pressable>
+                </View>
+                {!hasRatedTournament ? (
+                  <Pressable
+                    onPress={() => setTournamentFeedbackOpen(true)}
+                    style={({ pressed }) => [styles.primaryFeedbackCtaBtn, pressed && styles.primaryFeedbackCtaBtnPressed]}
+                  >
+                    <Text style={styles.primaryFeedbackCtaText}>Rate this tournament</Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.feedbackThanksText}>Thanks, you already rated this tournament.</Text>
+                )}
               </SurfaceCard>
             </View>
           ) : null}
@@ -958,6 +1036,114 @@ export default function TournamentDetailScreen() {
         subtitle={paymentErrorMessage ?? ''}
         footer={<AppInfoFooter onPress={() => setPaymentErrorMessage(null)} />}
       />
+      <FeedbackRatingModal
+        open={tournamentFeedbackOpen}
+        onClose={() => setTournamentFeedbackOpen(false)}
+        entityType="TOURNAMENT"
+        entityId={tournamentId}
+        title="Rate this tournament"
+        subtitle="Your feedback helps improve tournament quality."
+        onSubmitted={() => {
+          void Promise.all([feedbackSummaryQuery.refetch(), hasRatedQuery.refetch()])
+        }}
+      />
+      <AppBottomSheet
+        open={tournamentFeedbackInfoOpen}
+        onClose={() => setTournamentFeedbackInfoOpen(false)}
+        title="Tournament rating"
+        subtitle={
+          feedbackCanPublishEffective && feedbackAverageEffective
+            ? `Average ${feedbackAverageEffective.toFixed(1)}`
+            : 'No public rating yet. Need at least 5 ratings.'
+        }
+      >
+        <View style={styles.feedbackChipsWrap}>
+          {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
+            (feedbackSummaryQuery.data?.topChips?.length
+              ? feedbackSummaryQuery.data.topChips
+              : [
+                  { label: 'Great organization', count: 9 },
+                  { label: 'Clear schedule', count: 8 },
+                  { label: 'Strong opponents', count: 6 },
+                ]
+            ).map((chip: { label: string; count: number }) => (
+              <View key={chip.label} style={styles.feedbackChip}>
+                <Text style={styles.feedbackChipText}>{chip.label}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.feedbackEmptyText}>Not enough public data yet.</Text>
+          )}
+        </View>
+      </AppBottomSheet>
+      <FeedbackRatingModal
+        open={tdFeedbackOpen}
+        onClose={() => setTdFeedbackOpen(false)}
+        entityType="TD"
+        entityId={tdUserId ?? ''}
+        title="Rate tournament director"
+        subtitle="Your feedback helps improve director quality."
+        onSubmitted={() => {
+          void Promise.all([tdSummaryQuery.refetch(), tdHasRatedQuery.refetch()])
+        }}
+      />
+      <AppBottomSheet
+        open={tdFeedbackInfoOpen}
+        onClose={() => setTdFeedbackInfoOpen(false)}
+        title="Tournament director rating"
+        subtitle={
+          tdCanPublishEffective && tdAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
+        }
+      >
+        {tdCanPublishEffective && tdAverageEffective ? (
+          <View style={styles.modalStarsRow}>
+            {[1, 2, 3, 4, 5].map((star) => {
+              const active = star <= Math.round(tdAverageEffective)
+              return (
+                <MaterialIcons key={star} name={active ? 'star' : 'star-border'} size={40} color={active ? '#F2C94C' : '#C7C7CC'} />
+              )
+            })}
+            <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
+          </View>
+        ) : null}
+        <View style={styles.feedbackChipsWrap}>
+          {(tdSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
+            (tdSummaryQuery.data?.topChips?.length
+              ? tdSummaryQuery.data.topChips
+              : [
+                  { label: 'Clear communication', count: 10 },
+                  { label: 'Fair decisions', count: 8 },
+                  { label: 'On-time schedule', count: 7 },
+                ]
+            ).map((chip: { label: string; count: number }) => (
+              <View key={chip.label} style={styles.feedbackChip}>
+                <Text style={styles.feedbackChipText}>{chip.label}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.feedbackEmptyText}>Not enough public data yet.</Text>
+          )}
+        </View>
+        {!hasRatedTd ? (
+          <Pressable
+            disabled={!tdUserId}
+            onPress={() => {
+              if (!tdUserId) return
+              setTdFeedbackInfoOpen(false)
+              setTimeout(() => setTdFeedbackOpen(true), 260)
+            }}
+            style={({ pressed }) => [
+              styles.primaryFeedbackCtaBtn,
+              pressed && tdUserId && styles.primaryFeedbackCtaBtnPressed,
+              !tdUserId && styles.outlineButtonDisabled,
+            ]}
+          >
+            <Text style={styles.primaryFeedbackCtaText}>Rate this organizer</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
+        )}
+      </AppBottomSheet>
     </SafeAreaView>
   )
 }
@@ -1294,12 +1480,190 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   organizerMeta: {
-    marginTop: 4,
+    marginTop: 2,
     color: palette.textMuted,
     fontSize: 14,
   },
-  organizerButtonRow: {
+  organizerAvatarPressed: {
+    opacity: 0.82,
+  },
+  organizerInfoTap: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  organizerNamePressed: {
+    opacity: 0.84,
+  },
+  ratingPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ratingPillBtnPressed: {
+    opacity: 0.86,
+  },
+  feedbackHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  feedbackLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  feedbackValue: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  feedbackValueMuted: {
+    color: palette.textMuted,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  feedbackCount: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedbackInfoBtn: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  feedbackInfoBtnText: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  primaryFeedbackCtaBtn: {
     marginTop: spacing.md,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+    alignItems: 'center',
+    backgroundColor: palette.primary,
+  },
+  primaryFeedbackCtaBtnPressed: {
+    opacity: 0.9,
+  },
+  primaryFeedbackCtaText: {
+    color: palette.white,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  feedbackThanksText: {
+    marginTop: spacing.md,
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedbackChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: spacing.xs,
+  },
+  modalStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    justifyContent: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  modalRatingValueInline: {
+    color: palette.text,
+    fontSize: 24,
+    fontWeight: '800',
+    marginLeft: 8,
+  },
+  feedbackChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  feedbackChipText: {
+    color: '#1E7A32',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedbackChipCount: {
+    color: '#2E8B42',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  achievementDotsRow: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  achievementDot: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    maxWidth: '100%',
+  },
+  achievementDotText: {
+    color: '#1E7A32',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  achievementBadgeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingBottom: spacing.xs,
+  },
+  achievementBadgeItem: {
+    width: 92,
+    alignItems: 'center',
+    gap: 6,
+  },
+  achievementBadgeCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  achievementBadgeText: {
+    color: '#1E7A32',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  feedbackEmptyText: {
+    color: palette.textMuted,
+    fontSize: 13,
   },
   dashboardBanner: {
     borderRadius: radius.sm,

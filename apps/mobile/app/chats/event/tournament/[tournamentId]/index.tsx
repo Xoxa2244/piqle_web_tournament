@@ -271,6 +271,10 @@ export default function TournamentChatScreen() {
             <ChatThreadMessageList
               messages={messages as ChatMessage[]}
               currentUserId={user?.id}
+              onPressAvatar={(m) => {
+                if (!m.userId) return
+                router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
+              }}
               canDelete={(m) => {
                 const mine = Boolean(user?.id && m.userId === user?.id)
                 return Boolean((mine || canModerate) && !m.isDeleted)

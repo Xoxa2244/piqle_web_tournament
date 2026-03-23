@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics'
 import { useCallback } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
@@ -8,6 +9,17 @@ import { RemoteUserAvatar } from './RemoteUserAvatar'
 
 const AVATAR = 32
 const LONG_PRESS_MS = 450
+const DOUBLE_TAP_DELAY_MS = 35
+
+async function playLongPressHaptic() {
+  try {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    await new Promise((resolve) => setTimeout(resolve, DOUBLE_TAP_DELAY_MS))
+    await Haptics.selectionAsync()
+  } catch {
+    /* no haptics */
+  }
+}
 
 function UserAvatar({ user }: { user?: ChatMessage['user'] }) {
   return <RemoteUserAvatar uri={user?.image} size={AVATAR} />
@@ -17,6 +29,7 @@ type Props = {
   messages: ChatMessage[]
   currentUserId?: string
   canDelete: (m: ChatMessage) => boolean
+  onPressAvatar?: (m: ChatMessage) => void
   /** Долгое нажатие: родитель открывает шторку подтверждения */
   onRequestDelete: (m: ChatMessage) => void
   deleteDisabled?: boolean
@@ -26,6 +39,7 @@ export function ChatThreadMessageList({
   messages,
   currentUserId,
   canDelete,
+  onPressAvatar,
   onRequestDelete,
   deleteDisabled,
 }: Props) {
@@ -68,7 +82,14 @@ export function ChatThreadMessageList({
               >
                 {!isMine ? (
                   showAvatar ? (
-                    <UserAvatar user={m.user} />
+                    <Pressable
+                      onPress={() => onPressAvatar?.(m)}
+                      disabled={!onPressAvatar || !m.userId}
+                      hitSlop={8}
+                      style={({ pressed }) => [pressed && styles.avatarPressed]}
+                    >
+                      <UserAvatar user={m.user} />
+                    </Pressable>
                   ) : (
                     <View style={styles.avatarSpacer} />
                   )
@@ -77,17 +98,31 @@ export function ChatThreadMessageList({
                 <Pressable
                   disabled={!deletable}
                   delayLongPress={LONG_PRESS_MS}
-                  onLongPress={() => tryDelete(m)}
+                  onLongPress={() => {
+                    void playLongPressHaptic()
+                    tryDelete(m)
+                  }}
                   style={({ pressed }) => [
                     styles.bubble,
                     isMine ? styles.bubbleMine : styles.bubbleOther,
-                    pressed && deletable && { opacity: 0.92 },
+                    pressed &&
+                      deletable && {
+                        opacity: 0.92,
+                        transform: [{ scale: 0.955 }],
+                      },
                   ]}
                 >
                   {showName ? (
-                    <Text style={styles.authorName} numberOfLines={1}>
-                      {m.user?.name || 'User'}
-                    </Text>
+                    <Pressable
+                      onPress={() => onPressAvatar?.(m)}
+                      disabled={!onPressAvatar || !m.userId}
+                      hitSlop={6}
+                      style={({ pressed }) => [pressed && styles.namePressed]}
+                    >
+                      <Text style={styles.authorName} numberOfLines={1}>
+                        {m.user?.name || 'User'}
+                      </Text>
+                    </Pressable>
                   ) : null}
                   <Text style={[styles.body, isMine && styles.bodyMine]}>
                     {m.isDeleted ? 'Message removed' : m.text || ''}
@@ -145,6 +180,12 @@ const styles = StyleSheet.create({
   avatarSpacer: {
     width: AVATAR,
     height: AVATAR,
+  },
+  avatarPressed: {
+    opacity: 0.86,
+  },
+  namePressed: {
+    opacity: 0.84,
   },
   bubble: {
     maxWidth: '82%',

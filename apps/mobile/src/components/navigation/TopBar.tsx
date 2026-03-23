@@ -68,10 +68,12 @@ function AnimatedHomeTitle({
   showLogo,
   titleText,
   showBack,
+  refreshPulseKey,
 }: {
   showLogo: boolean
   titleText: string
   showBack: boolean
+  refreshPulseKey?: number
 }) {
   const textOp = useRef(new Animated.Value(showLogo ? 0 : 1)).current
   const logoX = useRef(new Animated.Value(showLogo ? 0 : LOGO_OFF_X)).current
@@ -120,6 +122,26 @@ function AnimatedHomeTitle({
     }
   }, [showLogo, textOp, logoX])
 
+  useEffect(() => {
+    if (!showLogo || !refreshPulseKey) return
+    logoX.stopAnimation()
+    logoX.setValue(0)
+    Animated.sequence([
+      Animated.timing(logoX, {
+        toValue: LOGO_OFF_X,
+        duration: LOGO_OUT_MS,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(logoX, {
+        toValue: 0,
+        duration: LOGO_IN_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start()
+  }, [showLogo, refreshPulseKey, logoX])
+
   return (
     <View style={[styles.titleAnimContainer, showBack && styles.titleWithBack]}>
       <Animated.Text
@@ -143,12 +165,15 @@ export const TopBar = ({
   titleAccessory,
   titleOverride,
   ambient = false,
+  refreshPulseKey,
 }: {
   titleAccessory?: ReactNode
   /** Заголовок вместо автоматического по pathname */
   titleOverride?: string
   /** Прозрачный фон под градиентом чата (AI и т.п.) */
   ambient?: boolean
+  /** Триггер «уехал/вернулся» для лого на главной при pull-to-refresh */
+  refreshPulseKey?: number
 }) => {
   /** Заголовок / лого: на вкладках — путь активного таба (видно при swipe поверх модалок). Иконки — по глобальному URL. */
   const pathname = useEffectivePathname()
@@ -203,7 +228,7 @@ export const TopBar = ({
           ) : hasTitleAccessory && showHomeLogo ? (
             <View style={styles.titleWithAccessoryRow}>
               <View style={styles.titleLogoSlot}>
-                <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} />
+                <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
               </View>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
@@ -220,7 +245,7 @@ export const TopBar = ({
               {title}
             </Text>
           ) : (
-            <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} />
+            <AnimatedHomeTitle showLogo={showHomeLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
           )}
         </View>
       </View>

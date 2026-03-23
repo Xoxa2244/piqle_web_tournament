@@ -21,6 +21,7 @@ export const PageLayout = ({
   topBarTitle,
   pullToRefresh,
   chatAmbient = false,
+  topBarRefreshPulseKey,
 }: PropsWithChildren<{
   scroll?: boolean
   contentStyle?: StyleProp<ViewStyle>
@@ -30,10 +31,17 @@ export const PageLayout = ({
   pullToRefresh?: PageLayoutPullToRefresh
   /** Полноэкранный едва заметный градиент (например AI Coach) */
   chatAmbient?: boolean
+  /** Триггер анимации лого в TopBar (главная + pull-to-refresh) */
+  topBarRefreshPulseKey?: number
 }>) => {
   const main = (
     <>
-      <TopBar titleAccessory={topBarTitleAccessory} titleOverride={topBarTitle} ambient={chatAmbient} />
+      <TopBar
+        titleAccessory={topBarTitleAccessory}
+        titleOverride={topBarTitle}
+        ambient={chatAmbient}
+        refreshPulseKey={topBarRefreshPulseKey}
+      />
       {scroll ? (
         pullToRefresh ? (
           <View style={styles.fill}>

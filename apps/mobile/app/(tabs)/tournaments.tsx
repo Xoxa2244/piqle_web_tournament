@@ -17,6 +17,7 @@ import {
   SurfaceCard,
 } from '../../src/components/ui'
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
+import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -87,12 +88,14 @@ const TournamentListCard = ({
   hasPrivilegedAccess,
   feeCents,
   isUnpaid,
+  feedbackSummary,
 }: {
   tournament: any
   myStatus?: string | null
   hasPrivilegedAccess: boolean
   feeCents?: number | null
   isUnpaid?: boolean
+  feedbackSummary?: { total: number; averageRating: number | null; canPublish: boolean } | null
 }) => {
   const api = trpc as any
   const detailQuery = api.public.getTournamentById.useQuery(
@@ -104,8 +107,9 @@ const TournamentListCard = ({
       ...tournament,
       ...(detailQuery.data ?? {}),
       entryFeeCents: feeCents,
+      feedbackSummary: feedbackSummary ?? null,
     }),
-    [detailQuery.data, feeCents, tournament]
+    [detailQuery.data, feeCents, feedbackSummary, tournament]
   )
   const cardStatus = getCardStatus(tournamentForCard, myStatus, hasPrivilegedAccess)
 
@@ -321,6 +325,28 @@ export default function TournamentsTab() {
     user?.id,
   ])
 
+  const visibleTournamentIds = useMemo(() => filtered.map((t) => t.id).slice(0, 200), [filtered])
+  const tournamentFeedbackSummariesQuery = api.feedback.getBatchSummaries.useQuery(
+    { entityType: 'TOURNAMENT', entityIds: visibleTournamentIds },
+    { enabled: FEEDBACK_API_ENABLED && visibleTournamentIds.length > 0 && isAuthenticated },
+  )
+  const feedbackByTournamentId = (tournamentFeedbackSummariesQuery.data?.map ?? {}) as Record<
+    string,
+    { total: number; averageRating: number | null; canPublish: boolean }
+  >
+  const feedbackByTournamentWithDevFallback = useMemo(() => {
+    const map = { ...feedbackByTournamentId }
+    if (!__DEV__) return map
+    for (const id of visibleTournamentIds) {
+      if (map[id]) continue
+      const seed = id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+      const total = 5 + (seed % 24)
+      const avg = 3.7 + (seed % 14) / 20
+      map[id] = { total, averageRating: Number(avg.toFixed(1)), canPublish: true }
+    }
+    return map
+  }, [feedbackByTournamentId, visibleTournamentIds])
+
   const invitationItems = ((notificationsQuery.data?.items ?? []) as any[]).filter(
     (item) => item.type === 'TOURNAMENT_INVITATION'
   )
@@ -505,6 +531,7 @@ export default function TournamentsTab() {
                 hasPrivilegedAccess={hasPrivilegedAccess}
                 feeCents={feeCents}
                 isUnpaid={isUnpaid}
+                feedbackSummary={feedbackByTournamentWithDevFallback[tournament.id] ?? null}
               />
             )
           })}

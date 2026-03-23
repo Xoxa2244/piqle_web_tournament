@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { useCallback, useState } from 'react'
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,11 +16,12 @@ import {
   SurfaceCard,
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
+import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
-import { buildWebUrl } from '../../../src/lib/config'
+import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
 import { formatDateRange, formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../src/lib/theme'
@@ -121,12 +122,27 @@ export default function ClubDetailScreen() {
   const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
+  const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
+  const [clubFeedbackInfoOpen, setClubFeedbackInfoOpen] = useState(false)
 
   const onRefreshClubDetail = useCallback(async () => {
-    await Promise.all([clubQuery.refetch(), membersQuery.refetch()])
-  }, [clubQuery, membersQuery])
+    const tasks: Array<Promise<unknown>> = [clubQuery.refetch()]
+    if (canViewMembers) {
+      tasks.push(membersQuery.refetch())
+    }
+    await Promise.all(tasks)
+  }, [clubQuery, membersQuery, canViewMembers])
 
   const pullToRefresh = usePullToRefresh(onRefreshClubDetail)
+  const feedbackSummaryQuery = trpc.feedback.getEntitySummary.useQuery(
+    { entityType: 'CLUB', entityId: clubId },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(clubId) && isAuthenticated, retry: false },
+  )
+  const hasRatedQuery = trpc.feedback.hasRated.useQuery(
+    { targets: [{ entityType: 'CLUB', entityId: clubId }] },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(clubId) && isAuthenticated, retry: false },
+  )
+  const hasRatedClub = Boolean(hasRatedQuery.data?.map?.[`CLUB:${clubId}`])
 
   if (clubQuery.isLoading) {
     return (
@@ -151,6 +167,22 @@ export default function ClubDetailScreen() {
   }
 
   const heroSubtitle = `${formatLocation([club.city, club.state])}  ·  ${club.followersCount} members`
+  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
+  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
+  const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
+  const fallbackSeed = String(clubId)
+    .split('')
+    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  const feedbackAverageEffective =
+    feedbackAverage ??
+    (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
+  const feedbackTotalEffective =
+    feedbackTotal > 0
+      ? feedbackTotal
+      : __DEV__
+      ? 5 + (fallbackSeed % 21)
+      : 0
+  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
 
   const Segment = () => (
     <SegmentedControl
@@ -254,6 +286,32 @@ export default function ClubDetailScreen() {
       </View>
     )
   }
+
+  const FeedbackBlock = () => (
+    <SurfaceCard tone="soft" style={styles.feedbackCard}>
+      <View style={styles.feedbackHeadRow}>
+        <View style={styles.feedbackLeft}>
+          <MaterialIcons name="star" size={18} color="#F4B000" />
+          {feedbackCanPublishEffective && feedbackAverageEffective ? (
+            <Text style={styles.feedbackValue}>{feedbackAverageEffective.toFixed(1)}</Text>
+          ) : (
+            <Text style={styles.feedbackValueMuted}>No rating yet</Text>
+          )}
+          {feedbackCanPublishEffective ? null : <Text style={styles.feedbackCount}>min 5 ratings</Text>}
+        </View>
+        <Pressable onPress={() => setClubFeedbackInfoOpen(true)} style={({ pressed }) => [styles.feedbackInfoBtn, pressed && styles.feedbackInfoBtnPressed]}>
+          <Text style={styles.feedbackInfoBtnText}>Details</Text>
+        </Pressable>
+      </View>
+      {!hasRatedClub ? (
+        <Pressable onPress={() => setClubFeedbackOpen(true)} style={({ pressed }) => [styles.feedbackRateBtn, pressed && styles.feedbackRateBtnPressed]}>
+          <Text style={styles.feedbackRateBtnText}>Rate this club</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.feedbackThanksText}>Thanks, you already rated this club.</Text>
+      )}
+    </SurfaceCard>
+  )
 
   const clubSheets = (
     <>
@@ -365,6 +423,7 @@ export default function ClubDetailScreen() {
           <Hero />
           <Segment />
           <MembershipActions />
+          <FeedbackBlock />
           <View style={styles.membersSearchWrap}>
             <InputField
               value={membersSearch}
@@ -392,11 +451,30 @@ export default function ClubDetailScreen() {
                     <SurfaceCard key={req.userId} padded={false} style={styles.pendingCard}>
                       <View style={styles.pendingCardTopRow}>
                         <View style={styles.pendingLeftRow}>
-                          <RemoteUserAvatar uri={req.user?.image} size={52} />
+                          <Pressable
+                            disabled={!req.userId}
+                            onPress={() => {
+                              if (!req.userId) return
+                              router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
+                            }}
+                            style={({ pressed }) => [pressed && req.userId && styles.avatarPress]}
+                          >
+                            <RemoteUserAvatar uri={req.user?.image} size={52} />
+                          </Pressable>
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={styles.pendingName} numberOfLines={1}>
-                              {req.user?.name || 'User'}
-                            </Text>
+                            <Pressable
+                              disabled={!req.userId}
+                              onPress={() => {
+                                if (!req.userId) return
+                                router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
+                              }}
+                              hitSlop={8}
+                              style={({ pressed }) => [pressed && req.userId && styles.namePress]}
+                            >
+                              <Text style={styles.pendingName} numberOfLines={1}>
+                                {req.user?.name || 'User'}
+                              </Text>
+                            </Pressable>
                             {when ? (
                               <Text style={styles.pendingWhen} numberOfLines={1}>
                                 {when}
@@ -472,13 +550,32 @@ export default function ClubDetailScreen() {
                       style={[styles.memberCard, isOwner && styles.memberCardOwner]}
                     >
                       <View style={styles.memberCardRow}>
-                        <RemoteUserAvatar uri={member.user?.image} size={56} />
+                        <Pressable
+                          disabled={!member.userId}
+                          onPress={() => {
+                            if (!member.userId) return
+                            router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                          }}
+                          style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
+                        >
+                          <RemoteUserAvatar uri={member.user?.image} size={56} />
+                        </Pressable>
 
                         <View style={styles.memberMain}>
                           <View style={styles.memberTopRow}>
-                            <Text style={styles.memberName} numberOfLines={1}>
-                              {member.user?.name || 'Member'}
-                            </Text>
+                            <Pressable
+                              disabled={!member.userId}
+                              onPress={() => {
+                                if (!member.userId) return
+                                router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                              }}
+                              hitSlop={8}
+                              style={({ pressed }) => [pressed && member.userId && styles.namePress]}
+                            >
+                              <Text style={styles.memberName} numberOfLines={1}>
+                                {member.user?.name || 'Member'}
+                              </Text>
+                            </Pressable>
                             {roleBadge ? (
                               <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
                                 <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
@@ -527,6 +624,7 @@ export default function ClubDetailScreen() {
 
         <Segment />
         <MembershipActions />
+        <FeedbackBlock />
 
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
@@ -783,6 +881,46 @@ export default function ClubDetailScreen() {
 
         {tab === 'members' ? null : null}
       </PickleRefreshScrollView>
+      <FeedbackRatingModal
+        open={clubFeedbackOpen}
+        onClose={() => setClubFeedbackOpen(false)}
+        entityType="CLUB"
+        entityId={clubId}
+        title="Rate this club"
+        subtitle="Your feedback helps improve club experience."
+        onSubmitted={() => {
+          void Promise.all([feedbackSummaryQuery.refetch(), hasRatedQuery.refetch()])
+        }}
+      />
+      <AppBottomSheet
+        open={clubFeedbackInfoOpen}
+        onClose={() => setClubFeedbackInfoOpen(false)}
+        title="Club rating"
+        subtitle={
+          feedbackCanPublishEffective && feedbackAverageEffective
+            ? `Average ${feedbackAverageEffective.toFixed(1)}`
+            : `No public rating yet. Need at least 5 ratings.`
+        }
+      >
+        <View style={styles.feedbackChipsWrap}>
+          {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
+            (feedbackSummaryQuery.data?.topChips?.length
+              ? feedbackSummaryQuery.data!.topChips
+              : [
+                  { label: 'Great atmosphere', count: 9 },
+                  { label: 'Regular events', count: 8 },
+                  { label: 'Helpful support', count: 6 },
+                ]
+            ).map((chip) => (
+              <View key={chip.label} style={styles.feedbackChip}>
+                <Text style={styles.feedbackChipText}>{chip.label}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.feedbackEmptyText}>Not enough public data yet.</Text>
+          )}
+        </View>
+      </AppBottomSheet>
       {clubSheets}
     </SafeAreaView>
   )
@@ -800,6 +938,109 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: spacing.lg,
+  },
+  feedbackCard: {
+    marginTop: spacing.sm,
+    marginHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  feedbackHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  feedbackLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  feedbackValue: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  feedbackValueMuted: {
+    color: palette.textMuted,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  feedbackCount: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedbackInfoBtn: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  feedbackInfoBtnPressed: {
+    opacity: 0.85,
+  },
+  feedbackInfoBtnText: {
+    color: palette.text,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  feedbackRateBtn: {
+    minHeight: 42,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.primary,
+  },
+  feedbackRateBtnPressed: {
+    opacity: 0.9,
+  },
+  feedbackRateBtnText: {
+    color: palette.white,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  feedbackThanksText: {
+    color: palette.textMuted,
+    fontSize: 13,
+  },
+  feedbackChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: spacing.xs,
+  },
+  feedbackChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  feedbackChipText: {
+    color: '#1E7A32',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  feedbackChipCount: {
+    color: '#2E8B42',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  feedbackEmptyText: {
+    color: palette.textMuted,
+    fontSize: 13,
   },
   hero: {
     height: 240,
@@ -1056,6 +1297,12 @@ const styles = StyleSheet.create({
   },
   kebabBtnPressed: {
     opacity: 0.85,
+  },
+  avatarPress: {
+    opacity: 0.82,
+  },
+  namePress: {
+    opacity: 0.84,
   },
   card: {
     borderRadius: 16,

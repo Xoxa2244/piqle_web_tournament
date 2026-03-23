@@ -1,4 +1,4 @@
-import { Feather } from '@expo/vector-icons'
+import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation } from '../lib/formatters'
@@ -25,6 +25,11 @@ type ClubSummary = {
     startDate: string | Date
     id?: string
   } | null
+  feedbackSummary?: {
+    averageRating: number | null
+    total: number
+    canPublish: boolean
+  } | null
 }
 
 type ClubCardProps = {
@@ -38,6 +43,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
   const showMember = Boolean(club.isFollowing || club.isAdmin)
   const showPending = Boolean(!showMember && club.isJoinPending)
   const memberCount = typeof club.followersCount === 'number' ? club.followersCount : null
+  const showPublicRating = Boolean(club.feedbackSummary?.canPublish && club.feedbackSummary?.averageRating)
 
   const nextDateLabel = (() => {
     if (!club.nextTournament?.startDate) return null
@@ -89,6 +95,15 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               <Text style={styles.memberText}>{memberCount} members</Text>
             </View>
           ) : null}
+
+          <View style={styles.ratingRow}>
+            <MaterialIcons name="star" size={16} color="#F4B000" />
+            {showPublicRating ? (
+              <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
+            ) : (
+              <Text style={styles.ratingTextMuted}>No rating yet</Text>
+            )}
+          </View>
 
           <View style={styles.chipRow}>
             {club.kind === 'VENUE' ? (
@@ -238,6 +253,29 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 2,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ratingText: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  ratingTextMuted: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
   },
   chip: {
     backgroundColor: palette.secondary,
