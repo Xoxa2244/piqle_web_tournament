@@ -91,16 +91,16 @@ describe('Утилиты скоринга > Форматы игры', () => {
     expect(getFormatLabel('CLINIC')).toBe('Clinic')
   })
 
-  it('DRILL → "Drill Session"', () => {
-    expect(getFormatLabel('DRILL')).toBe('Drill Session')
+  it('DRILL → "Drill"', () => {
+    expect(getFormatLabel('DRILL')).toBe('Drill')
   })
 
-  it('LEAGUE_PLAY → "League Play"', () => {
-    expect(getFormatLabel('LEAGUE_PLAY')).toBe('League Play')
+  it('LEAGUE_PLAY → "League"', () => {
+    expect(getFormatLabel('LEAGUE_PLAY')).toBe('League')
   })
 
-  it('SOCIAL → "Social Play"', () => {
-    expect(getFormatLabel('SOCIAL')).toBe('Social Play')
+  it('SOCIAL → "Social"', () => {
+    expect(getFormatLabel('SOCIAL')).toBe('Social')
   })
 
   it('неизвестный формат → raw value (CUSTOM_FORMAT)', () => {
