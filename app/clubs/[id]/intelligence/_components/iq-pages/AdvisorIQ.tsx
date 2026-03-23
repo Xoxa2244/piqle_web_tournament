@@ -372,33 +372,69 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                   </div>
                 )}
                 <div className={`max-w-[75%] ${msg.role === "user" ? "order-first" : ""}`}>
-                  <div
-                    className="rounded-2xl px-5 py-4 text-sm"
-                    style={{
-                      background: msg.role === "user"
-                        ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
-                        : "var(--subtle)",
-                      border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
-                      color: "var(--t1)",
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    {msg.content.split("\n").map((line, i) => {
-                      const boldRegex = /\*\*(.*?)\*\*/g;
-                      const parts = line.split(boldRegex);
-                      return (
-                        <p key={i} className={line === "" ? "h-2" : ""}>
-                          {parts.map((part, j) =>
-                            j % 2 === 1 ? (
-                              <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
-                            ) : (
-                              <span key={j}>{part}</span>
-                            )
-                          )}
-                        </p>
-                      );
-                    })}
-                  </div>
+                  {(() => {
+                    // Parse out <suggested> block
+                    const suggestedMatch = msg.content.match(/<suggested>([\s\S]*?)<\/suggested>/);
+                    const cleanContent = msg.content.replace(/<suggested>[\s\S]*?<\/suggested>/, '').trimEnd();
+                    const suggestions = suggestedMatch
+                      ? suggestedMatch[1].split('\n').map(s => s.trim()).filter(s => s.length > 0 && !s.startsWith('<'))
+                      : [];
+
+                    return (
+                      <>
+                        <div
+                          className="rounded-2xl px-5 py-4 text-sm"
+                          style={{
+                            background: msg.role === "user"
+                              ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
+                              : "var(--subtle)",
+                            border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
+                            color: "var(--t1)",
+                            lineHeight: 1.7,
+                          }}
+                        >
+                          {cleanContent.split("\n").map((line, i) => {
+                            const boldRegex = /\*\*(.*?)\*\*/g;
+                            const parts = line.split(boldRegex);
+                            return (
+                              <p key={i} className={line === "" ? "h-2" : ""}>
+                                {parts.map((part, j) =>
+                                  j % 2 === 1 ? (
+                                    <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
+                                  ) : (
+                                    <span key={j}>{part}</span>
+                                  )
+                                )}
+                              </p>
+                            );
+                          })}
+                        </div>
+
+                        {/* Suggested follow-up questions */}
+                        {suggestions.length > 0 && msg.role === "assistant" && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {suggestions.map((q, qi) => (
+                              <button
+                                key={qi}
+                                onClick={() => sendMessage(q)}
+                                className="px-3 py-1.5 rounded-xl text-xs transition-all hover:scale-[1.02]"
+                                style={{
+                                  background: "rgba(139,92,246,0.08)",
+                                  border: "1px solid rgba(139,92,246,0.2)",
+                                  color: "var(--t2)",
+                                  fontWeight: 500,
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.15)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.08)"; }}
+                              >
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* Message meta */}
                   {msg.role === "assistant" && (
