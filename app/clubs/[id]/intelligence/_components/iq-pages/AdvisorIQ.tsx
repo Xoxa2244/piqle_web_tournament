@@ -140,7 +140,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     status,
     error,
     setMessages,
-  } = useChat({ transport });
+  } = useChat({ transport, maxSteps: 3 });
 
   const isBusy = status === 'submitted' || status === 'streaming';
 
