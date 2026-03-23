@@ -13,7 +13,7 @@ import {
   Target, Upload, Mail, MessageSquare,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { useEventRecommendations, useSendEventInvites, useEventsList } from '../_hooks/use-intelligence'
+import { useEventRecommendations, useSendEventInvites, useEventsList, useSessionsCalendar } from '../_hooks/use-intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
@@ -37,6 +37,7 @@ export default function EventGeneratorPage() {
   const { toast } = useToast()
   const { data, isLoading, error } = useEventRecommendations(clubId)
   const { data: eventsListData } = useEventsList(clubId)
+  const { data: calendarData, isLoading: calendarLoading } = useSessionsCalendar(clubId)
   const sendEventInvites = useSendEventInvites()
 
   const aiEvents = data?.events ?? []
@@ -205,7 +206,7 @@ export default function EventGeneratorPage() {
   // isCsvPlayer is now imported from shared component
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SessionsIQ initialTab="events" clubId={clubId} aiEvents={aiEvents} eventsList={eventsListData} isLoading={isLoading} />
+  if (brand.key === 'iqsport') return <SessionsIQ initialTab="events" clubId={clubId} calendarData={calendarData} aiEvents={aiEvents} eventsList={eventsListData} isLoading={isLoading || calendarLoading} />
 
   // ── Loading ──
   if (isLoading) return <ListSkeleton rows={4} />
