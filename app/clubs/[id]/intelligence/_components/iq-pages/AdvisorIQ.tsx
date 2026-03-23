@@ -323,6 +323,12 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           <AnimatePresence>
             {messages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
+              // Debug: log message structure
+              if (typeof window !== 'undefined') {
+                console.log(`[AdvisorIQ msg ${msgIdx}]`, msg.role, 'text:', text.slice(0, 100), 'parts:', JSON.stringify((msg as any).parts?.map((p: any) => ({ type: p.type, hasText: !!p.text })) || 'none'));
+              }
+              // Skip assistant messages with no text (tool-only steps)
+              if (msg.role === 'assistant' && !text.trim()) return null;
               const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
               const { cleanText, suggestions } = msg.role === 'assistant'
                 ? extractSuggestions(text)
