@@ -1,15 +1,17 @@
 'use client'
 
-import { signIn } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { useBrand } from "@/components/BrandProvider"
 
 export default function SignInClient() {
   const brand = useBrand()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const { data: session, status } = useSession()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -22,6 +24,13 @@ export default function SignInClient() {
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
   const [smsConsent, setSmsConsent] = useState(false)
+
+  // Redirect to callbackUrl if already authenticated
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      router.replace(callbackUrl)
+    }
+  }, [status, session, callbackUrl, router])
 
   useEffect(() => {
     const modeParam = searchParams.get('mode')
