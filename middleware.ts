@@ -9,6 +9,22 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Clear stale session cookies on OAuth errors to prevent login loops.
+  // Without this, a leftover JWT from a previous domain/session causes
+  // OAuthAccountNotLinked errors that users can't fix without clearing cookies.
+  if (req.nextUrl.pathname === '/auth/signin' && req.nextUrl.searchParams.get('error') === 'OAuthAccountNotLinked') {
+    const url = req.nextUrl.clone()
+    url.searchParams.delete('error')
+    const response = NextResponse.redirect(url)
+    response.cookies.delete('__Secure-next-auth.session-token')
+    response.cookies.delete('next-auth.session-token')
+    response.cookies.delete('__Secure-next-auth.callback-url')
+    response.cookies.delete('next-auth.callback-url')
+    response.cookies.delete('__Secure-next-auth.csrf-token')
+    response.cookies.delete('next-auth.csrf-token')
+    return response
+  }
+
   // ── Brand detection ──
   const host = req.headers.get('host') || ''
   const brandKey = getBrandFromHostname(host)

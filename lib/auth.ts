@@ -191,9 +191,24 @@ export const authOptions: NextAuthOptions = {
       }
       return token
     },
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       if (user?.id) {
         await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
+
+        // Ensure emailVerified is set for OAuth users (Google etc.)
+        // Without this, returning OAuth users may get OAuthAccountNotLinked errors
+        if (account?.provider === 'google' && user.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: String(user.id) },
+            select: { emailVerified: true },
+          })
+          if (dbUser && !dbUser.emailVerified) {
+            await prisma.user.update({
+              where: { id: String(user.id) },
+              data: { emailVerified: new Date() },
+            })
+          }
+        }
       }
       return true
     },
