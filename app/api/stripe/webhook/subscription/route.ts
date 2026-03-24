@@ -48,6 +48,10 @@ export async function POST(request: Request) {
         await handlePaymentFailed(event.data.object as Stripe.Invoice)
         break
       }
+      case 'invoice.payment_succeeded': {
+        await handlePaymentSucceeded(event.data.object as Stripe.Invoice)
+        break
+      }
       default:
         break
     }
@@ -131,9 +135,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
-  const clubId = sub.metadata?.clubId
-  if (!clubId) {
-    // Try to find subscription by stripeSubscriptionId
+  let resolvedClubId = sub.metadata?.clubId
+  if (!resolvedClubId) {
     const existing = await prisma.subscription.findUnique({
       where: { stripeSubscriptionId: sub.id },
     })
@@ -141,10 +144,27 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
       console.error('customer.subscription.updated: cannot find subscription for', sub.id)
       return
     }
-    await updateSubscriptionRecord(existing.clubId, sub)
-    return
+    resolvedClubId = existing.clubId
   }
-  await updateSubscriptionRecord(clubId, sub)
+
+  // Detect trial → non-trial transition before updating
+  const oldRecord = await prisma.subscription.findUnique({
+    where: { clubId: resolvedClubId },
+    select: { status: true },
+  })
+  const wasTrialing = oldRecord?.status === 'trialing'
+
+  await updateSubscriptionRecord(resolvedClubId, sub)
+
+  // Send trial ended email if transitioned from trialing
+  if (wasTrialing && sub.status !== 'trialing') {
+    try {
+      const { sendTrialEndedEmail } = await import('@/lib/transactional-emails')
+      await sendTrialEndedEmail({ clubId: resolvedClubId })
+    } catch (err) {
+      console.error('[Webhook] Trial ended email failed:', err)
+    }
+  }
 }
 
 async function updateSubscriptionRecord(clubId: string, sub: Stripe.Subscription) {
@@ -179,6 +199,17 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
       cancelAtPeriodEnd: false,
     },
   })
+
+  // Send cancellation email
+  try {
+    const { sendSubscriptionCanceledEmail } = await import('@/lib/transactional-emails')
+    await sendSubscriptionCanceledEmail({
+      clubId: existing.clubId,
+      accessUntil: existing.currentPeriodEnd,
+    })
+  } catch (err) {
+    console.error('[Webhook] Subscription canceled email failed:', err)
+  }
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
@@ -197,4 +228,44 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     where: { stripeSubscriptionId },
     data: { status: 'past_due' },
   })
+
+  // Send payment failed email
+  try {
+    const { sendPaymentFailedEmail } = await import('@/lib/transactional-emails')
+    await sendPaymentFailedEmail({
+      clubId: existing.clubId,
+      amountDue: typeof invoice.amount_due === 'number' ? invoice.amount_due : 0,
+      currency: invoice.currency || 'usd',
+      nextAttempt: invoice.next_payment_attempt ? new Date(invoice.next_payment_attempt * 1000) : null,
+    })
+  } catch (err) {
+    console.error('[Webhook] Payment failed email failed:', err)
+  }
+}
+
+async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
+  const subRef = invoice.parent?.subscription_details?.subscription
+  const stripeSubscriptionId =
+    typeof subRef === 'string' ? subRef : subRef?.id ?? null
+
+  if (!stripeSubscriptionId) return
+
+  const existing = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId },
+  })
+  if (!existing) return
+
+  try {
+    const { sendPaymentSuccessEmail } = await import('@/lib/transactional-emails')
+    await sendPaymentSuccessEmail({
+      clubId: existing.clubId,
+      plan: existing.plan,
+      amountPaid: typeof invoice.amount_paid === 'number' ? invoice.amount_paid : 0,
+      currency: invoice.currency || 'usd',
+      periodEnd: existing.currentPeriodEnd || new Date(),
+      receiptUrl: invoice.hosted_invoice_url || null,
+    })
+  } catch (err) {
+    console.error('[Webhook] Payment success email failed:', err)
+  }
 }

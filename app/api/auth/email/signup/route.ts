@@ -120,6 +120,13 @@ export async function POST(req: NextRequest) {
 
     if (userId) {
       await linkPlayersToUserByEmail(userId, email)
+      // Send welcome email (fire and forget)
+      try {
+        const { sendWelcomeEmail } = await import('@/lib/transactional-emails')
+        await sendWelcomeEmail({ to: email, firstName: name.split(' ')[0] || 'there' })
+      } catch (err) {
+        console.error('[Signup] Welcome email failed:', err)
+      }
     }
 
     return NextResponse.json({ ok: true })
