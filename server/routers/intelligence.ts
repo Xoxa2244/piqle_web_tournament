@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
+import { checkFeatureAccess } from '@/lib/subscription'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
 import {
   getSlotFillerRecommendations,
@@ -128,6 +129,7 @@ export const intelligenceRouter = createTRPCRouter({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'clubId required for CSV sessions' })
         }
         await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+        await checkFeatureAccess(input.clubId, 'slot-filler')
         const { getSlotFillerRecommendationsCsv } = await import('@/lib/ai/intelligence-service')
         const result = await getSlotFillerRecommendationsCsv(ctx.prisma, {
           sessionId: input.sessionId,
@@ -146,6 +148,7 @@ export const intelligenceRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
       }
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
+      await checkFeatureAccess(session.clubId, 'slot-filler')
       const result = await getSlotFillerRecommendations(ctx.prisma, input)
 
       // Optional: enhance with LLM
@@ -204,6 +207,7 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await checkFeatureAccess(input.clubId, 'reactivation')
       const result = await getReactivationCandidates(ctx.prisma, input)
 
       // Optional: enhance with LLM
@@ -228,6 +232,7 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await checkFeatureAccess(input.clubId, 'slot-filler')
       return getEventRecommendations(ctx.prisma, input)
     }),
 
@@ -244,6 +249,7 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await checkFeatureAccess(input.clubId, 'slot-filler')
       return sendInvites(ctx.prisma, input)
     }),
 
@@ -259,6 +265,7 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await checkFeatureAccess(input.clubId, 'reactivation')
       return sendReactivationMessages(ctx.prisma, input)
     }),
 
@@ -278,6 +285,7 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await checkFeatureAccess(input.clubId, 'slot-filler')
       return sendEventInviteMessages(ctx.prisma, input)
     }),
 

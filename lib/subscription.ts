@@ -77,3 +77,74 @@ export async function hasActiveSubscription(clubId: string): Promise<boolean> {
 export function getPlanLimits(plan: string): PlanLimits {
   return PLAN_LIMITS[plan] ?? PLAN_LIMITS.free
 }
+
+/**
+ * Check if a club has access to a specific feature based on their subscription.
+ * Returns access info; throws TRPCError if access is denied.
+ */
+export async function checkFeatureAccess(
+  clubId: string,
+  feature: string
+): Promise<{ allowed: true; plan: string; status: string }> {
+  const sub = await prisma.subscription.findUnique({
+    where: { clubId },
+    select: { plan: true, status: true },
+  })
+
+  const currentPlan = sub?.plan ?? 'free'
+  const currentStatus = sub?.status ?? 'free'
+
+  // Check subscription is active
+  const isActive = currentStatus === 'active' || currentStatus === 'trialing' || currentPlan === 'free'
+  if (!isActive) {
+    const { TRPCError } = await import('@trpc/server')
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: JSON.stringify({
+        type: 'SUBSCRIPTION_REQUIRED',
+        feature,
+        requiredPlan: findMinPlanForFeature(feature),
+        currentPlan,
+        currentStatus,
+        message: `Your subscription is ${currentStatus}. Please update your billing to continue using this feature.`,
+      }),
+    })
+  }
+
+  // Check feature is included in plan
+  const limits = getPlanLimits(currentPlan)
+  if (!limits.features.includes(feature)) {
+    const requiredPlan = findMinPlanForFeature(feature)
+    const { TRPCError } = await import('@trpc/server')
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: JSON.stringify({
+        type: 'SUBSCRIPTION_REQUIRED',
+        feature,
+        requiredPlan,
+        currentPlan,
+        currentStatus,
+        message: `${formatFeatureName(feature)} requires a ${requiredPlan} plan. Upgrade to unlock this feature.`,
+      }),
+    })
+  }
+
+  return { allowed: true, plan: currentPlan, status: currentStatus }
+}
+
+/** Find the minimum plan that includes a given feature */
+function findMinPlanForFeature(feature: string): string {
+  const planOrder = ['free', 'starter', 'pro', 'enterprise']
+  for (const plan of planOrder) {
+    if (PLAN_LIMITS[plan]?.features.includes(feature)) return plan
+  }
+  return 'enterprise'
+}
+
+/** Format feature slug to human-readable name */
+function formatFeatureName(feature: string): string {
+  return feature
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
