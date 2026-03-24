@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
-import { router } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { router, useLocalSearchParams } from 'expo-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
@@ -60,8 +60,9 @@ const HeaderSaveButton = ({
 )
 
 export default function ProfileEditScreen() {
-  const { token } = useAuth()
-  const { colors } = useAppTheme()
+  const params = useLocalSearchParams<{ anchor?: string | string[] }>()
+  const { token, user } = useAuth()
+  const { theme, colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -79,6 +80,10 @@ export default function ProfileEditScreen() {
   const [city, setCity] = useState('')
   const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
   const [duprLink, setDuprLink] = useState('')
+  const scrollRef = useRef<ScrollView | null>(null)
+  const contactCardY = useRef<number | null>(null)
+  const cityFieldOffsetY = useRef<number | null>(null)
+  const didScrollToAnchor = useRef(false)
 
   useEffect(() => {
     if (!profileQuery.data) return
@@ -90,7 +95,42 @@ export default function ProfileEditScreen() {
     setDuprLink(profileQuery.data.duprLink || '')
   }, [profileQuery.data])
 
-  const profile = profileQuery.data as any
+  const anchorTarget = Array.isArray(params.anchor) ? params.anchor[0] : params.anchor
+
+  const tryScrollToCityAnchor = () => {
+    if (
+      anchorTarget !== 'city' ||
+      didScrollToAnchor.current ||
+      contactCardY.current == null ||
+      cityFieldOffsetY.current == null
+    ) {
+      return
+    }
+    didScrollToAnchor.current = true
+    requestAnimationFrame(() => {
+      const targetY = Math.max(contactCardY.current! + cityFieldOffsetY.current! - 20, 0)
+      scrollRef.current?.scrollTo({ y: targetY, animated: true })
+    })
+  }
+
+  useEffect(() => {
+    tryScrollToCityAnchor()
+  }, [anchorTarget])
+
+  const profile =
+    (profileQuery.data as any) ??
+    (user
+      ? {
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          city: '',
+          gender: null,
+          duprLink: '',
+          duprRatingSingles: null,
+          duprRatingDoubles: null,
+        }
+      : null)
   const username = useMemo(() => String(profile?.email || '').split('@')[0] || '', [profile?.email])
   const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim()
 
@@ -114,7 +154,7 @@ export default function ProfileEditScreen() {
     )
   }
 
-  if (profileQuery.isLoading) {
+  if (profileQuery.isLoading && !user) {
     return (
       <View style={styles.screen}>
         <SubpageHeader title="Edit Profile" right={<HeaderSaveButton loading colors={colors} styles={styles} />} />
@@ -143,7 +183,7 @@ export default function ProfileEditScreen() {
         right={<HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />}
       />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SurfaceCard style={styles.card}>
           <Text style={styles.cardTitle}>Profile Photo</Text>
           <View style={styles.photoRow}>
@@ -207,6 +247,12 @@ export default function ProfileEditScreen() {
           </View>
         </SurfaceCard>
 
+        <View
+          onLayout={(event) => {
+            contactCardY.current = event.nativeEvent.layout.y
+            tryScrollToCityAnchor()
+          }}
+        >
         <SurfaceCard style={styles.card}>
           <Text style={styles.cardTitle}>Contact Information</Text>
           <View style={styles.fieldStack}>
@@ -220,7 +266,12 @@ export default function ProfileEditScreen() {
               <InputField value="" onChangeText={() => {}} placeholder="Add from web profile" editable={false} keyboardType="phone-pad" />
             </View>
 
-            <View>
+            <View
+              onLayout={(event) => {
+                cityFieldOffsetY.current = event.nativeEvent.layout.y
+                tryScrollToCityAnchor()
+              }}
+            >
               <Text style={styles.fieldLabel}>Location</Text>
               <InputField value={city} onChangeText={setCity} placeholder="City, State" />
             </View>
@@ -245,6 +296,7 @@ export default function ProfileEditScreen() {
             </View>
           </View>
         </SurfaceCard>
+        </View>
 
         <SurfaceCard style={styles.card}>
           <View style={styles.sectionTitleRow}>

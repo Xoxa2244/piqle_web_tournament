@@ -87,6 +87,7 @@ const createStyles = (colors: ThemePalette) =>
       justifyContent: 'flex-start',
       minWidth: 0,
       gap: 6,
+      paddingRight: 16,
     },
     titleNextToAccessory: {
       flexGrow: 0,
@@ -102,6 +103,11 @@ const createStyles = (colors: ThemePalette) =>
     titleInCluster: {
       flex: 1,
       minWidth: 0,
+    },
+    titleTextWrap: {
+      height: 36,
+      justifyContent: 'center',
+      flexShrink: 1,
     },
     backBtn: {
       marginRight: 0,
@@ -304,11 +310,13 @@ function AnimatedHomeTitle({
 
 export const TopBar = ({
   titleAccessory,
+  titleAccessoryLeading = false,
   titleOverride,
   ambient = false,
   refreshPulseKey,
 }: {
   titleAccessory?: ReactNode
+  titleAccessoryLeading?: boolean
   titleOverride?: string
   ambient?: boolean
   refreshPulseKey?: number
@@ -325,8 +333,11 @@ export const TopBar = ({
   const unreadCount = Number(notificationsQuery.data?.unreadCount ?? 0)
   const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = titleOverride ?? getTitle(pathname)
-  const showBack = wantsTopBarBack(pathname) && navigation.canGoBack()
-  const showHomeLogo = !titleOverride && !showBack && isHomeRoute(pathname)
+  const headerPathname =
+    routePathname === '/search' || routePathname === '/notifications' ? routePathname : pathname
+  const resolvedTitle = titleOverride ?? getTitle(headerPathname)
+  const showBack = wantsTopBarBack(headerPathname) && navigation.canGoBack()
+  const showHomeLogo = !titleOverride && !showBack && isHomeRoute(headerPathname)
   const hasTitleAccessory = Boolean(titleAccessory)
   const profile = profileQuery.data as
     | { name?: string | null; email?: string | null; image?: string | null }
@@ -343,46 +354,52 @@ export const TopBar = ({
         <View style={styles.titleCluster}>
           {hasTitleAccessory && titleBesideAccessory ? (
             <View style={styles.titleWithAccessoryRow}>
-              <BrandGradientText
-                style={[
-                  styles.title,
-                  styles.titleNextToAccessory,
-                  showBack && styles.titleAlignedWithBack,
-                ]}
-                numberOfLines={1}
-              >
-                {title}
-              </BrandGradientText>
-              <View style={styles.titleAccessory}>{titleAccessory}</View>
+              {titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
+              <View style={styles.titleTextWrap}>
+                <BrandGradientText
+                  style={[
+                    styles.title,
+                    styles.titleNextToAccessory,
+                    showBack && styles.titleAlignedWithBack,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {resolvedTitle}
+                </BrandGradientText>
+              </View>
+              {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : hasTitleAccessory && showHomeLogo ? (
             <View style={styles.titleWithAccessoryRow}>
+              {titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
               <View style={styles.titleLogoSlot}>
                 <AnimatedHomeTitle
                   showLogo={showHomeLogo}
-                  titleText={title}
+                  titleText={resolvedTitle}
                   showBack={showBack}
                   refreshPulseKey={refreshPulseKey}
                 />
               </View>
-              <View style={styles.titleAccessory}>{titleAccessory}</View>
+              {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : titleOverride != null && titleOverride !== '' ? (
-            <BrandGradientText
-              style={[
-                styles.title,
-                styles.titleInCluster,
-                showBack && styles.titleWithBack,
-                showBack && styles.titleAlignedWithBack,
-              ]}
-              numberOfLines={1}
-            >
-              {title}
-            </BrandGradientText>
+            <View style={styles.titleTextWrap}>
+              <BrandGradientText
+                style={[
+                  styles.title,
+                  styles.titleInCluster,
+                  showBack && styles.titleWithBack,
+                  showBack && styles.titleAlignedWithBack,
+                ]}
+                numberOfLines={1}
+              >
+                {resolvedTitle}
+              </BrandGradientText>
+            </View>
           ) : (
             <AnimatedHomeTitle
               showLogo={showHomeLogo}
-              titleText={title}
+              titleText={resolvedTitle}
               showBack={showBack}
               refreshPulseKey={refreshPulseKey}
             />

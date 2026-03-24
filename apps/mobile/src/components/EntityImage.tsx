@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { Image, type ImageStyle, type StyleProp } from 'react-native'
 
 import { tournamentPlaceholder } from '../constants/images'
@@ -24,11 +24,15 @@ export const EntityImage = memo(function EntityImage({
   }, [uri])
 
   const showRemote = Boolean(uri && isRemoteImageUri(uri) && !failed)
+  const imageSource = useMemo(
+    () => (showRemote ? { uri: uri! } : tournamentPlaceholder),
+    [showRemote, uri]
+  )
 
   return (
     <Image
       accessibilityIgnoresInvertColors
-      source={showRemote ? { uri: uri! } : tournamentPlaceholder}
+      source={imageSource}
       style={style}
       resizeMode={showRemote ? resizeMode : placeholderResizeMode}
       onError={() => setFailed(true)}

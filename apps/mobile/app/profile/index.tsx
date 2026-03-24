@@ -8,8 +8,8 @@ import { WebView } from 'react-native-webview'
 import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
+import { TournamentCard } from '../../src/components/TournamentCard'
 import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
-import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
 import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
@@ -72,6 +72,13 @@ const statusMeta = (status?: string | null, hasPrivilegedAccess = false) => {
   }
 
   return { label: 'Open', backgroundColor: palette.surfaceMuted, textColor: palette.text }
+}
+
+const statusTone = (statusLabel: string): 'muted' | 'primary' | 'danger' | 'success' | 'warning' => {
+  if (statusLabel === 'Admin') return 'primary'
+  if (statusLabel === 'Registered') return 'success'
+  if (statusLabel === 'Waitlist') return 'warning'
+  return 'muted'
 }
 
 const ProfileAvatar = ({
@@ -314,13 +321,17 @@ export default function ProfileTab() {
               />
 
               <View style={styles.headerActions}>
-                <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} />
-                <ProfileActionButton
-                  label="Settings"
-                  icon="settings"
-                  variant="ghost"
-                  onPress={() => router.push('/profile/settings')}
-                />
+                <View style={styles.headerActionItem}>
+                  <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} />
+                </View>
+                <View style={styles.headerActionItem}>
+                  <ProfileActionButton
+                    label="Settings"
+                    icon="settings"
+                    variant="outline"
+                    onPress={() => router.push('/profile/settings')}
+                  />
+                </View>
               </View>
             </View>
 
@@ -536,35 +547,28 @@ export default function ProfileTab() {
               const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
               const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
               const status = statusMeta(tournament.myStatus, hasPrivilegedAccess)
-              const divisionLabel =
-                tournament.divisions?.[0]?.name ||
-                `${Math.max(Number(tournament.divisions?.length ?? 0), 1)} division${Number(tournament.divisions?.length ?? 0) === 1 ? '' : 's'}`
 
               return (
-                <Pressable
+                <View
                   key={tournament.id}
-                  onPress={() => router.push(`/tournaments/${tournament.id}`)}
-                  style={({ pressed }) => [pressed && styles.cardPressed]}
                 >
-                  <SurfaceCard style={styles.activityCard}>
-                    <View style={styles.activityTopRow}>
-                      <TournamentThumbnail imageUri={(tournament as any).image ?? null} size={48} />
-                      <View style={styles.activityMain}>
-                        <Text style={styles.activityTitle}>{tournament.title}</Text>
-                        <Text style={styles.activitySubtitle}>{divisionLabel}</Text>
-                      </View>
-
-                      <View style={[styles.activityStatusBadge, { backgroundColor: status.backgroundColor }]}>
-                        <Text style={[styles.activityStatusText, { color: status.textColor }]}>{status.label}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.activityMetaRow}>
-                      <Feather name="calendar" size={14} color={palette.textMuted} />
-                      <Text style={styles.activityMetaText}>{formatDate(tournament.startDate)}</Text>
-                    </View>
-                  </SurfaceCard>
-                </Pressable>
+                  <TournamentCard
+                    tournament={{
+                      ...tournament,
+                      image: (tournament as any).image ?? null,
+                      startDate: tournament.startDate ?? new Date().toISOString(),
+                      endDate: tournament.endDate ?? tournament.startDate ?? new Date().toISOString(),
+                      venueName: tournament.venueName ?? null,
+                      venueAddress: tournament.venueAddress ?? null,
+                      divisions: tournament.divisions ?? [],
+                      _count: tournament._count ?? { players: 0 },
+                      feedbackSummary: tournament.feedbackSummary ?? null,
+                    }}
+                    statusLabel={status.label}
+                    statusTone={statusTone(status.label)}
+                    onPress={() => router.push(`/tournaments/${tournament.id}`)}
+                  />
+                </View>
               )
             })}
           </View>
@@ -647,6 +651,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
     paddingTop: 6,
+  },
+  headerActionItem: {
+    flex: 1,
   },
   profileActionButton: {
     minHeight: 44,

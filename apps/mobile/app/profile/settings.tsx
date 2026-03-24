@@ -201,7 +201,7 @@ const AppearanceThemeToggle = ({
 }
 
 export default function ProfileSettingsScreen() {
-  const { token, signOut } = useAuth()
+  const { token, user, signOut } = useAuth()
   const { theme, toggleTheme } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -289,7 +289,7 @@ export default function ProfileSettingsScreen() {
     )
   }
 
-  if (profileQuery.isLoading) {
+  if (profileQuery.isLoading && !user) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <SubpageHeader title="Settings" themeMode={theme} />
@@ -305,7 +305,15 @@ export default function ProfileSettingsScreen() {
     )
   }
 
-  const profile = profileQuery.data as any
+  const profile =
+    (profileQuery.data as any) ??
+    (user
+      ? {
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        }
+      : null)
 
   if (!profile) {
     return (

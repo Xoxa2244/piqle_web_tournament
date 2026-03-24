@@ -112,7 +112,7 @@ const createStyles = (colors: ThemePalette) =>
     height: 44,
     borderRadius: radius.pill,
     paddingHorizontal: 16,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: '#EEF0F2',
     color: colors.text,
     fontSize: 14,
     fontWeight: '600',

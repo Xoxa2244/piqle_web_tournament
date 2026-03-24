@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
@@ -6,6 +6,7 @@ import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { ClubCard } from '../../src/components/ClubCard'
 import {
+  ActionButton,
   EmptyState,
   LoadingBlock,
   SearchField,
@@ -20,6 +21,42 @@ import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 const normalizeLocationValue = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase()
+
+const ClubListItem = memo(function ClubListItem({
+  club,
+  mode,
+  isAuthenticated,
+  toggleFollow,
+}: {
+  club: any
+  mode: 'discover' | 'my-clubs' | 'nearby'
+  isAuthenticated: boolean
+  toggleFollow: { mutate: (vars: { clubId: string }) => void }
+}) {
+  const handlePress = useCallback(() => {
+    router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
+  }, [club.id])
+
+  const handleJoin = useCallback(() => {
+    if (mode === 'my-clubs') return
+    if (!isAuthenticated) {
+      router.push('/sign-in')
+      return
+    }
+    router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
+    toggleFollow.mutate({ clubId: club.id })
+  }, [club.id, isAuthenticated, mode, toggleFollow])
+
+  return (
+    <View style={{ gap: 10 }}>
+      <ClubCard
+        club={club}
+        onPress={handlePress}
+        onJoin={mode !== 'my-clubs' ? handleJoin : undefined}
+      />
+    </View>
+  )
+})
 
 export default function ClubsTab() {
   const { colors } = useAppTheme()
@@ -129,6 +166,25 @@ export default function ClubsTab() {
     return map
   }, [feedbackByClubId, visibleClubIds])
 
+  const decoratedActiveClubs = useMemo(
+    () => {
+      const decorated = activeClubs.map((club) => ({
+        ...club,
+        feedbackSummary: feedbackWithDevFallback?.[club.id] ?? null,
+      }))
+
+      if (mode !== 'my-clubs') return decorated
+
+      return [...decorated].sort((left, right) => {
+        const leftRank = left.isAdmin ? 0 : left.isFollowing ? 1 : left.isJoinPending ? 2 : 3
+        const rightRank = right.isAdmin ? 0 : right.isFollowing ? 1 : right.isJoinPending ? 2 : 3
+        if (leftRank !== rightRank) return leftRank - rightRank
+        return String(left.name ?? '').localeCompare(String(right.name ?? ''))
+      })
+    },
+    [activeClubs, feedbackWithDevFallback, mode]
+  )
+
   const onRefreshClubs = useCallback(async () => {
     await clubsQuery.refetch()
   }, [clubsQuery])
@@ -229,32 +285,32 @@ export default function ClubsTab() {
             />
           ) : null}
 
-          {!modeInitialLoading && !clubsQuery.isError && !nearbyBlockedByAuth && !nearbyBlockedByProfile && activeClubs.length > 0 ? (
+          {!modeInitialLoading && !clubsQuery.isError && !nearbyBlockedByAuth && !nearbyBlockedByProfile && decoratedActiveClubs.length > 0 ? (
             <View style={{ gap: 12 }}>
               <Text style={styles.sectionTitle}>{listHeading}</Text>
-              {activeClubs.map((club) => (
-                <View key={club.id} style={{ gap: 10 }}>
-                  <ClubCard
-                    club={{ ...club, feedbackSummary: feedbackWithDevFallback[club.id] ?? null }}
-                    onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
-                    onJoin={
-                      mode !== 'my-clubs' && isAuthenticated
-                        ? () => {
-                            router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
-                            toggleFollow.mutate({ clubId: club.id })
-                          }
-                        : mode !== 'my-clubs'
-                        ? () => router.push('/sign-in')
-                        : undefined
-                    }
-                  />
-                </View>
+              {decoratedActiveClubs.map((club) => (
+                <ClubListItem
+                  key={club.id}
+                  club={club}
+                  mode={mode}
+                  isAuthenticated={isAuthenticated}
+                  toggleFollow={toggleFollow}
+                />
               ))}
             </View>
           ) : null}
 
-          {!modeInitialLoading && !clubsQuery.isError && (nearbyBlockedByAuth || nearbyBlockedByProfile || activeClubs.length === 0) ? (
-            <EmptyState title={emptyStateCopy.title} body={emptyStateCopy.body} />
+          {!modeInitialLoading && !clubsQuery.isError && (nearbyBlockedByAuth || nearbyBlockedByProfile || decoratedActiveClubs.length === 0) ? (
+            <View style={styles.emptyStateWrap}>
+              <EmptyState title={emptyStateCopy.title} body={emptyStateCopy.body} />
+              {nearbyBlockedByProfile ? (
+                <ActionButton
+                  label="Add city"
+                  variant="outline"
+                  onPress={() => router.push({ pathname: '/profile/edit', params: { anchor: 'city' } })}
+                />
+              ) : null}
+            </View>
           ) : null}
         </PickleRefreshScrollView>
       </View>
@@ -284,5 +340,8 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     color: colors.text,
     fontWeight: '700',
     fontSize: 18,
+  },
+  emptyStateWrap: {
+    gap: spacing.md,
   },
 })

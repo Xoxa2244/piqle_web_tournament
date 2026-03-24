@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 
-export type SegmentedOption<T extends string> = { value: T; label: string }
+export type SegmentedOption<T extends string> = { value: T; label: string; badgeCount?: number }
 
 type SegmentedControlProps<T extends string> = {
   options: SegmentedOption<T>[]
@@ -47,9 +47,18 @@ export function SegmentedControl<T extends string>({
               pressed && !active && styles.segmentPressed,
             ]}
           >
-            <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
-              {item.label}
-            </Text>
+            <View style={styles.labelRow}>
+              <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>
+                {item.label}
+              </Text>
+              {Number(item.badgeCount ?? 0) > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText} numberOfLines={1}>
+                    {item.badgeCount! > 99 ? '99+' : String(item.badgeCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </Pressable>
         )
       })}
@@ -84,6 +93,12 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   segmentPressed: {
     opacity: 0.92,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
@@ -91,5 +106,19 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   labelActive: {
     color: colors.text,
+  },
+  badge: {
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
 })

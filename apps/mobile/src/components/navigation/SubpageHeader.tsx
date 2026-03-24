@@ -1,11 +1,10 @@
 import { router } from 'expo-router'
 import type { ReactNode } from 'react'
-import { Platform, StyleSheet, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { getPalette, spacing, type AppTheme } from '../../lib/theme'
 import { BackCircleButton } from './BackCircleButton'
-import { BrandGradientText } from './BrandGradientText'
 
 const HEADER_DIVIDER_COLOR = 'rgba(0,0,0,0.06)'
 const HEADER_DIVIDER_WIDTH = StyleSheet.hairlineWidth
@@ -33,9 +32,9 @@ export const SubpageHeader = ({
     >
       <View style={styles.header}>
         <BackCircleButton onPress={onBack ?? (() => router.back())} style={styles.backButton} />
-        <BrandGradientText numberOfLines={1} style={styles.title}>
+        <Text numberOfLines={1} style={[styles.title, { color: colors.primary }]}>
           {title}
-        </BrandGradientText>
+        </Text>
         <View style={styles.rightSlot}>{right ?? <View style={styles.placeholder} />}</View>
       </View>
     </SafeAreaView>
@@ -54,7 +53,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   backButton: {
     width: 40,
@@ -66,10 +65,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.3,
-    lineHeight: 36,
-    ...(Platform.OS === 'android'
-      ? { textAlignVertical: 'center' as const, includeFontPadding: false }
-      : {}),
   },
   rightSlot: {
     minWidth: 40,

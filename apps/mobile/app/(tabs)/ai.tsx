@@ -438,7 +438,7 @@ const createStyles = (colors: ThemePalette) =>
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: spacing.lg,
-    paddingBottom: 0,
+    paddingBottom: spacing.md,
     gap: spacing.lg,
   },
   messages: {

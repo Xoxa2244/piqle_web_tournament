@@ -49,10 +49,10 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surfaceOverlay,
           borderTopColor: colors.border,
-          height: 92,
+          height: 84,
           paddingHorizontal: 0,
-          paddingBottom: 10,
-          paddingTop: 6,
+          paddingBottom: 8,
+          paddingTop: 4,
           shadowColor: colors.shadowStrong,
           shadowOpacity: 0.15,
           shadowRadius: 18,

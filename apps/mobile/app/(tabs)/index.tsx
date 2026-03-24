@@ -6,21 +6,16 @@ import { router } from 'expo-router'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
-import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
-import { formatDateRange, formatLocation } from '../../src/lib/formatters'
+import { TournamentCard } from '../../src/components/TournamentCard'
+import { ActionButton, EmptyState, LoadingBlock, SectionTitle, SurfaceCard } from '../../src/components/ui'
+import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
-const statusLabel = (status?: string | null, hasPrivilegedAccess = false) => {
-  if (hasPrivilegedAccess) return 'Admin'
-  if (status === 'active') return 'Confirmed'
-  if (status === 'waitlisted') return 'Pending'
-  return 'Open'
-}
+type CardTone = 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 
 const getEntryFeeCents = (tournament: { entryFee?: string | number | null; entryFeeCents?: number | null }) => {
   if (typeof tournament.entryFeeCents === 'number') return tournament.entryFeeCents
@@ -72,6 +67,73 @@ const getInvolvementMeta = (
   const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
 
   return { isParticipant, hasPrivilegedAccess }
+}
+
+const getCardStatus = (
+  tournament: any,
+  status?: string | null,
+  hasPrivilegedAccess = false
+): { label: string; tone: CardTone } => {
+  if (hasPrivilegedAccess) return { label: 'Admin', tone: 'primary' }
+  if (status === 'active') return { label: 'Registered', tone: 'primary' }
+  if (status === 'waitlisted') return { label: 'Waitlist', tone: 'warning' }
+
+  if (new Date(tournament.endDate).getTime() < Date.now()) {
+    return { label: 'Closed', tone: 'muted' }
+  }
+
+  const slotMetrics = getTournamentSlotMetrics(tournament)
+  if (slotMetrics.createdSlots !== null && slotMetrics.createdSlots > 0) {
+    if (slotMetrics.openSlots === 0) {
+      return { label: 'Waitlist', tone: 'warning' }
+    }
+    if (slotMetrics.fillRatio !== null && slotMetrics.fillRatio >= 0.75) {
+      return { label: 'Filling Fast', tone: 'warning' }
+    }
+  }
+
+  return { label: 'Open', tone: 'success' }
+}
+
+const HomeTournamentCard = ({
+  tournament,
+  myStatus,
+  hasPrivilegedAccess,
+  feeCents,
+  isUnpaid,
+}: {
+  tournament: any
+  myStatus?: string | null
+  hasPrivilegedAccess: boolean
+  feeCents?: number | null
+  isUnpaid?: boolean
+}) => {
+  const api = trpc as any
+  const detailQuery = api.public.getTournamentById.useQuery(
+    { id: tournament.id },
+    { retry: false, staleTime: 60_000 }
+  )
+  const tournamentForCard = useMemo(
+    () => ({
+      ...tournament,
+      ...(detailQuery.data ?? {}),
+      entryFeeCents: feeCents,
+      feedbackSummary: null,
+    }),
+    [detailQuery.data, feeCents, tournament]
+  )
+  const cardStatus = getCardStatus(tournamentForCard, myStatus, hasPrivilegedAccess)
+
+  return (
+    <TournamentCard
+      tournament={tournamentForCard}
+      statusLabel={cardStatus.label}
+      statusTone={cardStatus.tone}
+      secondaryStatusLabel={isUnpaid ? 'Unpaid' : null}
+      secondaryStatusTone="danger"
+      onPress={() => router.push(`/tournaments/${tournament.id}`)}
+    />
+  )
 }
 
 export default function HomeTab() {
@@ -283,44 +345,14 @@ export default function HomeTab() {
           statuses[event.id]?.isPaid === false &&
           getEntryFeeCents(event) > 0
         return (
-          <Pressable
+          <HomeTournamentCard
             key={event.id}
-            onPress={() => router.push(`/tournaments/${event.id}`)}
-          >
-            <SurfaceCard>
-              <View style={styles.eventRow}>
-                <TournamentThumbnail imageUri={event.image} size={48} />
-                <View style={{ flex: 1 }}>
-                  <View style={styles.eventTopRow}>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    <View style={styles.eventStatusBadges}>
-                      <Pill
-                        label={statusLabel(status, hasPrivilegedAccess)}
-                        tone={hasPrivilegedAccess ? 'primary' : status === 'waitlisted' ? 'warning' : 'success'}
-                      />
-                      {isUnpaid ? <Pill label="Unpaid" tone="danger" /> : null}
-                    </View>
-                  </View>
-                  <View style={styles.eventMetaRow}>
-                    <Feather name="calendar" size={14} color={colors.textMuted} />
-                    <Text style={styles.eventMeta}>{formatDateRange(event.startDate, event.endDate)}</Text>
-                  </View>
-                  <View style={styles.eventMetaRow}>
-                    <Feather name="map-pin" size={14} color={colors.textMuted} />
-                    <Text numberOfLines={1} style={styles.eventMeta}>
-                      {formatLocation([event.venueName, event.venueAddress])}
-                    </Text>
-                  </View>
-                  {event.divisions?.length ? (
-                    <View style={styles.badgeRow}>
-                      <Pill label={event.divisions[0].name} />
-                      {event.divisions[1] ? <Pill label={event.divisions[1].name} /> : null}
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            </SurfaceCard>
-          </Pressable>
+            tournament={event}
+            myStatus={status}
+            hasPrivilegedAccess={hasPrivilegedAccess}
+            feeCents={getEntryFeeCents(event)}
+            isUnpaid={isUnpaid}
+          />
         )
       })}
 

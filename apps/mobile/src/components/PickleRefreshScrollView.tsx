@@ -42,7 +42,7 @@ const REFRESH_ZONE_H = 80
 /** Доп. отступ контента сверху, пока идёт refresh — лента ниже, не «маячит» под мячом. */
 const REFRESH_CONTENT_SHIFT_PX = 40
 /** Полностью прозрачный нативный спиннер, чтобы не пробивался под кастомным мячом. */
-const NATIVE_SPINNER_INVISIBLE = 'rgba(0,0,0,0.01)'
+const NATIVE_SPINNER_INVISIBLE = 'rgba(0,0,0,0)'
 
 /** ScrollView + pull-to-refresh: нативный индикатор скрыт, показывается анимированный мяч пиклбола. */
 export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrollViewProps>(
@@ -162,16 +162,15 @@ export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrol
             <RefreshControl
               refreshing={nativeRefreshing}
               onRefresh={onRefresh}
+              tintColor={nativeSpinnerColor}
+              colors={[nativeSpinnerColor]}
+              progressBackgroundColor={nativeSpinnerColor}
               {...Platform.select({
                 ios: {
-                  tintColor: nativeSpinnerColor,
                   title: '',
                   titleColor: nativeSpinnerColor,
                 },
-                android: {
-                  colors: [nativeSpinnerColor],
-                  progressBackgroundColor: nativeSpinnerColor,
-                },
+                android: {},
               })}
             />
           }

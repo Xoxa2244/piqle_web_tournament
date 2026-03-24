@@ -20,6 +20,7 @@ export const PageLayout = ({
   scroll = true,
   contentStyle,
   topBarTitleAccessory,
+  topBarTitleAccessoryLeading = false,
   topBarTitle,
   pullToRefresh,
   chatAmbient = false,
@@ -28,6 +29,7 @@ export const PageLayout = ({
   scroll?: boolean
   contentStyle?: StyleProp<ViewStyle>
   topBarTitleAccessory?: React.ReactNode
+  topBarTitleAccessoryLeading?: boolean
   /** Переопределение заголовка TopBar (иначе из pathname) */
   topBarTitle?: string
   pullToRefresh?: PageLayoutPullToRefresh
@@ -42,6 +44,7 @@ export const PageLayout = ({
     <>
       <TopBar
         titleAccessory={topBarTitleAccessory}
+        titleAccessoryLeading={topBarTitleAccessoryLeading}
         titleOverride={topBarTitle}
         ambient={chatAmbient}
         refreshPulseKey={topBarRefreshPulseKey}

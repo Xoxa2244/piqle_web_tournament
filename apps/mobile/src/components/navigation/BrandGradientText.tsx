@@ -25,6 +25,7 @@ export function BrandGradientText({
 }) {
   return (
     <MaskedView
+      style={styles.wrapper}
       maskElement={
         <Text numberOfLines={numberOfLines} style={[style, styles.maskText]}>
           {children}
@@ -47,8 +48,12 @@ export function BrandGradientText({
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    justifyContent: 'center',
+  },
   gradientFill: {
     alignSelf: 'flex-start',
+    justifyContent: 'center',
   },
   hiddenText: {
     opacity: 0,

@@ -43,6 +43,11 @@ export default function NotificationsScreen() {
   } | null>(null)
   const api = trpc as any
   const notificationsQuery = trpc.notification.list.useQuery({ limit: 40 }, { enabled: isAuthenticated })
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: async () => {
+      await notificationsQuery.refetch()
+    },
+  })
   const isDevEntity = Boolean(activePrompt?.entityId && String(activePrompt.entityId).startsWith('dev-'))
   const tournamentPreviewQuery = api.public.getTournamentById.useQuery(
     { id: activePrompt?.entityId ?? '' },
@@ -142,7 +147,7 @@ export default function NotificationsScreen() {
     }
   }
 
-  const onNotificationPress = (item: any) => {
+  const onNotificationPress = async (item: any) => {
     if (item.type === 'FEEDBACK_PROMPT') {
       setActivePrompt({
         entityType: item.entityType,
@@ -159,6 +164,11 @@ export default function NotificationsScreen() {
         context: item.context,
       })
       return
+    }
+    if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId) {
+      try {
+        await markClubJoinRequestSeen.mutateAsync({ clubId: item.clubId })
+      } catch {}
     }
     openTarget(item.targetUrl)
   }
@@ -194,6 +204,14 @@ export default function NotificationsScreen() {
           resizeMode="cover"
           placeholderResizeMode="contain"
         />
+      )
+    }
+
+    if (item.type === 'CLUB_JOIN_REQUEST') {
+      return (
+        <View style={styles.itemIcon}>
+          <Feather name="users" size={16} color={palette.white} />
+        </View>
       )
     }
 
@@ -317,7 +335,7 @@ export default function NotificationsScreen() {
         ) : null}
 
         {items.map((item) => (
-          <Pressable key={item.id} onPress={() => onNotificationPress(item)}>
+          <Pressable key={item.id} onPress={() => void onNotificationPress(item)}>
             <SurfaceCard style={styles.itemCard}>
               <View style={styles.itemHead}>
                 {renderItemIcon(item)}
@@ -328,7 +346,11 @@ export default function NotificationsScreen() {
                       <RatingStarIcon size={15} filled color="#F2C94C" />
                     ) : null}
                   </View>
-                  {item.type === 'FEEDBACK_PROMPT' ? renderFeedbackBody(item.body) : <Text style={styles.itemBody}>{item.body}</Text>}
+                  {item.type === 'FEEDBACK_PROMPT' || item.type === 'CLUB_JOIN_REQUEST' ? (
+                    renderFeedbackBody(item.body)
+                  ) : (
+                    <Text style={styles.itemBody}>{item.body}</Text>
+                  )}
                 </View>
               </View>
             </SurfaceCard>

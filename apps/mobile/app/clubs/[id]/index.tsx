@@ -2,8 +2,8 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
-import { useCallback, useState } from 'react'
-import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -38,9 +38,9 @@ import { useAuth } from '../../../src/providers/AuthProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 
 export default function ClubDetailScreen() {
-  const params = useLocalSearchParams<{ id: string }>()
+  const params = useLocalSearchParams<{ id: string; tab?: string }>()
   const clubId = params.id
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [tab, setTab] = useState<'feed' | 'events' | 'members'>('events')
@@ -104,6 +104,32 @@ export default function ClubDetailScreen() {
       ])
     },
   })
+  const kickMember = trpc.club.kickMember.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.club.get.invalidate({ id: clubId }),
+        utils.club.listMembers.invalidate({ clubId }),
+      ])
+    },
+  })
+  const banUser = trpc.club.banUser.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.club.get.invalidate({ id: clubId }),
+        utils.club.listMembers.invalidate({ clubId }),
+      ])
+    },
+  })
+  const unbanUser = trpc.club.unbanUser.useMutation({
+    onSuccess: async () => {
+      await utils.club.listMembers.invalidate({ clubId })
+    },
+  })
+  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
 
   const [showNewPostForm, setShowNewPostForm] = useState(false)
   const [announcementForm, setAnnouncementForm] = useState({ title: '', body: '' })
@@ -114,6 +140,14 @@ export default function ClubDetailScreen() {
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [clubFeedbackInfoOpen, setClubFeedbackInfoOpen] = useState(false)
+  const [memberMenuTarget, setMemberMenuTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [bannedMenuTarget, setBannedMenuTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [kickTarget, setKickTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banTarget, setBanTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [unbanTarget, setUnbanTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [banReason, setBanReason] = useState('')
+  const [clubDescriptionExpanded, setClubDescriptionExpanded] = useState(false)
+  const [clubDescriptionExpandable, setClubDescriptionExpandable] = useState(false)
 
   const onRefreshClubDetail = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [clubQuery.refetch()]
@@ -152,8 +186,31 @@ export default function ClubDetailScreen() {
   const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
   const activeChatClub = myChatClubsQuery.data?.find((item: any) => item.id === club?.id) as any
   const unreadClubChatCount = Number(activeChatClub?.unreadCount ?? 0)
+  const pendingJoinRequestCount = Number(membersQuery.data?.joinRequests?.length ?? 0)
   const canLeaveClub = Boolean(isAuthenticated && club?.isFollowing && !club?.isAdmin)
   const clubInviteUrl = buildWebUrl(`/clubs/${String(clubId ?? '')}?ref=invite`)
+  const clubDescription = String(club?.description ?? '').trim()
+  const bookingUrlRaw = String(club?.courtReserveUrl ?? '').trim()
+  const bookingUrl =
+    bookingUrlRaw && !/^https?:\/\//i.test(bookingUrlRaw) ? `https://${bookingUrlRaw}` : bookingUrlRaw
+  const canBook = Boolean(bookingUrl)
+
+  useEffect(() => {
+    const nextTab = params.tab
+    if (nextTab === 'members' || nextTab === 'feed' || nextTab === 'events') {
+      setTab(nextTab)
+    }
+  }, [params.tab])
+
+  useEffect(() => {
+    if (tab !== 'members' || !club?.isAdmin || !clubId) return
+    void markClubJoinRequestSeen.mutateAsync({ clubId }).catch(() => undefined)
+  }, [tab, club?.isAdmin, clubId])
+
+  useEffect(() => {
+    setClubDescriptionExpanded(false)
+    setClubDescriptionExpandable(false)
+  }, [clubId, clubDescription])
 
   const playTopBarTapHaptic = useCallback(async () => {
     try {
@@ -225,7 +282,7 @@ export default function ClubDetailScreen() {
       options={[
         { value: 'events', label: 'Events' },
         { value: 'feed', label: 'News' },
-        { value: 'members', label: 'Members' },
+        { value: 'members', label: 'Members', badgeCount: club?.isAdmin ? pendingJoinRequestCount : 0 },
       ]}
     />
   )
@@ -259,6 +316,22 @@ export default function ClubDetailScreen() {
               </View>
             ) : null}
           </Pressable>
+          {canBook ? (
+            <Pressable
+              onPress={() => {
+                void runTopBarAction(async () => {
+                  try {
+                    await Linking.openURL(bookingUrl)
+                  } catch {
+                    Alert.alert('Unable to open link', 'Please try again later.')
+                  }
+                })
+              }}
+              style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
+            >
+              <Feather name="external-link" size={18} color={palette.text} />
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => {
               void runTopBarAction(() => setClubShareSheetOpen(true))
@@ -320,12 +393,10 @@ export default function ClubDetailScreen() {
 
   const membershipId = String(clubId ?? '')
   const membershipActions =
-    !membershipId || (isAuthenticated && club.isFollowing && !club.isAdmin) ? null : (
+    !membershipId || (isAuthenticated && (club.isFollowing || club.isAdmin)) ? null : (
       <View style={styles.membershipRow}>
         {!isAuthenticated ? (
           <ActionButton label="Sign in to join" variant="secondary" onPress={() => router.push('/sign-in')} />
-        ) : club.isAdmin ? (
-          <Text style={styles.membershipHint}>You manage this club</Text>
         ) : club.isJoinPending ? (
           <ActionButton
             label="Cancel join request"
@@ -342,6 +413,39 @@ export default function ClubDetailScreen() {
         )}
       </View>
     )
+
+  const clubInfoBlock =
+    clubDescription ? (
+      <View style={styles.clubInfoWrap}>
+        {clubDescription ? (
+          <View style={styles.clubDescriptionBlock}>
+            <Text
+              style={styles.clubDescriptionText}
+              numberOfLines={clubDescriptionExpanded ? undefined : 3}
+              onTextLayout={(event) => {
+                if (clubDescriptionExpanded || clubDescriptionExpandable) return
+                if (event.nativeEvent.lines.length > 3) {
+                  setClubDescriptionExpandable(true)
+                }
+              }}
+            >
+              {clubDescription}
+            </Text>
+            {clubDescriptionExpandable ? (
+              <Pressable
+                onPress={() => setClubDescriptionExpanded((value) => !value)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.clubInfoLinkPressable, pressed && styles.clubInfoLinkPressed]}
+              >
+                <Text style={styles.clubInfoLinkText}>
+                  {clubDescriptionExpanded ? 'Hide description' : 'Show full description'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    ) : null
 
   const clubSheets = (
     <>
@@ -436,14 +540,178 @@ export default function ClubDetailScreen() {
           />
         }
       />
+      <AppBottomSheet
+        open={Boolean(memberMenuTarget)}
+        onClose={() => setMemberMenuTarget(null)}
+        title={memberMenuTarget?.name ?? 'Member actions'}
+      >
+        <View style={styles.memberActionSheetBody}>
+          <ActionButton
+            label="Kick from club"
+            variant="outline"
+            onPress={() => {
+              if (!memberMenuTarget) return
+              const nextTarget = memberMenuTarget
+              setMemberMenuTarget(null)
+              setTimeout(() => {
+                setKickTarget(nextTarget)
+              }, 260)
+            }}
+          />
+          <ActionButton
+            label="Ban in club"
+            variant="neutral"
+            onPress={() => {
+              if (!memberMenuTarget) return
+              const nextTarget = memberMenuTarget
+              setBanReason('')
+              setMemberMenuTarget(null)
+              setTimeout(() => {
+                setBanTarget(nextTarget)
+              }, 260)
+            }}
+          />
+        </View>
+      </AppBottomSheet>
+      <AppBottomSheet
+        open={Boolean(bannedMenuTarget)}
+        onClose={() => setBannedMenuTarget(null)}
+        title={bannedMenuTarget?.name ?? 'Banned user actions'}
+      >
+        <View style={styles.memberActionSheetBody}>
+          <ActionButton
+            label="Kick from club"
+            variant="outline"
+            onPress={() => {
+              if (!bannedMenuTarget) return
+              const nextTarget = bannedMenuTarget
+              setBannedMenuTarget(null)
+              setTimeout(() => {
+                setKickTarget(nextTarget)
+              }, 260)
+            }}
+          />
+          <ActionButton
+            label="Unban user"
+            variant="secondary"
+            onPress={() => {
+              if (!bannedMenuTarget) return
+              const nextTarget = bannedMenuTarget
+              setBannedMenuTarget(null)
+              setTimeout(() => {
+                setUnbanTarget(nextTarget)
+              }, 260)
+            }}
+          />
+        </View>
+      </AppBottomSheet>
+      <AppBottomSheet
+        open={Boolean(kickTarget)}
+        onClose={() => setKickTarget(null)}
+        title="Kick member?"
+        subtitle={`Remove ${kickTarget?.name ?? 'this user'} from the club?`}
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={kickMember.isPending ? 'Removing…' : 'Remove'}
+            onCancel={() => setKickTarget(null)}
+            onConfirm={() => {
+              if (!kickTarget) return
+              kickMember.mutate(
+                { clubId, userId: kickTarget.userId },
+                {
+                  onSuccess: () => setKickTarget(null),
+                  onError: (err: any) => Alert.alert('Failed', err?.message || 'Could not remove this member.'),
+                }
+              )
+            }}
+            confirmLoading={kickMember.isPending}
+          />
+        }
+      />
+      <AppBottomSheet
+        open={Boolean(banTarget)}
+        onClose={() => {
+          setBanTarget(null)
+          setBanReason('')
+        }}
+        title="Ban user?"
+        subtitle={`${banTarget?.name ?? 'This user'} will not be able to re-join the club.`}
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={banUser.isPending ? 'Banning…' : 'Ban'}
+            onCancel={() => {
+              setBanTarget(null)
+              setBanReason('')
+            }}
+            onConfirm={() => {
+              if (!banTarget) return
+              banUser.mutate(
+                { clubId, userId: banTarget.userId, reason: banReason.trim() || undefined },
+                {
+                  onSuccess: () => {
+                    setBanTarget(null)
+                    setBanReason('')
+                  },
+                  onError: (err: any) => Alert.alert('Failed', err?.message || 'Could not ban this user.'),
+                }
+              )
+            }}
+            confirmLoading={banUser.isPending}
+          />
+        }
+      >
+        <InputField
+          value={banReason}
+          onChangeText={setBanReason}
+          placeholder="Reason (optional)"
+          containerStyle={styles.memberActionReasonInput}
+        />
+      </AppBottomSheet>
+      <AppBottomSheet
+        open={Boolean(unbanTarget)}
+        onClose={() => setUnbanTarget(null)}
+        title="Unban user?"
+        subtitle={`Allow ${unbanTarget?.name ?? 'this user'} to join the club again?`}
+        footer={
+          <AppConfirmActions
+            intent="positive"
+            cancelLabel="Cancel"
+            confirmLabel={unbanUser.isPending ? 'Unbanning…' : 'Unban'}
+            onCancel={() => setUnbanTarget(null)}
+            onConfirm={() => {
+              if (!unbanTarget) return
+              unbanUser.mutate(
+                { clubId, userId: unbanTarget.userId },
+                {
+                  onSuccess: () => setUnbanTarget(null),
+                  onError: (err: any) => Alert.alert('Failed', err?.message || 'Could not unban this user.'),
+                }
+              )
+            }}
+            confirmLoading={unbanUser.isPending}
+          />
+        }
+      />
     </>
   )
 
   if (tab === 'members') {
     const allMembers = (membersQuery.data?.members ?? []) as any[]
     const joinRequests = (membersQuery.data?.joinRequests ?? []) as any[]
+    const allBans = (membersQuery.data?.bans ?? []) as any[]
     const canModerate = Boolean(membersQuery.data?.canModerate)
     const q = membersSearch.trim().toLowerCase()
+    const filteredJoinRequests = q
+      ? joinRequests.filter((req) => {
+          const name = String(req?.user?.name ?? '').toLowerCase()
+          const email = String(req?.user?.emailMasked ?? '').toLowerCase()
+          return name.includes(q) || email.includes(q)
+        })
+      : joinRequests
     const members = q
       ? allMembers.filter((m) => {
           const name = String(m?.user?.name ?? '').toLowerCase()
@@ -451,6 +719,14 @@ export default function ClubDetailScreen() {
           return name.includes(q) || email.includes(q)
         })
       : allMembers
+    const bans = q
+      ? allBans.filter((b) => {
+          const name = String(b?.user?.name ?? '').toLowerCase()
+          const email = String(b?.user?.emailMasked ?? '').toLowerCase()
+          const reason = String(b?.reason ?? '').toLowerCase()
+          return name.includes(q) || email.includes(q) || reason.includes(q)
+        })
+      : allBans
 
     const formatJoined = (joinedAt: any) => {
       try {
@@ -474,6 +750,15 @@ export default function ClubDetailScreen() {
         return null
       }
     }
+    const formatBanned = (dateLike: any) => {
+      try {
+        const d = new Date(dateLike)
+        if (Number.isNaN(d.getTime())) return null
+        return `Banned ${d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      } catch {
+        return null
+      }
+    }
 
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -486,27 +771,29 @@ export default function ClubDetailScreen() {
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
-          {segmentControl}
           {membershipActions}
-          <View style={styles.membersSearchWrap}>
-            <SearchField
-              value={membersSearch}
-              onChangeText={setMembersSearch}
-              placeholder="Search members..."
-            />
-          </View>
-
-          {canModerate && joinRequests.length > 0 ? (
+          {clubInfoBlock}
+          {segmentControl}
+          {canViewMembers ? (
+            <View style={styles.membersSearchWrap}>
+              <SearchField
+                value={membersSearch}
+                onChangeText={setMembersSearch}
+                placeholder="Search members..."
+              />
+            </View>
+          ) : null}
+          {canModerate && filteredJoinRequests.length > 0 ? (
             <View style={styles.pendingWrap}>
               <View style={styles.pendingHeaderRow}>
                 <Text style={styles.pendingHeaderTitle}>Pending Requests</Text>
                 <View style={styles.pendingCountPill}>
-                  <Text style={styles.pendingCountText}>{joinRequests.length}</Text>
+                  <Text style={styles.pendingCountText}>{filteredJoinRequests.length}</Text>
                 </View>
               </View>
 
               <View style={styles.pendingList}>
-                {joinRequests.map((req: any) => {
+                {filteredJoinRequests.map((req: any) => {
                   const when = formatRelative(req.requestedAt) ?? ''
                   return (
                     <SurfaceCard key={req.userId} padded={false} style={styles.pendingCard}>
@@ -584,10 +871,12 @@ export default function ClubDetailScreen() {
           ) : null}
 
           {!canViewMembers ? (
-            <EmptyState
-              title="Members are private"
-              body="Join this club to view the members list."
-            />
+            <View style={styles.membersWrap}>
+              <EmptyState
+                title="Members are private"
+                body="Join this club to view the members list."
+              />
+            </View>
           ) : membersQuery.isLoading ? (
             <LoadingBlock label="Loading members…" />
           ) : (
@@ -626,7 +915,7 @@ export default function ClubDetailScreen() {
                         >
                           <RemoteUserAvatar
                             uri={member.user?.image}
-                            size={56}
+                            size={48}
                             fallback="initials"
                             initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
                           />
@@ -634,19 +923,21 @@ export default function ClubDetailScreen() {
 
                         <View style={styles.memberMain}>
                           <View style={styles.memberTopRow}>
-                            <Pressable
-                              disabled={!member.userId}
-                              onPress={() => {
-                                if (!member.userId) return
-                                router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
-                              }}
-                              hitSlop={8}
-                              style={({ pressed }) => [pressed && member.userId && styles.namePress]}
-                            >
-                              <Text style={styles.memberName} numberOfLines={1}>
-                                {member.user?.name || 'Member'}
-                              </Text>
-                            </Pressable>
+                            <View style={styles.memberTopMain}>
+                              <Pressable
+                                disabled={!member.userId}
+                                onPress={() => {
+                                  if (!member.userId) return
+                                  router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                                }}
+                                hitSlop={8}
+                                style={({ pressed }) => [pressed && member.userId && styles.namePress]}
+                              >
+                                <Text style={styles.memberName} numberOfLines={1}>
+                                  {member.user?.name || 'Member'}
+                                </Text>
+                              </Pressable>
+                            </View>
                             {roleBadge ? (
                               <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
                                 <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
@@ -661,18 +952,104 @@ export default function ClubDetailScreen() {
                           ) : null}
                         </View>
 
-                        <Pressable
-                          onPress={() => {}}
-                          hitSlop={10}
-                          style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
-                        >
-                          <Feather name="more-vertical" size={18} color={palette.textMuted} />
-                        </Pressable>
+                        {canModerate && member.userId !== user?.id ? (
+                          <Pressable
+                            onPress={() => setMemberMenuTarget({ userId: member.userId, name: member.user?.name || 'Member' })}
+                            hitSlop={10}
+                            style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
+                          >
+                            <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                          </Pressable>
+                        ) : null}
                       </View>
                     </SurfaceCard>
                   )
                 })}
               </View>
+              {canModerate ? (
+                <View style={styles.bansWrap}>
+                  <View style={styles.membersHeaderRow}>
+                    <Text style={styles.membersHeaderTitle}>Banned users</Text>
+                    <Text style={styles.membersHeaderCount}>{`${allBans.length} total`}</Text>
+                  </View>
+                  {bans.length === 0 ? (
+                    <SurfaceCard padded={false} style={styles.memberCard}>
+                      <View style={styles.emptyBansCard}>
+                        <Text style={styles.memberMetaText}>No banned users.</Text>
+                      </View>
+                    </SurfaceCard>
+                  ) : (
+                    <View style={styles.membersList}>
+                      {bans.map((ban: any) => {
+                        const bannedMeta = [formatBanned(ban.bannedAt), ban.bannedBy?.name ? `by ${ban.bannedBy.name}` : null]
+                          .filter(Boolean)
+                          .join(' • ')
+                        return (
+                          <SurfaceCard key={ban.userId} padded={false} style={styles.memberCard}>
+                            <View style={styles.memberCardRow}>
+                              <Pressable
+                                disabled={!ban.userId}
+                                onPress={() => {
+                                  if (!ban.userId) return
+                                  router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
+                                }}
+                                style={({ pressed }) => [pressed && ban.userId && styles.avatarPress]}
+                              >
+                                <RemoteUserAvatar
+                                  uri={ban.user?.image}
+                                  size={48}
+                                  fallback="initials"
+                                  initialsLabel={ban.user?.name ?? ban.user?.emailMasked ?? 'User'}
+                                />
+                              </Pressable>
+                              <View style={styles.memberMain}>
+                                <View style={styles.memberTopRow}>
+                                  <View style={styles.memberTopMain}>
+                                    <Pressable
+                                      disabled={!ban.userId}
+                                      onPress={() => {
+                                        if (!ban.userId) return
+                                        router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
+                                      }}
+                                      hitSlop={8}
+                                      style={({ pressed }) => [pressed && ban.userId && styles.namePress]}
+                                    >
+                                      <Text style={styles.memberName} numberOfLines={1}>
+                                        {ban.user?.name || 'User'}
+                                      </Text>
+                                    </Pressable>
+                                  </View>
+                                  <View style={styles.bannedPill}>
+                                    <Feather name="slash" size={12} color={palette.danger} />
+                                    <Text style={styles.bannedPillText}>banned</Text>
+                                  </View>
+                                </View>
+                                {bannedMeta ? (
+                                  <Text style={styles.memberMetaText} numberOfLines={1}>
+                                    {bannedMeta}
+                                  </Text>
+                                ) : null}
+                                {ban.reason ? (
+                                  <Text style={styles.bannedReasonText} numberOfLines={1}>
+                                    Reason: {ban.reason}
+                                  </Text>
+                                ) : null}
+                              </View>
+                              <Pressable
+                                onPress={() => setBannedMenuTarget({ userId: ban.userId, name: ban.user?.name || 'User' })}
+                                hitSlop={10}
+                                style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
+                              >
+                                <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                              </Pressable>
+                            </View>
+                          </SurfaceCard>
+                        )
+                      })}
+                    </View>
+                  )}
+                </View>
+              ) : null}
             </View>
           )}
         </PickleRefreshScrollView>
@@ -692,8 +1069,9 @@ export default function ClubDetailScreen() {
         onRefresh={pullToRefresh.onRefresh}
         bounces
       >
-        {segmentControl}
         {membershipActions}
+        {clubInfoBlock}
+        {segmentControl}
 
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
@@ -1127,6 +1505,7 @@ const styles = StyleSheet.create({
   heroWrap: {
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
     gap: spacing.sm,
   },
   clubMiniBar: {
@@ -1306,13 +1685,50 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
   },
   membershipRow: {
-    marginTop: spacing.sm,
+    marginTop: 0,
     paddingHorizontal: spacing.lg,
   },
   membershipHint: {
-    color: palette.textMuted,
+    color: palette.primary,
     fontSize: 14,
     paddingVertical: spacing.sm,
+    fontWeight: '700',
+  },
+  clubInfoWrap: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  clubDescriptionBlock: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: 6,
+  },
+  clubDescriptionText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  clubBookingLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+  },
+  clubInfoLinkPressable: {
+    alignSelf: 'flex-start',
+  },
+  clubInfoLinkPressed: {
+    opacity: 0.78,
+  },
+  clubInfoLinkText: {
+    color: palette.primary,
+    fontSize: 14,
+    fontWeight: '700',
   },
   tabContent: {
     marginTop: spacing.md,
@@ -1322,6 +1738,10 @@ const styles = StyleSheet.create({
   membersSearchWrap: {
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
+  },
+  membersSearchWrapInline: {
+    marginTop: 0,
+    paddingHorizontal: 0,
   },
   pendingWrap: {
     marginTop: spacing.md,
@@ -1436,15 +1856,19 @@ const styles = StyleSheet.create({
   membersList: {
     gap: 10,
   },
+  bansWrap: {
+    marginTop: spacing.md,
+    gap: 10,
+  },
   memberCard: {
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
     backgroundColor: palette.surface,
     shadowOpacity: 0,
     elevation: 0,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   memberCardOwner: {
     borderColor: palette.primary,
@@ -1452,23 +1876,28 @@ const styles = StyleSheet.create({
   memberCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   memberMain: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
   memberTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  memberTopMain: {
+    flex: 1,
+    minWidth: 0,
+  },
   rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: palette.brandPrimaryBorder,
@@ -1476,16 +1905,42 @@ const styles = StyleSheet.create({
   },
   rolePillText: {
     color: palette.primary,
-    fontWeight: '800',
-    fontSize: 12,
+    fontWeight: '700',
+    fontSize: 11,
     textTransform: 'lowercase',
   },
   memberMetaText: {
-    marginTop: 6,
+    marginTop: 2,
     color: palette.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
     lineHeight: 18,
+  },
+  bannedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 110, 0.2)',
+    backgroundColor: 'rgba(255, 0, 110, 0.08)',
+  },
+  bannedPillText: {
+    color: palette.danger,
+    fontWeight: '700',
+    fontSize: 11,
+    textTransform: 'lowercase',
+  },
+  bannedReasonText: {
+    marginTop: 2,
+    color: palette.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  emptyBansCard: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
   kebabBtn: {
     padding: 6,
@@ -1493,6 +1948,12 @@ const styles = StyleSheet.create({
   },
   kebabBtnPressed: {
     opacity: 0.85,
+  },
+  memberActionSheetBody: {
+    gap: 10,
+  },
+  memberActionReasonInput: {
+    marginTop: spacing.xs,
   },
   avatarPress: {
     opacity: 0.82,
@@ -1745,8 +2206,8 @@ const styles = StyleSheet.create({
   },
   memberName: {
     color: palette.text,
-    fontWeight: '800',
-    fontSize: 17,
+    fontWeight: '600',
+    fontSize: 16,
   },
   adminPill: {
     paddingHorizontal: 10,

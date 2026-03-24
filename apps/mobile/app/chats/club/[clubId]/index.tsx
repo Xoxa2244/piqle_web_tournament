@@ -8,6 +8,7 @@ import { ChatComposer } from '../../../../src/components/ChatComposer'
 import { FeedbackEntityContextCard } from '../../../../src/components/FeedbackEntityContextCard'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
+import { EntityImage } from '../../../../src/components/EntityImage'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
 import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
@@ -123,6 +124,15 @@ export default function ClubChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={clubName}
+      topBarTitleAccessoryLeading
+      topBarTitleAccessory={
+        <EntityImage
+          uri={activeClub?.logoUrl ?? null}
+          style={styles.titleClubLogo}
+          resizeMode="cover"
+          placeholderResizeMode="contain"
+        />
+      }
     >
       {messagesQuery.error ? (
         <SurfaceCard tone="soft">
@@ -293,5 +303,11 @@ const styles = StyleSheet.create({
   feedbackPromptBody: {
     color: palette.textMuted,
     fontSize: 13,
+  },
+  titleClubLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: palette.surface,
   },
 })

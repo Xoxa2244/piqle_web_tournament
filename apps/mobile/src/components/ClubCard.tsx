@@ -120,7 +120,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               ) : null}
               {isAdmin ? (
                 <View style={[styles.statusBadge, styles.statusBadgeAdmin]}>
-                  <Feather name="check-circle" size={12} color={colors.primary} />
+                  <Feather name="shield" size={12} color="#2F6BFF" />
                   <Text style={styles.statusBadgeText}>Admin</Text>
                 </View>
               ) : null}
@@ -311,9 +311,9 @@ const createStyles = (colors: ThemePalette) =>
       borderColor: 'transparent',
     },
     statusBadgeAdmin: {
-      backgroundColor: 'rgba(30, 122, 50, 0.14)',
-      borderWidth: 1,
-      borderColor: 'rgba(30, 122, 50, 0.18)',
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      borderColor: 'transparent',
     },
     statusBadgeOwner: {
       backgroundColor: 'rgba(255, 193, 7, 0.14)',
@@ -326,7 +326,7 @@ const createStyles = (colors: ThemePalette) =>
       borderColor: 'rgba(245, 158, 11, 0.2)',
     },
     statusBadgeText: {
-      color: colors.primary,
+      color: '#2F6BFF',
       fontWeight: '500',
       fontSize: 13,
       lineHeight: 20,
@@ -335,7 +335,7 @@ const createStyles = (colors: ThemePalette) =>
       color: '#A16207',
     },
     statusBadgeTextMember: {
-      color: colors.textMuted,
+      color: colors.primary,
     },
     statusBadgeTextOwner: {
       color: '#A06B00',
