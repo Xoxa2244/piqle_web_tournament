@@ -230,6 +230,9 @@ model Club {
   invites            ClubInvite[]
   bans               ClubBan[]
 
+  // Partner bindings
+  partnerBindings         PartnerClubBinding[]
+
   // Intelligence relations
   clubCourts              ClubCourt[]
   playSessions            PlaySession[]
@@ -242,7 +245,29 @@ model Club {
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
+  // Billing
+  subscription            Subscription?
+
   @@map("clubs")
+}
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  clubId               String    @unique @map("club_id")
+  club                 Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  stripeSubscriptionId String?   @unique @map("stripe_subscription_id")
+  stripePriceId        String?   @map("stripe_price_id")
+  plan                 String    @default("free") // "free", "starter", "pro", "enterprise"
+  status               String    @default("trialing") // "trialing", "active", "past_due", "canceled", "unpaid"
+  trialEndsAt          DateTime? @map("trial_ends_at")
+  currentPeriodStart   DateTime? @map("current_period_start")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@map("subscriptions")
 }
 
 model ClubFollower {
@@ -1234,6 +1259,10 @@ enum PaymentTiming {
 enum PartnerWebhookEvent {
   SCHEDULE_UPDATED
   RESULTS_UPDATED
+  // Intelligence API events
+  DATA_IMPORTED
+  EMBEDDINGS_READY
+  RECOMMENDATIONS_GENERATED
 }
 
 model Partner {
@@ -1250,10 +1279,27 @@ model Partner {
   externalMappings ExternalIdMapping[]
   apiRequestLogs  ApiRequestLog[]
   webhooks        PartnerWebhook[]
+  clubBindings    PartnerClubBinding[]
   director        User?        @relation(fields: [directorUserId], references: [id], onDelete: SetNull)
 
   @@index([directorUserId])
   @@map("partners")
+}
+
+model PartnerClubBinding {
+  id        String   @id @default(uuid())
+  partnerId String   @map("partner_id")
+  clubId    String   @map("club_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, clubId])
+  @@index([partnerId])
+  @@index([clubId])
+  @@map("partner_club_bindings")
 }
 
 model PartnerWebhook {
@@ -1373,6 +1419,11 @@ enum ExternalEntityType {
   PLAYER
   MATCH_DAY
   MATCHUP
+  // Intelligence API entity types
+  COURT
+  PLAY_SESSION
+  BOOKING
+  MEMBER
 }
 
 // ── Intelligence Module: Enums ──
