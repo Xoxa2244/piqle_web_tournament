@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
+import { MapPin, Search, Plus, ExternalLink, LogOut } from 'lucide-react'
+import { signOut } from 'next-auth/react'
+import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
@@ -37,7 +39,15 @@ function ClubsPageContent() {
   const [createClubModalOpen, setCreateClubModalOpen] = useState(false)
   const [cancelRequestClubId, setCancelRequestClubId] = useState<string | null>(null)
   const [isCreatingClub, setIsCreatingClub] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const createClubMutation = trpc.club.create.useMutation()
+
+  // User info for IQ avatar
+  const userName = session?.user?.name || ''
+  const userEmail = session?.user?.email || ''
+  const userInitials = userName
+    ? userName.split(' ').map((n: string) => n[0]?.toUpperCase()).join('').slice(0, 2)
+    : userEmail ? userEmail[0]?.toUpperCase() : '?'
 
   // IQ brand: go to standalone wizard page (no club created yet)
   const handleIQCreateClub = () => {
@@ -152,10 +162,56 @@ function ClubsPageContent() {
       )
     }
 
+    // IQ user avatar + dropdown (shared between 0-clubs and 2+-clubs screens)
+    const iqUserAvatar = isLoggedIn && (
+      <div className="fixed top-4 right-4" style={{ zIndex: 50 }}>
+        <button
+          onClick={() => setProfileOpen(!profileOpen)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-xs text-white transition-all hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+        >
+          {userInitials}
+        </button>
+        {profileOpen && typeof document !== 'undefined' && createPortal(
+          <>
+            <div className="fixed inset-0" style={{ zIndex: 99998 }} onClick={() => setProfileOpen(false)} />
+            <div
+              className="fixed right-4 top-14 w-64 rounded-2xl overflow-hidden"
+              style={{ zIndex: 99999, background: '#1e2035', border: '1px solid rgba(139,92,246,0.25)', boxShadow: '0 25px 80px rgba(0,0,0,0.9)' }}
+            >
+              <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm text-white" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
+                    {userInitials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {userName && <div className="text-sm truncate" style={{ fontWeight: 600, color: '#E2E8F0' }}>{userName}</div>}
+                    <div className="text-xs truncate" style={{ color: '#64748B' }}>{userEmail}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-2">
+                <button
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                  className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
+                  style={{ color: '#EF4444' }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="text-sm" style={{ fontWeight: 500 }}>Sign Out</span>
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+      </div>
+    )
+
     // 0 clubs — welcome screen
     if (myClubs.length === 0) {
       return (
-        <div className="min-h-screen flex items-center justify-center p-8" style={{ background: '#0B0D17' }}>
+        <div className="min-h-screen flex items-center justify-center p-8 relative" style={{ background: '#0B0D17' }}>
+          {iqUserAvatar}
           <div className="w-full max-w-md text-center space-y-8">
             <div>
               <div className="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center"
@@ -202,9 +258,10 @@ function ClubsPageContent() {
       )
     }
 
-    // 1+ clubs — show IQ-styled list
+    // 2+ clubs — show IQ-styled list
     return (
-      <div className="min-h-screen p-8" style={{ background: '#0B0D17' }}>
+      <div className="min-h-screen p-8 relative" style={{ background: '#0B0D17' }}>
+        {iqUserAvatar}
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-extrabold text-white">Your Clubs</h1>
