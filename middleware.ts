@@ -76,7 +76,7 @@ export async function middleware(req: NextRequest) {
       if (hasSession) {
         return NextResponse.redirect(new URL('/clubs', req.url))
       } else {
-        return NextResponse.redirect(new URL('/auth/signin?callbackUrl=/clubs/new/intelligence', req.url))
+        return NextResponse.redirect(new URL('/auth/signin?callbackUrl=/clubs', req.url))
       }
     }
   }
