@@ -2,41 +2,27 @@ import { useNavigation } from '@react-navigation/native'
 import { Feather } from '@expo/vector-icons'
 import { router, usePathname } from 'expo-router'
 import { useEffect, useMemo, useRef } from 'react'
-import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { ReactNode } from 'react'
+import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native'
 
 import { useEffectivePathname } from '../../hooks/useEffectivePathname'
 import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
-<<<<<<< Updated upstream
 import { useAppTheme } from '../../providers/ThemeProvider'
-=======
+import { RemoteUserAvatar } from '../RemoteUserAvatar'
 import { BackCircleButton } from './BackCircleButton'
 import { BrandGradientText } from './BrandGradientText'
->>>>>>> Stashed changes
 import { PiqleLogo } from './PiqleLogo'
-import { RemoteUserAvatar } from '../RemoteUserAvatar'
 
 const HEADER_DIVIDER_COLOR = 'rgba(0,0,0,0.06)'
 const HEADER_DIVIDER_WIDTH = StyleSheet.hairlineWidth
 
-/** Главная вкладка (Expo Router может отдавать `/` или сегмент `(tabs)`). */
 const isHomeRoute = (pathname: string) =>
   pathname === '/' ||
   pathname === '/(tabs)' ||
   pathname === '/(tabs)/' ||
   pathname === '/(tabs)/index'
-
-const usesBrandHeader = (pathname: string) =>
-  isHomeRoute(pathname) || pathname === '/search'
-
-const useThemedTopBar = () => {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
-
-  return { colors, styles }
-}
 
 const getTitle = (pathname: string) => {
   if (pathname === '/') return 'Piqle'
@@ -50,7 +36,151 @@ const getTitle = (pathname: string) => {
   return 'Piqle'
 }
 
-const IconBubble = ({
+const wantsTopBarBack = (pathname: string) =>
+  pathname === '/notifications' ||
+  pathname === '/search' ||
+  pathname === '/profile' ||
+  pathname.startsWith('/profile/') ||
+  pathname.startsWith('/chats/club/') ||
+  pathname.startsWith('/chats/event/tournament/')
+
+const LOGO_OFF_X = -72
+const TEXT_HIDE_MS = 85
+const LOGO_IN_MS = 360
+const LOGO_OUT_MS = 300
+const TEXT_SHOW_MS = 180
+
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
+    header: {
+      height: 56,
+      paddingHorizontal: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surfaceOverlay,
+      borderBottomWidth: HEADER_DIVIDER_WIDTH,
+      borderBottomColor: HEADER_DIVIDER_COLOR,
+    },
+    headerAmbient: {
+      backgroundColor: 'transparent',
+      borderBottomWidth: HEADER_DIVIDER_WIDTH,
+      borderBottomColor: HEADER_DIVIDER_COLOR,
+    },
+    titleRow: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 0,
+    },
+    titleCluster: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      minWidth: 0,
+    },
+    titleWithAccessoryRow: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      minWidth: 0,
+      gap: 6,
+    },
+    titleNextToAccessory: {
+      flexGrow: 0,
+      flexShrink: 1,
+      minWidth: 0,
+    },
+    titleLogoSlot: {
+      flexGrow: 0,
+      flexShrink: 1,
+      minWidth: 0,
+      maxWidth: '78%',
+    },
+    titleInCluster: {
+      flex: 1,
+      minWidth: 0,
+    },
+    backBtn: {
+      marginRight: 0,
+    },
+    titleWithBack: {
+      flex: 1,
+    },
+    titleAccessory: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    titleAnimContainer: {
+      flex: 1,
+      minWidth: 0,
+      height: 36,
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    titleLayerAbs: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+    },
+    logoSlideWrap: {
+      zIndex: 1,
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: '700',
+      letterSpacing: -0.4,
+      lineHeight: 36,
+      ...(Platform.OS === 'android'
+        ? { textAlignVertical: 'center' as const, includeFontPadding: false }
+        : {}),
+    },
+    titleAlignedWithBack: {},
+    actions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    iconBubble: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    iconBubblePressed: {
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.brandPrimaryBorder,
+      transform: [{ scale: 0.94 }],
+    },
+    dot: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.accent,
+    },
+    avatarBtn: {
+      marginLeft: 4,
+    },
+    avatarBtnPressed: {
+      opacity: 0.85,
+    },
+  })
+
+function IconBubble({
   icon,
   onPress,
   showDot,
@@ -59,41 +189,18 @@ const IconBubble = ({
   icon: keyof typeof Feather.glyphMap
   onPress: () => void
   showDot?: boolean
-  /** Текущий экран — подсветка primary (как активная вкладка) */
   active?: boolean
-<<<<<<< Updated upstream
-}) => {
-  const { colors, styles } = useThemedTopBar()
+}) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
-      <Feather name={icon} size={20} color={active ? colors.primary : colors.text} />
+      <Feather name={icon} size={18} color={active ? colors.primary : colors.text} />
       {showDot ? <View style={styles.dot} /> : null}
     </Pressable>
   )
 }
-=======
-}) => (
-  <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
-    <Feather name={icon} size={18} color={active ? palette.primary : palette.text} />
-    {showDot ? <View style={styles.dot} /> : null}
-  </Pressable>
-)
->>>>>>> Stashed changes
-
-const wantsTopBarBack = (pathname: string) =>
-  pathname === '/notifications' ||
-  pathname === '/profile' ||
-  pathname.startsWith('/profile/') ||
-  pathname.startsWith('/chats/club/') ||
-  pathname.startsWith('/chats/event/tournament/')
-
-/** Сдвиг логотипа влево за пределы видимой зоны (до анимации «домой») */
-const LOGO_OFF_X = -72
-const TEXT_HIDE_MS = 85
-const LOGO_IN_MS = 360
-const LOGO_OUT_MS = 300
-const TEXT_SHOW_MS = 180
 
 function AnimatedHomeTitle({
   showLogo,
@@ -106,7 +213,8 @@ function AnimatedHomeTitle({
   showBack: boolean
   refreshPulseKey?: number
 }) {
-  const { styles } = useThemedTopBar()
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const textOp = useRef(new Animated.Value(showLogo ? 0 : 1)).current
   const logoX = useRef(new Animated.Value(showLogo ? 0 : LOGO_OFF_X)).current
   const didMount = useRef(false)
@@ -176,14 +284,6 @@ function AnimatedHomeTitle({
 
   return (
     <View style={[styles.titleAnimContainer, showBack && styles.titleWithBack]}>
-      <Animated.Text
-        // keep layer sizing driven by animated wrapper below
-        style={styles.hiddenAnimatedTitle}
-        numberOfLines={1}
-        pointerEvents={showLogo ? 'none' : 'auto'}
-      >
-        {titleText}
-      </Animated.Text>
       <Animated.View
         style={[styles.titleLayerAbs, showBack && styles.titleAlignedWithBack, { opacity: textOp }]}
         pointerEvents={showLogo ? 'none' : 'auto'}
@@ -209,15 +309,12 @@ export const TopBar = ({
   refreshPulseKey,
 }: {
   titleAccessory?: ReactNode
-  /** Заголовок вместо автоматического по pathname */
   titleOverride?: string
-  /** Прозрачный фон под градиентом чата (AI и т.п.) */
   ambient?: boolean
-  /** Триггер «уехал/вернулся» для лого на главной при pull-to-refresh */
   refreshPulseKey?: number
 }) => {
-  const { colors, styles } = useThemedTopBar()
-  /** Заголовок / лого: на вкладках — путь активного таба (видно при swipe поверх модалок). Иконки — по глобальному URL. */
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const pathname = useEffectivePathname()
   const routePathname = usePathname()
   const navigation = useNavigation()
@@ -229,34 +326,20 @@ export const TopBar = ({
   const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = titleOverride ?? getTitle(pathname)
   const showBack = wantsTopBarBack(pathname) && navigation.canGoBack()
-  const showBrandLogo = !titleOverride && !showBack && usesBrandHeader(pathname)
+  const showHomeLogo = !titleOverride && !showBack && isHomeRoute(pathname)
   const hasTitleAccessory = Boolean(titleAccessory)
-  const profile = profileQuery.data as { name?: string | null; email?: string | null; image?: string | null } | undefined
+  const profile = profileQuery.data as
+    | { name?: string | null; email?: string | null; image?: string | null }
+    | undefined
   const avatarUri = profile?.image ?? user?.image ?? null
   const initialsLabel = profile?.name || profile?.email || user?.name || user?.email || ''
   const searchReturnTo = routePathname || pathname || '/'
-
-  /** С аксессуаром заголовок не должен иметь flexGrow: иначе строка растягивается и кнопка уезжает к иконке поиска. */
-  const titleBesideAccessory = hasTitleAccessory && (Boolean(titleOverride) || !showBrandLogo)
+  const titleBesideAccessory = hasTitleAccessory && (Boolean(titleOverride) || !showHomeLogo)
 
   return (
     <View style={[styles.header, ambient && styles.headerAmbient]}>
       <View style={styles.titleRow}>
-        {showBack ? (
-<<<<<<< Updated upstream
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={() => navigation.goBack()}
-            hitSlop={12}
-            style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          >
-            <Feather name="arrow-left" size={22} color={colors.text} />
-          </Pressable>
-=======
-          <BackCircleButton onPress={() => navigation.goBack()} style={styles.backBtn} />
->>>>>>> Stashed changes
-        ) : null}
+        {showBack ? <BackCircleButton onPress={() => navigation.goBack()} style={styles.backBtn} /> : null}
         <View style={styles.titleCluster}>
           {hasTitleAccessory && titleBesideAccessory ? (
             <View style={styles.titleWithAccessoryRow}>
@@ -272,10 +355,15 @@ export const TopBar = ({
               </BrandGradientText>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
-          ) : hasTitleAccessory && showBrandLogo ? (
+          ) : hasTitleAccessory && showHomeLogo ? (
             <View style={styles.titleWithAccessoryRow}>
               <View style={styles.titleLogoSlot}>
-                <AnimatedHomeTitle showLogo={showBrandLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
+                <AnimatedHomeTitle
+                  showLogo={showHomeLogo}
+                  titleText={title}
+                  showBack={showBack}
+                  refreshPulseKey={refreshPulseKey}
+                />
               </View>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
@@ -292,13 +380,19 @@ export const TopBar = ({
               {title}
             </BrandGradientText>
           ) : (
-            <AnimatedHomeTitle showLogo={showBrandLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
+            <AnimatedHomeTitle
+              showLogo={showHomeLogo}
+              titleText={title}
+              showBack={showBack}
+              refreshPulseKey={refreshPulseKey}
+            />
           )}
         </View>
       </View>
       <View style={styles.actions}>
         <IconBubble
           icon="search"
+          active={routePathname === '/search'}
           onPress={() => {
             if (routePathname === '/search') return
             router.push({ pathname: '/search', params: { returnTo: searchReturnTo } })
@@ -326,166 +420,3 @@ export const TopBar = ({
     </View>
   )
 }
-
-const createStyles = (colors: ThemePalette) => StyleSheet.create({
-  header: {
-    height: 56,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-<<<<<<< Updated upstream
-    backgroundColor: colors.surfaceOverlay,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerAmbient: {
-    backgroundColor: 'transparent',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-=======
-    backgroundColor: palette.surfaceOverlay,
-    borderBottomWidth: HEADER_DIVIDER_WIDTH,
-    borderBottomColor: HEADER_DIVIDER_COLOR,
-  },
-  headerAmbient: {
-    backgroundColor: 'transparent',
-    borderBottomWidth: HEADER_DIVIDER_WIDTH,
-    borderBottomColor: HEADER_DIVIDER_COLOR,
->>>>>>> Stashed changes
-  },
-  titleRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minWidth: 0,
-  },
-  /** Заголовок и titleAccessory в одной группе */
-  titleCluster: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 0,
-  },
-  /** Текст + аксессуар в одном ряду; без flexGrow у текста — кнопка не уезжает к поиску */
-  titleWithAccessoryRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    minWidth: 0,
-    gap: 6,
-  },
-  titleNextToAccessory: {
-    flexGrow: 0,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  /** Редкий кейс: лого + аксессуар — слот сжимается, не забирает всю ширину */
-  titleLogoSlot: {
-    flexGrow: 0,
-    flexShrink: 1,
-    minWidth: 0,
-    maxWidth: '78%',
-  },
-  titleInCluster: {
-    flex: 1,
-    minWidth: 0,
-  },
-  backBtn: {
-<<<<<<< Updated upstream
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -4,
-  },
-  backBtnPressed: {
-    backgroundColor: colors.surfaceMuted,
-=======
-    marginRight: 0,
->>>>>>> Stashed changes
-  },
-  titleWithBack: {
-    flex: 1,
-  },
-  titleAccessory: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleAnimContainer: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  titleLayerAbs: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  hiddenAnimatedTitle: {
-    opacity: 0,
-    height: 0,
-    width: 0,
-  },
-  logoSlideWrap: {
-    zIndex: 1,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.primary,
-    letterSpacing: -0.4,
-    lineHeight: 36,
-    ...(Platform.OS === 'android' ? { textAlignVertical: 'center' as const, includeFontPadding: false } : {}),
-  },
-  titleAlignedWithBack: {},
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  iconBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    backgroundColor: palette.surface,
-    borderWidth: 1,
-    borderColor: palette.border,
-  },
-  iconBubblePressed: {
-<<<<<<< Updated upstream
-    backgroundColor: colors.surfaceMuted,
-=======
-    backgroundColor: palette.surfaceMuted,
-    borderColor: palette.brandPrimaryBorder,
-    transform: [{ scale: 0.94 }],
->>>>>>> Stashed changes
-  },
-  dot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-  },
-  avatarBtn: {
-    marginLeft: 4,
-  },
-  avatarBtnPressed: {
-    opacity: 0.85,
-  },
-})

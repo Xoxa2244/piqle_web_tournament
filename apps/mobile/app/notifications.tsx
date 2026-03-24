@@ -11,22 +11,15 @@ import { RemoteUserAvatar } from '../src/components/RemoteUserAvatar'
 import { PiqleLogo } from '../src/components/navigation/PiqleLogo'
 import { PageLayout } from '../src/components/navigation/PageLayout'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
-<<<<<<< Updated upstream
-import { spacing, type ThemePalette } from '../src/lib/theme'
-=======
 import { formatDateRange, formatLocation } from '../src/lib/formatters'
 import { palette, spacing } from '../src/lib/theme'
->>>>>>> Stashed changes
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
-import { useAppTheme } from '../src/providers/ThemeProvider'
 
 type FeedbackEntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 
 export default function NotificationsScreen() {
   const { token } = useAuth()
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const [devFeedbackPromptsEnabled, setDevFeedbackPromptsEnabled] = useState(false)
   const [activePrompt, setActivePrompt] = useState<{
@@ -327,17 +320,7 @@ export default function NotificationsScreen() {
           <Pressable key={item.id} onPress={() => onNotificationPress(item)}>
             <SurfaceCard style={styles.itemCard}>
               <View style={styles.itemHead}>
-<<<<<<< Updated upstream
-                <View style={styles.itemIcon}>
-                  <Feather
-                    name={item.type === 'FEEDBACK_PROMPT' ? 'star' : item.type === 'TOURNAMENT_INVITATION' ? 'mail' : 'bell'}
-                    size={16}
-                    color={colors.white}
-                  />
-                </View>
-=======
                 {renderItemIcon(item)}
->>>>>>> Stashed changes
                 <View style={{ flex: 1 }}>
                   <View style={styles.itemTitleRow}>
                     <Text style={styles.itemTitle}>{item.title}</Text>
@@ -376,8 +359,7 @@ export default function NotificationsScreen() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
-  StyleSheet.create({
+const styles = StyleSheet.create({
   page: { gap: spacing.md },
   devCard: { padding: spacing.md },
   devRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
@@ -389,14 +371,10 @@ const createStyles = (colors: ThemePalette) =>
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-<<<<<<< Updated upstream
-  itemTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  itemBody: { marginTop: 4, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
-=======
   appIcon: {
     backgroundColor: '#111827',
   },
@@ -551,5 +529,4 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'flex-start',
     paddingVertical: spacing.xs,
   },
->>>>>>> Stashed changes
 })

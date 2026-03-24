@@ -14,10 +14,9 @@ import { TopBar } from '../../src/components/navigation/TopBar'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
-import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
+import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
-import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -38,8 +37,6 @@ const parseNumberish = (value: unknown) => {
 }
 
 export default function PublicProfileScreen() {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string }>()
   const profileId = String(params.id ?? '')
   const { token, user } = useAuth()
@@ -227,12 +224,6 @@ export default function PublicProfileScreen() {
                 style={({ pressed }) => [pressed && styles.cardPressed]}
               >
                 <SurfaceCard style={styles.tournamentCard}>
-<<<<<<< Updated upstream
-                  <Text style={styles.tournamentTitle} numberOfLines={1}>{tournament.title}</Text>
-                  <View style={styles.tournamentMetaRow}>
-                    <Feather name="calendar" size={14} color={colors.textMuted} />
-                    <Text style={styles.tournamentMetaText}>{formatDate(tournament.startDate)}</Text>
-=======
                   <View style={styles.tournamentCardRow}>
                     <TournamentThumbnail imageUri={(tournament as any).image ?? null} size={48} />
                     <View style={styles.tournamentCardMain}>
@@ -242,7 +233,6 @@ export default function PublicProfileScreen() {
                         <Text style={styles.tournamentMetaText}>{formatDate(tournament.startDate)}</Text>
                       </View>
                     </View>
->>>>>>> Stashed changes
                   </View>
                 </SurfaceCard>
               </Pressable>
@@ -316,45 +306,44 @@ export default function PublicProfileScreen() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
-  StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.background },
   loadingWrap: { flex: 1, justifyContent: 'center', padding: spacing.lg },
   content: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { color: colors.text, fontSize: 20, fontWeight: '800' },
-  meta: { marginTop: 2, color: colors.textMuted, fontSize: 13 },
+  name: { color: palette.text, fontSize: 20, fontWeight: '800' },
+  meta: { marginTop: 2, color: palette.textMuted, fontSize: 13 },
   statsGrid: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
   statsItem: {
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  statsValue: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  statsLabel: { marginTop: 2, color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
+  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
   duprRow: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
   duprPill: {
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  duprPillLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  duprPillValue: { marginTop: 3, color: colors.text, fontSize: 22, fontWeight: '800' },
+  duprPillLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
+  duprPillValue: { marginTop: 3, color: palette.text, fontSize: 22, fontWeight: '800' },
   ratingRow: {
     marginTop: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  tdRatingTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
   tdRatingRowBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,7 +354,7 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     gap: 3,
   },
-  tdRatingValue: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  tdRatingValue: { color: palette.text, fontSize: 16, fontWeight: '800' },
   ratingPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,30 +370,26 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.86,
   },
   feedbackLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  feedbackValue: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  feedbackValueMuted: { color: colors.textMuted, fontSize: 16, fontWeight: '700' },
-  feedbackCount: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  feedbackValue: { color: palette.text, fontSize: 14, fontWeight: '700' },
+  feedbackValueMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },
+  feedbackCount: { color: palette.textMuted, fontSize: 13, fontWeight: '600' },
   feedbackInfoBtn: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
     alignSelf: 'flex-start',
   },
-  feedbackInfoBtnText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  feedbackInfoBtnText: { color: palette.text, fontSize: 12, fontWeight: '700' },
   feedbackRateBtn: {
     marginTop: spacing.md,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 11,
     alignItems: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
   },
-<<<<<<< Updated upstream
-  feedbackRateBtnText: { color: colors.white, fontSize: 14, fontWeight: '800' },
-  feedbackThanksText: { marginTop: spacing.md, color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-=======
   feedbackRateBtnText: { color: palette.white, fontSize: 14, fontWeight: '800' },
   feedbackThanksText: { marginTop: spacing.md, color: palette.textMuted, fontSize: 13, fontWeight: '600' },
   modalStarsRow: {
@@ -419,14 +404,10 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 24,
     fontWeight: '800',
   },
->>>>>>> Stashed changes
   sectionBlock: { gap: spacing.sm },
-  sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  emptyText: { color: colors.textMuted, fontSize: 13 },
+  sectionTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
+  emptyText: { color: palette.textMuted, fontSize: 13 },
   tournamentCard: { gap: 8 },
-<<<<<<< Updated upstream
-  tournamentTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-=======
   tournamentCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -437,9 +418,8 @@ const createStyles = (colors: ThemePalette) =>
     minWidth: 0,
   },
   tournamentTitle: { color: palette.text, fontSize: 15, fontWeight: '700' },
->>>>>>> Stashed changes
   tournamentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tournamentMetaText: { color: colors.textMuted, fontSize: 13 },
+  tournamentMetaText: { color: palette.textMuted, fontSize: 13 },
   cardPressed: { opacity: 0.9 },
   feedbackChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: spacing.xs },
   feedbackChip: {
@@ -497,4 +477,4 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
     textAlign: 'center',
   },
-  })
+})

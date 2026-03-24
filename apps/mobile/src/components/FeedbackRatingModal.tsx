@@ -109,14 +109,6 @@ export function FeedbackRatingModal({
       title={title}
       titleBelow={titleBelow}
       subtitle={subtitle}
-<<<<<<< Updated upstream
-      titleAccessory={
-        <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}>
-          <Feather name="x" size={20} color={colors.textMuted} />
-        </Pressable>
-      }
-=======
->>>>>>> Stashed changes
       footer={
         <AppConfirmActions
           intent="positive"
@@ -154,11 +146,7 @@ export function FeedbackRatingModal({
                 hitSlop={8}
                 style={({ pressed }) => [styles.starBtn, pressed && styles.starBtnPressed]}
               >
-<<<<<<< Updated upstream
-                <MaterialIcons name={active ? 'star' : 'star-border'} size={30} color={active ? '#F4B000' : colors.textMuted} />
-=======
-                <RatingStarIcon size={34} filled={active} color="#F4B000" inactiveColor={palette.textMuted} />
->>>>>>> Stashed changes
+                <RatingStarIcon size={34} filled={active} color="#F4B000" inactiveColor={colors.textMuted} />
               </Pressable>
             )
           })}

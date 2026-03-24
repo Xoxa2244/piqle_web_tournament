@@ -1,20 +1,12 @@
-<<<<<<< Updated upstream
-import { Feather, MaterialIcons } from '@expo/vector-icons'
-import { useMemo } from 'react'
-=======
 import { Feather } from '@expo/vector-icons'
->>>>>>> Stashed changes
+import { useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
 import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
-<<<<<<< Updated upstream
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
-=======
-import { palette, radius, spacing } from '../lib/theme'
 import { RatingStarIcon } from './icons/RatingStarIcon'
->>>>>>> Stashed changes
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 import { TournamentThumbnail } from './TournamentThumbnail'
 import { Pill, SurfaceCard } from './ui'
@@ -116,32 +108,37 @@ export const TournamentCard = ({
 }) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
-  const feeLabel = typeof tournament.entryFeeCents === 'number'
-    ? formatMoney(tournament.entryFeeCents)
-    : tournament.entryFee && Number(tournament.entryFee) > 0
-    ? `$${Number(tournament.entryFee).toFixed(2)}`
-    : 'Free'
+  const feeLabel =
+    typeof tournament.entryFeeCents === 'number'
+      ? formatMoney(tournament.entryFeeCents)
+      : tournament.entryFee && Number(tournament.entryFee) > 0
+        ? `$${Number(tournament.entryFee).toFixed(2)}`
+        : 'Free'
   const slotMetrics = getTournamentSlotMetrics(tournament)
   const teamCount = tournament.divisions.reduce((sum, division) => sum + Number(division._count?.teams ?? 0), 0)
   const teamCapacity = tournament.divisions.reduce((sum, division) => sum + Number(division.maxTeams ?? 0), 0)
   const playerCount = Number(tournament._count?.players ?? 0)
-  const hasSlotMetrics = slotMetrics.createdSlots !== null && slotMetrics.filledSlots !== null && slotMetrics.createdSlots > 0
+  const hasSlotMetrics =
+    slotMetrics.createdSlots !== null &&
+    slotMetrics.filledSlots !== null &&
+    slotMetrics.createdSlots > 0
   const progress = hasSlotMetrics
     ? Math.min(100, (slotMetrics.filledSlots! / slotMetrics.createdSlots!) * 100)
     : teamCapacity > 0
-    ? Math.min(100, (teamCount / teamCapacity) * 100)
-    : 0
+      ? Math.min(100, (teamCount / teamCapacity) * 100)
+      : 0
   const spotsLeft = hasSlotMetrics ? slotMetrics.openSlots : null
-  const occupancyLabel =
-    hasSlotMetrics
-      ? `${slotMetrics.filledSlots} / ${slotMetrics.createdSlots} spots`
-      : teamCapacity > 0
+  const occupancyLabel = hasSlotMetrics
+    ? `${slotMetrics.filledSlots} / ${slotMetrics.createdSlots} spots`
+    : teamCapacity > 0
       ? `${teamCount} / ${teamCapacity} teams`
       : playerCount > 0
-      ? `${playerCount} players registered`
-      : 'Open registration'
+        ? `${playerCount} players registered`
+        : 'Open registration'
   const progressWidth = progress > 0 ? `${Math.max(progress, 8)}%` : '0%'
-  const showPublicRating = Boolean(tournament.feedbackSummary?.canPublish && tournament.feedbackSummary?.averageRating)
+  const showPublicRating = Boolean(
+    tournament.feedbackSummary?.canPublish && tournament.feedbackSummary?.averageRating
+  )
 
   return (
     <Pressable onPress={onPress}>
@@ -161,18 +158,16 @@ export const TournamentCard = ({
                 {tournament.title}
               </Text>
               <View style={styles.formatRow}>
-<<<<<<< Updated upstream
-                <Feather name="award" size={14} color={colors.textMuted} />
-=======
-                <Feather name="award" size={14} color={palette.primary} />
->>>>>>> Stashed changes
+                <Feather name="award" size={14} color={colors.primary} />
                 <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
               </View>
             </View>
             {statusLabel || secondaryStatusLabel ? (
               <View style={styles.statusBadgeRow}>
                 {statusLabel ? <Pill label={statusLabel} tone={statusTone} /> : null}
-                {secondaryStatusLabel ? <Pill label={secondaryStatusLabel} tone={secondaryStatusTone} /> : null}
+                {secondaryStatusLabel ? (
+                  <Pill label={secondaryStatusLabel} tone={secondaryStatusTone} />
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -182,14 +177,12 @@ export const TournamentCard = ({
           <View style={styles.metaGrid}>
             <View style={styles.metaCell}>
               <Feather name="calendar" size={16} color={colors.primary} />
-              <Text style={styles.metaText}>{formatTournamentDateRange(tournament.startDate, tournament.endDate)}</Text>
+              <Text style={styles.metaText}>
+                {formatTournamentDateRange(tournament.startDate, tournament.endDate)}
+              </Text>
             </View>
             <View style={styles.metaCell}>
-<<<<<<< Updated upstream
-              <Feather name="map-pin" size={16} color={colors.accent} />
-=======
-              <Feather name="map-pin" size={16} color={palette.primary} />
->>>>>>> Stashed changes
+              <Feather name="map-pin" size={16} color={colors.primary} />
               <Text numberOfLines={1} style={styles.metaText}>
                 {formatLocation([tournament.venueName, tournament.venueAddress])}
               </Text>
@@ -210,18 +203,16 @@ export const TournamentCard = ({
               {tournament.divisions.slice(0, 3).map((division) => (
                 <Pill key={division.id} label={division.name} />
               ))}
-              {tournament.divisions.length > 3 ? <Pill label={`+${tournament.divisions.length - 3}`} /> : null}
+              {tournament.divisions.length > 3 ? (
+                <Pill label={`+${tournament.divisions.length - 3}`} />
+              ) : null}
             </View>
           ) : null}
 
           <View style={styles.progressBlock}>
             <View style={styles.progressHeader}>
               <View style={styles.progressMetric}>
-<<<<<<< Updated upstream
-                <Feather name="users" size={16} color={colors.textMuted} />
-=======
-                <Feather name="users" size={16} color={palette.primary} />
->>>>>>> Stashed changes
+                <Feather name="users" size={16} color={colors.primary} />
                 <Text style={styles.progressText}>{occupancyLabel}</Text>
               </View>
               <View style={styles.priceTag}>
@@ -251,165 +242,166 @@ export const TournamentCard = ({
   )
 }
 
-const createStyles = (colors: ThemePalette) => StyleSheet.create({
-  hero: {
-    position: 'relative',
-    overflow: 'hidden',
-    padding: spacing.md,
-    minHeight: 88,
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.brandPrimaryBorder,
-  },
-  heroGradient: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-  },
-  heroHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  heroMain: {
-    flex: 1,
-    minWidth: 0,
-  },
-  statusBadgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 8,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  formatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-  },
-  formatText: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  body: {
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  metaGrid: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  metaCell: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  metaText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 20,
-    flex: 1,
-  },
-  divisionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 9999,
-    backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  ratingText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  ratingTextMuted: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  progressBlock: {
-    gap: 10,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  progressMetric: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  progressText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    flexShrink: 1,
-  },
-  priceTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  priceText: {
-    color: colors.primary,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-  },
-  footerRow: {
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  footer: {
-    color: colors.textMuted,
-    fontSize: 13,
-    flex: 1,
-  },
-  footerAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  footerActionText: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-})
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
+    hero: {
+      position: 'relative',
+      overflow: 'hidden',
+      padding: spacing.md,
+      minHeight: 88,
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.brandPrimaryBorder,
+    },
+    heroGradient: {
+      ...StyleSheet.absoluteFillObject,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+    },
+    heroHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+    },
+    heroMain: {
+      flex: 1,
+      minWidth: 0,
+    },
+    statusBadgeRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+      gap: 8,
+    },
+    title: {
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: '700',
+    },
+    formatRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 6,
+    },
+    formatText: {
+      color: colors.textMuted,
+      fontSize: 13,
+    },
+    body: {
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    metaGrid: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    metaCell: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+    },
+    metaText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 20,
+      flex: 1,
+    },
+    divisionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    ratingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 9999,
+      backgroundColor: colors.surfaceElevated,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    ratingText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    ratingTextMuted: {
+      color: colors.textMuted,
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    progressBlock: {
+      gap: 10,
+    },
+    progressHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+    },
+    progressMetric: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flex: 1,
+    },
+    progressText: {
+      color: colors.textMuted,
+      fontSize: 13,
+      flexShrink: 1,
+    },
+    priceTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    priceText: {
+      color: colors.primary,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    progressTrack: {
+      width: '100%',
+      height: 6,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceMuted,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: radius.pill,
+      backgroundColor: colors.primary,
+    },
+    footerRow: {
+      paddingTop: spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+    },
+    footer: {
+      color: colors.textMuted,
+      fontSize: 13,
+      flex: 1,
+    },
+    footerAction: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    footerActionText: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+  })

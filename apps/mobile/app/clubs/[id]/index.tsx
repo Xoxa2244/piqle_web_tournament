@@ -1,15 +1,9 @@
-<<<<<<< Updated upstream
-import { Feather, MaterialIcons } from '@expo/vector-icons'
-import { useCallback, useMemo, useState } from 'react'
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
-=======
 import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
 import { useCallback, useState } from 'react'
 import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native'
->>>>>>> Stashed changes
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -39,14 +33,11 @@ import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGr
 import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
-import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
+import { palette, radius, spacing } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
-import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 
 export default function ClubDetailScreen() {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string }>()
   const clubId = params.id
   const { token } = useAuth()
@@ -239,32 +230,6 @@ export default function ClubDetailScreen() {
     />
   )
 
-<<<<<<< Updated upstream
-  const Hero = () => (
-    <View style={styles.hero}>
-      {club.logoUrl ? (
-        <Image source={{ uri: club.logoUrl }} style={styles.heroImage} />
-      ) : (
-        <OptionalLinearGradient
-          colors={[colors.surfaceMuted, colors.surfaceElevated, 'rgba(10,10,10,0.06)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroImage}
-        />
-      )}
-      <View style={styles.heroOverlay} />
-
-      <View style={styles.heroTopActions}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
-        >
-          <Feather name="arrow-left" size={18} color={colors.white} />
-        </Pressable>
-        <View style={{ flex: 1 }} />
-        <Pressable
-              onPress={() =>
-=======
   const hero = (
     <View style={styles.heroWrap}>
       <View style={styles.clubMiniBar}>
@@ -279,31 +244,10 @@ export default function ClubDetailScreen() {
           <Pressable
             onPress={() => {
               void runTopBarAction(() =>
->>>>>>> Stashed changes
                 router.push({
                   pathname: '/chats/club/[clubId]',
                   params: { clubId: club.id, name: club.name },
                 })
-<<<<<<< Updated upstream
-              }
-          style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
-        >
-              <Feather name="message-circle" size={18} color={colors.white} />
-        </Pressable>
-        <Pressable
-          onPress={() => Linking.openURL(buildWebUrl(`/clubs/${club.id}`))}
-          style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
-        >
-          <Feather name="share-2" size={18} color={colors.white} />
-        </Pressable>
-        {isAuthenticated && club.isFollowing && !club.isAdmin ? (
-          <Pressable
-            onPress={() => setLeaveClubSheetOpen(true)}
-            style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
-            accessibilityLabel="Leave club"
-          >
-            <Feather name="log-out" size={18} color={colors.white} />
-=======
               )
             }}
             style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
@@ -314,7 +258,6 @@ export default function ClubDetailScreen() {
                 <Text style={styles.clubChatUnreadText}>{unreadClubChatCount > 99 ? '99+' : String(unreadClubChatCount)}</Text>
               </View>
             ) : null}
->>>>>>> Stashed changes
           </Pressable>
           <Pressable
             onPress={() => {
@@ -550,12 +493,6 @@ export default function ClubDetailScreen() {
               value={membersSearch}
               onChangeText={setMembersSearch}
               placeholder="Search members..."
-<<<<<<< Updated upstream
-              autoCapitalize="none"
-              containerStyle={styles.membersSearch}
-              left={<Feather name="search" size={18} color={colors.textMuted} />}
-=======
->>>>>>> Stashed changes
             />
           </View>
 
@@ -623,7 +560,7 @@ export default function ClubDetailScreen() {
                             ]}
                             hitSlop={10}
                           >
-                            <Feather name="check" size={18} color={colors.white} />
+                            <Feather name="check" size={18} color={palette.white} />
                           </Pressable>
                           <Pressable
                             onPress={() => rejectJoinRequest.mutate({ clubId, userId: req.userId })}
@@ -635,7 +572,7 @@ export default function ClubDetailScreen() {
                             ]}
                             hitSlop={10}
                           >
-                            <Feather name="x" size={18} color={colors.danger} />
+                            <Feather name="x" size={18} color={palette.danger} />
                           </Pressable>
                         </View>
                       </View>
@@ -729,7 +666,7 @@ export default function ClubDetailScreen() {
                           hitSlop={10}
                           style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
                         >
-                          <Feather name="more-vertical" size={18} color={colors.textMuted} />
+                          <Feather name="more-vertical" size={18} color={palette.textMuted} />
                         </Pressable>
                       </View>
                     </SurfaceCard>
@@ -814,7 +751,7 @@ export default function ClubDetailScreen() {
                   onPress={() => setShowNewPostForm(true)}
                   style={({ pressed }) => [styles.createPostButton, pressed && styles.createPostButtonPressed]}
                 >
-                  <Feather name="plus" size={20} color={colors.primary} />
+                  <Feather name="plus" size={20} color={palette.primary} />
                   <Text style={styles.createPostButtonText}>Create new post</Text>
                 </Pressable>
               )
@@ -895,14 +832,14 @@ export default function ClubDetailScreen() {
                                 }}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
-                                <Feather name="edit-2" size={16} color={colors.primary} />
+                                <Feather name="edit-2" size={16} color={palette.primary} />
                               </Pressable>
                               <Pressable
                                 onPress={() => setAnnouncementToDelete(announcement.id)}
                                 disabled={deleteAnnouncement.isPending}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
-                                <Feather name="trash-2" size={16} color={colors.danger} />
+                                <Feather name="trash-2" size={16} color={palette.danger} />
                               </Pressable>
                             </View>
                           ) : null}
@@ -915,7 +852,7 @@ export default function ClubDetailScreen() {
             ) : (
               <SurfaceCard tone="soft" style={styles.emptyShell}>
                 <View style={styles.emptyIcon}>
-                  <Feather name="calendar" size={28} color={colors.textMuted} />
+                  <Feather name="calendar" size={28} color={palette.textMuted} />
                 </View>
                 <Text style={styles.emptyTitle}>Welcome to the Club!</Text>
                 <Text style={styles.emptyBody}>Stay updated with announcements and events</Text>
@@ -945,7 +882,7 @@ export default function ClubDetailScreen() {
                 subtitle="Upcoming club events"
               />
               <View style={styles.calendarStub}>
-                <Feather name="calendar" size={20} color={colors.primary} />
+                <Feather name="calendar" size={20} color={palette.primary} />
                 <Text style={styles.calendarStubText}>Calendar view coming next.</Text>
               </View>
             </SurfaceCard>
@@ -961,48 +898,6 @@ export default function ClubDetailScreen() {
               />
               {club.tournaments.length > 0 ? (
                 club.tournaments.slice(0, 5).map((tournament) => (
-<<<<<<< Updated upstream
-                  <Pressable
-                    key={tournament.id}
-                    onPress={() => router.push(`/tournaments/${tournament.id}`)}
-                    style={({ pressed }) => [pressed && { opacity: 0.9 }]}
-                  >
-                    <SurfaceCard style={styles.eventCard}>
-                      <View style={styles.eventRow}>
-                        <View style={styles.eventIcon}>
-                          <Feather name="award" size={20} color={colors.primary} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <View style={styles.eventTopRow}>
-                            <Text style={styles.eventTitle} numberOfLines={1}>
-                              {tournament.title}
-                            </Text>
-                            <View style={styles.eventStatusBadges}>
-                              <Pill label="Open" tone="success" />
-                            </View>
-                          </View>
-                          <View style={styles.eventMetaRow}>
-                            <Feather name="calendar" size={14} color={colors.textMuted} />
-                            <Text style={styles.eventMeta}>
-                              {formatDateRange(tournament.startDate, tournament.endDate)}
-                            </Text>
-                          </View>
-                          <View style={styles.eventMetaRow}>
-                            <Feather name="map-pin" size={14} color={colors.textMuted} />
-                            <Text numberOfLines={1} style={styles.eventMeta}>
-                              {formatLocation([club.city, club.state]) || 'Location not set'}
-                            </Text>
-                          </View>
-                          {tournament.format ? (
-                            <View style={styles.badgeRow}>
-                              <Pill label={formatTournamentFormat(tournament.format)} />
-                            </View>
-                          ) : null}
-                        </View>
-                      </View>
-                    </SurfaceCard>
-                  </Pressable>
-=======
                   <View key={tournament.id}>
                     <ClubTournamentCard
                       tournament={tournament as any}
@@ -1011,7 +906,6 @@ export default function ClubDetailScreen() {
                       onPress={() => router.push(`/tournaments/${tournament.id}`)}
                     />
                   </View>
->>>>>>> Stashed changes
                 ))
               ) : (
                 <SurfaceCard tone="soft" style={styles.emptyUpcomingCard}>
@@ -1098,11 +992,10 @@ export default function ClubDetailScreen() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
-  StyleSheet.create({
+const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   contentScroll: {
     flex: 1,
@@ -1139,24 +1032,24 @@ const createStyles = (colors: ThemePalette) =>
     paddingVertical: 5,
   },
   feedbackValue: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 16,
     fontWeight: '700',
   },
   feedbackValueMuted: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 16,
     fontWeight: '600',
   },
   feedbackCount: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   feedbackInfoBtn: {
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -1164,7 +1057,7 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.85,
   },
   feedbackInfoBtnText: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1173,18 +1066,18 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
   },
   feedbackRateBtnPressed: {
     opacity: 0.9,
   },
   feedbackRateBtnText: {
-    color: colors.white,
+    color: palette.white,
     fontSize: 15,
     fontWeight: '700',
   },
   feedbackThanksText: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
   feedbackChipsWrap: {
@@ -1215,22 +1108,15 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
   },
   feedbackEmptyText: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
-<<<<<<< Updated upstream
-  hero: {
-    height: 240,
-    position: 'relative',
-    backgroundColor: colors.surfaceMuted,
-=======
   modalStarsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingTop: spacing.xs,
     marginBottom: spacing.sm,
->>>>>>> Stashed changes
   },
   modalRatingValueInline: {
     marginLeft: 8,
@@ -1281,15 +1167,9 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'center',
     backgroundColor: palette.primary,
   },
-<<<<<<< Updated upstream
-  heroTitle: {
-    color: colors.white,
-    fontSize: 24,
-=======
   clubChatUnreadText: {
     color: palette.white,
     fontSize: 10,
->>>>>>> Stashed changes
     fontWeight: '800',
   },
   clubHeroCard: {
@@ -1430,7 +1310,7 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: spacing.lg,
   },
   membershipHint: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 14,
     paddingVertical: spacing.sm,
   },
@@ -1439,16 +1319,6 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: spacing.lg,
     gap: 12,
   },
-<<<<<<< Updated upstream
-  membersSearch: {
-    borderRadius: 999,
-    minHeight: 56,
-    paddingHorizontal: 18,
-    borderColor: 'transparent',
-    backgroundColor: colors.surfaceElevated,
-  },
-=======
->>>>>>> Stashed changes
   membersSearchWrap: {
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1464,7 +1334,7 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'space-between',
   },
   pendingHeaderTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.2,
@@ -1476,10 +1346,10 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.chip,
+    backgroundColor: palette.chip,
   },
   pendingCountText: {
-    color: colors.chipText,
+    color: palette.chipText,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -1490,7 +1360,7 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: colors.surface,
+    backgroundColor: palette.surface,
     shadowOpacity: 0,
     elevation: 0,
     padding: spacing.md,
@@ -1509,13 +1379,13 @@ const createStyles = (colors: ThemePalette) =>
     minWidth: 0,
   },
   pendingName: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '800',
     fontSize: 16,
   },
   pendingWhen: {
     marginTop: 4,
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1535,10 +1405,10 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.9,
   },
   pendingIconBtnApprove: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
   },
   pendingIconBtnReject: {
-    backgroundColor: colors.surface,
+    backgroundColor: palette.surface,
     borderWidth: 1,
     borderColor: 'rgba(255, 0, 110, 0.28)',
   },
@@ -1553,13 +1423,13 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'space-between',
   },
   membersHeaderTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   membersHeaderCount: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1570,14 +1440,14 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: colors.surface,
+    backgroundColor: palette.surface,
     shadowOpacity: 0,
     elevation: 0,
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
   memberCardOwner: {
-    borderColor: colors.primary,
+    borderColor: palette.primary,
   },
   memberCardRow: {
     flexDirection: 'row',
@@ -1601,18 +1471,18 @@ const createStyles = (colors: ThemePalette) =>
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
-    backgroundColor: colors.brandPrimaryTint,
+    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: palette.brandPrimaryTint,
   },
   rolePillText: {
-    color: colors.primary,
+    color: palette.primary,
     fontWeight: '800',
     fontSize: 12,
     textTransform: 'lowercase',
   },
   memberMetaText: {
     marginTop: 6,
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
@@ -1636,22 +1506,22 @@ const createStyles = (colors: ThemePalette) =>
     elevation: 0,
   },
   body: {
-    color: colors.text,
+    color: palette.text,
     lineHeight: 22,
   },
   announcementTitle: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '700',
     fontSize: 20,
     marginBottom: spacing.sm,
   },
   smallMeta: {
     marginTop: spacing.sm,
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 12,
   },
   postFormLabel: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '700',
     fontSize: 15,
     marginBottom: spacing.sm,
@@ -1666,24 +1536,24 @@ const createStyles = (colors: ThemePalette) =>
   },
   postFormButton: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
   postFormButtonSecondary: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: palette.surfaceMuted,
   },
   postFormButtonPressed: {
     opacity: 0.9,
   },
   postFormButtonText: {
-    color: colors.white,
+    color: palette.white,
     fontWeight: '700',
     fontSize: 15,
   },
   postFormButtonSecondaryText: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '600',
     fontSize: 15,
   },
@@ -1696,14 +1566,14 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
-    backgroundColor: colors.brandPrimaryTint,
+    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: palette.brandPrimaryTint,
   },
   createPostButtonPressed: {
     opacity: 0.9,
   },
   createPostButtonText: {
-    color: colors.primary,
+    color: palette.primary,
     fontWeight: '700',
     fontSize: 15,
   },
@@ -1721,21 +1591,21 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 10,
   },
   editFormBtnCancel: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: palette.surfaceMuted,
   },
   editFormBtnSave: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
   },
   editFormBtnPressed: {
     opacity: 0.9,
   },
   editFormBtnCancelText: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '600',
     fontSize: 14,
   },
   editFormBtnSaveText: {
-    color: colors.white,
+    color: palette.white,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -1764,19 +1634,19 @@ const createStyles = (colors: ThemePalette) =>
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: palette.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 20,
     fontWeight: '800',
   },
   emptyBody: {
     marginTop: 6,
-    color: colors.textMuted,
+    color: palette.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -1788,11 +1658,11 @@ const createStyles = (colors: ThemePalette) =>
     padding: spacing.md,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
   },
   calendarStubText: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontWeight: '600',
   },
   upcomingSection: {
@@ -1800,7 +1670,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 12,
   },
   viewAll: {
-    color: colors.primary,
+    color: palette.primary,
     fontWeight: '700',
   },
   emptyUpcomingCard: {
@@ -1828,9 +1698,9 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.brandPrimaryTint,
+    backgroundColor: palette.brandPrimaryTint,
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
+    borderColor: palette.brandPrimaryBorder,
   },
   eventTopRow: {
     flexDirection: 'row',
@@ -1839,7 +1709,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 8,
   },
   eventTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
@@ -1857,7 +1727,7 @@ const createStyles = (colors: ThemePalette) =>
     marginTop: 6,
   },
   eventMeta: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -1874,7 +1744,7 @@ const createStyles = (colors: ThemePalette) =>
     paddingVertical: 8,
   },
   memberName: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '800',
     fontSize: 17,
   },
@@ -1882,10 +1752,10 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: colors.chip,
+    backgroundColor: palette.chip,
   },
   adminPillText: {
-    color: colors.chipText,
+    color: palette.chipText,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -1899,36 +1769,35 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 10,
   },
   actionBtnPrimary: {
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
   },
   actionBtnSecondary: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: palette.surfaceMuted,
   },
   actionBtnDanger: {
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: palette.dangerSoft,
   },
   actionBtnPressed: {
     opacity: 0.9,
   },
   actionBtnPrimaryText: {
-    color: colors.white,
+    color: palette.white,
     fontWeight: '700',
     fontSize: 13,
   },
   actionBtnSecondaryText: {
-    color: colors.text,
+    color: palette.text,
     fontWeight: '600',
     fontSize: 13,
   },
   actionBtnDangerText: {
-    color: colors.danger,
+    color: palette.danger,
     fontWeight: '700',
     fontSize: 13,
   },
   banReason: {
     marginTop: 4,
     fontSize: 12,
-    color: colors.textMuted,
+    color: palette.textMuted,
   },
-  })
-
+})

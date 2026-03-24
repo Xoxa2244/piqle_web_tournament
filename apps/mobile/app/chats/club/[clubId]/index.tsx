@@ -1,10 +1,5 @@
-<<<<<<< Updated upstream
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
-=======
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
->>>>>>> Stashed changes
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
@@ -19,17 +14,14 @@ import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
-import { spacing, type ThemePalette } from '../../../../src/lib/theme'
+import { palette, spacing } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
-import { useAppTheme } from '../../../../src/providers/ThemeProvider'
 
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function ClubChatScreen() {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ clubId: string; name?: string }>()
   const clubId = params.clubId
   const clubName = params.name || 'Club chat'
@@ -239,8 +231,7 @@ export default function ClubChatScreen() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
-  StyleSheet.create({
+const styles = StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -248,7 +239,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 0,
   },
   error: {
-    color: colors.danger,
+    color: palette.danger,
     lineHeight: 20,
   },
   scrollContent: {
@@ -290,7 +281,7 @@ const createStyles = (colors: ThemePalette) =>
     letterSpacing: 0.5,
   },
   feedbackPromptTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -300,7 +291,7 @@ const createStyles = (colors: ThemePalette) =>
     letterSpacing: 2,
   },
   feedbackPromptBody: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
-  })
+})

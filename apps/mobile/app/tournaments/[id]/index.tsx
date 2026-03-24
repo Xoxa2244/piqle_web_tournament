@@ -562,16 +562,7 @@ export default function TournamentDetailScreen() {
 
           <View style={styles.heroHeader}>
             <View style={styles.heroActions}>
-<<<<<<< Updated upstream
-              <Pressable
-                onPress={() => router.back()}
-                style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
-              >
-                <Feather name="arrow-left" size={20} color={colors.white} />
-              </Pressable>
-=======
               <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.heroActionButton} />
->>>>>>> Stashed changes
               <View style={styles.heroActionGroup}>
                 <Pressable
                   onPress={() => setIsFavorite((current) => !current)}

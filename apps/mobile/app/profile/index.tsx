@@ -13,10 +13,9 @@ import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
 import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
-import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
+import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
-import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -59,9 +58,9 @@ const toBase64 = (value: string) => {
   return out
 }
 
-const statusMeta = (status: string | null | undefined, hasPrivilegedAccess: boolean, colors: ThemePalette) => {
+const statusMeta = (status?: string | null, hasPrivilegedAccess = false) => {
   if (hasPrivilegedAccess) {
-    return { label: 'Admin', backgroundColor: colors.brandPrimaryTint, textColor: colors.primary }
+    return { label: 'Admin', backgroundColor: 'rgba(40, 205, 65, 0.12)', textColor: palette.primary }
   }
 
   if (status === 'waitlisted') {
@@ -69,24 +68,20 @@ const statusMeta = (status: string | null | undefined, hasPrivilegedAccess: bool
   }
 
   if (status === 'active') {
-    return { label: 'Registered', backgroundColor: colors.brandPrimaryTint, textColor: colors.primary }
+    return { label: 'Registered', backgroundColor: 'rgba(40, 205, 65, 0.12)', textColor: palette.primary }
   }
 
-  return { label: 'Open', backgroundColor: colors.surfaceMuted, textColor: colors.text }
+  return { label: 'Open', backgroundColor: palette.surfaceMuted, textColor: palette.text }
 }
 
 const ProfileAvatar = ({
   label,
   image,
   onCameraPress,
-  colors,
-  styles,
 }: {
   label: string
   image?: string | null
   onCameraPress?: () => void
-  colors: ThemePalette
-  styles: ReturnType<typeof createStyles>
 }) => {
   const size = 96
 
@@ -95,7 +90,7 @@ const ProfileAvatar = ({
       <RemoteUserAvatar uri={image} size={size} fallback="initials" initialsLabel={label} />
 
       <Pressable onPress={onCameraPress} style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}>
-        <Feather name="camera" size={14} color={colors.white} />
+        <Feather name="camera" size={14} color={palette.white} />
       </Pressable>
     </View>
   )
@@ -106,15 +101,11 @@ const ProfileActionButton = ({
   icon,
   onPress,
   variant = 'outline',
-  colors,
-  styles,
 }: {
   label: string
   icon?: keyof typeof Feather.glyphMap
   onPress?: () => void
   variant?: 'outline' | 'ghost'
-  colors: ThemePalette
-  styles: ReturnType<typeof createStyles>
 }) => (
   <Pressable
     onPress={onPress}
@@ -124,15 +115,13 @@ const ProfileActionButton = ({
       pressed && styles.profileActionButtonPressed,
     ]}
   >
-    {icon ? <Feather name={icon} size={16} color={colors.text} /> : null}
+    {icon ? <Feather name={icon} size={16} color={palette.text} /> : null}
     <Text style={styles.profileActionLabel}>{label}</Text>
   </Pressable>
 )
 
 export default function ProfileTab() {
   const { token, user } = useAuth()
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
@@ -236,11 +225,11 @@ export default function ProfileTab() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[colors.background, colors.surfaceElevated]} style={styles.fill}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             <SurfaceCard tone="hero" style={styles.guestCard}>
               <View style={styles.guestIconWrap}>
-                <Feather name="user" size={22} color={colors.primary} />
+                <Feather name="user" size={22} color={palette.primary} />
               </View>
               <Text style={styles.guestTitle}>You are browsing as a guest</Text>
               <Text style={styles.guestBody}>
@@ -261,7 +250,7 @@ export default function ProfileTab() {
   if (profileQuery.isLoading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[colors.background, colors.surfaceElevated]} style={styles.fill}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
           <View style={styles.loadingWrap}>
             <LoadingBlock label="Loading profile…" />
           </View>
@@ -273,7 +262,7 @@ export default function ProfileTab() {
   if (!profile) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[colors.background, colors.surfaceElevated]} style={styles.fill}>
+        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
           <View style={styles.loadingWrap}>
             <EmptyState title="Profile unavailable" body="We could not load your player profile right now." />
           </View>
@@ -314,7 +303,7 @@ export default function ProfileTab() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <OptionalLinearGradient colors={[colors.background, colors.surfaceElevated]} style={styles.fill}>
+      <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.headerCard}>
             <View style={styles.headerTopRow}>
@@ -322,19 +311,15 @@ export default function ProfileTab() {
                 label={profile.name || profile.email}
                 image={profile.image}
                 onCameraPress={() => router.push('/profile/edit')}
-                colors={colors}
-                styles={styles}
               />
 
               <View style={styles.headerActions}>
-                <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} colors={colors} styles={styles} />
+                <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} />
                 <ProfileActionButton
                   label="Settings"
                   icon="settings"
                   variant="ghost"
                   onPress={() => router.push('/profile/settings')}
-                  colors={colors}
-                  styles={styles}
                 />
               </View>
             </View>
@@ -381,7 +366,7 @@ export default function ProfileTab() {
             <View style={styles.duprCardOuter}>
               <View style={styles.duprHeaderRow}>
                 <View style={styles.duprCircleIcon}>
-                  <Feather name="trending-up" size={20} color={colors.white} />
+                  <Feather name="trending-up" size={20} color={palette.white} />
                 </View>
                 <Text style={styles.duprRatingTitle}>DUPR Rating</Text>
               </View>
@@ -402,8 +387,6 @@ export default function ProfileTab() {
                   label={linkDupr.isPending ? 'Connecting...' : 'Connect DUPR'}
                   icon="link"
                   onPress={startDuprConnect}
-                  colors={colors}
-                  styles={styles}
                 />
               ) : null}
             </View>
@@ -448,14 +431,6 @@ export default function ProfileTab() {
             open={showDuprConnect}
             onClose={() => setShowDuprConnect(false)}
             title="Connect DUPR"
-<<<<<<< Updated upstream
-            titleAccessory={
-              <Pressable onPress={() => setShowDuprConnect(false)} hitSlop={12}>
-                <Feather name="x" size={20} color={colors.textMuted} />
-              </Pressable>
-            }
-=======
->>>>>>> Stashed changes
           >
             {duprLoginUrl ? (
               <WebView
@@ -492,7 +467,7 @@ export default function ProfileTab() {
               />
             ) : (
               <View style={{ paddingVertical: spacing.md }}>
-                <Text style={{ color: colors.textMuted }}>DUPR client key is missing.</Text>
+                <Text style={{ color: palette.textMuted }}>DUPR client key is missing.</Text>
               </View>
             )}
           </AppBottomSheet>
@@ -560,7 +535,7 @@ export default function ProfileTab() {
             {recentTournaments.map((tournament) => {
               const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
               const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
-              const status = statusMeta(tournament.myStatus, hasPrivilegedAccess, colors)
+              const status = statusMeta(tournament.myStatus, hasPrivilegedAccess)
               const divisionLabel =
                 tournament.divisions?.[0]?.name ||
                 `${Math.max(Number(tournament.divisions?.length ?? 0), 1)} division${Number(tournament.divisions?.length ?? 0) === 1 ? '' : 's'}`
@@ -585,7 +560,7 @@ export default function ProfileTab() {
                     </View>
 
                     <View style={styles.activityMetaRow}>
-                      <Feather name="calendar" size={14} color={colors.textMuted} />
+                      <Feather name="calendar" size={14} color={palette.textMuted} />
                       <Text style={styles.activityMetaText}>{formatDate(tournament.startDate)}</Text>
                     </View>
                   </SurfaceCard>
@@ -601,11 +576,10 @@ export default function ProfileTab() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
-  StyleSheet.create({
+const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: palette.background,
   },
   fill: {
     flex: 1,
@@ -630,16 +604,16 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.brandPrimaryTint,
+    backgroundColor: palette.brandPrimaryTint,
   },
   guestTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.5,
   },
   guestBody: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     lineHeight: 21,
   },
   headerCard: {
@@ -662,9 +636,9 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: palette.primary,
     borderWidth: 3,
-    borderColor: colors.surface,
+    borderColor: palette.surface,
   },
   cameraButtonPressed: {
     opacity: 0.88,
@@ -684,9 +658,9 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: 16,
   },
   profileActionButtonOutline: {
-    backgroundColor: colors.surface,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: palette.border,
   },
   profileActionButtonGhost: {
     backgroundColor: 'transparent',
@@ -695,7 +669,7 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.85,
   },
   profileActionLabel: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -710,33 +684,33 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  statsValue: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  statsLabel: { marginTop: 2, color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
+  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
   profileDuprRow: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
   profileDuprPill: {
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
-  profileDuprPillLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  profileDuprPillValue: { marginTop: 3, color: colors.text, fontSize: 22, fontWeight: '800' },
+  profileDuprPillLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
+  profileDuprPillValue: { marginTop: 3, color: palette.text, fontSize: 22, fontWeight: '800' },
   userName: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.9,
   },
   userHandle: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 15,
   },
   userMetaRow: {
@@ -747,18 +721,18 @@ const createStyles = (colors: ThemePalette) =>
     marginTop: 4,
   },
   userMetaText: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
   userMetaSeparator: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
   /** DUPR card — match design spec (mint container, white rating pills) */
   duprCardOuter: {
-    backgroundColor: colors.hero,
+    backgroundColor: '#f0faf4',
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
+    borderColor: 'rgba(52, 199, 89, 0.28)',
     borderRadius: radius.lg,
     padding: spacing.md,
     gap: spacing.md,
@@ -774,10 +748,10 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: '#34d399',
   },
   duprRatingTitle: {
-    color: colors.textMuted,
+    color: '#6b7280',
     fontSize: 16,
     fontWeight: '500',
     letterSpacing: -0.2,
@@ -789,22 +763,22 @@ const createStyles = (colors: ThemePalette) =>
   duprPill: {
     flex: 1,
     minWidth: 0,
-    backgroundColor: colors.surface,
+    backgroundColor: palette.white,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(10, 10, 10, 0.07)',
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingTop: 14,
     paddingBottom: 18,
   },
   duprPillLabel: {
-    color: colors.textMuted,
+    color: '#9ca3af',
     fontSize: 13,
     fontWeight: '500',
     marginBottom: 10,
   },
   duprPillValue: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 30,
     fontWeight: '800',
     letterSpacing: -0.8,
@@ -812,7 +786,7 @@ const createStyles = (colors: ThemePalette) =>
     alignSelf: 'flex-start',
     fontVariant: ['tabular-nums'],
   },
-  tdRatingTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
   tdRatingRowBtn: {
     marginTop: spacing.md,
     flexDirection: 'row',
@@ -825,8 +799,8 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     gap: 3,
   },
-  tdRatingValue: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  tdRatingMuted: { color: colors.textMuted, fontSize: 16, fontWeight: '700' },
+  tdRatingValue: { color: palette.text, fontSize: 16, fontWeight: '800' },
+  tdRatingMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },
   tdAchievementsWordsRow: {
     marginTop: spacing.sm,
     flexDirection: 'row',
@@ -836,13 +810,13 @@ const createStyles = (colors: ThemePalette) =>
   tdAchievementWordChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
-    backgroundColor: colors.brandPrimaryTint,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   tdAchievementWordText: {
-    color: colors.primary,
+    color: '#1E7A32',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -862,17 +836,17 @@ const createStyles = (colors: ThemePalette) =>
   feedbackChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.brandPrimaryBorder,
-    backgroundColor: colors.brandPrimaryTint,
+    borderColor: '#9CD9A3',
+    backgroundColor: '#E8F7EB',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  feedbackChipText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  feedbackChipText: { color: '#1E7A32', fontSize: 13, fontWeight: '600' },
   sectionBlock: {
     gap: spacing.md,
   },
   sectionTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -880,12 +854,12 @@ const createStyles = (colors: ThemePalette) =>
     gap: 8,
   },
   emptyCardTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 17,
     fontWeight: '700',
   },
   emptyCardBody: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     lineHeight: 21,
   },
   activityCard: {
@@ -902,13 +876,13 @@ const createStyles = (colors: ThemePalette) =>
     minWidth: 0,
   },
   activityTitle: {
-    color: colors.text,
+    color: palette.text,
     fontSize: 16,
     fontWeight: '700',
   },
   activitySubtitle: {
     marginTop: 4,
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
   activityStatusBadge: {
@@ -926,7 +900,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 8,
   },
   activityMetaText: {
-    color: colors.textMuted,
+    color: palette.textMuted,
     fontSize: 13,
   },
   cardPressed: {
@@ -935,7 +909,7 @@ const createStyles = (colors: ThemePalette) =>
   footerSpace: {
     height: 16,
   },
-  })
+})
 
 
 
