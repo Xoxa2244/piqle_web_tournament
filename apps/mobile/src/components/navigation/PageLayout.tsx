@@ -1,11 +1,13 @@
 import type { PropsWithChildren } from 'react'
 import React from 'react'
+import { useMemo } from 'react'
 import { ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from '../chatAmbient'
 import { PickleRefreshScrollView } from '../PickleRefreshScrollView'
-import { palette, spacing } from '../../lib/theme'
+import { spacing, type ThemePalette } from '../../lib/theme'
+import { useAppTheme } from '../../providers/ThemeProvider'
 import { TopBar } from './TopBar'
 
 export type PageLayoutPullToRefresh = {
@@ -34,6 +36,8 @@ export const PageLayout = ({
   /** Триггер анимации лого в TopBar (главная + pull-to-refresh) */
   topBarRefreshPulseKey?: number
 }>) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const main = (
     <>
       <TopBar
@@ -98,10 +102,10 @@ export const PageLayout = ({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   chatAmbientRoot: {
     flex: 1,

@@ -4,8 +4,9 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
 import { FEEDBACK_API_ENABLED } from '../lib/config'
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { trpc } from '../lib/trpc'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 type EntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 const DEV_COMMENT_LIMIT = 400
@@ -57,6 +58,8 @@ export function FeedbackRatingModal({
   subtitle?: string
   onSubmitted?: () => void
 }) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const [rating, setRating] = useState<number>(0)
   const [chips, setChips] = useState<string[]>([])
   const [comment, setComment] = useState('')
@@ -103,7 +106,7 @@ export function FeedbackRatingModal({
       subtitle={subtitle}
       titleAccessory={
         <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}>
-          <Feather name="x" size={20} color={palette.textMuted} />
+          <Feather name="x" size={20} color={colors.textMuted} />
         </Pressable>
       }
       footer={
@@ -142,7 +145,7 @@ export function FeedbackRatingModal({
                 hitSlop={8}
                 style={({ pressed }) => [styles.starBtn, pressed && styles.starBtnPressed]}
               >
-                <MaterialIcons name={active ? 'star' : 'star-border'} size={30} color={active ? '#F4B000' : palette.textMuted} />
+                <MaterialIcons name={active ? 'star' : 'star-border'} size={30} color={active ? '#F4B000' : colors.textMuted} />
               </Pressable>
             )
           })}
@@ -177,7 +180,7 @@ export function FeedbackRatingModal({
               value={comment}
               onChangeText={(text) => setComment(text.slice(0, commentLimit))}
               placeholder="Optional comment"
-              placeholderTextColor={palette.textMuted}
+              placeholderTextColor={colors.textMuted}
               multiline
               maxLength={commentLimit}
               style={styles.commentInput}
@@ -190,7 +193,8 @@ export function FeedbackRatingModal({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   body: {
     gap: spacing.md,
     paddingTop: spacing.xs,
@@ -226,23 +230,23 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   chipSelected: {
-    borderColor: palette.primary,
-    backgroundColor: palette.brandPrimaryTint,
+    borderColor: colors.primary,
+    backgroundColor: colors.brandPrimaryTint,
   },
   chipPressed: {
     opacity: 0.9,
   },
   chipText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },
   chipTextSelected: {
-    color: palette.primary,
+    color: colors.primary,
   },
   commentWrap: {
     gap: 8,
@@ -250,17 +254,17 @@ const styles = StyleSheet.create({
   commentInput: {
     minHeight: 94,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
     borderRadius: radius.md,
-    backgroundColor: palette.surface,
-    color: palette.text,
+    backgroundColor: colors.surface,
+    color: colors.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
     textAlignVertical: 'top',
   },
   commentCount: {
     alignSelf: 'flex-end',
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
   },
 })

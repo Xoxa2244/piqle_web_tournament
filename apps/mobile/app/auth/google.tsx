@@ -2,9 +2,11 @@ import { useEffect } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { router } from 'expo-router'
 
-import { palette } from '../../src/lib/theme'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 export default function GoogleAuthCallbackScreen() {
+  const { colors } = useAppTheme()
+
   useEffect(() => {
     const timeout = setTimeout(() => {
       router.replace('/sign-in')
@@ -14,8 +16,8 @@ export default function GoogleAuthCallbackScreen() {
   }, [])
 
   return (
-    <View style={styles.screen}>
-      <ActivityIndicator color={palette.primary} />
+    <View style={[styles.screen, { backgroundColor: colors.authBackground }]}>
+      <ActivityIndicator color={colors.primary} />
     </View>
   )
 }
@@ -25,6 +27,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.authBackground,
   },
 })

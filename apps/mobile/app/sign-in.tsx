@@ -1,22 +1,26 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { OptionalLinearGradient } from '../src/components/OptionalLinearGradient'
 import { InputField } from '../src/components/ui'
-import { palette, radius, spacing } from '../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../src/lib/theme'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useAppTheme } from '../src/providers/ThemeProvider'
 
-const brandGradient = [palette.primary, palette.purple] as const
 const mutedBrandGradient = ['#A7D7AF', '#A7D7AF'] as const
+const googleMarkStyle = { width: 20, height: 20 } as const
 
 const GoogleMark = () => (
-  <Image source={require('../assets/google-mark.png')} style={styles.googleMark} resizeMode="contain" />
+  <Image source={require('../assets/google-mark.png')} style={googleMarkStyle} resizeMode="contain" />
 )
 
 export default function SignInScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+  const brandGradient = useMemo(() => [colors.primary, colors.purple] as const, [colors])
   const {
     user,
     signIn,
@@ -681,14 +685,15 @@ export default function SignInScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: palette.authBackground,
+    backgroundColor: colors.authBackground,
   },
   background: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: palette.authBackground,
+    backgroundColor: colors.authBackground,
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
@@ -714,7 +719,7 @@ const styles = StyleSheet.create({
     height: 108,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: palette.primary,
+    shadowColor: colors.primary,
     shadowOpacity: 0.22,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
@@ -726,7 +731,7 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: 24,
-    color: palette.text,
+    color: colors.text,
     fontSize: 50,
     fontWeight: '800',
     letterSpacing: -1.6,
@@ -751,7 +756,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(10, 10, 10, 0.10)',
     backgroundColor: 'rgba(255, 255, 255, 0.48)',
-    shadowColor: palette.white,
+    shadowColor: colors.white,
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
@@ -769,7 +774,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modeButtonActive: {
-    shadowColor: palette.primary,
+    shadowColor: colors.primary,
     shadowOpacity: 0.2,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
@@ -786,7 +791,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   modeLabelActive: {
-    color: palette.white,
+    color: colors.white,
     paddingVertical: 0,
   },
   form: {
@@ -822,7 +827,7 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   forgotPasswordText: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -848,7 +853,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   errorText: {
-    color: palette.danger,
+    color: colors.danger,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
@@ -866,13 +871,13 @@ const styles = StyleSheet.create({
   },
   verificationBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: palette.chip,
+    backgroundColor: colors.chip,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   verificationBadgeText: {
-    color: palette.chipText,
+    color: colors.chipText,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -893,7 +898,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     borderRadius: radius.md,
     overflow: 'hidden',
-    shadowColor: palette.primary,
+    shadowColor: colors.primary,
     shadowOpacity: 0.22,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
@@ -914,7 +919,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   primaryButtonText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -929,10 +934,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   secondaryButtonPressed: {
-    backgroundColor: palette.white,
+    backgroundColor: colors.white,
   },
   secondaryButtonText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -949,16 +954,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   googleButtonPressed: {
-    backgroundColor: palette.white,
+    backgroundColor: colors.white,
   },
   googleButtonText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
-  },
-  googleMark: {
-    width: 20,
-    height: 20,
   },
   disabledButton: {
     opacity: 0.65,
@@ -970,9 +971,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   termsLink: {
-    color: palette.primary,
+    color: colors.primary,
   },
-})
+  })
 
 
 

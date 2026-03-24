@@ -8,6 +8,7 @@ import { isAbortLikeError } from '../lib/isAbortLikeError'
 import { getClientAuthToken } from '../lib/authStorage'
 import { trpc } from '../lib/trpc'
 import { AuthProvider, useAuth } from './AuthProvider'
+import { ThemeProvider } from './ThemeProvider'
 
 const TrpcLayer = ({ children }: PropsWithChildren) => {
   const { token } = useAuth()
@@ -71,8 +72,10 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
 
 export const AppProviders = ({ children }: PropsWithChildren) => {
   return (
-    <AuthProvider>
-      <TrpcLayer>{children}</TrpcLayer>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <TrpcLayer>{children}</TrpcLayer>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

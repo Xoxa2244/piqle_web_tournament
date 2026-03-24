@@ -4,10 +4,7 @@ import { Fragment } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { TabDataWarmup } from '../../src/components/TabDataWarmup'
-import { palette } from '../../src/lib/theme'
-
-const tabInactive = palette.textMuted
-const tabActive = palette.primary
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 const tabIcons = {
   index: { outline: 'home-outline' as const, filled: 'home' as const },
@@ -28,10 +25,15 @@ const labelByRoute: Record<keyof typeof tabIcons, string> = {
 }
 
 export default function TabsLayout() {
+  const { colors, theme } = useAppTheme()
+  const tabInactive = colors.textMuted
+  const tabActive = colors.primary
+
   return (
     <Fragment>
       <TabDataWarmup />
     <Tabs
+      key={theme}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false,
@@ -45,13 +47,13 @@ export default function TabsLayout() {
           width: '100%',
         },
         tabBarStyle: {
-          backgroundColor: palette.surfaceOverlay,
-          borderTopColor: palette.border,
+          backgroundColor: colors.surfaceOverlay,
+          borderTopColor: colors.border,
           height: 92,
           paddingHorizontal: 0,
           paddingBottom: 10,
           paddingTop: 6,
-          shadowColor: palette.shadowStrong,
+          shadowColor: colors.shadowStrong,
           shadowOpacity: 0.15,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: -8 },

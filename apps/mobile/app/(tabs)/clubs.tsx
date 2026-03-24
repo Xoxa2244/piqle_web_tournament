@@ -13,14 +13,17 @@ import {
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
-import { palette, spacing } from '../../src/lib/theme'
+import { spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 const normalizeLocationValue = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase()
 
 export default function ClubsTab() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
@@ -259,7 +262,7 @@ export default function ClubsTab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   layoutContent: {
     paddingBottom: 0,
   },
@@ -278,7 +281,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sectionTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 18,
   },

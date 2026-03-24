@@ -10,14 +10,17 @@ import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrol
 import { SegmentedControl } from '../../src/components/SegmentedControl'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SurfaceCard } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 type Segment = 'clubs' | 'events'
 
 export default function ChatsTab() {
   const { token } = useAuth()
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
   const [segment, setSegment] = useState<Segment>('clubs')
@@ -116,8 +119,8 @@ export default function ChatsTab() {
     return (
       <PageLayout>
         <SurfaceCard tone="hero">
-          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 18 }}>Sign in to open chats</Text>
-          <Text style={{ marginTop: 8, color: palette.textMuted, lineHeight: 20 }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 18 }}>Sign in to open chats</Text>
+          <Text style={{ marginTop: 8, color: colors.textMuted, lineHeight: 20 }}>
             Club chat, tournament chat, and division chat all use the same backend membership rules as the web app.
           </Text>
         </SurfaceCard>
@@ -249,7 +252,7 @@ export default function ChatsTab() {
                     <Feather
                       name="chevron-right"
                       size={18}
-                      color={palette.textMuted}
+                      color={colors.textMuted}
                       style={{ transform: [{ rotate: archiveOpen ? '90deg' : '0deg' }] }}
                     />
                   </Pressable>
@@ -280,7 +283,8 @@ export default function ChatsTab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   pageLayout: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -317,7 +321,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 13,
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   tabContent: {
     paddingBottom: spacing.xxl,
@@ -327,7 +331,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -341,13 +345,13 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: palette.border,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     padding: spacing.md,
   },
   dashedBoxText: {
     fontSize: 12,
-    color: palette.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   archiveBlock: {
@@ -362,7 +366,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   archiveHeaderText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',

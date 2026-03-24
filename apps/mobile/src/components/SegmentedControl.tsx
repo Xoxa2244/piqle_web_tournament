@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { palette } from '../lib/theme'
+import { type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 export type SegmentedOption<T extends string> = { value: T; label: string }
 
@@ -25,6 +27,9 @@ export function SegmentedControl<T extends string>({
   minHeight = 36,
   trackStyle,
 }: SegmentedControlProps<T>) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
   return (
     <View style={[styles.track, trackStyle]}>
       {options.map((item) => {
@@ -52,10 +57,10 @@ export function SegmentedControl<T extends string>({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   track: {
     flexDirection: 'row',
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 999,
     padding: 4,
     gap: 4,
@@ -69,8 +74,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   segmentActive: {
-    backgroundColor: palette.surface,
-    shadowColor: palette.black,
+    backgroundColor: colors.surface,
+    shadowColor: colors.black,
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
@@ -82,9 +87,9 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   labelActive: {
-    color: palette.text,
+    color: colors.text,
   },
 })

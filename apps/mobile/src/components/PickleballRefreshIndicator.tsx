@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, View } from 'react-native'
 import Svg, { Defs, Ellipse, RadialGradient, Stop, Circle } from 'react-native-svg'
 
-import { palette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 const BOX = 40
 const VB = 40
@@ -13,6 +13,7 @@ const SHADOW_H = 16
 
 /** Упрощённый вид сверху: жёлто-зелёный шар с «дырками» как у пиклбольного мяча */
 function PickleballSvg() {
+  const { colors } = useAppTheme()
   const holes = [
     { cx: 20, cy: 11 },
     { cx: 28, cy: 15 },
@@ -22,7 +23,7 @@ function PickleballSvg() {
     { cx: 12, cy: 15 },
     { cx: 20, cy: 20 },
   ]
-  const holeFill = palette.background
+  const holeFill = colors.background
   return (
     <Svg width={BOX} height={BOX} viewBox={`0 0 ${VB} ${VB}`} accessible={false}>
       <Circle cx={20} cy={20} r={17.5} fill="#D4E84A" stroke="#9BB82E" strokeWidth={1.2} />

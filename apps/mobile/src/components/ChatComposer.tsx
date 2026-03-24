@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { palette, radius } from '../lib/theme'
+import { radius, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 export type ChatComposerProps = {
   value: string
@@ -37,6 +38,8 @@ export const ChatComposer = ({
   returnKeyType,
   onSubmitEditing,
 }: ChatComposerProps) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const insets = useSafeAreaInsets()
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0)
 
@@ -71,7 +74,7 @@ export const ChatComposer = ({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={palette.textMuted}
+          placeholderTextColor={colors.textMuted}
           style={[styles.input, multiline && styles.inputMultiline]}
           multiline={multiline}
           returnKeyType={returnKeyType}
@@ -83,7 +86,7 @@ export const ChatComposer = ({
           onPress={onSend}
         >
           <View style={styles.sendIconWrap}>
-            <MaterialCommunityIcons name="send" size={24} color={palette.white} />
+            <MaterialCommunityIcons name="send" size={24} color={colors.white} />
           </View>
         </Pressable>
       </View>
@@ -91,10 +94,11 @@ export const ChatComposer = ({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   wrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
+    borderTopColor: colors.border,
     backgroundColor: 'transparent',
     paddingTop: 16,
   },
@@ -108,8 +112,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: radius.pill,
     paddingHorizontal: 16,
-    backgroundColor: '#EEF0F2',
-    color: palette.text,
+    backgroundColor: colors.surfaceElevated,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -126,7 +130,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   /** Самолётик визуально «смотрит» вправо-вверх — лёгкий сдвиг для оптического центра в круге */
   sendIconWrap: {

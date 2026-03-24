@@ -1,8 +1,10 @@
+import { useMemo } from 'react'
 import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatEventStartInTimezone, getEventTimezoneLabel } from '../lib/formatters'
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
 
 export type EventChatDivision = {
@@ -24,7 +26,15 @@ export type EventChatListEvent = {
   divisions: EventChatDivision[]
 }
 
-function UnreadBadge({ count, compact }: { count: number; compact?: boolean }) {
+function UnreadBadge({
+  count,
+  compact,
+  styles,
+}: {
+  count: number
+  compact?: boolean
+  styles: ReturnType<typeof createStyles>
+}) {
   if (count <= 0) return null
   return (
     <View style={[styles.unreadBadge, compact && styles.unreadBadgeCompact]}>
@@ -45,6 +55,8 @@ export function EventChatListItemActive({
   onOpenGeneral: () => void
   onOpenDivision: (divisionId: string) => void
 }) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const hasDivisions = (event.divisions?.length ?? 0) > 0
   const meta = `${formatEventStartInTimezone(event.startDate, event.timezone)} · ${getEventTimezoneLabel(event.timezone)}`
 
@@ -58,12 +70,12 @@ export function EventChatListItemActive({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} /> : null}
+              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} styles={styles} /> : null}
             </View>
             <Text style={styles.meta}>{meta}</Text>
             {event.club?.name ? (
               <View style={styles.clubRow}>
-                <Feather name="map-pin" size={12} color={palette.textMuted} />
+                <Feather name="map-pin" size={12} color={colors.textMuted} />
                 <Text style={styles.clubName} numberOfLines={1}>
                   {event.club.name}
                 </Text>
@@ -84,7 +96,7 @@ export function EventChatListItemActive({
               <Text style={styles.divisionName} numberOfLines={2}>
                 {division.name}
               </Text>
-              <UnreadBadge count={division.unreadCount ?? 0} compact />
+              <UnreadBadge count={division.unreadCount ?? 0} compact styles={styles} />
             </Pressable>
           ))}
         </View>
@@ -107,6 +119,8 @@ export function EventChatListItemArchived({
   onOpenGeneral: () => void
   onOpenDivision: (divisionId: string) => void
 }) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const hasDivisions = (event.divisions?.length ?? 0) > 0
   const meta = `${formatEventStartInTimezone(event.startDate, event.timezone)} · ${getEventTimezoneLabel(event.timezone)}`
 
@@ -126,12 +140,12 @@ export function EventChatListItemArchived({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} /> : null}
+              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} styles={styles} /> : null}
             </View>
             <Text style={styles.meta}>{meta}</Text>
             {event.club?.name ? (
               <View style={styles.clubRow}>
-                <Feather name="map-pin" size={12} color={palette.textMuted} />
+                <Feather name="map-pin" size={12} color={colors.textMuted} />
                 <Text style={styles.clubName} numberOfLines={1}>
                   {event.club.name}
                 </Text>
@@ -139,7 +153,7 @@ export function EventChatListItemArchived({
             ) : null}
           </View>
           {hasDivisions ? (
-            <Feather name="chevron-right" size={18} color={palette.textMuted} style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }} />
+            <Feather name="chevron-right" size={18} color={colors.textMuted} style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }} />
           ) : null}
         </View>
       </Pressable>
@@ -155,7 +169,7 @@ export function EventChatListItemArchived({
               <Text style={styles.divisionName} numberOfLines={2}>
                 {division.name}
               </Text>
-              <UnreadBadge count={division.unreadCount ?? 0} compact />
+              <UnreadBadge count={division.unreadCount ?? 0} compact styles={styles} />
             </Pressable>
           ))}
         </View>
@@ -164,12 +178,13 @@ export function EventChatListItemArchived({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   card: {
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     padding: spacing.sm,
   },
   mainPress: {
@@ -177,7 +192,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   mainPressPressed: {
-    backgroundColor: palette.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
   },
   headerRow: {
     flexDirection: 'row',
@@ -197,7 +212,7 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
     flex: 1,
     minWidth: 0,
   },
@@ -217,7 +232,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   unreadText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -227,7 +242,7 @@ const styles = StyleSheet.create({
   meta: {
     marginTop: 4,
     fontSize: 13,
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 18,
   },
   clubRow: {
@@ -239,14 +254,14 @@ const styles = StyleSheet.create({
   clubName: {
     flex: 1,
     fontSize: 13,
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   nested: {
     marginLeft: spacing.sm,
     marginTop: spacing.xs,
     paddingLeft: spacing.sm,
     borderLeftWidth: 1,
-    borderLeftColor: palette.border,
+    borderLeftColor: colors.border,
     gap: 4,
   },
   divisionPress: {
@@ -259,13 +274,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   divisionPressPressed: {
-    backgroundColor: palette.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
   },
   divisionName: {
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    color: palette.text,
+    color: colors.text,
   },
   archivedTitleRow: {
     flexDirection: 'row',
@@ -276,4 +291,4 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-})
+  })

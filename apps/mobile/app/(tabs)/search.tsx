@@ -8,9 +8,10 @@ import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradi
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 const SEARCH_HISTORY_KEY = 'piqle.mobile.search.history'
 const DEFAULT_RECENT_SEARCHES = [
@@ -37,6 +38,13 @@ type SuggestionCardItem = {
   icon: keyof typeof Feather.glyphMap
   queryValue?: string
   onPress?: () => void
+}
+
+const useSearchTheme = () => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
+  return { colors, styles }
 }
 
 const normalizeSearchTerm = (value: string) => value.replace(/\s+/g, ' ').trim()
@@ -79,10 +87,11 @@ const SearchSectionHeader = ({
   actionLabel?: string
   onActionPress?: () => void
 }) => {
+  const { colors, styles } = useSearchTheme()
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleWrap}>
-        <Feather name={icon} size={16} color={icon === 'trending-up' ? palette.primary : palette.textMuted} />
+        <Feather name={icon} size={16} color={icon === 'trending-up' ? colors.primary : colors.textMuted} />
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
       {actionLabel && onActionPress ? (
@@ -101,18 +110,19 @@ const SuggestionCard = ({
   item: SuggestionCardItem
   onPress: () => void
 }) => {
+  const { colors, styles } = useSearchTheme()
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
       <View style={styles.suggestionCard}>
         <OptionalLinearGradient
           pointerEvents="none"
-          colors={['rgba(40, 205, 65, 0.12)', 'rgba(82, 224, 104, 0.07)', 'rgba(255, 255, 255, 0.02)']}
+          colors={[colors.brandPrimaryTint, colors.brandPurpleTint, 'rgba(255, 255, 255, 0.02)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0.8 }}
           style={styles.suggestionGradient}
         />
         <View style={styles.suggestionIcon}>
-          <Feather name={item.icon} size={20} color={palette.white} />
+          <Feather name={item.icon} size={20} color={colors.white} />
         </View>
         <View style={styles.cardCopy}>
           <Text style={styles.cardTitle} numberOfLines={1}>
@@ -134,6 +144,7 @@ const SearchResultRow = ({
   item: SearchResultItem
   onPress: () => void
 }) => {
+  const { colors, styles } = useSearchTheme()
   const iconByType: Record<SearchResultType, keyof typeof Feather.glyphMap> = {
     tournament: 'award',
     club: 'users',
@@ -144,7 +155,7 @@ const SearchResultRow = ({
     <Pressable onPress={onPress} style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
       <View style={styles.resultRow}>
         <View style={styles.resultIcon}>
-          <Feather name={iconByType[item.type]} size={18} color={palette.white} />
+          <Feather name={iconByType[item.type]} size={18} color={colors.white} />
         </View>
         <View style={styles.cardCopy}>
           <Text style={styles.cardTitle} numberOfLines={1}>
@@ -160,10 +171,11 @@ const SearchResultRow = ({
 }
 
 const EmptySearchCard = ({ query }: { query: string }) => {
+  const { colors, styles } = useSearchTheme()
   return (
     <SurfaceCard tone="soft" style={styles.emptyCard}>
       <View style={styles.emptyIcon}>
-        <Feather name="search" size={20} color={palette.primary} />
+        <Feather name="search" size={20} color={colors.primary} />
       </View>
       <Text style={styles.emptyTitle}>{`Nothing found for "${query}"`}</Text>
       <Text style={styles.emptyBody}>Try another keyword or browse trending suggestions.</Text>
@@ -172,6 +184,7 @@ const EmptySearchCard = ({ query }: { query: string }) => {
 }
 
 export default function SearchTab() {
+  const { colors, styles } = useSearchTheme()
   const params = useLocalSearchParams<{ returnTo?: string }>()
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
@@ -383,17 +396,17 @@ export default function SearchTab() {
       <View style={styles.page}>
         <View style={styles.searchRow}>
           <Pressable onPress={closeSearch} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-            <Feather name="x" size={22} color={palette.text} />
+            <Feather name="x" size={22} color={colors.text} />
           </Pressable>
 
           <View style={styles.searchInputShell}>
-            <Feather name="search" size={20} color={palette.textMuted} />
+            <Feather name="search" size={20} color={colors.textMuted} />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder="Search tournaments, clubs, players..."
-              placeholderTextColor={palette.textMuted}
-              selectionColor={palette.primary}
+              placeholderTextColor={colors.textMuted}
+              selectionColor={colors.primary}
               autoCapitalize="none"
               autoCorrect={false}
               autoFocus
@@ -450,7 +463,7 @@ export default function SearchTab() {
                         style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}
                       >
                         <View style={styles.recentRow}>
-                          <Feather name="clock" size={18} color={palette.textMuted} />
+                          <Feather name="clock" size={18} color={colors.textMuted} />
                           <Text style={styles.recentText}>{item}</Text>
                         </View>
                       </Pressable>
@@ -463,7 +476,7 @@ export default function SearchTab() {
             <View style={styles.sectionBlock}>
               {isSearching && resultSections.length === 0 ? (
                 <SurfaceCard tone="soft" style={styles.loadingCard}>
-                  <ActivityIndicator color={palette.primary} />
+                  <ActivityIndicator color={colors.primary} />
                   <Text style={styles.loadingText}>Searching the app...</Text>
                 </SurfaceCard>
               ) : null}
@@ -490,7 +503,7 @@ export default function SearchTab() {
 
               {!isAuthenticated ? (
                 <SurfaceCard tone="soft" style={styles.helperCard}>
-                  <Feather name="lock" size={18} color={palette.primary} />
+                  <Feather name="lock" size={18} color={colors.primary} />
                   <Text style={styles.helperText}>Sign in to include players in search results.</Text>
                 </SurfaceCard>
               ) : null}
@@ -504,7 +517,7 @@ export default function SearchTab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   layoutContent: {
     paddingTop: 0,
     paddingBottom: 0,
@@ -522,7 +535,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: colors.border,
   },
   closeButton: {
     width: 36,
@@ -535,7 +548,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 44,
     borderRadius: radius.pill,
-    backgroundColor: palette.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -543,7 +556,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: palette.text,
+    color: colors.text,
     fontSize: 15,
     paddingVertical: 0,
   },
@@ -571,7 +584,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sectionTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 19,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -597,7 +610,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: 'rgba(31, 160, 53, 0.14)',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
     paddingHorizontal: 14,
     paddingVertical: 16,
@@ -615,14 +628,14 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   resultRow: {
     minHeight: 78,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -633,8 +646,8 @@ const styles = StyleSheet.create({
     minHeight: 62,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -646,25 +659,25 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   cardCopy: {
     flex: 1,
     gap: 4,
   },
   cardTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.2,
   },
   cardSubtitle: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   recentText: {
     flex: 1,
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -676,7 +689,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
   },
   loadingText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 15,
     fontWeight: '600',
   },
@@ -687,7 +700,7 @@ const styles = StyleSheet.create({
   },
   helperText: {
     flex: 1,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -701,18 +714,18 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
+    backgroundColor: colors.brandPrimaryTint,
   },
   emptyTitle: {
     marginTop: 14,
-    color: palette.text,
+    color: colors.text,
     fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
   },
   emptyBody: {
     marginTop: 6,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',

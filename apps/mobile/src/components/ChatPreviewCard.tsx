@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatDateTime } from '../lib/formatters'
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
 
 export const ChatPreviewCard = ({
@@ -18,6 +20,9 @@ export const ChatPreviewCard = ({
   unreadCount?: number
   onPress: () => void
 }) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
   return (
     <Pressable onPress={onPress}>
       <View style={styles.item}>
@@ -28,7 +33,7 @@ export const ChatPreviewCard = ({
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
-              <Text style={styles.time} numberOfLines={1}>
+              <Text style={styles.previewTime} numberOfLines={1}>
                 {''}
               </Text>
             </View>
@@ -60,24 +65,28 @@ export const ChatMessageBubble = ({
   isMine?: boolean
   createdAt?: string | Date
 }) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
   return (
     <View style={[styles.messageWrap, isMine && styles.messageWrapMine]}>
       <View style={[styles.messageBubble, isMine ? styles.messageMine : styles.messageOther]}>
         {!isMine ? <Text style={styles.author}>{author}</Text> : null}
         <Text style={[styles.body, isMine && styles.bodyMine]}>{text}</Text>
-        {createdAt ? <Text style={[styles.time, isMine && styles.timeMine]}>{formatDateTime(createdAt)}</Text> : null}
+        {createdAt ? <Text style={[styles.messageTime, isMine && styles.timeMine]}>{formatDateTime(createdAt)}</Text> : null}
       </View>
     </View>
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   item: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
+    borderBottomColor: colors.border,
   },
   row: {
     flexDirection: 'row',
@@ -91,14 +100,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
     minWidth: 0,
   },
-  time: {
-    color: palette.textMuted,
+  previewTime: {
+    color: colors.textMuted,
     fontSize: 12,
   },
   subtitleRow: {
@@ -109,7 +118,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   subtitle: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -120,10 +129,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   unreadText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -142,31 +151,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   messageMine: {
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
     borderColor: 'transparent',
   },
   messageOther: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
   },
   author: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
   body: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 15,
     lineHeight: 20,
   },
   bodyMine: {
-    color: palette.white,
+    color: colors.white,
   },
-  time: {
-    color: palette.textMuted,
+  messageTime: {
+    color: colors.textMuted,
     fontSize: 11,
   },
   timeMine: {
     color: 'rgba(255, 255, 255, 0.72)',
   },
-})
+  })

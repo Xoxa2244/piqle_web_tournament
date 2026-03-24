@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import React, { type PropsWithChildren, type ReactNode } from 'react'
+import React, { useMemo, type PropsWithChildren, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -14,7 +14,8 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from './chatAmbient'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 
@@ -29,6 +30,13 @@ type ScreenProps = PropsWithChildren<{
   chatAmbient?: boolean
 }>
 
+const useThemedUi = () => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
+  return { colors, styles }
+}
+
 export const Screen = ({
   children,
   scroll = true,
@@ -39,6 +47,7 @@ export const Screen = ({
   contentStyle,
   chatAmbient = false,
 }: ScreenProps) => {
+  const { styles } = useThemedUi()
   const content = (
     <>
       {title ? (
@@ -102,6 +111,7 @@ export const SurfaceCard = ({
   tone = 'default',
   style,
 }: PropsWithChildren<{ padded?: boolean; tone?: CardTone; style?: StyleProp<ViewStyle> }>) => {
+  const { colors, styles } = useThemedUi()
   const toneStyle =
     tone === 'soft'
       ? styles.cardSoft
@@ -115,7 +125,7 @@ export const SurfaceCard = ({
       {tone === 'hero' ? (
         <OptionalLinearGradient
           pointerEvents="none"
-          colors={['rgba(40, 205, 65, 0.14)', 'rgba(82, 224, 104, 0.10)', 'rgba(255, 255, 255, 0)']}
+          colors={[colors.brandPrimaryTint, colors.brandPurpleTint, 'rgba(255, 255, 255, 0)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeroGradient}
@@ -135,6 +145,7 @@ export const SectionTitle = ({
   subtitle?: string
   action?: ReactNode
 }) => {
+  const { styles } = useThemedUi()
   return (
     <View style={styles.sectionRow}>
       <View style={{ flex: 1 }}>
@@ -155,16 +166,17 @@ export const Pill = ({
   label: string
   tone?: 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 }) => {
+  const { colors, styles } = useThemedUi()
   const toneStyles =
     tone === 'primary'
-      ? { backgroundColor: palette.chip, color: palette.chipText, borderColor: 'transparent' }
+      ? { backgroundColor: colors.chip, color: colors.chipText, borderColor: 'transparent' }
       : tone === 'danger'
-      ? { backgroundColor: palette.dangerSoft, color: palette.danger, borderColor: 'transparent' }
+      ? { backgroundColor: colors.dangerSoft, color: colors.danger, borderColor: 'transparent' }
       : tone === 'success'
-      ? { backgroundColor: palette.successSoft, color: palette.success, borderColor: 'transparent' }
+      ? { backgroundColor: colors.successSoft, color: colors.success, borderColor: 'transparent' }
       : tone === 'warning'
-      ? { backgroundColor: palette.warningSoft, color: '#9a7b00', borderColor: 'transparent' }
-      : { backgroundColor: palette.surfaceMuted, color: palette.text, borderColor: palette.border }
+      ? { backgroundColor: colors.warningSoft, color: colors.warning, borderColor: 'transparent' }
+      : { backgroundColor: colors.surfaceMuted, color: colors.text, borderColor: colors.border }
 
   return (
     <View style={[styles.pill, { backgroundColor: toneStyles.backgroundColor, borderColor: toneStyles.borderColor }]}>
@@ -188,36 +200,37 @@ export const ActionButton = ({
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'neutral'
   icon?: ReactNode
 }) => {
+  const { colors, styles } = useThemedUi()
   const pressedColor =
     variant === 'secondary'
-      ? palette.secondaryPressed
+      ? colors.secondaryPressed
       : variant === 'outline'
-      ? palette.secondaryPressed
+      ? colors.secondaryPressed
       : variant === 'neutral'
       ? '#9ca3af'
       : variant === 'danger'
       ? '#eb0067'
       : variant === 'ghost'
-      ? 'rgba(40, 205, 65, 0.08)'
-      : palette.primaryPressed
+      ? colors.brandPrimaryTint
+      : colors.primaryPressed
   const baseStyle =
     variant === 'secondary'
-      ? { backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }
+      ? { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }
       : variant === 'outline'
-      ? { backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border }
+      ? { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }
       : variant === 'neutral'
       ? { backgroundColor: '#cbd5e1', borderWidth: 0, borderColor: 'transparent' }
       : variant === 'danger'
-      ? { backgroundColor: palette.danger }
+      ? { backgroundColor: colors.danger }
       : variant === 'ghost'
       ? { backgroundColor: 'transparent', borderWidth: 0, borderColor: 'transparent' }
-      : { backgroundColor: palette.primary }
+      : { backgroundColor: colors.primary }
   const textColor =
     variant === 'secondary' || variant === 'ghost' || variant === 'outline'
-      ? palette.text
+      ? colors.text
       : variant === 'neutral'
       ? '#1f2937'
-      : palette.white
+      : colors.white
 
   return (
     <Pressable
@@ -273,6 +286,7 @@ export const InputField = ({
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
 }) => {
+  const { colors, styles } = useThemedUi()
   return (
     <View style={[styles.inputShell, multiline && styles.inputShellMultiline, !editable && styles.inputDisabled, containerStyle]}>
       {left ? <View style={styles.inputAdornment}>{left}</View> : null}
@@ -280,7 +294,7 @@ export const InputField = ({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={palette.textMuted}
+        placeholderTextColor={colors.textMuted}
         secureTextEntry={secureTextEntry}
         multiline={multiline}
         editable={editable}
@@ -311,6 +325,7 @@ export const SearchField = ({
   placeholder?: string
   containerStyle?: StyleProp<ViewStyle>
 }) => {
+  const { colors, styles } = useThemedUi()
   return (
     <InputField
       value={value}
@@ -318,7 +333,7 @@ export const SearchField = ({
       placeholder={placeholder}
       autoCapitalize="none"
       containerStyle={[styles.searchFieldShell, containerStyle]}
-      left={<Feather name="search" size={18} color={palette.textMuted} />}
+      left={<Feather name="search" size={18} color={colors.textMuted} />}
     />
   )
 }
@@ -330,6 +345,7 @@ export const IconButton = ({
   icon: ReactNode
   onPress?: () => void
 }) => {
+  const { styles } = useThemedUi()
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}>
       {icon}
@@ -338,6 +354,7 @@ export const IconButton = ({
 }
 
 export const EmptyState = ({ title, body }: { title: string; body: string }) => {
+  const { styles } = useThemedUi()
   const hasTitle = Boolean(title?.trim())
   return (
     <SurfaceCard tone="soft">
@@ -348,10 +365,11 @@ export const EmptyState = ({ title, body }: { title: string; body: string }) => 
 }
 
 export const LoadingBlock = ({ label = 'Loading…' }: { label?: string }) => {
+  const { colors, styles } = useThemedUi()
   return (
     <SurfaceCard tone="soft">
       <View style={styles.loadingRow}>
-        <ActivityIndicator color={palette.primary} />
+        <ActivityIndicator color={colors.primary} />
         <Text style={styles.loadingLabel}>{label}</Text>
       </View>
     </SurfaceCard>
@@ -359,6 +377,7 @@ export const LoadingBlock = ({ label = 'Loading…' }: { label?: string }) => {
 }
 
 export const AvatarBadge = ({ label, size = 48 }: { label: string; size?: number }) => {
+  const { styles } = useThemedUi()
   const initials = label
     .split(/\s+/)
     .filter(Boolean)
@@ -405,6 +424,7 @@ export const MetricTile = ({
   value: string
   subtitle?: string
 }) => {
+  const { styles } = useThemedUi()
   return (
     <SurfaceCard tone="soft" style={styles.metricTile}>
       <Text style={styles.metricValue}>{value}</Text>
@@ -415,6 +435,7 @@ export const MetricTile = ({
 }
 
 export const DataRow = ({ label, value }: { label: string; value: string }) => {
+  const { styles } = useThemedUi()
   return (
     <View style={styles.dataRow}>
       <Text style={styles.dataLabel}>{label}</Text>
@@ -423,10 +444,10 @@ export const DataRow = ({ label, value }: { label: string; value: string }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   chatAmbientRoot: {
     flex: 1,
@@ -468,39 +489,39 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 31,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
     letterSpacing: -0.9,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 14,
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   card: {
     position: 'relative',
     borderRadius: radius.lg,
     borderWidth: 1,
-    shadowColor: palette.black,
+    shadowColor: colors.black,
     shadowOpacity: 1,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
     elevation: 4,
   },
   cardDefault: {
-    backgroundColor: palette.surface,
-    borderColor: palette.border,
-    shadowColor: palette.shadow,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
   },
   cardSoft: {
-    backgroundColor: palette.surfaceElevated,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
     shadowColor: 'transparent',
     elevation: 0,
   },
   cardHero: {
-    backgroundColor: palette.surface,
-    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: colors.surface,
+    borderColor: colors.brandPrimaryBorder,
     shadowColor: 'transparent',
     elevation: 0,
   },
@@ -519,11 +540,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 19,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
   },
   sectionSubtitle: {
     marginTop: 4,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   pill: {
@@ -560,8 +581,8 @@ const styles = StyleSheet.create({
     minHeight: 52,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.04)',
-    backgroundColor: palette.surfaceElevated,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -580,7 +601,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 20,
-    color: palette.text,
+    color: colors.text,
     fontSize: 15,
   },
   inputMultiline: {
@@ -594,7 +615,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderWidth: 0,
     borderRadius: radius.sm,
-    backgroundColor: palette.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 14,
     gap: 8,
     flexDirection: 'row',
@@ -603,11 +624,11 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
   },
   emptyBody: {
     marginTop: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   emptyBodyLead: {
@@ -619,7 +640,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingLabel: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 15,
   },
   iconButton: {
@@ -628,9 +649,9 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.surfaceOverlay,
+    backgroundColor: colors.surfaceOverlay,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
   },
   iconButtonPressed: {
     opacity: 0.85,
@@ -639,7 +660,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 2,
-    shadowColor: palette.shadowStrong,
+    shadowColor: colors.shadowStrong,
     shadowOpacity: 0.25,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
@@ -652,7 +673,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarBadgeText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '700',
   },
   metricTile: {
@@ -661,20 +682,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   metricValue: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 24,
     fontWeight: '700',
   },
   metricLabel: {
     marginTop: 6,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
   metricSubtitle: {
     marginTop: 6,
-    color: palette.chipText,
+    color: colors.chipText,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -682,13 +703,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dataLabel: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   dataValue: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '600',

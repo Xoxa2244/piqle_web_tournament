@@ -1,14 +1,15 @@
 import { useNavigation } from '@react-navigation/native'
 import { Feather } from '@expo/vector-icons'
 import { router, usePathname } from 'expo-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { ReactNode } from 'react'
 
 import { useEffectivePathname } from '../../hooks/useEffectivePathname'
-import { palette, spacing } from '../../lib/theme'
+import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
+import { useAppTheme } from '../../providers/ThemeProvider'
 import { PiqleLogo } from './PiqleLogo'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
 
@@ -21,6 +22,13 @@ const isHomeRoute = (pathname: string) =>
 
 const usesBrandHeader = (pathname: string) =>
   isHomeRoute(pathname) || pathname === '/search'
+
+const useThemedTopBar = () => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
+  return { colors, styles }
+}
 
 const getTitle = (pathname: string) => {
   if (pathname === '/') return 'Piqle'
@@ -45,12 +53,16 @@ const IconBubble = ({
   showDot?: boolean
   /** Текущий экран — подсветка primary (как активная вкладка) */
   active?: boolean
-}) => (
-  <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
-    <Feather name={icon} size={20} color={active ? palette.primary : palette.text} />
-    {showDot ? <View style={styles.dot} /> : null}
-  </Pressable>
-)
+}) => {
+  const { colors, styles } = useThemedTopBar()
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
+      <Feather name={icon} size={20} color={active ? colors.primary : colors.text} />
+      {showDot ? <View style={styles.dot} /> : null}
+    </Pressable>
+  )
+}
 
 const wantsTopBarBack = (pathname: string) =>
   pathname === '/notifications' ||
@@ -77,6 +89,7 @@ function AnimatedHomeTitle({
   showBack: boolean
   refreshPulseKey?: number
 }) {
+  const { styles } = useThemedTopBar()
   const textOp = useRef(new Animated.Value(showLogo ? 0 : 1)).current
   const logoX = useRef(new Animated.Value(showLogo ? 0 : LOGO_OFF_X)).current
   const didMount = useRef(false)
@@ -177,6 +190,7 @@ export const TopBar = ({
   /** Триггер «уехал/вернулся» для лого на главной при pull-to-refresh */
   refreshPulseKey?: number
 }) => {
+  const { colors, styles } = useThemedTopBar()
   /** Заголовок / лого: на вкладках — путь активного таба (видно при swipe поверх модалок). Иконки — по глобальному URL. */
   const pathname = useEffectivePathname()
   const routePathname = usePathname()
@@ -210,7 +224,7 @@ export const TopBar = ({
             hitSlop={12}
             style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
           >
-            <Feather name="arrow-left" size={22} color={palette.text} />
+            <Feather name="arrow-left" size={22} color={colors.text} />
           </Pressable>
         ) : null}
         <View style={styles.titleCluster}>
@@ -283,21 +297,21 @@ export const TopBar = ({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   header: {
     height: 56,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: palette.surfaceOverlay,
+    backgroundColor: colors.surfaceOverlay,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: colors.border,
   },
   headerAmbient: {
     backgroundColor: 'transparent',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    borderBottomColor: colors.border,
   },
   titleRow: {
     flex: 1,
@@ -347,7 +361,7 @@ const styles = StyleSheet.create({
     marginRight: -4,
   },
   backBtnPressed: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   titleWithBack: {
     flex: 1,
@@ -378,7 +392,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: palette.primary,
+    color: colors.primary,
     letterSpacing: -0.4,
     lineHeight: 24,
     ...(Platform.OS === 'android' ? { textAlignVertical: 'center' as const, includeFontPadding: false } : {}),
@@ -403,7 +417,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   iconBubblePressed: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   dot: {
     position: 'absolute',
@@ -412,7 +426,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: palette.accent,
+    backgroundColor: colors.accent,
   },
   avatarBtn: {
     marginLeft: 4,

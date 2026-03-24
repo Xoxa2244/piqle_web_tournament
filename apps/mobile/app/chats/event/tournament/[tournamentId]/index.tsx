@@ -12,14 +12,17 @@ import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
 import { trpc } from '../../../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../../../src/providers/ThemeProvider'
 
 /** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function TournamentChatScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ tournamentId: string; title?: string; divisionId?: string }>()
   const tournamentId = params.tournamentId
   const title = params.title || 'Event chat'
@@ -187,7 +190,7 @@ export default function TournamentChatScreen() {
             }
             style={[styles.topicPill, !activeDivisionId && styles.topicPillActive]}
           >
-            <Feather name="award" size={16} color={!activeDivisionId ? palette.white : palette.textMuted} />
+            <Feather name="award" size={16} color={!activeDivisionId ? colors.white : colors.textMuted} />
             <Text style={[styles.topicPillText, !activeDivisionId && styles.topicPillTextActive]}>General Chat</Text>
           </Pressable>
           {eventMeta?.unreadCount ? (
@@ -212,7 +215,7 @@ export default function TournamentChatScreen() {
               }
               style={[styles.topicPill, activeDivisionId === d.id && styles.topicPillActive]}
             >
-              <Feather name="hash" size={16} color={activeDivisionId === d.id ? palette.white : palette.textMuted} />
+              <Feather name="hash" size={16} color={activeDivisionId === d.id ? colors.white : colors.textMuted} />
               <Text
                 style={[styles.topicPillText, activeDivisionId === d.id && styles.topicPillTextActive]}
                 numberOfLines={1}
@@ -246,10 +249,10 @@ export default function TournamentChatScreen() {
         {topicBar}
         <View style={styles.contextRow}>
           <View style={styles.contextLeft}>
-            <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={palette.textMuted} />
+            <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={colors.textMuted} />
             <Text style={styles.contextTitle}>{activeLabel}</Text>
             <Text style={styles.contextDot}>·</Text>
-            <Feather name="users" size={16} color={palette.textMuted} />
+            <Feather name="users" size={16} color={colors.textMuted} />
             <Text style={styles.contextMeta}>Tournament Chat</Text>
           </View>
         </View>
@@ -335,7 +338,8 @@ export default function TournamentChatScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -345,7 +349,7 @@ const styles = StyleSheet.create({
   topicBarWrap: {
     backgroundColor: 'transparent',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
+    borderBottomColor: colors.border,
   },
   topicBar: {
     paddingHorizontal: spacing.lg,
@@ -373,8 +377,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   topicPillActive: {
-    backgroundColor: palette.primary,
-    borderColor: palette.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   topicPillText: {
     color: '#6B7280',
@@ -382,7 +386,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   topicPillTextActive: {
-    color: palette.white,
+    color: colors.white,
   },
   topicUnread: {
     marginLeft: -10,
@@ -394,10 +398,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FF2D78',
     borderWidth: 2,
-    borderColor: palette.background,
+    borderColor: colors.background,
   },
   topicUnreadText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '900',
     fontSize: 12,
   },
@@ -412,17 +416,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   contextTitle: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   contextDot: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
   contextMeta: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -443,4 +447,4 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
   },
-})
+  })

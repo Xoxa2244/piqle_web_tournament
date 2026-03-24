@@ -10,8 +10,9 @@ import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { ActionButton, EmptyState, LoadingBlock, Pill, SectionTitle, SurfaceCard } from '../../src/components/ui'
 import { formatDateRange, formatLocation } from '../../src/lib/formatters'
 import { trpc } from '../../src/lib/trpc'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 const statusLabel = (status?: string | null, hasPrivilegedAccess = false) => {
@@ -74,6 +75,8 @@ const getInvolvementMeta = (
 }
 
 export default function HomeTab() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -217,20 +220,20 @@ export default function HomeTab() {
           <SurfaceCard style={styles.aiBanner}>
             <OptionalLinearGradient
               pointerEvents="none"
-              colors={['rgba(82, 224, 104, 0.20)', 'rgba(31, 160, 53, 0.14)', 'rgba(255, 255, 255, 0)']}
+              colors={[colors.brandPurpleTint, colors.brandAccentTint, 'rgba(255, 255, 255, 0)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.bannerGradient}
             />
             <View style={styles.aiRow}>
               <View style={styles.aiIcon}>
-                <Feather name="zap" size={20} color={palette.white} />
+                <Feather name="zap" size={20} color={colors.white} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.aiTitle}>AI Assistant</Text>
                 <Text style={styles.aiSubtitle}>Get help with strategies, rules, and more</Text>
               </View>
-              <Feather name="chevron-right" size={18} color={palette.textMuted} />
+              <Feather name="chevron-right" size={18} color={colors.textMuted} />
             </View>
           </SurfaceCard>
         </Pressable>
@@ -299,11 +302,11 @@ export default function HomeTab() {
                     </View>
                   </View>
                   <View style={styles.eventMetaRow}>
-                    <Feather name="calendar" size={14} color={palette.textMuted} />
+                    <Feather name="calendar" size={14} color={colors.textMuted} />
                     <Text style={styles.eventMeta}>{formatDateRange(event.startDate, event.endDate)}</Text>
                   </View>
                   <View style={styles.eventMetaRow}>
-                    <Feather name="map-pin" size={14} color={palette.textMuted} />
+                    <Feather name="map-pin" size={14} color={colors.textMuted} />
                     <Text numberOfLines={1} style={styles.eventMeta}>
                       {formatLocation([event.venueName, event.venueAddress])}
                     </Text>
@@ -348,7 +351,7 @@ export default function HomeTab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   layoutContent: {
     paddingBottom: 0,
   },
@@ -370,12 +373,12 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 30,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
     letterSpacing: -0.8,
   },
   welcomeSubtitle: {
     marginTop: 6,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 15,
   },
   aiRow: {
@@ -385,8 +388,8 @@ const styles = StyleSheet.create({
   },
   aiBanner: {
     position: 'relative',
-    backgroundColor: palette.surface,
-    borderColor: palette.brandPurpleBorder,
+    backgroundColor: colors.surface,
+    borderColor: colors.brandPurpleBorder,
     shadowColor: 'transparent',
     elevation: 0,
   },
@@ -400,16 +403,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.brandAccent,
+    backgroundColor: colors.brandAccent,
   },
   aiTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 17,
   },
   aiSubtitle: {
     marginTop: 4,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   eventRow: {
@@ -435,7 +438,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eventTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
@@ -447,7 +450,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   eventMeta: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -458,22 +461,22 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   emptyEventsTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
   },
   emptyEventsBody: {
     marginTop: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
   },
   emptyEventsLink: {
-    color: palette.primary,
+    color: colors.primary,
     fontWeight: '700',
   },
   monthTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 16,
   },
@@ -489,17 +492,17 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: '700',
-    color: palette.primary,
+    color: colors.primary,
   },
   statLabel: {
     marginTop: 4,
     fontSize: 12,
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   statDivider: {
     width: 1,
     height: 36,
-    backgroundColor: palette.border,
+    backgroundColor: colors.border,
   },
 })
 

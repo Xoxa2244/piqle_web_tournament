@@ -18,9 +18,10 @@ import {
 } from '../../src/components/ui'
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 type CardTone = 'muted' | 'primary' | 'danger' | 'success' | 'warning'
@@ -138,6 +139,7 @@ const FilterChip = ({
   onPress?: () => void
   disabled?: boolean
 }) => {
+  const { colors, styles } = useTournamentsTheme()
   return (
     <Pressable
       disabled={disabled}
@@ -152,7 +154,7 @@ const FilterChip = ({
       <Feather
         name={icon}
         size={14}
-        color={active ? palette.white : disabled ? palette.textMuted : palette.text}
+        color={active ? colors.white : disabled ? colors.textMuted : colors.text}
       />
       <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
         {label}
@@ -161,7 +163,15 @@ const FilterChip = ({
   )
 }
 
+const useTournamentsTheme = () => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
+  return { colors, styles }
+}
+
 export default function TournamentsTab() {
+  const { colors, styles } = useTournamentsTheme()
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const [mode, setMode] = useState<'upcoming' | 'registered' | 'past'>('upcoming')
@@ -450,7 +460,7 @@ export default function TournamentsTab() {
                 <SurfaceCard key={item.id} tone="hero">
                   <View style={styles.inviteHeader}>
                     <View style={styles.inviteIcon}>
-                      <Feather name="mail" size={18} color={palette.white} />
+                      <Feather name="mail" size={18} color={colors.white} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.inviteTitle}>{item.title}</Text>
@@ -628,7 +638,7 @@ export default function TournamentsTab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   page: {
     flex: 1,
     gap: spacing.md,
@@ -654,15 +664,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
     backgroundColor: 'transparent',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
   filterChipActive: {
-    backgroundColor: palette.primary,
-    borderColor: palette.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterChipDisabled: {
     opacity: 0.55,
@@ -671,12 +681,12 @@ const styles = StyleSheet.create({
     opacity: 0.88,
   },
   filterChipLabel: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 13,
   },
   filterChipLabelActive: {
-    color: palette.white,
+    color: colors.white,
   },
   listContent: {
     paddingBottom: spacing.xxl,
@@ -696,16 +706,16 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   inviteTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 17,
   },
   inviteBody: {
     marginTop: 6,
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   inviteActions: {
@@ -722,7 +732,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sheetSectionTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 15,
   },
@@ -736,26 +746,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surfaceElevated,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
   },
   sheetChipActive: {
-    backgroundColor: palette.primary,
-    borderColor: palette.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   sheetChipLabel: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 13,
   },
   sheetChipLabelActive: {
-    color: palette.white,
+    color: colors.white,
   },
   sheetActions: {
     flexDirection: 'row',
     gap: 10,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: palette.border,
+    borderTopColor: colors.border,
   },
 })

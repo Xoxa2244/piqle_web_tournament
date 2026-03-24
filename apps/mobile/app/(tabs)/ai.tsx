@@ -11,8 +11,9 @@ import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ReloadIcon } from '../../src/components/icons/ReloadIcon'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { trpc } from '../../src/lib/trpc'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 type Message = {
   id: string
@@ -88,7 +89,7 @@ const tokenizeInlineMarkdown = (input: string): InlineToken[] => {
   return tokens
 }
 
-const renderInlineMarkdown = (input: string, keyPrefix: string) => {
+const renderInlineMarkdown = (input: string, keyPrefix: string, styles: ReturnType<typeof createStyles>) => {
   const tokens = tokenizeInlineMarkdown(input)
   return tokens.map((token, idx) => {
     const key = `${keyPrefix}-${idx}`
@@ -100,6 +101,8 @@ const renderInlineMarkdown = (input: string, keyPrefix: string) => {
 
 export default function AITab() {
   const { token } = useAuth()
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const tabBarHeight = useBottomTabBarHeight()
@@ -274,7 +277,7 @@ export default function AITab() {
             pressed && !resetPending && { opacity: 0.8 },
           ]}
         >
-          <ReloadIcon size={20} color={palette.textMuted} />
+          <ReloadIcon size={20} color={colors.textMuted} />
         </Pressable>
       }
     >
@@ -299,7 +302,7 @@ export default function AITab() {
                       end={{ x: 1, y: 1 }}
                       style={styles.assistantAvatar}
                     >
-                      <Feather name="zap" size={16} color={palette.white} />
+                      <Feather name="zap" size={16} color={colors.white} />
                     </OptionalLinearGradient>
                   ) : null}
 
@@ -307,12 +310,12 @@ export default function AITab() {
                     <OptionalLinearGradient
                       colors={
                         msg.role === 'user'
-                          ? [palette.primary, palette.purple]
+                          ? [colors.primary, colors.purple]
                           : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
                       }
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}
-                      fallbackColor={msg.role === 'user' ? palette.primary : palette.surfaceElevated}
+                      fallbackColor={msg.role === 'user' ? colors.primary : colors.surfaceElevated}
                       style={[
                         styles.bubble,
                         msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
@@ -321,7 +324,7 @@ export default function AITab() {
                       <Text
                         style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
                       >
-                        {renderInlineMarkdown(msg.content, msg.id)}
+                        {renderInlineMarkdown(msg.content, msg.id, styles)}
                       </Text>
                     </OptionalLinearGradient>
                     <Text style={styles.time}>{msg.time}</Text>
@@ -337,7 +340,7 @@ export default function AITab() {
                     end={{ x: 1, y: 1 }}
                     style={styles.assistantAvatar}
                   >
-                    <Feather name="zap" size={16} color={palette.white} />
+                    <Feather name="zap" size={16} color={colors.white} />
                   </OptionalLinearGradient>
                   <View style={styles.messageCol}>
                     <View style={[styles.bubble, styles.bubbleAssistant, styles.typingBubble]}>
@@ -368,7 +371,7 @@ export default function AITab() {
                         end={{ x: 1, y: 1 }}
                         style={styles.suggestionIcon}
                       >
-                        <Feather name={q.icon} size={16} color={palette.white} />
+                        <Feather name={q.icon} size={16} color={colors.white} />
                       </OptionalLinearGradient>
                       <Text style={styles.suggestionText}>{q.text}</Text>
                     </Pressable>
@@ -417,7 +420,8 @@ export default function AITab() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -477,12 +481,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(168, 85, 247, 0.06)',
   },
   bubbleText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     lineHeight: 20,
   },
   bubbleTextMine: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '600',
   },
   inlineBold: {
@@ -492,7 +496,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   time: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     paddingHorizontal: 2,
   },
@@ -518,7 +522,7 @@ const styles = StyleSheet.create({
   suggestionsLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   suggestionCard: {
     flexDirection: 'row',
@@ -539,7 +543,7 @@ const styles = StyleSheet.create({
   },
   suggestionText: {
     flex: 1,
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -548,7 +552,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   unauthBody: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   signInBtn: {
@@ -556,10 +560,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   signInText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '800',
   },
-})
+  })

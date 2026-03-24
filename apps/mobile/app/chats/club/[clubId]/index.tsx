@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -13,14 +13,17 @@ import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
-import { palette, spacing } from '../../../../src/lib/theme'
+import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../../src/providers/ThemeProvider'
 
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function ClubChatScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ clubId: string; name?: string }>()
   const clubId = params.clubId
   const clubName = params.name || 'Club chat'
@@ -217,7 +220,8 @@ export default function ClubChatScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -225,7 +229,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   error: {
-    color: palette.danger,
+    color: colors.danger,
     lineHeight: 20,
   },
   scrollContent: {
@@ -244,7 +248,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   feedbackPromptTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -254,7 +258,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   feedbackPromptBody: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
-})
+  })

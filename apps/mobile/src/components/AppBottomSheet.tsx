@@ -1,11 +1,12 @@
 import { BlurView } from 'expo-blur'
 import * as Haptics from 'expo-haptics'
 import type { PropsWithChildren, ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 import { ActionButton } from './ui'
 
@@ -48,6 +49,8 @@ export function AppBottomSheet({
   footer,
   bottomPaddingExtra = 0,
 }: AppBottomSheetProps) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const insets = useSafeAreaInsets()
   const [mounted, setMounted] = useState(false)
   const backdropOp = useRef(new Animated.Value(0)).current
@@ -136,13 +139,13 @@ export function AppBottomSheet({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingHorizontal: spacing.lg,
@@ -154,7 +157,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 4,
     borderRadius: 999,
-    backgroundColor: palette.border,
+    backgroundColor: colors.border,
     marginBottom: spacing.md,
   },
   titleRow: {
@@ -173,11 +176,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: palette.text,
+    color: colors.text,
   },
   subtitle: {
     marginTop: spacing.sm,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 15,
     lineHeight: 22,
   },

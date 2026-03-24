@@ -6,9 +6,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { SubpageHeader } from '../../src/components/navigation/SubpageHeader'
 import { ActionButton, EmptyState, InputField, LoadingBlock, SurfaceCard } from '../../src/components/ui'
-import { palette, radius, spacing } from '../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 
 const splitName = (value?: string | null) => {
   const parts = String(value ?? '')
@@ -31,22 +32,26 @@ const formatRating = (value?: string | number | null) => {
 const HeaderSaveButton = ({
   onPress,
   loading,
+  colors,
+  styles,
 }: {
   onPress?: () => void
   loading?: boolean
+  colors: ThemePalette
+  styles: ReturnType<typeof createStyles>
 }) => (
   <Pressable onPress={onPress} disabled={loading} style={({ pressed }) => [pressed && styles.headerSavePressed]}>
     <OptionalLinearGradient
-      colors={[palette.primary, palette.purple]}
+      colors={[colors.primary, colors.purple]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       style={styles.headerSaveButton}
     >
       {loading ? (
-        <ActivityIndicator color={palette.white} />
+        <ActivityIndicator color={colors.white} />
       ) : (
         <View style={styles.headerSaveContent}>
-          <Feather name="save" size={14} color={palette.white} />
+          <Feather name="save" size={14} color={colors.white} />
           <Text style={styles.headerSaveText}>Save</Text>
         </View>
       )}
@@ -56,6 +61,8 @@ const HeaderSaveButton = ({
 
 export default function ProfileEditScreen() {
   const { token } = useAuth()
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
@@ -110,7 +117,7 @@ export default function ProfileEditScreen() {
   if (profileQuery.isLoading) {
     return (
       <View style={styles.screen}>
-        <SubpageHeader title="Edit Profile" right={<HeaderSaveButton loading />} />
+        <SubpageHeader title="Edit Profile" right={<HeaderSaveButton loading colors={colors} styles={styles} />} />
         <View style={styles.bodyPad}>
           <LoadingBlock label="Loading profile…" />
         </View>
@@ -131,7 +138,10 @@ export default function ProfileEditScreen() {
 
   return (
     <View style={styles.screen}>
-      <SubpageHeader title="Edit Profile" right={<HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} />} />
+      <SubpageHeader
+        title="Edit Profile"
+        right={<HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <SurfaceCard style={styles.card}>
@@ -139,7 +149,7 @@ export default function ProfileEditScreen() {
           <View style={styles.photoRow}>
             <View style={styles.photoAvatar}>
               <OptionalLinearGradient
-                colors={[palette.purple, palette.primary]}
+                colors={[colors.purple, colors.primary]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.photoAvatarGradient}
@@ -155,7 +165,7 @@ export default function ProfileEditScreen() {
               </OptionalLinearGradient>
 
               <View style={styles.photoCameraButton}>
-                <Feather name="camera" size={16} color={palette.white} />
+                <Feather name="camera" size={16} color={colors.white} />
               </View>
             </View>
 
@@ -238,7 +248,7 @@ export default function ProfileEditScreen() {
 
         <SurfaceCard style={styles.card}>
           <View style={styles.sectionTitleRow}>
-            <Feather name="award" size={18} color={palette.primary} />
+            <Feather name="award" size={18} color={colors.primary} />
             <Text style={styles.cardTitle}>Pickleball Profile</Text>
           </View>
 
@@ -293,10 +303,11 @@ export default function ProfileEditScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   bodyPad: {
     padding: spacing.md,
@@ -323,7 +334,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   headerSaveText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -331,7 +342,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   cardTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -352,7 +363,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   photoAvatarText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 28,
     fontWeight: '700',
   },
@@ -365,21 +376,21 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
     borderWidth: 4,
-    borderColor: palette.surface,
+    borderColor: colors.surface,
   },
   photoTextBlock: {
     flex: 1,
     gap: 6,
   },
   photoHelper: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
   },
   photoSubhelper: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
   },
   fieldStack: {
@@ -387,7 +398,7 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     marginBottom: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -404,7 +415,7 @@ const styles = StyleSheet.create({
   },
   helperText: {
     marginTop: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
   },
-})
+  })

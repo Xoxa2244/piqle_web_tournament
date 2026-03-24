@@ -1,9 +1,11 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons'
+import { useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
 import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 import { Pill, SurfaceCard } from './ui'
 
@@ -101,6 +103,8 @@ export const TournamentCard = ({
   secondaryStatusLabel?: string | null
   secondaryStatusTone?: 'muted' | 'primary' | 'danger' | 'success' | 'warning'
 }) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const feeLabel = typeof tournament.entryFeeCents === 'number'
     ? formatMoney(tournament.entryFeeCents)
     : tournament.entryFee && Number(tournament.entryFee) > 0
@@ -134,7 +138,7 @@ export const TournamentCard = ({
         <View style={styles.hero}>
           <OptionalLinearGradient
             pointerEvents="none"
-            colors={['rgba(40, 205, 65, 0.18)', 'rgba(82, 224, 104, 0.12)', 'rgba(255, 255, 255, 0)']}
+            colors={[colors.brandPrimaryTint, colors.brandPurpleTint, 'rgba(255, 255, 255, 0)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.heroGradient}
@@ -145,7 +149,7 @@ export const TournamentCard = ({
                 {tournament.title}
               </Text>
               <View style={styles.formatRow}>
-                <Feather name="award" size={14} color={palette.textMuted} />
+                <Feather name="award" size={14} color={colors.textMuted} />
                 <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
               </View>
             </View>
@@ -161,11 +165,11 @@ export const TournamentCard = ({
         <View style={styles.body}>
           <View style={styles.metaGrid}>
             <View style={styles.metaCell}>
-              <Feather name="calendar" size={16} color={palette.primary} />
+              <Feather name="calendar" size={16} color={colors.primary} />
               <Text style={styles.metaText}>{formatTournamentDateRange(tournament.startDate, tournament.endDate)}</Text>
             </View>
             <View style={styles.metaCell}>
-              <Feather name="map-pin" size={16} color={palette.accent} />
+              <Feather name="map-pin" size={16} color={colors.accent} />
               <Text numberOfLines={1} style={styles.metaText}>
                 {formatLocation([tournament.venueName, tournament.venueAddress])}
               </Text>
@@ -193,11 +197,11 @@ export const TournamentCard = ({
           <View style={styles.progressBlock}>
             <View style={styles.progressHeader}>
               <View style={styles.progressMetric}>
-                <Feather name="users" size={16} color={palette.textMuted} />
+                <Feather name="users" size={16} color={colors.textMuted} />
                 <Text style={styles.progressText}>{occupancyLabel}</Text>
               </View>
               <View style={styles.priceTag}>
-                <Feather name="dollar-sign" size={16} color={palette.primary} />
+                <Feather name="dollar-sign" size={16} color={colors.primary} />
                 <Text style={styles.priceText}>{feeLabel}</Text>
               </View>
             </View>
@@ -214,7 +218,7 @@ export const TournamentCard = ({
             </Text>
             <View style={styles.footerAction}>
               <Text style={styles.footerActionText}>View Details</Text>
-              <Feather name="arrow-right" size={16} color={palette.primary} />
+              <Feather name="arrow-right" size={16} color={colors.primary} />
             </View>
           </View>
         </View>
@@ -223,18 +227,18 @@ export const TournamentCard = ({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   hero: {
     position: 'relative',
     overflow: 'hidden',
     padding: spacing.md,
     minHeight: 88,
     justifyContent: 'center',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderBottomWidth: 1,
-    borderBottomColor: palette.brandPrimaryBorder,
+    borderBottomColor: colors.brandPrimaryBorder,
   },
   heroGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -254,7 +258,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -265,7 +269,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   formatText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   body: {
@@ -283,7 +287,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metaText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 20,
     flex: 1,
@@ -299,19 +303,19 @@ const styles = StyleSheet.create({
     gap: 8,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(10,10,10,0.08)',
+    borderColor: colors.border,
     borderRadius: 9999,
-    backgroundColor: 'rgba(10,10,10,0.03)',
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   ratingText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   ratingTextMuted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -331,7 +335,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   progressText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flexShrink: 1,
   },
@@ -341,7 +345,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   priceText: {
-    color: palette.primary,
+    color: colors.primary,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -349,25 +353,25 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 6,
     borderRadius: radius.pill,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: radius.pill,
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   footerRow: {
     paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: palette.border,
+    borderTopColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
   },
   footer: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -377,7 +381,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   footerActionText: {
-    color: palette.primary,
+    color: colors.primary,
     fontWeight: '700',
   },
 })

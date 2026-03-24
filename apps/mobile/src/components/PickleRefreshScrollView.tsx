@@ -11,7 +11,7 @@ import {
   type ScrollViewProps,
 } from 'react-native'
 
-import { palette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { PickleballRefreshIndicator } from './PickleballRefreshIndicator'
 
 /** Нативный индикатор ещё кадры рисуется после снятия refresh — маску держим чуть дольше. */
@@ -60,6 +60,7 @@ export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrol
     },
     ref,
   ) {
+    const { colors } = useAppTheme()
     /** Совпадает с RefreshControl: отпускаем позже родителя, после fade мяча. */
     const [nativeRefreshing, setNativeRefreshing] = useState(refreshing)
     const [postNativeMask, setPostNativeMask] = useState(false)
@@ -136,7 +137,7 @@ export const PickleRefreshScrollView = forwardRef<ScrollView, PickleRefreshScrol
     )
 
     const showOverlay = nativeRefreshing || pullRevealed || postNativeMask
-    const maskBg = refreshMaskColor ?? palette.background
+    const maskBg = refreshMaskColor ?? colors.background
     const nativeSpinnerColor = NATIVE_SPINNER_INVISIBLE
 
     return (

@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -7,7 +8,8 @@ import { EmptyState, LoadingBlock, SurfaceCard } from '../../../src/components/u
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { formatDateRange, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
 
 const formatTournamentFormat = (format: string) => {
   switch (format) {
@@ -31,6 +33,8 @@ const formatTournamentFormat = (format: string) => {
 }
 
 export default function ClubEventsScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string }>()
   const clubId = String(params.id ?? '')
 
@@ -70,7 +74,7 @@ export default function ClubEventsScreen() {
             onPress={() => router.back()}
             style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           >
-            <Feather name="arrow-left" size={18} color={palette.text} />
+            <Feather name="arrow-left" size={18} color={colors.text} />
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Events</Text>
@@ -91,7 +95,7 @@ export default function ClubEventsScreen() {
                 <SurfaceCard style={styles.card}>
                   <View style={styles.eventRow}>
                     <View style={styles.eventIcon}>
-                      <Feather name="award" size={20} color={palette.primary} />
+                      <Feather name="award" size={20} color={colors.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.eventTopRow}>
@@ -105,13 +109,13 @@ export default function ClubEventsScreen() {
                         </View>
                       </View>
                       <View style={styles.eventMetaRow}>
-                        <Feather name="calendar" size={14} color={palette.textMuted} />
+                        <Feather name="calendar" size={14} color={colors.textMuted} />
                         <Text style={styles.eventMeta}>
                           {formatDateRange(tournament.startDate, tournament.endDate)}
                         </Text>
                       </View>
                       <View style={styles.eventMetaRow}>
-                        <Feather name="map-pin" size={14} color={palette.textMuted} />
+                        <Feather name="map-pin" size={14} color={colors.textMuted} />
                         <Text numberOfLines={1} style={styles.eventMeta}>
                           {formatLocation([club.city, club.state]) || 'Location not set'}
                         </Text>
@@ -137,10 +141,11 @@ export default function ClubEventsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   loadingWrap: {
     flex: 1,
@@ -164,20 +169,20 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   backButtonPressed: {
     opacity: 0.85,
   },
   title: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.4,
   },
   subtitle: {
     marginTop: 2,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -195,9 +200,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
+    backgroundColor: colors.brandPrimaryTint,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
+    borderColor: colors.brandPrimaryBorder,
   },
   eventTopRow: {
     flexDirection: 'row',
@@ -206,7 +211,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eventTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '800',
     flex: 1,
@@ -222,11 +227,11 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
-    backgroundColor: palette.brandPrimaryTint,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.brandPrimaryTint,
   },
   statusPillText: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -234,11 +239,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     marginTop: 6,
   },
   eventMeta: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -253,13 +258,13 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surfaceElevated,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
   },
   formatPillText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '700',
   },
-})
+  })
 

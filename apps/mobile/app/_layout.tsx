@@ -7,29 +7,31 @@ if (__DEV__) {
   LogBox.ignoreLogs(['TRPCClientError: Aborted'])
 }
 
-import { palette } from '../src/lib/theme'
 import { AppProviders } from '../src/providers/AppProviders'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useAppTheme } from '../src/providers/ThemeProvider'
 
 const RootNavigator = () => {
   const { isReady } = useAuth()
+  const { colors, isReady: isThemeReady, theme } = useAppTheme()
 
-  if (!isReady) {
+  if (!isReady || !isThemeReady) {
     return (
-      <View style={{ flex: 1, backgroundColor: palette.background, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <ActivityIndicator color={palette.primary} />
-        <Text style={{ color: palette.textMuted }}>Loading Piqle Player…</Text>
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={{ color: colors.textMuted }}>Loading Piqle Player…</Text>
       </View>
     )
   }
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <Stack
+        key={theme}
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: palette.background },
+          contentStyle: { backgroundColor: colors.background },
           /** Иначе при swipe-back подложка без шапки: pathname в expo-router обновляется с задержкой, см. useEffectivePathname */
           detachInactiveScreens: false,
         }}

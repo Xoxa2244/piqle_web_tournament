@@ -6,9 +6,10 @@ import { router } from 'expo-router'
 import { ActionButton, EmptyState, LoadingBlock, Pill, Screen, SectionTitle, SurfaceCard } from '../../../src/components/ui'
 import { formatDateRange, formatMoney, formatPlayerName } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, spacing } from '../../../src/lib/theme'
+import { spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -60,6 +61,8 @@ const isRegistrationOpen = (tournament: {
 }
 
 export default function TournamentRegistrationScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string; payment?: string }>()
   const tournamentId = params.id
   const paymentState = typeof params.payment === 'string' ? params.payment : null
@@ -276,7 +279,8 @@ export default function TournamentRegistrationScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   badges: {
     marginTop: spacing.md,
     flexDirection: 'row',
@@ -288,23 +292,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   statusTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 16,
   },
   statusBody: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     lineHeight: 20,
   },
   teamCard: {
     padding: spacing.md,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   teamName: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 16,
   },
@@ -314,15 +318,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
   },
   playerSlotText: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
   },
-})
+  })
 
 
 

@@ -1,10 +1,11 @@
 import * as Haptics from 'expo-haptics'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import { formatChatTime, groupMessagesByDate } from '../lib/chatMessages'
-import { palette } from '../lib/theme'
+import { type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { RemoteUserAvatar } from './RemoteUserAvatar'
 
 const AVATAR = 32
@@ -43,6 +44,8 @@ export function ChatThreadMessageList({
   onRequestDelete,
   deleteDisabled,
 }: Props) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const groups = groupMessagesByDate(messages)
 
   const tryDelete = useCallback(
@@ -138,7 +141,8 @@ export function ChatThreadMessageList({
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   root: {
     paddingHorizontal: 4,
     paddingVertical: 8,
@@ -149,7 +153,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   datePill: {
-    backgroundColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 999,
@@ -157,7 +161,7 @@ const styles = StyleSheet.create({
   datePillText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#475569',
+    color: colors.textMuted,
   },
   row: {
     flexDirection: 'row',
@@ -195,8 +199,8 @@ const styles = StyleSheet.create({
   },
   bubbleMine: {
     borderBottomRightRadius: 6,
-    backgroundColor: palette.primary,
-    shadowColor: '#000',
+    backgroundColor: colors.primary,
+    shadowColor: colors.shadowStrong,
     shadowOpacity: 0.06,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
@@ -204,28 +208,28 @@ const styles = StyleSheet.create({
   },
   bubbleOther: {
     borderBottomLeftRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: colors.surfaceOverlay,
     borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.95)',
+    borderColor: colors.border,
   },
   authorName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: colors.textMuted,
     marginBottom: 4,
   },
   body: {
     fontSize: 15,
     lineHeight: 20,
-    color: palette.text,
+    color: colors.text,
   },
   bodyMine: {
-    color: palette.white,
+    color: colors.white,
   },
   time: {
     marginTop: 6,
     fontSize: 10,
-    color: '#64748b',
+    color: colors.textMuted,
   },
   timeMine: {
     color: 'rgba(255,255,255,0.75)',

@@ -35,8 +35,9 @@ import { isRemoteImageUri } from '../../../src/lib/imageUri'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 
@@ -183,6 +184,8 @@ const getStatusMeta = (
 }
 
 export default function TournamentDetailScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string; payment?: string }>()
   const tournamentId = String(params.id ?? '')
   const paymentState = typeof params.payment === 'string' ? params.payment : null
@@ -565,7 +568,7 @@ export default function TournamentDetailScreen() {
                 onPress={() => router.back()}
                 style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
               >
-                <Feather name="arrow-left" size={20} color={palette.white} />
+                <Feather name="arrow-left" size={20} color={colors.white} />
               </Pressable>
               <View style={styles.heroActionGroup}>
                 <Pressable
@@ -575,14 +578,14 @@ export default function TournamentDetailScreen() {
                   <Feather
                     name="heart"
                     size={20}
-                    color={isFavorite ? '#ff5a6b' : palette.white}
+                    color={isFavorite ? '#ff5a6b' : colors.white}
                   />
                 </Pressable>
                 <Pressable
                   onPress={handleShare}
                   style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
                 >
-                  <Feather name="share-2" size={20} color={palette.white} />
+                  <Feather name="share-2" size={20} color={colors.white} />
                 </Pressable>
               </View>
             </View>
@@ -612,17 +615,17 @@ export default function TournamentDetailScreen() {
         <View style={styles.statsSection}>
           <View style={styles.quickStats}>
             <SurfaceCard style={styles.statCard}>
-              <Feather name="users" size={20} color={palette.primary} />
+              <Feather name="users" size={20} color={colors.primary} />
               <Text style={styles.statValue}>{playerCount || totalTeams}</Text>
               <Text style={styles.statLabel}>{playerCount ? 'Players' : 'Teams'}</Text>
             </SurfaceCard>
             <SurfaceCard style={styles.statCard}>
-              <Feather name="award" size={20} color={palette.brandAccent} />
+              <Feather name="award" size={20} color={colors.brandAccent} />
               <Text style={styles.statValue}>{tournament.divisions.length}</Text>
               <Text style={styles.statLabel}>Divisions</Text>
             </SurfaceCard>
             <SurfaceCard style={styles.statCard}>
-              <Feather name="dollar-sign" size={20} color={palette.purple} />
+              <Feather name="dollar-sign" size={20} color={colors.purple} />
               <Text style={styles.statValue}>{quickFeeLabel}</Text>
               <Text style={styles.statLabel}>Entry Fee</Text>
             </SurfaceCard>
@@ -689,7 +692,7 @@ export default function TournamentDetailScreen() {
               <SurfaceCard style={styles.detailCard}>
                 <Text style={[styles.cardTitle, styles.cardTitleTight]}>Format</Text>
                 <View style={styles.valueRow}>
-                  <Feather name="award" size={16} color={palette.primary} />
+                  <Feather name="award" size={16} color={colors.primary} />
                   <Text style={styles.valueText}>{formatTournamentFormat(tournament.format)}</Text>
                 </View>
               </SurfaceCard>
@@ -697,7 +700,7 @@ export default function TournamentDetailScreen() {
               <SurfaceCard style={styles.detailCard}>
                 <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Location</Text>
                 <View style={styles.locationRow}>
-                  <Feather name="map-pin" size={20} color={palette.brandAccent} style={styles.locationIcon} />
+                  <Feather name="map-pin" size={20} color={colors.brandAccent} style={styles.locationIcon} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.valueText}>{locationLabel}</Text>
                     <Pressable
@@ -825,7 +828,7 @@ export default function TournamentDetailScreen() {
                       <View style={styles.divisionMetaGrid}>
                         <View style={styles.divisionMetaCell}>
                           <View style={styles.metaRow}>
-                            <Feather name="users" size={16} color={palette.textMuted} />
+                            <Feather name="users" size={16} color={colors.textMuted} />
                             <Text style={styles.mutedBodyText}>
                               {createdSlots !== null && filledSlots !== null && createdSlots > 0
                                 ? `${filledSlots} / ${createdSlots} spots filled`
@@ -841,7 +844,7 @@ export default function TournamentDetailScreen() {
                         </View>
                         <View style={styles.divisionMetaCell}>
                           <View style={styles.metaRow}>
-                            <Feather name="dollar-sign" size={16} color={palette.primary} />
+                            <Feather name="dollar-sign" size={16} color={colors.primary} />
                             <Text style={styles.mutedBodyText}>{feeLabel}</Text>
                           </View>
                         </View>
@@ -852,7 +855,7 @@ export default function TournamentDetailScreen() {
                           style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
                         >
                           <OptionalLinearGradient
-                            colors={[palette.primary, palette.purple]}
+                            colors={[colors.primary, colors.purple]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.smallCtaGradient}
@@ -872,7 +875,7 @@ export default function TournamentDetailScreen() {
                           style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
                         >
                           <OptionalLinearGradient
-                            colors={[palette.primary, palette.purple]}
+                            colors={[colors.primary, colors.purple]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                             style={styles.smallCtaGradient}
@@ -955,7 +958,7 @@ export default function TournamentDetailScreen() {
       {shouldShowStickyCta ? (
         <View style={styles.ctaShell}>
           <OptionalLinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', palette.background]}
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', colors.background]}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.ctaFade}
@@ -972,7 +975,7 @@ export default function TournamentDetailScreen() {
                   ]}
                 >
                   <OptionalLinearGradient
-                    colors={[palette.primary, palette.purple]}
+                    colors={[colors.primary, colors.purple]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={[styles.ctaGradient, createCheckout.isPending && styles.ctaGradientDisabled]}
@@ -994,7 +997,7 @@ export default function TournamentDetailScreen() {
                 ]}
               >
                 <OptionalLinearGradient
-                  colors={[palette.primary, palette.purple]}
+                  colors={[colors.primary, colors.purple]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={[
@@ -1148,10 +1151,11 @@ export default function TournamentDetailScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   loadingWrap: {
     flex: 1,
@@ -1167,7 +1171,7 @@ const styles = StyleSheet.create({
   hero: {
     position: 'relative',
     height: 256,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   heroImage: {
     width: '100%',
@@ -1228,12 +1232,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   heroStatusText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '600',
     fontSize: 12,
   },
   heroTitle: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.4,
@@ -1258,7 +1262,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: colors.border,
   },
   contentSection: {
     paddingHorizontal: spacing.md,
@@ -1283,20 +1287,20 @@ const styles = StyleSheet.create({
   },
   statValue: {
     marginTop: 4,
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
   },
   statLabel: {
     marginTop: 2,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
   },
   tabSwitch: {
     flexDirection: 'row',
     gap: 4,
     minHeight: 36,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     padding: 3,
     borderRadius: radius.sm,
   },
@@ -1310,15 +1314,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   tabButtonActive: {
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
   },
   tabLabel: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
     fontSize: 14,
   },
   tabLabelActive: {
-    color: palette.text,
+    color: colors.text,
   },
   sectionStack: {
     marginTop: 24,
@@ -1330,10 +1334,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   muted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
   paragraph: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 22,
   },
@@ -1345,7 +1349,7 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   cardTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1361,13 +1365,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   valueText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     lineHeight: 20,
     flex: 1,
   },
   mutedBodyText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     flex: 1,
@@ -1388,7 +1392,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   inlineLinkText: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -1402,25 +1406,25 @@ const styles = StyleSheet.create({
   },
   primaryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   primaryBadgeText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 12,
     fontWeight: '600',
   },
   secondaryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: palette.secondary,
+    backgroundColor: colors.secondary,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   secondaryBadgeText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -1431,7 +1435,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   divisionTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '600',
     flex: 1,
@@ -1465,7 +1469,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   smallCtaText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1475,13 +1479,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   organizerName: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
   organizerMeta: {
     marginTop: 2,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
   },
   organizerAvatarPressed: {
@@ -1526,29 +1530,29 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   feedbackValue: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
   feedbackValueMuted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 16,
     fontWeight: '700',
   },
   feedbackCount: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   feedbackInfoBtn: {
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   feedbackInfoBtnText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1558,19 +1562,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 11,
     alignItems: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   primaryFeedbackCtaBtnPressed: {
     opacity: 0.9,
   },
   primaryFeedbackCtaText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 14,
     fontWeight: '800',
   },
   feedbackThanksText: {
     marginTop: spacing.md,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1588,7 +1592,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   modalRatingValueInline: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 24,
     fontWeight: '800',
     marginLeft: 8,
@@ -1662,19 +1666,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   feedbackEmptyText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   dashboardBanner: {
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
-    backgroundColor: palette.successSoft,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.successSoft,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
   },
   dashboardBannerText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -1698,18 +1702,18 @@ const styles = StyleSheet.create({
   dashboardFrame: {
     overflow: 'hidden',
     borderTopWidth: 1,
-    borderTopColor: palette.border,
-    backgroundColor: palette.background,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   dashboardWebView: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   dashboardLoadingState: {
     flex: 1,
     justifyContent: 'center',
     padding: spacing.md,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   dashboardEmptyWrap: {
     padding: spacing.md,
@@ -1718,20 +1722,20 @@ const styles = StyleSheet.create({
     minHeight: 36,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
   outlineButtonPressed: {
-    backgroundColor: palette.secondary,
+    backgroundColor: colors.secondary,
   },
   outlineButtonDisabled: {
     opacity: 0.5,
   },
   outlineButtonText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -1747,7 +1751,7 @@ const styles = StyleSheet.create({
   ctaSafeArea: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   ctaStack: {
     gap: 10,
@@ -1769,8 +1773,9 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   ctaText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 18,
     fontWeight: '700',
   },
-})
+  })
+

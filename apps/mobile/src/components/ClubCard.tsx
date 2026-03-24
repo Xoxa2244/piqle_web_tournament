@@ -1,8 +1,10 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons'
+import { useMemo } from 'react'
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation } from '../lib/formatters'
-import { palette, radius, spacing } from '../lib/theme'
+import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 import { SurfaceCard } from './ui'
 
@@ -40,6 +42,8 @@ type ClubCardProps = {
 }
 
 export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) => {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const showMember = Boolean(club.isFollowing || club.isAdmin)
   const showPending = Boolean(!showMember && club.isJoinPending)
   const memberCount = typeof club.followersCount === 'number' ? club.followersCount : null
@@ -61,7 +65,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
           ) : (
             <OptionalLinearGradient
               pointerEvents="none"
-              colors={['rgba(40, 205, 65, 0.18)', 'rgba(82, 224, 104, 0.14)', 'rgba(0, 0, 0, 0.02)']}
+              colors={[colors.brandPrimaryTint, colors.brandPurpleTint, 'rgba(0, 0, 0, 0.02)']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.imagePlaceholder}
@@ -70,12 +74,12 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
 
           {showMember ? (
             <View style={[styles.statusBadge, styles.statusBadgeMember]}>
-              <Feather name={club.isAdmin ? 'shield' : 'check'} size={14} color={palette.white} />
+              <Feather name={club.isAdmin ? 'shield' : 'check'} size={14} color={colors.white} />
               <Text style={styles.statusBadgeText}>{club.isAdmin ? 'Admin' : 'Member'}</Text>
             </View>
           ) : showPending ? (
             <View style={[styles.statusBadge, styles.statusBadgePending]}>
-              <Feather name="clock" size={14} color={palette.text} />
+              <Feather name="clock" size={14} color={colors.text} />
               <Text style={[styles.statusBadgeText, styles.statusBadgeTextDark]}>Pending</Text>
             </View>
           ) : null}
@@ -91,7 +95,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
 
           {memberCount !== null ? (
             <View style={styles.memberRow}>
-              <Feather name="users" size={16} color={palette.primary} />
+              <Feather name="users" size={16} color={colors.primary} />
               <Text style={styles.memberText}>{memberCount} members</Text>
             </View>
           ) : null}
@@ -130,10 +134,10 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
           {club.nextTournament && nextDateLabel ? (
             <View style={styles.footerRow}>
               <View style={styles.footerLeft}>
-                <Feather name="calendar" size={18} color={palette.primary} />
+                <Feather name="calendar" size={18} color={colors.primary} />
                 <Text style={styles.footerText}>{`Tournament • ${nextDateLabel}`}</Text>
               </View>
-              <Feather name="arrow-right" size={18} color={palette.primary} />
+              <Feather name="arrow-right" size={18} color={colors.primary} />
             </View>
           ) : null}
 
@@ -147,14 +151,14 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               ]}
             >
               <OptionalLinearGradient
-                colors={[palette.primary, palette.brandAccent]}
+                colors={[colors.primary, colors.brandAccent]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.joinButtonGradient}
               >
                 {joinLoading ? (
                   <View style={styles.joinButtonLoadingRow}>
-                    <ActivityIndicator color={palette.white} size="small" />
+                    <ActivityIndicator color={colors.white} size="small" />
                     <Text style={styles.joinButtonLabel}>
                       {club.joinPolicy === 'APPROVAL' ? 'Sending request…' : 'Joining…'}
                     </Text>
@@ -173,7 +177,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   card: {
     borderRadius: radius.lg,
     overflow: 'hidden',
@@ -185,7 +189,7 @@ const styles = StyleSheet.create({
   imageWrap: {
     position: 'relative',
     height: 180,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   image: {
     width: '100%',
@@ -207,18 +211,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statusBadgeMember: {
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   statusBadgePending: {
-    backgroundColor: palette.warning,
+    backgroundColor: colors.warning,
   },
   statusBadgeText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '700',
     fontSize: 13,
   },
   statusBadgeTextDark: {
-    color: palette.text,
+    color: colors.text,
   },
   body: {
     paddingHorizontal: spacing.md,
@@ -229,12 +233,12 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 20,
     fontWeight: '800',
-    color: palette.text,
+    color: colors.text,
     letterSpacing: -0.3,
   },
   location: {
     marginTop: -4,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
   },
   memberRow: {
@@ -244,7 +248,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   memberText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -261,30 +265,30 @@ const styles = StyleSheet.create({
     marginTop: 2,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(10,10,10,0.08)',
+    borderColor: colors.border,
     borderRadius: 9999,
-    backgroundColor: 'rgba(10,10,10,0.03)',
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   ratingText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   ratingTextMuted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
   },
   chip: {
-    backgroundColor: palette.secondary,
+    backgroundColor: colors.secondary,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 999,
   },
   chipText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -292,7 +296,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: palette.border,
+    borderTopColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -303,7 +307,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -329,7 +333,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   joinButtonLabel: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '700',
   },

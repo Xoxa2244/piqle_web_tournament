@@ -6,14 +6,17 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { FeedbackRatingModal } from '../src/components/FeedbackRatingModal'
 import { PageLayout } from '../src/components/navigation/PageLayout'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
-import { palette, spacing } from '../src/lib/theme'
+import { spacing, type ThemePalette } from '../src/lib/theme'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useAppTheme } from '../src/providers/ThemeProvider'
 
 type FeedbackEntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 
 export default function NotificationsScreen() {
   const { token } = useAuth()
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const [activePrompt, setActivePrompt] = useState<{
     entityType: FeedbackEntityType
@@ -69,7 +72,7 @@ export default function NotificationsScreen() {
                   <Feather
                     name={item.type === 'FEEDBACK_PROMPT' ? 'star' : item.type === 'TOURNAMENT_INVITATION' ? 'mail' : 'bell'}
                     size={16}
-                    color={palette.white}
+                    color={colors.white}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -97,7 +100,8 @@ export default function NotificationsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   page: { gap: spacing.md },
   itemCard: { padding: spacing.md },
   itemHead: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
@@ -105,10 +109,10 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 999,
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemTitle: { color: palette.text, fontSize: 15, fontWeight: '700' },
-  itemBody: { marginTop: 4, color: palette.textMuted, fontSize: 13, lineHeight: 18 },
+  itemTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  itemBody: { marginTop: 4, color: colors.textMuted, fontSize: 13, lineHeight: 18 },
 })

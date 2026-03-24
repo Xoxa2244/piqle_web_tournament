@@ -4,28 +4,41 @@ import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { palette, spacing } from '../../lib/theme'
+import { getPalette, spacing, type AppTheme } from '../../lib/theme'
 
 export const SubpageHeader = ({
   title,
   onBack,
   right,
+  themeMode = 'light',
 }: {
   title: string
   onBack?: () => void
   right?: ReactNode
+  themeMode?: AppTheme
 }) => {
+  const colors = getPalette(themeMode)
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        { backgroundColor: colors.surfaceOverlay, borderBottomColor: colors.border },
+      ]}
+      edges={['top']}
+    >
       <View style={styles.header}>
         <Pressable
           onPress={onBack ?? (() => router.back())}
-          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+          style={({ pressed }) => [
+            styles.backButton,
+            pressed && { backgroundColor: colors.surfaceMuted },
+          ]}
         >
-          <Feather name="chevron-left" size={20} color={palette.text} />
+          <Feather name="chevron-left" size={20} color={colors.text} />
         </Pressable>
 
-        <Text numberOfLines={1} style={styles.title}>
+        <Text numberOfLines={1} style={[styles.title, { color: colors.primary }]}>
           {title}
         </Text>
 
@@ -37,9 +50,7 @@ export const SubpageHeader = ({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
   },
   header: {
     minHeight: 64,
@@ -56,13 +67,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backButtonPressed: {
-    backgroundColor: palette.surfaceMuted,
-  },
   title: {
     flex: 1,
     textAlign: 'center',
-    color: palette.primary,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.3,
