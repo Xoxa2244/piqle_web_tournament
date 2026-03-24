@@ -41,6 +41,17 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
 }
 
 export const intelligenceRouter = createTRPCRouter({
+  // ── Subscription: Get current club subscription ──
+  getSubscription: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const subscription = await ctx.prisma.subscription.findUnique({
+        where: { clubId: input.clubId },
+      })
+      return subscription
+    }),
+
   // ── Club Data Status: Check if club has AI data ──
   getClubDataStatus: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))

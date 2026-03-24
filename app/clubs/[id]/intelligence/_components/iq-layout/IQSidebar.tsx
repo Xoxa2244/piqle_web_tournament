@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, Puzzle, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X,
+  Menu, X, CreditCard,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -60,6 +60,7 @@ const navSections: NavSection[] = [
       { icon: Users, label: "Members", path: "/members" },
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
       { icon: PartyPopper, label: "Events", path: "/events" },
+      { icon: CreditCard, label: "Billing", path: "/billing" },
     ],
   },
 ];
