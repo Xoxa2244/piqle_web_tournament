@@ -17,6 +17,9 @@ import { palette, spacing } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
+const normalizeLocationValue = (value: string | null | undefined) =>
+  String(value ?? '').trim().toLowerCase()
+
 export default function ClubsTab() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
@@ -28,6 +31,9 @@ export default function ClubsTab() {
   const clubsQuery = api.club.list.useQuery(
     search.trim() ? { query: search.trim() } : undefined
   )
+  const profileQuery = api.user.getProfile.useQuery(undefined, {
+    enabled: isAuthenticated,
+  })
   const toggleFollow = api.club.toggleFollow.useMutation({
     onSuccess: (_data: unknown, variables: { clubId: string }) => {
       void Promise.all([
@@ -37,37 +43,58 @@ export default function ClubsTab() {
       ])
     },
   })
-  const cancelRequest = api.club.cancelJoinRequest.useMutation({
-    onSuccess: () => {
-      void utils.club.list.invalidate()
-    },
-  })
+
+  const clubs = useMemo(() => ((clubsQuery.data ?? []) as any[]), [clubsQuery.data])
+  const profileCity = String(profileQuery.data?.city ?? '').trim()
+  const normalizedProfileCity = normalizeLocationValue(profileCity)
 
   const myClubs = useMemo(
-    () => ((clubsQuery.data ?? []) as any[]).filter((club) => club.isFollowing || club.isAdmin || club.isJoinPending),
-    [clubsQuery.data]
+    () => clubs.filter((club) => club.isFollowing || club.isAdmin || club.isJoinPending),
+    [clubs]
   )
   const discoverClubs = useMemo(
-    () => ((clubsQuery.data ?? []) as any[]).filter((club) => !club.isFollowing && !club.isAdmin && !club.isJoinPending),
-    [clubsQuery.data]
+    () => clubs.filter((club) => !club.isFollowing && !club.isAdmin && !club.isJoinPending),
+    [clubs]
   )
+  const nearbyClubs = useMemo(() => {
+    if (!normalizedProfileCity) return []
 
-  const visibleMyClubs = useMemo(() => {
-    if (!isAuthenticated) return []
-    if (mode !== 'my-clubs') return myClubs
-    return myClubs
-  }, [isAuthenticated, mode, myClubs])
+    return clubs.filter((club) => {
+      const normalizedCity = normalizeLocationValue(club.city)
+      const normalizedAddress = normalizeLocationValue(
+        [club.address, club.city, club.state].filter(Boolean).join(' ')
+      )
 
-  const visibleDiscoverClubs = useMemo(() => {
-    if (mode === 'my-clubs') return []
-    // Nearby mode is visual-only until we have geolocation + backend distance support.
+      if (!normalizedCity && !normalizedAddress) return false
+
+      return (
+        (normalizedCity && (normalizedCity.includes(normalizedProfileCity) || normalizedProfileCity.includes(normalizedCity))) ||
+        normalizedAddress.includes(normalizedProfileCity)
+      )
+    })
+  }, [clubs, normalizedProfileCity])
+
+  const activeClubs = useMemo(() => {
+    if (mode === 'my-clubs') {
+      return isAuthenticated ? myClubs : []
+    }
+    if (mode === 'nearby') {
+      return nearbyClubs
+    }
     return discoverClubs
-  }, [discoverClubs, mode])
+  }, [discoverClubs, isAuthenticated, mode, myClubs, nearbyClubs])
+
+  const listHeading = useMemo(() => {
+    if (mode === 'my-clubs') return 'My clubs'
+    if (mode === 'nearby') {
+      return profileCity ? `Nearby clubs in ${profileCity}` : 'Nearby clubs'
+    }
+    return isAuthenticated ? 'Discover clubs' : 'All clubs'
+  }, [isAuthenticated, mode, profileCity])
 
   const visibleClubIds = useMemo(
-    () =>
-      [...new Set([...visibleMyClubs.map((c) => c.id), ...visibleDiscoverClubs.map((c) => c.id)])].slice(0, 200),
-    [visibleMyClubs, visibleDiscoverClubs],
+    () => [...new Set(activeClubs.map((club) => club.id))].slice(0, 200),
+    [activeClubs],
   )
 
   const clubFeedbackSummariesQuery = api.feedback.getBatchSummaries.useQuery(
@@ -106,6 +133,62 @@ export default function ClubsTab() {
   const pullToRefresh = usePullToRefresh(onRefreshClubs)
 
   const clubsInitialLoading = clubsQuery.isLoading && clubsQuery.data === undefined
+  const profileInitialLoading =
+    isAuthenticated && profileQuery.isLoading && profileQuery.data === undefined
+  const nearbyNeedsProfile = mode === 'nearby'
+  const nearbyBlockedByAuth = nearbyNeedsProfile && !isAuthenticated
+  const nearbyBlockedByProfile = nearbyNeedsProfile && isAuthenticated && !profileInitialLoading && !normalizedProfileCity
+  const modeInitialLoading = clubsInitialLoading || (nearbyNeedsProfile && profileInitialLoading)
+
+  const emptyStateCopy = useMemo(() => {
+    if (nearbyBlockedByAuth) {
+      return {
+        title: 'Sign in required',
+        body: 'Sign in and add your city to your profile to discover nearby clubs.',
+      }
+    }
+
+    if (nearbyBlockedByProfile) {
+      return {
+        title: 'Add your city first',
+        body: 'Update your profile city to make the Nearby filter show clubs around you.',
+      }
+    }
+
+    if (mode === 'my-clubs') {
+      return search.trim()
+        ? {
+            title: 'No matching clubs',
+            body: 'None of your clubs match this search yet.',
+          }
+        : {
+            title: 'No clubs yet',
+            body: 'Clubs you join or request access to will appear here.',
+          }
+    }
+
+    if (mode === 'nearby') {
+      return search.trim()
+        ? {
+            title: 'No nearby matches',
+            body: `No clubs around ${profileCity} match this search.`,
+          }
+        : {
+            title: 'No nearby clubs found',
+            body: `We couldn’t find clubs around ${profileCity} yet.`,
+          }
+    }
+
+    return search.trim()
+      ? {
+          title: 'No clubs found',
+          body: 'Try another search term or check back later.',
+        }
+      : {
+          title: 'Nothing to discover',
+          body: 'Check back later for new clubs in the directory.',
+        }
+  }, [mode, nearbyBlockedByAuth, nearbyBlockedByProfile, profileCity, search])
 
   return (
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
@@ -132,7 +215,9 @@ export default function ClubsTab() {
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
-          {clubsInitialLoading ? <LoadingBlock label="Loading clubs…" /> : null}
+          {modeInitialLoading ? (
+            <LoadingBlock label={nearbyNeedsProfile ? 'Finding nearby clubs…' : 'Loading clubs…'} />
+          ) : null}
 
           {clubsQuery.isError ? (
             <EmptyState
@@ -141,44 +226,32 @@ export default function ClubsTab() {
             />
           ) : null}
 
-          {!clubsInitialLoading && !clubsQuery.isError && (clubsQuery.data?.length ?? 0) === 0 ? (
-            <EmptyState title="No clubs found" body="Try another search term or check back later." />
-          ) : null}
-
-          {isAuthenticated && visibleMyClubs.length > 0 ? (
+          {!modeInitialLoading && !clubsQuery.isError && !nearbyBlockedByAuth && !nearbyBlockedByProfile && activeClubs.length > 0 ? (
             <View style={{ gap: 12 }}>
-              <Text style={styles.sectionTitle}>My clubs</Text>
-              {visibleMyClubs.map((club) => (
-                <View key={club.id} style={{ gap: 10 }}>
-                  <ClubCard
-                    club={{ ...club, feedbackSummary: feedbackWithDevFallback[club.id] ?? null }}
-                    onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
-                  />
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {visibleDiscoverClubs.length > 0 ? (
-            <View style={{ gap: 12 }}>
-              <Text style={styles.sectionTitle}>{isAuthenticated ? 'Discover clubs' : 'All clubs'}</Text>
-              {visibleDiscoverClubs.map((club) => (
+              <Text style={styles.sectionTitle}>{listHeading}</Text>
+              {activeClubs.map((club) => (
                 <View key={club.id} style={{ gap: 10 }}>
                   <ClubCard
                     club={{ ...club, feedbackSummary: feedbackWithDevFallback[club.id] ?? null }}
                     onPress={() => router.push({ pathname: '/clubs/[id]', params: { id: club.id } })}
                     onJoin={
-                      isAuthenticated
+                      mode !== 'my-clubs' && isAuthenticated
                         ? () => {
                             router.push({ pathname: '/clubs/[id]', params: { id: club.id } })
                             toggleFollow.mutate({ clubId: club.id })
                           }
-                        : () => router.push('/sign-in')
+                        : mode !== 'my-clubs'
+                        ? () => router.push('/sign-in')
+                        : undefined
                     }
                   />
                 </View>
               ))}
             </View>
+          ) : null}
+
+          {!modeInitialLoading && !clubsQuery.isError && (nearbyBlockedByAuth || nearbyBlockedByProfile || activeClubs.length === 0) ? (
+            <EmptyState title={emptyStateCopy.title} body={emptyStateCopy.body} />
           ) : null}
         </PickleRefreshScrollView>
       </View>
