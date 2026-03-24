@@ -1169,11 +1169,13 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
       }
     }
 
-    // Send SMS
+    // Send SMS (only if user opted in)
     if (candidate.channel === 'sms' || candidate.channel === 'both') {
       try {
         const phone = (user as any).phone
         if (!phone) throw new Error('Phone number not available')
+        const smsOptIn = (user as any).smsOptIn
+        if (!smsOptIn) throw new Error('User has not opted in to SMS')
         const body = buildSlotFillerSms({
           memberName: user.name || 'there',
           clubName: club.name,
@@ -1468,11 +1470,13 @@ export async function sendEventInviteMessages(
       }
     }
 
-    // Send SMS
+    // Send SMS (only if user opted in)
     if (candidate.channel === 'sms' || candidate.channel === 'both') {
       try {
         const phone = (user as any).phone
         if (!phone) throw new Error('Phone number not available')
+        const smsOptIn = (user as any).smsOptIn
+        if (!smsOptIn) throw new Error('User has not opted in to SMS')
         await sendSms({ to: phone, body: candidate.customMessage })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
       } catch (err: any) {

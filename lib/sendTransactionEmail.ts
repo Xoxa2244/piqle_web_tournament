@@ -3,8 +3,8 @@
  * Uses MAILCHIMP_TRANSACTIONAL_API_KEY if set, else SMTP env vars.
  */
 export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
-  const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@piqle.io'
-  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
+  const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@iqsport.ai'
+  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'IQSport'
 
   const mailchimpApiKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
   if (mailchimpApiKey) {

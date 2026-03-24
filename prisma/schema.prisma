@@ -66,6 +66,7 @@ model User {
   stripeDefaultPaymentMethodId String?               @map("stripe_default_payment_method_id")
   stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
   stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
+  smsOptIn                 Boolean                   @default(false) @map("sms_opt_in")
 
   // Intelligence relations
   playSessionBookings      PlaySessionBooking[]      @relation("PlaySessionBookings")

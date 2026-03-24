@@ -95,7 +95,7 @@ const buildClubInviteEmailHtml = (args: {
     .map((part) => String(part ?? '').trim())
     .filter(Boolean)
     .join(', ')
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const clubImageUrl = clubLogoUrl || `${baseUrl}/tournament-placeholder.png`
 
   return `
@@ -1244,7 +1244,7 @@ export const clubRouter = createTRPCRouter({
       }
 
       const emailHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
-      const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'Piqle'
+      const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'IQSport'
       const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
       const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
 
@@ -1299,15 +1299,15 @@ export const clubRouter = createTRPCRouter({
       })
 
       const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || emailUser
-      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
+      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'IQSport'
       const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
 
       const inviterName = ctx.session.user.name || 'Someone'
-      const subject = `${inviterName} invited you to join ${club.name} on Piqle`
+      const subject = `${inviterName} invited you to join ${club.name} on IQSport`
       const greeting = toName ? `Hi ${toName},` : 'Hi,'
       const text = `${greeting}
 
-${inviterName} invited you to join the club "${club.name}" on Piqle.
+${inviterName} invited you to join the club "${club.name}" on IQSport.
 
 Join here: ${inviteUrl}
 

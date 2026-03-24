@@ -2,12 +2,12 @@ import nodemailer from 'nodemailer'
 
 const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
 const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || 587)
-const smtpUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'Piqle'
+const smtpUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'IQSport'
 const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
 const smtpSecure =
   (process.env.SMTP_SECURE || '').toLowerCase() === 'true' || smtpPort === 465
 const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM
-const fromName = process.env.SMTP_FROM_NAME || 'Piqle'
+const fromName = process.env.SMTP_FROM_NAME || 'IQSport'
 
 if (!smtpHost || !smtpPass || !fromEmail) {
   console.error('[Email] Missing SMTP env vars')
@@ -35,7 +35,7 @@ const getAppBaseUrl = () => {
 
 const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
 
   return `
 <!DOCTYPE html>
@@ -43,7 +43,7 @@ const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Piqle verification code</title>
+  <title>Your IQSport verification code</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
@@ -123,7 +123,7 @@ function buildReactivationEmailHtml({
   customMessage?: string
 }) {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const firstName = memberName.split(' ')[0] || 'there'
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -294,7 +294,7 @@ function buildEventInviteEmailHtml({
   customMessage: string
 }) {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
 
   return `
 <!DOCTYPE html>
@@ -432,7 +432,7 @@ function buildSlotFillerInviteEmailHtml({
   customMessage?: string
 }) {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const firstName = memberName.split(' ')[0] || 'there'
 
   return `
@@ -570,8 +570,8 @@ export async function sendOtpEmail({
   code: string
   ttlMinutes: number
 }) {
-  const subject = 'Your Piqle verification code'
-  const text = `Your Piqle verification code is: ${code}
+  const subject = 'Your IQSport verification code'
+  const text = `Your IQSport verification code is: ${code}
 
 This code expires in ${ttlMinutes} minutes.
 If you didn't request this, you can ignore this email.`
@@ -614,7 +614,7 @@ export async function sendOutreachEmail({
   sessionCard?: OutreachSessionCard
 }): Promise<{ messageId: string }> {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const text = `${body}\n\nBook now: ${bookingUrl}`
 
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())

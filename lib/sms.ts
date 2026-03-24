@@ -97,14 +97,14 @@ export function buildSlotFillerSms({
   customMessage?: string
 }): string {
   if (customMessage) {
-    return `${customMessage} Join now: ${bookingUrl}`
+    return `IQSport: ${customMessage} Join now: ${bookingUrl} Reply STOP to opt out`
   }
   const name = memberName.split(' ')[0] || 'there'
   return (
-    `Hey ${name}! You're invited to ${sessionTitle} at ${clubName} ` +
+    `IQSport: Hey ${name}! You're invited to ${sessionTitle} at ${clubName} ` +
     `on ${sessionDate}, ${sessionTime}. ` +
     `${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left. ` +
-    `Join now: ${bookingUrl}`
+    `Join now: ${bookingUrl} Reply STOP to opt out`
   )
 }
 
@@ -127,13 +127,13 @@ export function buildReactivationSms({
   customMessage?: string
 }): string {
   if (customMessage) {
-    return `${customMessage} Book now: ${bookingUrl}`
+    return `IQSport: ${customMessage} Book now: ${bookingUrl} Reply STOP to opt out`
   }
   const name = memberName.split(' ')[0] || 'there'
   return (
-    `Hey ${name}! We miss you at ${clubName}. ` +
+    `IQSport: Hey ${name}! We miss you at ${clubName}. ` +
     `It's been ${daysSinceLastActivity} days since your last session. ` +
     `We have ${sessionCount} upcoming session${sessionCount !== 1 ? 's' : ''} that match your level. ` +
-    `Book now: ${bookingUrl}`
+    `Book now: ${bookingUrl} Reply STOP to opt out`
   )
 }
