@@ -31,11 +31,6 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    // Redirect root to /clubs (IQ brand skips onboarding page)
-    if (!host.startsWith('demo.') && (pathname === '/' || pathname === '/onboarding')) {
-      return NextResponse.redirect(new URL('/clubs', req.url))
-    }
-
     // Block hidden routes → redirect to /clubs
     for (const pattern of brand.hiddenRoutePatterns) {
       if (pattern.test(pathname)) {
@@ -44,7 +39,7 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Проверяем наличие cookie с сессией только для админских маршрутов
+  // Проверяем наличие cookie с сессией
   // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
   const correctCookieName = process.env.NODE_ENV === 'production'
     ? '__Secure-next-auth.session-token'
@@ -56,6 +51,19 @@ export async function middleware(req: NextRequest) {
 
   const sessionToken = req.cookies.get(correctCookieName)
   const oldCookie = oldCookieName ? req.cookies.get(oldCookieName) : null
+
+  // IQSport root redirect (needs cookie check above)
+  if (brandKey === 'iqsport' && !host.startsWith('demo.')) {
+    const pathname = req.nextUrl.pathname
+    if (pathname === '/' || pathname === '/onboarding') {
+      const hasSession = !!sessionToken || !!oldCookie
+      if (hasSession) {
+        return NextResponse.redirect(new URL('/clubs', req.url))
+      } else {
+        return NextResponse.redirect(new URL('/auth/signin?callbackUrl=/clubs/new/intelligence', req.url))
+      }
+    }
+  }
 
   // Debug logging
   if (req.nextUrl.pathname.startsWith('/admin')) {
