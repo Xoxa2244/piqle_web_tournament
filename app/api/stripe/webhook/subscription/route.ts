@@ -7,7 +7,7 @@ import { priceIdToPlan } from '@/lib/subscription'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+const webhookSecret = process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET
 
 export async function POST(request: Request) {
   if (!webhookSecret) {
