@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Feather, MaterialIcons } from '@expo/vector-icons'
+import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -16,9 +16,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
+import { EntityImage } from '../../../src/components/EntityImage'
+import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
+import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
 import {
   ActionButton,
   EmptyState,
@@ -28,10 +31,9 @@ import {
 } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
-import { tournamentPlaceholder } from '../../../src/constants/images'
+import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
 import { fetchWithTimeout } from '../../../src/lib/apiFetch'
 import { buildApiUrl, buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
-import { isRemoteImageUri } from '../../../src/lib/imageUri'
 import { formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
@@ -555,21 +557,21 @@ export default function TournamentDetailScreen() {
         bounces
       >
         <View style={styles.hero}>
-          {tournament.image && isRemoteImageUri(tournament.image) ? (
-            <Image source={{ uri: tournament.image }} style={styles.heroImage} />
-          ) : (
-            <Image source={tournamentPlaceholder} style={styles.heroImage} resizeMode="cover" />
-          )}
+          <EntityImage uri={tournament.image} style={styles.heroImage} resizeMode="cover" placeholderResizeMode="contain" />
           <View pointerEvents="none" style={styles.heroOverlay} />
 
           <View style={styles.heroHeader}>
             <View style={styles.heroActions}>
+<<<<<<< Updated upstream
               <Pressable
                 onPress={() => router.back()}
                 style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
               >
                 <Feather name="arrow-left" size={20} color={colors.white} />
               </Pressable>
+=======
+              <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.heroActionButton} />
+>>>>>>> Stashed changes
               <View style={styles.heroActionGroup}>
                 <Pressable
                   onPress={() => setIsFavorite((current) => !current)}
@@ -744,7 +746,12 @@ export default function TournamentDetailScreen() {
                     onPress={handleOpenOrganizerProfile}
                     style={({ pressed }) => [pressed && tournament.user?.id && styles.organizerAvatarPressed]}
                   >
-                    <RemoteUserAvatar uri={tournament.user?.image} size={48} />
+                    <RemoteUserAvatar
+                      uri={tournament.user?.image}
+                      size={48}
+                      fallback="initials"
+                      initialsLabel={organizerLabel}
+                    />
                   </Pressable>
                   <Pressable
                     disabled={!tournament.user?.id}
@@ -759,7 +766,7 @@ export default function TournamentDetailScreen() {
                     onPress={() => setTdFeedbackInfoOpen(true)}
                     style={({ pressed }) => [styles.ratingPillBtn, pressed && styles.ratingPillBtnPressed]}
                   >
-                    <MaterialIcons name="star" size={17} color="#F4B000" />
+                    <RatingStarIcon size={17} filled color="#F4B000" />
                     {tdCanPublishEffective && tdAverageEffective ? (
                       <Text style={styles.feedbackValue}>{tdAverageEffective.toFixed(1)}</Text>
                     ) : (
@@ -773,7 +780,7 @@ export default function TournamentDetailScreen() {
                 <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Tournament rating</Text>
                 <View style={styles.feedbackHeadRow}>
                   <View style={styles.feedbackLeft}>
-                    <MaterialIcons name="star" size={18} color="#F4B000" />
+                    <RatingStarIcon size={18} filled color="#F4B000" />
                     {feedbackCanPublishEffective && feedbackAverageEffective ? (
                       <Text style={styles.feedbackValue}>{feedbackAverageEffective.toFixed(1)}</Text>
                     ) : (
@@ -1046,6 +1053,16 @@ export default function TournamentDetailScreen() {
         entityId={tournamentId}
         title="Rate this tournament"
         subtitle="Your feedback helps improve tournament quality."
+        contextCard={
+          <FeedbackEntityContextCard
+            entityType="TOURNAMENT"
+            title={tournament.title}
+            imageUrl={tournament.image}
+            formatLabel={formatTournamentFormat(tournament.format)}
+            dateLabel={formatHeroDateRange(tournament.startDate, tournament.endDate)}
+            addressLabel={locationLabel === 'Location not set' ? null : locationLabel}
+          />
+        }
         onSubmitted={() => {
           void Promise.all([feedbackSummaryQuery.refetch(), hasRatedQuery.refetch()])
         }}
@@ -1055,11 +1072,20 @@ export default function TournamentDetailScreen() {
         onClose={() => setTournamentFeedbackInfoOpen(false)}
         title="Tournament rating"
         subtitle={
-          feedbackCanPublishEffective && feedbackAverageEffective
-            ? `Average ${feedbackAverageEffective.toFixed(1)}`
-            : 'No public rating yet. Need at least 5 ratings.'
+          feedbackCanPublishEffective && feedbackAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
         }
       >
+        {feedbackCanPublishEffective && feedbackAverageEffective ? (
+          <View style={styles.modalStarsRow}>
+            {[1, 2, 3, 4, 5].map((star) => {
+              const active = star <= Math.round(feedbackAverageEffective)
+              return (
+                <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
+              )
+            })}
+            <Text style={styles.modalRatingValueInline}>{feedbackAverageEffective.toFixed(1)}</Text>
+          </View>
+        ) : null}
         <View style={styles.feedbackChipsWrap}>
           {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
             (feedbackSummaryQuery.data?.topChips?.length
@@ -1086,6 +1112,14 @@ export default function TournamentDetailScreen() {
         entityId={tdUserId ?? ''}
         title="Rate tournament director"
         subtitle="Your feedback helps improve director quality."
+        contextCard={
+          <FeedbackEntityContextCard
+            entityType="TD"
+            name={organizerLabel}
+            avatarUrl={tournament.user?.image ?? null}
+            tournamentLabel={`${tournament.title}${tournament.startDate ? ` (${formatHeroDateRange(tournament.startDate, tournament.endDate)})` : ''}`}
+          />
+        }
         onSubmitted={() => {
           void Promise.all([tdSummaryQuery.refetch(), tdHasRatedQuery.refetch()])
         }}
@@ -1103,7 +1137,7 @@ export default function TournamentDetailScreen() {
             {[1, 2, 3, 4, 5].map((star) => {
               const active = star <= Math.round(tdAverageEffective)
               return (
-                <MaterialIcons key={star} name={active ? 'star' : 'star-border'} size={40} color={active ? '#F2C94C' : '#C7C7CC'} />
+                <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
               )
             })}
             <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>

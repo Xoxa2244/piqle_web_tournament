@@ -9,9 +9,17 @@ import { useEffectivePathname } from '../../hooks/useEffectivePathname'
 import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
+<<<<<<< Updated upstream
 import { useAppTheme } from '../../providers/ThemeProvider'
+=======
+import { BackCircleButton } from './BackCircleButton'
+import { BrandGradientText } from './BrandGradientText'
+>>>>>>> Stashed changes
 import { PiqleLogo } from './PiqleLogo'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
+
+const HEADER_DIVIDER_COLOR = 'rgba(0,0,0,0.06)'
+const HEADER_DIVIDER_WIDTH = StyleSheet.hairlineWidth
 
 /** Главная вкладка (Expo Router может отдавать `/` или сегмент `(tabs)`). */
 const isHomeRoute = (pathname: string) =>
@@ -53,6 +61,7 @@ const IconBubble = ({
   showDot?: boolean
   /** Текущий экран — подсветка primary (как активная вкладка) */
   active?: boolean
+<<<<<<< Updated upstream
 }) => {
   const { colors, styles } = useThemedTopBar()
 
@@ -63,6 +72,14 @@ const IconBubble = ({
     </Pressable>
   )
 }
+=======
+}) => (
+  <Pressable onPress={onPress} style={({ pressed }) => [styles.iconBubble, pressed && styles.iconBubblePressed]}>
+    <Feather name={icon} size={18} color={active ? palette.primary : palette.text} />
+    {showDot ? <View style={styles.dot} /> : null}
+  </Pressable>
+)
+>>>>>>> Stashed changes
 
 const wantsTopBarBack = (pathname: string) =>
   pathname === '/notifications' ||
@@ -160,12 +177,21 @@ function AnimatedHomeTitle({
   return (
     <View style={[styles.titleAnimContainer, showBack && styles.titleWithBack]}>
       <Animated.Text
-        style={[styles.title, styles.titleLayerAbs, showBack && styles.titleAlignedWithBack, { opacity: textOp }]}
+        // keep layer sizing driven by animated wrapper below
+        style={styles.hiddenAnimatedTitle}
         numberOfLines={1}
         pointerEvents={showLogo ? 'none' : 'auto'}
       >
         {titleText}
       </Animated.Text>
+      <Animated.View
+        style={[styles.titleLayerAbs, showBack && styles.titleAlignedWithBack, { opacity: textOp }]}
+        pointerEvents={showLogo ? 'none' : 'auto'}
+      >
+        <BrandGradientText style={styles.title} numberOfLines={1}>
+          {titleText}
+        </BrandGradientText>
+      </Animated.View>
       <Animated.View
         style={[styles.titleLayerAbs, styles.logoSlideWrap, { transform: [{ translateX: logoX }] }]}
         pointerEvents={showLogo ? 'auto' : 'none'}
@@ -217,6 +243,7 @@ export const TopBar = ({
     <View style={[styles.header, ambient && styles.headerAmbient]}>
       <View style={styles.titleRow}>
         {showBack ? (
+<<<<<<< Updated upstream
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Go back"
@@ -226,11 +253,14 @@ export const TopBar = ({
           >
             <Feather name="arrow-left" size={22} color={colors.text} />
           </Pressable>
+=======
+          <BackCircleButton onPress={() => navigation.goBack()} style={styles.backBtn} />
+>>>>>>> Stashed changes
         ) : null}
         <View style={styles.titleCluster}>
           {hasTitleAccessory && titleBesideAccessory ? (
             <View style={styles.titleWithAccessoryRow}>
-              <Text
+              <BrandGradientText
                 style={[
                   styles.title,
                   styles.titleNextToAccessory,
@@ -239,7 +269,7 @@ export const TopBar = ({
                 numberOfLines={1}
               >
                 {title}
-              </Text>
+              </BrandGradientText>
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
           ) : hasTitleAccessory && showBrandLogo ? (
@@ -250,7 +280,7 @@ export const TopBar = ({
               <View style={styles.titleAccessory}>{titleAccessory}</View>
             </View>
           ) : titleOverride != null && titleOverride !== '' ? (
-            <Text
+            <BrandGradientText
               style={[
                 styles.title,
                 styles.titleInCluster,
@@ -260,7 +290,7 @@ export const TopBar = ({
               numberOfLines={1}
             >
               {title}
-            </Text>
+            </BrandGradientText>
           ) : (
             <AnimatedHomeTitle showLogo={showBrandLogo} titleText={title} showBack={showBack} refreshPulseKey={refreshPulseKey} />
           )}
@@ -304,6 +334,7 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+<<<<<<< Updated upstream
     backgroundColor: colors.surfaceOverlay,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -312,12 +343,22 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     backgroundColor: 'transparent',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+=======
+    backgroundColor: palette.surfaceOverlay,
+    borderBottomWidth: HEADER_DIVIDER_WIDTH,
+    borderBottomColor: HEADER_DIVIDER_COLOR,
+  },
+  headerAmbient: {
+    backgroundColor: 'transparent',
+    borderBottomWidth: HEADER_DIVIDER_WIDTH,
+    borderBottomColor: HEADER_DIVIDER_COLOR,
+>>>>>>> Stashed changes
   },
   titleRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     minWidth: 0,
   },
   /** Заголовок и titleAccessory в одной группе */
@@ -353,6 +394,7 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     minWidth: 0,
   },
   backBtn: {
+<<<<<<< Updated upstream
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -362,6 +404,9 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   backBtnPressed: {
     backgroundColor: colors.surfaceMuted,
+=======
+    marginRight: 0,
+>>>>>>> Stashed changes
   },
   titleWithBack: {
     flex: 1,
@@ -386,6 +431,11 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
+  hiddenAnimatedTitle: {
+    opacity: 0,
+    height: 0,
+    width: 0,
+  },
   logoSlideWrap: {
     zIndex: 1,
   },
@@ -394,15 +444,10 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     letterSpacing: -0.4,
-    lineHeight: 24,
+    lineHeight: 36,
     ...(Platform.OS === 'android' ? { textAlignVertical: 'center' as const, includeFontPadding: false } : {}),
   },
-  /** Рядом со стрелкой «назад» визуально выравниваем по центру с иконкой 36×36 */
-  titleAlignedWithBack: Platform.select({
-    ios: { paddingTop: 5 },
-    android: { paddingTop: 2 },
-    default: {},
-  }),
+  titleAlignedWithBack: {},
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -415,9 +460,18 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
   },
   iconBubblePressed: {
+<<<<<<< Updated upstream
     backgroundColor: colors.surfaceMuted,
+=======
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.brandPrimaryBorder,
+    transform: [{ scale: 0.94 }],
+>>>>>>> Stashed changes
   },
   dot: {
     position: 'absolute',

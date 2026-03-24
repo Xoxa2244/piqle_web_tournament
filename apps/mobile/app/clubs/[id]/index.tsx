@@ -1,6 +1,15 @@
+<<<<<<< Updated upstream
 import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { useCallback, useMemo, useState } from 'react'
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+=======
+import * as Clipboard from 'expo-clipboard'
+import * as Haptics from 'expo-haptics'
+import { Feather } from '@expo/vector-icons'
+import QRCode from 'react-native-qrcode-svg'
+import { useCallback, useState } from 'react'
+import { Alert, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+>>>>>>> Stashed changes
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
@@ -11,44 +20,29 @@ import {
   InputField,
   LoadingBlock,
   Pill,
+  SearchField,
   SectionTitle,
   SegmentedControl,
   SurfaceCard,
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
+import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
+import { EntityImage } from '../../../src/components/EntityImage'
+import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
+import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
+import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
-import { formatDateRange, formatDateTime, formatLocation } from '../../../src/lib/formatters'
+import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
-
-const formatTournamentFormat = (format: string) => {
-  switch (format) {
-    case 'SINGLE_ELIMINATION':
-      return 'Single Elimination'
-    case 'ROUND_ROBIN':
-      return 'Round Robin'
-    case 'MLP':
-      return 'MLP'
-    case 'INDY_LEAGUE':
-      return 'Indy League'
-    case 'LEAGUE_ROUND_ROBIN':
-      return 'League Round Robin'
-    case 'ONE_DAY_LADDER':
-      return 'One Day Ladder'
-    case 'LADDER_LEAGUE':
-      return 'Ladder League'
-    default:
-      return format.replace(/_/g, ' ')
-  }
-}
 
 export default function ClubDetailScreen() {
   const { colors } = useAppTheme()
@@ -58,7 +52,7 @@ export default function ClubDetailScreen() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
-  const [tab, setTab] = useState<'feed' | 'events' | 'members'>('feed')
+  const [tab, setTab] = useState<'feed' | 'events' | 'members'>('events')
   const [membersSearch, setMembersSearch] = useState('')
 
   const clubQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) })
@@ -70,6 +64,7 @@ export default function ClubDetailScreen() {
     { clubId },
     { enabled: Boolean(clubId) && canViewMembers }
   )
+  const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
   const toggleFollow = trpc.club.toggleFollow.useMutation({
     onSuccess: () => {
       void Promise.all([
@@ -124,6 +119,7 @@ export default function ClubDetailScreen() {
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
   const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
+  const [clubShareSheetOpen, setClubShareSheetOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [clubFeedbackInfoOpen, setClubFeedbackInfoOpen] = useState(false)
@@ -147,6 +143,67 @@ export default function ClubDetailScreen() {
   )
   const hasRatedClub = Boolean(hasRatedQuery.data?.map?.[`CLUB:${clubId}`])
 
+  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
+  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
+  const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
+  const fallbackSeed = String(clubId)
+    .split('')
+    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  const feedbackAverageEffective =
+    feedbackAverage ??
+    (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
+  const feedbackTotalEffective =
+    feedbackTotal > 0
+      ? feedbackTotal
+      : __DEV__
+      ? 5 + (fallbackSeed % 21)
+      : 0
+  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
+  const activeChatClub = myChatClubsQuery.data?.find((item: any) => item.id === club?.id) as any
+  const unreadClubChatCount = Number(activeChatClub?.unreadCount ?? 0)
+  const canLeaveClub = Boolean(isAuthenticated && club?.isFollowing && !club?.isAdmin)
+  const clubInviteUrl = buildWebUrl(`/clubs/${String(clubId ?? '')}?ref=invite`)
+
+  const playTopBarTapHaptic = useCallback(async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    } catch {
+      // ignore unsupported haptics
+    }
+  }, [])
+
+  const runTopBarAction = useCallback(
+    async (action: () => void | Promise<void>) => {
+      await playTopBarTapHaptic()
+      await action()
+    },
+    [playTopBarTapHaptic]
+  )
+
+  const handleCopyInviteLink = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(clubInviteUrl)
+      try {
+        await Haptics.selectionAsync()
+      } catch {}
+      Alert.alert('Copied', 'Invite link copied to clipboard.')
+    } catch {
+      Alert.alert('Copy failed', 'Please copy it manually.')
+    }
+  }, [clubInviteUrl])
+
+  const handleShareInvite = useCallback(async () => {
+    try {
+      await Share.share({
+        title: club?.name ?? 'Club',
+        message: `Join ${club?.name ?? 'this club'} on Piqle\n${clubInviteUrl}`,
+        url: clubInviteUrl,
+      })
+    } catch {
+      // Share dismissal should stay silent; copy is available as fallback.
+    }
+  }, [club?.name, clubInviteUrl])
+
   if (clubQuery.isLoading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -169,37 +226,20 @@ export default function ClubDetailScreen() {
     )
   }
 
-  const heroSubtitle = `${formatLocation([club.city, club.state])}  ·  ${club.followersCount} members`
-  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
-  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
-  const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
-  const fallbackSeed = String(clubId)
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const feedbackAverageEffective =
-    feedbackAverage ??
-    (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
-  const feedbackTotalEffective =
-    feedbackTotal > 0
-      ? feedbackTotal
-      : __DEV__
-      ? 5 + (fallbackSeed % 21)
-      : 0
-  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
-
-  const Segment = () => (
+  const segmentControl = (
     <SegmentedControl
       value={tab}
       onChange={setTab}
       trackStyle={styles.segmentTrack}
       options={[
-        { value: 'feed', label: 'Feed' },
         { value: 'events', label: 'Events' },
+        { value: 'feed', label: 'News' },
         { value: 'members', label: 'Members' },
       ]}
     />
   )
 
+<<<<<<< Updated upstream
   const Hero = () => (
     <View style={styles.hero}>
       {club.logoUrl ? (
@@ -224,10 +264,27 @@ export default function ClubDetailScreen() {
         <View style={{ flex: 1 }} />
         <Pressable
               onPress={() =>
+=======
+  const hero = (
+    <View style={styles.heroWrap}>
+      <View style={styles.clubMiniBar}>
+        <BackCircleButton
+          onPress={() => {
+            void runTopBarAction(() => router.back())
+          }}
+          iconSize={18}
+          style={styles.clubMiniBarButton}
+        />
+        <View style={styles.clubMiniBarActions}>
+          <Pressable
+            onPress={() => {
+              void runTopBarAction(() =>
+>>>>>>> Stashed changes
                 router.push({
                   pathname: '/chats/club/[clubId]',
                   params: { clubId: club.id, name: club.name },
                 })
+<<<<<<< Updated upstream
               }
           style={({ pressed }) => [styles.heroIconButton, pressed && styles.heroIconButtonPressed]}
         >
@@ -246,27 +303,81 @@ export default function ClubDetailScreen() {
             accessibilityLabel="Leave club"
           >
             <Feather name="log-out" size={18} color={colors.white} />
+=======
+              )
+            }}
+            style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
+          >
+            <Feather name="message-circle" size={18} color={palette.text} />
+            {unreadClubChatCount > 0 ? (
+              <View style={styles.clubChatUnreadBadge}>
+                <Text style={styles.clubChatUnreadText}>{unreadClubChatCount > 99 ? '99+' : String(unreadClubChatCount)}</Text>
+              </View>
+            ) : null}
+>>>>>>> Stashed changes
           </Pressable>
-        ) : null}
-      </View>
-
-      <View style={styles.heroBottom}>
-        <Text style={styles.heroTitle}>{club.name}</Text>
-        <View style={styles.heroMetaRow}>
-          <Feather name="map-pin" size={14} color="rgba(255,255,255,0.82)" />
-          <Text style={styles.heroMetaText}>{heroSubtitle}</Text>
+          <Pressable
+            onPress={() => {
+              void runTopBarAction(() => setClubShareSheetOpen(true))
+            }}
+            style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
+          >
+            <Feather name="share-2" size={18} color={palette.text} />
+          </Pressable>
+          {canLeaveClub ? (
+            <Pressable
+              onPress={() => {
+                void runTopBarAction(() => setLeaveClubSheetOpen(true))
+              }}
+              style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
+              accessibilityLabel="Leave club"
+            >
+              <Feather name="log-out" size={18} color={palette.text} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
+
+      <SurfaceCard padded={false} style={styles.clubHeroCard}>
+        <View style={styles.clubHeroCardHeader}>
+          <OptionalLinearGradient
+            pointerEvents="none"
+            colors={['rgba(40, 205, 65, 0.10)', 'rgba(82, 224, 104, 0.06)', 'rgba(255, 255, 255, 0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.clubHeroGradient}
+          />
+          <View style={styles.clubHeroRow}>
+            <EntityImage uri={club.logoUrl} style={styles.clubHeroLogo} resizeMode="cover" placeholderResizeMode="contain" />
+            <View style={styles.clubHeroMain}>
+              <Text style={styles.clubHeroTitle} numberOfLines={2}>{club.name}</Text>
+              <View style={styles.clubHeroMetaRow}>
+                <Feather name="map-pin" size={16} color={palette.primary} />
+                <Text style={styles.clubHeroMetaText} numberOfLines={1}>
+                  {formatLocation([club.city, club.state])}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={() => setClubFeedbackInfoOpen(true)}
+              style={({ pressed }) => [styles.clubHeroRatingPill, pressed && styles.clubHeroRatingPillPressed]}
+            >
+              <RatingStarIcon size={16} filled color="#F4B000" />
+              {feedbackCanPublishEffective && feedbackAverageEffective ? (
+                <Text style={styles.clubHeroRatingText}>{feedbackAverageEffective.toFixed(1)}</Text>
+              ) : (
+                <Text style={styles.clubHeroRatingMuted}>New</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </SurfaceCard>
     </View>
   )
 
-  const MembershipActions = () => {
-    const id = String(clubId ?? '')
-    if (!id) return null
-    if (isAuthenticated && club.isFollowing && !club.isAdmin) {
-      return null
-    }
-    return (
+  const membershipId = String(clubId ?? '')
+  const membershipActions =
+    !membershipId || (isAuthenticated && club.isFollowing && !club.isAdmin) ? null : (
       <View style={styles.membershipRow}>
         {!isAuthenticated ? (
           <ActionButton label="Sign in to join" variant="secondary" onPress={() => router.push('/sign-in')} />
@@ -277,44 +388,17 @@ export default function ClubDetailScreen() {
             label="Cancel join request"
             variant="secondary"
             loading={cancelJoinRequest.isPending}
-            onPress={() => cancelJoinRequest.mutate({ clubId: id })}
+            onPress={() => cancelJoinRequest.mutate({ clubId: membershipId })}
           />
         ) : (
           <ActionButton
             label={club.joinPolicy === 'APPROVAL' ? 'Request to join' : 'Join club'}
             loading={toggleFollow.isPending}
-            onPress={() => toggleFollow.mutate({ clubId: id })}
+            onPress={() => toggleFollow.mutate({ clubId: membershipId })}
           />
         )}
       </View>
     )
-  }
-
-  const FeedbackBlock = () => (
-    <SurfaceCard tone="soft" style={styles.feedbackCard}>
-      <View style={styles.feedbackHeadRow}>
-        <View style={styles.feedbackLeft}>
-          <MaterialIcons name="star" size={18} color="#F4B000" />
-          {feedbackCanPublishEffective && feedbackAverageEffective ? (
-            <Text style={styles.feedbackValue}>{feedbackAverageEffective.toFixed(1)}</Text>
-          ) : (
-            <Text style={styles.feedbackValueMuted}>No rating yet</Text>
-          )}
-          {feedbackCanPublishEffective ? null : <Text style={styles.feedbackCount}>min 5 ratings</Text>}
-        </View>
-        <Pressable onPress={() => setClubFeedbackInfoOpen(true)} style={({ pressed }) => [styles.feedbackInfoBtn, pressed && styles.feedbackInfoBtnPressed]}>
-          <Text style={styles.feedbackInfoBtnText}>Details</Text>
-        </Pressable>
-      </View>
-      {!hasRatedClub ? (
-        <Pressable onPress={() => setClubFeedbackOpen(true)} style={({ pressed }) => [styles.feedbackRateBtn, pressed && styles.feedbackRateBtnPressed]}>
-          <Text style={styles.feedbackRateBtnText}>Rate this club</Text>
-        </Pressable>
-      ) : (
-        <Text style={styles.feedbackThanksText}>Thanks, you already rated this club.</Text>
-      )}
-    </SurfaceCard>
-  )
 
   const clubSheets = (
     <>
@@ -343,6 +427,41 @@ export default function ClubDetailScreen() {
           />
         }
       />
+      <AppBottomSheet
+        open={clubShareSheetOpen}
+        onClose={() => setClubShareSheetOpen(false)}
+        title="Invite to this club"
+        subtitle="Share this link in social media or copy it into a message."
+      >
+        <View style={styles.shareSheetBlock}>
+          <Text style={styles.shareSheetLabel}>Invite link</Text>
+          <View style={styles.shareLinkRow}>
+            <Text style={styles.shareLinkText} numberOfLines={1}>
+              {clubInviteUrl}
+            </Text>
+            <Pressable
+              onPress={() => {
+                void handleCopyInviteLink()
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.shareCopyButton, pressed && styles.shareCopyButtonPressed]}
+            >
+              <Feather name="copy" size={18} color={palette.text} />
+            </Pressable>
+          </View>
+          <View style={styles.shareQrWrap}>
+            <View style={styles.shareQrCard}>
+              <QRCode value={clubInviteUrl} size={168} color="#111827" backgroundColor="#FFFFFF" quietZone={8} />
+            </View>
+          </View>
+          <ActionButton
+            label="Share"
+            onPress={() => {
+              void handleShareInvite()
+            }}
+          />
+        </View>
+      </AppBottomSheet>
       <AppBottomSheet
         open={Boolean(announcementToDelete)}
         onClose={() => setAnnouncementToDelete(null)}
@@ -415,26 +534,28 @@ export default function ClubDetailScreen() {
 
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+        {hero}
         <PickleRefreshScrollView
+          style={styles.contentScroll}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           refreshing={pullToRefresh.refreshing}
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
-          <Hero />
-          <Segment />
-          <MembershipActions />
-          <FeedbackBlock />
+          {segmentControl}
+          {membershipActions}
           <View style={styles.membersSearchWrap}>
-            <InputField
+            <SearchField
               value={membersSearch}
               onChangeText={setMembersSearch}
               placeholder="Search members..."
+<<<<<<< Updated upstream
               autoCapitalize="none"
               containerStyle={styles.membersSearch}
               left={<Feather name="search" size={18} color={colors.textMuted} />}
+=======
+>>>>>>> Stashed changes
             />
           </View>
 
@@ -462,7 +583,12 @@ export default function ClubDetailScreen() {
                             }}
                             style={({ pressed }) => [pressed && req.userId && styles.avatarPress]}
                           >
-                            <RemoteUserAvatar uri={req.user?.image} size={52} />
+                            <RemoteUserAvatar
+                              uri={req.user?.image}
+                              size={52}
+                              fallback="initials"
+                              initialsLabel={req.user?.name ?? req.user?.email ?? 'User'}
+                            />
                           </Pressable>
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Pressable
@@ -561,7 +687,12 @@ export default function ClubDetailScreen() {
                           }}
                           style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
                         >
-                          <RemoteUserAvatar uri={member.user?.image} size={56} />
+                          <RemoteUserAvatar
+                            uri={member.user?.image}
+                            size={56}
+                            fallback="initials"
+                            initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
+                          />
                         </Pressable>
 
                         <View style={styles.memberMain}>
@@ -615,19 +746,17 @@ export default function ClubDetailScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <TopBar />
+      {hero}
       <PickleRefreshScrollView
+        style={styles.contentScroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshing={pullToRefresh.refreshing}
         onRefresh={pullToRefresh.onRefresh}
         bounces
       >
-        <Hero />
-
-        <Segment />
-        <MembershipActions />
-        <FeedbackBlock />
+        {segmentControl}
+        {membershipActions}
 
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
@@ -821,17 +950,18 @@ export default function ClubDetailScreen() {
               </View>
             </SurfaceCard>
 
-            <View style={{ gap: 12 }}>
+            <View style={styles.upcomingSection}>
               <SectionTitle
                 title="Upcoming tournaments"
-                action={
+                action={club.tournaments.length > 0 ? (
                   <Pressable onPress={() => router.push(`/clubs/${club.id}/events`)}>
                     <Text style={styles.viewAll}>View all</Text>
                   </Pressable>
-                }
+                ) : undefined}
               />
               {club.tournaments.length > 0 ? (
                 club.tournaments.slice(0, 5).map((tournament) => (
+<<<<<<< Updated upstream
                   <Pressable
                     key={tournament.id}
                     onPress={() => router.push(`/tournaments/${tournament.id}`)}
@@ -872,10 +1002,20 @@ export default function ClubDetailScreen() {
                       </View>
                     </SurfaceCard>
                   </Pressable>
+=======
+                  <View key={tournament.id}>
+                    <ClubTournamentCard
+                      tournament={tournament as any}
+                      fallbackVenueName={club.city}
+                      fallbackVenueAddress={club.state}
+                      onPress={() => router.push(`/tournaments/${tournament.id}`)}
+                    />
+                  </View>
+>>>>>>> Stashed changes
                 ))
               ) : (
-                <SurfaceCard tone="soft" style={styles.card}>
-                  <Text style={styles.smallMeta}>No upcoming events yet.</Text>
+                <SurfaceCard tone="soft" style={styles.emptyUpcomingCard}>
+                  <Text style={styles.emptyUpcomingText}>No upcoming events yet.</Text>
                 </SurfaceCard>
               )}
             </View>
@@ -891,6 +1031,15 @@ export default function ClubDetailScreen() {
         entityId={clubId}
         title="Rate this club"
         subtitle="Your feedback helps improve club experience."
+        contextCard={
+          <FeedbackEntityContextCard
+            entityType="CLUB"
+            title={club.name}
+            imageUrl={club.logoUrl}
+            addressLabel={formatLocation([club.city, club.state])}
+            membersLabel={`${Math.max(1, Number(club.followersCount ?? 0) || 0)} members`}
+          />
+        }
         onSubmitted={() => {
           void Promise.all([feedbackSummaryQuery.refetch(), hasRatedQuery.refetch()])
         }}
@@ -900,11 +1049,31 @@ export default function ClubDetailScreen() {
         onClose={() => setClubFeedbackInfoOpen(false)}
         title="Club rating"
         subtitle={
-          feedbackCanPublishEffective && feedbackAverageEffective
-            ? `Average ${feedbackAverageEffective.toFixed(1)}`
-            : `No public rating yet. Need at least 5 ratings.`
+          feedbackCanPublishEffective && feedbackAverageEffective ? '' : `No public rating yet. Need at least 5 ratings.`
+        }
+        footer={
+          !hasRatedClub ? (
+            <ActionButton
+              label="Rate this club"
+              onPress={() => {
+                setClubFeedbackInfoOpen(false)
+                setClubFeedbackOpen(true)
+              }}
+            />
+          ) : undefined
         }
       >
+        {feedbackCanPublishEffective && feedbackAverageEffective ? (
+          <View style={styles.modalStarsRow}>
+            {[1, 2, 3, 4, 5].map((star) => {
+              const active = star <= Math.round(feedbackAverageEffective)
+              return (
+                <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
+              )
+            })}
+            <Text style={styles.modalRatingValueInline}>{feedbackAverageEffective.toFixed(1)}</Text>
+          </View>
+        ) : null}
         <View style={styles.feedbackChipsWrap}>
           {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
             (feedbackSummaryQuery.data?.topChips?.length
@@ -934,6 +1103,9 @@ const createStyles = (colors: ThemePalette) =>
   screen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  contentScroll: {
+    flex: 1,
   },
   content: {
     paddingBottom: spacing.xxl,
@@ -1046,61 +1218,208 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.textMuted,
     fontSize: 13,
   },
+<<<<<<< Updated upstream
   hero: {
     height: 240,
     position: 'relative',
     backgroundColor: colors.surfaceMuted,
+=======
+  modalStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingTop: spacing.xs,
+    marginBottom: spacing.sm,
+>>>>>>> Stashed changes
   },
-  heroImage: {
-    width: '100%',
-    height: '100%',
+  modalRatingValueInline: {
+    marginLeft: 8,
+    color: palette.text,
+    fontSize: 24,
+    fontWeight: '800',
   },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,10,10,0.35)',
+  heroWrap: {
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
-  heroTopActions: {
-    position: 'absolute',
-    top: spacing.md,
-    left: spacing.md,
-    right: spacing.md,
+  clubMiniBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  clubMiniBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  heroIconButton: {
+  clubMiniBarButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10,10,10,0.45)',
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
   },
-  heroIconButtonPressed: {
-    opacity: 0.86,
+  clubMiniBarButtonPressed: {
+    opacity: 1,
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.brandPrimaryBorder,
+    transform: [{ scale: 0.94 }],
   },
-  heroBottom: {
+  clubChatUnreadBadge: {
     position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
-    bottom: spacing.md,
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.primary,
   },
+<<<<<<< Updated upstream
   heroTitle: {
     color: colors.white,
     fontSize: 24,
+=======
+  clubChatUnreadText: {
+    color: palette.white,
+    fontSize: 10,
+>>>>>>> Stashed changes
     fontWeight: '800',
-    letterSpacing: -0.4,
   },
-  heroMetaRow: {
-    marginTop: 6,
+  clubHeroCard: {
+    overflow: 'hidden',
+  },
+  clubHeroCardHeader: {
+    position: 'relative',
+    overflow: 'hidden',
+    padding: spacing.md,
+    backgroundColor: palette.surface,
+  },
+  clubHeroGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  clubHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clubHeroLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: palette.surfaceMuted,
+  },
+  clubHeroMain: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  clubHeroTitle: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  clubHeroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  heroMetaText: {
-    color: 'rgba(255,255,255,0.82)',
+  clubHeroMetaText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    flex: 1,
+  },
+  clubHeroRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(10,10,10,0.08)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(10,10,10,0.03)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginLeft: 8,
+    maxWidth: 120,
+  },
+  clubHeroRatingPillPressed: {
+    opacity: 0.85,
+  },
+  clubHeroRatingText: {
+    color: palette.text,
     fontSize: 14,
     fontWeight: '600',
+  },
+  clubHeroRatingMuted: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  shareSheetBlock: {
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  shareSheetLabel: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shareLinkRow: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceElevated,
+    paddingLeft: spacing.md,
+    paddingRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  shareLinkText: {
+    flex: 1,
+    color: palette.text,
+    fontSize: 14,
+  },
+  shareCopyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  shareCopyButtonPressed: {
+    opacity: 1,
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.brandPrimaryBorder,
+    transform: [{ scale: 0.94 }],
+  },
+  shareQrWrap: {
+    alignItems: 'center',
+  },
+  shareQrCard: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.white,
+  },
+  shareQrImage: {
+    width: 168,
+    height: 168,
   },
   segmentTrack: {
     marginTop: spacing.md,
@@ -1120,6 +1439,7 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: spacing.lg,
     gap: 12,
   },
+<<<<<<< Updated upstream
   membersSearch: {
     borderRadius: 999,
     minHeight: 56,
@@ -1127,6 +1447,8 @@ const createStyles = (colors: ThemePalette) =>
     borderColor: 'transparent',
     backgroundColor: colors.surfaceElevated,
   },
+=======
+>>>>>>> Stashed changes
   membersSearchWrap: {
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1473,9 +1795,24 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.textMuted,
     fontWeight: '600',
   },
+  upcomingSection: {
+    marginTop: spacing.xl,
+    gap: 12,
+  },
   viewAll: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  emptyUpcomingCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+    minHeight: 96,
+  },
+  emptyUpcomingText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
   },
   eventCard: {
     marginBottom: 0,

@@ -1,10 +1,16 @@
+<<<<<<< Updated upstream
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
+=======
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+>>>>>>> Stashed changes
 import { useLocalSearchParams } from 'expo-router'
 import { router } from 'expo-router'
 
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { FeedbackEntityContextCard } from '../../../../src/components/FeedbackEntityContextCard'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
@@ -43,6 +49,7 @@ export default function ClubChatScreen() {
     })
   }, [])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
+  const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
   const isAdmin = Boolean(myChatClubsQuery.data?.find((c) => c.id === clubId)?.isAdmin)
 
   const messagesQuery = trpc.clubChat.list.useQuery(
@@ -78,10 +85,6 @@ export default function ClubChatScreen() {
   }, [clubId, isAuthenticated])
 
   useEffect(() => {
-    scrollToBottom(true)
-  }, [messagesQuery.data?.length, scrollToBottom])
-
-  useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
     const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
     const s = Keyboard.addListener(showEv, () => setKeyboardVisible(true))
@@ -96,6 +99,17 @@ export default function ClubChatScreen() {
     }
   }, [scrollToBottom])
 
+  const messages = (messagesQuery.data ?? []) as any[]
+  const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
+    (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,
+  )
+  const showDevClubPrompt = !FEEDBACK_API_ENABLED
+  const showClubFeedbackPrompt = Boolean(pendingClubPrompt || showDevClubPrompt)
+
+  useEffect(() => {
+    scrollToBottom(true)
+  }, [messages.length, showClubFeedbackPrompt, scrollToBottom])
+
   if (!isAuthenticated) {
     return (
       <Screen title={clubName} subtitle="Sign in to access club messages.">
@@ -109,12 +123,7 @@ export default function ClubChatScreen() {
     return <Screen title={clubName}><LoadingBlock label="Loading chat…" /></Screen>
   }
 
-  const messages = (messagesQuery.data ?? []) as any[]
   const isEmpty = messages.length === 0
-  const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
-    (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,
-  )
-  const showDevClubPrompt = !FEEDBACK_API_ENABLED
 
   return (
     <PageLayout
@@ -140,15 +149,6 @@ export default function ClubChatScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {pendingClubPrompt || showDevClubPrompt ? (
-            <SurfaceCard tone="soft">
-              <Pressable onPress={() => setClubFeedbackOpen(true)} style={styles.feedbackPromptRow}>
-                <Text style={styles.feedbackPromptTitle}>Rate this club</Text>
-                <Text style={styles.feedbackPromptStars}>★ ★ ★ ★ ★</Text>
-                <Text style={styles.feedbackPromptBody}>Tap stars to leave your feedback.</Text>
-              </Pressable>
-            </SurfaceCard>
-          ) : null}
           {isEmpty ? (
             <EmptyState
               title="No messages yet"
@@ -169,6 +169,16 @@ export default function ClubChatScreen() {
               deleteDisabled={deleteMessage.isPending}
             />
           )}
+          {showClubFeedbackPrompt ? (
+            <View style={styles.systemMessageRow}>
+              <Pressable onPress={() => setClubFeedbackOpen(true)} style={styles.systemMessageCard}>
+                <Text style={styles.systemMessageLabel}>System</Text>
+                <Text style={styles.feedbackPromptTitle}>Rate this club</Text>
+                <Text style={styles.feedbackPromptStars}>★ ★ ★ ★ ★</Text>
+                <Text style={styles.feedbackPromptBody}>Tap stars to leave your feedback.</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </ChatThreadRoot>
 
         <ChatComposer
@@ -212,6 +222,15 @@ export default function ClubChatScreen() {
         entityId={clubId}
         title="Rate this club"
         subtitle="Your feedback helps improve club experience."
+        contextCard={
+          <FeedbackEntityContextCard
+            entityType="CLUB"
+            title={activeClub?.name ?? clubName}
+            imageUrl={activeClub?.logoUrl ?? null}
+            addressLabel={[activeClub?.city, activeClub?.state].filter(Boolean).join(', ') || null}
+            membersLabel={`${Math.max(1, Number(activeClub?.followersCount ?? 0) || 0)} members`}
+          />
+        }
         onSubmitted={() => {
           void pendingFeedbackQuery.refetch()
         }}
@@ -246,6 +265,29 @@ const createStyles = (colors: ThemePalette) =>
   },
   feedbackPromptRow: {
     gap: 6,
+  },
+  systemMessageRow: {
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  systemMessageCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.22)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  systemMessageLabel: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   feedbackPromptTitle: {
     color: colors.text,

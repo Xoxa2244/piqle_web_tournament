@@ -23,7 +23,14 @@ async function playLongPressHaptic() {
 }
 
 function UserAvatar({ user }: { user?: ChatMessage['user'] }) {
-  return <RemoteUserAvatar uri={user?.image} size={AVATAR} />
+  return (
+    <RemoteUserAvatar
+      uri={user?.image}
+      size={AVATAR}
+      fallback="initials"
+      initialsLabel={user?.name ?? 'User'}
+    />
+  )
 }
 
 type Props = {

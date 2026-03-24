@@ -5,7 +5,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AppBottomSheet } from '../../src/components/AppBottomSheet'
+import { FeedbackEntityContextCard } from '../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../src/components/FeedbackRatingModal'
+import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
+import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { TopBar } from '../../src/components/navigation/TopBar'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
@@ -224,10 +227,22 @@ export default function PublicProfileScreen() {
                 style={({ pressed }) => [pressed && styles.cardPressed]}
               >
                 <SurfaceCard style={styles.tournamentCard}>
+<<<<<<< Updated upstream
                   <Text style={styles.tournamentTitle} numberOfLines={1}>{tournament.title}</Text>
                   <View style={styles.tournamentMetaRow}>
                     <Feather name="calendar" size={14} color={colors.textMuted} />
                     <Text style={styles.tournamentMetaText}>{formatDate(tournament.startDate)}</Text>
+=======
+                  <View style={styles.tournamentCardRow}>
+                    <TournamentThumbnail imageUri={(tournament as any).image ?? null} size={48} />
+                    <View style={styles.tournamentCardMain}>
+                      <Text style={styles.tournamentTitle} numberOfLines={1}>{tournament.title}</Text>
+                      <View style={styles.tournamentMetaRow}>
+                        <Feather name="calendar" size={14} color={palette.textMuted} />
+                        <Text style={styles.tournamentMetaText}>{formatDate(tournament.startDate)}</Text>
+                      </View>
+                    </View>
+>>>>>>> Stashed changes
                   </View>
                 </SurfaceCard>
               </Pressable>
@@ -243,6 +258,18 @@ export default function PublicProfileScreen() {
         entityId={profileId}
         title="Rate tournament director"
         subtitle="Your feedback helps improve director quality."
+        contextCard={
+          <FeedbackEntityContextCard
+            entityType="TD"
+            name={profile?.name ?? 'Tournament director'}
+            avatarUrl={profile?.image ?? null}
+            tournamentLabel={
+              createdTournaments[0]
+                ? `${createdTournaments[0].title}${createdTournaments[0].startDate ? ` (${formatDate(createdTournaments[0].startDate)})` : ''}`
+                : null
+            }
+          />
+        }
         onSubmitted={() => {
           void Promise.all([tdSummaryQuery.refetch(), hasRatedQuery.refetch()])
         }}
@@ -252,21 +279,32 @@ export default function PublicProfileScreen() {
         onClose={() => setTdFeedbackInfoOpen(false)}
         title="Tournament director rating"
         subtitle={
-          tdCanPublishEffective && tdAverageEffective
-            ? `Average ${tdAverageEffective.toFixed(1)}`
-            : 'No public rating yet. Need at least 5 ratings.'
+          tdCanPublishEffective && tdAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
         }
       >
-        <View style={styles.achievementBadgeWrap}>
-          {achievements.length > 0 ? (
-            achievements.map((item: { id: string; title: string }, idx: number) => (
-              <View key={item.id} style={styles.achievementBadgeItem}>
-                <View style={styles.achievementBadgeCircle}>
-                  <MaterialIcons name={tdBadgeIcons[idx % tdBadgeIcons.length]} size={20} color="#1E7A32" />
-                </View>
-                <Text style={styles.achievementBadgeText} numberOfLines={2}>
-                  {item.title}
-                </Text>
+        {tdCanPublishEffective && tdAverageEffective ? (
+          <View style={styles.modalStarsRow}>
+            {[1, 2, 3, 4, 5].map((star) => {
+              const active = star <= Math.round(tdAverageEffective)
+              return (
+                <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
+              )
+            })}
+            <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
+          </View>
+        ) : null}
+        <View style={styles.feedbackChipsWrap}>
+          {(tdSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
+            (tdSummaryQuery.data?.topChips?.length
+              ? tdSummaryQuery.data.topChips
+              : [
+                  { label: 'Clear communication', count: 10 },
+                  { label: 'Fair decisions', count: 8 },
+                  { label: 'On-time schedule', count: 7 },
+                ]
+            ).map((chip: { label: string; count: number }) => (
+              <View key={chip.label} style={styles.feedbackChip}>
+                <Text style={styles.feedbackChipText}>{chip.label}</Text>
               </View>
             ))
           ) : (
@@ -363,13 +401,43 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     backgroundColor: colors.primary,
   },
+<<<<<<< Updated upstream
   feedbackRateBtnText: { color: colors.white, fontSize: 14, fontWeight: '800' },
   feedbackThanksText: { marginTop: spacing.md, color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+=======
+  feedbackRateBtnText: { color: palette.white, fontSize: 14, fontWeight: '800' },
+  feedbackThanksText: { marginTop: spacing.md, color: palette.textMuted, fontSize: 13, fontWeight: '600' },
+  modalStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: spacing.sm,
+  },
+  modalRatingValueInline: {
+    marginLeft: 8,
+    color: palette.text,
+    fontSize: 24,
+    fontWeight: '800',
+  },
+>>>>>>> Stashed changes
   sectionBlock: { gap: spacing.sm },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
   emptyText: { color: colors.textMuted, fontSize: 13 },
   tournamentCard: { gap: 8 },
+<<<<<<< Updated upstream
   tournamentTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+=======
+  tournamentCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  tournamentCardMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tournamentTitle: { color: palette.text, fontSize: 15, fontWeight: '700' },
+>>>>>>> Stashed changes
   tournamentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   tournamentMetaText: { color: colors.textMuted, fontSize: 13 },
   cardPressed: { opacity: 0.9 },

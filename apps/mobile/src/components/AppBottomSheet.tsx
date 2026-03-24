@@ -27,9 +27,8 @@ export type AppBottomSheetProps = PropsWithChildren<{
   open: boolean
   onClose: () => void
   title?: string
+  titleBelow?: ReactNode
   subtitle?: string
-  /** Например кнопка закрытия справа от заголовка. */
-  titleAccessory?: ReactNode
   /** Нижняя зона под кнопками (по умолчанию компактно). */
   footer?: ReactNode
   /** Доп. отступ снизу внутри панели (до safe area). */
@@ -43,8 +42,8 @@ export function AppBottomSheet({
   open,
   onClose,
   title,
+  titleBelow,
   subtitle,
-  titleAccessory,
   children,
   footer,
   bottomPaddingExtra = 0,
@@ -120,13 +119,13 @@ export function AppBottomSheet({
           ]}
         >
           <View style={styles.handle} />
-          {title || titleAccessory ? (
+          {title ? (
             <View style={styles.titleRow}>
               <View style={styles.titleBlock}>
                 {title ? <Text style={styles.title}>{title}</Text> : null}
+                {titleBelow ? <View style={styles.titleBelow}>{titleBelow}</View> : null}
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
               </View>
-              {titleAccessory ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : subtitle ? (
             <Text style={styles.subtitle}>{subtitle}</Text>
@@ -170,8 +169,8 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  titleAccessory: {
-    paddingTop: 2,
+  titleBelow: {
+    marginTop: spacing.sm,
   },
   title: {
     fontSize: 18,

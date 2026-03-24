@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
+const formatPromptDate = (value: Date) =>
+  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
+
 function isMissingDbRelation(err: unknown, relationName: string): boolean {
   const msg = String((err as Error)?.message ?? '').toLowerCase()
   return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
@@ -84,6 +87,8 @@ export const notificationRouter = createTRPCRouter({
         targetUrl: string
         entityType: 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
         entityId: string
+        avatarUrl: string | null
+        context?: Record<string, unknown>
       }> = []
       const clubIds = adminClubs.map((a) => a.clubId)
       if (clubIds.length > 0) {
@@ -154,6 +159,18 @@ export const notificationRouter = createTRPCRouter({
                   endDate: true,
                   clubId: true,
                   userId: true,
+                  image: true,
+                  format: true,
+                  venueName: true,
+                  venueAddress: true,
+                  user: {
+                    select: {
+                      name: true,
+                      email: true,
+                      image: true,
+                      city: true,
+                    },
+                  },
                 },
               },
             },
@@ -167,9 +184,21 @@ export const notificationRouter = createTRPCRouter({
         const rated = new Set(ratings.map((r) => `${r.entityType}:${r.entityId}`))
         const seenTournament = new Set<string>()
         const seenClub = new Set<string>()
+        const followedClubIds = Array.from(new Set(follows.map((f) => f.clubId)))
+        const followedClubs = followedClubIds.length
+          ? await ctx.prisma.club.findMany({
+              where: { id: { in: followedClubIds } },
+              select: { id: true, name: true, logoUrl: true, city: true, state: true },
+            })
+          : []
+        const clubNameById = new Map(followedClubs.map((c) => [c.id, c.name]))
+        const clubLogoById = new Map(followedClubs.map((c) => [c.id, c.logoUrl ?? null]))
+        const clubById = new Map(followedClubs.map((c) => [c.id, c]))
         for (const row of played) {
           const tournament = row.tournament
           if (!tournament) continue
+          const tournamentDate = formatPromptDate(tournament.endDate)
+          const directorName = tournament.user?.name || tournament.user?.email || 'Tournament director'
           if (tournament.endDate <= tournamentCutoff) {
             if (!rated.has(`TOURNAMENT:${tournament.id}`) && !seenTournament.has(`TOURNAMENT:${tournament.id}`)) {
               seenTournament.add(`TOURNAMENT:${tournament.id}`)
@@ -177,12 +206,20 @@ export const notificationRouter = createTRPCRouter({
                 id: `feedback-prompt-tournament-${tournament.id}`,
                 type: 'FEEDBACK_PROMPT',
                 title: 'Rate tournament',
-                body: `How was "${tournament.title}"?`,
+                body: `"${tournament.title}" (${tournamentDate}).\nHelp us improve tournament quality and player experience.`,
                 createdAt: tournament.endDate.toISOString(),
                 readAt: null,
                 targetUrl: `/tournaments/${tournament.id}`,
                 entityType: 'TOURNAMENT',
                 entityId: tournament.id,
+                avatarUrl: tournament.image ?? null,
+                context: {
+                  title: tournament.title,
+                  date: tournamentDate,
+                  format: tournament.format ? String(tournament.format).replace(/_/g, ' ') : null,
+                  address: [tournament.venueName, tournament.venueAddress].filter(Boolean).join(', ') || null,
+                  imageUrl: tournament.image ?? null,
+                },
               })
             }
             if (!rated.has(`TD:${tournament.userId}`) && !seenTournament.has(`TD:${tournament.userId}`)) {
@@ -191,17 +228,26 @@ export const notificationRouter = createTRPCRouter({
                 id: `feedback-prompt-td-${tournament.userId}-${tournament.id}`,
                 type: 'FEEDBACK_PROMPT',
                 title: 'Rate tournament director',
-                body: `How did the director perform at "${tournament.title}"?`,
+                body: `"${directorName}" (${tournamentDate}, "${tournament.title}").\nHelp us improve director quality, communication, and event experience.`,
                 createdAt: tournament.endDate.toISOString(),
                 readAt: null,
                 targetUrl: `/tournaments/${tournament.id}`,
                 entityType: 'TD',
                 entityId: tournament.userId,
+                avatarUrl: tournament.user?.image ?? null,
+                context: {
+                  name: directorName,
+                  city: tournament.user?.city ?? null,
+                  avatarUrl: tournament.user?.image ?? null,
+                  tournamentTitle: tournament.title,
+                  tournamentDate: tournamentDate,
+                },
               })
             }
           }
           if (tournament.clubId && !rated.has(`CLUB:${tournament.clubId}`) && !seenClub.has(tournament.clubId)) {
             seenClub.add(tournament.clubId)
+            const club = clubById.get(tournament.clubId)
             feedbackPromptItems.push({
               id: `feedback-prompt-club-event-${tournament.clubId}`,
               type: 'FEEDBACK_PROMPT',
@@ -212,6 +258,13 @@ export const notificationRouter = createTRPCRouter({
               targetUrl: `/clubs/${tournament.clubId}`,
               entityType: 'CLUB',
               entityId: tournament.clubId,
+              avatarUrl: clubLogoById.get(tournament.clubId) ?? null,
+              context: {
+                title: club?.name ?? null,
+                address: [club?.city, club?.state].filter(Boolean).join(', ') || null,
+                membersCount: null,
+                imageUrl: club?.logoUrl ?? null,
+              },
             })
           }
         }
@@ -219,16 +272,25 @@ export const notificationRouter = createTRPCRouter({
           if (follow.createdAt > clubCutoff) continue
           if (rated.has(`CLUB:${follow.clubId}`) || seenClub.has(follow.clubId)) continue
           seenClub.add(follow.clubId)
+          const clubName = clubNameById.get(follow.clubId) ?? 'Club'
+          const joinedDate = formatPromptDate(follow.createdAt)
           feedbackPromptItems.push({
             id: `feedback-prompt-club-joined-${follow.clubId}`,
             type: 'FEEDBACK_PROMPT',
             title: 'Rate club',
-            body: 'You have been in this club for a few days. Share your feedback.',
+            body: `"${clubName}" (${joinedDate}).\nHelp us improve club quality, events, and member experience.`,
             createdAt: follow.createdAt.toISOString(),
             readAt: null,
             targetUrl: `/clubs/${follow.clubId}`,
             entityType: 'CLUB',
             entityId: follow.clubId,
+            avatarUrl: clubLogoById.get(follow.clubId) ?? null,
+            context: {
+              title: clubName,
+              address: [clubById.get(follow.clubId)?.city, clubById.get(follow.clubId)?.state].filter(Boolean).join(', ') || null,
+              membersCount: null,
+              imageUrl: clubLogoById.get(follow.clubId) ?? null,
+            },
           })
         }
         if (me?.createdAt && me.createdAt <= appCutoff && !rated.has('APP:GLOBAL')) {
@@ -236,12 +298,13 @@ export const notificationRouter = createTRPCRouter({
             id: 'feedback-prompt-app-global',
             type: 'FEEDBACK_PROMPT',
             title: 'Rate app experience',
-            body: 'Tell us how your app experience is going.',
+            body: 'Your opinion is very important to us. We are working to improve usability, your overall experience, and the speed and quality of our service.',
             createdAt: me.createdAt.toISOString(),
             readAt: null,
             targetUrl: '/profile',
             entityType: 'APP',
             entityId: 'GLOBAL',
+            avatarUrl: null,
           })
         }
       } catch (err) {

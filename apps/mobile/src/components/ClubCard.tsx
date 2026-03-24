@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { useMemo } from 'react'
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native'
@@ -5,6 +6,15 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'rea
 import { formatLocation } from '../lib/formatters'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
+=======
+import { Feather } from '@expo/vector-icons'
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+
+import { formatLocation } from '../lib/formatters'
+import { palette, radius, spacing } from '../lib/theme'
+import { EntityImage } from './EntityImage'
+import { RatingStarIcon } from './icons/RatingStarIcon'
+>>>>>>> Stashed changes
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 import { SurfaceCard } from './ui'
 
@@ -19,6 +29,7 @@ type ClubSummary = {
   isVerified?: boolean
   isFollowing?: boolean
   isAdmin?: boolean
+  role?: string | null
   isJoinPending?: boolean
   followersCount?: number
   hasBooking?: boolean
@@ -42,23 +53,25 @@ type ClubCardProps = {
 }
 
 export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) => {
+<<<<<<< Updated upstream
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const showMember = Boolean(club.isFollowing || club.isAdmin)
+=======
+  const isOwner = String(club.role ?? '').toUpperCase() === 'OWNER'
+  const isAdmin = Boolean(club.isAdmin && !isOwner)
+  const showMember = Boolean(club.isFollowing && !club.isAdmin && !isOwner)
+  const hasPrivilegedRole = Boolean(isOwner || isAdmin)
+  const canJoin = Boolean(!showMember && !hasPrivilegedRole && !club.isJoinPending)
+>>>>>>> Stashed changes
   const showPending = Boolean(!showMember && club.isJoinPending)
-  const memberCount = typeof club.followersCount === 'number' ? club.followersCount : null
+  const memberCount = typeof club.followersCount === 'number' ? Math.max(1, club.followersCount) : 1
   const showPublicRating = Boolean(club.feedbackSummary?.canPublish && club.feedbackSummary?.averageRating)
-
-  const nextDateLabel = (() => {
-    if (!club.nextTournament?.startDate) return null
-    const date = new Date(club.nextTournament.startDate)
-    if (Number.isNaN(date.getTime())) return null
-    return date.toLocaleString('en-US', { month: 'short', day: 'numeric' })
-  })()
 
   return (
     <Pressable onPress={onPress}>
       <SurfaceCard padded={false} style={styles.card}>
+<<<<<<< Updated upstream
         <View style={styles.imageWrap}>
           {club.logoUrl ? (
             <Image source={{ uri: club.logoUrl }} style={styles.image} resizeMode="cover" />
@@ -69,9 +82,25 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.imagePlaceholder}
+=======
+        <View style={styles.headerSection}>
+          <OptionalLinearGradient
+            pointerEvents="none"
+            colors={['rgba(40, 205, 65, 0.10)', 'rgba(82, 224, 104, 0.06)', 'rgba(255, 255, 255, 0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
+          />
+          <View style={styles.headerRow}>
+            <EntityImage
+              uri={club.logoUrl}
+              style={styles.logo}
+              resizeMode="cover"
+              placeholderResizeMode="contain"
+>>>>>>> Stashed changes
             />
-          )}
 
+<<<<<<< Updated upstream
           {showMember ? (
             <View style={[styles.statusBadge, styles.statusBadgeMember]}>
               <Feather name={club.isAdmin ? 'shield' : 'check'} size={14} color={colors.white} />
@@ -83,11 +112,33 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               <Text style={[styles.statusBadgeText, styles.statusBadgeTextDark]}>Pending</Text>
             </View>
           ) : null}
+=======
+            <View style={styles.headerMain}>
+              <Text style={styles.name} numberOfLines={2}>
+                {club.name}
+              </Text>
+              <View style={styles.locationRow}>
+                <Feather name="map-pin" size={16} color={palette.primary} />
+                <Text style={styles.location} numberOfLines={1}>
+                  {formatLocation([club.city, club.state])}
+                </Text>
+              </View>
+            </View>
+>>>>>>> Stashed changes
 
-          {/* Distance pill is design-only until backend provides distance miles */}
+            <View style={styles.ratingRow}>
+              <RatingStarIcon size={16} filled color="#F4B000" />
+              {showPublicRating ? (
+                <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
+              ) : (
+              <Text style={styles.ratingTextMuted}>New</Text>
+              )}
+            </View>
+          </View>
         </View>
 
         <View style={styles.body}>
+<<<<<<< Updated upstream
           <Text style={styles.name} numberOfLines={2}>
             {club.name}
           </Text>
@@ -96,17 +147,40 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
           {memberCount !== null ? (
             <View style={styles.memberRow}>
               <Feather name="users" size={16} color={colors.primary} />
+=======
+          <View style={styles.memberRow}>
+            <View style={styles.memberCountRow}>
+              <Feather name="users" size={16} color={palette.primary} />
+>>>>>>> Stashed changes
               <Text style={styles.memberText}>{memberCount} members</Text>
             </View>
-          ) : null}
 
-          <View style={styles.ratingRow}>
-            <MaterialIcons name="star" size={16} color="#F4B000" />
-            {showPublicRating ? (
-              <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
-            ) : (
-              <Text style={styles.ratingTextMuted}>No rating yet</Text>
-            )}
+            <View style={styles.statusRow}>
+              {showMember ? (
+                <View style={[styles.statusBadge, styles.statusBadgeMember]}>
+                  <Feather name="check-circle" size={12} color={palette.primary} />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextMember]}>Member</Text>
+                </View>
+              ) : null}
+              {isOwner ? (
+                <View style={[styles.statusBadge, styles.statusBadgeOwner]}>
+                  <Feather name="shield" size={12} color={palette.primary} />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextOwner]}>Owner</Text>
+                </View>
+              ) : null}
+              {isAdmin ? (
+                <View style={[styles.statusBadge, styles.statusBadgeAdmin]}>
+                  <Feather name="check-circle" size={12} color={palette.primary} />
+                  <Text style={styles.statusBadgeText}>Admin</Text>
+                </View>
+              ) : null}
+              {showPending ? (
+                <View style={[styles.statusBadge, styles.statusBadgePending]}>
+                  <Feather name="clock" size={12} color={palette.primary} />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextDark]}>Pending</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.chipRow}>
@@ -131,6 +205,7 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
             ) : null}
           </View>
 
+<<<<<<< Updated upstream
           {club.nextTournament && nextDateLabel ? (
             <View style={styles.footerRow}>
               <View style={styles.footerLeft}>
@@ -142,6 +217,9 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
           ) : null}
 
           {onJoin && !showMember && !showPending ? (
+=======
+          {onJoin && canJoin && !showPending ? (
+>>>>>>> Stashed changes
             <Pressable
               onPress={onJoin}
               disabled={joinLoading}
@@ -186,8 +264,9 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 0,
   },
-  imageWrap: {
+  headerSection: {
     position: 'relative',
+<<<<<<< Updated upstream
     height: 180,
     backgroundColor: colors.surfaceMuted,
   },
@@ -223,14 +302,51 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   statusBadgeTextDark: {
     color: colors.text,
+=======
+    overflow: 'hidden',
+    padding: spacing.md,
+    backgroundColor: palette.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.brandPrimaryBorder,
+  },
+  headerGradient: {
+    ...StyleSheet.absoluteFillObject,
+>>>>>>> Stashed changes
   },
   body: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    padding: spacing.md,
     paddingBottom: spacing.md,
     gap: 10,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  logo: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: palette.surfaceMuted,
+  },
+  logoPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+  },
+  headerMain: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 3,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   name: {
+<<<<<<< Updated upstream
     fontSize: 20,
     fontWeight: '800',
     color: colors.text,
@@ -240,36 +356,56 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     marginTop: -4,
     color: colors.textMuted,
     fontSize: 14,
+=======
+    fontSize: 18,
+    fontWeight: '700',
+    color: palette.text,
+    letterSpacing: -0.3,
+  },
+  location: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    flex: 1,
+>>>>>>> Stashed changes
   },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
+<<<<<<< Updated upstream
   memberText: {
     color: colors.textMuted,
     fontSize: 14,
     fontWeight: '500',
   },
   chipRow: {
+=======
+  memberCountRow: {
+>>>>>>> Stashed changes
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    marginTop: 2,
+    alignItems: 'center',
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 2,
-    alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 9999,
     backgroundColor: colors.surfaceElevated,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    marginLeft: 'auto',
+    maxWidth: 120,
+  },
+  memberText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
   },
   ratingText: {
     color: colors.text,
@@ -277,11 +413,72 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     fontWeight: '600',
   },
   ratingTextMuted: {
+<<<<<<< Updated upstream
     color: colors.textMuted,
     fontSize: 14,
+=======
+    color: palette.textMuted,
+    fontSize: 13,
+>>>>>>> Stashed changes
     fontWeight: '500',
   },
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flex: 1,
+  },
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusBadgeMember: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
+  },
+  statusBadgeAdmin: {
+    backgroundColor: 'rgba(30, 122, 50, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(30, 122, 50, 0.18)',
+  },
+  statusBadgeOwner: {
+    backgroundColor: 'rgba(255, 193, 7, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.24)',
+  },
+  statusBadgePending: {
+    backgroundColor: 'rgba(245, 158, 11, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  statusBadgeText: {
+    color: palette.primary,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  statusBadgeTextDark: {
+    color: '#A16207',
+  },
+  statusBadgeTextMember: {
+    color: palette.textMuted,
+  },
+  statusBadgeTextOwner: {
+    color: '#A06B00',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   chip: {
+<<<<<<< Updated upstream
     backgroundColor: colors.secondary,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -310,6 +507,17 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     fontWeight: '600',
+=======
+    backgroundColor: palette.secondary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  chipText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+>>>>>>> Stashed changes
   },
   joinButton: {
     marginTop: spacing.md,

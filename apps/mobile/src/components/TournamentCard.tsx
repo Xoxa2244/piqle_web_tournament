@@ -1,12 +1,22 @@
+<<<<<<< Updated upstream
 import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { useMemo } from 'react'
+=======
+import { Feather } from '@expo/vector-icons'
+>>>>>>> Stashed changes
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
 import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
+<<<<<<< Updated upstream
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
+=======
+import { palette, radius, spacing } from '../lib/theme'
+import { RatingStarIcon } from './icons/RatingStarIcon'
+>>>>>>> Stashed changes
 import { OptionalLinearGradient } from './OptionalLinearGradient'
+import { TournamentThumbnail } from './TournamentThumbnail'
 import { Pill, SurfaceCard } from './ui'
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -56,6 +66,7 @@ const formatTournamentFormat = (format?: string | null) => {
 type TournamentSummary = {
   id: string
   title: string
+  image?: string | null
   startDate: string | Date
   endDate: string | Date
   venueName?: string | null
@@ -144,12 +155,17 @@ export const TournamentCard = ({
             style={styles.heroGradient}
           />
           <View style={styles.heroHeader}>
-            <View style={{ flex: 1 }}>
+            <TournamentThumbnail imageUri={tournament.image ?? null} size={48} />
+            <View style={styles.heroMain}>
               <Text numberOfLines={1} style={styles.title}>
                 {tournament.title}
               </Text>
               <View style={styles.formatRow}>
+<<<<<<< Updated upstream
                 <Feather name="award" size={14} color={colors.textMuted} />
+=======
+                <Feather name="award" size={14} color={palette.primary} />
+>>>>>>> Stashed changes
                 <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
               </View>
             </View>
@@ -169,7 +185,11 @@ export const TournamentCard = ({
               <Text style={styles.metaText}>{formatTournamentDateRange(tournament.startDate, tournament.endDate)}</Text>
             </View>
             <View style={styles.metaCell}>
+<<<<<<< Updated upstream
               <Feather name="map-pin" size={16} color={colors.accent} />
+=======
+              <Feather name="map-pin" size={16} color={palette.primary} />
+>>>>>>> Stashed changes
               <Text numberOfLines={1} style={styles.metaText}>
                 {formatLocation([tournament.venueName, tournament.venueAddress])}
               </Text>
@@ -177,7 +197,7 @@ export const TournamentCard = ({
           </View>
 
           <View style={styles.ratingRow}>
-            <MaterialIcons name="star" size={16} color="#F4B000" />
+            <RatingStarIcon size={16} filled color="#F4B000" />
             {showPublicRating ? (
               <Text style={styles.ratingText}>{tournament.feedbackSummary!.averageRating!.toFixed(1)}</Text>
             ) : (
@@ -197,7 +217,11 @@ export const TournamentCard = ({
           <View style={styles.progressBlock}>
             <View style={styles.progressHeader}>
               <View style={styles.progressMetric}>
+<<<<<<< Updated upstream
                 <Feather name="users" size={16} color={colors.textMuted} />
+=======
+                <Feather name="users" size={16} color={palette.primary} />
+>>>>>>> Stashed changes
                 <Text style={styles.progressText}>{occupancyLabel}</Text>
               </View>
               <View style={styles.priceTag}>
@@ -247,9 +271,13 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   heroHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  heroMain: {
+    flex: 1,
+    minWidth: 0,
   },
   statusBadgeRow: {
     flexDirection: 'row',

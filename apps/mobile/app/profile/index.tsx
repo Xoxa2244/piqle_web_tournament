@@ -8,6 +8,8 @@ import { WebView } from 'react-native-webview'
 import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
+import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
+import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { formatDate, formatLocation } from '../../src/lib/formatters'
 import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
@@ -446,11 +448,14 @@ export default function ProfileTab() {
             open={showDuprConnect}
             onClose={() => setShowDuprConnect(false)}
             title="Connect DUPR"
+<<<<<<< Updated upstream
             titleAccessory={
               <Pressable onPress={() => setShowDuprConnect(false)} hitSlop={12}>
                 <Feather name="x" size={20} color={colors.textMuted} />
               </Pressable>
             }
+=======
+>>>>>>> Stashed changes
           >
             {duprLoginUrl ? (
               <WebView
@@ -504,11 +509,20 @@ export default function ProfileTab() {
             onClose={() => setTdFeedbackInfoOpen(false)}
             title="Tournament director rating"
             subtitle={
-              tdCanPublishEffective && tdAverageEffective
-                ? `Average ${tdAverageEffective.toFixed(1)}`
-                : 'No public rating yet. Need at least 5 ratings.'
+              tdCanPublishEffective && tdAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
             }
           >
+            {tdCanPublishEffective && tdAverageEffective ? (
+              <View style={styles.modalStarsRow}>
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const active = star <= Math.round(tdAverageEffective)
+                  return (
+                    <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
+                  )
+                })}
+                <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
+              </View>
+            ) : null}
             <View style={styles.feedbackChipsWrap}>
               {(tdSummaryQuery.data?.topChips ?? []).length > 0 || (__DEV__ && isTd) ? (
                 (tdSummaryQuery.data?.topChips?.length
@@ -559,7 +573,8 @@ export default function ProfileTab() {
                 >
                   <SurfaceCard style={styles.activityCard}>
                     <View style={styles.activityTopRow}>
-                      <View style={{ flex: 1 }}>
+                      <TournamentThumbnail imageUri={(tournament as any).image ?? null} size={48} />
+                      <View style={styles.activityMain}>
                         <Text style={styles.activityTitle}>{tournament.title}</Text>
                         <Text style={styles.activitySubtitle}>{divisionLabel}</Text>
                       </View>
@@ -831,6 +846,18 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 12,
     fontWeight: '700',
   },
+  modalStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: spacing.sm,
+  },
+  modalRatingValueInline: {
+    marginLeft: 8,
+    color: palette.text,
+    fontSize: 24,
+    fontWeight: '800',
+  },
   feedbackChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: spacing.xs },
   feedbackChip: {
     borderRadius: 999,
@@ -866,9 +893,13 @@ const createStyles = (colors: ThemePalette) =>
   },
   activityTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  activityMain: {
+    flex: 1,
+    minWidth: 0,
   },
   activityTitle: {
     color: colors.text,

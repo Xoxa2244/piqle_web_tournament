@@ -10,8 +10,8 @@ type Props = {
   uri?: string | null
   size?: number
   /**
-   * Без фото: `tournament` — плейсхолдер как на вебе; `icon` — нейтральная иконка;
-   * `initials` — зелёный круг с инициалами (экран профиля), нужен `initialsLabel`.
+   * Без фото: `initials` — дефолт для user/avatar мест;
+   * `tournament` — плейсхолдер-мячик для не-user сущностей; `icon` — нейтральная иконка.
    */
   fallback?: 'tournament' | 'icon' | 'initials'
   /** Имя/email для `AvatarBadge`, когда `fallback="initials"` */
@@ -24,8 +24,8 @@ type Props = {
 export function RemoteUserAvatar({
   uri,
   size = 32,
-  fallback = 'tournament',
-  initialsLabel = '',
+  fallback = 'initials',
+  initialsLabel = 'User',
 }: Props) {
   const [failed, setFailed] = useState(false)
   const showImage = Boolean(uri && isRemoteImageUri(uri) && !failed)
@@ -33,7 +33,7 @@ export function RemoteUserAvatar({
   const iconSize = Math.max(14, Math.round(size * 0.48))
 
   if (!showImage && fallback === 'initials') {
-    return <AvatarBadge label={initialsLabel || '?'} size={size} />
+    return <AvatarBadge label={initialsLabel || 'User'} size={size} />
   }
 
   return (

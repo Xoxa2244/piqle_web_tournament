@@ -1,13 +1,18 @@
+<<<<<<< Updated upstream
 import { useMemo } from 'react'
 import { Feather } from '@expo/vector-icons'
+=======
+>>>>>>> Stashed changes
 import { router, useLocalSearchParams } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Platform, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-import { EmptyState, LoadingBlock, SurfaceCard } from '../../../src/components/ui'
-import { TopBar } from '../../../src/components/navigation/TopBar'
-import { formatDateRange, formatLocation } from '../../../src/lib/formatters'
+import { EmptyState, LoadingBlock } from '../../../src/components/ui'
+import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
+import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
+import { BrandGradientText } from '../../../src/components/navigation/BrandGradientText'
 import { trpc } from '../../../src/lib/trpc'
+<<<<<<< Updated upstream
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
 
@@ -31,6 +36,9 @@ const formatTournamentFormat = (format: string) => {
       return format.replace(/_/g, ' ')
   }
 }
+=======
+import { palette, spacing } from '../../../src/lib/theme'
+>>>>>>> Stashed changes
 
 export default function ClubEventsScreen() {
   const { colors } = useAppTheme()
@@ -43,7 +51,6 @@ export default function ClubEventsScreen() {
   if (clubQuery.isLoading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
         <View style={styles.loadingWrap}>
           <LoadingBlock label="Loading events…" />
         </View>
@@ -54,7 +61,6 @@ export default function ClubEventsScreen() {
   if (!clubQuery.data) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
         <View style={styles.loadingWrap}>
           <EmptyState title="Club not found" body="This club could not be loaded." />
         </View>
@@ -67,8 +73,8 @@ export default function ClubEventsScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <TopBar />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+<<<<<<< Updated upstream
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => router.back()}
@@ -80,16 +86,24 @@ export default function ClubEventsScreen() {
             <Text style={styles.title}>Events</Text>
             <Text style={styles.subtitle}>{club.name}</Text>
           </View>
+=======
+        <View style={styles.backRow}>
+          <BackCircleButton onPress={() => router.back()} style={styles.backButton} />
+          <BrandGradientText style={styles.title}>Upcoming tournaments</BrandGradientText>
+>>>>>>> Stashed changes
         </View>
-
         {tournaments.length === 0 ? (
           <EmptyState title="No upcoming events" body="This club has no published upcoming events yet." />
         ) : (
           <View style={{ gap: 12 }}>
             {tournaments.map((tournament: any) => (
-              <Pressable
+              <ClubTournamentCard
                 key={tournament.id}
+                tournament={tournament}
+                fallbackVenueName={club.city}
+                fallbackVenueAddress={club.state}
                 onPress={() => router.push(`/tournaments/${tournament.id}`)}
+<<<<<<< Updated upstream
                 style={({ pressed }) => [pressed && { opacity: 0.9 }]}
               >
                 <SurfaceCard style={styles.card}>
@@ -133,6 +147,9 @@ export default function ClubEventsScreen() {
                   </View>
                 </SurfaceCard>
               </Pressable>
+=======
+              />
+>>>>>>> Stashed changes
             ))}
           </View>
         )}
@@ -158,14 +175,16 @@ const createStyles = (colors: ThemePalette) =>
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
-  headerRow: {
+  backRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    minHeight: 36,
+    gap: 16,
   },
   backButton: {
     width: 36,
     height: 36,
+<<<<<<< Updated upstream
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -265,6 +284,16 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.text,
     fontSize: 12,
     fontWeight: '700',
+=======
+  },
+  title: {
+    color: palette.primary,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    lineHeight: 36,
+    ...(Platform.OS === 'android' ? { textAlignVertical: 'center' as const, includeFontPadding: false } : {}),
+>>>>>>> Stashed changes
   },
   })
 

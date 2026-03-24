@@ -1,0 +1,31 @@
+---
+description: Disallow close X buttons in mobile modals and sheets
+alwaysApply: true
+---
+
+# Mobile Modals Without Close Cross
+
+- In the mobile app, do not add header `X` / close-cross buttons to modals, sheets, or rating dialogs.
+- Prefer dismiss via backdrop tap, swipe/gesture if supported, or footer actions like `Cancel`, `Close`, `OK`, `Done`, or `Submit`.
+- `AppBottomSheet` should not expose a header close-accessory API for an `X` button.
+- If a modal needs an explicit dismissal control, put it in the footer using the shared action buttons, not in the title row.
+
+## Examples
+
+```tsx
+// Good
+<AppBottomSheet
+  open={open}
+  onClose={onClose}
+  title="Rate this club"
+  footer={<AppInfoFooter label="Close" onPress={onClose} />}
+/>
+
+// Bad
+<AppBottomSheet
+  open={open}
+  onClose={onClose}
+  title="Rate this club"
+  titleAccessory={<Feather name="x" size={20} />}
+/>
+```

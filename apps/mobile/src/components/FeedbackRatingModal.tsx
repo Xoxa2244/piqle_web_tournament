@@ -1,8 +1,8 @@
-import { Feather, MaterialIcons } from '@expo/vector-icons'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
+import { RatingStarIcon } from './icons/RatingStarIcon'
 import { FEEDBACK_API_ENABLED } from '../lib/config'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { trpc } from '../lib/trpc'
@@ -47,7 +47,9 @@ export function FeedbackRatingModal({
   entityType,
   entityId,
   title,
+  titleBelow,
   subtitle,
+  contextCard,
   onSubmitted,
 }: {
   open: boolean
@@ -55,7 +57,9 @@ export function FeedbackRatingModal({
   entityType: EntityType
   entityId: string
   title: string
+  titleBelow?: ReactNode
   subtitle?: string
+  contextCard?: ReactNode
   onSubmitted?: () => void
 }) {
   const { colors } = useAppTheme()
@@ -103,12 +107,16 @@ export function FeedbackRatingModal({
       open={open}
       onClose={onClose}
       title={title}
+      titleBelow={titleBelow}
       subtitle={subtitle}
+<<<<<<< Updated upstream
       titleAccessory={
         <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}>
           <Feather name="x" size={20} color={colors.textMuted} />
         </Pressable>
       }
+=======
+>>>>>>> Stashed changes
       footer={
         <AppConfirmActions
           intent="positive"
@@ -135,6 +143,7 @@ export function FeedbackRatingModal({
       }
     >
       <View style={styles.body}>
+        {contextCard ? <View style={styles.contextCardWrap}>{contextCard}</View> : null}
         <View style={styles.starsRow}>
           {[1, 2, 3, 4, 5].map((star) => {
             const active = rating >= star
@@ -145,7 +154,11 @@ export function FeedbackRatingModal({
                 hitSlop={8}
                 style={({ pressed }) => [styles.starBtn, pressed && styles.starBtnPressed]}
               >
+<<<<<<< Updated upstream
                 <MaterialIcons name={active ? 'star' : 'star-border'} size={30} color={active ? '#F4B000' : colors.textMuted} />
+=======
+                <RatingStarIcon size={34} filled={active} color="#F4B000" inactiveColor={palette.textMuted} />
+>>>>>>> Stashed changes
               </Pressable>
             )
           })}
@@ -199,15 +212,8 @@ const createStyles = (colors: ThemePalette) =>
     gap: spacing.md,
     paddingTop: spacing.xs,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeBtnPressed: {
-    opacity: 0.75,
+  contextCardWrap: {
+    marginBottom: 0,
   },
   starsRow: {
     flexDirection: 'row',
@@ -215,7 +221,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 8,
   },
   starBtn: {
-    padding: 2,
+    padding: 3,
   },
   starBtnPressed: {
     opacity: 0.85,
