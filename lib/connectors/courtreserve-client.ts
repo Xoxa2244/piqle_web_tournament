@@ -28,7 +28,9 @@ export class CourtReserveClient {
   // ── Private helpers ──
 
   private async request<T>(path: string, params?: Record<string, string>): Promise<T> {
-    const url = new URL(path, this.baseUrl)
+    // Concatenate baseUrl + path (don't use new URL(path, base) — it drops base path for absolute paths)
+    const fullUrl = this.baseUrl + (path.startsWith('/') ? path : '/' + path)
+    const url = new URL(fullUrl)
     if (params) {
       for (const [k, v] of Object.entries(params)) {
         if (v !== undefined && v !== '') url.searchParams.set(k, v)
