@@ -18,6 +18,10 @@
     {
       "path": "/api/emails/trial-reminder",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/connectors/courtreserve/sync",
+      "schedule": "17 */6 * * *"
     }
   ]
 }

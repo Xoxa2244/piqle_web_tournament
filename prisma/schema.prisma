@@ -249,6 +249,9 @@ model Club {
   // Billing
   subscription            Subscription?
 
+  // Connectors
+  connectors              ClubConnector[]
+
   @@map("clubs")
 }
 
@@ -269,6 +272,28 @@ model Subscription {
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
   @@map("subscriptions")
+}
+
+model ClubConnector {
+  id                   String    @id @default(uuid())
+  clubId               String    @map("club_id")
+  club                 Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  provider             String    @default("courtreserve")
+  credentialsEncrypted String    @map("credentials_encrypted")
+  baseUrl              String    @default("https://api.courtreserve.com") @map("base_url")
+  organizationId       String?   @map("organization_id")
+  status               String    @default("connected") // connected, syncing, error, disconnected
+  lastSyncAt           DateTime? @map("last_sync_at")
+  lastSyncResult       Json      @default("{}") @map("last_sync_result")
+  lastError            String?   @map("last_error")
+  syncIntervalHours    Int       @default(6) @map("sync_interval_hours")
+  autoSync             Boolean   @default(true) @map("auto_sync")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@unique([clubId, provider])
+  @@index([status, autoSync])
+  @@map("club_connectors")
 }
 
 model ClubFollower {
