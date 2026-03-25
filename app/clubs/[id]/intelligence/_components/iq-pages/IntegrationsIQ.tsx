@@ -1,38 +1,79 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
+import { useTheme } from '../IQThemeProvider'
 import {
   Plug, CheckCircle2, AlertCircle, Loader2, RefreshCw,
   Unplug, ArrowRight, Clock, Database, Users, LayoutGrid,
+  Wifi, WifiOff, Zap, Settings,
 } from 'lucide-react'
 
-export function IntegrationsIQ({ clubId }: { clubId: string }) {
+// ── Shared Card (same as BillingIQ) ──
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Integrations</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Connect your existing club management software to unlock AI insights.
-        </p>
-      </div>
-
-      <CourtReserveCard clubId={clubId} />
+    <div className={`rounded-2xl p-5 ${className}`} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)', boxShadow: 'var(--card-shadow)' }}>
+      {children}
     </div>
   )
 }
 
-function CourtReserveCard({ clubId }: { clubId: string }) {
+export function IntegrationsIQ({ clubId }: { clubId: string }) {
+  const { isDark } = useTheme()
+
+  return (
+    <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Plug size={20} color="#fff" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Integrations</h1>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+              Connect your club management software to unlock AI insights
+            </p>
+          </div>
+        </div>
+      </motion.div>
+
+      <CourtReserveConnector clubId={clubId} />
+
+      {/* Coming soon cards */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ marginTop: 24 }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, opacity: 0.5 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 12, background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-secondary)' }}>OC</span>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>OpenCourt</p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Coming soon</p>
+            </div>
+            <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 20, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', color: 'var(--text-secondary)' }}>
+              Planned
+            </span>
+          </div>
+        </Card>
+      </motion.div>
+    </div>
+  )
+}
+
+function CourtReserveConnector({ clubId }: { clubId: string }) {
+  const { isDark } = useTheme()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [testResult, setTestResult] = useState<{ ok: boolean; courtCount?: number; error?: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
-  const isDev = typeof window !== 'undefined' && window.location.hostname.includes('dev.')
+  const isDev = typeof window !== 'undefined' && (window.location.hostname.includes('dev.') || window.location.hostname === 'localhost')
 
   const utils = trpc.useUtils()
 
-  const { data: status, isLoading: statusLoading } = trpc.connectors.getStatus.useQuery(
+  const { data: status, isLoading } = trpc.connectors.getStatus.useQuery(
     { clubId },
     { staleTime: 10_000 }
   )
@@ -42,20 +83,17 @@ function CourtReserveCard({ clubId }: { clubId: string }) {
       utils.connectors.getStatus.invalidate({ clubId })
       setUsername('')
       setPassword('')
+      setBaseUrl('')
       setTestResult(null)
     },
   })
 
   const disconnectMutation = trpc.connectors.disconnect.useMutation({
-    onSuccess: () => {
-      utils.connectors.getStatus.invalidate({ clubId })
-    },
+    onSuccess: () => utils.connectors.getStatus.invalidate({ clubId }),
   })
 
   const syncMutation = trpc.connectors.syncNow.useMutation({
-    onSuccess: () => {
-      utils.connectors.getStatus.invalidate({ clubId })
-    },
+    onSuccess: () => utils.connectors.getStatus.invalidate({ clubId }),
   })
 
   const testMutation = trpc.connectors.testConnection.useMutation()
@@ -77,316 +115,303 @@ function CourtReserveCard({ clubId }: { clubId: string }) {
     connectMutation.mutate({ clubId, username, password, baseUrl: baseUrl || undefined })
   }
 
-  const handleSync = (isInitial: boolean) => {
-    syncMutation.mutate({ clubId, isInitial })
-  }
-
-  if (statusLoading) {
+  if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6">
-        <div className="flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Loading...</span>
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 20 }}>
+          <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-secondary)' }} />
+          <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Loading...</span>
         </div>
-      </div>
+      </Card>
     )
   }
 
   const isConnected = status?.connected
+  const connStatus = isConnected && 'status' in status ? status.status : null
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-border">
-        <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
-            <span className="text-xl font-bold text-blue-500">CR</span>
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+      <Card>
+        {/* Card Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isConnected ? 20 : 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 12,
+              background: 'linear-gradient(135deg, #3B82F6, #2563EB)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
+            }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: -0.5 }}>CR</span>
+            </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>CourtReserve</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+                Sync members, courts & bookings
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">CourtReserve</h3>
-            <p className="text-sm text-muted-foreground">
-              Sync members, courts, and bookings automatically
-            </p>
-          </div>
+
+          {connStatus && (
+            <StatusPill status={connStatus} isDark={isDark} />
+          )}
         </div>
 
-        {isConnected && 'status' in status && (
-          <StatusBadge status={status.status || 'connected'} />
-        )}
-      </div>
-
-      {/* Body */}
-      <div className="p-6">
         {!isConnected ? (
-          <ConnectForm
-            username={username}
-            password={password}
-            baseUrl={baseUrl}
-            isDev={isDev}
-            onUsernameChange={setUsername}
-            onPasswordChange={setPassword}
-            onBaseUrlChange={setBaseUrl}
-            onTest={handleTest}
-            onConnect={handleConnect}
-            isTesting={isTesting}
-            isConnecting={connectMutation.isPending}
-            testResult={testResult}
-          />
+          /* ── Connect Form ── */
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
+              Enter your CourtReserve API credentials to sync data automatically.
+              <br />
+              <span style={{ opacity: 0.7 }}>Available on Scale & Enterprise plans → Settings → Integrations</span>
+            </p>
+
+            <div style={{ display: 'grid', gap: 12, maxWidth: 420 }}>
+              <InputField label="API Username" value={username} onChange={setUsername} placeholder="Your API username" />
+              <InputField label="API Password" value={password} onChange={setPassword} placeholder="Your API password" type="password" />
+              {isDev && (
+                <InputField label="Base URL" value={baseUrl} onChange={setBaseUrl} placeholder="https://api.courtreserve.com" hint="dev only" />
+              )}
+            </div>
+
+            {/* Test result */}
+            {testResult && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10, marginTop: 16, fontSize: 13, fontWeight: 500,
+                background: testResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                color: testResult.ok ? '#10B981' : '#EF4444',
+              }}>
+                {testResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                {testResult.ok
+                  ? `Connected — ${testResult.courtCount} courts found`
+                  : testResult.error
+                }
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20 }}>
+              <IQButton
+                onClick={handleTest}
+                disabled={!username || !password || isTesting}
+                variant="secondary"
+                loading={isTesting}
+                icon={<Plug size={15} />}
+              >
+                Test Connection
+              </IQButton>
+
+              {testResult?.ok && (
+                <IQButton
+                  onClick={handleConnect}
+                  disabled={connectMutation.isPending}
+                  variant="primary"
+                  loading={connectMutation.isPending}
+                  icon={<Zap size={15} />}
+                >
+                  Connect & Sync
+                </IQButton>
+              )}
+            </div>
+          </div>
         ) : (
-          <ConnectedView
-            status={status}
-            onSync={() => handleSync(false)}
-            onInitialSync={() => handleSync(true)}
-            onDisconnect={() => disconnectMutation.mutate({ clubId })}
-            isSyncing={syncMutation.isPending || ('status' in status && status.status === 'syncing')}
-            isDisconnecting={disconnectMutation.isPending}
-            syncError={syncMutation.error?.message}
-          />
+          /* ── Connected View ── */
+          <div>
+            {/* Sync Stats */}
+            {'lastSyncResult' in status && status.lastSyncResult && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+                <StatCard icon={Users} label="Members" data={status.lastSyncResult?.members} color="#6366F1" isDark={isDark} />
+                <StatCard icon={LayoutGrid} label="Sessions" data={status.lastSyncResult?.sessions} color="#3B82F6" isDark={isDark} />
+                <StatCard icon={Database} label="Bookings" data={status.lastSyncResult?.bookings} color="#10B981" isDark={isDark} />
+              </div>
+            )}
+
+            {/* Last sync */}
+            {'lastSyncAt' in status && status.lastSyncAt && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                <Clock size={13} />
+                Last synced {new Date(status.lastSyncAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
+
+            {/* Error */}
+            {('lastError' in status && status.lastError || syncMutation.error) && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+                background: 'rgba(239,68,68,0.1)', color: '#EF4444',
+              }}>
+                <AlertCircle size={16} />
+                {syncMutation.error?.message || ('lastError' in status ? status.lastError : '')}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <IQButton
+                onClick={() => syncMutation.mutate({ clubId, isInitial: false })}
+                disabled={syncMutation.isPending || connStatus === 'syncing'}
+                variant="primary"
+                loading={syncMutation.isPending || connStatus === 'syncing'}
+                icon={<RefreshCw size={15} />}
+              >
+                Sync Now
+              </IQButton>
+
+              {!('lastSyncAt' in status && status.lastSyncAt) && (
+                <IQButton
+                  onClick={() => syncMutation.mutate({ clubId, isInitial: true })}
+                  disabled={syncMutation.isPending}
+                  variant="secondary"
+                  loading={false}
+                  icon={<Database size={15} />}
+                >
+                  Full Sync (90 days)
+                </IQButton>
+              )}
+
+              <div style={{ flex: 1 }} />
+
+              <IQButton
+                onClick={() => disconnectMutation.mutate({ clubId })}
+                disabled={disconnectMutation.isPending || syncMutation.isPending}
+                variant="danger"
+                loading={disconnectMutation.isPending}
+                icon={<WifiOff size={15} />}
+              >
+                Disconnect
+              </IQButton>
+            </div>
+          </div>
         )}
-      </div>
-    </div>
+      </Card>
+    </motion.div>
   )
 }
 
-// ── Sub-components ──
+// ── Design System Components ──
 
-function StatusBadge({ status }: { status: string }) {
-  const config = {
-    connected: { color: 'bg-green-500/10 text-green-500', icon: CheckCircle2, label: 'Connected' },
-    syncing: { color: 'bg-blue-500/10 text-blue-500', icon: Loader2, label: 'Syncing...' },
-    error: { color: 'bg-red-500/10 text-red-500', icon: AlertCircle, label: 'Error' },
-  }[status] || { color: 'bg-gray-500/10 text-gray-500', icon: Plug, label: status }
-
-  const Icon = config.icon
+function StatusPill({ status, isDark }: { status: string; isDark: boolean }) {
+  const config: Record<string, { bg: string; color: string; label: string; pulse?: boolean }> = {
+    connected: { bg: 'rgba(16,185,129,0.12)', color: '#10B981', label: 'Connected' },
+    syncing: { bg: 'rgba(59,130,246,0.12)', color: '#3B82F6', label: 'Syncing...', pulse: true },
+    error: { bg: 'rgba(239,68,68,0.12)', color: '#EF4444', label: 'Error' },
+  }
+  const c = config[status] || { bg: 'rgba(107,114,128,0.12)', color: '#6B7280', label: status }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${config.color}`}>
-      <Icon className={`h-3.5 w-3.5 ${status === 'syncing' ? 'animate-spin' : ''}`} />
-      {config.label}
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+      background: c.bg, color: c.color,
+    }}>
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', background: c.color,
+        ...(c.pulse ? { animation: 'pulse 1.5s infinite' } : {}),
+      }} />
+      {c.label}
     </span>
   )
 }
 
-function ConnectForm({
-  username, password, baseUrl, isDev, onUsernameChange, onPasswordChange, onBaseUrlChange,
-  onTest, onConnect, isTesting, isConnecting, testResult,
-}: {
-  username: string
-  password: string
-  baseUrl: string
-  isDev: boolean
-  onUsernameChange: (v: string) => void
-  onPasswordChange: (v: string) => void
-  onBaseUrlChange: (v: string) => void
-  onTest: () => void
-  onConnect: () => void
-  isTesting: boolean
-  isConnecting: boolean
-  testResult: { ok: boolean; courtCount?: number; error?: string } | null
+function InputField({ label, value, onChange, placeholder, type = 'text', hint }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder: string; type?: string; hint?: string
 }) {
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Enter your CourtReserve API credentials. Available on Scale and Enterprise plans
-        under Settings → Integrations.
-      </p>
-
-      <div className="grid gap-3 max-w-md">
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">API Username</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => onUsernameChange(e.target.value)}
-            placeholder="Your API username"
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1">API Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => onPasswordChange(e.target.value)}
-            placeholder="Your API password"
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-          />
-        </div>
-        {isDev && (
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Base URL <span className="text-xs text-muted-foreground">(dev only)</span></label>
-            <input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => onBaseUrlChange(e.target.value)}
-              placeholder="https://api.courtreserve.com"
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Test result */}
-      {testResult && (
-        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
-          testResult.ok
-            ? 'bg-green-500/10 text-green-500'
-            : 'bg-red-500/10 text-red-500'
-        }`}>
-          {testResult.ok ? (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              Connected successfully. {testResult.courtCount} courts found.
-            </>
-          ) : (
-            <>
-              <AlertCircle className="h-4 w-4" />
-              {testResult.error}
-            </>
-          )}
-        </div>
-      )}
-
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onTest}
-          disabled={!username || !password || isTesting}
-          className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-        >
-          {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
-          Test Connection
-        </button>
-
-        {testResult?.ok && (
-          <button
-            onClick={onConnect}
-            disabled={isConnecting}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Connect & Start Sync
-          </button>
-        )}
-      </div>
+    <div>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
+        {label}
+        {hint && <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 400, marginLeft: 6 }}>({hint})</span>}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+          background: 'var(--input-bg, rgba(255,255,255,0.04))',
+          border: '1px solid var(--card-border)',
+          color: 'var(--text-primary)',
+          outline: 'none',
+          transition: 'border-color 0.2s',
+        }}
+        onFocus={(e) => e.target.style.borderColor = '#6366F1'}
+        onBlur={(e) => e.target.style.borderColor = ''}
+      />
     </div>
   )
 }
 
-function ConnectedView({
-  status, onSync, onInitialSync, onDisconnect, isSyncing, isDisconnecting, syncError,
-}: {
-  status: any
-  onSync: () => void
-  onInitialSync: () => void
-  onDisconnect: () => void
-  isSyncing: boolean
-  isDisconnecting: boolean
-  syncError?: string
+function IQButton({ children, onClick, disabled, variant, loading, icon }: {
+  children: React.ReactNode; onClick: () => void; disabled?: boolean
+  variant: 'primary' | 'secondary' | 'danger'; loading?: boolean; icon?: React.ReactNode
 }) {
-  const lastSync = status.lastSyncAt
-    ? new Date(status.lastSyncAt)
-    : null
-
-  const result = status.lastSyncResult as any
+  const styles: Record<string, React.CSSProperties> = {
+    primary: {
+      background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+      color: '#fff',
+      border: 'none',
+      boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+    },
+    secondary: {
+      background: 'transparent',
+      color: 'var(--text-primary)',
+      border: '1px solid var(--card-border)',
+    },
+    danger: {
+      background: 'transparent',
+      color: '#EF4444',
+      border: '1px solid rgba(239,68,68,0.25)',
+    },
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Last sync info */}
-      {lastSync && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          Last synced: {lastSync.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-        </div>
-      )}
-
-      {/* Sync stats */}
-      {result && result.members && (
-        <div className="grid grid-cols-3 gap-3">
-          <SyncStatCard
-            icon={Users}
-            label="Members"
-            created={result.members.created}
-            updated={result.members.updated}
-            matched={result.members.matched}
-          />
-          <SyncStatCard
-            icon={LayoutGrid}
-            label="Sessions"
-            created={result.sessions?.created}
-            updated={result.sessions?.updated}
-          />
-          <SyncStatCard
-            icon={Database}
-            label="Bookings"
-            created={result.bookings?.created}
-            updated={result.bookings?.updated}
-          />
-        </div>
-      )}
-
-      {/* Error */}
-      {(status.lastError || syncError) && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {syncError || status.lastError}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-3 pt-2">
-        <button
-          onClick={onSync}
-          disabled={isSyncing}
-          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
-        >
-          {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Sync Now
-        </button>
-
-        {!lastSync && (
-          <button
-            onClick={onInitialSync}
-            disabled={isSyncing}
-            className="px-4 py-2 rounded-lg border border-blue-600 text-blue-600 text-sm font-medium hover:bg-blue-600/10 disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            <Database className="h-4 w-4" />
-            Initial Sync (90 days)
-          </button>
-        )}
-
-        <button
-          onClick={onDisconnect}
-          disabled={isDisconnecting || isSyncing}
-          className="px-4 py-2 rounded-lg border border-red-500/30 text-red-500 text-sm font-medium hover:bg-red-500/10 disabled:opacity-50 inline-flex items-center gap-2 ml-auto"
-        >
-          {isDisconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
-          Disconnect
-        </button>
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...styles[variant],
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'all 0.2s',
+      }}
+    >
+      {loading ? <Loader2 size={15} className="animate-spin" /> : icon}
+      {children}
+    </button>
   )
 }
 
-function SyncStatCard({ icon: Icon, label, created, updated, matched }: {
-  icon: any
-  label: string
-  created?: number
-  updated?: number
-  matched?: number
+function StatCard({ icon: Icon, label, data, color, isDark }: {
+  icon: any; label: string; data?: any; color: string; isDark: boolean
 }) {
-  const total = (created || 0) + (updated || 0) + (matched || 0)
-  if (total === 0) return null
+  if (!data) return null
+  const total = (data.created || 0) + (data.updated || 0) + (data.matched || 0)
 
   return (
-    <div className="rounded-lg border border-border bg-accent/30 p-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium text-foreground">{label}</span>
+    <div style={{
+      padding: 14, borderRadius: 12,
+      background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+      border: '1px solid var(--card-border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: `${color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon size={14} style={{ color }} />
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</span>
       </div>
-      <div className="text-xs text-muted-foreground space-y-0.5">
-        {created ? <div>+{created} new</div> : null}
-        {updated ? <div>{updated} updated</div> : null}
-        {matched ? <div>{matched} matched</div> : null}
+      <div style={{ fontSize: 22, fontWeight: 700, color, marginBottom: 4 }}>{total}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+        {data.created ? `+${data.created} new` : ''}
+        {data.created && data.updated ? ' · ' : ''}
+        {data.updated ? `${data.updated} updated` : ''}
+        {data.matched ? ` · ${data.matched} matched` : ''}
       </div>
     </div>
   )
