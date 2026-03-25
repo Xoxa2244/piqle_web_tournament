@@ -1,0 +1,681 @@
+Date,Start Time,End Time,Court,Session Title,Format,Skill Level,Capacity,Price,Player Name,Status
+12/01/2025,06:00,07:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Brittany Cox,Confirmed
+12/01/2025,06:00,07:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Nathan Wells,Confirmed
+12/01/2025,12:00,13:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Ryan O'Brien,Confirmed
+12/01/2025,12:00,13:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Laura Mitchell,Cancelled
+12/01/2025,15:00,16:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Vanessa Cruz,Confirmed
+12/01/2025,15:00,16:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Tyler Grant,Confirmed
+12/02/2025,06:00,07:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Mike Thompson,Confirmed
+12/02/2025,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Tyler Grant,Confirmed
+12/02/2025,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+12/03/2025,12:00,13:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Diana Ross,Confirmed
+12/03/2025,12:00,13:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+12/03/2025,15:00,16:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Tom Bradley,Confirmed
+12/03/2025,15:00,16:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Hannah Clark,Confirmed
+12/03/2025,15:00,16:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Derek Lawson,Confirmed
+12/03/2025,18:00,19:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Carlos Mendez,Confirmed
+12/03/2025,18:00,19:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Tom Bradley,Confirmed
+12/04/2025,06:00,07:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Samantha Blake,Confirmed
+12/04/2025,06:00,07:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Laura Mitchell,Confirmed
+12/04/2025,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Heather Dunn,Confirmed
+12/04/2025,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Derek Lawson,Confirmed
+12/04/2025,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Vanessa Cruz,Confirmed
+12/04/2025,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Laura Mitchell,Confirmed
+12/04/2025,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Derek Lawson,Confirmed
+12/04/2025,18:00,19:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Laura Mitchell,Confirmed
+12/05/2025,09:00,10:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Confirmed
+12/05/2025,12:00,13:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Ryan O'Brien,Confirmed
+12/05/2025,12:00,13:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Tyler Grant,Confirmed
+12/05/2025,12:00,13:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Maria Santos,Cancelled
+12/05/2025,20:00,21:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Ryan O'Brien,Confirmed
+12/05/2025,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Jake Morrison,Confirmed
+12/05/2025,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Sofia Rossi,Confirmed
+12/06/2025,09:00,10:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Victor Reyes,Confirmed
+12/06/2025,09:00,10:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Tyler Grant,Confirmed
+12/06/2025,15:00,16:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Samantha Blake,Confirmed
+12/07/2025,12:00,13:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Maria Santos,Confirmed
+12/07/2025,12:00,13:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Samantha Blake,Confirmed
+12/07/2025,15:00,16:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Vanessa Cruz,Cancelled
+12/07/2025,18:00,19:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+12/07/2025,18:00,19:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+12/07/2025,18:00,19:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Vanessa Cruz,Confirmed
+12/07/2025,20:00,21:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Kevin Nguyen,Confirmed
+12/07/2025,20:00,21:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Laura Mitchell,Confirmed
+12/08/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Megan Scott,Confirmed
+12/08/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Emma Wilson,Confirmed
+12/08/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+12/08/2025,09:00,10:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Sofia Rossi,Confirmed
+12/08/2025,09:00,10:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+12/08/2025,20:00,21:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Maria Santos,Confirmed
+12/08/2025,20:00,21:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Rachel Kim,Confirmed
+12/08/2025,20:00,21:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Samantha Blake,Cancelled
+12/08/2025,20:00,21:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Brittany Cox,Confirmed
+12/08/2025,20:00,21:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Diane Kowalski,Confirmed
+12/09/2025,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Brian Cooper,Confirmed
+12/09/2025,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Mike Thompson,Confirmed
+12/09/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Samantha Blake,Confirmed
+12/09/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Nathan Wells,Confirmed
+12/09/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Victor Reyes,Cancelled
+12/10/2025,09:00,10:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tyler Grant,Confirmed
+12/10/2025,18:00,19:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Jessica Martinez,Confirmed
+12/10/2025,18:00,19:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Rachel Kim,Confirmed
+12/11/2025,09:00,10:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Jake Morrison,No-Show
+12/11/2025,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Heather Dunn,Confirmed
+12/11/2025,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tanya Brooks,Confirmed
+12/12/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Vanessa Cruz,Confirmed
+12/12/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Nicole Foster,Confirmed
+12/12/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+12/12/2025,20:00,21:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Steve Garcia,Confirmed
+12/12/2025,20:00,21:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Ryan O'Brien,Confirmed
+12/12/2025,20:00,21:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Tom Chen,Confirmed
+12/12/2025,20:00,21:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Kevin Nguyen,Confirmed
+12/13/2025,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Derek Lawson,Confirmed
+12/13/2025,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Heather Dunn,Confirmed
+12/13/2025,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Victor Reyes,Confirmed
+12/13/2025,12:00,13:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Amanda Torres,Confirmed
+12/13/2025,12:00,13:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Marcus Webb,Confirmed
+12/13/2025,15:00,16:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,No-Show
+12/13/2025,15:00,16:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+12/13/2025,18:00,19:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Hannah Clark,Confirmed
+12/13/2025,18:00,19:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Tyler Grant,Confirmed
+12/13/2025,20:00,21:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Kevin Nguyen,Confirmed
+12/13/2025,20:00,21:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Ryan O'Brien,Confirmed
+12/14/2025,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Robert Diaz,Confirmed
+12/14/2025,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Marcus Webb,Confirmed
+12/14/2025,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Nicole Foster,Confirmed
+12/15/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+12/15/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Confirmed
+12/15/2025,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Megan Scott,Confirmed
+12/15/2025,09:00,10:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Tom Chen,Confirmed
+12/16/2025,06:00,07:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Tom Chen,Confirmed
+12/16/2025,15:00,16:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Laura Mitchell,Confirmed
+12/17/2025,09:00,10:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Brian Cooper,Confirmed
+12/17/2025,20:00,21:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+12/18/2025,09:00,10:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Sarah Kim,Confirmed
+12/18/2025,09:00,10:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Vanessa Cruz,Confirmed
+12/18/2025,12:00,13:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Chris Evans,Confirmed
+12/18/2025,12:00,13:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Victor Reyes,Confirmed
+12/18/2025,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Vanessa Cruz,Cancelled
+12/18/2025,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Carlos Mendez,Confirmed
+12/18/2025,18:00,19:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+12/18/2025,18:00,19:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Megan Scott,Confirmed
+12/19/2025,12:00,13:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+12/19/2025,12:00,13:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Tyler Grant,Confirmed
+12/19/2025,12:00,13:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Mike Thompson,Confirmed
+12/19/2025,12:00,13:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Rachel Kim,Confirmed
+12/19/2025,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Chris Evans,Confirmed
+12/19/2025,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Tyler Grant,Confirmed
+12/20/2025,06:00,07:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Tom Bradley,Confirmed
+12/20/2025,12:00,13:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Kevin Nguyen,Confirmed
+12/20/2025,12:00,13:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Carlos Mendez,Confirmed
+12/20/2025,12:00,13:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Carlos Mendez,Confirmed
+12/20/2025,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Tyler Grant,Confirmed
+12/20/2025,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Sofia Rossi,Confirmed
+12/21/2025,06:00,07:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Sarah Kim,Cancelled
+12/21/2025,06:00,07:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Kevin Nguyen,Confirmed
+12/21/2025,06:00,07:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Diane Kowalski,Confirmed
+12/21/2025,06:00,07:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Diana Ross,Confirmed
+12/21/2025,20:00,21:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Kevin Nguyen,Confirmed
+12/21/2025,20:00,21:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Kevin Nguyen,Confirmed
+12/22/2025,06:00,07:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Megan Scott,Confirmed
+12/22/2025,06:00,07:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Brian Cooper,Confirmed
+12/22/2025,18:00,19:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+12/22/2025,18:00,19:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+12/22/2025,18:00,19:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Cancelled
+12/22/2025,20:00,21:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Steve Garcia,Confirmed
+12/22/2025,20:00,21:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Marcus Webb,Confirmed
+12/23/2025,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+12/23/2025,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Robert Diaz,Confirmed
+12/23/2025,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Marcus Webb,Confirmed
+12/23/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+12/23/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Confirmed
+12/23/2025,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+12/23/2025,09:00,10:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Maria Santos,Confirmed
+12/23/2025,09:00,10:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Megan Scott,Confirmed
+12/24/2025,09:00,10:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Derek Lawson,No-Show
+12/24/2025,09:00,10:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Linda Chang,Confirmed
+12/24/2025,09:00,10:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Hannah Clark,No-Show
+12/24/2025,12:00,13:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Samantha Blake,Confirmed
+12/24/2025,12:00,13:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,David Lee,Confirmed
+12/24/2025,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Megan Scott,Confirmed
+12/24/2025,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Carlos Mendez,Confirmed
+12/24/2025,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Marcus Webb,Confirmed
+12/24/2025,15:00,16:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Mike Thompson,Confirmed
+12/25/2025,06:00,07:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Vanessa Cruz,Confirmed
+12/25/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Mike Thompson,Confirmed
+12/25/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Keith Morgan,Confirmed
+12/25/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Tom Chen,Confirmed
+12/25/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Victor Reyes,Confirmed
+12/25/2025,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Vanessa Cruz,Confirmed
+12/26/2025,09:00,10:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Brian Cooper,Confirmed
+12/26/2025,09:00,10:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Megan Scott,Confirmed
+12/26/2025,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Carlos Mendez,Confirmed
+12/26/2025,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+12/26/2025,20:00,21:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+12/27/2025,15:00,16:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+12/27/2025,15:00,16:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Brittany Cox,Confirmed
+12/27/2025,20:00,21:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Chris Evans,Confirmed
+12/27/2025,20:00,21:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Tom Bradley,Confirmed
+12/27/2025,20:00,21:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Amanda Torres,Confirmed
+12/27/2025,20:00,21:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Marcus Webb,Confirmed
+12/27/2025,20:00,21:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Sofia Rossi,Confirmed
+12/27/2025,20:00,21:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+12/28/2025,06:00,07:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Confirmed
+12/28/2025,06:00,07:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Marcus Webb,Confirmed
+12/28/2025,06:00,07:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Kevin Nguyen,Confirmed
+12/28/2025,06:00,07:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Vanessa Cruz,Confirmed
+12/28/2025,12:00,13:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Emma Wilson,Confirmed
+12/28/2025,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Diana Ross,Confirmed
+12/28/2025,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Carlos Mendez,Confirmed
+12/28/2025,15:00,16:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Samantha Blake,Confirmed
+12/28/2025,18:00,19:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Marcus Webb,Confirmed
+12/28/2025,18:00,19:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+12/29/2025,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Amanda Torres,Confirmed
+12/29/2025,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Tom Bradley,Confirmed
+12/29/2025,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+12/29/2025,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+12/29/2025,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+12/29/2025,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Diana Ross,Confirmed
+12/29/2025,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+12/29/2025,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+12/29/2025,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+12/29/2025,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+12/31/2025,06:00,07:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Laura Mitchell,Confirmed
+12/31/2025,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Victor Reyes,Confirmed
+12/31/2025,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Jake Morrison,Confirmed
+01/01/2026,06:00,07:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Michelle Lee,Confirmed
+01/01/2026,06:00,07:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,David Park,Confirmed
+01/01/2026,18:00,19:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Vanessa Cruz,Confirmed
+01/01/2026,18:00,19:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Jessica Martinez,Confirmed
+01/01/2026,18:00,19:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Heather Dunn,Confirmed
+01/01/2026,18:00,19:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Hannah Clark,Confirmed
+01/01/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Hannah Clark,Confirmed
+01/02/2026,09:00,10:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Emma Wilson,Confirmed
+01/02/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Diana Ross,Confirmed
+01/02/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Sarah Kim,Confirmed
+01/03/2026,09:00,10:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Karen White,Confirmed
+01/03/2026,09:00,10:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Laura Mitchell,Confirmed
+01/03/2026,09:00,10:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Kevin Nguyen,Confirmed
+01/03/2026,09:00,10:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Mike Thompson,Confirmed
+01/03/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Tom Chen,Confirmed
+01/03/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Linda Chang,Confirmed
+01/03/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Sarah Kim,Confirmed
+01/03/2026,20:00,21:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Laura Mitchell,Confirmed
+01/03/2026,20:00,21:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Heather Dunn,Confirmed
+01/03/2026,20:00,21:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Mike Thompson,Confirmed
+01/04/2026,06:00,07:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Amanda Torres,Confirmed
+01/04/2026,06:00,07:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+01/04/2026,09:00,10:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Rachel Kim,Confirmed
+01/04/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Kevin Nguyen,Confirmed
+01/04/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Samantha Blake,Confirmed
+01/04/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Emma Wilson,Confirmed
+01/04/2026,18:00,19:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Keith Morgan,Confirmed
+01/04/2026,18:00,19:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,David Park,Confirmed
+01/04/2026,20:00,21:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Derek Lawson,Confirmed
+01/04/2026,20:00,21:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Brian Cooper,Confirmed
+01/04/2026,20:00,21:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Amanda Torres,Confirmed
+01/05/2026,06:00,07:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Jessica Martinez,Confirmed
+01/05/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Vanessa Cruz,Confirmed
+01/05/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Hannah Clark,Confirmed
+01/05/2026,09:00,10:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Tom Bradley,Confirmed
+01/05/2026,15:00,16:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Michelle Lee,No-Show
+01/05/2026,15:00,16:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Carlos Mendez,Confirmed
+01/06/2026,06:00,07:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Derek Lawson,Confirmed
+01/06/2026,06:00,07:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Samantha Blake,Confirmed
+01/06/2026,18:00,19:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Tom Chen,Confirmed
+01/06/2026,18:00,19:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Marcus Webb,Confirmed
+01/07/2026,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Tyler Grant,Confirmed
+01/07/2026,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Rachel Kim,Confirmed
+01/07/2026,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Samantha Blake,Confirmed
+01/07/2026,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Kevin Nguyen,Confirmed
+01/07/2026,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Rachel Kim,Confirmed
+01/07/2026,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Emma Wilson,Confirmed
+01/07/2026,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Laura Mitchell,Confirmed
+01/07/2026,18:00,19:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Amanda Torres,Confirmed
+01/07/2026,20:00,21:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,David Park,Confirmed
+01/07/2026,20:00,21:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Emma Wilson,Confirmed
+01/07/2026,20:00,21:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Tyler Grant,Confirmed
+01/08/2026,09:00,10:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Carlos Mendez,Confirmed
+01/08/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Megan Scott,Confirmed
+01/08/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Michelle Lee,Confirmed
+01/08/2026,15:00,16:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Kevin Nguyen,Confirmed
+01/09/2026,12:00,13:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Diane Kowalski,Confirmed
+01/09/2026,12:00,13:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Laura Mitchell,Confirmed
+01/09/2026,12:00,13:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Diana Ross,Confirmed
+01/09/2026,12:00,13:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Derek Lawson,Confirmed
+01/09/2026,12:00,13:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Nicole Foster,Confirmed
+01/09/2026,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Diana Ross,Confirmed
+01/09/2026,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+01/10/2026,09:00,10:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Greg Palmer,Confirmed
+01/10/2026,09:00,10:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tom Chen,Confirmed
+01/10/2026,12:00,13:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Tyler Grant,Confirmed
+01/10/2026,12:00,13:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Rachel Kim,Confirmed
+01/10/2026,15:00,16:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Marcus Webb,Confirmed
+01/10/2026,15:00,16:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Linda Chang,Confirmed
+01/10/2026,15:00,16:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,David Park,Cancelled
+01/11/2026,18:00,19:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Keith Morgan,Confirmed
+01/11/2026,20:00,21:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Mike Thompson,Confirmed
+01/12/2026,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Jake Morrison,Confirmed
+01/12/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Derek Lawson,Confirmed
+01/12/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+01/12/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Paul Henderson,Confirmed
+01/12/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Heather Dunn,Confirmed
+01/13/2026,12:00,13:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Tyler Grant,Confirmed
+01/13/2026,12:00,13:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Rachel Kim,Confirmed
+01/13/2026,15:00,16:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Laura Mitchell,Confirmed
+01/13/2026,18:00,19:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Sarah Kim,Confirmed
+01/14/2026,12:00,13:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Jessica Martinez,Confirmed
+01/14/2026,15:00,16:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Ryan O'Brien,Confirmed
+01/15/2026,09:00,10:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Tyler Grant,Confirmed
+01/15/2026,09:00,10:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Sarah Kim,Confirmed
+01/15/2026,20:00,21:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Rachel Kim,No-Show
+01/16/2026,06:00,07:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Derek Lawson,Confirmed
+01/16/2026,06:00,07:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Ryan O'Brien,Confirmed
+01/16/2026,06:00,07:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Heather Dunn,Confirmed
+01/16/2026,06:00,07:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Keith Morgan,Confirmed
+01/16/2026,15:00,16:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Jake Morrison,Confirmed
+01/16/2026,15:00,16:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+01/16/2026,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Steve Garcia,Confirmed
+01/16/2026,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tyler Grant,Confirmed
+01/16/2026,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Nathan Wells,Confirmed
+01/17/2026,12:00,13:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Rachel Kim,Cancelled
+01/17/2026,15:00,16:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Derek Lawson,Confirmed
+01/17/2026,15:00,16:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Sarah Kim,Confirmed
+01/17/2026,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Sarah Kim,Confirmed
+01/17/2026,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Tyler Grant,Confirmed
+01/17/2026,20:00,21:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Brittany Cox,Confirmed
+01/18/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Kevin Nguyen,Confirmed
+01/18/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Tom Chen,Confirmed
+01/18/2026,12:00,13:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Emma Wilson,Confirmed
+01/18/2026,12:00,13:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Samantha Blake,Confirmed
+01/18/2026,15:00,16:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Nathan Wells,Confirmed
+01/19/2026,12:00,13:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Samantha Blake,Confirmed
+01/19/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+01/19/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Hannah Clark,Confirmed
+01/19/2026,20:00,21:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Nicole Foster,Confirmed
+01/20/2026,12:00,13:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Samantha Blake,Confirmed
+01/20/2026,12:00,13:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Ryan O'Brien,Confirmed
+01/20/2026,18:00,19:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Diana Ross,Confirmed
+01/21/2026,06:00,07:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Samantha Blake,Confirmed
+01/21/2026,06:00,07:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Jake Morrison,Confirmed
+01/22/2026,12:00,13:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Hannah Clark,Confirmed
+01/22/2026,18:00,19:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Laura Mitchell,Confirmed
+01/23/2026,06:00,07:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Samantha Blake,No-Show
+01/23/2026,09:00,10:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Vanessa Cruz,Confirmed
+01/23/2026,09:00,10:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Carlos Mendez,Cancelled
+01/23/2026,09:00,10:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Jessica Martinez,Confirmed
+01/23/2026,18:00,19:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Confirmed
+01/23/2026,18:00,19:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Kevin Nguyen,Confirmed
+01/23/2026,20:00,21:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Brittany Cox,Confirmed
+01/24/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Keith Morgan,Confirmed
+01/24/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Samantha Blake,Confirmed
+01/24/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Nathan Wells,Confirmed
+01/24/2026,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Mike Thompson,Confirmed
+01/24/2026,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Chris Evans,Confirmed
+01/24/2026,18:00,19:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,David Park,Confirmed
+01/24/2026,20:00,21:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Kevin Nguyen,Confirmed
+01/24/2026,20:00,21:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+01/24/2026,20:00,21:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Amanda Torres,Confirmed
+01/24/2026,20:00,21:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Sofia Rossi,Cancelled
+01/25/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Ryan O'Brien,Confirmed
+01/25/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Diana Ross,No-Show
+01/25/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,David Park,Confirmed
+01/25/2026,12:00,13:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Tyler Grant,Confirmed
+01/25/2026,15:00,16:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Hannah Clark,Confirmed
+01/25/2026,15:00,16:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Megan Scott,Cancelled
+01/25/2026,15:00,16:30,Court 4,Open Play - Intermediate,Open Play,Intermediate,8,15,Brian Cooper,Confirmed
+01/25/2026,18:00,19:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+01/25/2026,18:00,19:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+01/26/2026,12:00,13:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Nicole Foster,Confirmed
+01/26/2026,20:00,21:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Tyler Grant,Confirmed
+01/27/2026,06:00,07:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+01/27/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Marcus Webb,Confirmed
+01/27/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Chris Evans,Confirmed
+01/27/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Sofia Rossi,Confirmed
+01/27/2026,12:00,13:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Diana Ross,Confirmed
+01/28/2026,09:00,10:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Tom Bradley,Confirmed
+01/28/2026,15:00,16:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Mike Thompson,Confirmed
+01/28/2026,15:00,16:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Laura Mitchell,Confirmed
+01/28/2026,15:00,16:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Brittany Cox,Cancelled
+01/29/2026,12:00,13:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Heather Dunn,Confirmed
+01/29/2026,12:00,13:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Keith Morgan,Confirmed
+01/29/2026,12:00,13:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Derek Lawson,Confirmed
+01/29/2026,12:00,13:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Sarah Kim,Confirmed
+01/29/2026,12:00,13:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Carlos Mendez,Confirmed
+01/29/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Hannah Clark,Confirmed
+01/29/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Keith Morgan,Confirmed
+01/30/2026,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Derek Lawson,Confirmed
+01/30/2026,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Heather Dunn,Confirmed
+01/30/2026,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Diane Kowalski,Confirmed
+01/30/2026,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Paul Henderson,Confirmed
+01/30/2026,09:00,10:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Rachel Kim,Confirmed
+01/30/2026,15:00,16:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Marcus Webb,Confirmed
+01/30/2026,15:00,16:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tanya Brooks,Confirmed
+01/30/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Steve Garcia,Confirmed
+01/30/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Rachel Kim,Confirmed
+01/30/2026,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Mike Thompson,Confirmed
+01/30/2026,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Heather Dunn,Confirmed
+01/30/2026,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Hannah Clark,Confirmed
+01/31/2026,06:00,07:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Brittany Cox,Confirmed
+01/31/2026,09:00,10:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Keith Morgan,Confirmed
+01/31/2026,09:00,10:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Greg Palmer,Confirmed
+01/31/2026,09:00,10:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Heather Dunn,Confirmed
+02/01/2026,12:00,13:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Sofia Rossi,Confirmed
+02/01/2026,12:00,13:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Zoe Patterson,Confirmed
+02/01/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Vanessa Cruz,Cancelled
+02/01/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+02/01/2026,18:00,19:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,David Lee,No-Show
+02/01/2026,20:00,21:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Vanessa Cruz,Confirmed
+02/01/2026,20:00,21:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Jessica Martinez,Confirmed
+02/01/2026,20:00,21:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,David Lee,Confirmed
+02/02/2026,06:00,07:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Tom Bradley,Confirmed
+02/02/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Ryan O'Brien,Confirmed
+02/02/2026,20:00,21:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Ryan O'Brien,Confirmed
+02/02/2026,20:00,21:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Alex Rivera,Confirmed
+02/03/2026,06:00,07:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Diana Ross,Cancelled
+02/03/2026,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Tom Chen,Confirmed
+02/03/2026,15:00,16:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Amanda Torres,Confirmed
+02/03/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Emma Wilson,Cancelled
+02/03/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+02/03/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+02/04/2026,06:00,07:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Ryan O'Brien,Confirmed
+02/04/2026,06:00,07:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+02/04/2026,06:00,07:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Maria Santos,Confirmed
+02/04/2026,20:00,21:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Maria Santos,Confirmed
+02/04/2026,20:00,21:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Priya Sharma,Confirmed
+02/05/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Sofia Rossi,Confirmed
+02/05/2026,09:00,10:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,David Lee,Confirmed
+02/05/2026,09:00,10:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+02/05/2026,09:00,10:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Ryan O'Brien,Confirmed
+02/06/2026,20:00,21:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Chris Evans,Confirmed
+02/06/2026,20:00,21:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Emma Wilson,Confirmed
+02/06/2026,20:00,21:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Victor Reyes,Confirmed
+02/07/2026,09:00,10:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Sarah Kim,Confirmed
+02/07/2026,09:00,10:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Amanda Torres,Confirmed
+02/07/2026,09:00,10:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Laura Mitchell,Confirmed
+02/07/2026,09:00,10:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+02/07/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Mike Thompson,Confirmed
+02/07/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Linda Chang,Confirmed
+02/07/2026,18:00,19:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Rachel Kim,Confirmed
+02/07/2026,18:00,19:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Zoe Patterson,Confirmed
+02/08/2026,15:00,16:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Rachel Kim,Cancelled
+02/08/2026,20:00,21:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Tom Chen,Confirmed
+02/09/2026,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Greg Palmer,Confirmed
+02/09/2026,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Ryan O'Brien,Confirmed
+02/09/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Jake Morrison,Confirmed
+02/09/2026,12:00,13:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Tyler Grant,Cancelled
+02/09/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+02/10/2026,18:00,19:30,Court 4,League Play - Intermediate,League Play,Intermediate,8,20,Karen White,Confirmed
+02/11/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+02/11/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+02/12/2026,06:00,07:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Amanda Torres,Confirmed
+02/13/2026,06:00,07:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Mike Thompson,Confirmed
+02/13/2026,06:00,07:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Tanya Brooks,Confirmed
+02/13/2026,06:00,07:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Alex Rivera,Confirmed
+02/13/2026,06:00,07:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,David Park,Confirmed
+02/13/2026,15:00,16:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,David Park,Confirmed
+02/13/2026,18:00,19:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,David Park,Confirmed
+02/14/2026,06:00,07:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Sarah Kim,Confirmed
+02/14/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Laura Mitchell,Confirmed
+02/14/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,David Park,Confirmed
+02/14/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Zoe Patterson,Confirmed
+02/14/2026,18:00,19:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Tanya Brooks,Confirmed
+02/15/2026,06:00,07:30,Court 4,Clinic - Beginner,Clinic,Beginner,6,25,Ryan O'Brien,Confirmed
+02/15/2026,09:00,10:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Alex Rivera,Confirmed
+02/15/2026,15:00,16:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Laura Mitchell,Confirmed
+02/15/2026,15:00,16:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Priya Sharma,Confirmed
+02/15/2026,20:00,21:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Ryan O'Brien,Confirmed
+02/17/2026,06:00,07:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Jake Morrison,Confirmed
+02/17/2026,12:00,13:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Diane Kowalski,No-Show
+02/17/2026,18:00,19:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,David Park,Confirmed
+02/17/2026,18:00,19:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Priya Sharma,Confirmed
+02/17/2026,20:00,21:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Cancelled
+02/18/2026,09:00,10:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Megan Scott,Confirmed
+02/18/2026,09:00,10:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Maria Santos,Confirmed
+02/18/2026,20:00,21:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Laura Mitchell,Confirmed
+02/18/2026,20:00,21:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Zoe Patterson,Confirmed
+02/18/2026,20:00,21:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Karen White,Confirmed
+02/19/2026,15:00,16:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Derek Lawson,Cancelled
+02/19/2026,15:00,16:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Priya Sharma,Confirmed
+02/19/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Karen White,Confirmed
+02/19/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Priya Sharma,Confirmed
+02/20/2026,06:00,07:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Tyler Grant,Confirmed
+02/20/2026,06:00,07:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Maria Santos,Confirmed
+02/20/2026,09:00,10:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Marcus Webb,Cancelled
+02/21/2026,15:00,16:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Brian Cooper,Confirmed
+02/21/2026,15:00,16:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Chris Evans,Confirmed
+02/21/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Priya Sharma,Confirmed
+02/21/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+02/21/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Mike Thompson,Confirmed
+02/21/2026,18:00,19:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Tom Bradley,Confirmed
+02/21/2026,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+02/21/2026,20:00,21:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+02/22/2026,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Michelle Lee,Confirmed
+02/22/2026,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Samantha Blake,Cancelled
+02/22/2026,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Steve Garcia,Confirmed
+02/22/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Tom Chen,Confirmed
+02/22/2026,09:00,10:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Ryan O'Brien,Confirmed
+02/22/2026,09:00,10:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Priya Sharma,Confirmed
+02/22/2026,09:00,10:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+02/22/2026,09:00,10:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,David Park,Confirmed
+02/22/2026,09:00,10:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Alex Rivera,Confirmed
+02/22/2026,12:00,13:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Brian Cooper,Confirmed
+02/22/2026,20:00,21:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Marcus Webb,Cancelled
+02/22/2026,20:00,21:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Alex Rivera,Confirmed
+02/22/2026,20:00,21:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Maria Santos,Confirmed
+02/23/2026,06:00,07:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Chris Evans,Confirmed
+02/23/2026,06:00,07:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Mike Thompson,Confirmed
+02/23/2026,09:00,10:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Tanya Brooks,Confirmed
+02/24/2026,12:00,13:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Paul Henderson,Confirmed
+02/24/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Victor Reyes,Confirmed
+02/24/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Mike Thompson,Confirmed
+02/24/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+02/25/2026,12:00,13:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Priya Sharma,Confirmed
+02/25/2026,12:00,13:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Ryan O'Brien,Confirmed
+02/26/2026,09:00,10:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Kevin Nguyen,Confirmed
+02/26/2026,09:00,10:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Jessica Martinez,Confirmed
+02/26/2026,09:00,10:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Jake Morrison,Confirmed
+02/26/2026,12:00,13:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Sarah Kim,Confirmed
+02/26/2026,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Mike Thompson,No-Show
+02/26/2026,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Emma Wilson,Confirmed
+02/26/2026,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,David Park,Confirmed
+02/27/2026,06:00,07:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Cancelled
+02/27/2026,06:00,07:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+02/27/2026,06:00,07:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+02/27/2026,06:00,07:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Sofia Rossi,Confirmed
+02/27/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Maria Santos,Confirmed
+02/27/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Megan Scott,Confirmed
+02/27/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Jessica Martinez,Confirmed
+02/27/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Robert Diaz,Confirmed
+02/27/2026,15:00,16:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,David Park,Confirmed
+02/27/2026,20:00,21:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+02/28/2026,09:00,10:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,David Lee,Confirmed
+02/28/2026,09:00,10:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Chris Evans,Confirmed
+02/28/2026,12:00,13:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+02/28/2026,12:00,13:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Nicole Foster,Confirmed
+02/28/2026,15:00,16:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Priya Sharma,Confirmed
+02/28/2026,15:00,16:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Alex Rivera,Confirmed
+02/28/2026,15:00,16:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+02/28/2026,18:00,19:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Linda Chang,Confirmed
+02/28/2026,18:00,19:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Brian Cooper,Cancelled
+02/28/2026,18:00,19:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Alex Rivera,Confirmed
+02/28/2026,18:00,19:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Tom Bradley,Confirmed
+02/28/2026,18:00,19:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Tyler Grant,Cancelled
+03/01/2026,06:00,07:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Mike Thompson,Confirmed
+03/01/2026,06:00,07:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Jake Morrison,Confirmed
+03/01/2026,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Chris Evans,Confirmed
+03/01/2026,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Laura Mitchell,Confirmed
+03/02/2026,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,David Park,Confirmed
+03/02/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Brian Cooper,Confirmed
+03/02/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Jake Morrison,Confirmed
+03/02/2026,18:00,19:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Alex Rivera,Confirmed
+03/02/2026,18:00,19:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+03/02/2026,18:00,19:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Hannah Clark,Confirmed
+03/03/2026,06:00,07:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Diane Kowalski,Confirmed
+03/04/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+03/04/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Emma Wilson,Confirmed
+03/04/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+03/04/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+03/04/2026,18:00,19:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+03/05/2026,09:00,10:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Amanda Torres,Confirmed
+03/05/2026,09:00,10:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Nicole Foster,Cancelled
+03/05/2026,09:00,10:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+03/05/2026,09:00,10:30,Court 1,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+03/05/2026,18:00,19:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Chris Evans,Confirmed
+03/05/2026,18:00,19:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,David Lee,Confirmed
+03/05/2026,20:00,21:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Steve Garcia,Confirmed
+03/06/2026,06:00,07:30,Court 2,Clinic - Advanced,Clinic,Advanced,6,25,Laura Mitchell,Confirmed
+03/06/2026,12:00,13:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Alex Rivera,Confirmed
+03/06/2026,18:00,19:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Chris Evans,Confirmed
+03/07/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Maria Santos,Confirmed
+03/07/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Amanda Torres,Confirmed
+03/07/2026,12:00,13:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Kevin Nguyen,Confirmed
+03/07/2026,12:00,13:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Karen White,Confirmed
+03/08/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,No-Show
+03/08/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+03/08/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+03/08/2026,18:00,19:30,Court 2,Drill - All Levels,Drill,All Levels,6,20,Steve Garcia,Confirmed
+03/08/2026,18:00,19:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Hannah Clark,Confirmed
+03/09/2026,06:00,07:30,Court 2,Open Play - Beginner,Open Play,Beginner,8,12,Steve Garcia,Confirmed
+03/09/2026,09:00,10:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Greg Palmer,Confirmed
+03/09/2026,09:00,10:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Linda Chang,Confirmed
+03/09/2026,09:00,10:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Tom Chen,Confirmed
+03/09/2026,09:00,10:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Hannah Clark,Confirmed
+03/09/2026,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Mike Thompson,Confirmed
+03/09/2026,15:00,16:30,Court 1,Open Play - Intermediate,Open Play,Intermediate,8,15,Tom Bradley,Confirmed
+03/10/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Nicole Foster,Confirmed
+03/10/2026,12:00,13:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Linda Chang,Confirmed
+03/10/2026,12:00,13:30,Court 4,Drill - All Levels,Drill,All Levels,6,20,Sarah Kim,Confirmed
+03/10/2026,15:00,16:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Maria Santos,Confirmed
+03/10/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+03/10/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+03/10/2026,15:00,16:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+03/11/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Sarah Kim,Confirmed
+03/11/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Jake Morrison,Confirmed
+03/11/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Laura Mitchell,Confirmed
+03/11/2026,20:00,21:30,Court 1,Drill - All Levels,Drill,All Levels,6,20,Jessica Martinez,Confirmed
+03/12/2026,09:00,10:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Hannah Clark,Confirmed
+03/12/2026,09:00,10:30,Court 1,Drill - Intermediate,Drill,Intermediate,6,20,Sarah Kim,Confirmed
+03/12/2026,09:00,10:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Amanda Torres,Confirmed
+03/12/2026,09:00,10:30,Court 3,Open Play - Intermediate,Open Play,Intermediate,8,15,Alex Rivera,Confirmed
+03/12/2026,15:00,16:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Mike Thompson,Confirmed
+03/12/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Ryan O'Brien,Confirmed
+03/12/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Maria Santos,Confirmed
+03/13/2026,09:00,10:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Sofia Rossi,Confirmed
+03/13/2026,09:00,10:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Kevin Nguyen,Confirmed
+03/13/2026,09:00,10:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Jessica Martinez,Confirmed
+03/13/2026,12:00,13:30,Court 3,Drill - All Levels,Drill,All Levels,6,20,Chris Evans,Confirmed
+03/13/2026,12:00,13:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Tom Bradley,Cancelled
+03/13/2026,20:00,21:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Priya Sharma,Confirmed
+03/14/2026,06:00,07:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Priya Sharma,Confirmed
+03/14/2026,09:00,10:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Brian Cooper,Confirmed
+03/14/2026,20:00,21:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Brian Cooper,Confirmed
+03/14/2026,20:00,21:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,David Lee,Confirmed
+03/14/2026,20:00,21:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Steve Garcia,Confirmed
+03/14/2026,20:00,21:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Karen White,Confirmed
+03/15/2026,06:00,07:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Victor Reyes,Confirmed
+03/15/2026,06:00,07:30,Court 2,Clinic - Beginner,Clinic,Beginner,6,25,Mike Thompson,Confirmed
+03/15/2026,09:00,10:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Steve Garcia,Confirmed
+03/15/2026,09:00,10:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Hannah Clark,Confirmed
+03/15/2026,12:00,13:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Marcus Webb,Confirmed
+03/15/2026,12:00,13:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Ryan O'Brien,Confirmed
+03/15/2026,12:00,13:30,Court 4,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+03/15/2026,15:00,16:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Alex Rivera,No-Show
+03/15/2026,15:00,16:30,Court 3,Open Play - Beginner,Open Play,Beginner,8,12,Tom Chen,Confirmed
+03/16/2026,06:00,07:30,Court 2,Drill - Intermediate,Drill,Intermediate,6,20,Sofia Rossi,Confirmed
+03/16/2026,12:00,13:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Emma Wilson,Confirmed
+03/16/2026,12:00,13:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,Confirmed
+03/16/2026,12:00,13:30,Court 4,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Confirmed
+03/16/2026,15:00,16:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Emma Wilson,Cancelled
+03/17/2026,06:00,07:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Tom Bradley,Confirmed
+03/17/2026,06:00,07:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Brian Cooper,Confirmed
+03/17/2026,06:00,07:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Chris Evans,Cancelled
+03/17/2026,12:00,13:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Laura Mitchell,Confirmed
+03/17/2026,12:00,13:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+03/17/2026,12:00,13:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Brian Cooper,Confirmed
+03/17/2026,15:00,16:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Tom Bradley,Confirmed
+03/17/2026,15:00,16:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Alex Rivera,Confirmed
+03/18/2026,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Jessica Martinez,Confirmed
+03/18/2026,06:00,07:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Tom Bradley,Confirmed
+03/18/2026,06:00,07:30,Court 3,Drill - Intermediate,Drill,Intermediate,6,20,Linda Chang,Confirmed
+03/19/2026,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,David Lee,Confirmed
+03/19/2026,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Kevin Nguyen,No-Show
+03/19/2026,12:00,13:30,Court 3,League Play - Advanced,League Play,Advanced,8,20,Chris Evans,Confirmed
+03/20/2026,09:00,10:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Paul Henderson,Confirmed
+03/20/2026,09:00,10:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Greg Palmer,Confirmed
+03/20/2026,09:00,10:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Nicole Foster,Confirmed
+03/20/2026,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Confirmed
+03/20/2026,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+03/20/2026,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Brian Cooper,Confirmed
+03/21/2026,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Linda Chang,Confirmed
+03/21/2026,06:00,07:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+03/21/2026,09:00,10:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Alex Rivera,Confirmed
+03/21/2026,09:00,10:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Sarah Kim,Confirmed
+03/21/2026,09:00,10:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Laura Mitchell,Confirmed
+03/21/2026,09:00,10:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Kevin Nguyen,Confirmed
+03/21/2026,09:00,10:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+03/21/2026,18:00,19:30,Court 2,Drill - Beginner,Drill,Beginner,6,18,David Park,Cancelled
+03/22/2026,06:00,07:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Tom Chen,Confirmed
+03/22/2026,06:00,07:30,Court 3,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,No-Show
+03/22/2026,09:00,10:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Tom Chen,Confirmed
+03/22/2026,09:00,10:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Jessica Martinez,Confirmed
+03/22/2026,09:00,10:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Priya Sharma,Cancelled
+03/22/2026,15:00,16:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Nicole Foster,Confirmed
+03/22/2026,15:00,16:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+03/22/2026,15:00,16:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Sofia Rossi,Confirmed
+03/22/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Brian Cooper,Confirmed
+03/22/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,David Park,Confirmed
+03/22/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Linda Chang,Confirmed
+03/23/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Mike Thompson,Confirmed
+03/23/2026,12:00,13:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Emma Wilson,Confirmed
+03/23/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Jake Morrison,Confirmed
+03/23/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Steve Garcia,Confirmed
+03/23/2026,18:00,19:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Hannah Clark,Confirmed
+03/24/2026,09:00,10:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Tom Bradley,Confirmed
+03/24/2026,09:00,10:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Megan Scott,Confirmed
+03/24/2026,20:00,21:30,Court 3,Clinic - Intermediate,Clinic,Intermediate,6,25,Amanda Torres,Confirmed
+03/25/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Zoe Patterson,Confirmed
+03/25/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,Sarah Kim,Confirmed
+03/25/2026,06:00,07:30,Court 4,Clinic - Intermediate,Clinic,Intermediate,6,25,David Lee,Cancelled
+03/25/2026,18:00,19:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Nicole Foster,Confirmed
+03/26/2026,15:00,16:30,Court 4,Open Play - Beginner,Open Play,Beginner,8,12,Maria Santos,Confirmed
+03/26/2026,18:00,19:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Jessica Martinez,Confirmed
+03/26/2026,18:00,19:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+03/26/2026,18:00,19:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Sofia Rossi,Confirmed
+03/26/2026,20:00,21:30,Court 1,Clinic - Intermediate,Clinic,Intermediate,6,25,Hannah Clark,Confirmed
+03/27/2026,06:00,07:30,Court 1,Drill - Beginner,Drill,Beginner,6,18,Mike Thompson,Confirmed
+03/27/2026,15:00,16:30,Court 2,League Play - Advanced,League Play,Advanced,8,20,Sarah Kim,Confirmed
+03/27/2026,20:00,21:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Greg Palmer,Confirmed
+03/27/2026,20:00,21:30,Court 1,Clinic - Beginner,Clinic,Beginner,6,25,Zoe Patterson,Confirmed
+03/27/2026,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Sarah Kim,Confirmed
+03/27/2026,20:00,21:30,Court 3,Clinic - Advanced,Clinic,Advanced,6,25,Emma Wilson,Confirmed
+03/28/2026,06:00,07:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Megan Scott,Confirmed
+03/28/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Chris Evans,Confirmed
+03/28/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Nicole Foster,Confirmed
+03/28/2026,12:00,13:30,Court 1,Open Play - All Levels,Open Play,All Levels,8,15,Robert Diaz,Cancelled
+03/28/2026,15:00,16:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Kevin Nguyen,Confirmed
+03/28/2026,15:00,16:30,Court 1,League Play - Intermediate,League Play,Intermediate,8,20,Sarah Kim,Confirmed
+03/28/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Jessica Martinez,Confirmed
+03/28/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Tom Bradley,Confirmed
+03/28/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Sarah Kim,Confirmed
+03/28/2026,15:00,16:30,Court 2,Open Play - Intermediate,Open Play,Intermediate,8,15,Chris Evans,Confirmed
+03/28/2026,18:00,19:30,Court 3,Clinic - Beginner,Clinic,Beginner,6,25,Zoe Patterson,Confirmed
+03/28/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Mike Thompson,Confirmed
+03/28/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Sofia Rossi,Confirmed
+03/28/2026,20:00,21:30,Court 3,Open Play - All Levels,Open Play,All Levels,8,15,Greg Palmer,Confirmed
+03/29/2026,06:00,07:30,Court 4,Drill - Intermediate,Drill,Intermediate,6,20,Jessica Martinez,Cancelled
+03/29/2026,09:00,10:30,Court 4,Clinic - Advanced,Clinic,Advanced,6,25,Tom Bradley,Confirmed
+03/29/2026,15:00,16:30,Court 1,Open Play - Beginner,Open Play,Beginner,8,12,Zoe Patterson,Confirmed
+03/29/2026,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Paul Henderson,Confirmed
+03/29/2026,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Hannah Clark,Confirmed
+03/29/2026,15:00,16:30,Court 2,League Play - Intermediate,League Play,Intermediate,8,20,Maria Santos,Confirmed
+03/29/2026,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Emma Wilson,Confirmed
+03/29/2026,18:00,19:30,Court 2,Open Play - All Levels,Open Play,All Levels,8,15,Chris Evans,Confirmed
+03/29/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Ryan O'Brien,Confirmed
+03/29/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Tom Chen,Confirmed
+03/29/2026,18:00,19:30,Court 3,League Play - Intermediate,League Play,Intermediate,8,20,Victor Reyes,Confirmed
+03/30/2026,06:00,07:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Brian Cooper,Confirmed
+03/30/2026,06:00,07:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Tom Bradley,Cancelled
+03/30/2026,06:00,07:30,Court 4,Open Play - All Levels,Open Play,All Levels,8,15,Hannah Clark,Confirmed
+03/30/2026,15:00,16:30,Court 1,Clinic - Advanced,Clinic,Advanced,6,25,Sofia Rossi,Confirmed
+03/31/2026,15:00,16:30,Court 2,Clinic - Intermediate,Clinic,Intermediate,6,25,Emma Wilson,Confirmed

@@ -25,8 +25,10 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
 function CourtReserveCard({ clubId }: { clubId: string }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
   const [testResult, setTestResult] = useState<{ ok: boolean; courtCount?: number; error?: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  const isDev = typeof window !== 'undefined' && window.location.hostname.includes('dev.')
 
   const utils = trpc.useUtils()
 
@@ -62,7 +64,7 @@ function CourtReserveCard({ clubId }: { clubId: string }) {
     setIsTesting(true)
     setTestResult(null)
     try {
-      const result = await testMutation.mutateAsync({ clubId, username, password })
+      const result = await testMutation.mutateAsync({ clubId, username, password, baseUrl: baseUrl || undefined })
       setTestResult({ ok: true, courtCount: result.courtCount })
     } catch (err: any) {
       setTestResult({ ok: false, error: err.message || 'Connection failed' })
@@ -72,7 +74,7 @@ function CourtReserveCard({ clubId }: { clubId: string }) {
   }
 
   const handleConnect = () => {
-    connectMutation.mutate({ clubId, username, password })
+    connectMutation.mutate({ clubId, username, password, baseUrl: baseUrl || undefined })
   }
 
   const handleSync = (isInitial: boolean) => {
@@ -119,8 +121,11 @@ function CourtReserveCard({ clubId }: { clubId: string }) {
           <ConnectForm
             username={username}
             password={password}
+            baseUrl={baseUrl}
+            isDev={isDev}
             onUsernameChange={setUsername}
             onPasswordChange={setPassword}
+            onBaseUrlChange={setBaseUrl}
             onTest={handleTest}
             onConnect={handleConnect}
             isTesting={isTesting}
@@ -163,13 +168,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ConnectForm({
-  username, password, onUsernameChange, onPasswordChange,
+  username, password, baseUrl, isDev, onUsernameChange, onPasswordChange, onBaseUrlChange,
   onTest, onConnect, isTesting, isConnecting, testResult,
 }: {
   username: string
   password: string
+  baseUrl: string
+  isDev: boolean
   onUsernameChange: (v: string) => void
   onPasswordChange: (v: string) => void
+  onBaseUrlChange: (v: string) => void
   onTest: () => void
   onConnect: () => void
   isTesting: boolean
@@ -204,6 +212,18 @@ function ConnectForm({
             className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           />
         </div>
+        {isDev && (
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Base URL <span className="text-xs text-muted-foreground">(dev only)</span></label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(e) => onBaseUrlChange(e.target.value)}
+              placeholder="https://api.courtreserve.com"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            />
+          </div>
+        )}
       </div>
 
       {/* Test result */}

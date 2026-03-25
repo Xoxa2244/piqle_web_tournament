@@ -24,11 +24,12 @@ export const connectorsRouter = createTRPCRouter({
       clubId: z.string(),
       username: z.string().min(1),
       password: z.string().min(1),
+      baseUrl: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const client = new CourtReserveClient(input.username, input.password)
+      const client = new CourtReserveClient(input.username, input.password, input.baseUrl)
       const result = await client.testConnection()
 
       if (!result.ok) {
@@ -50,12 +51,13 @@ export const connectorsRouter = createTRPCRouter({
       clubId: z.string(),
       username: z.string().min(1),
       password: z.string().min(1),
+      baseUrl: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       // Test connection first
-      const client = new CourtReserveClient(input.username, input.password)
+      const client = new CourtReserveClient(input.username, input.password, input.baseUrl)
       const testResult = await client.testConnection()
       if (!testResult.ok) {
         throw new TRPCError({
@@ -76,10 +78,12 @@ export const connectorsRouter = createTRPCRouter({
           clubId: input.clubId,
           provider: 'courtreserve',
           credentialsEncrypted: encrypted,
+          baseUrl: input.baseUrl || 'https://api.courtreserve.com',
           status: 'connected',
         },
         update: {
           credentialsEncrypted: encrypted,
+          baseUrl: input.baseUrl || 'https://api.courtreserve.com',
           status: 'connected',
           lastError: null,
         },
