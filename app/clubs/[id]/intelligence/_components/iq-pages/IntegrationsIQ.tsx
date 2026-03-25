@@ -24,6 +24,18 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      {/* Fix autofill white background */}
+      <style>{`
+        .iq-input { background: rgba(255,255,255,0.04) !important; color: var(--text-primary) !important; }
+        .iq-input:-webkit-autofill,
+        .iq-input:-webkit-autofill:hover,
+        .iq-input:-webkit-autofill:focus {
+          -webkit-box-shadow: 0 0 0 30px #1a1a2e inset !important;
+          -webkit-text-fill-color: #e5e7eb !important;
+          border-color: rgba(255,255,255,0.08) !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+      `}</style>
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
@@ -328,6 +340,8 @@ function InputField({ label, value, onChange, placeholder, type = 'text', hint }
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        className="iq-input"
+        autoComplete="off"
         style={{
           width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
           background: 'rgba(255,255,255,0.04)',
