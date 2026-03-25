@@ -330,14 +330,14 @@ function InputField({ label, value, onChange, placeholder, type = 'text', hint }
         placeholder={placeholder}
         style={{
           width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
-          background: 'var(--input-bg, rgba(255,255,255,0.04))',
-          border: '1px solid var(--card-border)',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
           color: 'var(--text-primary)',
           outline: 'none',
           transition: 'border-color 0.2s',
         }}
         onFocus={(e) => e.target.style.borderColor = '#6366F1'}
-        onBlur={(e) => e.target.style.borderColor = ''}
+        onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.08)'}
       />
     </div>
   )
