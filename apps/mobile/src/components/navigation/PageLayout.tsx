@@ -53,7 +53,7 @@ export const PageLayout = ({
         pullToRefresh ? (
           <View style={styles.fill}>
             <PickleRefreshScrollView
-              style={{ flex: 1 }}
+              style={{ flex: 1, backgroundColor: colors.background }}
               contentContainerStyle={[styles.content, contentStyle]}
               showsVerticalScrollIndicator={false}
               refreshing={pullToRefresh.refreshing}
@@ -65,6 +65,7 @@ export const PageLayout = ({
           </View>
         ) : (
           <ScrollView
+            style={{ backgroundColor: colors.background }}
             contentContainerStyle={[styles.content, contentStyle]}
             showsVerticalScrollIndicator={false}
             bounces
@@ -77,6 +78,7 @@ export const PageLayout = ({
           style={[
             styles.fill,
             chatAmbient ? styles.contentChatNoPad : styles.content,
+            { backgroundColor: colors.background },
             contentStyle,
           ]}
         >

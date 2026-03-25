@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../src/components/ChatComposer'
@@ -10,6 +10,7 @@ import { useChatKeyboardVerticalOffset } from '../../src/hooks/useChatKeyboardVe
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ReloadIcon } from '../../src/components/icons/ReloadIcon'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { LoadingBlock } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -108,6 +109,8 @@ export default function AITab() {
   const tabBarHeight = useBottomTabBarHeight()
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
   const scrollRef = useRef<ScrollView | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+  const chatFade = useRef(new Animated.Value(0)).current
   const initialMessages = useMemo(() => {
     const history = (historyQuery.data ?? []) as Array<{
       id: string
@@ -134,14 +137,7 @@ export default function AITab() {
     })) as Message[]
   }, [historyQuery.data])
 
-  const [messages, setMessages] = useState<Message[]>(() => [
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: WELCOME_MESSAGE,
-      time: 'now',
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null)
@@ -164,6 +160,14 @@ export default function AITab() {
     if (!isAuthenticated) return
     if (historyQuery.isLoading) return
     setMessages(initialMessages)
+    setHydrated(true)
+    chatFade.stopAnimation()
+    chatFade.setValue(0)
+    Animated.timing(chatFade, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
   }, [historyQuery.isLoading, initialMessages, isAuthenticated])
 
   const send = async () => {
@@ -227,14 +231,23 @@ export default function AITab() {
       await resetMutation.mutateAsync()
       setResetConfirmOpen(false)
       setInput('')
-      setMessages([
+      const next = [
         {
           id: 'welcome',
-          role: 'assistant',
+          role: 'assistant' as const,
           content: WELCOME_MESSAGE,
           time: 'now',
         },
-      ])
+      ]
+      setMessages(next)
+      setHydrated(true)
+      chatFade.stopAnimation()
+      chatFade.setValue(0)
+      Animated.timing(chatFade, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }).start()
       await historyQuery.refetch()
       scrollToBottom(false)
     } catch (err: any) {
@@ -292,10 +305,54 @@ export default function AITab() {
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollToBottom(false)}
         >
-            <View style={styles.messages}>
-              {messages.map((msg) => (
-                <View key={msg.id} style={[styles.messageLine, msg.role === 'user' && styles.messageLineMine]}>
-                  {msg.role === 'assistant' ? (
+          {!hydrated ? (
+            <View style={styles.hydrateLoader}>
+              <LoadingBlock label="Loading your chat…" />
+            </View>
+          ) : (
+            <Animated.View style={{ opacity: chatFade }}>
+              <View style={styles.messages}>
+                {messages.map((msg) => (
+                  <View key={msg.id} style={[styles.messageLine, msg.role === 'user' && styles.messageLineMine]}>
+                    {msg.role === 'assistant' ? (
+                      <OptionalLinearGradient
+                        colors={['#a855f7', '#7c3aed', '#4f46e5']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.assistantAvatar}
+                      >
+                        <Feather name="zap" size={16} color={colors.white} />
+                      </OptionalLinearGradient>
+                    ) : null}
+
+                    <View style={[styles.messageCol, msg.role === 'user' && styles.messageColMine]}>
+                      <OptionalLinearGradient
+                        colors={
+                          msg.role === 'user'
+                            ? [colors.primary, colors.purple]
+                            : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
+                        }
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        fallbackColor={msg.role === 'user' ? colors.primary : colors.surfaceElevated}
+                        style={[
+                          styles.bubble,
+                          msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
+                        ]}
+                      >
+                        <Text
+                          style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
+                        >
+                          {renderInlineMarkdown(msg.content, msg.id, styles)}
+                        </Text>
+                      </OptionalLinearGradient>
+                      <Text style={styles.time}>{msg.time}</Text>
+                    </View>
+                  </View>
+                ))}
+
+                {typing ? (
+                  <View style={styles.messageLine}>
                     <OptionalLinearGradient
                       colors={['#a855f7', '#7c3aed', '#4f46e5']}
                       start={{ x: 0, y: 0 }}
@@ -304,58 +361,22 @@ export default function AITab() {
                     >
                       <Feather name="zap" size={16} color={colors.white} />
                     </OptionalLinearGradient>
-                  ) : null}
-
-                  <View style={[styles.messageCol, msg.role === 'user' && styles.messageColMine]}>
-                    <OptionalLinearGradient
-                      colors={
-                        msg.role === 'user'
-                          ? [colors.primary, colors.purple]
-                          : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      fallbackColor={msg.role === 'user' ? colors.primary : colors.surfaceElevated}
-                      style={[
-                        styles.bubble,
-                        msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
-                      ]}
-                    >
-                      <Text
-                        style={[styles.bubbleText, msg.role === 'user' && styles.bubbleTextMine]}
-                      >
-                        {renderInlineMarkdown(msg.content, msg.id, styles)}
-                      </Text>
-                    </OptionalLinearGradient>
-                    <Text style={styles.time}>{msg.time}</Text>
-                  </View>
-                </View>
-              ))}
-
-              {typing ? (
-                <View style={styles.messageLine}>
-                  <OptionalLinearGradient
-                    colors={['#a855f7', '#7c3aed', '#4f46e5']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.assistantAvatar}
-                  >
-                    <Feather name="zap" size={16} color={colors.white} />
-                  </OptionalLinearGradient>
-                  <View style={styles.messageCol}>
-                    <View style={[styles.bubble, styles.bubbleAssistant, styles.typingBubble]}>
-                      <View style={styles.typingDots}>
-                        <View style={[styles.dot, { opacity: 0.6 }]} />
-                        <View style={[styles.dot, { opacity: 0.45 }]} />
-                        <View style={[styles.dot, { opacity: 0.3 }]} />
+                    <View style={styles.messageCol}>
+                      <View style={[styles.bubble, styles.bubbleAssistant, styles.typingBubble]}>
+                        <View style={styles.typingDots}>
+                          <View style={[styles.dot, { opacity: 0.6 }]} />
+                          <View style={[styles.dot, { opacity: 0.45 }]} />
+                          <View style={[styles.dot, { opacity: 0.3 }]} />
+                        </View>
                       </View>
                     </View>
                   </View>
-                </View>
-              ) : null}
-            </View>
+                ) : null}
+              </View>
+            </Animated.View>
+          )}
 
-            {messages.length === 1 ? (
+            {hydrated && messages.length === 1 ? (
               <View style={styles.suggestions}>
                 <Text style={styles.suggestionsLabel}>Suggested questions:</Text>
                 <View style={{ gap: 10 }}>
@@ -385,7 +406,7 @@ export default function AITab() {
           onChangeText={setInput}
           placeholder="Ask me anything..."
           onSend={() => void send()}
-          sendDisabled={!input.trim() || typing}
+          sendDisabled={!hydrated || !input.trim() || typing}
           paddingHorizontal={16}
           androidKeyboardInset={Platform.OS === 'android' ? tabBarHeight : 0}
           returnKeyType="send"
@@ -443,6 +464,11 @@ const createStyles = (colors: ThemePalette) =>
   },
   messages: {
     gap: 14,
+  },
+  hydrateLoader: {
+    flex: 1,
+    minHeight: 220,
+    justifyContent: 'center',
   },
   messageLine: {
     flexDirection: 'row',

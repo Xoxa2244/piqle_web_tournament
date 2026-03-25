@@ -448,6 +448,7 @@ export default function TournamentsTab() {
           showsVerticalScrollIndicator={false}
           refreshing={pullToRefresh.refreshing}
           onRefresh={pullToRefresh.onRefresh}
+          refreshMaskColor={colors.background}
           bounces
         >
           {isAuthenticated && invitationItems.length > 0 ? (

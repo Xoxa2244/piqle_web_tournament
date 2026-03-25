@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import { Image, type ImageStyle, type StyleProp } from 'react-native'
 
 import { tournamentPlaceholder } from '../constants/images'
-import { isRemoteImageUri } from '../lib/imageUri'
+import { isRemoteImageUri, resolveRemoteImageUriForApp } from '../lib/imageUri'
 
 type Props = {
   uri?: string | null
@@ -23,10 +23,11 @@ export const EntityImage = memo(function EntityImage({
     setFailed(false)
   }, [uri])
 
-  const showRemote = Boolean(uri && isRemoteImageUri(uri) && !failed)
+  const resolvedUri = useMemo(() => resolveRemoteImageUriForApp(uri), [uri])
+  const showRemote = Boolean(resolvedUri && isRemoteImageUri(resolvedUri) && !failed)
   const imageSource = useMemo(
-    () => (showRemote ? { uri: uri! } : tournamentPlaceholder),
-    [showRemote, uri]
+    () => (showRemote ? { uri: resolvedUri! } : tournamentPlaceholder),
+    [showRemote, resolvedUri],
   )
 
   return (

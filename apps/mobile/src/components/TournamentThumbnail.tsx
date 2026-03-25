@@ -12,8 +12,8 @@ type Props = {
  * Обложка турнира: remote URL или тот же плейсхолдер, что `public/tournament-placeholder.png` на вебе.
  */
 export function TournamentThumbnail({ imageUri, size = 48 }: Props) {
-  /** Круг, как у аватаров в списках */
-  const r = size / 2
+  /** Как в `ClubCard`: скруглённый квадрат + видимый фон под плейсхолдером */
+  const r = 14
 
   return (
     <View style={[styles.box, { width: size, height: size, borderRadius: r }]}>

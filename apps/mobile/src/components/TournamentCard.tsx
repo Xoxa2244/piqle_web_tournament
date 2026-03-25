@@ -1,15 +1,15 @@
 import { Feather } from '@expo/vector-icons'
-import { useMemo } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
 import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
-import { RatingStarIcon } from './icons/RatingStarIcon'
+import { AppBottomSheet } from './AppBottomSheet'
+import { EntityImage } from './EntityImage'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
-import { TournamentThumbnail } from './TournamentThumbnail'
-import { Pill, SurfaceCard } from './ui'
+import { ActionButton, SurfaceCard } from './ui'
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -53,6 +53,259 @@ const formatTournamentFormat = (format?: string | null) => {
     default:
       return 'Tournament'
   }
+}
+
+const formatTournamentFormatChip = (format?: string | null) => {
+  // Chip в hero должен быть без троеточий и без скролла — делаем максимально короткие метки.
+  switch (format) {
+    case 'SINGLE_ELIMINATION':
+      return 'Single Elim'
+    case 'ROUND_ROBIN':
+      return 'Round Robin'
+    case 'MLP':
+      return 'MLP'
+    case 'INDY_LEAGUE':
+      return 'Indy League'
+    case 'LEAGUE_ROUND_ROBIN':
+      return 'League RR'
+    case 'ONE_DAY_LADDER':
+      return '1‑Day Ladder'
+    case 'LADDER_LEAGUE':
+      return 'Ladder League'
+    default:
+      return 'Tournament'
+  }
+}
+
+/** Плотнее сетка; DIAG < STEP — диагональ без дыр. */
+const HERO_PATTERN_EDGE = 2
+const HERO_PATTERN_STEP = 7
+const HERO_PATTERN_DIAG = 3
+const HERO_PATTERN_DOT = 3
+
+function HeroDotPattern({
+  patternStyle,
+  fadeStyle,
+  dotStyle,
+}: {
+  patternStyle: ViewStyle
+  fadeStyle: ViewStyle
+  dotStyle: ViewStyle
+}) {
+  const [layout, setLayout] = useState({ w: 0, h: 0 })
+  const dots = useMemo(() => {
+    const w = layout.w
+    const h = layout.h
+    if (w < 4 || h < 4) return []
+    const EDGE = HERO_PATTERN_EDGE
+    const STEP = HERO_PATTERN_STEP
+    const DIAG = HERO_PATTERN_DIAG
+    const DOT = HERO_PATTERN_DOT
+    const spanX = Math.max(1, w - EDGE * 2)
+    const rowMax = Math.max(0, Math.floor((h - EDGE - DOT) / STEP))
+    const out: Array<{ key: string; left: number; top: number; opacity: number }> = []
+    let index = 0
+    for (let row = 0; row <= rowMax; row += 1) {
+      const top = EDGE + row * STEP
+      if (top + DOT > h) continue
+      // Диагональ смещает строку вправо — без отрицательных col слева остаётся «дыра».
+      const colStart = Math.ceil((-EDGE - row * DIAG) / STEP)
+      const colEnd = Math.floor((w - DOT - EDGE - row * DIAG) / STEP)
+      for (let col = colStart; col <= colEnd; col += 1) {
+        const left = EDGE + col * STEP + row * DIAG
+        if (left + DOT > w) continue
+        const nx = spanX > 0 ? (left - EDGE) / spanX : 0
+        const fade = 1 - Math.min(1, nx) ** 0.42
+        const opacity = Math.max(0.04, Math.min(0.58, 0.06 + 0.52 * fade))
+        out.push({
+          key: `hero-dot-${index}`,
+          left,
+          top,
+          opacity,
+        })
+        index += 1
+      }
+    }
+    return out
+  }, [layout.w, layout.h])
+
+  return (
+    <View
+      pointerEvents="none"
+      style={patternStyle}
+      collapsable={false}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout
+        if (width <= 0 || height <= 0) return
+        setLayout((prev) => {
+          if (prev.w === width && prev.h === height) return prev
+          return { w: width, h: height }
+        })
+      }}
+    >
+      <OptionalLinearGradient
+        pointerEvents="none"
+        colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={fadeStyle}
+        fallbackColor="rgba(255,255,255,0.08)"
+      >
+        {dots.map((dot) => (
+          <View
+            key={dot.key}
+            pointerEvents="none"
+            style={[dotStyle, { left: dot.left, top: dot.top, opacity: dot.opacity }]}
+          />
+        ))}
+      </OptionalLinearGradient>
+    </View>
+  )
+}
+
+function getStatusIcon(label: string): keyof typeof Feather.glyphMap {
+  const s = label.trim().toLowerCase()
+  if (!s) return 'info'
+  if (s.includes('admin')) return 'shield'
+  if (s.includes('registered')) return 'check-circle'
+  if (s.includes('wait')) return 'clock'
+  if (s.includes('filling')) return 'trending-up'
+  if (s.includes('closed')) return 'x-circle'
+  if (s.includes('open')) return 'unlock'
+  return 'info'
+}
+
+function isCompactTopStatus(label: string) {
+  const s = label.trim().toLowerCase()
+  return s === 'admin' || s === 'registered' || s === 'waitlist'
+}
+
+function getAvailabilityStatusLabel(args: {
+  endDate: string | Date | null | undefined
+  createdSlots: number | null
+  openSlots: number | null
+  fillRatio: number | null
+}) {
+  const end = args.endDate ? new Date(args.endDate).getTime() : null
+  if (end != null && end < Date.now()) return 'Closed'
+  if (args.createdSlots != null && args.createdSlots > 0) {
+    if (args.openSlots === 0) return 'Waitlist'
+    if (args.fillRatio != null && args.fillRatio >= 0.75) return 'Filling Fast'
+  }
+  return 'Open'
+}
+
+const MARQUEE_OVERFLOW_ON_PX = 6
+const MARQUEE_PX_PER_MS = 0.008
+
+function DivisionsMarquee({
+  divisions,
+  onMarqueeActiveChange,
+}: {
+  divisions: string[]
+  onMarqueeActiveChange?: (active: boolean) => void
+}) {
+  const [containerW, setContainerW] = useState(0)
+  const [trackW, setTrackW] = useState(0)
+  const [runMarquee, setRunMarquee] = useState(false)
+  const translateX = useRef(new Animated.Value(0)).current
+  const animRef = useRef<Animated.CompositeAnimation | null>(null)
+  const divisionsKey = useMemo(() => divisions.join('||'), [divisions])
+
+  const resolvedContainerW = Math.floor(containerW)
+  const resolvedTrackW = Math.ceil(trackW)
+  const maxOffset = Math.max(0, resolvedTrackW - resolvedContainerW)
+
+  useEffect(() => {
+    setTrackW(0)
+    setRunMarquee(false)
+  }, [divisionsKey])
+
+  useEffect(() => {
+    if (containerW <= 0 || trackW <= 0) {
+      setRunMarquee(false)
+      onMarqueeActiveChange?.(false)
+      return
+    }
+
+    const overflow = resolvedTrackW - resolvedContainerW
+    const enabled = overflow > MARQUEE_OVERFLOW_ON_PX
+    setRunMarquee(enabled)
+    onMarqueeActiveChange?.(enabled)
+  }, [containerW, onMarqueeActiveChange, resolvedContainerW, resolvedTrackW, trackW])
+
+  useEffect(() => {
+    animRef.current?.stop()
+    translateX.setValue(0)
+
+    if (!runMarquee || maxOffset <= 0) return
+
+    const duration = Math.max(1_600, Math.round(maxOffset / MARQUEE_PX_PER_MS))
+    let cancelled = false
+
+    const step = () => {
+      if (cancelled) return
+      const animation = Animated.timing(translateX, {
+        toValue: -resolvedTrackW,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+      animRef.current = animation
+      animation.start(({ finished }) => {
+        if (!finished || cancelled) return
+        translateX.setValue(0)
+        step()
+      })
+    }
+    step()
+
+    return () => {
+      cancelled = true
+      animRef.current?.stop()
+      animRef.current = null
+    }
+  }, [resolvedTrackW, maxOffset, runMarquee, translateX])
+
+  return (
+    <View style={stylesMarquee.clip} onLayout={(e) => setContainerW(e.nativeEvent.layout.width)}>
+      <Animated.View
+        style={[
+          stylesMarquee.animatedTrack,
+          runMarquee ? { width: resolvedTrackW * 2, transform: [{ translateX }] } : null,
+        ]}
+        collapsable={false}
+      >
+        <View
+          key={divisionsKey}
+          style={stylesMarquee.track}
+          onLayout={(e) => {
+            const nextW = Math.ceil(e.nativeEvent.layout.width)
+            if (nextW > 0) setTrackW(nextW)
+          }}
+        >
+          {divisions.map((division, index) => (
+            <View key={`${division}-${index}`} style={stylesMarquee.pill}>
+              <Text style={stylesMarquee.pillText} numberOfLines={1} ellipsizeMode="tail">
+                {division}
+              </Text>
+            </View>
+          ))}
+        </View>
+        {runMarquee ? (
+          <View style={stylesMarquee.track}>
+            {divisions.map((division, index) => (
+              <View key={`dup-${division}-${index}`} style={stylesMarquee.pill}>
+                <Text style={stylesMarquee.pillText} numberOfLines={1} ellipsizeMode="tail">
+                  {division}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Animated.View>
+    </View>
+  )
 }
 
 type TournamentSummary = {
@@ -108,12 +361,18 @@ export const TournamentCard = ({
 }) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
-  const feeLabel =
-    typeof tournament.entryFeeCents === 'number'
-      ? formatMoney(tournament.entryFeeCents)
-      : tournament.entryFee && Number(tournament.entryFee) > 0
-        ? `$${Number(tournament.entryFee).toFixed(2)}`
-        : 'Free'
+  const [divisionsTooltipOpen, setDivisionsTooltipOpen] = useState(false)
+  const [divisionsTooltipEnabled, setDivisionsTooltipEnabled] = useState(false)
+  const feeLabel = (() => {
+    if (typeof tournament.entryFeeCents === 'number') {
+      return tournament.entryFeeCents > 0 ? formatMoney(tournament.entryFeeCents) : '$ Free'
+    }
+    if (tournament.entryFee != null && Number(tournament.entryFee) > 0) {
+      return `$${Number(tournament.entryFee).toFixed(2)}`
+    }
+    return '$ Free'
+  })()
+  const feeChipLabel = secondaryStatusLabel ? `${feeLabel} • ${secondaryStatusLabel}` : feeLabel
   const slotMetrics = getTournamentSlotMetrics(tournament)
   const teamCount = tournament.divisions.reduce((sum, division) => sum + Number(division._count?.teams ?? 0), 0)
   const teamCapacity = tournament.divisions.reduce((sum, division) => sum + Number(division.maxTeams ?? 0), 0)
@@ -136,272 +395,447 @@ export const TournamentCard = ({
         ? `${playerCount} players registered`
         : 'Open registration'
   const progressWidth = progress > 0 ? `${Math.max(progress, 8)}%` : '0%'
-  const showPublicRating = Boolean(
-    tournament.feedbackSummary?.canPublish && tournament.feedbackSummary?.averageRating
-  )
+  const divisionLabels = useMemo(() => tournament.divisions.map((d) => d.name), [tournament.divisions])
+  const venueName = String(tournament.venueName ?? '').trim()
+  const venueAddress = String(tournament.venueAddress ?? '').trim()
+  const locationLabel = venueAddress || venueName || 'Location not set'
+  /** Если venueName выглядит как имя клуба, а адрес есть — показываем клуб отдельным чипом. */
+  const clubLabel = venueAddress && venueName ? venueName : null
+  const statusLabelText = String(statusLabel ?? '').trim()
+  const compactTopStatusLabel =
+    statusLabelText && isCompactTopStatus(statusLabelText) ? statusLabelText : null
+  const availabilityStatusLabel = getAvailabilityStatusLabel({
+    endDate: tournament.endDate,
+    createdSlots: slotMetrics.createdSlots,
+    openSlots: slotMetrics.openSlots,
+    fillRatio: slotMetrics.fillRatio,
+  })
+  const compactTopStatus = Boolean(compactTopStatusLabel)
+  const showClubLabel = Boolean(clubLabel)
+
+  useEffect(() => {
+    if (!divisionsTooltipEnabled && divisionsTooltipOpen) {
+      setDivisionsTooltipOpen(false)
+    }
+  }, [divisionsTooltipEnabled, divisionsTooltipOpen])
 
   return (
-    <Pressable onPress={onPress}>
-      <SurfaceCard padded={false}>
+    <>
+      <SurfaceCard padded={false} style={styles.card}>
         <View style={styles.hero}>
-          <OptionalLinearGradient
-            pointerEvents="none"
-            colors={[colors.brandPrimaryTint, colors.brandPurpleTint, 'rgba(255, 255, 255, 0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.heroGradient}
+          <HeroDotPattern
+            patternStyle={styles.heroPattern}
+            fadeStyle={styles.heroPatternFade}
+            dotStyle={styles.heroPatternDot}
           />
           <View style={styles.heroHeader}>
-            <TournamentThumbnail imageUri={tournament.image ?? null} size={48} />
+            <Pressable onPress={onPress} style={styles.heroLogo}>
+              <EntityImage
+                uri={tournament.image ?? null}
+                style={styles.heroLogoImage}
+                resizeMode="cover"
+                placeholderResizeMode="contain"
+              />
+            </Pressable>
             <View style={styles.heroMain}>
-              <Text numberOfLines={1} style={styles.title}>
-                {tournament.title}
-              </Text>
-              <View style={styles.formatRow}>
-                <Feather name="award" size={14} color={colors.primary} />
-                <Text style={styles.formatText}>{formatTournamentFormat(tournament.format)}</Text>
-              </View>
-            </View>
-            {statusLabel || secondaryStatusLabel ? (
-              <View style={styles.statusBadgeRow}>
-                {statusLabel ? <Pill label={statusLabel} tone={statusTone} /> : null}
-                {secondaryStatusLabel ? (
-                  <Pill label={secondaryStatusLabel} tone={secondaryStatusTone} />
+              <Pressable onPress={onPress} style={styles.heroTitlePress}>
+                <View style={styles.titleRow}>
+                  <Text numberOfLines={1} style={styles.title}>
+                    {tournament.title}
+                  </Text>
+                  {compactTopStatusLabel ? (
+                    <View style={styles.compactStatusBadge}>
+                      <Feather name={getStatusIcon(compactTopStatusLabel)} size={14} color={colors.white} />
+                      <Text style={styles.compactStatusText} numberOfLines={1}>
+                        {compactTopStatusLabel}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+              <View style={styles.chipRow}>
+                <Pressable
+                  onPress={onPress}
+                  style={[styles.heroChip, styles.heroChipNoShrink, styles.heroChipOutlined]}
+                >
+                  <Text style={styles.heroChipText} numberOfLines={1}>
+                    {formatTournamentFormatChip(tournament.format)}
+                  </Text>
+                </Pressable>
+                {divisionLabels.length ? (
+                  <View style={styles.divisionsChipSlot}>
+                    <DivisionsMarquee
+                      divisions={divisionLabels}
+                      onMarqueeActiveChange={setDivisionsTooltipEnabled}
+                    />
+                    <Pressable
+                      style={styles.divisionsChipHitbox}
+                      onPress={() => {
+                        if (divisionsTooltipEnabled) {
+                          setDivisionsTooltipOpen(true)
+                        } else {
+                          onPress()
+                        }
+                      }}
+                    />
+                  </View>
                 ) : null}
               </View>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.body}>
-          <View style={styles.metaGrid}>
-            <View style={styles.metaCell}>
-              <Feather name="calendar" size={16} color={colors.primary} />
-              <Text style={styles.metaText}>
-                {formatTournamentDateRange(tournament.startDate, tournament.endDate)}
-              </Text>
-            </View>
-            <View style={styles.metaCell}>
-              <Feather name="map-pin" size={16} color={colors.primary} />
-              <Text numberOfLines={1} style={styles.metaText}>
-                {formatLocation([tournament.venueName, tournament.venueAddress])}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.ratingRow}>
-            <RatingStarIcon size={16} filled color="#F4B000" />
-            {showPublicRating ? (
-              <Text style={styles.ratingText}>{tournament.feedbackSummary!.averageRating!.toFixed(1)}</Text>
-            ) : (
-              <Text style={styles.ratingTextMuted}>No rating yet</Text>
-            )}
-          </View>
-
-          {tournament.divisions?.length ? (
-            <View style={styles.divisionRow}>
-              {tournament.divisions.slice(0, 3).map((division) => (
-                <Pill key={division.id} label={division.name} />
-              ))}
-              {tournament.divisions.length > 3 ? (
-                <Pill label={`+${tournament.divisions.length - 3}`} />
-              ) : null}
-            </View>
-          ) : null}
-
-          <View style={styles.progressBlock}>
-            <View style={styles.progressHeader}>
-              <View style={styles.progressMetric}>
-                <Feather name="users" size={16} color={colors.primary} />
-                <Text style={styles.progressText}>{occupancyLabel}</Text>
-              </View>
-              <View style={styles.priceTag}>
-                <Feather name="dollar-sign" size={16} color={colors.primary} />
-                <Text style={styles.priceText}>{feeLabel}</Text>
-              </View>
-            </View>
-            {hasSlotMetrics || teamCapacity > 0 ? (
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: progressWidth }]} />
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.footerRow}>
-            <Text style={styles.footer}>
-              {spotsLeft !== null ? `${spotsLeft} spots left` : 'View registration details'}
-            </Text>
-            <View style={styles.footerAction}>
-              <Text style={styles.footerActionText}>View Details</Text>
-              <Feather name="arrow-right" size={16} color={colors.primary} />
             </View>
           </View>
         </View>
+
+        <Pressable onPress={onPress} style={styles.body}>
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Feather name="calendar" size={16} color={colors.textMuted} style={styles.iconLight} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {formatTournamentDateRange(tournament.startDate, tournament.endDate)}
+                </Text>
+              </View>
+              <View style={styles.rowRight}>
+                <Feather
+                  name={getStatusIcon(availabilityStatusLabel)}
+                  size={16}
+                  color={colors.textMuted}
+                  style={styles.iconLight}
+                />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {availabilityStatusLabel}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.row, styles.rowExtraGapTop]}>
+              <View style={styles.rowLeft}>
+                <Feather name="map-pin" size={16} color={colors.textMuted} style={styles.iconLight} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {locationLabel}
+                </Text>
+              </View>
+              <View style={styles.rowRight}>
+                <Feather name="users" size={16} color={colors.textMuted} style={styles.iconLight} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {occupancyLabel}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.row, styles.rowExtraGapTop]}>
+              <View style={styles.rowLeft}>
+                {showClubLabel ? (
+                  <>
+                    <Feather name="flag" size={16} color={colors.textMuted} style={styles.iconLight} />
+                    <Text style={styles.metaText} numberOfLines={1}>
+                      {clubLabel}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+              <View style={styles.rowRight}>
+                <OptionalLinearGradient
+                  colors={['#FFF3C4', '#F6D77B', '#E8B64B']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.priceChip, secondaryStatusLabel ? styles.priceChipNarrow : null]}
+                  fallbackColor="#F6D77B"
+                >
+                  <Text style={styles.priceChipText} numberOfLines={1}>
+                    {feeChipLabel}
+                  </Text>
+                </OptionalLinearGradient>
+              </View>
+            </View>
+        </Pressable>
       </SurfaceCard>
-    </Pressable>
+
+      <AppBottomSheet
+        open={divisionsTooltipOpen}
+        onClose={() => setDivisionsTooltipOpen(false)}
+        title="Divisions"
+        footer={
+          <ActionButton
+            label="Open Tournament"
+            variant="primary"
+            onPress={() => {
+              setDivisionsTooltipOpen(false)
+              onPress()
+            }}
+          />
+        }
+      >
+        <View style={styles.divisionsSheetBody}>
+          <View style={styles.divisionsSheetList}>
+            {divisionLabels.map((division, index) => (
+              <View key={`tooltip-${division}-${index}`} style={styles.divisionsSheetPill}>
+                <Text style={styles.divisionsSheetText}>{division}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </AppBottomSheet>
+    </>
   )
 }
 
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
+    card: {
+      borderRadius: radius.lg,
+      overflow: 'hidden',
+      borderWidth: 0,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 0,
+    },
     hero: {
       position: 'relative',
       overflow: 'hidden',
       padding: spacing.md,
       minHeight: 88,
       justifyContent: 'center',
-      backgroundColor: colors.surface,
+      backgroundColor: colors.primary,
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.brandPrimaryBorder,
+      borderBottomWidth: 0,
     },
-    heroGradient: {
+    heroPattern: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: '40%',
+      zIndex: 0,
+    },
+    heroPatternFade: {
       ...StyleSheet.absoluteFillObject,
-      borderTopLeftRadius: radius.lg,
-      borderTopRightRadius: radius.lg,
+    },
+    heroPatternDot: {
+      position: 'absolute',
+      width: 3,
+      height: 3,
+      borderRadius: 999,
+      backgroundColor: '#FFFFFF',
     },
     heroHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: spacing.md,
+      gap: spacing.sm,
+      zIndex: 1,
+    },
+    heroLogo: {
+      width: 56,
+      height: 56,
+      borderRadius: 14,
+      overflow: 'hidden',
+      flexShrink: 0,
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    },
+    heroLogoImage: {
+      width: 56,
+      height: 56,
+      borderRadius: 14,
     },
     heroMain: {
       flex: 1,
       minWidth: 0,
+      justifyContent: 'center',
+      gap: 6,
     },
-    statusBadgeRow: {
+    heroTitlePress: {
+      flex: 1,
+      minWidth: 0,
+    },
+    titleRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'flex-end',
-      gap: 8,
+      alignItems: 'center',
+      gap: 10,
     },
     title: {
-      color: colors.text,
+      color: colors.white,
       fontSize: 18,
       fontWeight: '700',
+      flex: 1,
+      minWidth: 0,
     },
-    formatRow: {
+    compactStatusBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      marginTop: 6,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: 'rgba(255, 255, 255, 0.22)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.28)',
+      maxWidth: 140,
+      flexShrink: 0,
     },
-    formatText: {
-      color: colors.textMuted,
-      fontSize: 13,
+    compactStatusText: {
+      color: colors.white,
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'capitalize',
     },
     body: {
       padding: spacing.md,
-      gap: spacing.md,
-    },
-    metaGrid: {
-      flexDirection: 'row',
-      gap: spacing.md,
-    },
-    metaCell: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 8,
+      paddingBottom: spacing.md,
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      borderBottomLeftRadius: radius.lg,
+      borderBottomRightRadius: radius.lg,
     },
     metaText: {
-      color: colors.textMuted,
+      color: colors.text,
       fontSize: 13,
       lineHeight: 20,
-      flex: 1,
+      flexShrink: 1,
     },
-    divisionRow: {
+    chipRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'nowrap',
+      gap: 8,
+    },
+    heroChip: {
+      minHeight: 30,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      maxWidth: '100%',
+      flexShrink: 1,
+      alignSelf: 'flex-start',
+    },
+    heroChipNoShrink: {
+      flexShrink: 0,
+    },
+    heroChipOutlined: {
+      backgroundColor: 'rgba(255, 255, 255, 0.16)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.28)',
+    },
+    divisionsChipSlot: {
+      flex: 1,
+      minWidth: 0,
+      alignItems: 'flex-start',
+      position: 'relative',
+      zIndex: 2,
+      elevation: 3,
+    },
+    divisionsChipHitbox: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: radius.pill,
+    },
+    heroChipText: {
+      color: colors.white,
+      fontSize: 13,
+      lineHeight: 20,
+      fontWeight: '600',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    rowExtraGapTop: {
+      marginTop: 3,
+    },
+    rowLeft: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    rowRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    iconLight: {
+      opacity: 0.72,
+    },
+    priceChip: {
+      minHeight: 30,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      maxWidth: 180,
+      justifyContent: 'center',
+    },
+    priceChipNarrow: {
+      maxWidth: 150,
+    },
+    priceChipText: {
+      color: colors.black,
+      fontSize: 13,
+      lineHeight: 20,
+      fontWeight: '600',
+    },
+    divisionsSheetBody: {
+      gap: spacing.sm,
+      paddingTop: spacing.xs,
+    },
+    divisionsSheetList: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
     },
-    ratingRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      alignSelf: 'flex-start',
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 9999,
-      backgroundColor: colors.surfaceElevated,
+    divisionsSheetPill: {
+      borderRadius: 999,
+      backgroundColor: colors.surfaceMuted,
       paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingVertical: 6,
     },
-    ratingText: {
+    divisionsSheetText: {
       color: colors.text,
-      fontSize: 14,
+      fontSize: 13,
+      lineHeight: 20,
       fontWeight: '600',
     },
-    ratingTextMuted: {
-      color: colors.textMuted,
-      fontSize: 14,
-      fontWeight: '500',
-    },
-    progressBlock: {
-      gap: 10,
-    },
-    progressHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.md,
-    },
-    progressMetric: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      flex: 1,
-    },
-    progressText: {
-      color: colors.textMuted,
-      fontSize: 13,
-      flexShrink: 1,
-    },
-    priceTag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    priceText: {
-      color: colors.primary,
-      fontWeight: '700',
-      fontSize: 14,
-    },
-    progressTrack: {
-      width: '100%',
-      height: 6,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceMuted,
-      overflow: 'hidden',
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: radius.pill,
-      backgroundColor: colors.primary,
-    },
-    footerRow: {
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.md,
-    },
-    footer: {
-      color: colors.textMuted,
-      fontSize: 13,
-      flex: 1,
-    },
-    footerAction: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    footerActionText: {
-      color: colors.primary,
-      fontWeight: '700',
-    },
   })
+
+const stylesMarquee = StyleSheet.create({
+  clip: {
+    alignSelf: 'stretch',
+    minWidth: 0,
+    overflow: 'hidden',
+    minHeight: 30,
+    borderRadius: radius.pill,
+  },
+  animatedTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  track: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingRight: 6,
+  },
+  pill: {
+    minHeight: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  pillText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+})
+

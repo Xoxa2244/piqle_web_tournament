@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons'
-import React, { useMemo, type PropsWithChildren, type ReactNode } from 'react'
+import React, { useEffect, useMemo, useRef, type PropsWithChildren, type ReactNode } from 'react'
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleProp,
@@ -379,11 +381,34 @@ export const EmptyState = ({ title, body }: { title: string; body: string }) => 
 }
 
 export const LoadingBlock = ({ label = 'Loading…' }: { label?: string }) => {
-  const { colors, styles } = useThemedUi()
+  const { styles } = useThemedUi()
+  const a = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(a, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      }),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [a])
+
+  const dot1 = a.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] })
+  const dot2 = a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.25, 1, 0.25] })
+  const dot3 = a.interpolate({ inputRange: [0, 1], outputRange: [1, 0.25] })
+
   return (
     <SurfaceCard tone="soft">
       <View style={styles.loadingRow}>
-        <ActivityIndicator color={colors.primary} />
+        <View style={styles.loadingDots} accessibilityRole="progressbar" accessibilityLabel={label}>
+          <Animated.View style={[styles.loadingDot, { opacity: dot1 }]} />
+          <Animated.View style={[styles.loadingDot, { opacity: dot2 }]} />
+          <Animated.View style={[styles.loadingDot, { opacity: dot3 }]} />
+        </View>
         <Text style={styles.loadingLabel}>{label}</Text>
       </View>
     </SurfaceCard>
@@ -663,6 +688,17 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  loadingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
   },
   loadingLabel: {
     color: colors.textMuted,

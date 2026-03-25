@@ -97,12 +97,14 @@ export function AppBottomSheet({
     }
   }, [open, backdropOp, sheetY])
 
-  if (!mounted) return null
+  /** Пока идёт анимация закрытия, держим дерево; при open=true mounted ещё false — всё равно показываем. */
+  const showModal = open || mounted
+  if (!showModal) return null
 
   const padBottom = spacing.md + insets.bottom + bottomPaddingExtra
 
   return (
-    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={true} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.root}>
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: backdropOp }]}>
           <BlurView intensity={44} tint="dark" style={StyleSheet.absoluteFill} />

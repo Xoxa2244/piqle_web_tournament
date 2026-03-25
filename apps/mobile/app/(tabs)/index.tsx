@@ -324,6 +324,7 @@ export default function HomeTab() {
           showsVerticalScrollIndicator={false}
           refreshing={pullToRefresh.refreshing}
           onRefresh={pullToRefresh.onRefresh}
+          refreshMaskColor={colors.background}
           bounces
         >
       {tournamentsQuery.isError ? (

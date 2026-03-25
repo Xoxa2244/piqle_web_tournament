@@ -42,7 +42,11 @@ export default function ClubChatScreen() {
     })
   }, [])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
+  const clubDetailQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) && isAuthenticated })
   const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
+  /** Список чатов может ещё не подгрузиться — logo из club.get; иначе логотип в шапке пропадает. */
+  const clubLogoUrl = activeClub?.logoUrl ?? clubDetailQuery.data?.logoUrl ?? null
+  const clubDisplayName = activeClub?.name ?? clubDetailQuery.data?.name ?? clubName
   const isAdmin = Boolean(myChatClubsQuery.data?.find((c) => c.id === clubId)?.isAdmin)
 
   const messagesQuery = trpc.clubChat.list.useQuery(
@@ -127,7 +131,7 @@ export default function ClubChatScreen() {
       topBarTitleAccessoryLeading
       topBarTitleAccessory={
         <EntityImage
-          uri={activeClub?.logoUrl ?? null}
+          uri={clubLogoUrl}
           style={styles.titleClubLogo}
           resizeMode="cover"
           placeholderResizeMode="contain"
@@ -227,10 +231,14 @@ export default function ClubChatScreen() {
         contextCard={
           <FeedbackEntityContextCard
             entityType="CLUB"
-            title={activeClub?.name ?? clubName}
-            imageUrl={activeClub?.logoUrl ?? null}
-            addressLabel={[activeClub?.city, activeClub?.state].filter(Boolean).join(', ') || null}
-            membersLabel={`${Math.max(1, Number(activeClub?.followersCount ?? 0) || 0)} members`}
+            title={clubDisplayName}
+            imageUrl={clubLogoUrl}
+            addressLabel={
+              [activeClub?.city ?? clubDetailQuery.data?.city, activeClub?.state ?? clubDetailQuery.data?.state]
+                .filter(Boolean)
+                .join(', ') || null
+            }
+            membersLabel={`${Math.max(1, Number(clubDetailQuery.data?.followersCount ?? 0) || 1)} members`}
           />
         }
         onSubmitted={() => {

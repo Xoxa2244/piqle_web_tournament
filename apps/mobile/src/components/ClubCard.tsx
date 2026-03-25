@@ -254,7 +254,7 @@ const createStyles = (colors: ThemePalette) =>
     locationRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 5,
     },
     name: {
       color: colors.text,

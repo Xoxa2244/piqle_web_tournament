@@ -519,6 +519,15 @@ export default function TournamentDetailScreen() {
     router.push(`/tournaments/${tournament.id}/register`)
   }
 
+  const handleLeaveTournament = () => {
+    if (!isAuthenticated) {
+      router.push('/sign-in')
+      return
+    }
+    if (cancelRegistration.isPending) return
+    setLeaveTournamentSheetOpen(true)
+  }
+
   const handleShare = async () => {
     const url = buildWebUrl(`/scoreboard/${tournament.id}`)
     try {
