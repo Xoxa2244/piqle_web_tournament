@@ -1,37 +1,53 @@
-import { Ionicons } from '@expo/vector-icons'
 import { Tabs } from 'expo-router'
+import * as Haptics from 'expo-haptics'
 import { Fragment } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Platform } from 'react-native'
 
+import { TabBarTabIcon, tabIcons } from '../../src/components/navigation/TabBarTabIcon'
 import { TabDataWarmup } from '../../src/components/TabDataWarmup'
+import { TabRepeatProvider, useTabRepeat } from '../../src/contexts/TabRepeatContext'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 
-const tabIcons = {
-  index: { outline: 'home-outline' as const, filled: 'home' as const },
-  tournaments: { outline: 'trophy-outline' as const, filled: 'trophy' as const },
-  clubs: { outline: 'people-outline' as const, filled: 'people' as const },
-  chats: { outline: 'chatbubbles-outline' as const, filled: 'chatbubbles' as const },
-  ai: { outline: 'flash-outline' as const, filled: 'flash' as const },
-  search: { outline: 'search-outline' as const, filled: 'search' as const },
+const HAPTIC_RESELECT_GAP_MS = 50
+
+/** Переключение на другую вкладку */
+function tabHapticSwitch() {
+  if (Platform.OS === 'web') return
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
 }
 
-const labelByRoute: Record<keyof typeof tabIcons, string> = {
-  index: 'Home',
-  tournaments: 'Events',
-  clubs: 'Clubs',
-  chats: 'Chats',
-  ai: 'AI',
-  search: 'Search',
+/** Повторный тап по уже активной вкладке */
+function tabHapticReselectDouble() {
+  if (Platform.OS === 'web') return
+  void (async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+      await new Promise((r) => setTimeout(r, HAPTIC_RESELECT_GAP_MS))
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+    } catch {
+      /* нет Taptic Engine / haptics */
+    }
+  })()
 }
 
 export default function TabsLayout() {
-  const { colors, theme } = useAppTheme()
-  const tabInactive = colors.textMuted
-  const tabActive = colors.primary
-
   return (
     <Fragment>
       <TabDataWarmup />
+      <TabRepeatProvider>
+        <TabsLayoutInner />
+      </TabRepeatProvider>
+    </Fragment>
+  )
+}
+
+function TabsLayoutInner() {
+  const { colors, theme } = useAppTheme()
+  const tabInactive = colors.textMuted
+  const tabActive = colors.primary
+  const { bumpTabShake, bumpHomeTabReselect } = useTabRepeat()
+
+  return (
     <Tabs
       key={theme}
       screenOptions={({ route }) => ({
@@ -61,55 +77,88 @@ export default function TabsLayout() {
         },
         tabBarIcon: ({ focused }) => {
           const name = route.name as keyof typeof tabIcons
-          const label = labelByRoute[name] ?? ''
-          const pair = tabIcons[name] ?? tabIcons.index
-          const iconName = focused ? pair.filled : pair.outline
-          const color = focused ? tabActive : tabInactive
           return (
-            <View style={styles.tabSlot}>
-              <View style={styles.tabItem}>
-                <Ionicons name={iconName} size={22} color={color} />
-                <Text style={[styles.tabLabel, { color }]} numberOfLines={2}>
-                  {label}
-                </Text>
-              </View>
-            </View>
+            <TabBarTabIcon
+              routeName={name}
+              focused={focused}
+              tabActive={tabActive}
+              tabInactive={tabInactive}
+            />
           )
         },
       })}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="tournaments" options={{ title: 'Events' }} />
-      <Tabs.Screen name="clubs" options={{ title: 'Clubs' }} />
-      <Tabs.Screen name="chats" options={{ title: 'Chats' }} />
-      <Tabs.Screen name="ai" options={{ title: 'AI' }} />
-      <Tabs.Screen name="search" options={{ href: null }} />
+      <Tabs.Screen
+        name="index"
+        options={{ title: 'Home' }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              bumpTabShake('index')
+              bumpHomeTabReselect()
+              tabHapticReselectDouble()
+              return
+            }
+            tabHapticSwitch()
+          },
+        })}
+      />
+      <Tabs.Screen
+        name="tournaments"
+        options={{ title: 'Events' }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              bumpTabShake('tournaments')
+              tabHapticReselectDouble()
+              return
+            }
+            tabHapticSwitch()
+          },
+        })}
+      />
+      <Tabs.Screen
+        name="clubs"
+        options={{ title: 'Clubs' }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              bumpTabShake('clubs')
+              tabHapticReselectDouble()
+              return
+            }
+            tabHapticSwitch()
+          },
+        })}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{ title: 'Chats' }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              bumpTabShake('chats')
+              tabHapticReselectDouble()
+              return
+            }
+            tabHapticSwitch()
+          },
+        })}
+      />
+      <Tabs.Screen
+        name="ai"
+        options={{ title: 'AI' }}
+        listeners={({ navigation }) => ({
+          tabPress: () => {
+            if (navigation.isFocused()) {
+              bumpTabShake('ai')
+              tabHapticReselectDouble()
+              return
+            }
+            tabHapticSwitch()
+          },
+        })}
+      />
     </Tabs>
-    </Fragment>
   )
 }
-
-const styles = StyleSheet.create({
-  tabSlot: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabItem: {
-    width: '100%',
-    maxWidth: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 0,
-    gap: 2,
-  },
-  tabLabel: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    width: '100%',
-    paddingHorizontal: 1,
-  },
-})

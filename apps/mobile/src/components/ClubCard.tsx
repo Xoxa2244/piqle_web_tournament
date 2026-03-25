@@ -40,11 +40,13 @@ type ClubSummary = {
 type ClubCardProps = {
   club: ClubSummary
   onPress: () => void
+  /** Tap on rating area (does not navigate). */
+  onRatingPress?: () => void
   onJoin?: () => void
   joinLoading?: boolean
 }
 
-export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) => {
+export const ClubCard = ({ club, onPress, onRatingPress, onJoin, joinLoading }: ClubCardProps) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isOwner = String(club.role ?? '').toUpperCase() === 'OWNER'
@@ -87,14 +89,29 @@ export const ClubCard = ({ club, onPress, onJoin, joinLoading }: ClubCardProps) 
               </View>
             </View>
 
-            <View style={styles.ratingRow}>
-              <RatingStarIcon size={16} filled color="#F4B000" />
-              {showPublicRating ? (
-                <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
-              ) : (
-                <Text style={styles.ratingTextMuted}>New</Text>
-              )}
-            </View>
+            {onRatingPress ? (
+              <Pressable
+                onPress={() => onRatingPress()}
+                hitSlop={10}
+                style={({ pressed }) => [styles.ratingRow, pressed && styles.ratingRowPressed]}
+              >
+                <RatingStarIcon size={16} filled color="#F4B000" />
+                {showPublicRating ? (
+                  <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
+                ) : (
+                  <Text style={styles.ratingTextMuted}>New</Text>
+                )}
+              </Pressable>
+            ) : (
+              <View style={styles.ratingRow}>
+                <RatingStarIcon size={16} filled color="#F4B000" />
+                {showPublicRating ? (
+                  <Text style={styles.ratingText}>{club.feedbackSummary!.averageRating!.toFixed(1)}</Text>
+                ) : (
+                  <Text style={styles.ratingTextMuted}>New</Text>
+                )}
+              </View>
+            )}
           </View>
         </View>
 
@@ -274,6 +291,9 @@ const createStyles = (colors: ThemePalette) =>
       paddingVertical: 5,
       marginLeft: 'auto',
       maxWidth: 120,
+    },
+    ratingRowPressed: {
+      opacity: 0.88,
     },
     memberText: {
       color: colors.textMuted,

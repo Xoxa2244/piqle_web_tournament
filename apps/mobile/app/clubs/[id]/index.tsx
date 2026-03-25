@@ -419,15 +419,22 @@ export default function ClubDetailScreen() {
       <View style={styles.clubInfoWrap}>
         {clubDescription ? (
           <View style={styles.clubDescriptionBlock}>
+            {!clubDescriptionExpanded && !clubDescriptionExpandable ? (
+              <Text
+                style={[styles.clubDescriptionText, styles.clubDescriptionMeasureText]}
+                onTextLayout={(event) => {
+                  if (clubDescriptionExpanded || clubDescriptionExpandable) return
+                  if (event.nativeEvent.lines.length > 3) {
+                    setClubDescriptionExpandable(true)
+                  }
+                }}
+              >
+                {clubDescription}
+              </Text>
+            ) : null}
             <Text
               style={styles.clubDescriptionText}
               numberOfLines={clubDescriptionExpanded ? undefined : 3}
-              onTextLayout={(event) => {
-                if (clubDescriptionExpanded || clubDescriptionExpandable) return
-                if (event.nativeEvent.lines.length > 3) {
-                  setClubDescriptionExpandable(true)
-                }
-              }}
             >
               {clubDescription}
             </Text>
@@ -719,6 +726,17 @@ export default function ClubDetailScreen() {
           return name.includes(q) || email.includes(q)
         })
       : allMembers
+    const admins = [...members]
+      .filter((m: any) => String(m?.role ?? '').trim() !== '')
+      .sort((a: any, b: any) => {
+        const ra = String(a?.role ?? '').toUpperCase()
+        const rb = String(b?.role ?? '').toUpperCase()
+        const pa = ra === 'OWNER' ? 0 : 1
+        const pb = rb === 'OWNER' ? 0 : 1
+        if (pa !== pb) return pa - pb
+        return String(a?.user?.name ?? '').localeCompare(String(b?.user?.name ?? ''))
+      })
+    const regularMembers = members.filter((m: any) => String(m?.role ?? '').trim() === '')
     const bans = q
       ? allBans.filter((b) => {
           const name = String(b?.user?.name ?? '').toLowerCase()
@@ -881,13 +899,96 @@ export default function ClubDetailScreen() {
             <LoadingBlock label="Loading members…" />
           ) : (
             <View style={styles.membersWrap}>
+              {admins.length > 0 ? (
+                <View style={styles.adminsBlock}>
+                  <View style={styles.membersHeaderRow}>
+                    <Text style={styles.membersHeaderTitle}>Admins</Text>
+                    <Text style={styles.membersHeaderCount}>{String(admins.length)}</Text>
+                  </View>
+                  <View style={styles.sectionHeaderToListSpacer} />
+                  <View style={styles.membersList}>
+                    {admins.map((member: any) => {
+                      const joined = formatJoined(member.joinedAt)
+                      const secondary = joined || null
+                      const role = String(member.role ?? '').toUpperCase()
+                      const isOwner = role === 'OWNER'
+                      const roleBadge =
+                        role === 'OWNER'
+                          ? { label: 'owner', icon: 'crown' as const, bg: 'rgba(255, 193, 7, 0.16)', border: 'rgba(255, 193, 7, 0.28)', fg: '#a06b00' }
+                          : role
+                          ? { label: 'admin', icon: 'shield' as const, bg: 'rgba(47, 107, 255, 0.12)', border: 'rgba(47, 107, 255, 0.22)', fg: '#2F6BFF' }
+                          : null
+                      return (
+                        <SurfaceCard
+                          key={member.userId}
+                          padded={false}
+                          style={[styles.memberCard, isOwner && styles.memberCardOwner]}
+                        >
+                          <View style={styles.memberCardRow}>
+                            <Pressable
+                              disabled={!member.userId}
+                              onPress={() => {
+                                if (!member.userId) return
+                                router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                              }}
+                              style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
+                            >
+                              <RemoteUserAvatar
+                                uri={member.user?.image}
+                                size={48}
+                                fallback="initials"
+                                initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
+                              />
+                            </Pressable>
+
+                            <View style={styles.memberMain}>
+                              <View style={styles.memberTopRow}>
+                                <View style={styles.memberTopMain}>
+                                  <Pressable
+                                    disabled={!member.userId}
+                                    onPress={() => {
+                                      if (!member.userId) return
+                                      router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                                    }}
+                                    hitSlop={8}
+                                    style={({ pressed }) => [pressed && member.userId && styles.namePress]}
+                                  >
+                                    <Text style={styles.memberName} numberOfLines={1}>
+                                      {member.user?.name || 'Member'}
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                                {roleBadge ? (
+                                  <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
+                                    <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
+                                    <Text style={[styles.rolePillText, { color: roleBadge.fg }]}>{roleBadge.label}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              {secondary ? (
+                                <Text style={styles.memberMetaText} numberOfLines={1}>
+                                  {secondary}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        </SurfaceCard>
+                      )
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {admins.length > 0 ? <View style={styles.sectionSpacer} /> : null}
+
               <View style={styles.membersHeaderRow}>
                 <Text style={styles.membersHeaderTitle}>Members</Text>
-                <Text style={styles.membersHeaderCount}>{`${allMembers.length} total`}</Text>
+                <Text style={styles.membersHeaderCount}>{String(regularMembers.length)}</Text>
               </View>
+              <View style={styles.sectionHeaderToListSpacer} />
 
               <View style={styles.membersList}>
-                {members.map((member: any) => {
+                {regularMembers.map((member: any) => {
                   const joined = formatJoined(member.joinedAt)
                   const secondary = joined || null
                   const role = String(member.role ?? '').toUpperCase()
@@ -967,11 +1068,14 @@ export default function ClubDetailScreen() {
                 })}
               </View>
               {canModerate ? (
-                <View style={styles.bansWrap}>
+                <>
+                  <View style={styles.sectionSpacer} />
+                  <View style={styles.bansWrap}>
                   <View style={styles.membersHeaderRow}>
                     <Text style={styles.membersHeaderTitle}>Banned users</Text>
-                    <Text style={styles.membersHeaderCount}>{`${allBans.length} total`}</Text>
+                    <Text style={styles.membersHeaderCount}>{String(allBans.length)}</Text>
                   </View>
+                    <View style={styles.sectionHeaderToListSpacer} />
                   {bans.length === 0 ? (
                     <SurfaceCard padded={false} style={styles.memberCard}>
                       <View style={styles.emptyBansCard}>
@@ -1048,7 +1152,8 @@ export default function ClubDetailScreen() {
                       })}
                     </View>
                   )}
-                </View>
+                  </View>
+                </>
               ) : null}
             </View>
           )}
@@ -1268,11 +1373,8 @@ export default function ClubDetailScreen() {
             <View style={styles.upcomingSection}>
               <SectionTitle
                 title="Upcoming tournaments"
-                action={club.tournaments.length > 0 ? (
-                  <Pressable onPress={() => router.push(`/clubs/${club.id}/events`)}>
-                    <Text style={styles.viewAll}>View all</Text>
-                  </Pressable>
-                ) : undefined}
+                actionLabel={club.tournaments.length > 0 ? 'View all' : undefined}
+                onActionPress={club.tournaments.length > 0 ? () => router.push(`/clubs/${club.id}/events`) : undefined}
               />
               {club.tournaments.length > 0 ? (
                 club.tournaments.slice(0, 5).map((tournament) => (
@@ -1329,7 +1431,7 @@ export default function ClubDetailScreen() {
               label="Rate this club"
               onPress={() => {
                 setClubFeedbackInfoOpen(false)
-                setClubFeedbackOpen(true)
+                setTimeout(() => setClubFeedbackOpen(true), 280)
               }}
             />
           ) : undefined
@@ -1713,6 +1815,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  clubDescriptionMeasureText: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    top: spacing.md,
+    opacity: 0,
+    zIndex: -1,
+  },
   clubBookingLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1736,7 +1846,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   membersSearchWrap: {
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
   membersSearchWrapInline: {
@@ -1744,7 +1854,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   pendingWrap: {
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
     gap: 12,
   },
@@ -1833,14 +1943,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 0, 110, 0.28)',
   },
   membersWrap: {
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
     paddingHorizontal: spacing.lg,
-    gap: 12,
+    gap: 0,
+  },
+  adminsBlock: {
+    gap: 0,
   },
   membersHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
+  },
+  /** Между секциями (Pending → Admins → Members → Banned) */
+  sectionSpacer: {
+    height: spacing.md,
+  },
+  /** Заголовок секции → список карточек (единый) */
+  sectionHeaderToListSpacer: {
+    height: 12,
   },
   membersHeaderTitle: {
     color: palette.text,
@@ -1857,8 +1978,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   bansWrap: {
-    marginTop: spacing.md,
-    gap: 10,
+    marginTop: spacing.xl,
+    gap: 0,
   },
   memberCard: {
     borderRadius: 18,
@@ -2129,10 +2250,6 @@ const styles = StyleSheet.create({
   upcomingSection: {
     marginTop: spacing.xl,
     gap: 12,
-  },
-  viewAll: {
-    color: palette.primary,
-    fontWeight: '700',
   },
   emptyUpcomingCard: {
     alignItems: 'center',

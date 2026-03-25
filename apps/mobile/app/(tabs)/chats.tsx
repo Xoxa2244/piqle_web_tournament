@@ -325,12 +325,12 @@ const createStyles = (colors: ThemePalette) =>
   },
   tabContent: {
     paddingBottom: spacing.xxl,
-    gap: spacing.sm,
+    gap: 0,
   },
   sectionLabel: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.xs,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',

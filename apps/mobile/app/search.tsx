@@ -2,16 +2,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Feather } from '@expo/vector-icons'
 import { useLocalSearchParams, router } from 'expo-router'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 
-import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { PageLayout } from '../../src/components/navigation/PageLayout'
-import { SurfaceCard } from '../../src/components/ui'
-import { formatDate, formatLocation } from '../../src/lib/formatters'
-import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
-import { trpc } from '../../src/lib/trpc'
-import { useAuth } from '../../src/providers/AuthProvider'
-import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { OptionalLinearGradient } from '../src/components/OptionalLinearGradient'
+import { PageLayout } from '../src/components/navigation/PageLayout'
+import { SurfaceCard } from '../src/components/ui'
+import { formatDate, formatLocation } from '../src/lib/formatters'
+import { radius, spacing, type ThemePalette } from '../src/lib/theme'
+import { trpc } from '../src/lib/trpc'
+import { useAuth } from '../src/providers/AuthProvider'
+import { useAppTheme } from '../src/providers/ThemeProvider'
 
 const SEARCH_HISTORY_KEY = 'piqle.mobile.search.history'
 const DEFAULT_RECENT_SEARCHES = [
@@ -183,7 +192,7 @@ const EmptySearchCard = ({ query }: { query: string }) => {
   )
 }
 
-export default function SearchTab() {
+export default function SearchScreen() {
   const { colors, styles } = useSearchTheme()
   const params = useLocalSearchParams<{ returnTo?: string }>()
   const { token } = useAuth()
@@ -422,6 +431,8 @@ export default function SearchTab() {
           contentContainerStyle={styles.contentScrollBody}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           bounces
         >
           {showDiscovery ? (
@@ -517,220 +528,221 @@ export default function SearchTab() {
   )
 }
 
-const createStyles = (colors: ThemePalette) => StyleSheet.create({
-  layoutContent: {
-    paddingTop: 0,
-    paddingBottom: 0,
-    paddingHorizontal: 0,
-    gap: 0,
-  },
-  page: {
-    flex: 1,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchInputShell: {
-    flex: 1,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceElevated,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 15,
-    paddingVertical: 0,
-  },
-  contentScroll: {
-    flex: 1,
-  },
-  contentScrollBody: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: 124,
-    gap: 30,
-  },
-  sectionBlock: {
-    gap: 14,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  sectionTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 19,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  sectionAction: {
-    borderRadius: 999,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-  },
-  sectionActionText: {
-    color: '#56708b',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  cardsColumn: {
-    gap: 10,
-  },
-  cardPressable: {
-    borderRadius: radius.lg,
-  },
-  suggestionCard: {
-    minHeight: 84,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(31, 160, 53, 0.14)',
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-    paddingHorizontal: 14,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  suggestionGradient: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
-  },
-  suggestionIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  resultRow: {
-    minHeight: 78,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  recentRow: {
-    minHeight: 62,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  resultIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  cardCopy: {
-    flex: 1,
-    gap: 4,
-  },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  cardSubtitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  recentText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  loadingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    minHeight: 72,
-  },
-  loadingText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  helperCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  helperText: {
-    flex: 1,
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyCard: {
-    alignItems: 'center',
-    paddingVertical: 26,
-  },
-  emptyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.brandPrimaryTint,
-  },
-  emptyTitle: {
-    marginTop: 14,
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  emptyBody: {
-    marginTop: 6,
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-})
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
+    layoutContent: {
+      paddingTop: 0,
+      paddingBottom: 0,
+      paddingHorizontal: 0,
+      gap: 0,
+    },
+    page: {
+      flex: 1,
+    },
+    searchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    closeButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchInputShell: {
+      flex: 1,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceElevated,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    searchInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 15,
+      paddingVertical: 0,
+    },
+    contentScroll: {
+      flex: 1,
+    },
+    contentScrollBody: {
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      paddingBottom: 124,
+      gap: 30,
+    },
+    sectionBlock: {
+      gap: 14,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    sectionTitleWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    sectionTitle: {
+      color: colors.text,
+      fontSize: 19,
+      fontWeight: '800',
+      letterSpacing: -0.3,
+    },
+    sectionAction: {
+      borderRadius: 999,
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+    },
+    sectionActionText: {
+      color: '#56708b',
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    cardsColumn: {
+      gap: 10,
+    },
+    cardPressable: {
+      borderRadius: radius.lg,
+    },
+    suggestionCard: {
+      minHeight: 84,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: 'rgba(31, 160, 53, 0.14)',
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+      paddingHorizontal: 14,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    suggestionGradient: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: radius.lg,
+    },
+    suggestionIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    resultRow: {
+      minHeight: 78,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    recentRow: {
+      minHeight: 62,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    resultIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+    },
+    cardCopy: {
+      flex: 1,
+      gap: 4,
+    },
+    cardTitle: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '700',
+      letterSpacing: -0.2,
+    },
+    cardSubtitle: {
+      color: colors.textMuted,
+      fontSize: 13,
+    },
+    recentText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    loadingCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      minHeight: 72,
+    },
+    loadingText: {
+      color: colors.textMuted,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    helperCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    helperText: {
+      flex: 1,
+      color: colors.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    emptyCard: {
+      alignItems: 'center',
+      paddingVertical: 26,
+    },
+    emptyIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.brandPrimaryTint,
+    },
+    emptyTitle: {
+      marginTop: 14,
+      color: colors.text,
+      fontSize: 17,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    emptyBody: {
+      marginTop: 6,
+      color: colors.textMuted,
+      fontSize: 14,
+      lineHeight: 20,
+      textAlign: 'center',
+    },
+    pressed: {
+      opacity: 0.9,
+    },
+  })

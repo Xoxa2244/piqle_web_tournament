@@ -39,6 +39,13 @@ const RootNavigator = () => {
         <Stack.Screen name="index" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="search"
+          options={{
+            gestureEnabled: true,
+            animation: 'slide_from_right',
+          }}
+        />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="profile/index" />
         <Stack.Screen name="profile/edit" />

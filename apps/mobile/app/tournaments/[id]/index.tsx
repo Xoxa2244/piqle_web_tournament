@@ -1350,7 +1350,7 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.text,
   },
   sectionStack: {
-    marginTop: 24,
+    marginTop: 16,
     gap: spacing.md,
   },
   invitationActions: {

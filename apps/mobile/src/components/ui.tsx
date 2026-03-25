@@ -140,12 +140,16 @@ export const SectionTitle = ({
   title,
   action,
   subtitle,
+  actionLabel,
+  onActionPress,
 }: {
   title: string
   subtitle?: string
   action?: ReactNode
+  actionLabel?: string
+  onActionPress?: () => void
 }) => {
-  const { styles } = useThemedUi()
+  const { colors, styles } = useThemedUi()
   return (
     <View style={styles.sectionRow}>
       <View style={{ flex: 1 }}>
@@ -154,7 +158,17 @@ export const SectionTitle = ({
           <Text style={styles.sectionSubtitle}>{String(subtitle)}</Text>
         ) : null}
       </View>
-      {React.isValidElement(action) ? action : null}
+      {React.isValidElement(action) ? (
+        action
+      ) : actionLabel && onActionPress ? (
+        <Pressable
+          onPress={onActionPress}
+          hitSlop={8}
+          style={({ pressed }) => [styles.sectionActionPressable, pressed && styles.sectionActionPressablePressed]}
+        >
+          <Text style={[styles.sectionActionText, { color: colors.primary }]}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   )
 }
@@ -546,6 +560,17 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     marginTop: 4,
     color: colors.textMuted,
     fontSize: 13,
+  },
+  sectionActionPressable: {
+    alignSelf: 'flex-start',
+  },
+  sectionActionPressablePressed: {
+    opacity: 0.8,
+  },
+  sectionActionText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   pill: {
     alignSelf: 'flex-start',

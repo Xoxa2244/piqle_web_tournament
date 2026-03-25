@@ -730,7 +730,7 @@ const createStyles = (colors: ThemePalette) =>
     height: '100%',
   },
   title: {
-    marginTop: 24,
+    marginTop: 16,
     color: colors.text,
     fontSize: 50,
     fontWeight: '800',

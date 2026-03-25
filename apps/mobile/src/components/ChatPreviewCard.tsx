@@ -28,7 +28,7 @@ export const ChatPreviewCard = ({
       <View style={styles.item}>
         <View style={styles.row}>
           <TournamentThumbnail imageUri={imageUri} size={48} />
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={styles.textCol}>
             <View style={styles.titleRow}>
               <Text style={styles.title} numberOfLines={1}>
                 {title}
@@ -90,8 +90,13 @@ const createStyles = (colors: ThemePalette) =>
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
+  },
+  textCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   titleRow: {
     flexDirection: 'row',

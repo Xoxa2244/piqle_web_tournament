@@ -11,6 +11,7 @@ import { ActionButton, EmptyState, LoadingBlock, SectionTitle, SurfaceCard } fro
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
+import { useTabRepeat } from '../../src/contexts/TabRepeatContext'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
@@ -181,6 +182,8 @@ export default function HomeTab() {
   const pullToRefresh = usePullToRefresh(onRefreshHome)
   const [topBarRefreshPulseKey, setTopBarRefreshPulseKey] = useState(0)
   const prevRefreshingRef = useRef(false)
+  const { homeReselectSignal } = useTabRepeat()
+  const prevHomeReselectRef = useRef(0)
 
   useEffect(() => {
     if (pullToRefresh.refreshing && !prevRefreshingRef.current) {
@@ -188,6 +191,13 @@ export default function HomeTab() {
     }
     prevRefreshingRef.current = pullToRefresh.refreshing
   }, [pullToRefresh.refreshing])
+
+  useEffect(() => {
+    if (homeReselectSignal > prevHomeReselectRef.current) {
+      setTopBarRefreshPulseKey((k) => k + 1)
+      prevHomeReselectRef.current = homeReselectSignal
+    }
+  }, [homeReselectSignal])
 
   const allMyEvents = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
@@ -300,10 +310,13 @@ export default function HomeTab() {
           </SurfaceCard>
         </Pressable>
 
-        <SectionTitle
-          title="My Events"
-          action={<ActionButton label="View All" variant="ghost" onPress={() => router.push('/tournaments')} />}
-        />
+        <View style={styles.myEventsHeader}>
+          <SectionTitle
+            title="My Events"
+            actionLabel="View all"
+            onActionPress={() => router.push('/tournaments')}
+          />
+        </View>
 
         <PickleRefreshScrollView
           style={styles.listScroll}
@@ -397,6 +410,10 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   listScrollContent: {
     gap: spacing.md,
     paddingBottom: spacing.xxl,
+  },
+  myEventsHeader: {
+    marginTop: spacing.xs,
+    marginBottom: -spacing.xs,
   },
   headerSection: {
     paddingTop: spacing.sm,

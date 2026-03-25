@@ -5,7 +5,7 @@ const normalizeBaseUrl = (value?: string | null) => {
 }
 
 export const API_BASE_URL = normalizeBaseUrl(process.env.EXPO_PUBLIC_API_URL)
-export const WEB_BASE_URL = API_BASE_URL
+export const WEB_BASE_URL = normalizeBaseUrl(process.env.EXPO_PUBLIC_WEB_URL ?? process.env.EXPO_PUBLIC_API_URL)
 export const FEEDBACK_API_ENABLED =
   !__DEV__ && String(process.env.EXPO_PUBLIC_ENABLE_FEEDBACK_API ?? '').trim().toLowerCase() === 'true'
 
