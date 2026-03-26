@@ -347,6 +347,23 @@ export async function runCourtReserveSync(
   const credentials = decryptCredentials(connector.credentialsEncrypted)
   const client = new CourtReserveClient(credentials.username, credentials.password, connector.baseUrl)
 
+  // Ensure PartnerApp exists for ExternalIdMapping FK constraint
+  const existingPartner = await prisma.partnerApp.findFirst({ where: { partnerId } })
+  if (!existingPartner) {
+    const crypto = await import('crypto')
+    await prisma.partnerApp.create({
+      data: {
+        partnerId,
+        environment: 'PRODUCTION',
+        keyId: `cr_${clubId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`,
+        secretHash: 'connector-internal',
+        status: 'ACTIVE',
+        scopes: ['connector:sync'],
+      },
+    })
+    console.log(`[CR Sync] Created PartnerApp for ${partnerId}`)
+  }
+
   const now = new Date()
   const from = new Date(now)
   from.setDate(from.getDate() - daysBack)
