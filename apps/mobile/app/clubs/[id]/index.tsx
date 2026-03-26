@@ -1794,7 +1794,7 @@ const styles = StyleSheet.create({
   },
   membershipRow: {
     marginTop: 0,
-    marginBottom: 0,
+    marginBottom: spacing.md,
     paddingHorizontal: spacing.lg,
   },
   membershipHint: {
@@ -1804,7 +1804,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   clubInfoWrap: {
-    marginTop: spacing.md,
+    marginTop: 0,
     marginBottom: spacing.md,
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,

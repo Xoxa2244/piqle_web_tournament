@@ -17,7 +17,6 @@ import {
   type ScrollView as RNScrollViewType,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
 import { EntityImage } from '../../../src/components/EntityImage'
@@ -383,26 +382,46 @@ export default function TournamentDetailScreen() {
     },
   })
 
-  const dashboardEmbedUrl = useMemo(() => {
-    if (!tournamentId) return null
-
-    const params = new URLSearchParams()
-    const divisionId =
-      typeof myStatusQuery.data?.divisionId === 'string' ? myStatusQuery.data.divisionId : null
-    const teamId = typeof myStatusQuery.data?.teamId === 'string' ? myStatusQuery.data.teamId : null
-
-    if (divisionId) params.set('divisionId', divisionId)
-    if (teamId) params.set('teamId', teamId)
-
-    const query = params.toString()
-    return buildWebUrl(`/scoreboard/${tournamentId}/embed${query ? `?${query}` : ''}`)
-  }, [myStatusQuery.data?.divisionId, myStatusQuery.data?.teamId, tournamentId])
-
   const dashboardPublicUrl = useMemo(
     () => (tournamentId ? buildWebUrl(`/scoreboard/${tournamentId}`) : null),
     [tournamentId]
   )
-  const dashboardHeight = Math.max(Math.round(windowHeight * 0.95), 640)
+  const dashboardBoardQuery = api.public.getTournamentById.useQuery(
+    { id: tournamentId },
+    { enabled: Boolean(tournamentId) && activeTab === 'dashboard', retry: false }
+  )
+  const [dashboardDivisionId, setDashboardDivisionId] = useState<string | null>(null)
+  const dashboardStandingsQuery = api.public.getPublicStandings.useQuery(
+    { divisionId: dashboardDivisionId ?? '' },
+    {
+      enabled:
+        Boolean(dashboardDivisionId) &&
+        activeTab === 'dashboard' &&
+        tournamentQuery.data?.format !== 'INDY_LEAGUE',
+      retry: false,
+    }
+  )
+  const dashboardStageQuery = api.public.getPublicDivisionStage.useQuery(
+    { divisionId: dashboardDivisionId ?? '' },
+    {
+      enabled:
+        Boolean(dashboardDivisionId) &&
+        activeTab === 'dashboard' &&
+        tournamentQuery.data?.format !== 'INDY_LEAGUE',
+      retry: false,
+    }
+  )
+  const dashboardBracketQuery = (api as any).public.getBracketPublic.useQuery(
+    { divisionId: dashboardDivisionId ?? '' },
+    {
+      enabled:
+        Boolean(dashboardDivisionId) &&
+        activeTab === 'dashboard' &&
+        tournamentQuery.data?.format !== 'INDY_LEAGUE',
+      retry: false,
+      refetchOnWindowFocus: false,
+    }
+  )
 
   useEffect(() => {
     if (!tournamentId || !paymentState) return
@@ -617,6 +636,14 @@ export default function TournamentDetailScreen() {
     myStatusQuery.data?.teamName
       ? `${myStatusQuery.data.divisionName} · ${myStatusQuery.data.teamName}`
       : null
+  const myTeamId = myStatusQuery.data?.status === 'active' ? myStatusQuery.data?.teamId : null
+  const dashboardTournamentData = (dashboardBoardQuery.data as any) ?? null
+  const dashboardDivisionsData = ((dashboardTournamentData?.divisions ??
+    (fullTournamentQuery.data as any)?.divisions ??
+    tournament.divisions ??
+    []) as any[])
+  const myDivisionId = myStatusQuery.data?.status === 'active' ? myStatusQuery.data?.divisionId : null
+  const myTeamName = myStatusQuery.data?.status === 'active' ? myStatusQuery.data?.teamName : null
   const statusMeta = getStatusMeta(tournamentAvailabilityData, myStatus, hasPrivilegedAccess)
   const compactHeroStatusLabel = isCompactHeroStatus(statusMeta.label) ? statusMeta.label : null
   const tournamentDescription = String(tournament.description ?? '').trim()
@@ -802,6 +829,16 @@ export default function TournamentDetailScreen() {
     })
   }, [commentsLen])
 
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return
+    const divisions = ((dashboardBoardQuery.data?.divisions ?? []) as any[])
+    if (!divisions.length) return
+    if (dashboardDivisionId && divisions.some((d: any) => d.id === dashboardDivisionId)) return
+    const myDivision = myStatusQuery.data?.divisionId
+    const preferred = (myDivision && divisions.find((d: any) => d.id === myDivision)) || divisions[0]
+    setDashboardDivisionId(preferred?.id ?? null)
+  }, [activeTab, dashboardBoardQuery.data?.divisions, dashboardDivisionId, myStatusQuery.data?.divisionId])
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <KeyboardAvoidingView
@@ -905,40 +942,6 @@ export default function TournamentDetailScreen() {
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
-        {tournamentDescription ? (
-          <View style={styles.descriptionSection}>
-            <View style={styles.descriptionBlock}>
-              {!tournamentDescriptionExpanded && !tournamentDescriptionExpandable ? (
-                <Text
-                  style={[styles.descriptionText, styles.descriptionMeasureText]}
-                  onTextLayout={(event) => {
-                    if (tournamentDescriptionExpanded || tournamentDescriptionExpandable) return
-                    if (event.nativeEvent.lines.length > 3) {
-                      setTournamentDescriptionExpandable(true)
-                    }
-                  }}
-                >
-                  {tournamentDescription}
-                </Text>
-              ) : null}
-              <Text style={styles.descriptionText} numberOfLines={tournamentDescriptionExpanded ? undefined : 3}>
-                {tournamentDescription}
-              </Text>
-              {tournamentDescriptionExpandable ? (
-                <Pressable
-                  onPress={() => setTournamentDescriptionExpanded((value) => !value)}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.descriptionLinkPressable, pressed && styles.descriptionLinkPressed]}
-                >
-                  <Text style={styles.descriptionLinkText}>
-                    {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-
         {showPrimaryCta ? (
           <View style={styles.inlineCtaSection}>
             <View style={styles.inlineCtaStack}>
@@ -1003,6 +1006,26 @@ export default function TournamentDetailScreen() {
               { value: 'dashboard', label: 'Dashboard' },
             ]}
           />
+          {dashboardRegistrationSummary ? (
+            <Pressable
+              onPress={() => setActiveTab('dashboard')}
+              style={({ pressed }) => [styles.dashboardBanner, pressed && styles.dashboardBannerPressed]}
+            >
+              <Text style={styles.dashboardBannerText}>
+                <Text style={styles.dashboardBannerStrong}>You&apos;re registered:</Text>{' '}
+              </Text>
+              <View style={styles.dashboardBannerChip}>
+                <Text style={styles.dashboardBannerChipText}>
+                  {myStatusQuery.data?.divisionName ?? 'Division'}
+                </Text>
+              </View>
+              <View style={styles.dashboardBannerChip}>
+                <Text style={styles.dashboardBannerChipText}>
+                  {myStatusQuery.data?.teamName ?? 'Team'}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
 
           {activeTab === 'info' ? (
             <View style={styles.sectionStack}>
@@ -1032,12 +1055,38 @@ export default function TournamentDetailScreen() {
                 </SurfaceCard>
               ) : null}
 
-              <SurfaceCard style={styles.detailCard}>
-                <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
-                <Text style={styles.paragraph}>
-                  {tournament.description || 'Tournament details will appear here once the organizer adds them.'}
-                </Text>
-              </SurfaceCard>
+              {tournamentDescription ? (
+                <SurfaceCard style={styles.detailCard}>
+                  <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
+                  {!tournamentDescriptionExpanded && !tournamentDescriptionExpandable ? (
+                    <Text
+                      style={[styles.descriptionText, styles.descriptionMeasureText]}
+                      onTextLayout={(event) => {
+                        if (tournamentDescriptionExpanded || tournamentDescriptionExpandable) return
+                        if (event.nativeEvent.lines.length > 3) {
+                          setTournamentDescriptionExpandable(true)
+                        }
+                      }}
+                    >
+                      {tournamentDescription}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.descriptionText} numberOfLines={tournamentDescriptionExpanded ? undefined : 3}>
+                    {tournamentDescription}
+                  </Text>
+                  {tournamentDescriptionExpandable ? (
+                    <Pressable
+                      onPress={() => setTournamentDescriptionExpanded((value) => !value)}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.descriptionLinkPressable, pressed && styles.descriptionLinkPressed]}
+                    >
+                      <Text style={styles.descriptionLinkText}>
+                        {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </SurfaceCard>
+              ) : null}
 
               <SurfaceCard style={styles.detailCard}>
                 <View style={styles.infoHeaderRow}>
@@ -1282,17 +1331,15 @@ export default function TournamentDetailScreen() {
                   const createdTeams = divisionSlotMetrics.createdTeams
                   const createdSlots = divisionSlotMetrics.createdSlots
                   const filledSlots = divisionSlotMetrics.filledSlots
-                  const spotsLeft = divisionSlotMetrics.openSlots
+                  const isMyDivision = Boolean(myDivisionId && division.id === myDivisionId)
 
                   return (
                     <SurfaceCard key={division.id} style={styles.detailCard}>
                       <View style={styles.divisionHeader}>
                         <Text style={styles.divisionTitle}>{division.name}</Text>
-                        {spotsLeft !== null ? (
-                          <View style={spotsLeft > 10 ? styles.primaryBadge : styles.secondaryBadge}>
-                            <Text style={spotsLeft > 10 ? styles.primaryBadgeText : styles.secondaryBadgeText}>
-                              {spotsLeft} spots left
-                            </Text>
+                        {isMyDivision ? (
+                          <View style={styles.divisionMyBadge}>
+                            <Text style={styles.divisionMyBadgeText}>My division</Text>
                           </View>
                         ) : null}
                       </View>
@@ -1313,30 +1360,25 @@ export default function TournamentDetailScreen() {
                             </Text>
                           </View>
                         </View>
-                        <View style={styles.divisionMetaCell}>
-                          <View style={styles.metaRow}>
-                            <Feather name="dollar-sign" size={16} color={colors.primary} />
-                            <Text style={styles.mutedBodyText}>{feeLabel}</Text>
-                          </View>
+                        <View style={styles.divisionPriceWrap}>
+                          <OptionalLinearGradient
+                            colors={['#FFF3C4', '#F6D77B', '#E8B64B']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.divisionPriceChip}
+                            fallbackColor="#F6D77B"
+                          >
+                            <Text style={styles.divisionPriceChipText}>{feeLabel}</Text>
+                          </OptionalLinearGradient>
                         </View>
                       </View>
-                      {canLeaveTournament ? (
-                        <Pressable
-                          onPress={handleLeaveTournament}
-                          style={({ pressed }) => [styles.smallCtaButton, pressed && styles.smallCtaButtonPressed]}
-                        >
-                          <OptionalLinearGradient
-                            colors={[colors.primary, colors.purple]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.smallCtaGradient}
-                          >
-                            <Text style={styles.smallCtaText}>
-                              {cancelRegistration.isPending ? 'Leaving...' : 'Leave Tournament'}
-                            </Text>
-                          </OptionalLinearGradient>
-                        </Pressable>
-                      ) : registrationOpen ? (
+                      {isMyDivision && myTeamName ? (
+                        <View style={styles.divisionMyTeamRow}>
+                          <Feather name="users" size={16} color={colors.primary} />
+                          <Text style={styles.divisionMyTeamText}>My team: {myTeamName}</Text>
+                        </View>
+                      ) : null}
+                      {registrationOpen && !canLeaveTournament ? (
                         <Pressable
                           onPress={() =>
                             isAuthenticated
@@ -1369,15 +1411,6 @@ export default function TournamentDetailScreen() {
 
           {activeTab === 'dashboard' ? (
             <View style={styles.sectionStack}>
-              {dashboardRegistrationSummary ? (
-                <View style={styles.dashboardBanner}>
-                  <Text style={styles.dashboardBannerText}>
-                    <Text style={styles.dashboardBannerStrong}>You&apos;re registered:</Text>{' '}
-                    {dashboardRegistrationSummary}
-                  </Text>
-                </View>
-              ) : null}
-
               <SurfaceCard padded={false} style={[styles.detailCard, styles.dashboardCard]}>
                 <View style={styles.dashboardHeader}>
                   <View style={styles.dashboardHeaderCopy}>
@@ -1385,6 +1418,9 @@ export default function TournamentDetailScreen() {
                     <Text style={styles.mutedBodyText}>
                       Standings, brackets and live match results from the tournament scoreboard.
                     </Text>
+                    <View style={styles.dashboardFormatChip}>
+                      <Text style={styles.dashboardFormatChipText}>{formatTournamentFormat(tournament.format)}</Text>
+                    </View>
                   </View>
                   <Pressable
                     onPress={handleOpenDashboard}
@@ -1393,23 +1429,185 @@ export default function TournamentDetailScreen() {
                     <Text style={styles.outlineButtonText}>Open full</Text>
                   </Pressable>
                 </View>
+                {dashboardBoardQuery.isLoading ? (
+                  <View style={styles.dashboardLoadingState}>
+                    <LoadingBlock label="Loading dashboard..." />
+                  </View>
+                ) : dashboardDivisionsData.length > 0 ? (
+                  <View style={styles.dashboardNativeStack}>
+                    {(() => {
+                      const divisions = dashboardDivisionsData
+                      const selectedDivision = divisions.find((d: any) => d.id === dashboardDivisionId) ?? divisions[0]
+                      if (!selectedDivision) return null
 
-                {dashboardEmbedUrl ? (
-                  <View style={[styles.dashboardFrame, { height: dashboardHeight }]}>
-                    <WebView
-                      key={dashboardEmbedUrl}
-                      source={{ uri: dashboardEmbedUrl }}
-                      style={styles.dashboardWebView}
-                      originWhitelist={['*']}
-                      nestedScrollEnabled
-                      setSupportMultipleWindows={false}
-                      startInLoadingState
-                      renderLoading={() => (
-                        <View style={styles.dashboardLoadingState}>
-                          <LoadingBlock label="Loading dashboard..." />
+                      const playersPerTeam = getPlayersPerTeam(selectedDivision.teamKind, tournament.format, selectedDivision.name) ?? 2
+                      const stageMatches = ((dashboardStageQuery.data?.matches ?? selectedDivision.matches ?? []) as any[])
+                      const standingsFromApi = ((dashboardStandingsQuery.data?.standings ?? []) as any[])
+                      const teamStats = new Map<string, any>()
+                      ;((selectedDivision.teams ?? []) as any[]).forEach((team: any, idx: number) => {
+                        teamStats.set(team.id, {
+                          teamId: team.id,
+                          teamName: team.name,
+                          rank: idx + 1,
+                          wins: 0,
+                          losses: 0,
+                          pointsFor: 0,
+                          pointsAgainst: 0,
+                          pointDiff: 0,
+                          slotSummary: `${Number(team?.teamPlayers?.length ?? 0)}/${playersPerTeam} slots`,
+                        })
+                      })
+
+                      ;(stageMatches as any[]).forEach((match: any) => {
+                        const teamA = teamStats.get(match.teamAId)
+                        const teamB = teamStats.get(match.teamBId)
+                        if (!teamA || !teamB) return
+                        const games = (match.games ?? []) as any[]
+                        if (!games.length) return
+                        let a = 0
+                        let b = 0
+                        games.forEach((g: any) => {
+                          const sa = Number(g?.scoreA ?? 0)
+                          const sb = Number(g?.scoreB ?? 0)
+                          teamA.pointsFor += sa
+                          teamA.pointsAgainst += sb
+                          teamB.pointsFor += sb
+                          teamB.pointsAgainst += sa
+                          if (sa > sb) a += 1
+                          if (sb > sa) b += 1
+                        })
+                        if (a > b) {
+                          teamA.wins += 1
+                          teamB.losses += 1
+                        } else if (b > a) {
+                          teamB.wins += 1
+                          teamA.losses += 1
+                        }
+                      })
+
+                      const computedRows = Array.from(teamStats.values())
+                        .map((r) => ({ ...r, pointDiff: r.pointsFor - r.pointsAgainst }))
+                        .sort((a, b) => {
+                          if (b.wins !== a.wins) return b.wins - a.wins
+                          if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff
+                          return b.pointsFor - a.pointsFor
+                        })
+                        .map((r, i) => ({ ...r, rank: i + 1 }))
+                      const apiRows = standingsFromApi
+                        .map((r: any) => ({
+                          teamId: r.teamId,
+                          teamName: r.teamName,
+                          rank: Number(r.rank ?? 0),
+                          wins: Number(r.wins ?? 0),
+                          losses: Number(r.losses ?? 0),
+                          pointsFor: Number(r.pointsFor ?? 0),
+                          pointsAgainst: Number(r.pointsAgainst ?? 0),
+                          pointDiff: Number(r.pointDiff ?? 0),
+                        }))
+                        .sort((a: any, b: any) => Number(a.rank ?? 999) - Number(b.rank ?? 999))
+                      const rows = apiRows.length > 0 ? apiRows : computedRows
+
+                      const playInMatches = (((dashboardBracketQuery.data?.playInBracket as any[]) ?? stageMatches.filter((m: any) => m.stage === 'PLAY_IN')) as any[])
+                      const playoffMatches = (((dashboardBracketQuery.data?.playoffBracket as any[]) ?? stageMatches.filter((m: any) => m.stage === 'ELIMINATION')) as any[])
+                      const hasMyTeam = Boolean(myTeamId && rows.some((row: any) => row.teamId === myTeamId))
+
+                      return (
+                        <View style={[styles.dashboardDivisionCard, hasMyTeam && styles.dashboardDivisionCardActive]}>
+                          {divisions.length > 1 ? (
+                            <SegmentedControl
+                              value={selectedDivision.id}
+                              onChange={(v) => setDashboardDivisionId(String(v))}
+                              options={divisions.map((d: any) => ({ value: d.id, label: d.name }))}
+                            />
+                          ) : null}
+                          <View style={styles.dashboardDivisionHeader}>
+                            <Text style={styles.dashboardDivisionTitle}>{selectedDivision.name}</Text>
+                            <Text style={styles.dashboardDivisionMeta}>
+                              {rows.length} teams{dashboardStageQuery.data?.stage ? ` · ${String(dashboardStageQuery.data.stage).replaceAll('_', ' ')}` : ''}
+                            </Text>
+                          </View>
+                          <View style={styles.dashboardStageBlock}>
+                            <Text style={styles.dashboardStageTitle}>Teams in division</Text>
+                            <View style={styles.dashboardTeamsWrap}>
+                              {rows.map((row: any, idx: number) => {
+                                const isMine = Boolean(myTeamId && row.teamId === myTeamId)
+                                return (
+                                  <View key={`team-pill-${row.teamId ?? idx}`} style={[styles.dashboardTeamPill, isMine && styles.dashboardTeamPillMine]}>
+                                    <Text style={[styles.dashboardTeamPillText, isMine && styles.dashboardStandingTextMine]} numberOfLines={1}>
+                                      {row.teamName ?? 'Team'}
+                                    </Text>
+                                    <Text style={[styles.dashboardTeamPillMeta, isMine && styles.dashboardStandingTextMine]}>
+                                      {row.slotSummary}
+                                    </Text>
+                                  </View>
+                                )
+                              })}
+                            </View>
+                          </View>
+                          <View style={styles.dashboardStageBlock}>
+                            <Text style={styles.dashboardStageTitle}>Round Robin table</Text>
+                          </View>
+                          <View style={styles.dashboardStandingsList}>
+                            <View style={styles.dashboardStandingsHead}>
+                              <Text style={styles.dashboardHeadTeam}>Team</Text>
+                              <Text style={styles.dashboardHeadStat}>W</Text>
+                              <Text style={styles.dashboardHeadStat}>L</Text>
+                              <Text style={styles.dashboardHeadStat}>PF</Text>
+                              <Text style={styles.dashboardHeadStat}>PA</Text>
+                              <Text style={styles.dashboardHeadStat}>Diff</Text>
+                            </View>
+                            {rows.map((row: any, idx: number) => {
+                              const isMine = Boolean(myTeamId && row.teamId === myTeamId)
+                              return (
+                                <View key={`${row.teamId ?? idx}`} style={[styles.dashboardStandingRow, isMine && styles.dashboardStandingRowMine]}>
+                                  <Text style={[styles.dashboardStandingTeam, isMine && styles.dashboardStandingTextMine]} numberOfLines={1}>
+                                    {row.teamName ?? 'Team'}
+                                  </Text>
+                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.wins ?? 0)}</Text>
+                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.losses ?? 0)}</Text>
+                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsFor ?? 0)}</Text>
+                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsAgainst ?? 0)}</Text>
+                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointDiff ?? 0)}</Text>
+                                </View>
+                              )
+                            })}
+                          </View>
+                          {rows.length > 0 && rows.every((r: any) => r.wins === 0 && r.losses === 0) ? (
+                            <View style={styles.dashboardFallbackWrap}>
+                              {rows.map((row: any, idx: number) => (
+                                <Text key={`slot-${row.teamId ?? idx}`} style={styles.dashboardFallbackText}>
+                                  {(row.teamName ?? 'Team')}: {row.slotSummary}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
+                          <View style={styles.dashboardStageBlock}>
+                            <Text style={styles.dashboardStageTitle}>Play-in</Text>
+                            {playInMatches.length ? (
+                              playInMatches.map((m: any) => (
+                                <Text key={m.id} style={styles.dashboardStageMatch}>
+                                  {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
+                                </Text>
+                              ))
+                            ) : (
+                              <Text style={styles.dashboardStageEmpty}>No play-in matches yet.</Text>
+                            )}
+                          </View>
+                          <View style={styles.dashboardStageBlock}>
+                            <Text style={styles.dashboardStageTitle}>Playoff / Bracket</Text>
+                            {playoffMatches.length ? (
+                              playoffMatches.map((m: any) => (
+                                <Text key={m.id} style={styles.dashboardStageMatch}>
+                                  R{Number(m.roundIndex ?? 0) + 1}: {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
+                                </Text>
+                              ))
+                            ) : (
+                              <Text style={styles.dashboardStageEmpty}>Bracket will appear after round-robin.</Text>
+                            )}
+                          </View>
                         </View>
-                      )}
-                    />
+                      )
+                    })()}
                   </View>
                 ) : (
                   <View style={styles.dashboardEmptyWrap}>
@@ -1653,6 +1851,7 @@ const createStyles = (colors: ThemePalette) =>
   },
   heroWrap: {
     marginTop: spacing.md,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     gap: spacing.sm,
   },
@@ -1888,7 +2087,7 @@ const createStyles = (colors: ThemePalette) =>
   },
   inlineCtaSection: {
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   inlineCtaStack: {
     gap: 10,
@@ -2148,14 +2347,60 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '600',
     flex: 1,
   },
+  divisionMyBadge: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  divisionMyBadgeText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   divisionMetaGrid: {
     marginTop: 12,
-    marginBottom: 12,
+    marginBottom: 0,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
   divisionMetaCell: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  divisionMyTeamRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  divisionMyTeamText: {
+    color: colors.primary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  divisionPriceWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  divisionPriceChip: {
+    minHeight: 30,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 180,
+    justifyContent: 'center',
+  },
+  divisionPriceChipText: {
+    color: colors.black,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',
@@ -2163,6 +2408,7 @@ const createStyles = (colors: ThemePalette) =>
     gap: 8,
   },
   smallCtaButton: {
+    marginTop: 12,
     borderRadius: radius.pill,
     overflow: 'hidden',
   },
@@ -2400,23 +2646,203 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 13,
   },
   dashboardBanner: {
-    borderRadius: radius.sm,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.brandPrimaryBorder,
-    backgroundColor: colors.successSoft,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
     paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingVertical: 8,
+    marginTop: spacing.md,
+    marginBottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'nowrap',
+  },
+  dashboardBannerPressed: {
+    opacity: 0.96,
   },
   dashboardBannerText: {
     color: colors.text,
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '700',
   },
   dashboardBannerStrong: {
     fontWeight: '700',
   },
+  dashboardBannerChip: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  dashboardBannerChipText: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
   dashboardCard: {
     overflow: 'hidden',
+  },
+  dashboardNativeStack: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    gap: 10,
+  },
+  dashboardDivisionCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 8,
+  },
+  dashboardDivisionCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(40, 205, 65, 0.08)',
+  },
+  dashboardDivisionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  dashboardDivisionTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    flex: 1,
+  },
+  dashboardDivisionMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dashboardStandingsList: {
+    gap: 6,
+  },
+  dashboardStandingsHead: {
+    minHeight: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+  },
+  dashboardHeadTeam: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  dashboardHeadStat: {
+    width: 28,
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  dashboardStandingRow: {
+    minHeight: 34,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    backgroundColor: colors.surfaceMuted,
+  },
+  dashboardStandingRowMine: {
+    backgroundColor: 'rgba(40, 205, 65, 0.14)',
+  },
+  dashboardStandingRank: {
+    width: 18,
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  dashboardStandingTeam: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dashboardStandingCell: {
+    width: 28,
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  dashboardFallbackWrap: {
+    marginTop: 4,
+    gap: 4,
+  },
+  dashboardFallbackText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  dashboardStageBlock: {
+    marginTop: 6,
+    gap: 4,
+  },
+  dashboardTeamsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dashboardTeamPill: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dashboardTeamPillMine: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
+  },
+  dashboardTeamPillText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: 170,
+  },
+  dashboardTeamPillMeta: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dashboardStageTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dashboardStageMatch: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  dashboardStageEmpty: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  dashboardStandingTextMine: {
+    color: colors.primary,
   },
   dashboardHeader: {
     flexDirection: 'row',
@@ -2428,6 +2854,21 @@ const createStyles = (colors: ThemePalette) =>
   dashboardHeaderCopy: {
     flex: 1,
     gap: 6,
+  },
+  dashboardFormatChip: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  dashboardFormatChipText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   dashboardFrame: {
     overflow: 'hidden',

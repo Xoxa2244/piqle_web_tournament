@@ -436,7 +436,7 @@ export default function TournamentsTab() {
             onChange={setMode}
             options={[
               { value: 'upcoming', label: 'Upcoming' },
-              { value: 'registered', label: 'Registered' },
+              { value: 'registered', label: 'My events' },
               { value: 'past', label: 'Past' },
             ]}
           />
