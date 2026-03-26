@@ -313,3 +313,38 @@ export async function sendSubscriptionCanceledEmail({ clubId, accessUntil }: {
     await sendHtmlEmail(admin.email, 'Your IQSport subscription has been canceled', html)
   }
 }
+
+// ── 7. Member Data Notice (for club to send to members after connecting integration) ──
+
+function buildMemberDataNoticeHtml(clubName: string): string {
+  const baseUrl = getAppBaseUrl()
+  return emailShell(`${clubName} now uses IQSport`, `
+    <tr><td style="padding:28px 24px 12px;">
+      <h1 style="margin:0;font-size:22px;font-weight:700;color:#111827;">${clubName} now uses IQSport</h1>
+      <p style="margin:12px 0 0;font-size:15px;color:#6b7280;">Your club has connected IQSport to improve your experience.</p>
+    </td></tr>
+    <tr><td style="padding:8px 24px 16px;">
+      <p style="margin:0 0 12px;font-size:15px;color:#6b7280;">As part of this, the following data is used for club analytics and scheduling optimization:</p>
+      <ul style="margin:0;padding:0 0 0 20px;font-size:14px;color:#4b5563;">
+        <li style="padding:4px 0;">Your name and contact information</li>
+        <li style="padding:4px 0;">Booking and attendance history</li>
+        <li style="padding:4px 0;">Skill ratings and play preferences</li>
+      </ul>
+    </td></tr>
+    <tr><td style="padding:0 24px 8px;">
+      <p style="margin:0 0 12px;font-size:15px;color:#6b7280;">This data is used <strong>only</strong> for club analytics — it is never sold or shared with advertisers. You can request access to or deletion of your data at any time by contacting your club administrator.</p>
+      <p style="margin:0;font-size:15px;color:#6b7280;">For more details, see our Privacy Policy.</p>
+    </td></tr>
+    ${ctaButton('View Privacy Policy', `${baseUrl}/privacy`)}
+  `)
+}
+
+export async function sendMemberDataNoticeEmail({ to, clubName }: { to: string; clubName: string }) {
+  const html = buildMemberDataNoticeHtml(clubName)
+  await sendHtmlEmail(to, `${clubName} now uses IQSport for club analytics`, html)
+}
+
+/** Get the HTML template for member data notice (for preview in UI) */
+export function getMemberDataNoticeHtml(clubName: string): string {
+  return buildMemberDataNoticeHtml(clubName)
+}

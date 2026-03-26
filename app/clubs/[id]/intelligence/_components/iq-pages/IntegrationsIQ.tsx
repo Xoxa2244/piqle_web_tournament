@@ -81,6 +81,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
   const [baseUrl, setBaseUrl] = useState('')
   const [testResult, setTestResult] = useState<{ ok: boolean; courtCount?: number; error?: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  const [agreedToTerms, setAgreedToTerms] = useState(false)
   const isDev = typeof window !== 'undefined' && (window.location.hostname.includes('dev.') || window.location.hostname === 'localhost')
 
   const utils = trpc.useUtils()
@@ -124,7 +125,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
   }
 
   const handleConnect = () => {
-    connectMutation.mutate({ clubId, username, password, baseUrl: baseUrl || undefined })
+    connectMutation.mutate({ clubId, username, password, baseUrl: baseUrl || undefined, agreedToTerms })
   }
 
   if (isLoading) {
@@ -185,6 +186,26 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
               )}
             </div>
 
+            {/* Consent checkbox */}
+            <label style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 16,
+              cursor: 'pointer', fontSize: 13, lineHeight: 1.5,
+              color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
+            }}>
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                style={{ marginTop: 3, accentColor: '#6366F1', width: 16, height: 16, flexShrink: 0 }}
+              />
+              <span>
+                I confirm that I have the authority to share my club&apos;s member data with IQSport for analytics purposes, and that I agree to the{' '}
+                <a href="/dpa" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Data Processing Agreement</a>,{' '}
+                <a href="/privacy" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Privacy Policy</a>, and{' '}
+                <a href="/terms" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Terms of Service</a>.
+              </span>
+            </label>
+
             {/* Test result */}
             {testResult && (
               <div style={{
@@ -205,7 +226,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 20 }}>
               <IQButton
                 onClick={handleTest}
-                disabled={!username || !password || isTesting}
+                disabled={!username || !password || isTesting || !agreedToTerms}
                 variant="secondary"
                 loading={isTesting}
                 icon={<Plug size={15} />}
@@ -216,7 +237,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
               {testResult?.ok && (
                 <IQButton
                   onClick={handleConnect}
-                  disabled={connectMutation.isPending}
+                  disabled={connectMutation.isPending || !agreedToTerms}
                   variant="primary"
                   loading={connectMutation.isPending}
                   icon={<Zap size={15} />}

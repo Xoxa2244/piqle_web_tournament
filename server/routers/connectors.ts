@@ -52,9 +52,17 @@ export const connectorsRouter = createTRPCRouter({
       username: z.string().min(1),
       password: z.string().min(1),
       baseUrl: z.string().optional(),
+      agreedToTerms: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      if (!input.agreedToTerms) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'You must agree to the Data Processing Agreement, Privacy Policy, and Terms of Service',
+        })
+      }
 
       // Test connection first
       const client = new CourtReserveClient(input.username, input.password, input.baseUrl)
@@ -80,12 +88,18 @@ export const connectorsRouter = createTRPCRouter({
           credentialsEncrypted: encrypted,
           baseUrl: input.baseUrl || 'https://api.courtreserve.com',
           status: 'connected',
+          agreedToTermsAt: new Date(),
+          agreedByUserId: ctx.session.user.id,
+          consentVersion: '1.0',
         },
         update: {
           credentialsEncrypted: encrypted,
           baseUrl: input.baseUrl || 'https://api.courtreserve.com',
           status: 'connected',
           lastError: null,
+          agreedToTermsAt: new Date(),
+          agreedByUserId: ctx.session.user.id,
+          consentVersion: '1.0',
         },
       })
 

@@ -288,6 +288,9 @@ model ClubConnector {
   lastError            String?   @map("last_error")
   syncIntervalHours    Int       @default(6) @map("sync_interval_hours")
   autoSync             Boolean   @default(true) @map("auto_sync")
+  agreedToTermsAt      DateTime? @map("agreed_to_terms_at")
+  agreedByUserId       String?   @map("agreed_by_user_id")
+  consentVersion       String?   @default("1.0") @map("consent_version")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
