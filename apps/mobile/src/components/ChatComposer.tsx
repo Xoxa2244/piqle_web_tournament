@@ -22,6 +22,8 @@ export type ChatComposerProps = {
   multiline?: boolean
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
+  onFocus?: TextInputProps['onFocus']
+  onBlur?: TextInputProps['onBlur']
 }
 
 export const ChatComposer = ({
@@ -37,6 +39,8 @@ export const ChatComposer = ({
   multiline = false,
   returnKeyType,
   onSubmitEditing,
+  onFocus,
+  onBlur,
 }: ChatComposerProps) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -79,6 +83,14 @@ export const ChatComposer = ({
           multiline={multiline}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          {...Platform.select({
+            android: {
+              textAlignVertical: multiline ? 'top' : 'center',
+              includeFontPadding: false,
+            },
+          })}
         />
         <Pressable
           style={({ pressed }) => [styles.sendBtn, sendDisabled && styles.sendBtnDisabled, pressed && !sendDisabled && { opacity: 0.9 }]}
@@ -112,6 +124,7 @@ const createStyles = (colors: ThemePalette) =>
     height: 44,
     borderRadius: radius.pill,
     paddingHorizontal: 16,
+    paddingVertical: 0,
     backgroundColor: '#EEF0F2',
     color: colors.text,
     fontSize: 14,

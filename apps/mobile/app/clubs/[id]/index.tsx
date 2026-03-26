@@ -418,7 +418,8 @@ export default function ClubDetailScreen() {
     clubDescription ? (
       <View style={styles.clubInfoWrap}>
         {clubDescription ? (
-          <View style={styles.clubDescriptionBlock}>
+          <SurfaceCard style={styles.clubAboutCard}>
+            <Text style={styles.clubAboutTitle}>About</Text>
             {!clubDescriptionExpanded && !clubDescriptionExpandable ? (
               <Text
                 style={[styles.clubDescriptionText, styles.clubDescriptionMeasureText]}
@@ -449,7 +450,7 @@ export default function ClubDetailScreen() {
                 </Text>
               </Pressable>
             ) : null}
-          </View>
+          </SurfaceCard>
         ) : null}
       </View>
     ) : null
@@ -789,8 +790,8 @@ export default function ClubDetailScreen() {
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
-          {membershipActions}
           {clubInfoBlock}
+          {membershipActions}
           {segmentControl}
           {canViewMembers ? (
             <View style={styles.membersSearchWrap}>
@@ -804,7 +805,7 @@ export default function ClubDetailScreen() {
           {canModerate && filteredJoinRequests.length > 0 ? (
             <View style={styles.pendingWrap}>
               <View style={styles.pendingHeaderRow}>
-                <Text style={styles.pendingHeaderTitle}>Pending Requests</Text>
+                <Text style={styles.clubSectionTitle}>Pending Requests</Text>
                 <View style={styles.pendingCountPill}>
                   <Text style={styles.pendingCountText}>{filteredJoinRequests.length}</Text>
                 </View>
@@ -902,7 +903,7 @@ export default function ClubDetailScreen() {
               {admins.length > 0 ? (
                 <View style={styles.adminsBlock}>
                   <View style={styles.membersHeaderRow}>
-                    <Text style={styles.membersHeaderTitle}>Admins</Text>
+                    <Text style={styles.clubSectionTitle}>Admins</Text>
                     <Text style={styles.membersHeaderCount}>{String(admins.length)}</Text>
                   </View>
                   <View style={styles.sectionHeaderToListSpacer} />
@@ -982,7 +983,7 @@ export default function ClubDetailScreen() {
               {admins.length > 0 ? <View style={styles.sectionSpacer} /> : null}
 
               <View style={styles.membersHeaderRow}>
-                <Text style={styles.membersHeaderTitle}>Members</Text>
+                <Text style={styles.clubSectionTitle}>Members</Text>
                 <Text style={styles.membersHeaderCount}>{String(regularMembers.length)}</Text>
               </View>
               <View style={styles.sectionHeaderToListSpacer} />
@@ -1072,7 +1073,7 @@ export default function ClubDetailScreen() {
                   <View style={styles.sectionSpacer} />
                   <View style={styles.bansWrap}>
                   <View style={styles.membersHeaderRow}>
-                    <Text style={styles.membersHeaderTitle}>Banned users</Text>
+                    <Text style={styles.clubSectionTitle}>Banned users</Text>
                     <Text style={styles.membersHeaderCount}>{String(allBans.length)}</Text>
                   </View>
                     <View style={styles.sectionHeaderToListSpacer} />
@@ -1174,8 +1175,8 @@ export default function ClubDetailScreen() {
         onRefresh={pullToRefresh.onRefresh}
         bounces
       >
-        {membershipActions}
         {clubInfoBlock}
+        {membershipActions}
         {segmentControl}
 
         {tab === 'feed' ? (
@@ -1360,10 +1361,8 @@ export default function ClubDetailScreen() {
         {tab === 'events' ? (
           <View style={styles.tabContent}>
             <SurfaceCard tone="soft" style={styles.card}>
-              <SectionTitle
-                title="Calendar"
-                subtitle="Upcoming club events"
-              />
+              <Text style={styles.clubSectionTitle}>Calendar</Text>
+              <Text style={styles.clubSectionSubtitle}>Upcoming club events</Text>
               <View style={styles.calendarStub}>
                 <Feather name="calendar" size={20} color={palette.primary} />
                 <Text style={styles.calendarStubText}>Calendar view coming next.</Text>
@@ -1371,11 +1370,18 @@ export default function ClubDetailScreen() {
             </SurfaceCard>
 
             <View style={styles.upcomingSection}>
-              <SectionTitle
-                title="Upcoming tournaments"
-                actionLabel={club.tournaments.length > 0 ? 'View all' : undefined}
-                onActionPress={club.tournaments.length > 0 ? () => router.push(`/clubs/${club.id}/events`) : undefined}
-              />
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.clubSectionTitle}>Upcoming tournaments</Text>
+                {club.tournaments.length > 0 ? (
+                  <Pressable
+                    onPress={() => router.push(`/clubs/${club.id}/events`)}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.clubInfoLinkPressable, pressed && styles.clubInfoLinkPressed]}
+                  >
+                    <Text style={styles.clubInfoLinkText}>View all</Text>
+                  </Pressable>
+                ) : null}
+              </View>
               {club.tournaments.length > 0 ? (
                 club.tournaments.slice(0, 5).map((tournament) => (
                   <View key={tournament.id}>
@@ -1706,7 +1712,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderWidth: 1,
     borderColor: 'rgba(10,10,10,0.08)',
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     backgroundColor: 'rgba(10,10,10,0.03)',
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1737,7 +1743,7 @@ const styles = StyleSheet.create({
   },
   shareLinkRow: {
     minHeight: 48,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: palette.surfaceElevated,
@@ -1773,7 +1779,7 @@ const styles = StyleSheet.create({
   },
   shareQrCard: {
     padding: spacing.sm,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: palette.white,
@@ -1783,11 +1789,12 @@ const styles = StyleSheet.create({
     height: 168,
   },
   segmentTrack: {
-    marginTop: spacing.md,
+    marginTop: 0,
     marginHorizontal: spacing.lg,
   },
   membershipRow: {
     marginTop: 0,
+    marginBottom: 0,
     paddingHorizontal: spacing.lg,
   },
   membershipHint: {
@@ -1797,18 +1804,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   clubInfoWrap: {
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
   },
-  clubDescriptionBlock: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: 6,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  clubSectionTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  clubSectionSubtitle: {
+    marginTop: 2,
+    marginBottom: 8,
+    color: palette.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  clubAboutCard: {
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  clubAboutTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   clubDescriptionText: {
     color: palette.textMuted,
@@ -1910,7 +1939,7 @@ const styles = StyleSheet.create({
   },
   pendingName: {
     color: palette.text,
-    fontWeight: '800',
+    fontWeight: '600',
     fontSize: 16,
   },
   pendingWhen: {

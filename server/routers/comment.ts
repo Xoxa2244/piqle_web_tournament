@@ -79,10 +79,12 @@ export const commentRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        // Verify tournament exists and is public
+        // Verify tournament exists and user can comment:
+        // - public tournaments: anyone logged in
+        // - private tournaments: only registered (active) participants
         const tournament = await ctx.prisma.tournament.findUnique({
           where: { id: input.tournamentId },
-          select: { isPublicBoardEnabled: true },
+          select: { id: true, isPublicBoardEnabled: true },
         })
 
         if (!tournament) {
@@ -93,10 +95,32 @@ export const commentRouter = createTRPCRouter({
         }
 
         if (!tournament.isPublicBoardEnabled) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: 'Comments are only allowed on public tournaments',
+          const player = await ctx.prisma.player.findUnique({
+            where: {
+              userId_tournamentId: {
+                userId: ctx.session.user.id,
+                tournamentId: input.tournamentId,
+              },
+            },
+            include: {
+              teamPlayers: {
+                select: {
+                  team: { select: { division: { select: { tournamentId: true } } } },
+                },
+              },
+            },
           })
+
+          const isActive =
+            Boolean(player) &&
+            Boolean(player?.teamPlayers?.some((tp: any) => tp.team?.division?.tournamentId === input.tournamentId))
+
+          if (!isActive) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: 'Only registered players can comment on this tournament',
+            })
+          }
         }
 
         const comment = await ctx.prisma.tournamentComment.create({

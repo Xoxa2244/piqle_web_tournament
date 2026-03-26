@@ -1,16 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Image,
+  KeyboardAvoidingView,
+  Keyboard,
   Linking,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
+  ScrollView as RNScrollView,
   Text,
   View,
   useWindowDimensions,
+  type ScrollView as RNScrollViewType,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
@@ -21,11 +25,14 @@ import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntit
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
+import { ChatComposer } from '../../../src/components/ChatComposer'
+import { ChatThreadMessageList } from '../../../src/components/ChatThreadMessageList'
 import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
 import {
   ActionButton,
   EmptyState,
   LoadingBlock,
+  SegmentedControl,
   SectionTitle,
   SurfaceCard,
 } from '../../../src/components/ui'
@@ -34,10 +41,15 @@ import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGr
 import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
 import { fetchWithTimeout } from '../../../src/lib/apiFetch'
 import { buildApiUrl, buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
-import { formatLocation, formatMoney } from '../../../src/lib/formatters'
+import { formatDateRange, formatLocation, formatMoney } from '../../../src/lib/formatters'
 import { getDivisionSlotMetrics, getPlayersPerTeam, getTournamentSlotMetrics } from '../../../src/lib/tournamentSlots'
 import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
+/** Как в турнирном чате: `COMPOSER_IDLE_BOTTOM_EXTRA` */
+const COMMENTS_COMPOSER_IDLE_BOTTOM_EXTRA = 24
+/** Приблизительная высота composer внутри карточки Comments (wrap padding + input). */
+const COMMENTS_COMPOSER_ESTIMATED_H = 84
+
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
@@ -48,9 +60,6 @@ const longDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   year: 'numeric',
 })
-
-const TITLE_GRADIENT_IMAGE_URI =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAACACAYAAAA27Cg+AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAF+SURBVFhH1cq7R4ZxGIfxt3O9nc8HHZRSSklJkpIkkiSRRCKRSEQiIiIiIiIiGiIaIhqiIRoaoqGhoSH6U3Ktv4fLM7xLN597+LoSyWQyYSJDKDKEIkMoMoQiQygyhCJDiJdm/k2QblITZJjUBJkmVpBlYgXZJlaQY2IFuYYgz8QK9AjyDUGBiRUUGoIiQ1BsCEoMQakhKDME5YagwhBUGoIqQ1BtCGoMQa0hqDME9YagwRA0GoImQ9BsCFoMQashaDME7YagwxB0GoIuQ9BtCHoMQa8h6DME/YZgwBAMGoIhQzBsCEYMwaghGDME44ZgwhBMGoIpQzBtCGYMwawhmDME84ZgwRAsGoIlQ7BsCFYMwaohWDME64ZgwxBsGoItQ7BtCHYMwa4h2DME+4bgwBAcGoIjQ3BsCE4MwakhODME54bgwhBcGoIrQ3BtCG4Mwa0huDME94bgwRA8GoInQ/BsCF4MwasheDME74bgwxB8GoIvQ/BtCH4Mwa/5A0iMkfgHxZnkAAAAAElFTkSuQmCC'
 
 const formatHeroDateRange = (start?: string | Date | null, end?: string | Date | null) => {
   if (!start) return 'Date TBD'
@@ -93,6 +102,81 @@ const formatTournamentFormat = (format?: string | null) => {
     default:
       return 'Tournament'
   }
+}
+
+/** Паттерн точек как на карточке ивента (hero на 40% ширины с затуханием). */
+const EVENT_PATTERN_EDGE = 2
+const EVENT_PATTERN_STEP = 7
+const EVENT_PATTERN_DIAG = 3
+const EVENT_PATTERN_DOT = 3
+
+function EventHeroDotPattern({
+  style,
+  dotStyle,
+}: {
+  style: any
+  dotStyle: any
+}) {
+  const [layout, setLayout] = useState({ w: 0, h: 0 })
+  const dots = useMemo(() => {
+    const w = layout.w
+    const h = layout.h
+    if (w < 4 || h < 4) return []
+    const EDGE = EVENT_PATTERN_EDGE
+    const STEP = EVENT_PATTERN_STEP
+    const DIAG = EVENT_PATTERN_DIAG
+    const DOT = EVENT_PATTERN_DOT
+    const spanX = Math.max(1, w - EDGE * 2)
+    const rowMax = Math.max(0, Math.floor((h - EDGE - DOT) / STEP))
+    const out: Array<{ key: string; left: number; top: number; opacity: number }> = []
+    let index = 0
+    for (let row = 0; row <= rowMax; row += 1) {
+      const top = EDGE + row * STEP
+      if (top + DOT > h) continue
+      const colStart = Math.ceil((-EDGE - row * DIAG) / STEP)
+      const colEnd = Math.floor((w - DOT - EDGE - row * DIAG) / STEP)
+      for (let col = colStart; col <= colEnd; col += 1) {
+        const left = EDGE + col * STEP + row * DIAG
+        if (left + DOT > w) continue
+        const nx = spanX > 0 ? (left - EDGE) / spanX : 0
+        const fade = 1 - Math.min(1, nx) ** 0.42
+        const opacity = Math.max(0.04, Math.min(0.58, 0.06 + 0.52 * fade))
+        out.push({ key: `event-hero-dot-${index}`, left, top, opacity })
+        index += 1
+      }
+    }
+    return out
+  }, [layout.h, layout.w])
+
+  return (
+    <View
+      pointerEvents="none"
+      style={style}
+      collapsable={false}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout
+        if (width <= 0 || height <= 0) return
+        setLayout((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }))
+      }}
+    >
+      <OptionalLinearGradient
+        pointerEvents="none"
+        colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={StyleSheet.absoluteFill}
+        fallbackColor="rgba(255,255,255,0.08)"
+      >
+        {dots.map((dot) => (
+          <View
+            key={dot.key}
+            pointerEvents="none"
+            style={[dotStyle, { left: dot.left, top: dot.top, opacity: dot.opacity }]}
+          />
+        ))}
+      </OptionalLinearGradient>
+    </View>
+  )
 }
 
 type DetailTab = 'info' | 'divisions' | 'dashboard'
@@ -185,6 +269,23 @@ const getStatusMeta = (
   return { label: 'Open', backgroundColor: 'rgba(0, 232, 124, 0.9)' }
 }
 
+function getCompactStatusIcon(label: string): keyof typeof Feather.glyphMap {
+  const s = label.trim().toLowerCase()
+  if (!s) return 'info'
+  if (s.includes('admin')) return 'shield'
+  if (s.includes('registered')) return 'check-circle'
+  if (s.includes('wait')) return 'clock'
+  if (s.includes('filling')) return 'trending-up'
+  if (s.includes('closed')) return 'x-circle'
+  if (s.includes('open')) return 'unlock'
+  return 'info'
+}
+
+function isCompactHeroStatus(label: string) {
+  const s = label.trim().toLowerCase()
+  return s === 'admin' || s === 'registered' || s === 'waitlist'
+}
+
 export default function TournamentDetailScreen() {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -196,15 +297,23 @@ export default function TournamentDetailScreen() {
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
+  const scrollRef = useRef<RNScrollViewType>(null)
+  const commentsThreadRef = useRef<RNScrollViewType>(null)
 
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
-  const [isFavorite, setIsFavorite] = useState(false)
   const [leaveTournamentSheetOpen, setLeaveTournamentSheetOpen] = useState(false)
   const [paymentErrorMessage, setPaymentErrorMessage] = useState<string | null>(null)
   const [tournamentFeedbackOpen, setTournamentFeedbackOpen] = useState(false)
   const [tournamentFeedbackInfoOpen, setTournamentFeedbackInfoOpen] = useState(false)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
+  const [tournamentDescriptionExpanded, setTournamentDescriptionExpanded] = useState(false)
+  const [tournamentDescriptionExpandable, setTournamentDescriptionExpandable] = useState(false)
+  const [commentDraft, setCommentDraft] = useState('')
+  const [commentsAnchorY, setCommentsAnchorY] = useState<number | null>(null)
+  const [pendingScrollToComments, setPendingScrollToComments] = useState(false)
+  const [commentsDeleteTargetId, setCommentsDeleteTargetId] = useState<string | null>(null)
+  const [commentsKeyboardVisible, setCommentsKeyboardVisible] = useState(false)
 
   const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
   const cachedTournament = useMemo(
@@ -333,8 +442,10 @@ export default function TournamentDetailScreen() {
       myStatusQuery.refetch(),
       accessQuery.refetch(),
       myInvitationQuery.refetch(),
+      commentsQuery.refetch(),
+      commentCountQuery.refetch(),
     ])
-  }, [accessQuery, fullTournamentQuery, myInvitationQuery, myStatusQuery, tournamentQuery])
+  }, [accessQuery, fullTournamentQuery, myInvitationQuery, myStatusQuery, tournamentQuery, commentsQuery, commentCountQuery])
 
   const pullToRefresh = usePullToRefresh(onRefreshTournamentDetail)
 
@@ -379,6 +490,29 @@ export default function TournamentDetailScreen() {
 
   const tournament = tournamentQuery.data as any
   const tdUserId = typeof tournament?.user?.id === 'string' ? tournament.user.id : null
+
+  const commentCountQuery = api.comment.getTournamentCommentCount.useQuery(
+    { tournamentId },
+    { enabled: Boolean(tournamentId), retry: false },
+  )
+  const commentsQuery = api.comment.getTournamentComments.useQuery(
+    { tournamentId },
+    { enabled: Boolean(tournamentId), retry: false },
+  )
+  const createComment = api.comment.createComment.useMutation({
+    onSuccess: async () => {
+      setCommentDraft('')
+      await Promise.all([commentsQuery.refetch(), commentCountQuery.refetch()])
+      requestAnimationFrame(() => {
+        commentsThreadRef.current?.scrollToEnd({ animated: true })
+      })
+    },
+  })
+  const deleteComment = api.comment.deleteComment.useMutation({
+    onSuccess: async () => {
+      await Promise.all([commentsQuery.refetch(), commentCountQuery.refetch()])
+    },
+  })
   const feedbackSummaryQuery = api.feedback.getEntitySummary.useQuery(
     { entityType: 'TOURNAMENT', entityId: tournamentId },
     { enabled: FEEDBACK_API_ENABLED && Boolean(tournamentId) && isAuthenticated, retry: false },
@@ -425,9 +559,11 @@ export default function TournamentDetailScreen() {
       : Number(tournament.entryFee ?? 0) > 0
       ? Math.round(Number(tournament.entryFee) * 100)
       : 0
-  const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : 'Free'
+  const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : '$ Free'
   const quickFeeLabel = entryFeeCents > 0 ? `$${Math.round(entryFeeCents / 100)}+` : 'Free'
-  const locationLabel = formatLocation([tournament.venueName, tournament.venueAddress])
+  const venueNameLabel = String(tournament.venueName ?? '').trim()
+  const venueAddressLabel = String(tournament.venueAddress ?? '').trim()
+  const locationLabel = venueAddressLabel || 'Location not set'
   const playerCount = Number(tournament._count?.players ?? 0)
   const totalTeams = ((tournament.divisions ?? []) as any[]).reduce(
     (sum, division) => sum + Number(division?._count?.teams ?? 0),
@@ -456,7 +592,7 @@ export default function TournamentDetailScreen() {
     : shouldShowRegisterCta
     ? 'Register for Tournament'
     : hasPrivilegedAccess
-    ? 'Admin Access'
+    ? 'Manage Registration'
     : `Register Now • ${feeLabel}`
   const amenityLabels = [
     locationLabel !== 'Location not set' ? 'Venue Details' : null,
@@ -474,7 +610,7 @@ export default function TournamentDetailScreen() {
     canLeaveTournament ||
     myStatus === 'waitlisted' ||
     hasPrivilegedAccess
-  const shouldShowStickyCta = showPrimaryCta && activeTab === 'info'
+  const shouldShowStickyCta = false
   const dashboardRegistrationSummary =
     myStatusQuery.data?.status === 'active' &&
     myStatusQuery.data?.divisionName &&
@@ -482,9 +618,61 @@ export default function TournamentDetailScreen() {
       ? `${myStatusQuery.data.divisionName} · ${myStatusQuery.data.teamName}`
       : null
   const statusMeta = getStatusMeta(tournamentAvailabilityData, myStatus, hasPrivilegedAccess)
+  const compactHeroStatusLabel = isCompactHeroStatus(statusMeta.label) ? statusMeta.label : null
+  const tournamentDescription = String(tournament.description ?? '').trim()
+  const tournamentForClubMeta = (tournamentAvailabilityData ?? tournament) as any
+  const linkedClubId = String(
+    tournamentForClubMeta.clubId ??
+      tournamentForClubMeta.club?.id ??
+      tournamentForClubMeta.hostClubId ??
+      tournamentForClubMeta.hostClub?.id ??
+      ''
+  ).trim()
+  const linkedClubQuery = api.club.get.useQuery(
+    { id: linkedClubId },
+    { enabled: Boolean(linkedClubId), retry: false }
+  )
+  const clubsLookupQuery = api.club.list.useQuery(undefined, {
+    enabled: !linkedClubId && Boolean(venueNameLabel),
+    retry: false,
+  })
+  const matchedClubByVenue = useMemo(() => {
+    if (linkedClubId || !venueNameLabel) return null
+    const clubs = (clubsLookupQuery.data ?? []) as Array<{ id?: string; name?: string }>
+    const needle = venueNameLabel.trim().toLowerCase()
+    return clubs.find((club) => String(club?.name ?? '').trim().toLowerCase() === needle) ?? null
+  }, [clubsLookupQuery.data, linkedClubId, venueNameLabel])
+  const resolvedClubId = linkedClubId || String(matchedClubByVenue?.id ?? '').trim()
+  const linkedClubName = String(
+    linkedClubQuery.data?.name ??
+    matchedClubByVenue?.name ??
+    tournamentForClubMeta.club?.name ??
+      tournamentForClubMeta.hostClub?.name ??
+      ''
+  ).trim()
+  const clubLabel =
+    linkedClubName ||
+    venueNameLabel ||
+    (linkedClubQuery.isLoading && resolvedClubId ? 'Loading club...' : '')
+  const hasLinkedClubLabel = Boolean(clubLabel)
+  const canOpenLinkedClub = Boolean(resolvedClubId)
+  const nowTs = Date.now()
+  const tournamentStartTs = tournament.startDate ? new Date(tournament.startDate).getTime() : null
+  const tournamentEndTs = tournament.endDate ? new Date(tournament.endDate).getTime() : null
+  const timelineStatusLabel =
+    tournamentEndTs != null && nowTs > tournamentEndTs
+      ? 'Past'
+      : tournamentStartTs != null && nowTs < tournamentStartTs
+      ? 'Upcoming'
+      : 'Ongoing'
   const divisionsForDisplay = Array.isArray((fullTournamentQuery.data as any)?.divisions)
     ? (((fullTournamentQuery.data as any)?.divisions ?? []) as any[])
     : ((tournament.divisions ?? []) as any[])
+  const tournamentDateTimeRangeLabel = formatDateRange(tournament.startDate, tournament.endDate)
+  const registrationDateTimeRangeLabel =
+    tournamentAvailabilityData?.registrationStartDate || tournamentAvailabilityData?.registrationEndDate
+      ? formatDateRange(tournamentAvailabilityData?.registrationStartDate, tournamentAvailabilityData?.registrationEndDate)
+      : null
 
   const handlePayNow = async () => {
     try {
@@ -555,106 +743,266 @@ export default function TournamentDetailScreen() {
     router.push({ pathname: '/profile/[id]', params: { id: tournament.user.id } })
   }
 
+  const scrollToComments = useCallback(() => {
+    setActiveTab('info')
+    if (commentsAnchorY == null) {
+      setPendingScrollToComments(true)
+      return
+    }
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, commentsAnchorY - 12), animated: true })
+    })
+  }, [commentsAnchorY])
+
+  const scrollToCommentsEnd = useCallback(() => {
+    setActiveTab('info')
+    if (commentsAnchorY == null) {
+      setPendingScrollToComments(true)
+      return
+    }
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true })
+      commentsThreadRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [commentsAnchorY])
+
+  useEffect(() => {
+    if (!pendingScrollToComments) return
+    if (activeTab !== 'info') return
+    if (commentsAnchorY == null) return
+    setPendingScrollToComments(false)
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, commentsAnchorY - 12), animated: true })
+    })
+  }, [activeTab, commentsAnchorY, pendingScrollToComments])
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
+    const s = Keyboard.addListener(showEv, () => setCommentsKeyboardVisible(true))
+    const h = Keyboard.addListener(hideEv, () => setCommentsKeyboardVisible(false))
+    const didShow = Keyboard.addListener('keyboardDidShow', () => {
+      scrollToCommentsEnd()
+      setTimeout(() => {
+        commentsThreadRef.current?.scrollToEnd({ animated: true })
+      }, 60)
+    })
+    return () => {
+      s.remove()
+      h.remove()
+      didShow.remove()
+    }
+  }, [scrollToCommentsEnd])
+
+  const commentsLen = (commentsQuery.data ?? []).length
+  useEffect(() => {
+    if (!commentsLen) return
+    requestAnimationFrame(() => {
+      commentsThreadRef.current?.scrollToEnd({ animated: true })
+    })
+  }, [commentsLen])
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <TopBar />
-      <PickleRefreshScrollView
-        contentContainerStyle={[styles.scrollContent, !shouldShowStickyCta && styles.scrollContentNoCta]}
-        showsVerticalScrollIndicator={false}
-        refreshing={pullToRefresh.refreshing}
-        onRefresh={pullToRefresh.onRefresh}
-        bounces
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
       >
-        <View style={styles.hero}>
-          <EntityImage uri={tournament.image} style={styles.heroImage} resizeMode="cover" placeholderResizeMode="contain" />
-          <View pointerEvents="none" style={styles.heroOverlay} />
+        <View style={styles.heroWrap}>
+          <View style={styles.eventMiniBar}>
+            <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.eventMiniBarButton} />
+            <View style={styles.eventMiniBarActions}>
+              <Pressable
+                onPress={scrollToCommentsEnd}
+                style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
+                accessibilityLabel="Comments"
+              >
+                <Feather name="message-circle" size={18} color={colors.text} />
+                {Number(commentCountQuery.data ?? 0) > 0 ? (
+                  <View style={styles.commentBadge}>
+                    <Text style={styles.commentBadgeText}>
+                      {Number(commentCountQuery.data ?? 0) > 99 ? '99+' : String(commentCountQuery.data)}
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+              <Pressable
+                onPress={handleShare}
+                style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
+              >
+                <Feather name="share-2" size={18} color={colors.text} />
+              </Pressable>
+              {canLeaveTournament ? (
+                <Pressable
+                  onPress={() => setLeaveTournamentSheetOpen(true)}
+                  style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
+                  accessibilityLabel="Leave tournament"
+                >
+                  <Feather name="log-out" size={18} color={colors.text} />
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
 
-          <View style={styles.heroHeader}>
-            <View style={styles.heroActions}>
-              <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.heroActionButton} />
-              <View style={styles.heroActionGroup}>
-                <Pressable
-                  onPress={() => setIsFavorite((current) => !current)}
-                  style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
-                >
-                  <Feather
-                    name="heart"
-                    size={20}
-                    color={isFavorite ? '#ff5a6b' : colors.white}
+          <SurfaceCard padded={false} style={styles.eventHeroCard}>
+            <View style={styles.eventHeroHeader}>
+              <EventHeroDotPattern style={styles.eventHeroPattern} dotStyle={styles.eventHeroPatternDot} />
+              <View style={styles.eventHeroRow}>
+                <View style={styles.eventHeroAvatarWrap}>
+                  <EntityImage
+                    uri={tournament.image}
+                    style={styles.eventHeroAvatar}
+                    resizeMode="cover"
+                    placeholderResizeMode="contain"
                   />
-                </Pressable>
-                <Pressable
-                  onPress={handleShare}
-                  style={({ pressed }) => [styles.heroActionButton, pressed && styles.heroActionPressed]}
-                >
-                  <Feather name="share-2" size={20} color={colors.white} />
-                </Pressable>
+                </View>
+                <View style={styles.eventHeroMain}>
+                  <View style={styles.eventHeroTitleRow}>
+                    <Text style={styles.eventHeroTitle} numberOfLines={2}>
+                      {tournament.title}
+                    </Text>
+                    {compactHeroStatusLabel ? (
+                      <View style={styles.eventHeroCompactStatusBadge}>
+                        <Feather name={getCompactStatusIcon(compactHeroStatusLabel)} size={14} color={colors.white} />
+                        <Text style={styles.eventHeroCompactStatusText} numberOfLines={1}>
+                          {compactHeroStatusLabel}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.eventHeroMetaRow}>
+                    <View style={styles.eventHeroChip}>
+                      <Text style={styles.eventHeroChipText} numberOfLines={1}>
+                        {formatTournamentFormat(tournament.format)}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setTournamentFeedbackInfoOpen(true)}
+                      style={({ pressed }) => [styles.eventHeroRatingPill, pressed && styles.eventHeroRatingPillPressed]}
+                    >
+                      <RatingStarIcon size={16} filled color="#F4B000" />
+                      {feedbackCanPublishEffective && feedbackAverageEffective ? (
+                        <Text style={styles.eventHeroRatingText}>{feedbackAverageEffective.toFixed(1)}</Text>
+                      ) : (
+                        <Text style={styles.eventHeroRatingMuted}>New</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
               </View>
             </View>
-          </View>
-
-          <Image
-            pointerEvents="none"
-            source={{ uri: TITLE_GRADIENT_IMAGE_URI }}
-            resizeMode="stretch"
-            style={styles.heroFooterGradient}
-          />
-
-          <View style={styles.heroFooter}>
-            <View style={[styles.heroStatusBadge, { backgroundColor: statusMeta.backgroundColor }]}>
-              <Text style={styles.heroStatusText}>{statusMeta.label}</Text>
-            </View>
-            <Text style={styles.heroTitle}>{tournament.title}</Text>
-            <View style={styles.heroDateRow}>
-              <Feather name="calendar" size={14} color="rgba(255,255,255,0.82)" />
-              <Text style={styles.heroDateText}>
-                {formatHeroDateRange(tournament.startDate, tournament.endDate)}
-              </Text>
-            </View>
-          </View>
+          </SurfaceCard>
         </View>
 
-        <View style={styles.statsSection}>
-          <View style={styles.quickStats}>
-            <SurfaceCard style={styles.statCard}>
-              <Feather name="users" size={20} color={colors.primary} />
-              <Text style={styles.statValue}>{playerCount || totalTeams}</Text>
-              <Text style={styles.statLabel}>{playerCount ? 'Players' : 'Teams'}</Text>
-            </SurfaceCard>
-            <SurfaceCard style={styles.statCard}>
-              <Feather name="award" size={20} color={colors.brandAccent} />
-              <Text style={styles.statValue}>{tournament.divisions.length}</Text>
-              <Text style={styles.statLabel}>Divisions</Text>
-            </SurfaceCard>
-            <SurfaceCard style={styles.statCard}>
-              <Feather name="dollar-sign" size={20} color={colors.purple} />
-              <Text style={styles.statValue}>{quickFeeLabel}</Text>
-              <Text style={styles.statLabel}>Entry Fee</Text>
-            </SurfaceCard>
-          </View>
-        </View>
-
-        <View style={styles.contentSection}>
-          <View style={styles.tabSwitch}>
-            {([
-              { key: 'info', label: 'Info' },
-              { key: 'divisions', label: 'Divisions' },
-              { key: 'dashboard', label: 'Dashboard' },
-            ] as const).map((tab) => {
-              const active = activeTab === tab.key
-              return (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
-                  style={[styles.tabButton, active && styles.tabButtonActive]}
+        <PickleRefreshScrollView
+          ref={scrollRef as any}
+          style={styles.contentScroll}
+          contentContainerStyle={[styles.scrollContent, styles.scrollContentNoCta]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          bounces
+        >
+        {tournamentDescription ? (
+          <View style={styles.descriptionSection}>
+            <View style={styles.descriptionBlock}>
+              {!tournamentDescriptionExpanded && !tournamentDescriptionExpandable ? (
+                <Text
+                  style={[styles.descriptionText, styles.descriptionMeasureText]}
+                  onTextLayout={(event) => {
+                    if (tournamentDescriptionExpanded || tournamentDescriptionExpandable) return
+                    if (event.nativeEvent.lines.length > 3) {
+                      setTournamentDescriptionExpandable(true)
+                    }
+                  }}
                 >
-                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
-                    {tab.label}
+                  {tournamentDescription}
+                </Text>
+              ) : null}
+              <Text style={styles.descriptionText} numberOfLines={tournamentDescriptionExpanded ? undefined : 3}>
+                {tournamentDescription}
+              </Text>
+              {tournamentDescriptionExpandable ? (
+                <Pressable
+                  onPress={() => setTournamentDescriptionExpanded((value) => !value)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.descriptionLinkPressable, pressed && styles.descriptionLinkPressed]}
+                >
+                  <Text style={styles.descriptionLinkText}>
+                    {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
                   </Text>
                 </Pressable>
-              )
-            })}
+              ) : null}
+            </View>
           </View>
+        ) : null}
+
+        {showPrimaryCta ? (
+          <View style={styles.inlineCtaSection}>
+            <View style={styles.inlineCtaStack}>
+              {canPayNow ? (
+                <Pressable
+                  onPress={handlePayNow}
+                  disabled={createCheckout.isPending}
+                  style={({ pressed }) => [
+                    styles.inlineCtaButton,
+                    pressed && !createCheckout.isPending && styles.inlineCtaButtonPressed,
+                  ]}
+                >
+                  <OptionalLinearGradient
+                    colors={[colors.primary, colors.purple]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.inlineCtaGradient, createCheckout.isPending && styles.inlineCtaGradientDisabled]}
+                  >
+                    <Text style={styles.inlineCtaText}>
+                      {createCheckout.isPending ? 'Opening payment...' : `Pay now ${feeLabel}`}
+                    </Text>
+                  </OptionalLinearGradient>
+                </Pressable>
+              ) : null}
+
+              {!canLeaveTournament ? (
+                <Pressable
+                  onPress={handlePrimaryAction}
+                  disabled={acceptInvitation.isPending || cancelRegistration.isPending}
+                  style={({ pressed }) => [
+                    styles.inlineCtaButton,
+                    pressed &&
+                      !(acceptInvitation.isPending || cancelRegistration.isPending) &&
+                      styles.inlineCtaButtonPressed,
+                  ]}
+                >
+                  <OptionalLinearGradient
+                    colors={shouldShowRegisterCta ? [colors.primary, colors.primary] : [colors.primary, colors.purple]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[
+                      styles.inlineCtaGradient,
+                      (acceptInvitation.isPending || cancelRegistration.isPending) && styles.inlineCtaGradientDisabled,
+                    ]}
+                  >
+                    <Text style={styles.inlineCtaText}>{ctaLabel}</Text>
+                  </OptionalLinearGradient>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.contentSection}>
+          <SegmentedControl
+            value={activeTab}
+            onChange={(value) => setActiveTab(value as DetailTab)}
+            trackStyle={styles.segmentTrack}
+            options={[
+              { value: 'info', label: 'Info' },
+              { value: 'divisions', label: 'Divisions' },
+              { value: 'dashboard', label: 'Dashboard' },
+            ]}
+          />
 
           {activeTab === 'info' ? (
             <View style={styles.sectionStack}>
@@ -692,50 +1040,102 @@ export default function TournamentDetailScreen() {
               </SurfaceCard>
 
               <SurfaceCard style={styles.detailCard}>
-                <Text style={[styles.cardTitle, styles.cardTitleTight]}>Format</Text>
-                <View style={styles.valueRow}>
-                  <Feather name="award" size={16} color={colors.primary} />
-                  <Text style={styles.valueText}>{formatTournamentFormat(tournament.format)}</Text>
+                <View style={styles.infoHeaderRow}>
+                  <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Information</Text>
+                  <View style={styles.heroTimelineChip}>
+                    <Text style={styles.heroTimelineChipText}>{timelineStatusLabel}</Text>
+                  </View>
                 </View>
-              </SurfaceCard>
-
-              <SurfaceCard style={styles.detailCard}>
-                <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Location</Text>
-                <View style={styles.locationRow}>
-                  <Feather name="map-pin" size={20} color={colors.brandAccent} style={styles.locationIcon} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.valueText}>{locationLabel}</Text>
-                    <Pressable
-                      disabled={locationLabel === 'Location not set'}
-                      onPress={handleOpenMaps}
-                      style={({ pressed }) => [styles.inlineLinkWrap, pressed && styles.inlineLinkPressed]}
-                    >
-                      <Text
-                        style={[
-                          styles.inlineLinkText,
-                          locationLabel === 'Location not set' && styles.inlineLinkTextDisabled,
-                        ]}
-                      >
-                        Open in Maps
+                <View style={styles.infoTopChips}>
+                  <OptionalLinearGradient
+                    colors={['#FFF3C4', '#F6D77B', '#E8B64B']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.infoPriceChip}
+                    fallbackColor="#F6D77B"
+                  >
+                    <Text style={styles.infoPriceChipText}>{feeLabel}</Text>
+                  </OptionalLinearGradient>
+                </View>
+                <View style={styles.infoDatesBlock}>
+                  <View style={styles.infoDateRow}>
+                    <Feather name="calendar" size={16} color={colors.textMuted} />
+                    <Text style={styles.infoDateText} numberOfLines={1}>
+                      {tournamentDateTimeRangeLabel}
+                    </Text>
+                  </View>
+                  {registrationDateTimeRangeLabel ? (
+                    <View style={styles.infoDateRow}>
+                      <Feather name="clock" size={16} color={colors.textMuted} />
+                      <Text style={styles.infoDateText} numberOfLines={1}>
+                        {registrationDateTimeRangeLabel}
                       </Text>
-                    </Pressable>
-                  </View>
+                    </View>
+                  ) : null}
                 </View>
-              </SurfaceCard>
+                <Pressable
+                  disabled={locationLabel === 'Location not set'}
+                  onPress={handleOpenMaps}
+                  style={({ pressed }) => [styles.infoLocationRow, pressed && locationLabel !== 'Location not set' && styles.inlineLinkPressed]}
+                >
+                  <Feather
+                    name="map-pin"
+                    size={14}
+                    color={colors.textMuted}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.infoLocationText,
+                      locationLabel === 'Location not set' && styles.infoLocationTextDisabled,
+                    ]}
+                  >
+                    {locationLabel}
+                  </Text>
+                </Pressable>
 
-              <SurfaceCard style={styles.detailCard}>
-                <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Amenities</Text>
-                {amenityLabels.length ? (
-                  <View style={styles.badgeWrap}>
-                    {amenityLabels.map((label) => (
-                      <View key={label} style={styles.secondaryBadge}>
-                        <Text style={styles.secondaryBadgeText}>{label}</Text>
+                {hasLinkedClubLabel ? (
+                  canOpenLinkedClub ? (
+                    <Pressable
+                      onPress={() => {
+                        if (!resolvedClubId) return
+                        router.push({ pathname: '/clubs/[id]', params: { id: resolvedClubId } })
+                      }}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.infoClubLinkWrap, pressed && styles.inlineLinkPressed]}
+                    >
+                      <View style={styles.infoClubLinkRow}>
+                        <Feather name="flag" size={14} color={colors.textMuted} />
+                        <Text numberOfLines={1} style={styles.infoClubLinkText}>
+                          {clubLabel}
+                        </Text>
                       </View>
-                    ))}
-                  </View>
-                ) : (
-                  <Text style={styles.mutedBodyText}>More venue details will be added by the organizer soon.</Text>
-                )}
+                    </Pressable>
+                  ) : (
+                    <View style={styles.infoClubLinkWrap}>
+                      <View style={styles.infoClubLinkRow}>
+                        <Feather name="flag" size={14} color={colors.textMuted} />
+                        <Text numberOfLines={1} style={styles.infoClubLinkText}>
+                          {clubLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  )
+                ) : null}
+
+                <View style={styles.infoAmenitiesRow}>
+                  {amenityLabels.length ? (
+                    <View style={styles.badgeWrap}>
+                      {amenityLabels.map((label) => (
+                        <View key={label} style={styles.secondaryBadge}>
+                          <Text style={styles.secondaryBadgeText}>{label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.mutedBodyText}>More venue details will be added by the organizer soon.</Text>
+                  )}
+                </View>
               </SurfaceCard>
 
               <SurfaceCard style={styles.detailCard}>
@@ -776,33 +1176,97 @@ export default function TournamentDetailScreen() {
                 </View>
               </SurfaceCard>
 
-              <SurfaceCard style={styles.detailCard}>
-                <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Tournament rating</Text>
-                <View style={styles.feedbackHeadRow}>
-                  <View style={styles.feedbackLeft}>
-                    <RatingStarIcon size={18} filled color="#F4B000" />
-                    {feedbackCanPublishEffective && feedbackAverageEffective ? (
-                      <Text style={styles.feedbackValue}>{feedbackAverageEffective.toFixed(1)}</Text>
-                    ) : (
-                      <Text style={styles.feedbackValueMuted}>No rating yet</Text>
-                    )}
-                    {feedbackCanPublishEffective ? null : <Text style={styles.feedbackCount}>min 5 ratings</Text>}
+              <View
+                onLayout={(e) => {
+                  setCommentsAnchorY(e.nativeEvent.layout.y)
+                }}
+              >
+                <SurfaceCard style={styles.detailCard}>
+                  <View style={styles.commentsHeaderRow}>
+                    <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Comments</Text>
+                    <Text style={styles.commentsCount}>{String(commentCountQuery.data ?? 0)}</Text>
                   </View>
-                  <Pressable onPress={() => setTournamentFeedbackInfoOpen(true)} style={styles.feedbackInfoBtn}>
-                    <Text style={styles.feedbackInfoBtnText}>Details</Text>
-                  </Pressable>
-                </View>
-                {!hasRatedTournament ? (
-                  <Pressable
-                    onPress={() => setTournamentFeedbackOpen(true)}
-                    style={({ pressed }) => [styles.primaryFeedbackCtaBtn, pressed && styles.primaryFeedbackCtaBtnPressed]}
-                  >
-                    <Text style={styles.primaryFeedbackCtaText}>Rate this tournament</Text>
-                  </Pressable>
-                ) : (
-                  <Text style={styles.feedbackThanksText}>Thanks, you already rated this tournament.</Text>
-                )}
-              </SurfaceCard>
+
+                  {commentsQuery.isLoading ? (
+                    <LoadingBlock label="Loading comments..." />
+                  ) : (commentsQuery.data ?? []).length === 0 ? (
+                    <Text style={styles.mutedBodyText}>No comments yet.</Text>
+                  ) : (
+                    <View style={styles.commentsBlock}>
+                      <RNScrollView
+                        ref={commentsThreadRef}
+                        style={[
+                          styles.commentsThreadScroll,
+                          {
+                            maxHeight: Math.max(
+                              Math.round(windowHeight * 0.5) - COMMENTS_COMPOSER_ESTIMATED_H,
+                              120
+                            ),
+                          },
+                        ]}
+                        contentContainerStyle={styles.commentsThreadContent}
+                        nestedScrollEnabled
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        <ChatThreadMessageList
+                          messages={((commentsQuery.data ?? []) as any[])
+                            .slice()
+                            .reverse()
+                            .map((c: any) => ({
+                              id: c.id,
+                              userId: c.userId,
+                              text: c.text,
+                              createdAt: c.createdAt,
+                              user: {
+                                id: c.user?.id,
+                                name: c.user?.name ?? c.user?.email ?? 'User',
+                                image: c.user?.image ?? null,
+                              },
+                              isDeleted: false,
+                            }))}
+                          currentUserId={user?.id}
+                          onPressAvatar={(m) => {
+                            if (!m.userId) return
+                            router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
+                          }}
+                          canDelete={(m) => Boolean(user?.id && m.userId === user.id && !m.isDeleted)}
+                          onRequestDelete={(m) => setCommentsDeleteTargetId(m.id)}
+                          deleteDisabled={deleteComment.isPending}
+                        />
+                      </RNScrollView>
+
+                      <ChatComposer
+                        value={commentDraft}
+                        onChangeText={setCommentDraft}
+                        placeholder={isAuthenticated ? 'Write a comment…' : 'Sign in to comment…'}
+                        onSend={() => {
+                          if (!isAuthenticated) {
+                            router.push('/sign-in')
+                            return
+                          }
+                          const text = commentDraft.trim()
+                          if (!text) return
+                          createComment.mutate({ tournamentId, text })
+                        }}
+                        onFocus={() => {
+                          scrollToCommentsEnd()
+                          setTimeout(() => {
+                            commentsThreadRef.current?.scrollToEnd({ animated: true })
+                            scrollRef.current?.scrollToEnd({ animated: true })
+                          }, 60)
+                        }}
+                        sendDisabled={!commentDraft.trim() || createComment.isPending}
+                        paddingHorizontal={0}
+                        paddingBottom={0}
+                        safeAreaBottom={false}
+                        multiline={false}
+                      />
+                    </View>
+                  )}
+                </SurfaceCard>
+              </View>
+
             </View>
           ) : null}
 
@@ -960,65 +1424,12 @@ export default function TournamentDetailScreen() {
           ) : null}
 
         </View>
-      </PickleRefreshScrollView>
+        </PickleRefreshScrollView>
 
-      {shouldShowStickyCta ? (
-        <View style={styles.ctaShell}>
-          <OptionalLinearGradient
-            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.94)', colors.background]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.ctaFade}
-          />
-          <SafeAreaView edges={['bottom']} style={styles.ctaSafeArea}>
-            <View style={styles.ctaStack}>
-              {canPayNow ? (
-                <Pressable
-                  onPress={handlePayNow}
-                  disabled={createCheckout.isPending}
-                  style={({ pressed }) => [
-                    styles.ctaButton,
-                    pressed && !createCheckout.isPending && styles.ctaButtonPressed,
-                  ]}
-                >
-                  <OptionalLinearGradient
-                    colors={[colors.primary, colors.purple]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.ctaGradient, createCheckout.isPending && styles.ctaGradientDisabled]}
-                  >
-                    <Text style={styles.ctaText}>
-                      {createCheckout.isPending ? 'Opening payment...' : `Pay now ${feeLabel}`}
-                    </Text>
-                  </OptionalLinearGradient>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={handlePrimaryAction}
-                disabled={acceptInvitation.isPending || cancelRegistration.isPending}
-                style={({ pressed }) => [
-                  styles.ctaButton,
-                  pressed &&
-                    !(acceptInvitation.isPending || cancelRegistration.isPending) &&
-                    styles.ctaButtonPressed,
-                ]}
-              >
-                <OptionalLinearGradient
-                  colors={[colors.primary, colors.purple]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    styles.ctaGradient,
-                    (acceptInvitation.isPending || cancelRegistration.isPending) && styles.ctaGradientDisabled,
-                  ]}
-                >
-                  <Text style={styles.ctaText}>{ctaLabel}</Text>
-                </OptionalLinearGradient>
-              </Pressable>
-            </View>
-          </SafeAreaView>
-        </View>
-      ) : null}
+        {/* composer is inside Comments card */}
+      </KeyboardAvoidingView>
+
+      {shouldShowStickyCta ? <View /> : null}
 
       <AppBottomSheet
         open={leaveTournamentSheetOpen}
@@ -1073,6 +1484,17 @@ export default function TournamentDetailScreen() {
         title="Tournament rating"
         subtitle={
           feedbackCanPublishEffective && feedbackAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
+        }
+        footer={
+          !hasRatedTournament ? (
+            <ActionButton
+              label="Rate this tournament"
+              onPress={() => {
+                setTournamentFeedbackInfoOpen(false)
+                setTimeout(() => setTournamentFeedbackOpen(true), 280)
+              }}
+            />
+          ) : undefined
         }
       >
         {feedbackCanPublishEffective && feedbackAverageEffective ? (
@@ -1181,12 +1603,39 @@ export default function TournamentDetailScreen() {
           <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
         )}
       </AppBottomSheet>
+
+      <AppBottomSheet
+        open={Boolean(commentsDeleteTargetId)}
+        onClose={() => setCommentsDeleteTargetId(null)}
+        title="Delete this comment?"
+        subtitle="This comment will be permanently removed."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={deleteComment.isPending ? 'Deleting…' : 'Delete'}
+            onCancel={() => setCommentsDeleteTargetId(null)}
+            onConfirm={() => {
+              if (!commentsDeleteTargetId) return
+              const run = deleteComment.mutateAsync({ commentId: commentsDeleteTargetId })
+              void run.then(() => setCommentsDeleteTargetId(null)).catch(() => setCommentsDeleteTargetId(null))
+            }}
+            confirmLoading={deleteComment.isPending}
+          />
+        }
+      />
     </SafeAreaView>
   )
 }
 
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
+  kav: {
+    flex: 1,
+  },
+  contentScroll: {
+    flex: 1,
+  },
   screen: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1202,133 +1651,278 @@ const createStyles = (colors: ThemePalette) =>
   scrollContentNoCta: {
     paddingBottom: spacing.xl,
   },
-  hero: {
-    position: 'relative',
-    height: 256,
-    backgroundColor: colors.surfaceMuted,
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 10, 0.18)',
-  },
-  heroHeader: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  heroActions: {
+  heroWrap: {
+    marginTop: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  eventMiniBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  heroActionGroup: {
+  eventMiniBarActions: {
     flexDirection: 'row',
     gap: 8,
   },
-  heroActionButton: {
+  eventMiniBarButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10, 10, 10, 0.4)',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  heroActionPressed: {
-    opacity: 0.86,
+  eventMiniBarButtonPressed: {
+    opacity: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.brandPrimaryBorder,
+    transform: [{ scale: 0.94 }],
   },
-  heroFooter: {
+  commentBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  commentBadgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  eventHeroCard: {
+    overflow: 'hidden',
+    borderWidth: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+    backgroundColor: colors.primary,
+  },
+  eventHeroHeader: {
+    position: 'relative',
+    overflow: 'hidden',
+    padding: spacing.md,
+    backgroundColor: 'transparent',
+  },
+  eventHeroPattern: {
     position: 'absolute',
     left: 0,
-    right: 0,
+    top: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+    width: '40%',
+    zIndex: 0,
   },
-  heroFooterGradient: {
+  eventHeroPatternDot: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 300,
+    width: EVENT_PATTERN_DOT,
+    height: EVENT_PATTERN_DOT,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
   },
-  heroStatusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 8,
+  eventHeroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    zIndex: 1,
   },
-  heroStatusText: {
-    color: colors.white,
-    fontWeight: '600',
-    fontSize: 12,
+  eventHeroAvatarWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    overflow: 'hidden',
+    flexShrink: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
   },
-  heroTitle: {
-    color: colors.white,
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-    textShadowColor: 'rgba(0, 0, 0, 0.28)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+  eventHeroAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
   },
-  heroDateRow: {
-    marginTop: 4,
+  eventHeroMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  eventHeroTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  eventHeroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'nowrap',
   },
-  heroDateText: {
-    color: 'rgba(255,255,255,0.82)',
+  eventHeroTitle: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    flex: 1,
+    minWidth: 0,
+  },
+  eventHeroChip: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+  },
+  eventHeroChipText: {
+    color: colors.white,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  eventHeroRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: 120,
+    marginLeft: 'auto',
+  },
+  eventHeroRatingPillPressed: {
+    opacity: 0.85,
+  },
+  eventHeroRatingText: {
+    color: colors.white,
     fontSize: 14,
-    textShadowColor: 'rgba(0, 0, 0, 0.22)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    fontWeight: '700',
   },
-  statsSection: {
+  eventHeroRatingMuted: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  eventHeroCompactStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    maxWidth: 140,
+    flexShrink: 0,
+  },
+  eventHeroCompactStatusText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  descriptionSection: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  heroTimelineChip: {
+    alignSelf: 'flex-start',
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  heroTimelineChipText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  descriptionBlock: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    gap: 6,
+  },
+  descriptionText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  descriptionMeasureText: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    top: spacing.md,
+    opacity: 0,
+    zIndex: -1,
+  },
+  descriptionLinkPressable: {
+    alignSelf: 'flex-start',
+  },
+  descriptionLinkPressed: {
+    opacity: 0.78,
+  },
+  descriptionLinkText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  inlineCtaSection: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  inlineCtaStack: {
+    gap: 10,
+  },
+  inlineCtaButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  inlineCtaButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  inlineCtaGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineCtaGradientDisabled: {
+    opacity: 0.7,
+  },
+  inlineCtaText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   contentSection: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
   },
-  quickStats: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  statCard: {
-    flex: 1,
-    minHeight: 84,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 0,
-  },
-  statValue: {
-    marginTop: 4,
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  statLabel: {
-    marginTop: 2,
-    color: colors.textMuted,
-    fontSize: 12,
+  segmentTrack: {
+    marginHorizontal: 0,
   },
   tabSwitch: {
     flexDirection: 'row',
@@ -1376,7 +1970,7 @@ const createStyles = (colors: ThemePalette) =>
     lineHeight: 22,
   },
   detailCard: {
-    borderRadius: 12,
+    borderRadius: radius.lg,
     shadowOpacity: 0,
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
@@ -1417,6 +2011,86 @@ const createStyles = (colors: ThemePalette) =>
   },
   locationIcon: {
     marginTop: 2,
+  },
+  infoLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 28,
+    marginBottom: 10,
+  },
+  infoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  infoTopChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+    marginBottom: 10,
+  },
+  infoPriceChip: {
+    minHeight: 30,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+  },
+  infoPriceChipText: {
+    color: colors.black,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  infoDatesBlock: {
+    gap: 8,
+    marginBottom: 10,
+  },
+  infoDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  infoDateText: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  infoClubLinkWrap: {
+    marginBottom: 10,
+    alignSelf: 'flex-start',
+  },
+  infoClubLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+  },
+  infoClubLinkText: {
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  infoLocationText: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.primary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  infoLocationTextDisabled: {
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  infoAmenitiesRow: {
+    marginTop: 12,
   },
   inlineLinkWrap: {
     alignSelf: 'flex-start',
@@ -1511,6 +2185,28 @@ const createStyles = (colors: ThemePalette) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  commentsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  commentsCount: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  commentsBlock: {
+    flexShrink: 1,
+    flexDirection: 'column',
+  },
+  commentsThreadScroll: {
+    flexGrow: 0,
+  },
+  commentsThreadContent: {
+    paddingBottom: 8,
   },
   organizerName: {
     color: colors.text,

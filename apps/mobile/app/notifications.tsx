@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
+import { useMemo, useRef, useState } from 'react'
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
 import { EntityImage } from '../src/components/EntityImage'
 import { FeedbackRatingModal } from '../src/components/FeedbackRatingModal'
@@ -22,6 +22,8 @@ export default function NotificationsScreen() {
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const [devFeedbackPromptsEnabled, setDevFeedbackPromptsEnabled] = useState(false)
+  const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null)
+  const navigationLock = useRef<{ id: string; at: number } | null>(null)
   const [activePrompt, setActivePrompt] = useState<{
     entityType: FeedbackEntityType
     entityId: string
@@ -148,6 +150,9 @@ export default function NotificationsScreen() {
   }
 
   const onNotificationPress = async (item: any) => {
+    const now = Date.now()
+    const locked = navigationLock.current
+    if (locked && locked.id === String(item?.id ?? '') && now - locked.at < 1200) return
     if (item.type === 'FEEDBACK_PROMPT') {
       setActivePrompt({
         entityType: item.entityType,
@@ -165,12 +170,25 @@ export default function NotificationsScreen() {
       })
       return
     }
+    const targetUrl = String(item?.targetUrl ?? '')
+    if (!targetUrl.startsWith('/')) return
+
+    // Лочим повторные тапы на этой нотификации: иначе можно поставить несколько переходов в очередь.
+    navigationLock.current = { id: String(item?.id ?? ''), at: now }
+    setOpeningNotificationId(String(item?.id ?? ''))
+
+    // Не ждём мутации: переход должен стартовать сразу, а отметку "seen" делаем в фоне.
     if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId) {
-      try {
-        await markClubJoinRequestSeen.mutateAsync({ clubId: item.clubId })
-      } catch {}
+      void markClubJoinRequestSeen
+        .mutateAsync({ clubId: item.clubId })
+        .then(() => notificationsQuery.refetch())
+        .catch(() => {})
     }
-    openTarget(item.targetUrl)
+
+    openTarget(targetUrl)
+    setTimeout(() => {
+      setOpeningNotificationId((prev) => (prev === String(item?.id ?? '') ? null : prev))
+    }, 1200)
   }
 
   const renderItemIcon = (item: any) => {
@@ -335,7 +353,15 @@ export default function NotificationsScreen() {
         ) : null}
 
         {items.map((item) => (
-          <Pressable key={item.id} onPress={() => void onNotificationPress(item)}>
+          <Pressable
+            key={item.id}
+            disabled={openingNotificationId === String(item.id)}
+            onPress={() => void onNotificationPress(item)}
+            style={({ pressed }) => [
+              pressed ? { opacity: 0.92 } : null,
+              openingNotificationId === String(item.id) ? { opacity: 0.72 } : null,
+            ]}
+          >
             <SurfaceCard style={styles.itemCard}>
               <View style={styles.itemHead}>
                 {renderItemIcon(item)}
@@ -352,6 +378,11 @@ export default function NotificationsScreen() {
                     <Text style={styles.itemBody}>{item.body}</Text>
                   )}
                 </View>
+                {openingNotificationId === String(item.id) ? (
+                  <View style={styles.openingSpinner} pointerEvents="none">
+                    <ActivityIndicator size="small" color={palette.textMuted} />
+                  </View>
+                ) : null}
               </View>
             </SurfaceCard>
           </Pressable>
@@ -416,6 +447,11 @@ const styles = StyleSheet.create({
   itemTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemBody: { marginTop: 4, color: palette.textMuted, fontSize: 13, lineHeight: 18 },
   itemBodyStrong: { color: palette.text, fontWeight: '700' },
+  openingSpinner: {
+    width: 28,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   contextCard: {
     padding: spacing.sm,
     flexDirection: 'row',
