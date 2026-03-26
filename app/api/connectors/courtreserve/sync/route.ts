@@ -1,6 +1,6 @@
 /**
  * CRON: Auto-sync all active CourtReserve connectors.
- * Runs every 6 hours.
+ * Runs every hour.
  */
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
