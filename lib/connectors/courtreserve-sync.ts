@@ -343,17 +343,24 @@ export async function runCourtReserveSync(
   })
 
   const clubId = connector.clubId
-  const partnerId = getPartnerId(clubId)
   const credentials = decryptCredentials(connector.credentialsEncrypted)
   const client = new CourtReserveClient(credentials.username, credentials.password, connector.baseUrl)
 
-  // Ensure PartnerApp exists for ExternalIdMapping FK constraint
-  const existingPartner = await prisma.partnerApp.findFirst({ where: { partnerId } })
-  if (!existingPartner) {
+  // Ensure Partner + PartnerApp exist for ExternalIdMapping FK constraint
+  const partnerCode = getPartnerId(clubId)
+  let partner = await prisma.partner.findUnique({ where: { code: partnerCode } })
+  if (!partner) {
     const crypto = await import('crypto')
+    partner = await prisma.partner.create({
+      data: {
+        name: `CourtReserve Connector (${clubId.substring(0, 8)})`,
+        code: partnerCode,
+        status: 'ACTIVE',
+      },
+    })
     await prisma.partnerApp.create({
       data: {
-        partnerId,
+        partnerId: partner.id,
         environment: 'PRODUCTION',
         keyId: `cr_${clubId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`,
         secretHash: 'connector-internal',
@@ -361,8 +368,9 @@ export async function runCourtReserveSync(
         scopes: ['connector:sync'],
       },
     })
-    console.log(`[CR Sync] Created PartnerApp for ${partnerId}`)
+    console.log(`[CR Sync] Created Partner + PartnerApp for ${partnerCode}`)
   }
+  const partnerId = partner.id // Use actual UUID, not code string
 
   const now = new Date()
   const from = new Date(now)
