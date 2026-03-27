@@ -479,20 +479,6 @@ export default function TournamentDetailScreen() {
     utils.registration.getMyStatuses,
   ])
 
-  const onRefreshTournamentDetail = useCallback(async () => {
-    await Promise.all([
-      tournamentQuery.refetch(),
-      fullTournamentQuery.refetch(),
-      myStatusQuery.refetch(),
-      accessQuery.refetch(),
-      myInvitationQuery.refetch(),
-      commentsQuery.refetch(),
-      commentCountQuery.refetch(),
-    ])
-  }, [accessQuery, fullTournamentQuery, myInvitationQuery, myStatusQuery, tournamentQuery, commentsQuery, commentCountQuery])
-
-  const pullToRefresh = usePullToRefresh(onRefreshTournamentDetail)
-
   if (tournamentQuery.isLoading) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -557,6 +543,19 @@ export default function TournamentDetailScreen() {
       await Promise.all([commentsQuery.refetch(), commentCountQuery.refetch()])
     },
   })
+  const onRefreshTournamentDetail = useCallback(async () => {
+    await Promise.all([
+      tournamentQuery.refetch(),
+      fullTournamentQuery.refetch(),
+      myStatusQuery.refetch(),
+      accessQuery.refetch(),
+      myInvitationQuery.refetch(),
+      commentsQuery.refetch(),
+      commentCountQuery.refetch(),
+    ])
+  }, [accessQuery, fullTournamentQuery, myInvitationQuery, myStatusQuery, tournamentQuery, commentsQuery, commentCountQuery])
+
+  const pullToRefresh = usePullToRefresh(onRefreshTournamentDetail)
   const feedbackSummaryQuery = api.feedback.getEntitySummary.useQuery(
     { entityType: 'TOURNAMENT', entityId: tournamentId },
     { enabled: FEEDBACK_API_ENABLED && Boolean(tournamentId) && isAuthenticated, retry: false },
