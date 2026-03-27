@@ -7,7 +7,8 @@ import { useTheme } from '../IQThemeProvider'
 import {
   Plug, CheckCircle2, AlertCircle, Loader2, RefreshCw,
   Unplug, ArrowRight, Clock, Database, Users, LayoutGrid,
-  Wifi, WifiOff, Zap, Settings,
+  Wifi, WifiOff, Zap, Settings, Upload, FileSpreadsheet,
+  CalendarDays, X,
 } from 'lucide-react'
 
 // ── Shared Card (same as BillingIQ) ──
@@ -69,6 +70,11 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
             </span>
           </div>
         </Card>
+      </motion.div>
+
+      {/* Excel Import */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ marginTop: 24 }}>
+        <ExcelImportSection clubId={clubId} />
       </motion.div>
     </div>
   )
@@ -449,5 +455,147 @@ function StatCard({ icon: Icon, label, data, color, isDark }: {
         {data.matched ? ` · ${data.matched} matched` : ''}
       </div>
     </div>
+  )
+}
+
+// ── Excel Import Section ──
+
+interface ExcelFile {
+  type: 'members' | 'reservations' | 'events'
+  name: string
+  data: string
+}
+
+function ExcelImportSection({ clubId }: { clubId: string }) {
+  const { isDark } = useTheme()
+  const [files, setFiles] = useState<ExcelFile[]>([])
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const importMutation = trpc.connectors.importExcel.useMutation()
+
+  const fileSlots: { type: ExcelFile['type']; label: string; icon: any; description: string }[] = [
+    { type: 'members', label: 'Members', icon: Users, description: 'MembersReport.xlsx' },
+    { type: 'reservations', label: 'Reservations', icon: CalendarDays, description: 'ReservationReport.xlsx' },
+    { type: 'events', label: 'Events', icon: LayoutGrid, description: 'EventRegistrantsReport.xlsx' },
+  ]
+
+  const handleFileSelect = (type: ExcelFile['type']) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls,.csv'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1]
+        setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, data: base64 }])
+        setResult(null)
+        setError(null)
+      }
+      reader.readAsDataURL(file)
+    }
+    input.click()
+  }
+
+  const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
+
+  const handleImport = async () => {
+    if (files.length === 0) return
+    setImporting(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await importMutation.mutateAsync({ clubId, files: files.map(f => ({ type: f.type, data: f.data })) })
+      setResult(res)
+    } catch (err: any) {
+      setError(err.message || 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <Card>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 12,
+          background: 'linear-gradient(135deg, #10b981, #059669)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <FileSpreadsheet size={24} color="white" />
+        </div>
+        <div>
+          <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Manual Import</p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Upload CourtReserve Excel exports</p>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
+        Export your data from CourtReserve (Reports → Members, Reservations, Event Registrants) and upload the .xlsx files below.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+        {fileSlots.map(slot => {
+          const file = files.find(f => f.type === slot.type)
+          const Icon = slot.icon
+          return (
+            <div key={slot.type} onClick={() => !file && handleFileSelect(slot.type)} style={{
+              padding: 14, borderRadius: 10, textAlign: 'center', position: 'relative',
+              border: file ? '1px solid rgba(16,185,129,0.4)' : '1px dashed var(--card-border)',
+              background: file ? (isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.05)') : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
+              cursor: file ? 'default' : 'pointer', transition: 'all 0.2s',
+            }}>
+              {file && (
+                <button onClick={(e) => { e.stopPropagation(); removeFile(slot.type) }} style={{
+                  position: 'absolute', top: 6, right: 6, background: 'rgba(239,68,68,0.2)', border: 'none',
+                  borderRadius: 6, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#ef4444',
+                }}>
+                  <X size={12} />
+                </button>
+              )}
+              <Icon size={20} style={{ color: file ? '#10b981' : 'var(--text-secondary)', marginBottom: 6 }} />
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{slot.label}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                {file ? file.name.substring(0, 20) + (file.name.length > 20 ? '...' : '') : slot.description}
+              </div>
+              {file && <CheckCircle2 size={14} style={{ color: '#10b981', marginTop: 6 }} />}
+            </div>
+          )
+        })}
+      </div>
+
+      <button onClick={handleImport} disabled={files.length === 0 || importing} style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, border: 'none',
+        background: files.length > 0 && !importing ? 'linear-gradient(135deg, #10b981, #059669)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+        color: files.length > 0 && !importing ? 'white' : 'var(--text-secondary)',
+        fontSize: 14, fontWeight: 600, cursor: files.length > 0 && !importing ? 'pointer' : 'not-allowed',
+      }}>
+        {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+        {importing ? 'Importing...' : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
+      </button>
+
+      {error && (
+        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
+          <AlertCircle size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />{error}
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 13, color: '#10b981' }}>
+            <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />Import complete!
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <StatCard icon={Users} label="Members" color="#6366f1" data={result.members} isDark={isDark} />
+            <StatCard icon={LayoutGrid} label="Sessions" color="#f59e0b" data={result.sessions} isDark={isDark} />
+            <StatCard icon={Database} label="Bookings" color="#10b981" data={result.bookings} isDark={isDark} />
+          </div>
+        </div>
+      )}
+    </Card>
   )
 }

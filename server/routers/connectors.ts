@@ -193,4 +193,22 @@ export const connectorsRouter = createTRPCRouter({
 
       return { ok: true }
     }),
+
+  /** Import from CourtReserve Excel exports */
+  importExcel: protectedProcedure
+    .input(z.object({
+      clubId: z.string(),
+      files: z.array(z.object({
+        type: z.enum(['members', 'reservations', 'events']),
+        data: z.string(), // base64 encoded xlsx
+      })).min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { runCourtReserveExcelImport } = await import('@/lib/connectors/courtreserve-excel-import')
+      const result = await runCourtReserveExcelImport(input.clubId, input.files)
+
+      return result
+    }),
 })
