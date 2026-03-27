@@ -1827,7 +1827,10 @@ export default function TournamentDetailScreen() {
                             {playoffMatches.length ? (
                               playoffMatches.map((m: any, idx: number) => (
                                 <Text
-                                  key={String(m.id ?? `playoff-${idx}-${m.teamAId ?? 'a'}-${m.teamBId ?? 'b'}`)}
+                                  key={
+                                    m.id ??
+                                    `playoff-${m.roundIndex ?? 'na'}-${m.teamAId ?? m.teamA?.id ?? 'a'}-${m.teamBId ?? m.teamB?.id ?? 'b'}-${idx}`
+                                  }
                                   style={styles.dashboardStageMatch}
                                 >
                                   R{Number(m.roundIndex ?? 0) + 1}: {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
