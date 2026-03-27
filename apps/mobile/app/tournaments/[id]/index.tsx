@@ -38,6 +38,7 @@ import {
   SurfaceCard,
 } from '../../../src/components/ui'
 import { TopBar } from '../../../src/components/navigation/TopBar'
+import { GradientTrophyIcon, TROPHY_GRADIENT_BRONZE, TROPHY_GRADIENT_GOLD, TROPHY_GRADIENT_SILVER } from '../../../src/components/GradientTrophyIcon'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
 import { fetchWithTimeout } from '../../../src/lib/apiFetch'
@@ -287,6 +288,108 @@ function isCompactHeroStatus(label: string) {
   return s === 'admin' || s === 'registered' || s === 'waitlist'
 }
 
+type BracketPlacementTeam = { id: string; name: string }
+
+/** Mirrors `components/BracketPyramid` `getWinner` for elimination matches from the public stage API. */
+function getEliminationWinnerTeam(
+  match: any,
+  tournamentFormat?: string | null
+): { id: string; name: string } | null {
+  if (!match?.teamA || !match.teamB) return null
+  const isMLP = Boolean((match as any).isMLP ?? tournamentFormat === 'MLP')
+  const games = (match.games ?? []) as any[]
+
+  if (isMLP && ((match as any).gamesCount === 4 || games.length === 4)) {
+    if (match.tiebreaker?.winnerTeamId) {
+      if (match.teamA.id === match.tiebreaker.winnerTeamId) return match.teamA
+      if (match.teamB.id === match.tiebreaker.winnerTeamId) return match.teamB
+    }
+    if ((match as any).winnerTeamId) {
+      const wId = String((match as any).winnerTeamId)
+      if (match.teamA.id === wId) return match.teamA
+      if (match.teamB.id === wId) return match.teamB
+    }
+    if (games.length === 4) {
+      let teamAWins = 0
+      let teamBWins = 0
+      for (const game of games) {
+        if (game.winner === 'A') teamAWins++
+        else if (game.winner === 'B') teamBWins++
+        else if (game.scoreA != null && game.scoreB != null) {
+          if (game.scoreA > game.scoreB) teamAWins++
+          else if (game.scoreB > game.scoreA) teamBWins++
+        }
+      }
+      if (teamAWins >= 3) return match.teamA
+      if (teamBWins >= 3) return match.teamB
+    }
+    return null
+  }
+
+  if (!games.length) return null
+  const totalScoreA = games.reduce((sum, game) => sum + Number(game?.scoreA ?? 0), 0)
+  const totalScoreB = games.reduce((sum, game) => sum + Number(game?.scoreB ?? 0), 0)
+  if (totalScoreA > totalScoreB) return match.teamA
+  if (totalScoreB > totalScoreA) return match.teamB
+  return null
+}
+
+/** Same placement rules as `BracketPyramid` “Final Standings Plaques”. */
+function getPlayoffPlacementsFromMatches(
+  matches: any[],
+  tournamentFormat?: string | null
+): { champion: BracketPlacementTeam | null; second: BracketPlacementTeam | null; third: BracketPlacementTeam | null } {
+  if (!matches.length) {
+    return { champion: null, second: null, third: null }
+  }
+  const maxRound = Math.max(...matches.map((m) => Number(m.roundIndex ?? 0)), 0)
+  const finalMatch = matches.find(
+    (m) => Number(m.roundIndex ?? 0) === maxRound && (m as any).note !== 'Third Place Match'
+  )
+  const thirdPlaceMatch = matches.find(
+    (m) => Number(m.roundIndex ?? 0) === maxRound && (m as any).note === 'Third Place Match'
+  )
+  const semiFinalMatches = matches.filter((m) => Number(m.roundIndex ?? 0) === maxRound - 1)
+
+  if (!finalMatch) {
+    return { champion: null, second: null, third: null }
+  }
+
+  const championTeam = getEliminationWinnerTeam(finalMatch, tournamentFormat)
+  const champion: BracketPlacementTeam | null = championTeam
+    ? { id: String(championTeam.id), name: String(championTeam.name ?? 'Team') }
+    : null
+
+  let second: BracketPlacementTeam | null = null
+  if (championTeam && finalMatch.teamA && finalMatch.teamB) {
+    const w = championTeam
+    second =
+      w.id === finalMatch.teamA.id
+        ? { id: String(finalMatch.teamB.id), name: String(finalMatch.teamB.name ?? 'Team') }
+        : { id: String(finalMatch.teamA.id), name: String(finalMatch.teamA.name ?? 'Team') }
+  }
+
+  let third: BracketPlacementTeam | null = null
+  if (thirdPlaceMatch) {
+    const w = getEliminationWinnerTeam(thirdPlaceMatch, tournamentFormat)
+    if (w) third = { id: String(w.id), name: String(w.name ?? 'Team') }
+  }
+  if (!third && semiFinalMatches.length > 0) {
+    const losers = semiFinalMatches
+      .map((match) => {
+        const w = getEliminationWinnerTeam(match, tournamentFormat)
+        if (!w || !match.teamA || !match.teamB) return null
+        return w.id === match.teamA.id
+          ? { id: String(match.teamB.id), name: String(match.teamB.name ?? 'Team') }
+          : { id: String(match.teamA.id), name: String(match.teamA.name ?? 'Team') }
+      })
+      .filter(Boolean) as BracketPlacementTeam[]
+    third = losers[0] ?? null
+  }
+
+  return { champion, second, third }
+}
+
 export default function TournamentDetailScreen() {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -434,17 +537,6 @@ export default function TournamentDetailScreen() {
         activeTab === 'dashboard' &&
         tournamentQuery.data?.format !== 'INDY_LEAGUE',
       retry: false,
-    }
-  )
-  const dashboardBracketQuery = (api as any).public.getBracketPublic.useQuery(
-    { divisionId: dashboardDivisionId ?? '' },
-    {
-      enabled:
-        Boolean(dashboardDivisionId) &&
-        activeTab === 'dashboard' &&
-        tournamentQuery.data?.format !== 'INDY_LEAGUE',
-      retry: false,
-      refetchOnWindowFocus: false,
     }
   )
 
@@ -1544,16 +1636,29 @@ export default function TournamentDetailScreen() {
                       .sort((a: any, b: any) => Number(a.rank ?? 999) - Number(b.rank ?? 999))
                     const rows = apiRows.length > 0 ? apiRows : computedRows
 
-                    const bracketPlayIn = ((dashboardBracketQuery.data?.playInBracket as any[]) ?? []) as any[]
-                    const bracketPlayoff = ((dashboardBracketQuery.data?.playoffBracket as any[]) ?? []) as any[]
-                    const playInMatches =
-                      bracketPlayIn.length > 0
-                        ? bracketPlayIn
-                        : ((stageMatches.filter((m: any) => m.stage === 'PLAY_IN') as any[]) ?? [])
-                    const playoffMatches =
-                      bracketPlayoff.length > 0
-                        ? bracketPlayoff
-                        : ((stageMatches.filter((m: any) => m.stage === 'ELIMINATION') as any[]) ?? [])
+                    const sortDashboardMatches = (list: any[]) =>
+                      [...list].sort((a, b) => {
+                        const ra = Number(a.roundIndex ?? 0)
+                        const rb = Number(b.roundIndex ?? 0)
+                        if (ra !== rb) return ra - rb
+                        return String(a.id ?? '').localeCompare(String(b.id ?? ''))
+                      })
+                    const playInMatches = sortDashboardMatches(
+                      stageMatches.filter((m: any) => m.stage === 'PLAY_IN') as any[]
+                    )
+                    const playoffMatches = sortDashboardMatches(
+                      stageMatches.filter((m: any) => m.stage === 'ELIMINATION') as any[]
+                    )
+                    const playoffMaxRound = playoffMatches.length
+                      ? Math.max(...playoffMatches.map((m: any) => Number(m.roundIndex ?? 0)), 0)
+                      : -1
+                    const playoffFinalMatch =
+                      playoffMatches.find(
+                        (m: any) =>
+                          Number(m.roundIndex ?? 0) === playoffMaxRound &&
+                          (m as any).note !== 'Third Place Match'
+                      ) ?? null
+                    const playoffPlacements = getPlayoffPlacementsFromMatches(playoffMatches, tournament.format)
                     const hasMyTeam = Boolean(myTeamId && rows.some((row: any) => row.teamId === myTeamId))
                     const seedByTeamId = new Map<string, number>(
                       rows.map((row: any, idx: number) => [String(row.teamId ?? `team-${idx}`), Number(row.rank ?? idx + 1)])
@@ -1716,15 +1821,6 @@ export default function TournamentDetailScreen() {
                               )
                             })}
                           </View>
-                          {rows.length > 0 && rows.every((r: any) => r.wins === 0 && r.losses === 0) ? (
-                            <View style={styles.dashboardFallbackWrap}>
-                              {rows.map((row: any, idx: number) => (
-                                <Text key={`slot-${row.teamId ?? idx}`} style={styles.dashboardFallbackText}>
-                                  {(row.teamName ?? 'Team')}: {row.slotSummary}
-                                </Text>
-                              ))}
-                            </View>
-                          ) : null}
                         </View>
 
                         <View style={styles.dashboardSectionCard}>
@@ -1734,7 +1830,12 @@ export default function TournamentDetailScreen() {
                               Preliminary stage to reduce to the required number of participants
                             </Text>
                             {playInMatches.length ? (
-                              <View style={styles.dashboardPlayInGrid}>
+                              <RNScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.dashboardPlayInRowScroll}
+                                contentContainerStyle={styles.dashboardPlayInRowContent}
+                              >
                                 {playInMatches.map((m: any, idx: number) => {
                                   const key = String(m.id ?? `play-in-${idx}-${m.teamAId ?? 'a'}-${m.teamBId ?? 'b'}`)
                                   const firstGame = (m.games ?? [])[0]
@@ -1756,25 +1857,20 @@ export default function TournamentDetailScreen() {
                                     <View key={key} style={styles.dashboardPlayInCard}>
                                       <View style={styles.dashboardPlayInCardHeader}>
                                         <Text style={styles.dashboardPlayInCardLabel}>Play-in</Text>
-                                        <View
-                                          style={[
-                                            styles.dashboardPlayInStatusBadge,
-                                            hasResults
-                                              ? styles.dashboardPlayInStatusBadgeDone
-                                              : styles.dashboardPlayInStatusBadgeScheduled,
-                                          ]}
-                                        >
-                                          <Text
-                                            style={[
-                                              styles.dashboardPlayInStatusBadgeText,
-                                              hasResults
-                                                ? styles.dashboardPlayInStatusBadgeTextDone
-                                                : styles.dashboardPlayInStatusBadgeTextScheduled,
-                                            ]}
-                                          >
-                                            {hasResults ? 'Completed' : 'Scheduled'}
-                                          </Text>
-                                        </View>
+                                        {hasResults ? (
+                                          <View style={styles.dashboardPlayInStatusDoneRow}>
+                                            <Feather name="check" size={14} color={colors.primary} />
+                                            <Text style={styles.dashboardPlayInStatusDoneLabel}>Completed</Text>
+                                          </View>
+                                        ) : (
+                                          <View style={[styles.dashboardPlayInStatusBadge, styles.dashboardPlayInStatusBadgeScheduled]}>
+                                            <Text
+                                              style={[styles.dashboardPlayInStatusBadgeText, styles.dashboardPlayInStatusBadgeTextScheduled]}
+                                            >
+                                              Scheduled
+                                            </Text>
+                                          </View>
+                                        )}
                                       </View>
 
                                       <View style={styles.dashboardPlayInTeams}>
@@ -1813,7 +1909,7 @@ export default function TournamentDetailScreen() {
                                     </View>
                                   )
                                 })}
-                              </View>
+                              </RNScrollView>
                             ) : (
                               <Text style={styles.dashboardStageEmpty}>No play-in matches yet.</Text>
                             )}
@@ -1823,23 +1919,184 @@ export default function TournamentDetailScreen() {
                         <View style={styles.dashboardSectionCard}>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Playoff / Bracket</Text>
+                            <Text style={styles.dashboardStageSubtitle}>
+                              Elimination stage with knockout rounds and finals
+                            </Text>
                             {playoffMatches.length ? (
-                              playoffMatches.map((m: any, idx: number) => (
-                                <Text
-                                  key={
+                              <RNScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.dashboardPlayInRowScroll}
+                                contentContainerStyle={styles.dashboardPlayInRowContent}
+                              >
+                                {playoffMatches.map((m: any, idx: number) => {
+                                  const key = String(
                                     m.id ??
-                                    `playoff-${m.roundIndex ?? 'na'}-${m.teamAId ?? m.teamA?.id ?? 'a'}-${m.teamBId ?? m.teamB?.id ?? 'b'}-${idx}`
-                                  }
-                                  style={styles.dashboardStageMatch}
-                                >
-                                  R{Number(m.roundIndex ?? 0) + 1}: {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
-                                </Text>
-                              ))
+                                      `playoff-${m.roundIndex ?? 'na'}-${m.teamAId ?? m.teamA?.id ?? 'a'}-${m.teamBId ?? m.teamB?.id ?? 'b'}-${idx}`
+                                  )
+                                  const totalScoreA = Array.isArray(m.games)
+                                    ? m.games.reduce((sum: number, g: any) => sum + Number(g?.scoreA ?? 0), 0)
+                                    : null
+                                  const totalScoreB = Array.isArray(m.games)
+                                    ? m.games.reduce((sum: number, g: any) => sum + Number(g?.scoreB ?? 0), 0)
+                                    : null
+                                  const hasResults = Boolean(
+                                    m.isCompleted ??
+                                      (totalScoreA !== null &&
+                                        totalScoreB !== null &&
+                                        (Number(totalScoreA) > 0 || Number(totalScoreB) > 0))
+                                  )
+                                  const winnerId =
+                                    m.winner?.id ??
+                                    (hasResults &&
+                                    totalScoreA !== null &&
+                                    totalScoreB !== null &&
+                                    totalScoreA !== totalScoreB
+                                      ? totalScoreA > totalScoreB
+                                        ? String(m.teamA?.id ?? m.teamAId ?? '')
+                                        : String(m.teamB?.id ?? m.teamBId ?? '')
+                                      : null)
+
+                                  const teamASeed =
+                                    Number(m.teamA?.seed ?? seedByTeamId.get(String(m.teamA?.id ?? m.teamAId ?? '')) ?? 0) || null
+                                  const teamBSeed =
+                                    Number(m.teamB?.seed ?? seedByTeamId.get(String(m.teamB?.id ?? m.teamBId ?? '')) ?? 0) || null
+
+                                  return (
+                                    <View key={key} style={styles.dashboardPlayoffCard}>
+                                      <View style={styles.dashboardPlayInCardHeader}>
+                                        <Text style={styles.dashboardPlayInCardLabel}>
+                                          Round {Number(m.roundIndex ?? 0) + 1}
+                                        </Text>
+                                        {hasResults ? (
+                                          <View style={styles.dashboardPlayInStatusDoneRow}>
+                                            <Feather name="check" size={14} color={colors.primary} />
+                                            <Text style={styles.dashboardPlayInStatusDoneLabel}>Completed</Text>
+                                          </View>
+                                        ) : (
+                                          <View style={[styles.dashboardPlayInStatusBadge, styles.dashboardPlayInStatusBadgeScheduled]}>
+                                            <Text
+                                              style={[styles.dashboardPlayInStatusBadgeText, styles.dashboardPlayInStatusBadgeTextScheduled]}
+                                            >
+                                              Scheduled
+                                            </Text>
+                                          </View>
+                                        )}
+                                      </View>
+
+                                      <View style={styles.dashboardPlayInTeams}>
+                                        <View style={styles.dashboardPlayInTeamRow}>
+                                          <View style={styles.dashboardPlayInTeamMain}>
+                                            <Text style={styles.dashboardPlayInSeedText}>#{teamASeed ?? '?'}</Text>
+                                            <Text style={styles.dashboardPlayInTeamName} numberOfLines={1}>
+                                              {m.teamA?.name ?? 'TBD'}
+                                            </Text>
+                                            {winnerId && String(winnerId) === String(m.teamA?.id ?? m.teamAId ?? '') ? (
+                                              <View style={styles.dashboardPlayInWinnerBadge}>
+                                                <Text style={styles.dashboardPlayInWinnerBadgeText}>Winner</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                          <Text style={styles.dashboardPlayInScore}>
+                                            {totalScoreA !== null ? totalScoreA : '—'}
+                                          </Text>
+                                        </View>
+
+                                        <View style={styles.dashboardPlayInDivider} />
+
+                                        <View style={styles.dashboardPlayInTeamRow}>
+                                          <View style={styles.dashboardPlayInTeamMain}>
+                                            <Text style={styles.dashboardPlayInSeedText}>#{teamBSeed ?? '?'}</Text>
+                                            <Text style={styles.dashboardPlayInTeamName} numberOfLines={1}>
+                                              {m.teamB?.name ?? 'TBD'}
+                                            </Text>
+                                            {winnerId && String(winnerId) === String(m.teamB?.id ?? m.teamBId ?? '') ? (
+                                              <View style={styles.dashboardPlayInWinnerBadge}>
+                                                <Text style={styles.dashboardPlayInWinnerBadgeText}>Winner</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                          <Text style={styles.dashboardPlayInScore}>
+                                            {totalScoreB !== null ? totalScoreB : '—'}
+                                          </Text>
+                                        </View>
+                                      </View>
+                                    </View>
+                                  )
+                                })}
+                              </RNScrollView>
                             ) : (
                               <Text style={styles.dashboardStageEmpty}>Bracket will appear after round-robin.</Text>
                             )}
                           </View>
                         </View>
+
+                        {playoffFinalMatch ? (
+                          <View style={styles.dashboardSectionCard}>
+                            <View style={styles.dashboardStageBlock}>
+                              <Text style={styles.dashboardStageTitle}>Champion & placements</Text>
+                              <Text style={styles.dashboardStageSubtitle}>
+                                Champion, 2nd and 3rd place from the bracket (final and third-place match)
+                              </Text>
+                              {playoffPlacements.champion || playoffPlacements.second || playoffPlacements.third ? (
+                                <View style={styles.dashboardPlayoffResultsList}>
+                                  {playoffPlacements.champion ? (
+                                    <View
+                                      style={[styles.dashboardPlayoffResultPill, styles.dashboardPlayoffResultPillChampion]}
+                                    >
+                                      <View style={styles.dashboardPlayoffResultTrophyRow}>
+                                        <GradientTrophyIcon size={40} colors={TROPHY_GRADIENT_GOLD} />
+                                      </View>
+                                      <Text style={[styles.dashboardPlayoffResultPlaceLabel, styles.dashboardPlayoffResultPlaceLabelChampion]}>
+                                        Champion
+                                      </Text>
+                                      <Text
+                                        style={[styles.dashboardPlayoffResultTeamName, styles.dashboardPlayoffResultTeamNameChampion]}
+                                        numberOfLines={2}
+                                      >
+                                        {playoffPlacements.champion.name}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  {playoffPlacements.second ? (
+                                    <View
+                                      style={[styles.dashboardPlayoffResultPill, styles.dashboardPlayoffResultPillSecond]}
+                                    >
+                                      <GradientTrophyIcon size={30} colors={TROPHY_GRADIENT_SILVER} />
+                                      <Text style={[styles.dashboardPlayoffResultPlaceLabel, styles.dashboardPlayoffResultPlaceLabelSecond]}>
+                                        2nd place
+                                      </Text>
+                                      <Text
+                                        style={[styles.dashboardPlayoffResultTeamName, styles.dashboardPlayoffResultTeamNameSecond]}
+                                        numberOfLines={2}
+                                      >
+                                        {playoffPlacements.second.name}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  {playoffPlacements.third ? (
+                                    <View
+                                      style={[styles.dashboardPlayoffResultPill, styles.dashboardPlayoffResultPillThird]}
+                                    >
+                                      <GradientTrophyIcon size={26} colors={TROPHY_GRADIENT_BRONZE} />
+                                      <Text style={[styles.dashboardPlayoffResultPlaceLabel, styles.dashboardPlayoffResultPlaceLabelThird]}>
+                                        3rd place
+                                      </Text>
+                                      <Text
+                                        style={[styles.dashboardPlayoffResultTeamName, styles.dashboardPlayoffResultTeamNameThird]}
+                                        numberOfLines={2}
+                                      >
+                                        {playoffPlacements.third.name}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              ) : (
+                                <Text style={styles.dashboardStageEmpty}>No final results yet.</Text>
+                              )}
+                            </View>
+                          </View>
+                        ) : null}
                       </>
                     )
                   })()}
@@ -3007,8 +3264,9 @@ const createStyles = (colors: ThemePalette) =>
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
-    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   dashboardDivisionHeader: {
     flexDirection: 'row',
@@ -3018,8 +3276,8 @@ const createStyles = (colors: ThemePalette) =>
   },
   dashboardDivisionTitle: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
     flex: 1,
   },
   dashboardDivisionMeta: {
@@ -3129,16 +3387,6 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 12,
     fontWeight: '700',
   },
-  dashboardFallbackWrap: {
-    marginTop: 4,
-    gap: 4,
-  },
-  dashboardFallbackText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
-  },
   dashboardStageBlock: {
     marginTop: 0,
     gap: spacing.xs,
@@ -3177,29 +3425,114 @@ const createStyles = (colors: ThemePalette) =>
   },
   dashboardStageTitle: {
     color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
   },
   dashboardStageSubtitle: {
     color: colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 18,
   },
-  dashboardPlayInGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  dashboardPlayInRowScroll: {
+    marginHorizontal: -spacing.md,
     marginTop: 4,
   },
+  dashboardPlayInRowContent: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingBottom: 2,
+  },
   dashboardPlayInCard: {
-    width: '48%',
-    minHeight: 122,
-    borderRadius: radius.lg,
+    width: 260,
+    flexShrink: 0,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
+    padding: 10,
     gap: 8,
+  },
+  dashboardPlayoffCard: {
+    width: 260,
+    flexShrink: 0,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 10,
+    gap: 8,
+  },
+  dashboardPlayoffResultsList: {
+    marginTop: 8,
+    gap: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  dashboardPlayoffResultPill: {
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    flexDirection: 'column',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  dashboardPlayoffResultPillChampion: {
+    backgroundColor: 'rgba(254, 243, 199, 0.55)',
+    borderColor: 'rgba(234, 179, 8, 0.45)',
+  },
+  dashboardPlayoffResultPillSecond: {
+    backgroundColor:
+      colors.surface === '#ffffff' ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.09)',
+    borderColor: colors.border,
+  },
+  dashboardPlayoffResultPillThird: {
+    backgroundColor: 'rgba(255, 237, 213, 0.65)',
+    borderColor: 'rgba(249, 115, 22, 0.35)',
+  },
+  dashboardPlayoffResultTrophyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  dashboardPlayoffResultPlaceLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  dashboardPlayoffResultPlaceLabelChampion: {
+    color: 'rgba(133, 77, 14, 0.95)',
+  },
+  dashboardPlayoffResultPlaceLabelSecond: {
+    color: colors.textMuted,
+  },
+  dashboardPlayoffResultPlaceLabelThird: {
+    color: 'rgba(194, 65, 12, 0.95)',
+  },
+  dashboardPlayoffResultTeamName: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  dashboardPlayoffResultTeamNameChampion: {
+    color: 'rgba(55, 48, 40, 0.98)',
+  },
+  dashboardPlayoffResultTeamNameSecond: {
+    color: colors.text,
+  },
+  dashboardPlayoffResultTeamNameThird: {
+    color: 'rgba(67, 20, 7, 0.98)',
   },
   dashboardPlayInCardHeader: {
     flexDirection: 'row',
@@ -3212,32 +3545,34 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 12,
     fontWeight: '600',
   },
+  dashboardPlayInStatusDoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dashboardPlayInStatusDoneLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+  },
   dashboardPlayInStatusBadge: {
     borderRadius: radius.pill,
     borderWidth: 1,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   dashboardPlayInStatusBadgeScheduled: {
     borderColor: colors.border,
     backgroundColor: colors.surfaceMuted,
   },
-  dashboardPlayInStatusBadgeDone: {
-    borderColor: 'rgba(40, 205, 65, 0.28)',
-    backgroundColor: 'rgba(40, 205, 65, 0.12)',
-  },
   dashboardPlayInStatusBadgeText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   dashboardPlayInStatusBadgeTextScheduled: {
     color: colors.textMuted,
   },
-  dashboardPlayInStatusBadgeTextDone: {
-    color: colors.primary,
-  },
   dashboardPlayInTeams: {
-    flex: 1,
     gap: 6,
   },
   dashboardPlayInTeamRow: {
@@ -3251,14 +3586,15 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     minWidth: 0,
   },
   dashboardPlayInSeedText: {
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: '700',
-    width: 20,
+    flexShrink: 0,
+    paddingRight: 2,
   },
   dashboardPlayInTeamName: {
     flex: 1,
