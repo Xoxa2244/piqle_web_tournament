@@ -448,7 +448,19 @@ export const AvatarBadge = ({ label, size = 48 }: { label: string; size?: number
       ]}
     >
       <View style={[styles.avatarBadgeInner, { borderRadius: size / 2, backgroundColor: inner }]}>
-        <Text style={[styles.avatarBadgeText, { fontSize: Math.max(14, size * 0.3) }]}>{initials || 'P'}</Text>
+        <Text
+          style={[
+            styles.avatarBadgeText,
+            {
+              fontSize: Math.max(9, Math.min(18, size * 0.42 - (initials.length >= 2 ? 1 : 0))),
+              lineHeight: Math.max(10, Math.min(20, size * 0.42)),
+            },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {initials || 'P'}
+        </Text>
       </View>
     </View>
   )

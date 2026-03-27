@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Keyboard,
+  LayoutAnimation,
   Linking,
   Platform,
   Pressable,
@@ -12,6 +13,7 @@ import {
   StyleSheet,
   ScrollView as RNScrollView,
   Text,
+  UIManager,
   View,
   useWindowDimensions,
   type ScrollView as RNScrollViewType,
@@ -313,6 +315,26 @@ export default function TournamentDetailScreen() {
   const [pendingScrollToComments, setPendingScrollToComments] = useState(false)
   const [commentsDeleteTargetId, setCommentsDeleteTargetId] = useState<string | null>(null)
   const [commentsKeyboardVisible, setCommentsKeyboardVisible] = useState(false)
+  const [expandedDashboardTeamId, setExpandedDashboardTeamId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true)
+    }
+  }, [])
+
+  const toggleDashboardTeamExpand = useCallback(
+    (rowKey: string) => {
+      LayoutAnimation.configureNext({
+        duration: 180,
+        update: { type: LayoutAnimation.Types.easeInEaseOut },
+        create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+        delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      })
+      setExpandedDashboardTeamId((prev) => (prev === rowKey ? null : rowKey))
+    },
+    []
+  )
 
   const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
   const cachedTournament = useMemo(
@@ -382,22 +404,25 @@ export default function TournamentDetailScreen() {
     },
   })
 
-  const dashboardPublicUrl = useMemo(
-    () => (tournamentId ? buildWebUrl(`/scoreboard/${tournamentId}`) : null),
-    [tournamentId]
-  )
   const dashboardBoardQuery = api.public.getTournamentById.useQuery(
     { id: tournamentId },
     { enabled: Boolean(tournamentId) && activeTab === 'dashboard', retry: false }
   )
   const [dashboardDivisionId, setDashboardDivisionId] = useState<string | null>(null)
+  const dashboardDivisionsForQueries = (
+    ((dashboardBoardQuery.data as any)?.divisions ?? (fullTournamentQuery.data as any)?.divisions ?? []) as any[]
+  )
+  const selectedDivisionForQueries =
+    dashboardDivisionsForQueries.find((d: any) => d.id === dashboardDivisionId) ?? dashboardDivisionsForQueries[0]
+  const canFetchDashboardStandings = Number(selectedDivisionForQueries?.teams?.length ?? 0) >= 2
   const dashboardStandingsQuery = api.public.getPublicStandings.useQuery(
     { divisionId: dashboardDivisionId ?? '' },
     {
       enabled:
         Boolean(dashboardDivisionId) &&
         activeTab === 'dashboard' &&
-        tournamentQuery.data?.format !== 'INDY_LEAGUE',
+        tournamentQuery.data?.format !== 'INDY_LEAGUE' &&
+        canFetchDashboardStandings,
       retry: false,
     }
   )
@@ -590,6 +615,11 @@ export default function TournamentDetailScreen() {
   )
   const tournamentAvailabilityData = ((fullTournamentQuery.data as any | null) ?? tournament) as any
   const registrationOpen = isRegistrationOpen(tournamentAvailabilityData)
+  const isPublicBoardEnabled =
+    (fullTournamentQuery.data as any | null)?.isPublicBoardEnabled ??
+    (tournament as any)?.isPublicBoardEnabled ??
+    tournamentAvailabilityData?.isPublicBoardEnabled
+  const isClosedAccessTournament = isPublicBoardEnabled === false
   const organizerLabel = tournament.user?.name || tournament.user?.email || 'Piqle'
   const canLeaveTournament = myStatus === 'active'
   const canPayNow = myStatus === 'active' && entryFeeCents > 0 && myStatusQuery.data?.isPaid === false
@@ -629,6 +659,21 @@ export default function TournamentDetailScreen() {
     canLeaveTournament ||
     myStatus === 'waitlisted' ||
     hasPrivilegedAccess
+  const hasRestrictedRegistrationAccess =
+    registrationOpen &&
+    !shouldShowRegisterCta &&
+    !pendingInvitation &&
+    !canLeaveTournament &&
+    !hasPrivilegedAccess &&
+    myStatus !== 'waitlisted'
+  const cannotRegisterForThisTournament =
+    !shouldShowRegisterCta &&
+    !pendingInvitation &&
+    !canLeaveTournament &&
+    !hasPrivilegedAccess &&
+    myStatus !== 'waitlisted'
+  const shouldShowClosedTournamentNotice =
+    isClosedAccessTournament || hasRestrictedRegistrationAccess || cannotRegisterForThisTournament
   const shouldShowStickyCta = false
   const dashboardRegistrationSummary =
     myStatusQuery.data?.status === 'active' &&
@@ -751,11 +796,6 @@ export default function TournamentDetailScreen() {
         url,
       })
     } catch {}
-  }
-
-  const handleOpenDashboard = () => {
-    if (!dashboardPublicUrl) return
-    void Linking.openURL(dashboardPublicUrl)
   }
 
   const handleOpenMaps = () => {
@@ -942,6 +982,22 @@ export default function TournamentDetailScreen() {
           onRefresh={pullToRefresh.onRefresh}
           bounces
         >
+        {shouldShowClosedTournamentNotice ? (
+          <View style={styles.closedTournamentNoticeWrap}>
+            <View style={styles.closedTournamentNotice}>
+              <Feather name="lock" size={16} color={colors.warning} />
+              <View style={styles.closedTournamentNoticeCopy}>
+                <Text style={styles.closedTournamentNoticeTitle}>
+                  Registration is unavailable
+                </Text>
+                <Text style={styles.closedTournamentNoticeText}>
+                  This tournament may be closed or invite-only
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {showPrimaryCta ? (
           <View style={styles.inlineCtaSection}>
             <View style={styles.inlineCtaStack}>
@@ -1411,138 +1467,167 @@ export default function TournamentDetailScreen() {
 
           {activeTab === 'dashboard' ? (
             <View style={styles.sectionStack}>
-              <SurfaceCard padded={false} style={[styles.detailCard, styles.dashboardCard]}>
-                <View style={styles.dashboardHeader}>
-                  <View style={styles.dashboardHeaderCopy}>
-                    <Text style={styles.cardTitle}>Dashboard</Text>
-                    <Text style={styles.mutedBodyText}>
-                      Standings, brackets and live match results from the tournament scoreboard.
-                    </Text>
-                    <View style={styles.dashboardFormatChip}>
-                      <Text style={styles.dashboardFormatChipText}>{formatTournamentFormat(tournament.format)}</Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    onPress={handleOpenDashboard}
-                    style={({ pressed }) => [styles.outlineButton, pressed && styles.outlineButtonPressed]}
-                  >
-                    <Text style={styles.outlineButtonText}>Open full</Text>
-                  </Pressable>
+              {dashboardBoardQuery.isLoading ? (
+                <View style={styles.dashboardLoadingState}>
+                  <LoadingBlock label="Loading dashboard..." />
                 </View>
-                {dashboardBoardQuery.isLoading ? (
-                  <View style={styles.dashboardLoadingState}>
-                    <LoadingBlock label="Loading dashboard..." />
-                  </View>
-                ) : dashboardDivisionsData.length > 0 ? (
-                  <View style={styles.dashboardNativeStack}>
-                    {(() => {
-                      const divisions = dashboardDivisionsData
-                      const selectedDivision = divisions.find((d: any) => d.id === dashboardDivisionId) ?? divisions[0]
-                      if (!selectedDivision) return null
+              ) : dashboardDivisionsData.length > 0 ? (
+                <View style={styles.dashboardNativeStack}>
+                  {(() => {
+                    const divisions = dashboardDivisionsData
+                    const selectedDivision = divisions.find((d: any) => d.id === dashboardDivisionId) ?? divisions[0]
+                    if (!selectedDivision) return null
 
-                      const playersPerTeam = getPlayersPerTeam(selectedDivision.teamKind, tournament.format, selectedDivision.name) ?? 2
-                      const stageMatches = ((dashboardStageQuery.data?.matches ?? selectedDivision.matches ?? []) as any[])
-                      const standingsFromApi = ((dashboardStandingsQuery.data?.standings ?? []) as any[])
-                      const teamStats = new Map<string, any>()
-                      ;((selectedDivision.teams ?? []) as any[]).forEach((team: any, idx: number) => {
-                        teamStats.set(team.id, {
-                          teamId: team.id,
-                          teamName: team.name,
-                          rank: idx + 1,
-                          wins: 0,
-                          losses: 0,
-                          pointsFor: 0,
-                          pointsAgainst: 0,
-                          pointDiff: 0,
-                          slotSummary: `${Number(team?.teamPlayers?.length ?? 0)}/${playersPerTeam} slots`,
-                        })
+                    const playersPerTeam = getPlayersPerTeam(selectedDivision.teamKind, tournament.format, selectedDivision.name) ?? 2
+                    const stageMatches = ((dashboardStageQuery.data?.matches ?? selectedDivision.matches ?? []) as any[])
+                    const standingsFromApi = ((dashboardStandingsQuery.data?.standings ?? []) as any[])
+                    const teamStats = new Map<string, any>()
+                    ;((selectedDivision.teams ?? []) as any[]).forEach((team: any, idx: number) => {
+                      teamStats.set(team.id, {
+                        teamId: team.id,
+                        teamName: team.name,
+                        rank: idx + 1,
+                        wins: 0,
+                        losses: 0,
+                        pointsFor: 0,
+                        pointsAgainst: 0,
+                        pointDiff: 0,
+                        slotSummary: `${Number(team?.teamPlayers?.length ?? 0)}/${playersPerTeam} slots`,
                       })
+                    })
 
-                      ;(stageMatches as any[]).forEach((match: any) => {
-                        const teamA = teamStats.get(match.teamAId)
-                        const teamB = teamStats.get(match.teamBId)
-                        if (!teamA || !teamB) return
-                        const games = (match.games ?? []) as any[]
-                        if (!games.length) return
-                        let a = 0
-                        let b = 0
-                        games.forEach((g: any) => {
-                          const sa = Number(g?.scoreA ?? 0)
-                          const sb = Number(g?.scoreB ?? 0)
-                          teamA.pointsFor += sa
-                          teamA.pointsAgainst += sb
-                          teamB.pointsFor += sb
-                          teamB.pointsAgainst += sa
-                          if (sa > sb) a += 1
-                          if (sb > sa) b += 1
-                        })
-                        if (a > b) {
-                          teamA.wins += 1
-                          teamB.losses += 1
-                        } else if (b > a) {
-                          teamB.wins += 1
-                          teamA.losses += 1
+                    ;(stageMatches as any[]).forEach((match: any) => {
+                      const teamA = teamStats.get(match.teamAId)
+                      const teamB = teamStats.get(match.teamBId)
+                      if (!teamA || !teamB) return
+                      const games = (match.games ?? []) as any[]
+                      if (!games.length) return
+                      let a = 0
+                      let b = 0
+                      games.forEach((g: any) => {
+                        const sa = Number(g?.scoreA ?? 0)
+                        const sb = Number(g?.scoreB ?? 0)
+                        teamA.pointsFor += sa
+                        teamA.pointsAgainst += sb
+                        teamB.pointsFor += sb
+                        teamB.pointsAgainst += sa
+                        if (sa > sb) a += 1
+                        if (sb > sa) b += 1
+                      })
+                      if (a > b) {
+                        teamA.wins += 1
+                        teamB.losses += 1
+                      } else if (b > a) {
+                        teamB.wins += 1
+                        teamA.losses += 1
+                      }
+                    })
+
+                    const computedRows = Array.from(teamStats.values())
+                      .map((r) => ({ ...r, pointDiff: r.pointsFor - r.pointsAgainst }))
+                      .sort((a, b) => {
+                        if (b.wins !== a.wins) return b.wins - a.wins
+                        if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff
+                        return b.pointsFor - a.pointsFor
+                      })
+                      .map((r, i) => ({ ...r, rank: i + 1 }))
+                    const apiRows = standingsFromApi
+                      .map((r: any) => ({
+                        teamId: r.teamId,
+                        teamName: r.teamName,
+                        rank: Number(r.rank ?? 0),
+                        wins: Number(r.wins ?? 0),
+                        losses: Number(r.losses ?? 0),
+                        pointsFor: Number(r.pointsFor ?? 0),
+                        pointsAgainst: Number(r.pointsAgainst ?? 0),
+                        pointDiff: Number(r.pointDiff ?? 0),
+                      }))
+                      .sort((a: any, b: any) => Number(a.rank ?? 999) - Number(b.rank ?? 999))
+                    const rows = apiRows.length > 0 ? apiRows : computedRows
+
+                    const bracketPlayIn = ((dashboardBracketQuery.data?.playInBracket as any[]) ?? []) as any[]
+                    const bracketPlayoff = ((dashboardBracketQuery.data?.playoffBracket as any[]) ?? []) as any[]
+                    const playInMatches =
+                      bracketPlayIn.length > 0
+                        ? bracketPlayIn
+                        : ((stageMatches.filter((m: any) => m.stage === 'PLAY_IN') as any[]) ?? [])
+                    const playoffMatches =
+                      bracketPlayoff.length > 0
+                        ? bracketPlayoff
+                        : ((stageMatches.filter((m: any) => m.stage === 'ELIMINATION') as any[]) ?? [])
+                    const hasMyTeam = Boolean(myTeamId && rows.some((row: any) => row.teamId === myTeamId))
+                    const seedByTeamId = new Map<string, number>(
+                      rows.map((row: any, idx: number) => [String(row.teamId ?? `team-${idx}`), Number(row.rank ?? idx + 1)])
+                    )
+                    const stageLabel = dashboardStageQuery.data?.stage
+                      ? String(dashboardStageQuery.data.stage).replaceAll('_', ' ')
+                      : formatTournamentFormat(tournament.format)
+                    const teamMembersById = new Map<
+                      string,
+                      Array<{ id: string; profileId?: string | null; name: string; image?: string | null }>
+                    >()
+                    ;((selectedDivision.teams ?? []) as any[]).forEach((team: any) => {
+                      const members = ((team?.teamPlayers ?? []) as any[]).map((tp: any, idx: number) => {
+                        const player = tp?.player ?? {}
+                        const user = player?.user ?? {}
+                        const fullName = String(
+                          user?.name ??
+                            [player?.firstName, player?.lastName].filter(Boolean).join(' ') ??
+                            player?.name ??
+                            `Player ${idx + 1}`
+                        ).trim()
+                        return {
+                          id: String(player?.id ?? user?.id ?? `${team?.id ?? 'team'}-${idx}`),
+                          profileId: String(user?.id ?? player?.userId ?? '').trim() || null,
+                          name: fullName || `Player ${idx + 1}`,
+                          image: user?.image ?? player?.image ?? null,
                         }
                       })
+                      teamMembersById.set(String(team.id), members)
+                    })
 
-                      const computedRows = Array.from(teamStats.values())
-                        .map((r) => ({ ...r, pointDiff: r.pointsFor - r.pointsAgainst }))
-                        .sort((a, b) => {
-                          if (b.wins !== a.wins) return b.wins - a.wins
-                          if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff
-                          return b.pointsFor - a.pointsFor
-                        })
-                        .map((r, i) => ({ ...r, rank: i + 1 }))
-                      const apiRows = standingsFromApi
-                        .map((r: any) => ({
-                          teamId: r.teamId,
-                          teamName: r.teamName,
-                          rank: Number(r.rank ?? 0),
-                          wins: Number(r.wins ?? 0),
-                          losses: Number(r.losses ?? 0),
-                          pointsFor: Number(r.pointsFor ?? 0),
-                          pointsAgainst: Number(r.pointsAgainst ?? 0),
-                          pointDiff: Number(r.pointDiff ?? 0),
-                        }))
-                        .sort((a: any, b: any) => Number(a.rank ?? 999) - Number(b.rank ?? 999))
-                      const rows = apiRows.length > 0 ? apiRows : computedRows
+                    return (
+                      <>
+                        {divisions.length > 1 ? (
+                          <RNScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.dashboardDivisionTabsContent}
+                            style={styles.dashboardDivisionTabsScroll}
+                          >
+                            {divisions.map((division: any) => {
+                              const isActive = division.id === selectedDivision.id
+                              return (
+                                <Pressable
+                                  key={`dash-division-chip-${division.id}`}
+                                  onPress={() => setDashboardDivisionId(String(division.id))}
+                                  style={({ pressed }) => [
+                                    styles.dashboardDivisionChip,
+                                    isActive && styles.dashboardDivisionChipActive,
+                                    pressed && styles.dashboardDivisionChipPressed,
+                                  ]}
+                                >
+                                  <Text
+                                    numberOfLines={1}
+                                    style={[
+                                      styles.dashboardDivisionChipText,
+                                      isActive && styles.dashboardDivisionChipTextActive,
+                                    ]}
+                                  >
+                                    {division.name}
+                                  </Text>
+                                </Pressable>
+                              )
+                            })}
+                          </RNScrollView>
+                        ) : null}
 
-                      const playInMatches = (((dashboardBracketQuery.data?.playInBracket as any[]) ?? stageMatches.filter((m: any) => m.stage === 'PLAY_IN')) as any[])
-                      const playoffMatches = (((dashboardBracketQuery.data?.playoffBracket as any[]) ?? stageMatches.filter((m: any) => m.stage === 'ELIMINATION')) as any[])
-                      const hasMyTeam = Boolean(myTeamId && rows.some((row: any) => row.teamId === myTeamId))
-
-                      return (
                         <View style={[styles.dashboardDivisionCard, hasMyTeam && styles.dashboardDivisionCardActive]}>
-                          {divisions.length > 1 ? (
-                            <SegmentedControl
-                              value={selectedDivision.id}
-                              onChange={(v) => setDashboardDivisionId(String(v))}
-                              options={divisions.map((d: any) => ({ value: d.id, label: d.name }))}
-                            />
-                          ) : null}
                           <View style={styles.dashboardDivisionHeader}>
                             <Text style={styles.dashboardDivisionTitle}>{selectedDivision.name}</Text>
                             <Text style={styles.dashboardDivisionMeta}>
-                              {rows.length} teams{dashboardStageQuery.data?.stage ? ` · ${String(dashboardStageQuery.data.stage).replaceAll('_', ' ')}` : ''}
+                              {rows.length} teams{stageLabel ? ` · ${stageLabel}` : ''}
                             </Text>
-                          </View>
-                          <View style={styles.dashboardStageBlock}>
-                            <Text style={styles.dashboardStageTitle}>Teams in division</Text>
-                            <View style={styles.dashboardTeamsWrap}>
-                              {rows.map((row: any, idx: number) => {
-                                const isMine = Boolean(myTeamId && row.teamId === myTeamId)
-                                return (
-                                  <View key={`team-pill-${row.teamId ?? idx}`} style={[styles.dashboardTeamPill, isMine && styles.dashboardTeamPillMine]}>
-                                    <Text style={[styles.dashboardTeamPillText, isMine && styles.dashboardStandingTextMine]} numberOfLines={1}>
-                                      {row.teamName ?? 'Team'}
-                                    </Text>
-                                    <Text style={[styles.dashboardTeamPillMeta, isMine && styles.dashboardStandingTextMine]}>
-                                      {row.slotSummary}
-                                    </Text>
-                                  </View>
-                                )
-                              })}
-                            </View>
                           </View>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Round Robin table</Text>
@@ -1558,16 +1643,76 @@ export default function TournamentDetailScreen() {
                             </View>
                             {rows.map((row: any, idx: number) => {
                               const isMine = Boolean(myTeamId && row.teamId === myTeamId)
+                              const rowKey = String(row.teamId ?? idx)
+                              const isExpanded = expandedDashboardTeamId === rowKey
+                              const members = row.teamId ? teamMembersById.get(String(row.teamId)) ?? [] : []
                               return (
-                                <View key={`${row.teamId ?? idx}`} style={[styles.dashboardStandingRow, isMine && styles.dashboardStandingRowMine]}>
-                                  <Text style={[styles.dashboardStandingTeam, isMine && styles.dashboardStandingTextMine]} numberOfLines={1}>
-                                    {row.teamName ?? 'Team'}
-                                  </Text>
-                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.wins ?? 0)}</Text>
-                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.losses ?? 0)}</Text>
-                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsFor ?? 0)}</Text>
-                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsAgainst ?? 0)}</Text>
-                                  <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointDiff ?? 0)}</Text>
+                                <View
+                                  key={rowKey}
+                                  style={[styles.dashboardStandingItem, idx === rows.length - 1 && styles.dashboardStandingItemLast]}
+                                >
+                                  <View
+                                    style={[
+                                      styles.dashboardStandingRow,
+                                      isMine && styles.dashboardStandingRowMine,
+                                      isExpanded && styles.dashboardStandingRowExpanded,
+                                      idx === rows.length - 1 && styles.dashboardStandingRowLast,
+                                    ]}
+                                  >
+                                    <Pressable
+                                      onPress={() => toggleDashboardTeamExpand(rowKey)}
+                                      style={({ pressed }) => [styles.dashboardStandingRowMain, pressed && styles.dashboardStandingRowPressed]}
+                                    >
+                                      <View style={styles.dashboardStandingTeamWrap}>
+                                        <Feather
+                                          name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                          size={14}
+                                          color={isMine ? colors.primary : colors.textMuted}
+                                          style={styles.dashboardStandingExpandIcon}
+                                        />
+                                        <Text style={[styles.dashboardStandingTeam, isMine && styles.dashboardStandingTextMine]} numberOfLines={1}>
+                                          {row.teamName ?? 'Team'}
+                                        </Text>
+                                      </View>
+                                      <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.wins ?? 0)}</Text>
+                                      <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.losses ?? 0)}</Text>
+                                      <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsFor ?? 0)}</Text>
+                                      <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsAgainst ?? 0)}</Text>
+                                      <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointDiff ?? 0)}</Text>
+                                    </Pressable>
+                                    {isExpanded ? (
+                                      <View style={styles.dashboardTeamMembersList}>
+                                        {members.length ? (
+                                          members.map((member, memberIdx) => (
+                                            <Pressable
+                                              key={`${rowKey}-member-${member.id}-${memberIdx}`}
+                                              disabled={!member.profileId}
+                                              onPress={() => {
+                                                if (!member.profileId) return
+                                                router.push({ pathname: '/profile/[id]', params: { id: member.profileId } })
+                                              }}
+                                              style={({ pressed }) => [
+                                                styles.dashboardTeamMemberRow,
+                                                pressed && member.profileId && styles.dashboardTeamMemberRowPressed,
+                                              ]}
+                                            >
+                                              <RemoteUserAvatar
+                                                uri={member.image}
+                                                size={28}
+                                                fallback="initials"
+                                                initialsLabel={member.name}
+                                              />
+                                              <Text style={styles.dashboardTeamMemberName} numberOfLines={1}>
+                                                {member.name}
+                                              </Text>
+                                            </Pressable>
+                                          ))
+                                        ) : (
+                                          <Text style={styles.dashboardStageEmpty}>No players assigned yet.</Text>
+                                        )}
+                                      </View>
+                                    ) : null}
+                                  </View>
                                 </View>
                               )
                             })}
@@ -1581,23 +1726,110 @@ export default function TournamentDetailScreen() {
                               ))}
                             </View>
                           ) : null}
+                        </View>
+
+                        <View style={styles.dashboardSectionCard}>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Play-in</Text>
+                            <Text style={styles.dashboardStageSubtitle}>
+                              Preliminary stage to reduce to the required number of participants
+                            </Text>
                             {playInMatches.length ? (
-                              playInMatches.map((m: any) => (
-                                <Text key={m.id} style={styles.dashboardStageMatch}>
-                                  {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
-                                </Text>
-                              ))
+                              <View style={styles.dashboardPlayInGrid}>
+                                {playInMatches.map((m: any, idx: number) => {
+                                  const key = String(m.id ?? `play-in-${idx}-${m.teamAId ?? 'a'}-${m.teamBId ?? 'b'}`)
+                                  const firstGame = (m.games ?? [])[0]
+                                  const scoreA = Number.isFinite(Number(firstGame?.scoreA)) ? Number(firstGame?.scoreA) : null
+                                  const scoreB = Number.isFinite(Number(firstGame?.scoreB)) ? Number(firstGame?.scoreB) : null
+                                  const hasResults = scoreA !== null && scoreB !== null
+                                  const winner =
+                                    hasResults && scoreA !== null && scoreB !== null
+                                      ? scoreA > scoreB
+                                        ? 'A'
+                                        : scoreB > scoreA
+                                        ? 'B'
+                                        : null
+                                      : null
+                                  const teamASeed = seedByTeamId.get(String(m.teamA?.id ?? m.teamAId ?? '')) ?? null
+                                  const teamBSeed = seedByTeamId.get(String(m.teamB?.id ?? m.teamBId ?? '')) ?? null
+
+                                  return (
+                                    <View key={key} style={styles.dashboardPlayInCard}>
+                                      <View style={styles.dashboardPlayInCardHeader}>
+                                        <Text style={styles.dashboardPlayInCardLabel}>Play-in</Text>
+                                        <View
+                                          style={[
+                                            styles.dashboardPlayInStatusBadge,
+                                            hasResults
+                                              ? styles.dashboardPlayInStatusBadgeDone
+                                              : styles.dashboardPlayInStatusBadgeScheduled,
+                                          ]}
+                                        >
+                                          <Text
+                                            style={[
+                                              styles.dashboardPlayInStatusBadgeText,
+                                              hasResults
+                                                ? styles.dashboardPlayInStatusBadgeTextDone
+                                                : styles.dashboardPlayInStatusBadgeTextScheduled,
+                                            ]}
+                                          >
+                                            {hasResults ? 'Completed' : 'Scheduled'}
+                                          </Text>
+                                        </View>
+                                      </View>
+
+                                      <View style={styles.dashboardPlayInTeams}>
+                                        <View style={styles.dashboardPlayInTeamRow}>
+                                          <View style={styles.dashboardPlayInTeamMain}>
+                                            <Text style={styles.dashboardPlayInSeedText}>#{teamASeed ?? '?'}</Text>
+                                            <Text style={styles.dashboardPlayInTeamName} numberOfLines={1}>
+                                              {m.teamA?.name ?? 'TBD'}
+                                            </Text>
+                                            {winner === 'A' ? (
+                                              <View style={styles.dashboardPlayInWinnerBadge}>
+                                                <Text style={styles.dashboardPlayInWinnerBadgeText}>Winner</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                          <Text style={styles.dashboardPlayInScore}>{scoreA ?? '—'}</Text>
+                                        </View>
+
+                                        <View style={styles.dashboardPlayInDivider} />
+
+                                        <View style={styles.dashboardPlayInTeamRow}>
+                                          <View style={styles.dashboardPlayInTeamMain}>
+                                            <Text style={styles.dashboardPlayInSeedText}>#{teamBSeed ?? '?'}</Text>
+                                            <Text style={styles.dashboardPlayInTeamName} numberOfLines={1}>
+                                              {m.teamB?.name ?? 'TBD'}
+                                            </Text>
+                                            {winner === 'B' ? (
+                                              <View style={styles.dashboardPlayInWinnerBadge}>
+                                                <Text style={styles.dashboardPlayInWinnerBadgeText}>Winner</Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                          <Text style={styles.dashboardPlayInScore}>{scoreB ?? '—'}</Text>
+                                        </View>
+                                      </View>
+                                    </View>
+                                  )
+                                })}
+                              </View>
                             ) : (
                               <Text style={styles.dashboardStageEmpty}>No play-in matches yet.</Text>
                             )}
                           </View>
+                        </View>
+
+                        <View style={styles.dashboardSectionCard}>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Playoff / Bracket</Text>
                             {playoffMatches.length ? (
-                              playoffMatches.map((m: any) => (
-                                <Text key={m.id} style={styles.dashboardStageMatch}>
+                              playoffMatches.map((m: any, idx: number) => (
+                                <Text
+                                  key={String(m.id ?? `playoff-${idx}-${m.teamAId ?? 'a'}-${m.teamBId ?? 'b'}`)}
+                                  style={styles.dashboardStageMatch}
+                                >
                                   R{Number(m.roundIndex ?? 0) + 1}: {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
                                 </Text>
                               ))
@@ -1606,18 +1838,18 @@ export default function TournamentDetailScreen() {
                             )}
                           </View>
                         </View>
-                      )
-                    })()}
-                  </View>
-                ) : (
-                  <View style={styles.dashboardEmptyWrap}>
-                    <EmptyState
-                      title="Dashboard unavailable"
-                      body="The public scoreboard could not be prepared for this tournament yet."
-                    />
-                  </View>
-                )}
-              </SurfaceCard>
+                      </>
+                    )
+                  })()}
+                </View>
+              ) : (
+                <View style={styles.dashboardEmptyWrap}>
+                  <EmptyState
+                    title="Dashboard unavailable"
+                    body="The public scoreboard could not be prepared for this tournament yet."
+                  />
+                </View>
+              )}
             </View>
           ) : null}
 
@@ -2089,6 +2321,37 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
+  closedTournamentNoticeWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  closedTournamentNotice: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 214, 10, 0.35)',
+    backgroundColor: 'rgba(255, 214, 10, 0.12)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  closedTournamentNoticeCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  closedTournamentNoticeTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  closedTournamentNoticeText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
   inlineCtaStack: {
     gap: 10,
   },
@@ -2343,7 +2606,7 @@ const createStyles = (colors: ThemePalette) =>
   },
   divisionTitle: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     flex: 1,
   },
@@ -2689,21 +2952,61 @@ const createStyles = (colors: ThemePalette) =>
     overflow: 'hidden',
   },
   dashboardNativeStack: {
-    paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     gap: 10,
+  },
+  dashboardDivisionTabsScroll: {
+    marginHorizontal: -spacing.md,
+  },
+  dashboardDivisionTabsContent: {
+    paddingHorizontal: spacing.md,
+    gap: 8,
+  },
+  dashboardDivisionChip: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  dashboardDivisionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
+  },
+  dashboardDivisionChipPressed: {
+    opacity: 0.9,
+  },
+  dashboardDivisionChipText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dashboardDivisionChipTextActive: {
+    color: colors.text,
   },
   dashboardDivisionCard: {
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
-    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: 0,
+    gap: spacing.sm,
   },
   dashboardDivisionCardActive: {
     borderColor: colors.primary,
     backgroundColor: 'rgba(40, 205, 65, 0.08)',
+  },
+  dashboardSectionCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 8,
   },
   dashboardDivisionHeader: {
     flexDirection: 'row',
@@ -2723,7 +3026,12 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '600',
   },
   dashboardStandingsList: {
-    gap: 6,
+    gap: 0,
+    marginHorizontal: -spacing.md,
+    backgroundColor: 'rgba(148, 163, 184, 0.0375)',
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+    overflow: 'hidden',
   },
   dashboardStandingsHead: {
     minHeight: 26,
@@ -2731,6 +3039,9 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 10,
+    backgroundColor: 'rgba(148, 163, 184, 0.0375)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148, 163, 184, 0.12)',
   },
   dashboardHeadTeam: {
     flex: 1,
@@ -2738,6 +3049,7 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,
+    paddingLeft: 20,
   },
   dashboardHeadStat: {
     width: 28,
@@ -2747,17 +3059,45 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
     letterSpacing: 0.2,
   },
+  dashboardStandingItem: {
+    gap: 0,
+  },
+  dashboardStandingItemLast: {
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+    overflow: 'hidden',
+  },
   dashboardStandingRow: {
     minHeight: 34,
-    borderRadius: radius.md,
+    borderRadius: 0,
+    flexDirection: 'column',
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: 'rgba(148, 163, 184, 0.0375)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148, 163, 184, 0.12)',
+  },
+  dashboardStandingRowMain: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 10,
-    backgroundColor: colors.surfaceMuted,
+    minHeight: 34,
   },
   dashboardStandingRowMine: {
-    backgroundColor: 'rgba(40, 205, 65, 0.14)',
+    backgroundColor: 'rgba(40, 205, 65, 0.1)',
+    borderColor: 'rgba(40, 205, 65, 0.28)',
+  },
+  dashboardStandingRowExpanded: {
+    borderColor: colors.primary,
+  },
+  dashboardStandingRowLast: {
+    borderBottomWidth: 0,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+  },
+  dashboardStandingRowPressed: {
+    opacity: 0.95,
   },
   dashboardStandingRank: {
     width: 18,
@@ -2767,10 +3107,18 @@ const createStyles = (colors: ThemePalette) =>
     textAlign: 'center',
   },
   dashboardStandingTeam: {
-    flex: 1,
     color: colors.text,
     fontSize: 13,
     fontWeight: '600',
+  },
+  dashboardStandingTeamWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dashboardStandingExpandIcon: {
+    marginRight: 2,
   },
   dashboardStandingCell: {
     width: 28,
@@ -2790,8 +3138,8 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '600',
   },
   dashboardStageBlock: {
-    marginTop: 6,
-    gap: 4,
+    marginTop: 0,
+    gap: spacing.xs,
   },
   dashboardTeamsWrap: {
     flexDirection: 'row',
@@ -2830,6 +3178,114 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 13,
     fontWeight: '700',
   },
+  dashboardStageSubtitle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  dashboardPlayInGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  dashboardPlayInCard: {
+    width: '48%',
+    minHeight: 122,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 8,
+  },
+  dashboardPlayInCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dashboardPlayInCardLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dashboardPlayInStatusBadge: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  dashboardPlayInStatusBadgeScheduled: {
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  dashboardPlayInStatusBadgeDone: {
+    borderColor: 'rgba(40, 205, 65, 0.28)',
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
+  },
+  dashboardPlayInStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  dashboardPlayInStatusBadgeTextScheduled: {
+    color: colors.textMuted,
+  },
+  dashboardPlayInStatusBadgeTextDone: {
+    color: colors.primary,
+  },
+  dashboardPlayInTeams: {
+    flex: 1,
+    gap: 6,
+  },
+  dashboardPlayInTeamRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minHeight: 28,
+  },
+  dashboardPlayInTeamMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
+  dashboardPlayInSeedText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    width: 20,
+  },
+  dashboardPlayInTeamName: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dashboardPlayInWinnerBadge: {
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  dashboardPlayInWinnerBadgeText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  dashboardPlayInScore: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    minWidth: 18,
+    textAlign: 'right',
+  },
+  dashboardPlayInDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   dashboardStageMatch: {
     color: colors.text,
     fontSize: 12,
@@ -2844,11 +3300,32 @@ const createStyles = (colors: ThemePalette) =>
   dashboardStandingTextMine: {
     color: colors.primary,
   },
+  dashboardTeamMembersList: {
+    marginTop: 8,
+    paddingLeft: 20,
+    paddingBottom: 2,
+    backgroundColor: 'transparent',
+    gap: 6,
+  },
+  dashboardTeamMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 32,
+  },
+  dashboardTeamMemberRowPressed: {
+    opacity: 0.78,
+  },
+  dashboardTeamMemberName: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   dashboardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
   dashboardHeaderCopy: {
