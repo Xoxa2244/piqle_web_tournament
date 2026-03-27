@@ -1584,8 +1584,14 @@ export default function TournamentDetailScreen() {
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Play-in</Text>
                             {playInMatches.length ? (
-                              playInMatches.map((m: any) => (
-                                <Text key={m.id} style={styles.dashboardStageMatch}>
+                              playInMatches.map((m: any, idx: number) => (
+                                <Text
+                                  key={
+                                    m.id ??
+                                    `play-in-${m.roundIndex ?? 'na'}-${m.teamAId ?? m.teamA?.id ?? 'a'}-${m.teamBId ?? m.teamB?.id ?? 'b'}-${idx}`
+                                  }
+                                  style={styles.dashboardStageMatch}
+                                >
                                   {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
                                 </Text>
                               ))
@@ -1596,8 +1602,14 @@ export default function TournamentDetailScreen() {
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Playoff / Bracket</Text>
                             {playoffMatches.length ? (
-                              playoffMatches.map((m: any) => (
-                                <Text key={m.id} style={styles.dashboardStageMatch}>
+                              playoffMatches.map((m: any, idx: number) => (
+                                <Text
+                                  key={
+                                    m.id ??
+                                    `playoff-${m.roundIndex ?? 'na'}-${m.teamAId ?? m.teamA?.id ?? 'a'}-${m.teamBId ?? m.teamB?.id ?? 'b'}-${idx}`
+                                  }
+                                  style={styles.dashboardStageMatch}
+                                >
                                   R{Number(m.roundIndex ?? 0) + 1}: {(m.teamA?.name ?? 'TBD')} vs {(m.teamB?.name ?? 'TBD')}
                                 </Text>
                               ))
