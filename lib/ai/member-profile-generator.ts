@@ -22,6 +22,7 @@ interface GenerateOptions {
   batchSize?: number
   delayMs?: number
   forceRegenerate?: boolean // skip if generated within 24h by default
+  limit?: number // max members to process in this call (for chunked UI flow)
 }
 
 interface GenerateResult {
@@ -321,7 +322,7 @@ export async function generateMemberProfilesForClub(
   clubId: string,
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
-  const { batchSize = 10, delayMs = 300, forceRegenerate = false } = options
+  const { batchSize = 10, delayMs = 300, forceRegenerate = false, limit } = options
   const result: GenerateResult = { generated: 0, skipped: 0, errors: 0 }
 
   // Get club name
@@ -349,7 +350,9 @@ export async function generateMemberProfilesForClub(
   })
   const recentlyGenerated = new Set(existingProfiles.map((p: any) => p.userId))
 
-  const toGenerate = followers.filter((f: any) => !recentlyGenerated.has(f.userId))
+  const toGenerate = followers
+    .filter((f: any) => !recentlyGenerated.has(f.userId))
+    .slice(0, limit ?? undefined) // if limit set, process only first N pending members
   result.skipped = followers.length - toGenerate.length
 
   console.log(`[MemberAiProfile] Club ${clubId}: ${toGenerate.length} to generate, ${result.skipped} skipped (recent)`)

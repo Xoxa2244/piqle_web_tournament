@@ -456,42 +456,57 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
               if (allDone) return null;
               return (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (aiGenerating) return;
                     setAiGenerating(true);
+                    setAiGenerateResult(null);
                     onGenerationStarted?.();
-                    // Direct fetch — bypasses Lambda kill-on-response, uses maxDuration=300
-                    fetch('/api/ai/generate-member-profiles', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        ...(process.env.NEXT_PUBLIC_INTERNAL_API_KEY
-                          ? { 'x-internal-key': process.env.NEXT_PUBLIC_INTERNAL_API_KEY }
-                          : {}),
-                      },
-                      credentials: 'include',
-                      body: JSON.stringify({ clubId }),
-                    })
-                      .then(async (res) => {
-                        const data = await res.json().catch(() => ({}))
+
+                    const CHUNK = 50; // members per call — fits in Vercel timeout
+                    let totalGenerated = 0;
+                    let totalErrors = 0;
+                    let sampleError = '';
+                    let remaining = total - withProfile;
+                    let iteration = 0;
+                    const maxIterations = Math.ceil(total / CHUNK) + 2; // safety cap
+
+                    try {
+                      while (remaining > 0 && iteration < maxIterations) {
+                        iteration++;
+                        setAiGenerateResult(`⏳ Generating… ${withProfile + totalGenerated}/${total}`);
+
+                        const res = await fetch('/api/ai/generate-member-profiles', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ clubId, limit: CHUNK }),
+                        });
+
+                        const data = await res.json().catch(() => ({}));
+
                         if (!res.ok) {
-                          console.error('[AI Profiles] Generation failed:', res.status, data)
-                          setAiGenerateResult(`❌ Error ${res.status}: ${data?.error || 'Unknown'}`)
-                        } else {
-                          const generated = data?.totalGenerated ?? 0
-                          const errors = data?.totalErrors ?? 0
-                          const skipped = data?.results?.[0]?.skipped ?? 0
-                          console.log('[AI Profiles] Done:', data)
-                          const errDetail = data?.sampleError ? ` | ${data.sampleError}` : ''
-                          setAiGenerateResult(`${errors > 0 ? '⚠️' : '✅'} Generated: ${generated}, Skipped: ${skipped}, Errors: ${errors}${errDetail}`)
+                          setAiGenerateResult(`❌ Error ${res.status}: ${data?.error || 'Unknown'}`);
+                          break;
                         }
-                        setAiGenerating(false)
-                      })
-                      .catch((err) => {
-                        console.error('[AI Profiles] Fetch error:', err)
-                        setAiGenerateResult(`❌ Network error: ${err?.message}`)
-                        setAiGenerating(false)
-                      });
+
+                        const batchGenerated = data?.totalGenerated ?? 0;
+                        const batchErrors = data?.totalErrors ?? 0;
+                        totalGenerated += batchGenerated;
+                        totalErrors += batchErrors;
+                        if (!sampleError && data?.sampleError) sampleError = data.sampleError;
+
+                        // If nothing was generated in this batch — we're done (all remaining errored or done)
+                        if (batchGenerated === 0) break;
+                        remaining -= batchGenerated;
+                      }
+
+                      const errDetail = sampleError ? ` | ${sampleError}` : '';
+                      setAiGenerateResult(`${totalErrors > 0 ? '⚠️' : '✅'} Generated: ${totalGenerated}/${total}, Errors: ${totalErrors}${errDetail}`);
+                    } catch (err: any) {
+                      setAiGenerateResult(`❌ Network error: ${err?.message}`);
+                    }
+
+                    setAiGenerating(false);
                   }}
                   disabled={aiGenerating}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
@@ -502,7 +517,10 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                   ) : (
                     <Sparkles className="w-3 h-3" />
                   )}
-                  {aiGenerating ? `Generating AI profiles…` : `Generate AI profiles (${withProfile}/${total} candidates)`}
+                  {aiGenerating
+                    ? (aiGenerateResult?.startsWith('⏳') ? aiGenerateResult.replace('⏳ ', '') : 'Starting…')
+                    : `Generate AI profiles (${withProfile}/${total} candidates)`
+                  }
                 </button>
               );
             })()}

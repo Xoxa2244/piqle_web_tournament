@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const clubId = body.clubId as string | undefined // optional: run for specific club only
   const forceRegenerate = body.forceRegenerate === true
+  const limit = typeof body.limit === 'number' ? body.limit : undefined // optional: max members per call
 
   const startTime = Date.now()
   const results: Array<{ clubId: string; name: string; generated: number; skipped: number; errors: number; sampleError?: string }> = []
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
           batchSize: 10,
           delayMs: 300,
           forceRegenerate,
+          limit,
         })
         results.push({ clubId: club.id, name: club.name, ...result })
         console.log(`[MemberAiProfiles] Club "${club.name}": ${result.generated} generated, ${result.skipped} skipped, ${result.errors} errors`)
