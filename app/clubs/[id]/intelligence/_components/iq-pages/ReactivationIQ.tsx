@@ -235,6 +235,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -293,6 +295,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
     if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const hasData = allMembers.length > 0;
   if (queryError && !isDemo) {
@@ -412,7 +416,10 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
       {/* Member List */}
       <div>
         <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
-          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>At-Risk Members</h3>
+          <div className="flex items-center gap-3">
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>At-Risk Members</h3>
+            <span className="text-xs" style={{ color: "var(--t4)" }}>{filtered.length} total</span>
+          </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 200 }}>
               <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
@@ -428,7 +435,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
               {(["all", "high", "medium", "low"] as const).map((f) => (
                 <button
                   key={f}
-                  onClick={() => setRiskFilter(f)}
+                  onClick={() => { setRiskFilter(f); setPage(1); }}
                   className="px-3 py-2 text-[11px] capitalize transition-all"
                   style={{
                     background: riskFilter === f ? "var(--pill-active)" : "transparent",
@@ -440,18 +447,26 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 </button>
               ))}
             </div>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              className="text-[11px] px-2 py-1.5 rounded-xl outline-none"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+            >
+              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+            </select>
           </div>
         </div>
 
         <div className="space-y-3">
-          {filtered.map((member, i) => {
+          {paginated.map((member, i) => {
             const isExpanded = expandedMember === member.id;
             return (
               <motion.div
                 key={member.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.04 }}
+                transition={{ delay: i * 0.03 }}
               >
                 <Card className="!p-0 overflow-hidden">
                   {/* Main Row */}
@@ -628,6 +643,51 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             );
           })}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-4" style={{ borderTop: "1px solid var(--divider)" }}>
+            <span className="text-xs" style={{ color: "var(--t4)" }}>
+              Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
+                style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+              >
+                ← Prev
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                const p = totalPages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= totalPages - 3 ? totalPages - 6 + i : page - 3 + i;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className="w-8 h-8 rounded-lg text-xs transition-all"
+                    style={{
+                      background: page === p ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
+                      border: `1px solid ${page === p ? "transparent" : "var(--card-border)"}`,
+                      color: page === p ? "white" : "var(--t2)",
+                      fontWeight: page === p ? 700 : 500,
+                    }}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
+                style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Campaign History */}
