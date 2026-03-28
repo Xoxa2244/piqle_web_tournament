@@ -255,6 +255,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGenerateResult, setAiGenerateResult] = useState<string | null>(null);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -454,19 +455,32 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                     // Direct fetch — bypasses Lambda kill-on-response, uses maxDuration=300
                     fetch('/api/ai/generate-member-profiles', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: {
+                        'Content-Type': 'application/json',
+                        ...(process.env.NEXT_PUBLIC_INTERNAL_API_KEY
+                          ? { 'x-internal-key': process.env.NEXT_PUBLIC_INTERNAL_API_KEY }
+                          : {}),
+                      },
                       credentials: 'include',
                       body: JSON.stringify({ clubId }),
                     })
                       .then(async (res) => {
+                        const data = await res.json().catch(() => ({}))
                         if (!res.ok) {
-                          const err = await res.json().catch(() => ({}))
-                          console.error('[AI Profiles] Generation failed:', res.status, err)
+                          console.error('[AI Profiles] Generation failed:', res.status, data)
+                          setAiGenerateResult(`❌ Error ${res.status}: ${data?.error || 'Unknown'}`)
+                        } else {
+                          const generated = data?.totalGenerated ?? 0
+                          const errors = data?.totalErrors ?? 0
+                          const skipped = data?.results?.[0]?.skipped ?? 0
+                          console.log('[AI Profiles] Done:', data)
+                          setAiGenerateResult(`✅ Generated: ${generated}, Skipped: ${skipped}, Errors: ${errors}`)
                         }
                         setAiGenerating(false)
                       })
                       .catch((err) => {
                         console.error('[AI Profiles] Fetch error:', err)
+                        setAiGenerateResult(`❌ Network error: ${err?.message}`)
                         setAiGenerating(false)
                       });
                   }}
@@ -483,6 +497,12 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 </button>
               );
             })()}
+            {/* Result message after generation */}
+            {aiGenerateResult && !aiGenerating && (
+              <span className="text-[10px]" style={{ color: aiGenerateResult.startsWith('✅') ? '#34D399' : '#F87171' }}>
+                {aiGenerateResult}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 200 }}>
