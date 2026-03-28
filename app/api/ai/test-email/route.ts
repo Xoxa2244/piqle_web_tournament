@@ -25,18 +25,12 @@ export async function POST(req: NextRequest) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stest.piqle.io'
 
-  // Use provided clubId or fall back to first club the user follows
+  // Use provided clubId or fall back to first club in DB
   let clubId: string = body.clubId
   let clubName: string = body.clubName || 'Your Club'
   if (!clubId) {
-    const follower = await prisma.clubFollower.findFirst({
-      where: { userId: session.user.id },
-      include: { club: { select: { id: true, name: true } } },
-    })
-    if (follower?.club) {
-      clubId = follower.club.id
-      clubName = follower.club.name
-    }
+    const club = await prisma.club.findFirst({ select: { id: true, name: true } })
+    if (club) { clubId = club.id; clubName = club.name }
   } else {
     const club = await prisma.club.findUnique({ where: { id: clubId }, select: { name: true } })
     if (club) clubName = club.name
