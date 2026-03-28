@@ -19,10 +19,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify user is club admin
-    const membership = await prisma.clubFollower.findFirst({
-      where: { clubId, userId: session.user.id, role: { in: ['ADMIN', 'OWNER'] } },
+    const admin = await prisma.clubAdmin.findFirst({
+      where: { clubId, userId: session.user.id },
     })
-    if (!membership) {
+    if (!admin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

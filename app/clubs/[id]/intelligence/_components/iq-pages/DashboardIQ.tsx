@@ -16,8 +16,64 @@ import { useTheme } from "../IQThemeProvider";
 import { useParams, useRouter } from "next/navigation";
 import { IQFileDropZone } from "./IQFileDropZone";
 import { AILoadingAnimation } from "./AILoadingAnimation";
-import { X, Check, ChevronRight, Trash2 } from "lucide-react";
+import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+
+type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; data: string }
+
+function ExcelSlot({ label, description, file, onFile, isDark }: {
+  label: string; description: string; file: ExcelFileSlot | null;
+  onFile: (f: ExcelFileSlot) => void; isDark: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const type = description.includes('Member') ? 'members' : description.includes('Reservation') ? 'reservations' : 'events'
+
+  const handleFile = async (raw: File) => {
+    const arrayBuffer = await raw.arrayBuffer()
+    const bytes = new Uint8Array(arrayBuffer)
+    let binary = ''
+    for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j])
+    onFile({ type, name: raw.name, data: btoa(binary) })
+  }
+
+  if (file) {
+    return (
+      <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.3)' }}>
+        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--heading)' }}>{file.name}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{label}</p>
+        </div>
+        <button onClick={() => onFile(null as any)} className="p-1 rounded" style={{ color: 'var(--t4)' }}>
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="rounded-xl p-3 cursor-pointer transition-all"
+      style={{ background: dragOver ? (isDark ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.08)') : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'), border: dragOver ? '2px solid rgba(139,92,246,0.5)' : '1px dashed var(--card-border)' }}
+      onClick={() => ref.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+    >
+      <div className="flex items-center gap-3">
+        <FileSpreadsheet className="w-4 h-4 shrink-0" style={{ color: isDark ? '#A78BFA' : '#7C3AED' }} />
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: 'var(--heading)' }}>{label}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{description}</p>
+        </div>
+        <Upload className="w-3.5 h-3.5 shrink-0 ml-auto" style={{ color: 'var(--t4)' }} />
+      </div>
+      <input ref={ref} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = '' }} />
+    </div>
+  )
+}
 
 /* --- Period-dependent Mock Data --- */
 type Period = "week" | "month" | "quarter" | "custom";
@@ -375,6 +431,35 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [deleteConfirm, setDeleteConfirm] = useState<{ upload: any; index: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deleteImportMutation = trpc.intelligence.deleteImport.useMutation();
+  const [excelFiles, setExcelFiles] = useState<(ExcelFileSlot | null)[]>([null, null, null]);
+  const importExcelMutation = trpc.connectors.importExcel.useMutation();
+
+  const handleExcelFileSet = (idx: number, f: ExcelFileSlot | null) => {
+    setExcelFiles(prev => { const next = [...prev]; next[idx] = f; return next; })
+  }
+
+  const handleExcelImport = async () => {
+    const files = excelFiles.filter(Boolean) as ExcelFileSlot[]
+    if (!files.length || !clubId) return
+    setImportFileName(`${files.length} CourtReserve file${files.length > 1 ? 's' : ''}`)
+    setImportModal("processing")
+    setImportProgress(5)
+    setImportStatus("Importing files...")
+    try {
+      const res = await importExcelMutation.mutateAsync({
+        clubId,
+        files: files.map(f => ({ type: f.type, data: f.data })),
+      })
+      setImportProgress(100)
+      const total = (res.members?.created || 0) + (res.members?.updated || 0)
+      const sessions = (res.sessions?.created || 0) + (res.sessions?.updated || 0)
+      setImportResult({ totalParsed: sessions, totalErrors: 0, found: [`${total} members`, `${sessions} sessions`, `${(res.bookings?.created || 0)} bookings`], missing: [] })
+      setImportStatus("Import complete!")
+    } catch (err: any) {
+      setImportProgress(100)
+      setImportStatus(err.message || "Import failed")
+    }
+  }
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -1079,146 +1164,26 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               {/* Modal Body */}
               <div className="p-6">
                 {importModal === "upload" && (
-                  <IQFileDropZone
-                    onFile={async (file) => {
-                      setImportFileName(file.name);
-                      setImportModal("processing");
-                      setImportProgress(0);
-                      setImportStatus("Reading file...");
-
-                      if (clubId) {
-                        try {
-                          const text = await file.text();
-                          setImportProgress(5);
-                          setImportStatus("Parsing CSV columns...");
-
-                          // Step 1: Smart parse CSV with LLM column mapping
-                          console.log('[Import] Parsing CSV with smart mapper...');
-                          const parseResponse = await fetch('/api/ai/parse-csv', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ csvContent: text, fileName: file.name }),
-                          });
-
-                          if (!parseResponse.ok) {
-                            console.error('[Import] Parse failed:', parseResponse.status);
-                            return;
-                          }
-
-                          const parseResult = await parseResponse.json();
-                          console.log(`[Import] Parsed ${parseResult.totalParsed} sessions (${parseResult.totalErrors} errors)`);
-                          if (parseResult.notes) console.log('[Import] Notes:', parseResult.notes);
-
-                          // Analyze what data was found vs missing
-                          const sample = parseResult.sessions?.[0] || {};
-                          const allFields: Array<{ key: string; label: string; impact: string }> = [
-                            { key: 'date', label: 'Session dates', impact: 'trends & scheduling' },
-                            { key: 'startTime', label: 'Start times', impact: 'peak hour analysis' },
-                            { key: 'court', label: 'Court names', impact: 'court utilization' },
-                            { key: 'format', label: 'Session formats', impact: 'format performance' },
-                            { key: 'registered', label: 'Player count', impact: 'occupancy analytics' },
-                            { key: 'capacity', label: 'Max capacity', impact: 'fill rate tracking' },
-                            { key: 'pricePerPlayer', label: 'Pricing data', impact: 'revenue analytics' },
-                            { key: 'playerNames', label: 'Player names/emails', impact: 'member health & retention' },
-                            { key: 'skillLevel', label: 'Skill levels', impact: 'skill-based recommendations' },
-                            { key: 'endTime', label: 'End times', impact: 'duration analytics' },
-                          ];
-                          const found = allFields.filter(f => sample[f.key] != null && sample[f.key] !== '').map(f => f.label);
-                          const missing = allFields.filter(f => sample[f.key] == null || sample[f.key] === '').map(f => `${f.label} → unlocks ${f.impact}`);
-
-                          setImportResult({
-                            totalParsed: parseResult.totalParsed || parseResult.sessions?.length || 0,
-                            totalErrors: parseResult.totalErrors || 0,
-                            found,
-                            missing,
-                            notes: parseResult.notes,
-                          });
-
-                          if (!parseResult.sessions?.length) {
-                            console.error('[Import] No sessions parsed');
-                            setImportProgress(100);
-                            setImportStatus("No sessions found in file");
-                            return;
-                          }
-
-                          setImportProgress(20);
-                          setImportStatus(`Parsed ${parseResult.sessions.length} sessions. Importing...`);
-
-                          // Step 2: Import parsed sessions
-                          console.log('[Import] Importing sessions to database...');
-                          const importResponse = await fetch('/api/ai/import-sessions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ clubId, sessions: parseResult.sessions, fileName: file.name }),
-                          });
-
-                          if (!importResponse.ok) {
-                            console.error('[Import] Import API error:', importResponse.status);
-                            setImportProgress(100);
-                            setImportStatus("Import failed");
-                          } else {
-                            // SSE stream — parse JSON events and update progress
-                            const reader = importResponse.body?.getReader();
-                            if (reader) {
-                              const decoder = new TextDecoder();
-                              // Phase progress ranges: deleting 20-25, preparing 25-30, creating_sessions 30-50, campaign 50-55, embedding 55-85, saving 85-95, done 100
-                              const phaseRanges: Record<string, [number, number]> = {
-                                deleting: [20, 25],
-                                preparing: [25, 30],
-                                creating_sessions: [30, 50],
-                                campaign: [50, 55],
-                                embedding: [55, 85],
-                                saving: [85, 95],
-                                done: [100, 100],
-                              };
-
-                              while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                const text = decoder.decode(value);
-
-                                // Parse SSE events: "data: {...}\n\n"
-                                for (const line of text.split('\n')) {
-                                  if (!line.startsWith('data: ')) continue;
-                                  try {
-                                    const evt = JSON.parse(line.slice(6));
-                                    const range = phaseRanges[evt.phase] || [20, 95];
-
-                                    if (evt.current != null && evt.total != null && evt.total > 0) {
-                                      // Interpolate within phase range
-                                      const phasePct = evt.current / evt.total;
-                                      const pct = Math.round(range[0] + phasePct * (range[1] - range[0]));
-                                      setImportProgress(Math.min(95, pct));
-                                    } else {
-                                      setImportProgress(range[0]);
-                                    }
-
-                                    if (evt.message) {
-                                      setImportStatus(evt.message);
-                                    }
-
-                                    if (evt.phase === 'done') {
-                                      setImportProgress(100);
-                                      setImportStatus("Import complete!");
-                                    }
-
-                                    console.log(`[Import] ${evt.phase}: ${evt.message || ''}`);
-                                  } catch { /* skip non-JSON lines */ }
-                                }
-                              }
-                            }
-                            setImportProgress(100);
-                            setImportStatus("Import complete!");
-                            console.log('[Import] Complete!');
-                          }
-                        } catch (err) {
-                          console.error('[Import] Failed:', err);
-                          setImportProgress(100);
-                          setImportStatus("Import failed");
-                        }
-                      }
-                    }}
-                  />
+                  <div className="space-y-3">
+                    <p className="text-sm" style={{ color: 'var(--t3)' }}>
+                      Export from CourtReserve → Reports and upload the files below. At least one file is required.
+                    </p>
+                    <ExcelSlot label="Members" description="MembersReport.xlsx" file={excelFiles[0]} onFile={f => handleExcelFileSet(0, f)} isDark={isDark} />
+                    <ExcelSlot label="Reservations" description="ReservationReport.xlsx" file={excelFiles[1]} onFile={f => handleExcelFileSet(1, f)} isDark={isDark} />
+                    <ExcelSlot label="Events" description="EventRegistrantsReport.xlsx" file={excelFiles[2]} onFile={f => handleExcelFileSet(2, f)} isDark={isDark} />
+                    <button
+                      onClick={handleExcelImport}
+                      disabled={!excelFiles.some(Boolean)}
+                      className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+                      style={{
+                        background: excelFiles.some(Boolean) ? 'linear-gradient(135deg, #8B5CF6, #06B6D4)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+                        color: excelFiles.some(Boolean) ? '#fff' : 'var(--t4)',
+                      }}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Import {excelFiles.filter(Boolean).length} file{excelFiles.filter(Boolean).length !== 1 ? 's' : ''}
+                    </button>
+                  </div>
                 )}
 
                 {importModal === "processing" && (
