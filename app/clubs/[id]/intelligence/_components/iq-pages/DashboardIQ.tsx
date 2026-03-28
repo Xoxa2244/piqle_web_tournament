@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import { useRef } from "react";
 import {
@@ -412,6 +413,8 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof period
 
 export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, settingsData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
   const { isDark } = useTheme();
+  const { data: session } = useSession();
+  const userName = session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0] || 'there';
   const params = useParams();
   const router = useRouter();
   const clubId = propClubId || (params.id as string);
@@ -590,7 +593,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Dashboard</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Welcome back, John. Here&apos;s your club overview.</p>
+          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Welcome back, {userName}. Here&apos;s your club overview.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {(["week", "month", "quarter", "custom"] as const).map((p) => (
