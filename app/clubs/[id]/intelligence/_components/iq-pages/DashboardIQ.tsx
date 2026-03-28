@@ -861,6 +861,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             ))}
           </div>
+          {/* Inactive members note — links Health to Reactivation */}
+          {(() => {
+            const inactiveCount = dashboardData?.players?.inactiveCount;
+            if (!inactiveCount) return null;
+            return (
+              <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
+                <span className="text-[11px]" style={{ color: "var(--t3)" }}>
+                  incl. <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> inactive 21+ days
+                </span>
+                <button
+                  onClick={() => router.push(`/clubs/${clubId}/intelligence/reactivation`)}
+                  className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-80"
+                  style={{ color: "#F97316", fontWeight: 600 }}
+                >
+                  Reactivation <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })()}
         </Card>
 
         {/* AI Weekly Summary — generated from real data */}
@@ -889,6 +908,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 const revenueVal = m?.bookings?.value || 0;
                 const revChange = m?.bookings?.trend?.changePercent || 0;
                 const revDir = m?.bookings?.trend?.direction || 'up';
+                const isMembership = typeof m?.lostRevenue?.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.');
 
                 if (!m || totalMembers === 0) {
                   return (
@@ -907,9 +927,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   ? `Needs attention.`
                   : `Holding steady.`;
 
-                const revText = revDir === 'up'
-                  ? `Revenue is up ${revChange}% vs last period with ${totalMembers} active members tracked.`
-                  : `Revenue is down ${Math.abs(revChange)}% vs last period. ${totalMembers} members are being tracked.`;
+                const revText = isMembership
+                  ? (revDir === 'up'
+                    ? `Player sessions are up ${revChange}% vs last period — ${totalMembers} members tracked.`
+                    : `Player sessions are down ${Math.abs(revChange)}% vs last period. ${totalMembers} members tracked.`)
+                  : (revDir === 'up'
+                    ? `Revenue is up ${revChange}% vs last period with ${totalMembers} active members tracked.`
+                    : `Revenue is down ${Math.abs(revChange)}% vs last period. ${totalMembers} members are being tracked.`);
 
                 const occText = occNum >= 80
                   ? `Court occupancy is strong at ${occupancy}.`
@@ -918,7 +942,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   : `Court occupancy is low at ${occupancy}. Consider promotions or schedule adjustments.`;
 
                 const riskText = atRiskCount + criticalCount > 0
-                  ? `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help recover revenue.`
+                  ? isMembership
+                    ? `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help re-engage them.`
+                    : `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help recover revenue.`
                   : `All members are in good health — keep up the engagement!`;
 
                 // Goal-specific summary paragraphs
