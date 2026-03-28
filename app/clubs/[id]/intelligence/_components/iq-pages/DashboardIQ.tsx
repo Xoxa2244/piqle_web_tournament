@@ -536,7 +536,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         sessionSourceIds: u.sessionSourceIds || [],
         importBatchId: u.importBatchId || null,
       }))
-    : dataUploadHistory;
+    : [];
 
   // AI Insights — generated from real data + goals
   const clubGoals: string[] = settingsData?.settings?.goals || [];
@@ -1073,6 +1073,11 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               Import Files
             </motion.button>
           </div>
+          {displayUploads.length === 0 && (
+            <div className="py-6 text-center" style={{ color: "var(--t4)", fontSize: 13 }}>
+              No imports yet. Click <strong style={{ color: "var(--t2)" }}>Import Files</strong> to upload CourtReserve data.
+            </div>
+          )}
           <div className="space-y-2.5">
             {displayUploads.map((u: any, i: number) => (
               <motion.div
