@@ -455,10 +455,20 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                     fetch('/api/ai/generate-member-profiles', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
                       body: JSON.stringify({ clubId }),
                     })
-                      .then(() => setAiGenerating(false))
-                      .catch(() => setAiGenerating(false));
+                      .then(async (res) => {
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({}))
+                          console.error('[AI Profiles] Generation failed:', res.status, err)
+                        }
+                        setAiGenerating(false)
+                      })
+                      .catch((err) => {
+                        console.error('[AI Profiles] Fetch error:', err)
+                        setAiGenerating(false)
+                      });
                   }}
                   disabled={aiGenerating}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"

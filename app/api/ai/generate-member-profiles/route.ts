@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
+import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
@@ -19,10 +19,14 @@ export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization')
   const isCron = auth === `Bearer ${process.env.CRON_SECRET}`
 
-  // Accept either CRON_SECRET (nightly job) or a logged-in club admin session
+  // Accept either CRON_SECRET (nightly job) or a logged-in session (manual trigger)
   if (!isCron) {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    try {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    } catch {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
   }
