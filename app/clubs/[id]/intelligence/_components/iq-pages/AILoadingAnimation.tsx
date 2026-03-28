@@ -126,9 +126,9 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
   const progress = externalProgress !== undefined ? externalProgress : ((currentStage + 1) / stages.length) * 100;
 
   return (
-    <div className="flex flex-col gap-4 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-5 max-w-4xl mx-auto">
       {/* Neural Network Visualization — compact */}
-      <div className="relative h-[200px] rounded-2xl overflow-hidden flex-shrink-0" style={{
+      <div className="relative h-[260px] rounded-2xl overflow-hidden flex-shrink-0" style={{
         background: "linear-gradient(180deg, #080A14, #0B0D17)",
         border: "1px solid rgba(139, 92, 246, 0.15)",
       }}>
@@ -186,11 +186,11 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
             <div className="absolute inset-0 rounded-full blur-2xl scale-[2]" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.25), rgba(6,182,212,0.1), transparent)" }} />
 
             {/* Core */}
-            <div className="relative w-20 h-20 rounded-full flex items-center justify-center" style={{
+            <div className="relative w-24 h-24 rounded-full flex items-center justify-center" style={{
               background: "linear-gradient(135deg, #8B5CF6, #6D28D9, #06B6D4)",
               boxShadow: "0 0 50px rgba(139, 92, 246, 0.6), 0 0 100px rgba(6, 182, 212, 0.25)",
             }}>
-              <Brain className="w-10 h-10 text-white" />
+              <Brain className="w-12 h-12 text-white" />
             </div>
 
             {/* Orbiting nodes */}
@@ -234,10 +234,10 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.7 }}
             transition={{ duration: 0.25 }}
-            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+            className="w-13 h-13 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 4px 16px rgba(139, 92, 246, 0.35)" }}
           >
-            {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-5 h-5 text-white" />; })()}
+            {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-6 h-6 text-white" />; })()}
           </motion.div>
         </AnimatePresence>
 
