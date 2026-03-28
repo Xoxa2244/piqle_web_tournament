@@ -269,6 +269,8 @@ export async function sendReactivationEmail({
 }): Promise<{ messageId: string }> {
   const firstName = memberName.split(' ')[0] || 'there'
   const subject = `${firstName}, we miss you at ${clubName}! 🏸`
+  // Send from the club name so recipient sees "IPC East" not "IQSport"
+  const clubFrom = `"${clubName}" <${fromEmail}>`
   const text = customMessage
     ? `${customMessage} Book now: ${bookingUrl}${notifyMeUrl ? `\n\nTell us when you'd like to play: ${notifyMeUrl}` : ''}`
     : `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}${notifyMeUrl ? `\n\nTell us when you'd like to play: ${notifyMeUrl}` : ''}`
@@ -284,7 +286,7 @@ export async function sendReactivationEmail({
 
   const info = await transporter.sendMail({
     to,
-    from: fromHeader,
+    from: clubFrom,
     subject,
     text,
     html,

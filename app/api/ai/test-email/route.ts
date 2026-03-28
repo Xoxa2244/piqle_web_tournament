@@ -1,12 +1,13 @@
 /**
  * Test endpoint: send a preview reactivation email
  * Auth: valid user session only
- * Usage: POST { "to": "sol@piqle.io", "clubName": "IPC East" }
+ * Usage: POST { "to": "sol@piqle.io", "clubId": "<real uuid>" }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { sendReactivationEmail } from '@/lib/email'
 import { generateInterestToken } from '@/lib/utils/interest-token'
 
@@ -20,19 +21,34 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const to: string = body.to || session.user.email
-  const clubName: string = body.clubName || 'IPC East'
   const memberName: string = body.memberName || session.user.name || 'Sol'
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stest.piqle.io'
 
-  // Generate a real-looking notify-me token (using session userId as demo)
-  const demoClubId = '00000000-0000-0000-0000-000000000001'
+  // Use provided clubId or fall back to first club the user follows
+  let clubId: string = body.clubId
+  let clubName: string = body.clubName || 'Your Club'
+  if (!clubId) {
+    const follower = await prisma.clubFollower.findFirst({
+      where: { userId: session.user.id },
+      include: { club: { select: { id: true, name: true } } },
+    })
+    if (follower?.club) {
+      clubId = follower.club.id
+      clubName = follower.club.name
+    }
+  } else {
+    const club = await prisma.club.findUnique({ where: { id: clubId }, select: { name: true } })
+    if (club) clubName = club.name
+  }
+
+  // Generate a real notify-me token using the real clubId
   let notifyMeUrl: string | undefined
-  try {
-    const token = generateInterestToken(session.user.id, demoClubId)
-    notifyMeUrl = `${appUrl}/notify-me?t=${token}`
-  } catch {
-    notifyMeUrl = `${appUrl}/notify-me?t=demo`
+  if (clubId) {
+    try {
+      const token = generateInterestToken(session.user.id, clubId)
+      notifyMeUrl = `${appUrl}/notify-me?t=${token}`
+    } catch { /* non-critical */ }
   }
 
   const suggestedSessions = [
