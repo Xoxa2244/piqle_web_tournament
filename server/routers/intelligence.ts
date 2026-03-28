@@ -2426,18 +2426,30 @@ export const intelligenceRouter = createTRPCRouter({
 
       const uploads = batchEntries
         .map(([batchId, entries]) => {
-          const sessionEntries = entries.filter(e => e.sourceTable === 'play_sessions' || e.contentType === 'session')
           const sourceIds = entries.filter(e => e.sourceId).map(e => e.sourceId!)
           const dates = entries.map(e => e.createdAt.getTime())
-          const meta = entries[0].metadata as Record<string, unknown> | null
+          // Use marker metadata for accurate counts (Excel imports store membersImported + sessionsImported)
+          const markerEntry = entries.find(e => e.contentType === 'import_marker') || entries[0]
+          const meta = markerEntry.metadata as Record<string, unknown> | null
           const fileName = (meta?.sourceFileName as string) || null
+          const membersImported = typeof meta?.membersImported === 'number' ? meta.membersImported : null
+          const sessionsImported = typeof meta?.sessionsImported === 'number' ? meta.sessionsImported : null
+          const membersAttempted = typeof meta?.membersAttempted === 'number' ? meta.membersAttempted : null
+          const sessionsAttempted = typeof meta?.sessionsAttempted === 'number' ? meta.sessionsAttempted : null
+          // Fallback: count non-marker session embeddings
+          const sessionEntries = entries.filter(e => e.sourceTable === 'play_sessions' && e.contentType !== 'import_marker')
+          const recordsFallback = sessionEntries.length || entries.filter(e => e.contentType !== 'import_marker').length || entries.length
 
           return {
             id: batchId,
             date: new Date(Math.min(...dates)).toISOString(),
             dateEnd: new Date(Math.max(...dates)).toISOString(),
-            records: sessionEntries.length || entries.length,
-            contentType: entries[0].contentType,
+            records: sessionsImported ?? recordsFallback,
+            membersImported,
+            sessionsImported,
+            membersAttempted,
+            sessionsAttempted,
+            contentType: markerEntry.contentType,
             source: fileName || 'CSV Import',
             embeddingIds: entries.map(e => e.id),
             sessionSourceIds: Array.from(new Set(sourceIds)),

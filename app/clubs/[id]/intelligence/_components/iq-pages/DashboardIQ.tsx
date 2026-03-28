@@ -212,13 +212,6 @@ const occupancyHeatmap = [
 ];
 const heatmapTimes = ["6AM", "9AM", "12PM", "3PM", "6PM", "8PM", "10PM"];
 
-const memberSegments = [
-  { name: "Power Players", value: 35, color: "#8B5CF6" },
-  { name: "Regular", value: 42, color: "#06B6D4" },
-  { name: "Casual", value: 28, color: "#10B981" },
-  { name: "At-Risk", value: 12, color: "#F59E0B" },
-  { name: "Dormant", value: 10, color: "#EF4444" },
-];
 
 const dataUploadHistory = [
   { id: "u1", date: "Mar 15, 2026", records: 1247, quality: 98, status: "success" as const, source: "CourtReserve CSV", duration: "2.4s" },
@@ -554,31 +547,53 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   // Map real heatmap data
   const displayHeatmap = heatmapData?.heatmap || occupancyHeatmap;
-  // Map real member segments from health data
-  const displaySegments = healthData?.summary
-    ? [
-        { name: "Power Players", value: Math.round((healthData.summary.healthy || 0) * 0.3), color: "#8B5CF6" },
-        { name: "Regular", value: Math.round((healthData.summary.healthy || 0) * 0.5), color: "#06B6D4" },
-        { name: "Casual", value: Math.round((healthData.summary.watch || 0) * 0.8), color: "#10B981" },
-        { name: "At-Risk", value: healthData.summary.atRisk || 0, color: "#F59E0B" },
-        { name: "Dormant", value: healthData.summary.critical || 0, color: "#EF4444" },
-      ]
-    : memberSegments;
+  // Sessions by Format — real data from occupancy breakdown
+  const formatColors: Record<string, string> = {
+    OPEN_PLAY: "#10B981", CLINIC: "#06B6D4", DRILL: "#8B5CF6",
+    LEAGUE_PLAY: "#F59E0B", SOCIAL: "#EC4899", OTHER: "#6B7280",
+  }
+  const formatLabelsMap: Record<string, string> = {
+    OPEN_PLAY: "Open Play", CLINIC: "Clinic", DRILL: "Drill",
+    LEAGUE_PLAY: "League", SOCIAL: "Social", OTHER: "Other",
+  }
+  const byFormat = dashboardData?.occupancy?.byFormat || []
+  const displayFormats: { name: string; value: number; color: string }[] = byFormat.length > 0
+    ? byFormat.map((f: any) => ({
+        name: formatLabelsMap[f.format] || f.format,
+        value: f.sessionCount || 0,
+        color: formatColors[f.format] || "#6B7280",
+      })).filter((f: any) => f.value > 0)
+    : [];
   // Map upload history
   const displayUploads = uploadHistoryData?.uploads?.length
-    ? uploadHistoryData.uploads.map((u: any) => ({
-        id: u.id,
-        date: new Date(u.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        records: u.records,
-        quality: 95,
-        status: "processed" as const,
-        source: u.source || "CSV Import",
-        duration: "—",
-        // Preserve fields needed for per-import deletion
-        embeddingIds: u.embeddingIds || [],
-        sessionSourceIds: u.sessionSourceIds || [],
-        importBatchId: u.importBatchId || null,
-      }))
+    ? uploadHistoryData.uploads.map((u: any) => {
+        const members = u.membersImported ?? null
+        const sessions = u.sessionsImported ?? null
+        const membersAttempted = u.membersAttempted ?? null
+        const sessionsAttempted = u.sessionsAttempted ?? null
+        // Build a readable summary label
+        const parts: string[] = []
+        if (typeof members === 'number') {
+          parts.push(`${members}${membersAttempted && membersAttempted !== members ? `/${membersAttempted}` : ''} members`)
+        }
+        if (typeof sessions === 'number') {
+          parts.push(`${sessions}${sessionsAttempted && sessionsAttempted !== sessions ? `/${sessionsAttempted}` : ''} sessions`)
+        }
+        const summary = parts.length > 0 ? parts.join(', ') : `${u.records} records`
+        return {
+          id: u.id,
+          date: new Date(u.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          records: u.records,
+          summary,
+          quality: 95,
+          status: "processed" as const,
+          source: u.source || "CSV Import",
+          duration: "—",
+          embeddingIds: u.embeddingIds || [],
+          sessionSourceIds: u.sessionSourceIds || [],
+          importBatchId: u.importBatchId || null,
+        }
+      })
     : [];
 
   // AI Insights — generated from real data + goals
@@ -1087,41 +1102,50 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           </div>
         </Card>
 
-        {/* Member Segments */}
+        {/* Sessions by Format */}
         <Card>
-          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Segments</h3>
-          <div className="flex items-center justify-center" style={{ height: 180 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={displaySegments}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
-                  paddingAngle={3}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
-                  {displaySegments.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-2 mt-2">
-            {displaySegments.map((seg) => (
-              <div key={seg.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: seg.color }} />
-                  <span style={{ color: "var(--t2)" }}>{seg.name}</span>
-                </div>
-                <span style={{ color: "var(--t1)", fontWeight: 600 }}>{seg.value}</span>
+          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Sessions by Format</h3>
+          {displayFormats.length > 0 ? (
+            <>
+              <div className="flex items-center justify-center" style={{ height: 180 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={displayFormats}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={75}
+                      paddingAngle={3}
+                      dataKey="value"
+                      strokeWidth={0}
+                    >
+                      {displayFormats.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="space-y-2 mt-2">
+                {displayFormats.map((seg) => (
+                  <div key={seg.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: seg.color }} />
+                      <span style={{ color: "var(--t2)" }}>{seg.name}</span>
+                    </div>
+                    <span style={{ color: "var(--t1)", fontWeight: 600 }}>{seg.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <BarChart3 className="w-8 h-8 mb-2" style={{ color: "var(--t4)" }} />
+              <p className="text-xs" style={{ color: "var(--t4)" }}>No session format data yet</p>
+            </div>
+          )}
         </Card>
 
         {/* Data Upload History */}
@@ -1166,7 +1190,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   <p className="text-[10px]" style={{ color: "var(--t4)" }}>{u.date}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-[10px]" style={{ color: "var(--t2)", fontWeight: 600 }}>{u.records.toLocaleString()} sessions</p>
+                  <p className="text-[10px]" style={{ color: "var(--t2)", fontWeight: 600 }}>{u.summary}</p>
                 </div>
                 <button
                   onClick={() => setDeleteConfirm({ upload: u, index: i })}

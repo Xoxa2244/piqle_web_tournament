@@ -552,18 +552,22 @@ async function _runImportPipeline(
   }
 
   // ── 4. Upload history marker ──
-  if (result.sessions.created + result.sessions.updated > 0 || result.members.created + result.members.updated > 0) {
+  // Always create a marker if any rows were attempted (even if all were duplicates)
+  if (parsedMembers.length > 0 || parsedSessions.length > 0) {
     try {
       const importBatchId = `excel-${Date.now()}`
       const sessionCount = result.sessions.created + result.sessions.updated
+      const memberCount = result.members.created + result.members.updated
       const meta = JSON.stringify({
         importBatchId,
         sourceFileName: 'CourtReserve Excel',
-        membersImported: result.members.created + result.members.updated,
+        membersImported: memberCount,
+        membersAttempted: parsedMembers.length,
         sessionsImported: sessionCount,
+        sessionsAttempted: parsedSessions.length,
         bookingsImported: result.bookings.created,
       })
-      const content = `CourtReserve Excel import: ${result.members.created + result.members.updated} members, ${sessionCount} sessions, ${result.bookings.created} bookings`
+      const content = `CourtReserve Excel import: ${memberCount} members, ${sessionCount} sessions, ${result.bookings.created} bookings (attempted: ${parsedMembers.length} members, ${parsedSessions.length} sessions)`
       await prisma.$executeRaw`
         INSERT INTO document_embeddings (id, club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
         VALUES (
