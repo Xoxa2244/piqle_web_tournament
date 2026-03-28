@@ -8,11 +8,11 @@ type PlanLimits = {
 const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
     maxMembers: 200,
-    features: ['dashboard'],
+    features: ['dashboard', 'analytics', 'revenue', 'slot-filler', 'reactivation', 'ai-advisor', 'csv-import'],
   },
   trialing: {
-    maxMembers: 200,
-    features: ['dashboard', 'analytics', 'revenue'],
+    maxMembers: Infinity,
+    features: ['dashboard', 'analytics', 'revenue', 'slot-filler', 'reactivation', 'ai-advisor', 'csv-import'],
   },
   starter: {
     maxMembers: 200,
