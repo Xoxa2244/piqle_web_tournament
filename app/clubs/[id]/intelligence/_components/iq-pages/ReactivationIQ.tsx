@@ -586,7 +586,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-[11px]" style={{ color: "var(--t3)" }}>
-                        <span>\u2B50 {member.rating}</span>
+                        <span>⭐ {member.rating || '—'}</span>
                         <span>{member.daysSincePlay}d since last play</span>
                         <span>{member.totalSessions} sessions</span>
                       </div>
