@@ -21,8 +21,11 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
 
   const candidates = input.members
     .filter(({ history }) => {
-      // Exclude members who have never booked at all — they're "Never Engaged", not "At-Risk"
+      // Exclude members who never engaged (0 bookings) — can't reactivate what never started
       if (history.totalBookings === 0) return false;
+      // Exclude low-engagement members (1-4 sessions) who simply drifted away —
+      // they're "tried & didn't stick", not "at-risk regulars worth fighting for"
+      if (history.totalBookings < 5) return false;
       const days = history.daysSinceLastConfirmedBooking;
       return days === null || days >= threshold;
     })
