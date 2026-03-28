@@ -1053,12 +1053,15 @@ export async function getReactivationCandidates(
     console.warn('[Reactivation] Failed to load last contact data', err)
   }
 
+  console.log(`[Reactivation] clubId=${clubId} members=${members.length} hasRealBookings=${hasRealBookings} candidates=${candidates.length} threshold=${inactivityDays}`)
+
   return {
     candidates: candidates.slice(0, limit),
     totalInactiveMembers: candidates.length,
     totalClubMembers: totalMembers,
     inactivityThresholdDays: inactivityDays,
     clubName: club.name,
+    _debug: { memberCount: members.length, hasRealBookings, candidateCount: candidates.length },
   };
 }
 

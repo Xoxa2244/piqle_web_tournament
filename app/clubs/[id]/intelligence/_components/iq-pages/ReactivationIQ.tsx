@@ -192,6 +192,7 @@ type ReactivationIQProps = {
   churnTrendData?: any;
   campaignListData?: any;
   isLoading?: boolean;
+  error?: any;
   sendReactivation?: any;
   clubId?: string;
 };
@@ -228,7 +229,7 @@ function mapRealCandidates(data: any): AtRiskMember[] {
   }));
 }
 
-export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, sendReactivation, clubId }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -266,9 +267,9 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   // Risk segments from real reactivation data
   const displayRiskSegments = reactivationData?.candidates
     ? (() => {
-        const high = reactivationData.candidates.filter((c: any) => c.score?.total < 30).length;
-        const medium = reactivationData.candidates.filter((c: any) => c.score?.total >= 30 && c.score?.total < 60).length;
-        const low = reactivationData.candidates.filter((c: any) => c.score?.total >= 60 && c.score?.total < 80).length;
+        const high = reactivationData.candidates.filter((c: any) => c.score < 30).length;
+        const medium = reactivationData.candidates.filter((c: any) => c.score >= 30 && c.score < 60).length;
+        const low = reactivationData.candidates.filter((c: any) => c.score >= 60 && c.score < 80).length;
         const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
           { name: "High Risk", value: high, color: "#EF4444" },
@@ -294,8 +295,14 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   });
 
   const hasData = allMembers.length > 0;
+  if (queryError && !isDemo) {
+    const errMsg = queryError?.message || (typeof queryError === 'string' ? queryError : 'Unknown error')
+    const debug = reactivationData?._debug
+    return <EmptyStateIQ icon={AlertTriangle} title="Failed to load reactivation data" description={`Error: ${errMsg}${debug ? ` | members=${debug.memberCount} hasBookings=${debug.hasRealBookings}` : ''}`} ctaLabel="Retry" ctaHref={clubId ? `/clubs/${clubId}/intelligence/reactivation` : undefined} />;
+  }
   if (!hasData && !isDemo && !externalLoading) {
-    return <EmptyStateIQ icon={AlertTriangle} title="No at-risk members" description="Once you have member data, AI will automatically detect members at risk of churning and suggest win-back campaigns." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+    const debug = reactivationData?._debug
+    return <EmptyStateIQ icon={AlertTriangle} title="No at-risk members" description={`Once you have member data, AI will automatically detect members at risk of churning.${debug ? ` Debug: members=${debug.memberCount} hasBookings=${debug.hasRealBookings} candidates=${debug.candidateCount}` : ''}`} ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
   return (
