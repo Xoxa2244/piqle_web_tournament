@@ -442,8 +442,13 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             <span className="text-xs" style={{ color: "var(--t4)" }}>{filtered.length} total</span>
             {/* AI Profiles status + generate button */}
             {clubId && regenerateProfiles && (() => {
-              const total = reactivationData?.candidates?.length || 0;
-              const withProfile = Object.keys(aiProfiles || {}).length;
+              const candidates = reactivationData?.candidates || [];
+              const total = candidates.length;
+              // Count only profiles for actual at-risk candidates (not all club members)
+              const withProfile = candidates.filter((c: any) => {
+                const uid = c.member?.id;
+                return uid && aiProfiles && aiProfiles[uid];
+              }).length;
               const allDone = total > 0 && withProfile >= total;
               if (allDone) return null;
               return (
@@ -494,7 +499,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                   ) : (
                     <Sparkles className="w-3 h-3" />
                   )}
-                  {aiGenerating ? `Generating AI profiles…` : `Generate AI profiles (${withProfile}/${total})`}
+                  {aiGenerating ? `Generating AI profiles…` : `Generate AI profiles (${withProfile}/${total} candidates)`}
                 </button>
               );
             })()}
