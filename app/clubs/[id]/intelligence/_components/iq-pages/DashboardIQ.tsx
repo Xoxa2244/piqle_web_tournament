@@ -448,17 +448,35 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     setImportProgress(5)
     setImportStatus("Importing files...")
     setImportError(null)
+
+    // Accumulate results across files
+    const totals = { members: 0, sessions: 0, bookings: 0, errors: 0 }
+
     try {
-      const res = await importExcelMutation.mutateAsync({
-        clubId,
-        files: files.map(f => ({ type: f.type, data: f.data })),
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        setImportStatus(`Uploading ${f.name} (${i + 1}/${files.length})...`)
+        setImportProgress(10 + Math.round((i / files.length) * 80))
+
+        // Send one file at a time to stay under Vercel's 4.5MB body limit
+        const res = await importExcelMutation.mutateAsync({
+          clubId,
+          files: [{ type: f.type, data: f.data }],
+        })
+        totals.members += (res.members?.created || 0) + (res.members?.updated || 0)
+        totals.sessions += (res.sessions?.created || 0) + (res.sessions?.updated || 0)
+        totals.bookings += (res.bookings?.created || 0)
+        totals.errors += (res.members?.errors || 0) + (res.sessions?.errors || 0)
+      }
+
+      setImportResult({
+        totalParsed: totals.sessions,
+        totalErrors: totals.errors,
+        found: [`${totals.members} members`, `${totals.sessions} sessions`, `${totals.bookings} bookings`],
+        missing: [],
       })
-      const total = (res.members?.created || 0) + (res.members?.updated || 0)
-      const sessions = (res.sessions?.created || 0) + (res.sessions?.updated || 0)
-      const bookings = (res.bookings?.created || 0)
-      setImportResult({ totalParsed: sessions, totalErrors: res.members?.errors || 0, found: [`${total} members`, `${sessions} sessions`, `${bookings} bookings`], missing: [] })
       setImportStatus("Import complete!")
-      // Invalidate dashboard queries so data refreshes
+      // Invalidate dashboard queries so data refreshes without page reload
       trpcUtils.intelligence.getDashboardV2.invalidate({ clubId })
       trpcUtils.intelligence.getMemberHealth.invalidate({ clubId })
       trpcUtils.intelligence.getUploadHistory.invalidate({ clubId })
