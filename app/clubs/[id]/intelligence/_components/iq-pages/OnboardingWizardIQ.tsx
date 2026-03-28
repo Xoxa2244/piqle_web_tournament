@@ -54,6 +54,7 @@ function FileUploadSlot({ label, description, file, onFile }: {
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const { isDark } = useTheme()
+  const [dragOver, setDragOver] = useState(false)
 
   if (file) {
     return (
@@ -69,8 +70,6 @@ function FileUploadSlot({ label, description, file, onFile }: {
       </div>
     )
   }
-
-  const [dragOver, setDragOver] = useState(false)
 
   return (
     <div
