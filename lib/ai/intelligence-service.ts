@@ -1383,6 +1383,16 @@ export async function sendReactivationMessages(
     const daysSince = reactivation?.daysSinceLastActivity || 0
     const firstSessionDeepLink = suggestedSessions[0]?.deepLinkUrl || bookingUrl
 
+    // Generate Notify Me link for this member (fire-and-forget if it fails)
+    let notifyMeUrl: string | undefined
+    try {
+      const { generateInterestToken } = await import('@/lib/utils/interest-token')
+      const token = generateInterestToken(user.id, clubId)
+      notifyMeUrl = `${appUrl}/notify-me?t=${token}`
+    } catch {
+      // Non-critical — email sends without CTA
+    }
+
     // ── Send Email ──
     if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
       try {
@@ -1395,6 +1405,7 @@ export async function sendReactivationMessages(
           suggestedSessions,
           bookingUrl: firstSessionDeepLink,
           customMessage,
+          notifyMeUrl,
         })
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {

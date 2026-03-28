@@ -492,6 +492,11 @@ export function useNotifyInterestedMembers() {
   return trpc.intelligence.notifyInterestedMembers.useMutation()
 }
 
+// ── Generate Notify Me Link ──
+export function useGenerateNotifyMeLink() {
+  return trpc.intelligence.generateNotifyMeLink.useMutation()
+}
+
 // ── Member AI Profiles ──
 export function useMemberAiProfiles(clubId: string, userIds?: string[], refetchInterval?: number) {
   const isDemo = useIsDemo()

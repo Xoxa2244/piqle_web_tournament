@@ -2873,4 +2873,18 @@ export const intelligenceRouter = createTRPCRouter({
       })
       return { updated: result.count }
     }),
+
+  // ── Generate a Notify-Me link for a specific member ──
+  generateNotifyMeLink: protectedProcedure
+    .input(z.object({
+      userId: z.string(),
+      clubId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { generateInterestToken } = await import('@/lib/utils/interest-token')
+      const token = generateInterestToken(input.userId, input.clubId)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://iqsport.ai'
+      return { url: `${baseUrl}/notify-me?t=${token}` }
+    }),
 })

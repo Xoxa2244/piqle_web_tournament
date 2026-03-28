@@ -203,6 +203,7 @@ type ReactivationIQProps = {
   aiProfiles?: Record<string, any>; // userId → MemberAiProfileData
   regenerateProfiles?: any;
   onGenerationStarted?: () => void;
+  generateNotifyMeLink?: any; // tRPC mutation
 };
 
 function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskMember[] {
@@ -246,7 +247,7 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
   });
 }
 
-export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles, onGenerationStarted }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles, onGenerationStarted, generateNotifyMeLink }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -256,6 +257,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerateResult, setAiGenerateResult] = useState<string | null>(null);
+  const [notifyMeLinks, setNotifyMeLinks] = useState<Record<string, string>>({});
+  const [notifyMePending, setNotifyMePending] = useState<Record<string, boolean>>({});
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -699,6 +702,80 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                 <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#10B981", fontWeight: 600 }}>Slot Filler Profile</div>
                                 <div className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.6 }}>{member.slotFillerProfile}</div>
                               </div>
+                            </div>
+                          )}
+
+                          {/* Notify Me — Session Interest CTA */}
+                          {clubId && generateNotifyMeLink && (
+                            <div className="p-3 rounded-xl flex items-center justify-between gap-4" style={{ background: "rgba(6,182,212,0.05)", border: "1px solid rgba(6,182,212,0.15)" }}>
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(6,182,212,0.15)" }}>
+                                  <Bell className="w-3.5 h-3.5" style={{ color: "#22D3EE" }} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[11px] font-semibold" style={{ color: "var(--t1)" }}>Ask when they want to play</div>
+                                  <div className="text-[10px] truncate" style={{ color: "var(--t4)" }}>Send a personal link to capture preferred days, times & format</div>
+                                </div>
+                              </div>
+                              {notifyMeLinks[member.id] ? (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <input
+                                    readOnly
+                                    value={notifyMeLinks[member.id]}
+                                    className="text-[10px] px-2 py-1 rounded-lg w-48 truncate"
+                                    style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+                                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                                  />
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(notifyMeLinks[member.id]);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg text-[10px] shrink-0"
+                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
+                                  >
+                                    Copy
+                                  </button>
+                                  <a
+                                    href={notifyMeLinks[member.id]}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="px-2.5 py-1 rounded-lg text-[10px] shrink-0"
+                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
+                                  >
+                                    Open ↗
+                                  </a>
+                                </div>
+                              ) : (
+                                <button
+                                  disabled={notifyMePending[member.id]}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (notifyMePending[member.id]) return;
+                                    setNotifyMePending(prev => ({ ...prev, [member.id]: true }));
+                                    generateNotifyMeLink.mutate(
+                                      { userId: member.id, clubId },
+                                      {
+                                        onSuccess: (res: any) => {
+                                          setNotifyMeLinks(prev => ({ ...prev, [member.id]: res.url }));
+                                          setNotifyMePending(prev => ({ ...prev, [member.id]: false }));
+                                        },
+                                        onError: () => setNotifyMePending(prev => ({ ...prev, [member.id]: false })),
+                                      }
+                                    );
+                                  }}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] shrink-0 transition-all"
+                                  style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)", opacity: notifyMePending[member.id] ? 0.7 : 1 }}
+                                >
+                                  {notifyMePending[member.id] ? (
+                                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="w-3 h-3 rounded-full" style={{ border: "2px solid rgba(34,211,238,0.3)", borderTopColor: "#22D3EE" }} />
+                                  ) : (
+                                    <Bell className="w-3 h-3" />
+                                  )}
+                                  {notifyMePending[member.id] ? "Generating…" : "📅 Get notification link"}
+                                </button>
+                              )}
                             </div>
                           )}
 

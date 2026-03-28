@@ -114,6 +114,7 @@ function buildReactivationEmailHtml({
   suggestedSessions,
   bookingUrl,
   customMessage,
+  notifyMeUrl,
 }: {
   memberName: string
   clubName: string
@@ -121,6 +122,7 @@ function buildReactivationEmailHtml({
   suggestedSessions: SuggestedSessionInfo[]
   bookingUrl: string
   customMessage?: string
+  notifyMeUrl?: string
 }) {
   const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
@@ -211,6 +213,22 @@ function buildReactivationEmailHtml({
                     </a>
                   </td>
                 </tr>
+                ${notifyMeUrl ? `
+                <tr>
+                  <td style="padding: 0 24px 24px; text-align: center;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden;">
+                      <tr>
+                        <td style="padding: 16px 20px;">
+                          <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">📅 Tell us when you'd like to play</p>
+                          <p style="margin: 0 0 12px; font-size: 13px; color: #6b7280;">Select your preferred days, times, and session type — we'll notify you the moment a matching session opens.</p>
+                          <a href="${notifyMeUrl}" style="display: inline-block; padding: 10px 24px; background-color: #0891b2; color: #ffffff; font-size: 13px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+                            Set my preferences →
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>` : ''}
                 <tr>
                   <td style="padding: 16px 24px 20px; text-align: center; border-top: 1px solid #e5e7eb;">
                     <p style="margin: 0; font-size: 12px; color: #9ca3af;">
@@ -238,6 +256,7 @@ export async function sendReactivationEmail({
   suggestedSessions,
   bookingUrl,
   customMessage,
+  notifyMeUrl,
 }: {
   to: string
   memberName: string
@@ -246,12 +265,13 @@ export async function sendReactivationEmail({
   suggestedSessions: SuggestedSessionInfo[]
   bookingUrl: string
   customMessage?: string
+  notifyMeUrl?: string
 }): Promise<{ messageId: string }> {
   const firstName = memberName.split(' ')[0] || 'there'
   const subject = `${firstName}, we miss you at ${clubName}! 🏸`
   const text = customMessage
-    ? `${customMessage} Book now: ${bookingUrl}`
-    : `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}`
+    ? `${customMessage} Book now: ${bookingUrl}${notifyMeUrl ? `\n\nTell us when you'd like to play: ${notifyMeUrl}` : ''}`
+    : `Hey ${firstName}! It's been ${daysSinceLastActivity} days since your last session at ${clubName}. We have ${suggestedSessions.length} upcoming sessions that match your level. Book now: ${bookingUrl}${notifyMeUrl ? `\n\nTell us when you'd like to play: ${notifyMeUrl}` : ''}`
   const html = buildReactivationEmailHtml({
     memberName,
     clubName,
@@ -259,6 +279,7 @@ export async function sendReactivationEmail({
     suggestedSessions,
     bookingUrl,
     customMessage,
+    notifyMeUrl,
   })
 
   const info = await transporter.sendMail({

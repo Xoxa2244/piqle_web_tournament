@@ -17,7 +17,7 @@ import { EmptyState } from '../_components/empty-state'
 import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
 import ConfirmModal from '@/components/ConfirmModal'
 import { useToast } from '@/components/ui/use-toast'
-import { useReactivationCandidates, useSendReactivation, useChurnTrend, useCampaignList, useMemberAiProfiles, useRegenerateMemberProfiles } from '../_hooks/use-intelligence'
+import { useReactivationCandidates, useSendReactivation, useChurnTrend, useCampaignList, useMemberAiProfiles, useRegenerateMemberProfiles, useGenerateNotifyMeLink } from '../_hooks/use-intelligence'
 import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactivation-messages'
 import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
@@ -59,6 +59,7 @@ export default function ReactivationPage() {
   const [isPolling, setIsPolling] = useState(false)
   const { data: aiProfilesRaw } = useMemberAiProfiles(clubId, undefined, isPolling ? 15000 : undefined)
   const regenerateProfiles = useRegenerateMemberProfiles()
+  const generateNotifyMeLink = useGenerateNotifyMeLink()
   const sendReactivation = useSendReactivation()
   const isLoading = candidatesLoading || churnLoading || campaignListLoading
 
@@ -150,7 +151,7 @@ export default function ReactivationPage() {
       : 0
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} onGenerationStarted={() => setIsPolling(true)} />
+  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} onGenerationStarted={() => setIsPolling(true)} generateNotifyMeLink={generateNotifyMeLink} />
 
   return (
     <div className="space-y-6">
