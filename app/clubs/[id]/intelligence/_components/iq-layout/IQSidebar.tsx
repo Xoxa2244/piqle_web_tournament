@@ -446,7 +446,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                             </button>
                           ))}
                           <button
-                            onClick={() => { setProfileOpen(false); router.push("/clubs"); }}
+                            onClick={() => { setProfileOpen(false); router.push("/clubs?add=true"); }}
                             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all"
                           >
                             <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ border: "1px dashed rgba(139,92,246,0.3)" }}>
