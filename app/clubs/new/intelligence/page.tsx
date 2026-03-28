@@ -13,15 +13,7 @@ export default function NewClubWizardPage() {
   const clubIdRef = useRef<string | null>(null)
   const createClub = trpc.club.create.useMutation()
 
-  // If user already has a club (is admin), redirect to their dashboard
-  const { data: myClubs } = trpc.club.listMyChatClubs.useQuery(undefined, { retry: false })
-  useEffect(() => {
-    if (myClubs && myClubs.length > 0) {
-      // Find first club where user is admin
-      const adminClub = myClubs.find((c: any) => c.isAdmin) || myClubs[0]
-      router.replace(`/clubs/${adminClub.id}/intelligence`)
-    }
-  }, [myClubs, router])
+  // Allow creating multiple clubs — no redirect
 
   const handleCreateAndComplete = useCallback(async (wizardData: {
     name: string
