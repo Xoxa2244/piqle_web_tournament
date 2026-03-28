@@ -394,12 +394,34 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof period
   const m = dashboardData.metrics;
   const hs = healthData?.summary;
   return {
-    kpis: [
-      { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
-      { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
-      { label: "Revenue", value: m.bookings.value, change: `${m.bookings.trend.direction === 'up' ? '+' : ''}${m.bookings.trend.changePercent}%`, up: m.bookings.trend.direction === 'up', icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: m.bookings.trend.sparkline || [] },
-      { label: "Lost Revenue", value: m.lostRevenue.value, change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`, up: m.lostRevenue.trend.direction === 'down', icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: m.lostRevenue.trend.sparkline || [] },
-    ],
+    kpis: (() => {
+      // Detect membership model: no real per-session prices → use utilization metrics instead of revenue
+      const isMembership = typeof m.lostRevenue.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.');
+      return [
+        { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
+        { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
+        {
+          label: isMembership ? "Player Sessions" : "Revenue",
+          value: isMembership ? m.bookings.value : m.bookings.value,
+          change: `${m.bookings.trend.direction === 'up' ? '+' : ''}${m.bookings.trend.changePercent}%`,
+          up: m.bookings.trend.direction === 'up',
+          icon: isMembership ? Activity : DollarSign,
+          gradient: "from-emerald-500 to-green-500",
+          href: "/sessions",
+          sparkData: m.bookings.trend.sparkline || [],
+        },
+        {
+          label: isMembership ? "Unused Slots" : "Lost Revenue",
+          value: isMembership ? (m.lostRevenue.subtitle?.match(/(\d+)\s*empty/)?.[1] ?? m.lostRevenue.value) : m.lostRevenue.value,
+          change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
+          up: m.lostRevenue.trend.direction === 'down',
+          icon: isMembership ? BarChart3 : AlertTriangle,
+          gradient: isMembership ? "from-cyan-500 to-blue-500" : "from-red-500 to-orange-500",
+          href: "/slot-filler",
+          sparkData: m.lostRevenue.trend.sparkline || [],
+        },
+      ];
+    })(),
     health: hs ? [
       { level: "Healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
       { level: "Watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
