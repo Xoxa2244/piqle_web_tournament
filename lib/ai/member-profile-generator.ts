@@ -87,15 +87,18 @@ Member data:
 - Preferred days: ${preferredDays.join(', ') || 'unknown'}
 - Preferred times: ${activeTimes}
 - Preferred formats: ${preferredFormats.join(', ') || 'unknown'}
-- Favorite session types: ${preferredCategories.slice(0, 3).join(', ') || 'unknown'}
+- Favorite session types: ${preferredCategories.slice(0, 3).map(s => s.replace(/[-_]/g, ' ').replace(/\b(AM|PM)\s*(One|Two|Three|Four)\b/gi, (_, ampm) => ampm + ' session').trim()).join(', ') || 'unknown'}
 - Player persona: ${persona || 'unknown'}
-- Recent sessions: ${recentSessionTitles.slice(0, 5).join(', ') || 'none on record'}
+- Recent sessions: ${recentSessionTitles.slice(0, 5).map(s => s.replace(/[-_]/g, ' ').replace(/\b(AM|PM)\s*(One|Two|Three|Four)\b/gi, (_, ampm) => ampm + ' session').trim()).join(', ') || 'none on record'}
 
 Rules:
 - reactivationMessage: address by first name, reference their favorite session type or last activity, warm not pushy, 2-3 sentences max
 - slotFillerProfile: describe ideal session (day, time, format, skill level) for club staff to use when inviting, 1-2 sentences
 - If totalBookings = 0: write a welcome/onboarding message instead
-- Never mention prices or specific dates`
+- NEVER mention specific days of the week (no "Friday", "Saturday", "this weekend", "tomorrow" etc.) — you don't know the schedule
+- NEVER mention specific dates or times
+- NEVER mention prices or fees
+- Refer to session types naturally: "morning open play", "your usual drills" — never use raw codes like "AM Two" or "PM One"`
 }
 
 // Parse AI JSON response safely
