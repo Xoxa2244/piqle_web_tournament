@@ -436,6 +436,11 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  // Comparison period state
+  type CompMode = 'prev_period' | 'prev_year' | 'custom';
+  const [compMode, setCompMode] = useState<CompMode>('prev_period');
+  const [compCustomFrom, setCompCustomFrom] = useState("");
+  const [compCustomTo, setCompCustomTo] = useState("");
 
   // Compute data date bounds from sparkline or sessions for custom picker constraints
   const dataDateBounds = useMemo(() => {
@@ -466,6 +471,34 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Use period-specific data if available, fall back to passed prop
   const activeDashboardData = periodQuery.data ?? dashboardData;
   const isPeriodLoading = periodQuery.isFetching;
+
+  // Comparison period — previous period dates
+  const compDates = useMemo(() => {
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    if (compMode === 'custom' && compCustomFrom && compCustomTo) {
+      return { dateFrom: compCustomFrom, dateTo: compCustomTo };
+    }
+    // Determine current period span in days
+    const spanDays = period === 'week' ? 7 : period === 'quarter' ? 90 : 30;
+    const now = new Date();
+    if (compMode === 'prev_year') {
+      const to = new Date(now.getTime() - 365 * 86400000);
+      const from = new Date(to.getTime() - spanDays * 86400000);
+      return { dateFrom: iso(from), dateTo: iso(to) };
+    }
+    // prev_period: the same-length window immediately before current
+    const curFrom = periodDates.dateFrom
+      ? new Date(periodDates.dateFrom).getTime()
+      : now.getTime() - spanDays * 86400000;
+    const prevTo = new Date(curFrom - 86400000); // day before current period starts
+    const prevFrom = new Date(prevTo.getTime() - (spanDays - 1) * 86400000);
+    return { dateFrom: iso(prevFrom), dateTo: iso(prevTo) };
+  }, [compMode, compCustomFrom, compCustomTo, period, periodDates]);
+
+  const compQuery = trpc.intelligence.getDashboardV2.useQuery(
+    { clubId, ...compDates },
+    { enabled: !!clubId && !externalLoading },
+  );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -1244,57 +1277,133 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
       {/* Period Comparison */}
       <Card>
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
-            <Activity className="w-4 h-4 text-white" />
+        <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
+              <Activity className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
+              <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
+                <span style={{ color: "var(--t2)", fontWeight: 500 }}>{labels.current}</span>
+                {" vs "}
+                <span style={{ color: "var(--t2)", fontWeight: 500 }}>
+                  {compMode === 'prev_period' ? labels.previous
+                    : compMode === 'prev_year' ? 'Same period last year'
+                    : (compCustomFrom && compCustomTo ? `${compCustomFrom} – ${compCustomTo}` : 'Custom range')}
+                </span>
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
-            <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
-              <span style={{ color: "var(--t2)", fontWeight: 500 }}>{labels.current}</span>
-              {" vs "}
-              <span>{labels.previous}</span>
-            </p>
-          </div>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {data.comparison.map((row) => {
-            const rawDelta = row.previous === 0 ? 0 : ((row.current - row.previous) / row.previous) * 100;
-            const delta = Math.round(rawDelta * 10) / 10;
-            const isChurn = row.metric === "Churn Rate";
-            const isPositive = isChurn ? delta < 0 : delta > 0;
-            return (
-              <div
-                key={row.metric}
-                className="rounded-xl p-4"
-                style={{ background: "var(--subtle)" }}
-              >
-                <div className="text-[11px] mb-2" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.metric}</div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--heading)" }}>
-                      {formatValue(row.current, row.format)}
-                    </div>
-                    <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
-                      was {formatValue(row.previous, row.format)}
-                    </div>
-                  </div>
-                  <div
-                    className="flex items-center gap-0.5 text-xs px-2 py-1 rounded-md"
-                    style={{
-                      background: isPositive ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-                      color: isPositive ? "#10B981" : "#EF4444",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                    {delta > 0 ? "+" : ""}{delta}%
-                  </div>
-                </div>
+          {/* Compare-to selector */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px]" style={{ color: "var(--t4)" }}>Compare to:</span>
+            {([
+              { key: 'prev_period', label: 'Prev period' },
+              { key: 'prev_year', label: 'Last year' },
+              { key: 'custom', label: 'Custom' },
+            ] as const).map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setCompMode(opt.key)}
+                className="px-3 py-1 rounded-lg text-[11px] transition-all"
+                style={{
+                  background: compMode === opt.key ? "rgba(139,92,246,0.15)" : "var(--subtle)",
+                  color: compMode === opt.key ? "#8B5CF6" : "var(--t3)",
+                  fontWeight: compMode === opt.key ? 600 : 400,
+                  border: compMode === opt.key ? "1px solid rgba(139,92,246,0.3)" : "1px solid transparent",
+                }}
+              >{opt.label}</button>
+            ))}
+            {compMode === 'custom' && (
+              <div className="flex items-center gap-1.5 mt-1 w-full">
+                <input
+                  type="date"
+                  value={compCustomFrom}
+                  max={compCustomTo || new Date().toISOString().slice(0, 10)}
+                  onChange={e => setCompCustomFrom(e.target.value)}
+                  className="h-7 px-2 text-[11px] rounded-lg outline-none"
+                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }}
+                />
+                <span className="text-[10px]" style={{ color: "var(--t4)" }}>to</span>
+                <input
+                  type="date"
+                  value={compCustomTo}
+                  min={compCustomFrom}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={e => setCompCustomTo(e.target.value)}
+                  className="h-7 px-2 text-[11px] rounded-lg outline-none"
+                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }}
+                />
               </div>
-            );
-          })}
+            )}
+          </div>
         </div>
+
+        {/* Real comparison metrics */}
+        {(() => {
+          const cur = activeDashboardData?.metrics;
+          const prv = compQuery.data?.metrics;
+          const isLoading = compQuery.isFetching || isPeriodLoading;
+
+          const toNum = (v: any): number => {
+            if (typeof v === 'number') return v;
+            if (typeof v === 'string') return parseFloat(v.replace(/[^0-9.-]/g, '')) || 0;
+            return 0;
+          };
+          const toOcc = (v: any): number => parseFloat(String(v || '0').replace('%','')) || 0;
+
+          // Metrics: [label, currentVal, prevVal, format, invertGood]
+          const metrics: Array<{ label: string; cur: number; prev: number; format: 'number'|'percent'; invert?: boolean }> = cur ? [
+            { label: "Player Sessions", cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number' },
+            { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
+            { label: "Active Members", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
+            { label: "Unused Slots", cur: toNum(cur.lostRevenue?.trend?.value), prev: toNum(prv?.lostRevenue?.trend?.value), format: 'number', invert: true },
+          ] : [];
+
+          if (!cur) return (
+            <div className="py-6 text-center text-xs" style={{ color: "var(--t4)" }}>No data for current period</div>
+          );
+
+          return (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {metrics.map((row) => {
+                const rawDelta = row.prev === 0 ? 0 : ((row.cur - row.prev) / row.prev) * 100;
+                const delta = Math.round(rawDelta * 10) / 10;
+                const isPositive = row.invert ? delta < 0 : delta > 0;
+                const dispCur = row.format === 'percent' ? `${row.cur}%` : row.cur.toLocaleString();
+                const dispPrev = row.format === 'percent' ? `${row.prev}%` : row.prev.toLocaleString();
+                return (
+                  <div key={row.label} className="rounded-xl p-4 relative overflow-hidden" style={{ background: "var(--subtle)" }}>
+                    {isLoading && <div className="absolute inset-0 rounded-xl animate-pulse" style={{ background: "rgba(139,92,246,0.04)" }} />}
+                    <div className="text-[11px] mb-2" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.label}</div>
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <div style={{ fontSize: "22px", fontWeight: 700, color: "var(--heading)" }}>{dispCur}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
+                          {prv ? `was ${dispPrev}` : '— no comparison data'}
+                        </div>
+                      </div>
+                      {prv && row.prev > 0 && (
+                        <div
+                          className="flex items-center gap-0.5 text-xs px-2 py-1 rounded-md"
+                          style={{
+                            background: isPositive ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+                            color: isPositive ? "#10B981" : "#EF4444",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                          {delta > 0 ? "+" : ""}{delta}%
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
 
       </>}
