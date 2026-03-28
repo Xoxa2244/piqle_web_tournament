@@ -45,9 +45,9 @@ export function NotifyMeForm({ token, memberName, clubName, existing }: Props) {
     return (
       <div className="rounded-2xl p-8 text-center" style={{ background: '#111118', border: '1px solid rgba(139,92,246,0.3)' }}>
         <div className="text-5xl mb-4">🎾</div>
-        <div className="text-xl font-bold text-white mb-2">You're on the list!</div>
+        <div className="text-xl font-bold text-white mb-2">You&apos;re on the list!</div>
         <div className="text-sm mb-4" style={{ color: '#9CA3AF' }}>
-          We'll ping you as soon as a matching session opens at <span className="text-white font-semibold">{clubName}</span>.
+          We&apos;ll ping you as soon as a matching session opens at <span className="text-white font-semibold">{clubName}</span>.
         </div>
         <div className="text-xs px-3 py-2 rounded-xl inline-block" style={{ background: 'rgba(16,185,129,0.1)', color: '#34D399' }}>
           ✓ Preferences saved
@@ -63,7 +63,7 @@ export function NotifyMeForm({ token, memberName, clubName, existing }: Props) {
       <div>
         <div className="text-lg font-bold text-white mb-1">Hey {memberName.split(' ')[0]}! 👋</div>
         <div className="text-sm" style={{ color: '#9CA3AF' }}>
-          Tell us when you'd like to play and we'll notify you the moment a matching session opens up.
+          Tell us when you&apos;d like to play and we&apos;ll notify you the moment a matching session opens up.
         </div>
       </div>
 
