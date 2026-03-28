@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
-import { router } from 'expo-router'
+import {
+  Animated,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
+import { router, useLocalSearchParams } from 'expo-router'
 
 import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../../src/components/AppBottomSheet'
+import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoading'
 import { ChatComposer } from '../../../../../src/components/ChatComposer'
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
@@ -26,7 +36,14 @@ export default function TournamentChatScreen() {
   const params = useLocalSearchParams<{ tournamentId: string; title?: string; divisionId?: string }>()
   const tournamentId = params.tournamentId
   const title = params.title || 'Event chat'
-  const activeDivisionId = typeof params.divisionId === 'string' && params.divisionId ? params.divisionId : null
+  const paramDivisionId = typeof params.divisionId === 'string' && params.divisionId ? params.divisionId : null
+  const [selectedDivisionId, setSelectedDivisionId] = useState<string | null>(paramDivisionId)
+
+  useEffect(() => {
+    setSelectedDivisionId(paramDivisionId)
+  }, [tournamentId, paramDivisionId])
+
+  const activeDivisionId = selectedDivisionId
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
@@ -35,6 +52,25 @@ export default function TournamentChatScreen() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const threadContentOpacity = useRef(new Animated.Value(1)).current
+  const skipThreadTopicFadeRef = useRef(true)
+
+  useEffect(() => {
+    skipThreadTopicFadeRef.current = true
+  }, [tournamentId])
+
+  useEffect(() => {
+    if (skipThreadTopicFadeRef.current) {
+      skipThreadTopicFadeRef.current = false
+      return
+    }
+    threadContentOpacity.setValue(0.78)
+    Animated.timing(threadContentOpacity, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
+  }, [activeDivisionId, threadContentOpacity])
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -144,9 +180,8 @@ export default function TournamentChatScreen() {
     ? divisionMessagesQuery.isLoading
     : tournamentMessagesQuery.isLoading
 
-  const isInitialLoad = permissionsQuery.isLoading && !activeDivisionId
-  if (isInitialLoad) {
-    return <Screen title={title}><LoadingBlock label="Loading chat…" /></Screen>
+  if (permissionsQuery.isLoading) {
+    return <ChatScreenLoading title={title} />
   }
 
   const hasAccess = permission?.canView && (!activeDivisionId || activeDivisionPermission?.canView)
@@ -182,12 +217,7 @@ export default function TournamentChatScreen() {
       >
         <View style={styles.topicBarItem}>
           <Pressable
-            onPress={() =>
-              router.replace({
-                pathname: '/chats/event/tournament/[tournamentId]',
-                params: { tournamentId, title },
-              })
-            }
+            onPress={() => setSelectedDivisionId(null)}
             style={[styles.topicPill, !activeDivisionId && styles.topicPillActive]}
           >
             <Feather name="award" size={16} color={!activeDivisionId ? colors.white : colors.textMuted} />
@@ -203,16 +233,7 @@ export default function TournamentChatScreen() {
         {divisions.map((d: any) => (
           <View key={d.id} style={styles.topicBarItem}>
             <Pressable
-              onPress={() =>
-                router.replace({
-                  pathname: '/chats/event/tournament/[tournamentId]',
-                  params: {
-                    tournamentId,
-                    title,
-                    divisionId: d.id,
-                  },
-                })
-              }
+              onPress={() => setSelectedDivisionId(d.id)}
               style={[styles.topicPill, activeDivisionId === d.id && styles.topicPillActive]}
             >
               <Feather name="hash" size={16} color={activeDivisionId === d.id ? colors.white : colors.textMuted} />
@@ -247,46 +268,48 @@ export default function TournamentChatScreen() {
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
         {topicBar}
-        <View style={styles.contextRow}>
-          <View style={styles.contextLeft}>
-            <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={colors.textMuted} />
-            <Text style={styles.contextTitle}>{activeLabel}</Text>
-            <Text style={styles.contextDot}>·</Text>
-            <Feather name="users" size={16} color={colors.textMuted} />
-            <Text style={styles.contextMeta}>Tournament Chat</Text>
+        <Animated.View style={[styles.threadFadeWrap, { opacity: threadContentOpacity }]}>
+          <View style={styles.contextRow}>
+            <View style={styles.contextLeft}>
+              <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={colors.textMuted} />
+              <Text style={styles.contextTitle}>{activeLabel}</Text>
+              <Text style={styles.contextDot}>·</Text>
+              <Feather name="users" size={16} color={colors.textMuted} />
+              <Text style={styles.contextMeta}>Tournament Chat</Text>
+            </View>
           </View>
-        </View>
 
-        <ChatThreadRoot
-          ref={scrollRef}
-          contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {messagesLoading ? (
-            <Text style={styles.emptyTitle}>Loading…</Text>
-          ) : isEmpty ? (
-            <EmptyState
-              title="No messages yet"
-              body="Say hi to other players or ask the organizer a question."
-            />
-          ) : (
-            <ChatThreadMessageList
-              messages={messages as ChatMessage[]}
-              currentUserId={user?.id}
-              onPressAvatar={(m) => {
-                if (!m.userId) return
-                router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
-              }}
-              canDelete={(m) => {
-                const mine = Boolean(user?.id && m.userId === user?.id)
-                return Boolean((mine || canModerate) && !m.isDeleted)
-              }}
-              onRequestDelete={(m) => setDeleteTargetId(m.id)}
-              deleteDisabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
-            />
-          )}
-        </ChatThreadRoot>
+          <ChatThreadRoot
+            ref={scrollRef}
+            contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messagesLoading ? (
+              <LoadingBlock label="Loading messages…" />
+            ) : isEmpty ? (
+              <EmptyState
+                title="No messages yet"
+                body="Say hi to other players or ask the organizer a question."
+              />
+            ) : (
+              <ChatThreadMessageList
+                messages={messages as ChatMessage[]}
+                currentUserId={user?.id}
+                onPressAvatar={(m) => {
+                  if (!m.userId) return
+                  router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
+                }}
+                canDelete={(m) => {
+                  const mine = Boolean(user?.id && m.userId === user?.id)
+                  return Boolean((mine || canModerate) && !m.isDeleted)
+                }}
+                onRequestDelete={(m) => setDeleteTargetId(m.id)}
+                deleteDisabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
+              />
+            )}
+          </ChatThreadRoot>
+        </Animated.View>
 
         {canPost ? (
           <ChatComposer
@@ -345,6 +368,10 @@ const createStyles = (colors: ThemePalette) =>
     paddingTop: 0,
     paddingBottom: 0,
     gap: 0,
+  },
+  threadFadeWrap: {
+    flex: 1,
+    minHeight: 0,
   },
   topicBarWrap: {
     backgroundColor: 'transparent',
@@ -442,9 +469,4 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'stretch',
     paddingBottom: 0,
   },
-  emptyTitle: {
-    color: '#6B7280',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  })
+})

@@ -10,6 +10,7 @@ import {
   EmptyState,
   LoadingBlock,
   SearchField,
+  SegmentedContentFade,
   SegmentedControl,
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
@@ -266,14 +267,15 @@ export default function ClubsTab() {
           />
         </View>
 
-        <PickleRefreshScrollView
-          style={styles.listScroll}
-          contentContainerStyle={styles.listScrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshing={pullToRefresh.refreshing}
-          onRefresh={pullToRefresh.onRefresh}
-          bounces
-        >
+        <SegmentedContentFade activeKey={mode} segmentOrder={['discover', 'my-clubs', 'nearby']} style={styles.listScroll}>
+          <PickleRefreshScrollView
+            style={styles.listScroll}
+            contentContainerStyle={styles.listScrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshing={pullToRefresh.refreshing}
+            onRefresh={pullToRefresh.onRefresh}
+            bounces
+          >
           {modeInitialLoading ? (
             <LoadingBlock label={nearbyNeedsProfile ? 'Finding nearby clubs…' : 'Loading clubs…'} />
           ) : null}
@@ -312,7 +314,8 @@ export default function ClubsTab() {
               ) : null}
             </View>
           ) : null}
-        </PickleRefreshScrollView>
+          </PickleRefreshScrollView>
+        </SegmentedContentFade>
       </View>
     </PageLayout>
   )

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
@@ -11,8 +10,9 @@ import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { EntityImage } from '../../../../src/components/EntityImage'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
 import type { ChatMessage } from '../../../../src/lib/chatMessages'
+import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
-import { ActionButton, EmptyState, LoadingBlock, Screen, SurfaceCard } from '../../../../src/components/ui'
+import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { palette, spacing } from '../../../../src/lib/theme'
@@ -117,7 +117,7 @@ export default function ClubChatScreen() {
   }
 
   if (messagesQuery.isLoading) {
-    return <Screen title={clubName}><LoadingBlock label="Loading chat…" /></Screen>
+    return <ChatScreenLoading title={clubDisplayName} />
   }
 
   const isEmpty = messages.length === 0

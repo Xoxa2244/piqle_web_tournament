@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
@@ -13,6 +13,7 @@ import {
   LoadingBlock,
   SearchField,
   SectionTitle,
+  SegmentedContentFade,
   SegmentedControl,
   SurfaceCard,
 } from '../../src/components/ui'
@@ -83,7 +84,12 @@ const getCardStatus = (
   return { label: 'Open', tone: 'success' }
 }
 
-const TournamentListCard = ({
+/**
+ * Без отдельного getTournamentById на каждую строку — иначе при смене вкладки (Upcoming / My events / Past)
+ * десятки запросов + reflow накладываются на анимацию SegmentedContentFade и дают «передёргивание».
+ * Данных из listBoards достаточно для карточки в списке (как ClubCard без лишних query на табе клубов).
+ */
+const TournamentListCard = memo(function TournamentListCard({
   tournament,
   myStatus,
   hasPrivilegedAccess,
@@ -97,20 +103,14 @@ const TournamentListCard = ({
   feeCents?: number | null
   isUnpaid?: boolean
   feedbackSummary?: { total: number; averageRating: number | null; canPublish: boolean } | null
-}) => {
-  const api = trpc as any
-  const detailQuery = api.public.getTournamentById.useQuery(
-    { id: tournament.id },
-    { retry: false, staleTime: 60_000 }
-  )
+}) {
   const tournamentForCard = useMemo(
     () => ({
       ...tournament,
-      ...(detailQuery.data ?? {}),
       entryFeeCents: feeCents,
       feedbackSummary: feedbackSummary ?? null,
     }),
-    [detailQuery.data, feeCents, feedbackSummary, tournament]
+    [feeCents, feedbackSummary, tournament]
   )
   const cardStatus = getCardStatus(tournamentForCard, myStatus, hasPrivilegedAccess)
 
@@ -124,7 +124,7 @@ const TournamentListCard = ({
       onPress={() => router.push(`/tournaments/${tournament.id}`)}
     />
   )
-}
+})
 
 const FilterChip = ({
   label,
@@ -361,11 +361,13 @@ export default function TournamentsTab() {
     (item) => item.type === 'TOURNAMENT_INVITATION'
   )
   const tournamentsInitialLoading = tournamentsQuery.isLoading && tournamentsQuery.data === undefined
+  /** Не подменять всю ленту блоком Loading при смене вкладки, если статусы уже были загружены — иначе скачок высоты + анимация сегмента. */
   const isStatusContextLoading =
     mode === 'registered' &&
     isAuthenticated &&
     tournamentIds.length > 0 &&
-    registrationStatusesQuery.isLoading
+    registrationStatusesQuery.isLoading &&
+    registrationStatusesQuery.data === undefined
   const activeFilterCount =
     (thisMonthOnly ? 1 : 0) +
     selectedFormats.length +
@@ -443,12 +445,13 @@ export default function TournamentsTab() {
         </View>
 
         <PickleRefreshScrollView
-          style={{ flex: 1 }}
+          style={styles.listScroll}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={pullToRefresh.refreshing}
           onRefresh={pullToRefresh.onRefresh}
           refreshMaskColor={colors.background}
+          removeClippedSubviews={false}
           bounces
         >
           {isAuthenticated && invitationItems.length > 0 ? (
@@ -490,6 +493,12 @@ export default function TournamentsTab() {
             </View>
           ) : null}
 
+          <SegmentedContentFade
+            activeKey={mode}
+            segmentOrder={['upcoming', 'registered', 'past']}
+            style={styles.listScroll}
+          >
+            <View style={styles.tabMain}>
           {tournamentsQuery.isError ? (
             <EmptyState
               title="Could not load tournaments"
@@ -546,6 +555,8 @@ export default function TournamentsTab() {
               />
             )
           })}
+            </View>
+          </SegmentedContentFade>
         </PickleRefreshScrollView>
 
         <AppBottomSheet
@@ -644,7 +655,11 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     flex: 1,
     gap: spacing.md,
   },
+  /** Как на странице клуба: без горизонтального padding у корня — отступы у шапки и у контента скролла.
+   * Иначе карточки во вложенном Animated (SegmentedContentFade) упираются в край скролла и при анимации
+   * выглядят как «обрезанные у стенок». */
   layoutContent: {
+    paddingHorizontal: 0,
     paddingBottom: 0,
   },
   headerPanel: {
@@ -653,7 +668,12 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     borderColor: 'transparent',
     borderRadius: 0,
     padding: 0,
+    paddingHorizontal: spacing.lg,
     gap: spacing.md,
+  },
+  /** Как на вкладках clubs / chats: flex:1 на обёртке анимации контента. */
+  listScroll: {
+    flex: 1,
   },
   quickFilters: {
     flexDirection: 'row',
@@ -689,8 +709,16 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   filterChipLabelActive: {
     color: colors.white,
   },
+  /** flexGrow: контент вкладок заполняет высоту скролла — пустой/короткий список не «прыгает» по вертикали относительно сегментов. */
   listContent: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+  /** Контент вкладок (не приглашения) — одна колонка с flexGrow, чтобы пустой/лоадинг/список не давали разный «вес» по вертикали. */
+  tabMain: {
+    flexGrow: 1,
     gap: spacing.md,
   },
   invitationSection: {

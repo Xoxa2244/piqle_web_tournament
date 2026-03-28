@@ -8,7 +8,14 @@ import { EventChatListItemActive, EventChatListItemArchived, type EventChatListE
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { SegmentedControl } from '../../src/components/SegmentedControl'
-import { ActionButton, EmptyState, LoadingBlock, SearchField, SurfaceCard } from '../../src/components/ui'
+import {
+  ActionButton,
+  EmptyState,
+  LoadingBlock,
+  SearchField,
+  SegmentedContentFade,
+  SurfaceCard,
+} from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -146,14 +153,15 @@ export default function ChatsTab() {
           trackStyle={styles.segmentTrack}
         />
 
-        <PickleRefreshScrollView
-          style={styles.listScroll}
-          contentContainerStyle={styles.listScrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshing={pullToRefresh.refreshing}
-          onRefresh={pullToRefresh.onRefresh}
-          bounces
-        >
+        <SegmentedContentFade activeKey={segment} segmentOrder={['clubs', 'events']} style={styles.listScroll}>
+          <PickleRefreshScrollView
+            style={styles.listScroll}
+            contentContainerStyle={styles.listScrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshing={pullToRefresh.refreshing}
+            onRefresh={pullToRefresh.onRefresh}
+            bounces
+          >
       {showFullChatLoading ? (
         <View style={styles.bodyGutter}>
           <LoadingBlock label="Loading chats…" />
@@ -277,7 +285,8 @@ export default function ChatsTab() {
           )}
         </View>
       ) : null}
-        </PickleRefreshScrollView>
+          </PickleRefreshScrollView>
+        </SegmentedContentFade>
       </View>
     </PageLayout>
   )

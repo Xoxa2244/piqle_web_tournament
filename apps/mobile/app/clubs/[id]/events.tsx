@@ -53,8 +53,6 @@ export default function ClubEventsScreen() {
               <ClubTournamentCard
                 key={tournament.id}
                 tournament={tournament}
-                fallbackVenueName={club.city}
-                fallbackVenueAddress={club.state}
                 onPress={() => router.push(`/tournaments/${tournament.id}`)}
               />
             ))}

@@ -33,6 +33,7 @@ import {
   ActionButton,
   EmptyState,
   LoadingBlock,
+  SegmentedContentFade,
   SegmentedControl,
   SectionTitle,
   SurfaceCard,
@@ -83,6 +84,28 @@ const formatHeroDateRange = (start?: string | Date | null, end?: string | Date |
   }
 
   return `${longDateFormatter.format(startDate)} - ${longDateFormatter.format(endDate)}`
+}
+
+type IndyMatchupRosterLine = { id: string; name: string; letter: string }
+
+function getActiveIndyMatchupRosterPlayers(matchup: any, teamId: string): IndyMatchupRosterLine[] {
+  const rosters = Array.isArray(matchup?.rosters) ? matchup.rosters : []
+  const players: IndyMatchupRosterLine[] = rosters
+    .filter(
+      (r: any) =>
+        r.teamId === teamId &&
+        r.isActive &&
+        typeof r.letter === 'string' &&
+        r.letter.trim() !== ''
+    )
+    .map((r: any) => ({
+      id: String(r.player?.id ?? r.playerId ?? ''),
+      name:
+        `${r.player?.firstName || ''} ${r.player?.lastName || ''}`.trim() ||
+        'Unknown player',
+      letter: String(r.letter),
+    }))
+  return players.sort((a, b) => a.letter.localeCompare(b.letter))
 }
 
 const formatTournamentFormat = (format?: string | null) => {
@@ -439,6 +462,26 @@ export default function TournamentDetailScreen() {
     []
   )
 
+  const toggleDashboardIndyMatchupExpand = useCallback((matchupKey: string) => {
+    LayoutAnimation.configureNext({
+      duration: 180,
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    })
+    setExpandedDashboardIndyMatchupId((prev) => (prev === matchupKey ? null : matchupKey))
+  }, [])
+
+  const toggleTournamentDescriptionExpanded = useCallback(() => {
+    LayoutAnimation.configureNext({
+      duration: 220,
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    })
+    setTournamentDescriptionExpanded((value) => !value)
+  }, [])
+
   const cachedBoardsQuery = api.public.listBoards.useQuery(undefined, { enabled: false })
   const cachedTournament = useMemo(
     () =>
@@ -512,33 +555,112 @@ export default function TournamentDetailScreen() {
     { enabled: Boolean(tournamentId) && activeTab === 'dashboard', retry: false }
   )
   const [dashboardDivisionId, setDashboardDivisionId] = useState<string | null>(null)
+  const [dashboardLeagueDayMode, setDashboardLeagueDayMode] = useState<'DAY_ONLY' | 'SEASON_TO_DATE'>(
+    'SEASON_TO_DATE'
+  )
+  const [dashboardLeagueDayId, setDashboardLeagueDayId] = useState<string | null>(null)
+  const [expandedDashboardIndyMatchupId, setExpandedDashboardIndyMatchupId] = useState<string | null>(null)
   const dashboardDivisionsForQueries = (
     ((dashboardBoardQuery.data as any)?.divisions ?? (fullTournamentQuery.data as any)?.divisions ?? []) as any[]
   )
   const selectedDivisionForQueries =
     dashboardDivisionsForQueries.find((d: any) => d.id === dashboardDivisionId) ?? dashboardDivisionsForQueries[0]
   const canFetchDashboardStandings = Number(selectedDivisionForQueries?.teams?.length ?? 0) >= 2
-  const dashboardStandingsQuery = api.public.getPublicStandings.useQuery(
-    { divisionId: dashboardDivisionId ?? '' },
+  const dashboardTournamentFormat =
+    ((dashboardBoardQuery.data as any)?.format ??
+      (fullTournamentQuery.data as any)?.format ??
+      (tournamentQuery.data as any)?.format) as string | undefined
+  const isDashboardIndyLeague = dashboardTournamentFormat === 'INDY_LEAGUE'
+  const isDashboardLeagueRrOrLadder =
+    dashboardTournamentFormat === 'LEAGUE_ROUND_ROBIN' || dashboardTournamentFormat === 'LADDER_LEAGUE'
+  const isMatchDayDashboardFormat = isDashboardIndyLeague || isDashboardLeagueRrOrLadder
+  const dashboardLeagueMatchDaysQuery = api.public.getIndyMatchDays.useQuery(
+    { tournamentId },
     {
-      enabled:
-        Boolean(dashboardDivisionId) &&
-        activeTab === 'dashboard' &&
-        tournamentQuery.data?.format !== 'INDY_LEAGUE' &&
-        canFetchDashboardStandings,
+      enabled: Boolean(tournamentId) && activeTab === 'dashboard' && isMatchDayDashboardFormat,
       retry: false,
     }
   )
-  const dashboardStageQuery = api.public.getPublicDivisionStage.useQuery(
-    { divisionId: dashboardDivisionId ?? '' },
+  const leagueDayFilterReady =
+    !isMatchDayDashboardFormat ||
+    dashboardLeagueDayMode === 'SEASON_TO_DATE' ||
+    Boolean(dashboardLeagueDayId)
+  const dashboardStandingsQueryInput = {
+    divisionId: dashboardDivisionId ?? '',
+    ...(isDashboardLeagueRrOrLadder &&
+    dashboardLeagueDayMode === 'DAY_ONLY' &&
+    dashboardLeagueDayId
+      ? { matchDayId: dashboardLeagueDayId }
+      : {}),
+  }
+  const dashboardStageQueryInput = {
+    divisionId: dashboardDivisionId ?? '',
+    ...(isDashboardLeagueRrOrLadder &&
+    dashboardLeagueDayMode === 'DAY_ONLY' &&
+    dashboardLeagueDayId
+      ? { matchDayId: dashboardLeagueDayId }
+      : {}),
+  }
+  const dashboardStandingsQuery = api.public.getPublicStandings.useQuery(dashboardStandingsQueryInput, {
+    enabled:
+      Boolean(dashboardDivisionId) &&
+      activeTab === 'dashboard' &&
+      !isDashboardIndyLeague &&
+      canFetchDashboardStandings &&
+      leagueDayFilterReady,
+    retry: false,
+  })
+  const dashboardStageQuery = api.public.getPublicDivisionStage.useQuery(dashboardStageQueryInput, {
+    enabled:
+      Boolean(dashboardDivisionId) &&
+      activeTab === 'dashboard' &&
+      !isDashboardIndyLeague &&
+      leagueDayFilterReady,
+    retry: false,
+  })
+  const dashboardIndyStandingsQuery = api.public.getPublicIndyStandings.useQuery(
+    {
+      tournamentId,
+      divisionId: dashboardDivisionId ?? undefined,
+      matchDayId: dashboardLeagueDayMode === 'DAY_ONLY' ? dashboardLeagueDayId ?? undefined : undefined,
+      mode: dashboardLeagueDayMode,
+    },
     {
       enabled:
-        Boolean(dashboardDivisionId) &&
+        Boolean(tournamentId) &&
         activeTab === 'dashboard' &&
-        tournamentQuery.data?.format !== 'INDY_LEAGUE',
+        isDashboardIndyLeague &&
+        Boolean(dashboardDivisionId) &&
+        canFetchDashboardStandings &&
+        leagueDayFilterReady,
       retry: false,
     }
   )
+  const dashboardIndyMatchupsQuery = api.public.getIndyMatchupsByDay.useQuery(
+    { matchDayId: dashboardLeagueDayId ?? '' },
+    {
+      enabled:
+        Boolean(tournamentId) &&
+        activeTab === 'dashboard' &&
+        isDashboardIndyLeague &&
+        dashboardLeagueDayMode === 'DAY_ONLY' &&
+        Boolean(dashboardLeagueDayId),
+      retry: false,
+    }
+  )
+
+  useEffect(() => {
+    const days = (dashboardLeagueMatchDaysQuery.data ?? []) as { id: string }[]
+    if (!days.length || dashboardLeagueDayMode !== 'DAY_ONLY') return
+    setDashboardLeagueDayId((prev) => {
+      if (prev && days.some((d) => d.id === prev)) return prev
+      return days[0]?.id ?? null
+    })
+  }, [dashboardLeagueMatchDaysQuery.data, dashboardLeagueDayMode])
+
+  useEffect(() => {
+    setExpandedDashboardIndyMatchupId(null)
+  }, [dashboardLeagueDayId])
 
   useEffect(() => {
     if (!tournamentId || !paymentState) return
@@ -1174,6 +1296,7 @@ export default function TournamentDetailScreen() {
             </Pressable>
           ) : null}
 
+          <SegmentedContentFade activeKey={activeTab} segmentOrder={['info', 'divisions', 'dashboard']}>
           {activeTab === 'info' ? (
             <View style={styles.sectionStack}>
               {pendingInvitation ? (
@@ -1204,34 +1327,50 @@ export default function TournamentDetailScreen() {
 
               {tournamentDescription ? (
                 <SurfaceCard style={styles.detailCard}>
-                  <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
-                  {!tournamentDescriptionExpanded && !tournamentDescriptionExpandable ? (
-                    <Text
-                      style={[styles.descriptionText, styles.descriptionMeasureText]}
-                      onTextLayout={(event) => {
-                        if (tournamentDescriptionExpanded || tournamentDescriptionExpandable) return
-                        if (event.nativeEvent.lines.length > 3) {
-                          setTournamentDescriptionExpandable(true)
-                        }
-                      }}
-                    >
-                      {tournamentDescription}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.descriptionText} numberOfLines={tournamentDescriptionExpanded ? undefined : 3}>
-                    {tournamentDescription}
-                  </Text>
                   {tournamentDescriptionExpandable ? (
                     <Pressable
-                      onPress={() => setTournamentDescriptionExpanded((value) => !value)}
-                      hitSlop={8}
-                      style={({ pressed }) => [styles.descriptionLinkPressable, pressed && styles.descriptionLinkPressed]}
+                      accessibilityRole="button"
+                      accessibilityHint="Tap to expand or collapse the full description"
+                      onPress={toggleTournamentDescriptionExpanded}
+                      style={({ pressed }) => [
+                        styles.aboutDescriptionTapArea,
+                        pressed && styles.aboutDescriptionTapAreaPressed,
+                      ]}
                     >
-                      <Text style={styles.descriptionLinkText}>
-                        {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
+                      <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
+                      <Text
+                        style={styles.descriptionText}
+                        numberOfLines={tournamentDescriptionExpanded ? undefined : 3}
+                      >
+                        {tournamentDescription}
                       </Text>
+                      <View style={styles.descriptionLinkPressable}>
+                        <Text style={styles.descriptionLinkText}>
+                          {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
+                        </Text>
+                      </View>
                     </Pressable>
-                  ) : null}
+                  ) : (
+                    <>
+                      <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
+                      {!tournamentDescriptionExpanded && !tournamentDescriptionExpandable ? (
+                        <Text
+                          style={[styles.descriptionText, styles.descriptionMeasureText]}
+                          onTextLayout={(event) => {
+                            if (tournamentDescriptionExpanded || tournamentDescriptionExpandable) return
+                            if (event.nativeEvent.lines.length > 3) {
+                              setTournamentDescriptionExpandable(true)
+                            }
+                          }}
+                        >
+                          {tournamentDescription}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.descriptionText} numberOfLines={tournamentDescriptionExpanded ? undefined : 3}>
+                        {tournamentDescription}
+                      </Text>
+                    </>
+                  )}
                 </SurfaceCard>
               ) : null}
 
@@ -1569,9 +1708,17 @@ export default function TournamentDetailScreen() {
                     const selectedDivision = divisions.find((d: any) => d.id === dashboardDivisionId) ?? divisions[0]
                     if (!selectedDivision) return null
 
-                    const playersPerTeam = getPlayersPerTeam(selectedDivision.teamKind, tournament.format, selectedDivision.name) ?? 2
+                    const playersPerTeam = getPlayersPerTeam(
+                      selectedDivision.teamKind,
+                      dashboardTournamentFormat ?? tournament.format,
+                      selectedDivision.name
+                    ) ?? 2
                     const stageMatches = ((dashboardStageQuery.data?.matches ?? selectedDivision.matches ?? []) as any[])
-                    const standingsFromApi = ((dashboardStandingsQuery.data?.standings ?? []) as any[])
+                    const standingsFromApi = (
+                      isDashboardIndyLeague
+                        ? (dashboardIndyStandingsQuery.data?.standings ?? [])
+                        : (dashboardStandingsQuery.data?.standings ?? [])
+                    ) as any[]
                     const teamStats = new Map<string, any>()
                     ;((selectedDivision.teams ?? []) as any[]).forEach((team: any, idx: number) => {
                       teamStats.set(team.id, {
@@ -1634,7 +1781,12 @@ export default function TournamentDetailScreen() {
                         pointDiff: Number(r.pointDiff ?? 0),
                       }))
                       .sort((a: any, b: any) => Number(a.rank ?? 999) - Number(b.rank ?? 999))
-                    const rows = apiRows.length > 0 ? apiRows : computedRows
+                    const rows =
+                      isDashboardIndyLeague && dashboardIndyStandingsQuery.isLoading
+                        ? []
+                        : apiRows.length > 0
+                          ? apiRows
+                          : computedRows
 
                     const sortDashboardMatches = (list: any[]) =>
                       [...list].sort((a, b) => {
@@ -1649,6 +1801,13 @@ export default function TournamentDetailScreen() {
                     const playoffMatches = sortDashboardMatches(
                       stageMatches.filter((m: any) => m.stage === 'ELIMINATION') as any[]
                     )
+                    const rrMatchesForDashboardResults = sortDashboardMatches(
+                      stageMatches.filter((m: any) => {
+                        if (m.stage !== 'ROUND_ROBIN') return false
+                        if (!isDashboardLeagueRrOrLadder) return false
+                        return dashboardLeagueDayMode === 'DAY_ONLY'
+                      }) as any[]
+                    )
                     const playoffMaxRound = playoffMatches.length
                       ? Math.max(...playoffMatches.map((m: any) => Number(m.roundIndex ?? 0)), 0)
                       : -1
@@ -1658,7 +1817,17 @@ export default function TournamentDetailScreen() {
                           Number(m.roundIndex ?? 0) === playoffMaxRound &&
                           (m as any).note !== 'Third Place Match'
                       ) ?? null
-                    const playoffPlacements = getPlayoffPlacementsFromMatches(playoffMatches, tournament.format)
+                    const fmtResolved = dashboardTournamentFormat ?? tournament.format
+                    const shouldShowDashboardBracketStages =
+                      fmtResolved !== 'INDY_LEAGUE' &&
+                      fmtResolved !== 'ROUND_ROBIN' &&
+                      fmtResolved !== 'LEAGUE_ROUND_ROBIN' &&
+                      fmtResolved !== 'LADDER_LEAGUE' &&
+                      fmtResolved !== 'MLP'
+                    const playoffPlacements = getPlayoffPlacementsFromMatches(
+                      playoffMatches,
+                      dashboardTournamentFormat ?? tournament.format
+                    )
                     const hasMyTeam = Boolean(myTeamId && rows.some((row: any) => row.teamId === myTeamId))
                     const seedByTeamId = new Map<string, number>(
                       rows.map((row: any, idx: number) => [String(row.teamId ?? `team-${idx}`), Number(row.rank ?? idx + 1)])
@@ -1690,40 +1859,150 @@ export default function TournamentDetailScreen() {
                       teamMembersById.set(String(team.id), members)
                     })
 
+                    const dashboardContentAnimKey = `${String(dashboardDivisionId ?? selectedDivision.id)}-${dashboardLeagueDayMode}-${dashboardLeagueDayId ?? 'season'}`
                     return (
-                      <>
-                        {divisions.length > 1 ? (
-                          <RNScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.dashboardDivisionTabsContent}
-                            style={styles.dashboardDivisionTabsScroll}
-                          >
-                            {divisions.map((division: any) => {
-                              const isActive = division.id === selectedDivision.id
-                              return (
-                                <Pressable
-                                  key={`dash-division-chip-${division.id}`}
-                                  onPress={() => setDashboardDivisionId(String(division.id))}
-                                  style={({ pressed }) => [
-                                    styles.dashboardDivisionChip,
-                                    isActive && styles.dashboardDivisionChipActive,
-                                    pressed && styles.dashboardDivisionChipPressed,
+                      <SegmentedContentFade
+                        activeKey={dashboardContentAnimKey}
+                        opacityOnly
+                        style={styles.dashboardBlockStack}
+                      >
+                        {isMatchDayDashboardFormat ? (
+                          <View style={styles.dashboardLeagueControls}>
+                            <View style={styles.dashboardLeagueDaysRow}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="All dates, season standings"
+                                onPress={() => setDashboardLeagueDayMode('SEASON_TO_DATE')}
+                                style={({ pressed }) => [
+                                  styles.dashboardLeagueScopeButton,
+                                  dashboardLeagueDayMode === 'SEASON_TO_DATE' &&
+                                    styles.dashboardDivisionChipActive,
+                                  pressed && styles.dashboardDivisionChipPressed,
+                                ]}
+                              >
+                                <Feather
+                                  name="calendar"
+                                  size={16}
+                                  color={
+                                    dashboardLeagueDayMode === 'SEASON_TO_DATE'
+                                      ? colors.text
+                                      : colors.textMuted
+                                  }
+                                />
+                                <Text
+                                  numberOfLines={1}
+                                  style={[
+                                    styles.dashboardLeagueScopeButtonLabel,
+                                    dashboardLeagueDayMode === 'SEASON_TO_DATE' &&
+                                      styles.dashboardDivisionChipTextActive,
                                   ]}
                                 >
-                                  <Text
-                                    numberOfLines={1}
-                                    style={[
-                                      styles.dashboardDivisionChipText,
-                                      isActive && styles.dashboardDivisionChipTextActive,
+                                  All dates
+                                </Text>
+                              </Pressable>
+                              <Text style={styles.dashboardLeagueDaysOr}>or</Text>
+                              {dashboardLeagueMatchDaysQuery.isLoading ? (
+                                <Text style={[styles.dashboardLeagueHint, styles.dashboardLeagueDaysRowHint]}>
+                                  Loading days…
+                                </Text>
+                              ) : (dashboardLeagueMatchDaysQuery.data?.length ?? 0) > 0 ? (
+                                <View style={styles.dashboardLeagueDayPickerClip}>
+                                  <RNScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    style={styles.dashboardLeagueDayPickerScroll}
+                                    contentContainerStyle={styles.dashboardLeagueDaysContent}
+                                  >
+                                  {(
+                                    (dashboardLeagueMatchDaysQuery.data ?? []) as {
+                                      id: string
+                                      date: string | Date
+                                    }[]
+                                  ).map((day) => {
+                                    const active =
+                                      dashboardLeagueDayMode === 'DAY_ONLY' &&
+                                      day.id === dashboardLeagueDayId
+                                    const dayLabel = new Date(day.date).toLocaleDateString(undefined, {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })
+                                    return (
+                                      <Pressable
+                                        key={day.id}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Match day ${dayLabel}`}
+                                        onPress={() => {
+                                          setDashboardLeagueDayMode('DAY_ONLY')
+                                          setDashboardLeagueDayId(String(day.id))
+                                        }}
+                                        style={({ pressed }) => [
+                                          styles.dashboardLeagueDayChip,
+                                          active && styles.dashboardLeagueDayChipActive,
+                                          pressed && styles.dashboardLeagueDayChipPressed,
+                                        ]}
+                                      >
+                                        <Text
+                                          numberOfLines={1}
+                                          style={[
+                                            styles.dashboardLeagueDayChipText,
+                                            active && styles.dashboardLeagueDayChipTextActive,
+                                          ]}
+                                        >
+                                          {dayLabel}
+                                        </Text>
+                                      </Pressable>
+                                    )
+                                  })}
+                                  </RNScrollView>
+                                </View>
+                              ) : (
+                                <Text style={[styles.dashboardLeagueHint, styles.dashboardLeagueDaysRowHint]}>
+                                  No match days yet.
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        ) : null}
+
+                        {divisions.length > 1 ? (
+                          <View
+                            style={[
+                              styles.dashboardDivisionTabsOuter,
+                              !isMatchDayDashboardFormat && styles.dashboardDivisionTabsOuterFirstBlock,
+                            ]}
+                          >
+                            <RNScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.dashboardDivisionTabsContent}
+                              style={styles.dashboardDivisionTabsScroll}
+                            >
+                              {divisions.map((division: any) => {
+                                const isActive = division.id === selectedDivision.id
+                                return (
+                                  <Pressable
+                                    key={`dash-division-chip-${division.id}`}
+                                    onPress={() => setDashboardDivisionId(String(division.id))}
+                                    style={({ pressed }) => [
+                                      styles.dashboardDivisionChip,
+                                      isActive && styles.dashboardDivisionChipActive,
+                                      pressed && styles.dashboardDivisionChipPressed,
                                     ]}
                                   >
-                                    {division.name}
-                                  </Text>
-                                </Pressable>
-                              )
-                            })}
-                          </RNScrollView>
+                                    <Text
+                                      numberOfLines={1}
+                                      style={[
+                                        styles.dashboardDivisionChipText,
+                                        isActive && styles.dashboardDivisionChipTextActive,
+                                      ]}
+                                    >
+                                      {division.name}
+                                    </Text>
+                                  </Pressable>
+                                )
+                              })}
+                            </RNScrollView>
+                          </View>
                         ) : null}
 
                         <View style={[styles.dashboardDivisionCard, hasMyTeam && styles.dashboardDivisionCardActive]}>
@@ -1735,6 +2014,13 @@ export default function TournamentDetailScreen() {
                           </View>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Round Robin table</Text>
+                            {isMatchDayDashboardFormat ? (
+                              <Text style={styles.dashboardLeagueTableHint}>
+                                {dashboardLeagueDayMode === 'DAY_ONLY'
+                                  ? 'Standings for the selected day only'
+                                  : 'Standings across all match days (season)'}
+                              </Text>
+                            ) : null}
                           </View>
                           <View style={styles.dashboardStandingsList}>
                             <View style={styles.dashboardStandingsHead}>
@@ -1745,6 +2031,11 @@ export default function TournamentDetailScreen() {
                               <Text style={styles.dashboardHeadStat}>PA</Text>
                               <Text style={styles.dashboardHeadStat}>Diff</Text>
                             </View>
+                            {rows.length === 0 && isDashboardIndyLeague && dashboardIndyStandingsQuery.isLoading ? (
+                              <View style={styles.dashboardStandingsLoadingWrap}>
+                                <LoadingBlock label="Loading standings…" />
+                              </View>
+                            ) : null}
                             {rows.map((row: any, idx: number) => {
                               const isMine = Boolean(myTeamId && row.teamId === myTeamId)
                               const rowKey = String(row.teamId ?? idx)
@@ -1823,6 +2114,144 @@ export default function TournamentDetailScreen() {
                           </View>
                         </View>
 
+                        {isMatchDayDashboardFormat &&
+                        dashboardLeagueDayMode === 'DAY_ONLY' &&
+                        dashboardLeagueDayId ? (
+                          <View style={styles.dashboardSectionCard}>
+                            <View style={styles.dashboardMatchResultsStageBlock}>
+                              <Text style={styles.dashboardMatchResultsTitle}>Match results</Text>
+                              {isDashboardIndyLeague ? (
+                                <>
+                                  {dashboardIndyMatchupsQuery.isLoading ? (
+                                    <Text style={styles.dashboardStageEmpty}>Loading matchups…</Text>
+                                  ) : (dashboardIndyMatchupsQuery.data?.length ?? 0) === 0 ? (
+                                    <Text style={styles.dashboardStageEmpty}>No matchups for this day.</Text>
+                                  ) : (
+                                    <View style={styles.dashboardMatchResultsList}>
+                                      {((dashboardIndyMatchupsQuery.data ?? []) as any[]).map((mu: any) => {
+                                        const key = String(mu.id ?? '')
+                                        const isExpanded = expandedDashboardIndyMatchupId === key
+                                        const homePlayers = getActiveIndyMatchupRosterPlayers(mu, mu.homeTeamId)
+                                        const awayPlayers = getActiveIndyMatchupRosterPlayers(mu, mu.awayTeamId)
+                                        return (
+                                          <View key={key} style={styles.dashboardMatchResultCard}>
+                                            <Pressable
+                                              accessibilityRole="button"
+                                              accessibilityState={{ expanded: isExpanded }}
+                                              accessibilityLabel={`${mu.homeTeam?.name ?? 'Home'} vs ${mu.awayTeam?.name ?? 'Away'}, ${Number(mu.gamesWonHome ?? 0)}–${Number(mu.gamesWonAway ?? 0)}`}
+                                              onPress={() => toggleDashboardIndyMatchupExpand(key)}
+                                              style={({ pressed }) => [
+                                                styles.dashboardMatchResultPress,
+                                                pressed && styles.dashboardMatchResultPressPressed,
+                                              ]}
+                                            >
+                                              <View style={styles.dashboardMatchResultRowHeaderInner}>
+                                                <View style={styles.dashboardMatchResultRowHeaderText}>
+                                                  <Text style={styles.dashboardMatchResultTeams} numberOfLines={2}>
+                                                    {mu.homeTeam?.name ?? 'Home'} vs {mu.awayTeam?.name ?? 'Away'}
+                                                  </Text>
+                                                  <Text
+                                                    style={[styles.dashboardMatchResultTeams, styles.dashboardMatchResultScoreLine]}
+                                                  >
+                                                    {Number(mu.gamesWonHome ?? 0)} – {Number(mu.gamesWonAway ?? 0)}
+                                                  </Text>
+                                                  {mu.court?.name ? (
+                                                    <Text style={styles.dashboardMatchResultCourtMeta} numberOfLines={1}>
+                                                      {mu.court.name}
+                                                    </Text>
+                                                  ) : null}
+                                                </View>
+                                                <Feather
+                                                  name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                                  size={18}
+                                                  color={colors.textMuted}
+                                                />
+                                              </View>
+                                            </Pressable>
+                                            {isExpanded ? (
+                                              <View style={styles.dashboardMatchResultExpanded}>
+                                                <View style={styles.dashboardMatchResultRosterCol}>
+                                                  <Text style={styles.dashboardMatchResultRosterTeamTitle} numberOfLines={2}>
+                                                    {mu.homeTeam?.name ?? 'Home'}
+                                                  </Text>
+                                                  {homePlayers.length > 0 ? (
+                                                    homePlayers.map((p) => (
+                                                      <Text
+                                                        key={`${key}-h-${p.id}-${p.letter}`}
+                                                        style={styles.dashboardMatchResultRosterLine}
+                                                      >
+                                                        {p.letter}: {p.name}
+                                                      </Text>
+                                                    ))
+                                                  ) : (
+                                                    <Text style={styles.dashboardMatchResultRosterEmpty}>
+                                                      No active players with letters.
+                                                    </Text>
+                                                  )}
+                                                </View>
+                                                <View style={styles.dashboardMatchResultRosterCol}>
+                                                  <Text style={styles.dashboardMatchResultRosterTeamTitle} numberOfLines={2}>
+                                                    {mu.awayTeam?.name ?? 'Away'}
+                                                  </Text>
+                                                  {awayPlayers.length > 0 ? (
+                                                    awayPlayers.map((p) => (
+                                                      <Text
+                                                        key={`${key}-a-${p.id}-${p.letter}`}
+                                                        style={styles.dashboardMatchResultRosterLine}
+                                                      >
+                                                        {p.letter}: {p.name}
+                                                      </Text>
+                                                    ))
+                                                  ) : (
+                                                    <Text style={styles.dashboardMatchResultRosterEmpty}>
+                                                      No active players with letters.
+                                                    </Text>
+                                                  )}
+                                                </View>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        )
+                                      })}
+                                    </View>
+                                  )}
+                                </>
+                              ) : isDashboardLeagueRrOrLadder ? (
+                                rrMatchesForDashboardResults.length === 0 ? (
+                                  <Text style={styles.dashboardStageEmpty}>No round-robin matches for this day.</Text>
+                                ) : (
+                                  <RNScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    style={styles.dashboardPlayInRowScroll}
+                                    contentContainerStyle={styles.dashboardPlayInRowContent}
+                                  >
+                                    {rrMatchesForDashboardResults.map((m: any, midx: number) => {
+                                      const key = String(m.id ?? `rr-${midx}`)
+                                      const games = (m.games ?? []) as any[]
+                                      const totalScoreA = games.reduce((s, g) => s + Number(g?.scoreA ?? 0), 0)
+                                      const totalScoreB = games.reduce((s, g) => s + Number(g?.scoreB ?? 0), 0)
+                                      return (
+                                        <View key={key} style={styles.dashboardMatchResultLeagueCard}>
+                                          <Text style={styles.dashboardMatchResultLeagueLabel}>Round Robin</Text>
+                                          <Text style={styles.dashboardMatchResultTeams} numberOfLines={2}>
+                                            {m.teamA?.name ?? 'TBD'} vs {m.teamB?.name ?? 'TBD'}
+                                          </Text>
+                                          <Text style={styles.dashboardMatchResultScore}>
+                                            {totalScoreA} – {totalScoreB}
+                                          </Text>
+                                        </View>
+                                      )
+                                    })}
+                                  </RNScrollView>
+                                )
+                              ) : null}
+                            </View>
+                          </View>
+                        ) : null}
+
+                        {!shouldShowDashboardBracketStages ? null : (
+                          <View style={styles.dashboardPlayInPlayoffStack}>
                         <View style={styles.dashboardSectionCard}>
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Play-in</Text>
@@ -2030,8 +2459,10 @@ export default function TournamentDetailScreen() {
                             )}
                           </View>
                         </View>
+                          </View>
+                        )}
 
-                        {playoffFinalMatch ? (
+                        {playoffFinalMatch && shouldShowDashboardBracketStages ? (
                           <View style={styles.dashboardSectionCard}>
                             <View style={styles.dashboardStageBlock}>
                               <Text style={styles.dashboardStageTitle}>Champion & placements</Text>
@@ -2097,7 +2528,7 @@ export default function TournamentDetailScreen() {
                             </View>
                           </View>
                         ) : null}
-                      </>
+                      </SegmentedContentFade>
                     )
                   })()}
                 </View>
@@ -2111,6 +2542,8 @@ export default function TournamentDetailScreen() {
               )}
             </View>
           ) : null}
+
+          </SegmentedContentFade>
 
         </View>
         </PickleRefreshScrollView>
@@ -2565,11 +2998,19 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0,
     zIndex: -1,
   },
+  aboutDescriptionTapArea: {
+    marginHorizontal: -spacing.md,
+    marginTop: -spacing.md,
+    marginBottom: -spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  aboutDescriptionTapAreaPressed: {
+    opacity: 0.92,
+  },
   descriptionLinkPressable: {
     alignSelf: 'flex-start',
-  },
-  descriptionLinkPressed: {
-    opacity: 0.78,
   },
   descriptionLinkText: {
     color: colors.primary,
@@ -3212,7 +3653,18 @@ const createStyles = (colors: ThemePalette) =>
   },
   dashboardNativeStack: {
     paddingBottom: spacing.md,
-    gap: 10,
+  },
+  /** Вертикальные отступы между блоками дашборда (передаётся в `SegmentedContentFade` как `style`). */
+  dashboardBlockStack: {
+    width: '100%',
+    gap: 8,
+  },
+  dashboardDivisionTabsOuter: {
+    marginBottom: 8,
+  },
+  /** Когда сверху нет блока дней лиги — отступ как снизу у ряда дивизионов. */
+  dashboardDivisionTabsOuterFirstBlock: {
+    marginTop: 8,
   },
   dashboardDivisionTabsScroll: {
     marginHorizontal: -spacing.md,
@@ -3244,6 +3696,222 @@ const createStyles = (colors: ThemePalette) =>
   },
   dashboardDivisionChipTextActive: {
     color: colors.text,
+  },
+  dashboardLeagueControls: {
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 10,
+  },
+  dashboardLeagueDaysRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: -spacing.md,
+    paddingHorizontal: spacing.md,
+    gap: 8,
+  },
+  dashboardLeagueDaysOr: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
+    flexShrink: 0,
+    textTransform: 'lowercase',
+  },
+  dashboardLeagueDaysRowHint: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dashboardLeagueScopeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.22)',
+    backgroundColor: 'rgba(148, 163, 184, 0.14)',
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  dashboardLeagueScopeButtonLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    maxWidth: 96,
+  },
+  /** Левый край как у pill-чипа (minHeight 38 → 19), чтобы скролл не упирался в «стену». */
+  dashboardLeagueDayPickerClip: {
+    flex: 1,
+    minWidth: 0,
+    borderTopLeftRadius: 19,
+    borderBottomLeftRadius: 19,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+  },
+  dashboardLeagueDayPickerScroll: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: colors.background,
+  },
+  dashboardLeagueDaysContent: {
+    gap: 8,
+    paddingLeft: 19,
+    paddingRight: 4,
+    alignItems: 'center',
+  },
+  dashboardLeagueDayChip: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.22)',
+    backgroundColor: 'rgba(148, 163, 184, 0.14)',
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    maxWidth: 200,
+  },
+  dashboardLeagueDayChipActive: {
+    borderColor: 'rgba(51, 65, 85, 0.45)',
+    backgroundColor: colors.surface,
+  },
+  dashboardLeagueDayChipPressed: {
+    opacity: 0.9,
+  },
+  dashboardLeagueDayChipText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dashboardLeagueDayChipTextActive: {
+    color: colors.text,
+  },
+  dashboardLeagueHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  dashboardLeagueTableHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  dashboardStandingsLoadingWrap: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  dashboardPlayInPlayoffStack: {
+    gap: 10,
+  },
+  dashboardMatchResultsStageBlock: {
+    gap: 0,
+  },
+  dashboardMatchResultsTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  dashboardMatchResultsList: {
+    gap: 10,
+    marginTop: 0,
+  },
+  dashboardMatchResultCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  dashboardMatchResultPress: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+  },
+  dashboardMatchResultPressPressed: {
+    opacity: 0.92,
+  },
+  dashboardMatchResultRowHeaderInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dashboardMatchResultRowHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dashboardMatchResultExpanded: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: spacing.sm,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
+  },
+  dashboardMatchResultRosterCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  dashboardMatchResultRosterTeamTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  dashboardMatchResultRosterLine: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  dashboardMatchResultRosterEmpty: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  dashboardMatchResultTeams: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dashboardMatchResultMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  dashboardMatchResultScoreLine: {
+    marginTop: 6,
+  },
+  dashboardMatchResultCourtMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  dashboardMatchResultLeagueCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    width: 220,
+  },
+  dashboardMatchResultLeagueLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  dashboardMatchResultScore: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 8,
   },
   dashboardDivisionCard: {
     borderRadius: radius.lg,

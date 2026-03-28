@@ -578,6 +578,12 @@ export const TournamentCard = ({
   )
 }
 
+/** Высота колонки справа от логотипа: строка заголовка + зазор + строка чипов — как у карточки с Admin-бейджем. */
+const HERO_TITLE_ROW_H = 30
+const HERO_CHIP_ROW_H = 30
+const HERO_MAIN_GAP = 6
+const HERO_TEXT_COLUMN_H = HERO_TITLE_ROW_H + HERO_MAIN_GAP + HERO_CHIP_ROW_H
+
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
     card: {
@@ -592,8 +598,9 @@ const createStyles = (colors: ThemePalette) =>
     hero: {
       position: 'relative',
       overflow: 'hidden',
-      padding: spacing.md,
-      minHeight: 88,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      height: spacing.md * 2 + HERO_TEXT_COLUMN_H,
       justifyContent: 'center',
       backgroundColor: colors.primary,
       borderTopLeftRadius: radius.lg,
@@ -621,6 +628,7 @@ const createStyles = (colors: ThemePalette) =>
     heroHeader: {
       flexDirection: 'row',
       alignItems: 'center',
+      height: HERO_TEXT_COLUMN_H,
       justifyContent: 'space-between',
       gap: spacing.sm,
       zIndex: 1,
@@ -641,21 +649,27 @@ const createStyles = (colors: ThemePalette) =>
     heroMain: {
       flex: 1,
       minWidth: 0,
-      justifyContent: 'center',
-      gap: 6,
+      height: HERO_TEXT_COLUMN_H,
+      justifyContent: 'flex-start',
+      gap: HERO_MAIN_GAP,
     },
     heroTitlePress: {
-      flex: 1,
+      height: HERO_TITLE_ROW_H,
       minWidth: 0,
+      justifyContent: 'center',
     },
     titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+      height: HERO_TITLE_ROW_H,
+      minHeight: HERO_TITLE_ROW_H,
+      maxHeight: HERO_TITLE_ROW_H,
     },
     title: {
       color: colors.white,
       fontSize: 18,
+      lineHeight: 22,
       fontWeight: '700',
       flex: 1,
       minWidth: 0,
@@ -666,7 +680,9 @@ const createStyles = (colors: ThemePalette) =>
       gap: 6,
       borderRadius: 999,
       paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingVertical: 4,
+      height: HERO_TITLE_ROW_H,
+      maxHeight: HERO_TITLE_ROW_H,
       backgroundColor: 'rgba(255, 255, 255, 0.22)',
       borderWidth: 1,
       borderColor: 'rgba(255, 255, 255, 0.28)',
@@ -676,6 +692,7 @@ const createStyles = (colors: ThemePalette) =>
     compactStatusText: {
       color: colors.white,
       fontSize: 12,
+      lineHeight: 16,
       fontWeight: '700',
       textTransform: 'capitalize',
     },
@@ -702,16 +719,23 @@ const createStyles = (colors: ThemePalette) =>
       alignItems: 'center',
       flexWrap: 'nowrap',
       gap: 8,
+      height: HERO_CHIP_ROW_H,
+      minHeight: HERO_CHIP_ROW_H,
+      maxHeight: HERO_CHIP_ROW_H,
     },
     heroChip: {
-      minHeight: 30,
+      height: HERO_CHIP_ROW_H,
+      minHeight: HERO_CHIP_ROW_H,
+      maxHeight: HERO_CHIP_ROW_H,
+      flexDirection: 'row',
+      alignItems: 'center',
       borderRadius: 999,
       backgroundColor: 'rgba(255, 255, 255, 0.18)',
       paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingVertical: 0,
       maxWidth: '100%',
       flexShrink: 1,
-      alignSelf: 'flex-start',
+      alignSelf: 'center',
     },
     heroChipNoShrink: {
       flexShrink: 0,
@@ -808,7 +832,9 @@ const stylesMarquee = StyleSheet.create({
     alignSelf: 'stretch',
     minWidth: 0,
     overflow: 'hidden',
-    minHeight: 30,
+    height: HERO_CHIP_ROW_H,
+    minHeight: HERO_CHIP_ROW_H,
+    maxHeight: HERO_CHIP_ROW_H,
     borderRadius: radius.pill,
   },
   animatedTrack: {
@@ -824,11 +850,15 @@ const stylesMarquee = StyleSheet.create({
     paddingRight: 6,
   },
   pill: {
-    minHeight: 30,
+    height: HERO_CHIP_ROW_H,
+    minHeight: HERO_CHIP_ROW_H,
+    maxHeight: HERO_CHIP_ROW_H,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 0,
     alignSelf: 'flex-start',
   },
   pillText: {

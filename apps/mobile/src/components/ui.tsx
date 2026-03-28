@@ -791,5 +791,6 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
 
 export { SegmentedControl } from './SegmentedControl'
 export type { SegmentedOption } from './SegmentedControl'
+export { SegmentedContentFade } from './SegmentedContentFade'
 
 

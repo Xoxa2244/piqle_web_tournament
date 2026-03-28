@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router'
 import * as Haptics from 'expo-haptics'
 import { Fragment } from 'react'
-import { Platform } from 'react-native'
+import { Easing, Platform } from 'react-native'
 
 import { TabBarTabIcon, tabIcons } from '../../src/components/navigation/TabBarTabIcon'
 import { TabDataWarmup } from '../../src/components/TabDataWarmup'
@@ -53,6 +53,15 @@ function TabsLayoutInner() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false,
+        /** Кроссфейд между вкладками (по умолчанию в bottom-tabs анимации нет). */
+        animation: 'fade',
+        transitionSpec: {
+          animation: 'timing',
+          config: {
+            duration: 300,
+            easing: Easing.bezier(0.45, 0, 0.55, 1),
+          },
+        },
         tabBarActiveTintColor: tabActive,
         tabBarInactiveTintColor: tabInactive,
         tabBarItemStyle: {

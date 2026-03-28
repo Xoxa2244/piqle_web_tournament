@@ -1,3 +1,6 @@
+import { useMemo } from 'react'
+
+import { trpc } from '../lib/trpc'
 import { TournamentCard } from './TournamentCard'
 
 type ClubTournament = {
@@ -36,29 +39,35 @@ type ClubTournament = {
   } | null
 }
 
+/** Как в списке турниров: подмешиваем `getBoardById`, чтобы были верные venue/club label и слоты. */
 export function ClubTournamentCard({
   tournament,
   onPress,
-  fallbackVenueName,
-  fallbackVenueAddress,
 }: {
   tournament: ClubTournament
   onPress: () => void
-  fallbackVenueName?: string | null
-  fallbackVenueAddress?: string | null
 }) {
+  const detailQuery = trpc.public.getBoardById.useQuery(
+    { id: tournament.id },
+    { enabled: Boolean(tournament.id), staleTime: 60_000, retry: false }
+  )
+
+  const tournamentForCard = useMemo(() => {
+    const detail = detailQuery.data
+    return {
+      ...tournament,
+      ...(detail ?? {}),
+      startDate: tournament.startDate ?? new Date().toISOString(),
+      endDate: tournament.endDate ?? tournament.startDate ?? new Date().toISOString(),
+      divisions: detail?.divisions ?? tournament.divisions ?? [],
+      _count: detail?._count ?? tournament._count ?? { players: 0 },
+      feedbackSummary: tournament.feedbackSummary ?? null,
+    }
+  }, [detailQuery.data, tournament])
+
   return (
     <TournamentCard
-      tournament={{
-        ...tournament,
-        startDate: tournament.startDate ?? new Date().toISOString(),
-        endDate: tournament.endDate ?? tournament.startDate ?? new Date().toISOString(),
-        venueName: tournament.venueName ?? fallbackVenueName ?? null,
-        venueAddress: tournament.venueAddress ?? fallbackVenueAddress ?? null,
-        divisions: tournament.divisions ?? [],
-        _count: tournament._count ?? { players: 0 },
-        feedbackSummary: tournament.feedbackSummary ?? null,
-      }}
+      tournament={tournamentForCard}
       statusLabel="Open"
       statusTone="success"
       onPress={onPress}

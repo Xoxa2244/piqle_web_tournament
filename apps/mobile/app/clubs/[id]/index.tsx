@@ -2,11 +2,10 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useLocalSearchParams } from 'expo-router'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 
 import {
   ActionButton,
@@ -17,6 +16,7 @@ import {
   SearchField,
   SectionTitle,
   SegmentedControl,
+  SegmentedContentFade,
   SurfaceCard,
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
@@ -251,6 +251,462 @@ export default function ClubDetailScreen() {
       // Share dismissal should stay silent; copy is available as fallback.
     }
   }, [club?.name, clubInviteUrl])
+
+  const membersTabContent = useMemo(() => {
+    if (tab !== 'members') return null
+
+    const allMembers = (membersQuery.data?.members ?? []) as any[]
+    const joinRequests = (membersQuery.data?.joinRequests ?? []) as any[]
+    const allBans = (membersQuery.data?.bans ?? []) as any[]
+    const canModerate = Boolean(membersQuery.data?.canModerate)
+    const q = membersSearch.trim().toLowerCase()
+    const filteredJoinRequests = q
+      ? joinRequests.filter((req) => {
+          const name = String(req?.user?.name ?? '').toLowerCase()
+          const email = String(req?.user?.emailMasked ?? '').toLowerCase()
+          return name.includes(q) || email.includes(q)
+        })
+      : joinRequests
+    const members = q
+      ? allMembers.filter((m) => {
+          const name = String(m?.user?.name ?? '').toLowerCase()
+          const email = String(m?.user?.emailMasked ?? '').toLowerCase()
+          return name.includes(q) || email.includes(q)
+        })
+      : allMembers
+    const admins = [...members]
+      .filter((m: any) => String(m?.role ?? '').trim() !== '')
+      .sort((a: any, b: any) => {
+        const ra = String(a?.role ?? '').toUpperCase()
+        const rb = String(b?.role ?? '').toUpperCase()
+        const pa = ra === 'OWNER' ? 0 : 1
+        const pb = rb === 'OWNER' ? 0 : 1
+        if (pa !== pb) return pa - pb
+        return String(a?.user?.name ?? '').localeCompare(String(b?.user?.name ?? ''))
+      })
+    const regularMembers = members.filter((m: any) => String(m?.role ?? '').trim() === '')
+    const bans = q
+      ? allBans.filter((b) => {
+          const name = String(b?.user?.name ?? '').toLowerCase()
+          const email = String(b?.user?.emailMasked ?? '').toLowerCase()
+          const reason = String(b?.reason ?? '').toLowerCase()
+          return name.includes(q) || email.includes(q) || reason.includes(q)
+        })
+      : allBans
+
+    const formatJoined = (joinedAt: any) => {
+      try {
+        const d = new Date(joinedAt)
+        if (Number.isNaN(d.getTime())) return null
+        return `Joined ${d.toLocaleString('en-US', { month: 'short', year: 'numeric' })}`
+      } catch {
+        return null
+      }
+    }
+    const formatRelative = (dateLike: any) => {
+      try {
+        const d = new Date(dateLike)
+        if (Number.isNaN(d.getTime())) return null
+        const diffMs = Date.now() - d.getTime()
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+        if (days <= 0) return 'today'
+        if (days === 1) return '1 day ago'
+        return `${days} days ago`
+      } catch {
+        return null
+      }
+    }
+    const formatBanned = (dateLike: any) => {
+      try {
+        const d = new Date(dateLike)
+        if (Number.isNaN(d.getTime())) return null
+        return `Banned ${d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      } catch {
+        return null
+      }
+    }
+
+    return (
+      <>
+          {canViewMembers ? (
+            <View style={styles.membersSearchWrap}>
+              <SearchField
+                value={membersSearch}
+                onChangeText={setMembersSearch}
+                placeholder="Search members..."
+              />
+            </View>
+          ) : null}
+          {canModerate && filteredJoinRequests.length > 0 ? (
+            <View style={styles.pendingWrap}>
+              <View style={styles.pendingHeaderRow}>
+                <Text style={styles.clubSectionTitle}>Pending Requests</Text>
+                <View style={styles.pendingCountPill}>
+                  <Text style={styles.pendingCountText}>{filteredJoinRequests.length}</Text>
+                </View>
+              </View>
+
+              <View style={styles.pendingList}>
+                {filteredJoinRequests.map((req: any) => {
+                  const when = formatRelative(req.requestedAt) ?? ''
+                  return (
+                    <SurfaceCard key={req.userId} padded={false} style={styles.pendingCard}>
+                      <View style={styles.pendingCardTopRow}>
+                        <View style={styles.pendingLeftRow}>
+                          <Pressable
+                            disabled={!req.userId}
+                            onPress={() => {
+                              if (!req.userId) return
+                              router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
+                            }}
+                            style={({ pressed }) => [pressed && req.userId && styles.avatarPress]}
+                          >
+                            <RemoteUserAvatar
+                              uri={req.user?.image}
+                              size={52}
+                              fallback="initials"
+                              initialsLabel={req.user?.name ?? req.user?.email ?? 'User'}
+                            />
+                          </Pressable>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Pressable
+                              disabled={!req.userId}
+                              onPress={() => {
+                                if (!req.userId) return
+                                router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
+                              }}
+                              hitSlop={8}
+                              style={({ pressed }) => [pressed && req.userId && styles.namePress]}
+                            >
+                              <Text style={styles.pendingName} numberOfLines={1}>
+                                {req.user?.name || 'User'}
+                              </Text>
+                            </Pressable>
+                            {when ? (
+                              <Text style={styles.pendingWhen} numberOfLines={1}>
+                                {when}
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+
+                        <View style={styles.pendingActionsInline}>
+                          <Pressable
+                            onPress={() => approveJoinRequest.mutate({ clubId, userId: req.userId })}
+                            disabled={approveJoinRequest.isPending}
+                            style={({ pressed }) => [
+                              styles.pendingIconBtn,
+                              styles.pendingIconBtnApprove,
+                              pressed && styles.pendingBtnPressed,
+                            ]}
+                            hitSlop={10}
+                          >
+                            <Feather name="check" size={18} color={palette.white} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => rejectJoinRequest.mutate({ clubId, userId: req.userId })}
+                            disabled={rejectJoinRequest.isPending}
+                            style={({ pressed }) => [
+                              styles.pendingIconBtn,
+                              styles.pendingIconBtnReject,
+                              pressed && styles.pendingBtnPressed,
+                            ]}
+                            hitSlop={10}
+                          >
+                            <Feather name="x" size={18} color={palette.danger} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    </SurfaceCard>
+                  )
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {!canViewMembers ? (
+            <View style={styles.membersWrap}>
+              <EmptyState
+                title="Members are private"
+                body="Join this club to view the members list."
+              />
+            </View>
+          ) : membersQuery.isLoading ? (
+            <LoadingBlock label="Loading members…" />
+          ) : (
+            <View style={styles.membersWrap}>
+              {admins.length > 0 ? (
+                <View style={styles.adminsBlock}>
+                  <View style={styles.membersHeaderRow}>
+                    <Text style={styles.clubSectionTitle}>Admins</Text>
+                    <Text style={styles.membersHeaderCount}>{String(admins.length)}</Text>
+                  </View>
+                  <View style={styles.sectionHeaderToListSpacer} />
+                  <View style={styles.membersList}>
+                    {admins.map((member: any) => {
+                      const joined = formatJoined(member.joinedAt)
+                      const secondary = joined || null
+                      const role = String(member.role ?? '').toUpperCase()
+                      const isOwner = role === 'OWNER'
+                      const roleBadge =
+                        role === 'OWNER'
+                          ? { label: 'owner', icon: 'crown' as const, bg: 'rgba(255, 193, 7, 0.16)', border: 'rgba(255, 193, 7, 0.28)', fg: '#a06b00' }
+                          : role
+                          ? { label: 'admin', icon: 'shield' as const, bg: 'rgba(47, 107, 255, 0.12)', border: 'rgba(47, 107, 255, 0.22)', fg: '#2F6BFF' }
+                          : null
+                      return (
+                        <SurfaceCard
+                          key={member.userId}
+                          padded={false}
+                          style={[styles.memberCard, isOwner && styles.memberCardOwner]}
+                        >
+                          <View style={styles.memberCardRow}>
+                            <Pressable
+                              disabled={!member.userId}
+                              onPress={() => {
+                                if (!member.userId) return
+                                router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                              }}
+                              style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
+                            >
+                              <RemoteUserAvatar
+                                uri={member.user?.image}
+                                size={48}
+                                fallback="initials"
+                                initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
+                              />
+                            </Pressable>
+
+                            <View style={styles.memberMain}>
+                              <View style={styles.memberTopRow}>
+                                <View style={styles.memberTopMain}>
+                                  <Pressable
+                                    disabled={!member.userId}
+                                    onPress={() => {
+                                      if (!member.userId) return
+                                      router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                                    }}
+                                    hitSlop={8}
+                                    style={({ pressed }) => [pressed && member.userId && styles.namePress]}
+                                  >
+                                    <Text style={styles.memberName} numberOfLines={1}>
+                                      {member.user?.name || 'Member'}
+                                    </Text>
+                                  </Pressable>
+                                </View>
+                                {roleBadge ? (
+                                  <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
+                                    <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
+                                    <Text style={[styles.rolePillText, { color: roleBadge.fg }]}>{roleBadge.label}</Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              {secondary ? (
+                                <Text style={styles.memberMetaText} numberOfLines={1}>
+                                  {secondary}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        </SurfaceCard>
+                      )
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {admins.length > 0 ? <View style={styles.sectionSpacer} /> : null}
+
+              <View style={styles.membersHeaderRow}>
+                <Text style={styles.clubSectionTitle}>Members</Text>
+                <Text style={styles.membersHeaderCount}>{String(regularMembers.length)}</Text>
+              </View>
+              <View style={styles.sectionHeaderToListSpacer} />
+
+              <View style={styles.membersList}>
+                {regularMembers.map((member: any) => {
+                  const joined = formatJoined(member.joinedAt)
+                  const secondary = joined || null
+                  const role = String(member.role ?? '').toUpperCase()
+                  const isOwner = role === 'OWNER'
+                  const roleBadge =
+                    role === 'OWNER'
+                      ? { label: 'owner', icon: 'crown' as const, bg: 'rgba(255, 193, 7, 0.16)', border: 'rgba(255, 193, 7, 0.28)', fg: '#a06b00' }
+                      : role
+                      ? { label: 'admin', icon: 'shield' as const, bg: 'rgba(47, 107, 255, 0.12)', border: 'rgba(47, 107, 255, 0.22)', fg: '#2F6BFF' }
+                      : null
+                  return (
+                    <SurfaceCard
+                      key={member.userId}
+                      padded={false}
+                      style={[styles.memberCard, isOwner && styles.memberCardOwner]}
+                    >
+                      <View style={styles.memberCardRow}>
+                        <Pressable
+                          disabled={!member.userId}
+                          onPress={() => {
+                            if (!member.userId) return
+                            router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                          }}
+                          style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
+                        >
+                          <RemoteUserAvatar
+                            uri={member.user?.image}
+                            size={48}
+                            fallback="initials"
+                            initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
+                          />
+                        </Pressable>
+
+                        <View style={styles.memberMain}>
+                          <View style={styles.memberTopRow}>
+                            <View style={styles.memberTopMain}>
+                              <Pressable
+                                disabled={!member.userId}
+                                onPress={() => {
+                                  if (!member.userId) return
+                                  router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
+                                }}
+                                hitSlop={8}
+                                style={({ pressed }) => [pressed && member.userId && styles.namePress]}
+                              >
+                                <Text style={styles.memberName} numberOfLines={1}>
+                                  {member.user?.name || 'Member'}
+                                </Text>
+                              </Pressable>
+                            </View>
+                            {roleBadge ? (
+                              <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
+                                <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
+                                <Text style={[styles.rolePillText, { color: roleBadge.fg }]}>{roleBadge.label}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          {secondary ? (
+                            <Text style={styles.memberMetaText} numberOfLines={1}>
+                              {secondary}
+                            </Text>
+                          ) : null}
+                        </View>
+
+                        {canModerate && member.userId !== user?.id ? (
+                          <Pressable
+                            onPress={() => setMemberMenuTarget({ userId: member.userId, name: member.user?.name || 'Member' })}
+                            hitSlop={10}
+                            style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
+                          >
+                            <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </SurfaceCard>
+                  )
+                })}
+              </View>
+              {canModerate ? (
+                <>
+                  <View style={styles.sectionSpacer} />
+                  <View style={styles.bansWrap}>
+                  <View style={styles.membersHeaderRow}>
+                    <Text style={styles.clubSectionTitle}>Banned users</Text>
+                    <Text style={styles.membersHeaderCount}>{String(allBans.length)}</Text>
+                  </View>
+                    <View style={styles.sectionHeaderToListSpacer} />
+                  {bans.length === 0 ? (
+                    <SurfaceCard padded={false} style={styles.memberCard}>
+                      <View style={styles.emptyBansCard}>
+                        <Text style={styles.memberMetaText}>No banned users.</Text>
+                      </View>
+                    </SurfaceCard>
+                  ) : (
+                    <View style={styles.membersList}>
+                      {bans.map((ban: any) => {
+                        const bannedMeta = [formatBanned(ban.bannedAt), ban.bannedBy?.name ? `by ${ban.bannedBy.name}` : null]
+                          .filter(Boolean)
+                          .join(' • ')
+                        return (
+                          <SurfaceCard key={ban.userId} padded={false} style={styles.memberCard}>
+                            <View style={styles.memberCardRow}>
+                              <Pressable
+                                disabled={!ban.userId}
+                                onPress={() => {
+                                  if (!ban.userId) return
+                                  router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
+                                }}
+                                style={({ pressed }) => [pressed && ban.userId && styles.avatarPress]}
+                              >
+                                <RemoteUserAvatar
+                                  uri={ban.user?.image}
+                                  size={48}
+                                  fallback="initials"
+                                  initialsLabel={ban.user?.name ?? ban.user?.emailMasked ?? 'User'}
+                                />
+                              </Pressable>
+                              <View style={styles.memberMain}>
+                                <View style={styles.memberTopRow}>
+                                  <View style={styles.memberTopMain}>
+                                    <Pressable
+                                      disabled={!ban.userId}
+                                      onPress={() => {
+                                        if (!ban.userId) return
+                                        router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
+                                      }}
+                                      hitSlop={8}
+                                      style={({ pressed }) => [pressed && ban.userId && styles.namePress]}
+                                    >
+                                      <Text style={styles.memberName} numberOfLines={1}>
+                                        {ban.user?.name || 'User'}
+                                      </Text>
+                                    </Pressable>
+                                  </View>
+                                  <View style={styles.bannedPill}>
+                                    <Feather name="slash" size={12} color={palette.danger} />
+                                    <Text style={styles.bannedPillText}>banned</Text>
+                                  </View>
+                                </View>
+                                {bannedMeta ? (
+                                  <Text style={styles.memberMetaText} numberOfLines={1}>
+                                    {bannedMeta}
+                                  </Text>
+                                ) : null}
+                                {ban.reason ? (
+                                  <Text style={styles.bannedReasonText} numberOfLines={1}>
+                                    Reason: {ban.reason}
+                                  </Text>
+                                ) : null}
+                              </View>
+                              <Pressable
+                                onPress={() => setBannedMenuTarget({ userId: ban.userId, name: ban.user?.name || 'User' })}
+                                hitSlop={10}
+                                style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
+                              >
+                                <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                              </Pressable>
+                            </View>
+                          </SurfaceCard>
+                        )
+                      })}
+                    </View>
+                  )}
+                  </View>
+                </>
+              ) : null}
+            </View>
+          )}
+      </>
+    )
+  }, [
+    tab,
+    membersQuery.data,
+    membersQuery.isLoading,
+    membersSearch,
+    canViewMembers,
+    clubId,
+    user?.id,
+    approveJoinRequest,
+    rejectJoinRequest,
+  ])
+
 
   if (clubQuery.isLoading) {
     return (
@@ -707,463 +1163,6 @@ export default function ClubDetailScreen() {
     </>
   )
 
-  if (tab === 'members') {
-    const allMembers = (membersQuery.data?.members ?? []) as any[]
-    const joinRequests = (membersQuery.data?.joinRequests ?? []) as any[]
-    const allBans = (membersQuery.data?.bans ?? []) as any[]
-    const canModerate = Boolean(membersQuery.data?.canModerate)
-    const q = membersSearch.trim().toLowerCase()
-    const filteredJoinRequests = q
-      ? joinRequests.filter((req) => {
-          const name = String(req?.user?.name ?? '').toLowerCase()
-          const email = String(req?.user?.emailMasked ?? '').toLowerCase()
-          return name.includes(q) || email.includes(q)
-        })
-      : joinRequests
-    const members = q
-      ? allMembers.filter((m) => {
-          const name = String(m?.user?.name ?? '').toLowerCase()
-          const email = String(m?.user?.emailMasked ?? '').toLowerCase()
-          return name.includes(q) || email.includes(q)
-        })
-      : allMembers
-    const admins = [...members]
-      .filter((m: any) => String(m?.role ?? '').trim() !== '')
-      .sort((a: any, b: any) => {
-        const ra = String(a?.role ?? '').toUpperCase()
-        const rb = String(b?.role ?? '').toUpperCase()
-        const pa = ra === 'OWNER' ? 0 : 1
-        const pb = rb === 'OWNER' ? 0 : 1
-        if (pa !== pb) return pa - pb
-        return String(a?.user?.name ?? '').localeCompare(String(b?.user?.name ?? ''))
-      })
-    const regularMembers = members.filter((m: any) => String(m?.role ?? '').trim() === '')
-    const bans = q
-      ? allBans.filter((b) => {
-          const name = String(b?.user?.name ?? '').toLowerCase()
-          const email = String(b?.user?.emailMasked ?? '').toLowerCase()
-          const reason = String(b?.reason ?? '').toLowerCase()
-          return name.includes(q) || email.includes(q) || reason.includes(q)
-        })
-      : allBans
-
-    const formatJoined = (joinedAt: any) => {
-      try {
-        const d = new Date(joinedAt)
-        if (Number.isNaN(d.getTime())) return null
-        return `Joined ${d.toLocaleString('en-US', { month: 'short', year: 'numeric' })}`
-      } catch {
-        return null
-      }
-    }
-    const formatRelative = (dateLike: any) => {
-      try {
-        const d = new Date(dateLike)
-        if (Number.isNaN(d.getTime())) return null
-        const diffMs = Date.now() - d.getTime()
-        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-        if (days <= 0) return 'today'
-        if (days === 1) return '1 day ago'
-        return `${days} days ago`
-      } catch {
-        return null
-      }
-    }
-    const formatBanned = (dateLike: any) => {
-      try {
-        const d = new Date(dateLike)
-        if (Number.isNaN(d.getTime())) return null
-        return `Banned ${d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-      } catch {
-        return null
-      }
-    }
-
-    return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        {hero}
-        <PickleRefreshScrollView
-          style={styles.contentScroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshing={pullToRefresh.refreshing}
-          onRefresh={pullToRefresh.onRefresh}
-          bounces
-        >
-          {clubInfoBlock}
-          {membershipActions}
-          {segmentControl}
-          {canViewMembers ? (
-            <View style={styles.membersSearchWrap}>
-              <SearchField
-                value={membersSearch}
-                onChangeText={setMembersSearch}
-                placeholder="Search members..."
-              />
-            </View>
-          ) : null}
-          {canModerate && filteredJoinRequests.length > 0 ? (
-            <View style={styles.pendingWrap}>
-              <View style={styles.pendingHeaderRow}>
-                <Text style={styles.clubSectionTitle}>Pending Requests</Text>
-                <View style={styles.pendingCountPill}>
-                  <Text style={styles.pendingCountText}>{filteredJoinRequests.length}</Text>
-                </View>
-              </View>
-
-              <View style={styles.pendingList}>
-                {filteredJoinRequests.map((req: any) => {
-                  const when = formatRelative(req.requestedAt) ?? ''
-                  return (
-                    <SurfaceCard key={req.userId} padded={false} style={styles.pendingCard}>
-                      <View style={styles.pendingCardTopRow}>
-                        <View style={styles.pendingLeftRow}>
-                          <Pressable
-                            disabled={!req.userId}
-                            onPress={() => {
-                              if (!req.userId) return
-                              router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
-                            }}
-                            style={({ pressed }) => [pressed && req.userId && styles.avatarPress]}
-                          >
-                            <RemoteUserAvatar
-                              uri={req.user?.image}
-                              size={52}
-                              fallback="initials"
-                              initialsLabel={req.user?.name ?? req.user?.email ?? 'User'}
-                            />
-                          </Pressable>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Pressable
-                              disabled={!req.userId}
-                              onPress={() => {
-                                if (!req.userId) return
-                                router.push({ pathname: '/profile/[id]', params: { id: req.userId } })
-                              }}
-                              hitSlop={8}
-                              style={({ pressed }) => [pressed && req.userId && styles.namePress]}
-                            >
-                              <Text style={styles.pendingName} numberOfLines={1}>
-                                {req.user?.name || 'User'}
-                              </Text>
-                            </Pressable>
-                            {when ? (
-                              <Text style={styles.pendingWhen} numberOfLines={1}>
-                                {when}
-                              </Text>
-                            ) : null}
-                          </View>
-                        </View>
-
-                        <View style={styles.pendingActionsInline}>
-                          <Pressable
-                            onPress={() => approveJoinRequest.mutate({ clubId, userId: req.userId })}
-                            disabled={approveJoinRequest.isPending}
-                            style={({ pressed }) => [
-                              styles.pendingIconBtn,
-                              styles.pendingIconBtnApprove,
-                              pressed && styles.pendingBtnPressed,
-                            ]}
-                            hitSlop={10}
-                          >
-                            <Feather name="check" size={18} color={palette.white} />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => rejectJoinRequest.mutate({ clubId, userId: req.userId })}
-                            disabled={rejectJoinRequest.isPending}
-                            style={({ pressed }) => [
-                              styles.pendingIconBtn,
-                              styles.pendingIconBtnReject,
-                              pressed && styles.pendingBtnPressed,
-                            ]}
-                            hitSlop={10}
-                          >
-                            <Feather name="x" size={18} color={palette.danger} />
-                          </Pressable>
-                        </View>
-                      </View>
-                    </SurfaceCard>
-                  )
-                })}
-              </View>
-            </View>
-          ) : null}
-
-          {!canViewMembers ? (
-            <View style={styles.membersWrap}>
-              <EmptyState
-                title="Members are private"
-                body="Join this club to view the members list."
-              />
-            </View>
-          ) : membersQuery.isLoading ? (
-            <LoadingBlock label="Loading members…" />
-          ) : (
-            <View style={styles.membersWrap}>
-              {admins.length > 0 ? (
-                <View style={styles.adminsBlock}>
-                  <View style={styles.membersHeaderRow}>
-                    <Text style={styles.clubSectionTitle}>Admins</Text>
-                    <Text style={styles.membersHeaderCount}>{String(admins.length)}</Text>
-                  </View>
-                  <View style={styles.sectionHeaderToListSpacer} />
-                  <View style={styles.membersList}>
-                    {admins.map((member: any) => {
-                      const joined = formatJoined(member.joinedAt)
-                      const secondary = joined || null
-                      const role = String(member.role ?? '').toUpperCase()
-                      const isOwner = role === 'OWNER'
-                      const roleBadge =
-                        role === 'OWNER'
-                          ? { label: 'owner', icon: 'crown' as const, bg: 'rgba(255, 193, 7, 0.16)', border: 'rgba(255, 193, 7, 0.28)', fg: '#a06b00' }
-                          : role
-                          ? { label: 'admin', icon: 'shield' as const, bg: 'rgba(47, 107, 255, 0.12)', border: 'rgba(47, 107, 255, 0.22)', fg: '#2F6BFF' }
-                          : null
-                      return (
-                        <SurfaceCard
-                          key={member.userId}
-                          padded={false}
-                          style={[styles.memberCard, isOwner && styles.memberCardOwner]}
-                        >
-                          <View style={styles.memberCardRow}>
-                            <Pressable
-                              disabled={!member.userId}
-                              onPress={() => {
-                                if (!member.userId) return
-                                router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
-                              }}
-                              style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
-                            >
-                              <RemoteUserAvatar
-                                uri={member.user?.image}
-                                size={48}
-                                fallback="initials"
-                                initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
-                              />
-                            </Pressable>
-
-                            <View style={styles.memberMain}>
-                              <View style={styles.memberTopRow}>
-                                <View style={styles.memberTopMain}>
-                                  <Pressable
-                                    disabled={!member.userId}
-                                    onPress={() => {
-                                      if (!member.userId) return
-                                      router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
-                                    }}
-                                    hitSlop={8}
-                                    style={({ pressed }) => [pressed && member.userId && styles.namePress]}
-                                  >
-                                    <Text style={styles.memberName} numberOfLines={1}>
-                                      {member.user?.name || 'Member'}
-                                    </Text>
-                                  </Pressable>
-                                </View>
-                                {roleBadge ? (
-                                  <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
-                                    <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
-                                    <Text style={[styles.rolePillText, { color: roleBadge.fg }]}>{roleBadge.label}</Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                              {secondary ? (
-                                <Text style={styles.memberMetaText} numberOfLines={1}>
-                                  {secondary}
-                                </Text>
-                              ) : null}
-                            </View>
-                          </View>
-                        </SurfaceCard>
-                      )
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              {admins.length > 0 ? <View style={styles.sectionSpacer} /> : null}
-
-              <View style={styles.membersHeaderRow}>
-                <Text style={styles.clubSectionTitle}>Members</Text>
-                <Text style={styles.membersHeaderCount}>{String(regularMembers.length)}</Text>
-              </View>
-              <View style={styles.sectionHeaderToListSpacer} />
-
-              <View style={styles.membersList}>
-                {regularMembers.map((member: any) => {
-                  const joined = formatJoined(member.joinedAt)
-                  const secondary = joined || null
-                  const role = String(member.role ?? '').toUpperCase()
-                  const isOwner = role === 'OWNER'
-                  const roleBadge =
-                    role === 'OWNER'
-                      ? { label: 'owner', icon: 'crown' as const, bg: 'rgba(255, 193, 7, 0.16)', border: 'rgba(255, 193, 7, 0.28)', fg: '#a06b00' }
-                      : role
-                      ? { label: 'admin', icon: 'shield' as const, bg: 'rgba(47, 107, 255, 0.12)', border: 'rgba(47, 107, 255, 0.22)', fg: '#2F6BFF' }
-                      : null
-                  return (
-                    <SurfaceCard
-                      key={member.userId}
-                      padded={false}
-                      style={[styles.memberCard, isOwner && styles.memberCardOwner]}
-                    >
-                      <View style={styles.memberCardRow}>
-                        <Pressable
-                          disabled={!member.userId}
-                          onPress={() => {
-                            if (!member.userId) return
-                            router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
-                          }}
-                          style={({ pressed }) => [pressed && member.userId && styles.avatarPress]}
-                        >
-                          <RemoteUserAvatar
-                            uri={member.user?.image}
-                            size={48}
-                            fallback="initials"
-                            initialsLabel={member.user?.name ?? member.user?.email ?? 'Member'}
-                          />
-                        </Pressable>
-
-                        <View style={styles.memberMain}>
-                          <View style={styles.memberTopRow}>
-                            <View style={styles.memberTopMain}>
-                              <Pressable
-                                disabled={!member.userId}
-                                onPress={() => {
-                                  if (!member.userId) return
-                                  router.push({ pathname: '/profile/[id]', params: { id: member.userId } })
-                                }}
-                                hitSlop={8}
-                                style={({ pressed }) => [pressed && member.userId && styles.namePress]}
-                              >
-                                <Text style={styles.memberName} numberOfLines={1}>
-                                  {member.user?.name || 'Member'}
-                                </Text>
-                              </Pressable>
-                            </View>
-                            {roleBadge ? (
-                              <View style={[styles.rolePill, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
-                                <Feather name={roleBadge.icon} size={14} color={roleBadge.fg} />
-                                <Text style={[styles.rolePillText, { color: roleBadge.fg }]}>{roleBadge.label}</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                          {secondary ? (
-                            <Text style={styles.memberMetaText} numberOfLines={1}>
-                              {secondary}
-                            </Text>
-                          ) : null}
-                        </View>
-
-                        {canModerate && member.userId !== user?.id ? (
-                          <Pressable
-                            onPress={() => setMemberMenuTarget({ userId: member.userId, name: member.user?.name || 'Member' })}
-                            hitSlop={10}
-                            style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
-                          >
-                            <Feather name="more-vertical" size={18} color={palette.textMuted} />
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    </SurfaceCard>
-                  )
-                })}
-              </View>
-              {canModerate ? (
-                <>
-                  <View style={styles.sectionSpacer} />
-                  <View style={styles.bansWrap}>
-                  <View style={styles.membersHeaderRow}>
-                    <Text style={styles.clubSectionTitle}>Banned users</Text>
-                    <Text style={styles.membersHeaderCount}>{String(allBans.length)}</Text>
-                  </View>
-                    <View style={styles.sectionHeaderToListSpacer} />
-                  {bans.length === 0 ? (
-                    <SurfaceCard padded={false} style={styles.memberCard}>
-                      <View style={styles.emptyBansCard}>
-                        <Text style={styles.memberMetaText}>No banned users.</Text>
-                      </View>
-                    </SurfaceCard>
-                  ) : (
-                    <View style={styles.membersList}>
-                      {bans.map((ban: any) => {
-                        const bannedMeta = [formatBanned(ban.bannedAt), ban.bannedBy?.name ? `by ${ban.bannedBy.name}` : null]
-                          .filter(Boolean)
-                          .join(' • ')
-                        return (
-                          <SurfaceCard key={ban.userId} padded={false} style={styles.memberCard}>
-                            <View style={styles.memberCardRow}>
-                              <Pressable
-                                disabled={!ban.userId}
-                                onPress={() => {
-                                  if (!ban.userId) return
-                                  router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
-                                }}
-                                style={({ pressed }) => [pressed && ban.userId && styles.avatarPress]}
-                              >
-                                <RemoteUserAvatar
-                                  uri={ban.user?.image}
-                                  size={48}
-                                  fallback="initials"
-                                  initialsLabel={ban.user?.name ?? ban.user?.emailMasked ?? 'User'}
-                                />
-                              </Pressable>
-                              <View style={styles.memberMain}>
-                                <View style={styles.memberTopRow}>
-                                  <View style={styles.memberTopMain}>
-                                    <Pressable
-                                      disabled={!ban.userId}
-                                      onPress={() => {
-                                        if (!ban.userId) return
-                                        router.push({ pathname: '/profile/[id]', params: { id: ban.userId } })
-                                      }}
-                                      hitSlop={8}
-                                      style={({ pressed }) => [pressed && ban.userId && styles.namePress]}
-                                    >
-                                      <Text style={styles.memberName} numberOfLines={1}>
-                                        {ban.user?.name || 'User'}
-                                      </Text>
-                                    </Pressable>
-                                  </View>
-                                  <View style={styles.bannedPill}>
-                                    <Feather name="slash" size={12} color={palette.danger} />
-                                    <Text style={styles.bannedPillText}>banned</Text>
-                                  </View>
-                                </View>
-                                {bannedMeta ? (
-                                  <Text style={styles.memberMetaText} numberOfLines={1}>
-                                    {bannedMeta}
-                                  </Text>
-                                ) : null}
-                                {ban.reason ? (
-                                  <Text style={styles.bannedReasonText} numberOfLines={1}>
-                                    Reason: {ban.reason}
-                                  </Text>
-                                ) : null}
-                              </View>
-                              <Pressable
-                                onPress={() => setBannedMenuTarget({ userId: ban.userId, name: ban.user?.name || 'User' })}
-                                hitSlop={10}
-                                style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
-                              >
-                                <Feather name="more-vertical" size={18} color={palette.textMuted} />
-                              </Pressable>
-                            </View>
-                          </SurfaceCard>
-                        )
-                      })}
-                    </View>
-                  )}
-                  </View>
-                </>
-              ) : null}
-            </View>
-          )}
-        </PickleRefreshScrollView>
-        {clubSheets}
-      </SafeAreaView>
-    )
-  }
-
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       {hero}
@@ -1179,6 +1178,7 @@ export default function ClubDetailScreen() {
         {membershipActions}
         {segmentControl}
 
+        <SegmentedContentFade activeKey={tab} segmentOrder={['events', 'feed', 'members']}>
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
             {club.isAdmin ? (
@@ -1402,7 +1402,8 @@ export default function ClubDetailScreen() {
           </View>
         ) : null}
 
-        {tab === 'members' ? null : null}
+        {membersTabContent}
+        </SegmentedContentFade>
       </PickleRefreshScrollView>
       <FeedbackRatingModal
         open={clubFeedbackOpen}

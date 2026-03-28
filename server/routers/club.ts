@@ -539,6 +539,9 @@ export const clubRouter = createTRPCRouter({
               entryFeeCents: true,
               publicSlug: true,
               format: true,
+              image: true,
+              venueName: true,
+              venueAddress: true,
             },
           },
           announcements: {
