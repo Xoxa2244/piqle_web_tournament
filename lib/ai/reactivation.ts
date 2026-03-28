@@ -246,36 +246,45 @@ function scoreReactivation(
 ): RecommendationScore {
   const components: Record<string, ScoreComponent> = {};
 
-  // ── RFM+ Model ──
+  // ── RFM+E Model (Recency / Frequency / Trend / Engagement / Reliability) ──
 
-  // ── Recency (25%) — days since last session ──
-  const daysSince = history.daysSinceLastConfirmedBooking ?? 365;
+  // ── Recency (25%) — days since last session, granular at high end ──
+  const daysSince = history.daysSinceLastConfirmedBooking ?? 999;
   let recencyScore: number;
   let recencyExpl: string;
   if (daysSince <= 3) { recencyScore = 100; recencyExpl = `Last session ${daysSince} day(s) ago — very recent`; }
   else if (daysSince <= 7) { recencyScore = 80; recencyExpl = `Last session ${daysSince} days ago — recently active`; }
   else if (daysSince <= 14) { recencyScore = 60; recencyExpl = `Last session ${daysSince} days ago — starting to drift`; }
   else if (daysSince <= 30) { recencyScore = 35; recencyExpl = `Last session ${daysSince} days ago — re-engage soon`; }
-  else if (daysSince <= 60) { recencyScore = 15; recencyExpl = `Last session ${daysSince} days ago — significant gap`; }
-  else { recencyScore = 5; recencyExpl = `Last session ${daysSince}+ days ago — long-term inactive`; }
+  else if (daysSince <= 60) { recencyScore = 18; recencyExpl = `Last session ${daysSince} days ago — significant gap`; }
+  else if (daysSince <= 90) { recencyScore = 10; recencyExpl = `Last session ${daysSince} days ago — 3-month gap`; }
+  else if (daysSince <= 180) { recencyScore = 5; recencyExpl = `Last session ${daysSince} days ago — 6-month gap`; }
+  else if (daysSince <= 365) { recencyScore = 2; recencyExpl = `Last session ${daysSince} days ago — near 1 year inactive`; }
+  else { recencyScore = 1; recencyExpl = `No activity in over a year`; }
   components.recency = { score: recencyScore, weight: 25, explanation: recencyExpl };
 
-  // ── Frequency (25%) — sessions per month ──
+  // ── Frequency (20%) — historical avg when active, falls back gracefully for inactive members ──
   const sessionsPerMonth = history.bookingsLastMonth;
+  // For inactive members, estimate historical monthly avg from total bookings / months since first activity
+  const historicalMonthlyAvg = sessionsPerMonth > 0
+    ? sessionsPerMonth
+    : history.totalBookings > 0 ? Math.min(history.totalBookings / Math.max(daysSince / 30, 1), 12) : 0;
   let frequencyScore: number;
   let frequencyExpl: string;
   if (sessionsPerMonth >= 8) { frequencyScore = 100; frequencyExpl = `${sessionsPerMonth} sessions/mo — power user`; }
   else if (sessionsPerMonth >= 5) { frequencyScore = 80; frequencyExpl = `${sessionsPerMonth} sessions/mo — highly active`; }
   else if (sessionsPerMonth >= 3) { frequencyScore = 60; frequencyExpl = `${sessionsPerMonth} sessions/mo — regular player`; }
   else if (sessionsPerMonth >= 1) { frequencyScore = 35; frequencyExpl = `${sessionsPerMonth} session(s)/mo — occasional player`; }
-  else { frequencyScore = 5; frequencyExpl = 'No sessions this month'; }
-  components.frequency = { score: frequencyScore, weight: 25, explanation: frequencyExpl };
+  else if (historicalMonthlyAvg >= 4) { frequencyScore = 25; frequencyExpl = `Inactive now — was playing ~${Math.round(historicalMonthlyAvg)}/mo historically`; }
+  else if (historicalMonthlyAvg >= 2) { frequencyScore = 15; frequencyExpl = `Inactive now — was playing ~${Math.round(historicalMonthlyAvg)}/mo historically`; }
+  else if (historicalMonthlyAvg >= 0.5) { frequencyScore = 8; frequencyExpl = `Inactive now — played occasionally in the past`; }
+  else { frequencyScore = 3; frequencyExpl = 'Minimal activity history'; }
+  components.frequency = { score: frequencyScore, weight: 20, explanation: frequencyExpl };
 
-  // ── Trend (25%) — compare last 14 days vs previous 14 days ──
-  // Approximate using bookingsLastWeek (≈last 7d) vs (bookingsLastMonth − bookingsLastWeek) / 2 for the prior 14d average
-  const recentPeriod = history.bookingsLastWeek * 2; // extrapolate last week to 14 days
-  const priorPeriod = Math.max(history.bookingsLastMonth - history.bookingsLastWeek, 0); // remaining ~3 weeks, scale down
-  const priorNormalized = priorPeriod > 0 ? (priorPeriod / 3) * 2 : 0; // normalize to ~14-day equivalent
+  // ── Trend (20%) — compare last 14 days vs previous 14 days ──
+  const recentPeriod = history.bookingsLastWeek * 2;
+  const priorPeriod = Math.max(history.bookingsLastMonth - history.bookingsLastWeek, 0);
+  const priorNormalized = priorPeriod > 0 ? (priorPeriod / 3) * 2 : 0;
   const trendRatio = priorNormalized > 0 ? recentPeriod / priorNormalized : (recentPeriod > 0 ? 2.0 : 0);
   let trendScore: number;
   let trendExpl: string;
@@ -283,25 +292,20 @@ function scoreReactivation(
   else if (trendRatio >= 0.8) { trendScore = 70; trendExpl = `Activity stable (ratio ${trendRatio.toFixed(1)}×)`; }
   else if (trendRatio >= 0.3) { trendScore = 30; trendExpl = `Activity declining (ratio ${trendRatio.toFixed(1)}×) — engagement dropping`; }
   else { trendScore = 5; trendExpl = 'Activity stopped — needs immediate attention'; }
-  components.trend = { score: trendScore, weight: 25, explanation: trendExpl };
+  components.trend = { score: trendScore, weight: 20, explanation: trendExpl };
 
-  // ── Consistency (15%) — regularity of play ──
-  // Approximate from available data: if they play frequently and recently, consistency is likely high
-  let consistencyScore: number;
-  let consistencyExpl: string;
-  if (history.totalBookings < 3) {
-    consistencyScore = 50; consistencyExpl = 'Not enough data to assess consistency';
-  } else {
-    // Estimate average gap: total days of membership / totalBookings
-    // Use daysSince + rough estimate of active period
-    const avgGap = history.totalBookings > 0 ? 30 / Math.max(sessionsPerMonth, 0.5) : 30;
-    const variance = Math.abs(avgGap - (daysSince > 0 ? daysSince : avgGap));
-    if (variance < 2) { consistencyScore = 100; consistencyExpl = 'Very consistent schedule — plays regularly'; }
-    else if (variance < 5) { consistencyScore = 70; consistencyExpl = 'Fairly consistent play pattern'; }
-    else if (variance < 10) { consistencyScore = 40; consistencyExpl = 'Irregular play pattern — sporadic visits'; }
-    else { consistencyScore = 15; consistencyExpl = 'Highly irregular — unpredictable schedule'; }
-  }
-  components.consistency = { score: consistencyScore, weight: 15, explanation: consistencyExpl };
+  // ── Lifetime Engagement (25%) — how invested was this member historically ──
+  // Replaces Consistency — a power user who lapsed is far more worth reactivating than someone who tried twice
+  const totalB = history.totalBookings;
+  let engagementScore: number;
+  let engagementExpl: string;
+  if (totalB >= 80) { engagementScore = 100; engagementExpl = `${totalB} lifetime sessions — power user, high reactivation value`; }
+  else if (totalB >= 40) { engagementScore = 80; engagementExpl = `${totalB} lifetime sessions — very engaged member`; }
+  else if (totalB >= 20) { engagementScore = 60; engagementExpl = `${totalB} lifetime sessions — solid regular`; }
+  else if (totalB >= 10) { engagementScore = 40; engagementExpl = `${totalB} lifetime sessions — moderate engagement`; }
+  else if (totalB >= 3) { engagementScore = 20; engagementExpl = `${totalB} lifetime sessions — tried it but didn't stick`; }
+  else { engagementScore = 5; engagementExpl = `${totalB} lifetime sessions — barely engaged`; }
+  components.engagement = { score: engagementScore, weight: 25, explanation: engagementExpl };
 
   // ── Reliability (10%) — 1 − (cancellations + no-shows) / totalBookings ──
   let reliabScore: number;
