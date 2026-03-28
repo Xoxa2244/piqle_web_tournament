@@ -246,10 +246,21 @@ export function mapReservationRows(rows: Record<string, any>[]): ParsedSession[]
 
     const endDate = parseDateFromExcel(endDateVal)
 
-    // Parse member names from comma/semicolon separated string
-    const memberNames = members
-      ? members.split(/[,;]/).map((n: string) => n.trim()).filter(Boolean)
-      : []
+    // Parse "Name (#MemberID), Name (#MemberID)" format
+    const memberNames: string[] = []
+    const memberExternalIds: string[] = []
+    if (members) {
+      for (const entry of members.split(',')) {
+        const match = entry.trim().match(/^(.+?)\s*\(#([^)]+)\)$/)
+        if (match) {
+          memberNames.push(match[1].trim())
+          memberExternalIds.push(match[2].trim())
+        } else {
+          const name = entry.trim()
+          if (name) memberNames.push(name)
+        }
+      }
+    }
 
     sessions.push({
       externalId: confirmationId,
@@ -260,7 +271,7 @@ export function mapReservationRows(rows: Record<string, any>[]): ParsedSession[]
       format: mapFormat(resType),
       skillLevel: mapSkillLevel(resType),
       memberNames,
-      memberExternalIds: [],
+      memberExternalIds,
       memberCount: membersCount || memberNames.length,
       price: feeAmount,
       isCancelled: false,
