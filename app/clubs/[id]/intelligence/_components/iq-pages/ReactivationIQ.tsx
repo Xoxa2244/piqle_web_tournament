@@ -213,7 +213,7 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
       name: c.member?.name || c.member?.email || "Unknown",
       avatar: (c.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
       rating: c.member?.duprRatingDoubles || 0,
-      risk: c.score < 30 ? "high" as const : c.score < 56 ? "medium" as const : "low" as const,
+      risk: c.score < 25 ? "high" as const : c.score < 50 ? "medium" as const : "low" as const,
       healthScore: c.score || 0,
       daysSincePlay: c.daysSinceLastActivity || 0,
       totalSessions: c.totalHistoricalBookings || 0,
@@ -284,9 +284,9 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   // Risk segments from real reactivation data
   const displayRiskSegments = reactivationData?.candidates
     ? (() => {
-        const high = reactivationData.candidates.filter((c: any) => c.score < 30).length;
-        const medium = reactivationData.candidates.filter((c: any) => c.score >= 30 && c.score < 60).length;
-        const low = reactivationData.candidates.filter((c: any) => c.score >= 60 && c.score < 80).length;
+        const high = reactivationData.candidates.filter((c: any) => c.score < 25).length;
+        const medium = reactivationData.candidates.filter((c: any) => c.score >= 25 && c.score < 50).length;
+        const low = reactivationData.candidates.filter((c: any) => c.score >= 50 && c.score < 70).length;
         const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
           { name: "High Risk", value: high, color: "#EF4444" },

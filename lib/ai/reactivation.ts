@@ -21,6 +21,8 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
 
   const candidates = input.members
     .filter(({ history }) => {
+      // Exclude members who have never booked at all — they're "Never Engaged", not "At-Risk"
+      if (history.totalBookings === 0) return false;
       const days = history.daysSinceLastConfirmedBooking;
       return days === null || days >= threshold;
     })
@@ -50,9 +52,9 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
       };
     })
     .sort((a, b) => {
-      // Sort by risk first (high < 30, medium 30-59, low 60+), then by days inactive desc
-      const riskA = a.score < 30 ? 0 : a.score < 60 ? 1 : 2;
-      const riskB = b.score < 30 ? 0 : b.score < 60 ? 1 : 2;
+      // Sort by risk first (high < 25, medium 25-49, low 50+), then by days inactive desc
+      const riskA = a.score < 25 ? 0 : a.score < 50 ? 1 : 2;
+      const riskB = b.score < 25 ? 0 : b.score < 50 ? 1 : 2;
       if (riskA !== riskB) return riskA - riskB;
       return b.daysSinceLastActivity - a.daysSinceLastActivity;
     });
