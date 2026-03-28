@@ -474,7 +474,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                           const errors = data?.totalErrors ?? 0
                           const skipped = data?.results?.[0]?.skipped ?? 0
                           console.log('[AI Profiles] Done:', data)
-                          setAiGenerateResult(`✅ Generated: ${generated}, Skipped: ${skipped}, Errors: ${errors}`)
+                          const errDetail = data?.sampleError ? ` | ${data.sampleError}` : ''
+                          setAiGenerateResult(`${errors > 0 ? '⚠️' : '✅'} Generated: ${generated}, Skipped: ${skipped}, Errors: ${errors}${errDetail}`)
                         }
                         setAiGenerating(false)
                       })

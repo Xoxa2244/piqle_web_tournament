@@ -28,6 +28,7 @@ interface GenerateResult {
   generated: number
   skipped: number
   errors: number
+  sampleError?: string // first error message for debugging
 }
 
 // Map RFM+E score to risk segment
@@ -370,9 +371,17 @@ export async function generateMemberProfilesForClub(
 
     await Promise.allSettled(
       batch.map(async (f: any) => {
-        const profile = await generateSingleMemberProfile(prisma, f.userId, clubId, clubName)
-        if (profile) result.generated++
-        else result.errors++
+        try {
+          const profile = await generateSingleMemberProfile(prisma, f.userId, clubId, clubName)
+          if (profile) result.generated++
+          else {
+            result.errors++
+            if (!result.sampleError) result.sampleError = `null profile for user=${f.userId}`
+          }
+        } catch (err: any) {
+          result.errors++
+          if (!result.sampleError) result.sampleError = err?.message || String(err)
+        }
       })
     )
 

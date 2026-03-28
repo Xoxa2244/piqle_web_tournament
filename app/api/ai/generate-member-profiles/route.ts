@@ -7,8 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
 
@@ -17,18 +15,14 @@ export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization')
-  const isCron = auth === `Bearer ${process.env.CRON_SECRET}`
+  const internalKey = req.headers.get('x-internal-key')
 
-  // Accept either CRON_SECRET (nightly job) or a logged-in session (manual trigger)
-  if (!isCron) {
-    try {
-      const session = await getServerSession(authOptions)
-      if (!session?.user?.id) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-    } catch {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  // Accept CRON_SECRET (Vercel cron) OR internal key (manual trigger from UI)
+  const validCron = auth === `Bearer ${process.env.CRON_SECRET}`
+  const validInternal = internalKey === process.env.INTERNAL_API_KEY
+
+  if (!validCron && !validInternal) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const body = await req.json().catch(() => ({}))
@@ -70,6 +64,7 @@ export async function POST(req: NextRequest) {
     const totalErrors = results.reduce((sum, r) => sum + r.errors, 0)
     const durationMs = Date.now() - startTime
 
+    const sampleError = results.find(r => r.sampleError)?.sampleError
     return NextResponse.json({
       success: true,
       clubs: clubs.length,
@@ -77,6 +72,7 @@ export async function POST(req: NextRequest) {
       totalErrors,
       durationMs,
       results,
+      ...(sampleError ? { sampleError } : {}),
     })
   } catch (err) {
     console.error('[MemberAiProfiles] Cron job failed:', err)
