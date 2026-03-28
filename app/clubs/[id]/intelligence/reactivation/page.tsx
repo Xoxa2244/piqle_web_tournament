@@ -56,7 +56,8 @@ export default function ReactivationPage() {
   const { data, isLoading: candidatesLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const { data: churnTrendData, isLoading: churnLoading } = useChurnTrend(clubId)
   const { data: campaignListData, isLoading: campaignListLoading } = useCampaignList(clubId)
-  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId)
+  const [isPolling, setIsPolling] = useState(false)
+  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId, undefined, isPolling ? 15000 : undefined)
   const regenerateProfiles = useRegenerateMemberProfiles()
   const sendReactivation = useSendReactivation()
   const isLoading = candidatesLoading || churnLoading || campaignListLoading
@@ -66,6 +67,14 @@ export default function ReactivationPage() {
     if (!aiProfilesRaw?.length) return {}
     return Object.fromEntries(aiProfilesRaw.map((p: any) => [p.userId, p]))
   }, [aiProfilesRaw])
+
+  // Stop polling when all candidates have profiles
+  useEffect(() => {
+    if (!isPolling) return
+    const total = data?.candidates?.length ?? 0
+    const done = aiProfilesRaw?.length ?? 0
+    if (total > 0 && done >= total) setIsPolling(false)
+  }, [aiProfilesRaw, data, isPolling])
   const { toast } = useToast()
 
   const setPageContext = useSetPageContext()
@@ -141,7 +150,7 @@ export default function ReactivationPage() {
       : 0
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} />
+  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} onGenerationStarted={() => setIsPolling(true)} />
 
   return (
     <div className="space-y-6">

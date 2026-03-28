@@ -202,6 +202,7 @@ type ReactivationIQProps = {
   clubId?: string;
   aiProfiles?: Record<string, any>; // userId → MemberAiProfileData
   regenerateProfiles?: any;
+  onGenerationStarted?: () => void;
 };
 
 function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskMember[] {
@@ -245,7 +246,7 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
   });
 }
 
-export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles, onGenerationStarted }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -449,9 +450,9 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                   onClick={() => {
                     if (aiGenerating) return;
                     setAiGenerating(true);
+                    onGenerationStarted?.();
                     regenerateProfiles.mutate({ clubId }, {
-                      onSuccess: () => setTimeout(() => setAiGenerating(false), 3000),
-                      onError: () => setAiGenerating(false),
+                      onSettled: () => setAiGenerating(false),
                     });
                   }}
                   disabled={aiGenerating}

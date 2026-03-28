@@ -481,11 +481,15 @@ export function useRegenerateMemberProfiles() {
 }
 
 // ── Member AI Profiles ──
-export function useMemberAiProfiles(clubId: string, userIds?: string[]) {
+export function useMemberAiProfiles(clubId: string, userIds?: string[], refetchInterval?: number) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getMemberAiProfiles.useQuery(
     { clubId, userIds },
-    { enabled: !!clubId && !isDemo, staleTime: 10 * 60 * 1000 }
+    {
+      enabled: !!clubId && !isDemo,
+      staleTime: 10 * 60 * 1000,
+      refetchInterval: refetchInterval ?? false,
+    }
   )
   if (isDemo) return { data: undefined as any, isLoading: false, error: null }
   return query
