@@ -98,8 +98,8 @@ function mapFormat(type?: string): string {
 function mapSkillLevel(skill?: string): string {
   if (!skill) return 'ALL_LEVELS'
   const lower = skill.toLowerCase()
-  if (lower.includes('beginner') || lower.includes('2.0') || lower.includes('2.5')) return 'BEGINNER'
-  if (lower.includes('intermediate') || lower.includes('3.0') || lower.includes('3.5')) return 'INTERMEDIATE'
+  if (lower.includes('beginner') || lower.includes('casual') || lower.includes('2.0') || lower.includes('2.5')) return 'BEGINNER'
+  if (lower.includes('intermediate') || lower.includes('competitive') || lower.includes('3.0') || lower.includes('3.5')) return 'INTERMEDIATE'
   if (lower.includes('advanced') || lower.includes('4.0') || lower.includes('4.5') || lower.includes('5.0')) return 'ADVANCED'
   return 'ALL_LEVELS'
 }
@@ -308,7 +308,7 @@ export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
         endTime: endTimeVal ? parseTimeFromExcel(endTimeVal) : parseTimeFromExcel(startTimeVal),
         courtName: courts.split(',')[0]?.trim(),
         format: mapFormat(category || progName),
-        skillLevel: mapSkillLevel(skill),
+        skillLevel: mapSkillLevel(skill || category),
         memberNames: [],
         memberExternalIds: [],
         memberCount: 0,
