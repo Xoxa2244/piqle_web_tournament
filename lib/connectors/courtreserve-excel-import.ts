@@ -48,6 +48,7 @@ interface ParsedSession {
   price?: number
   isCancelled: boolean
   title: string
+  category?: string
 }
 
 // ── Helpers ──
@@ -276,6 +277,7 @@ export function mapReservationRows(rows: Record<string, any>[]): ParsedSession[]
       price: feeAmount,
       isCancelled: false,
       title: `${resType || 'Court Booking'} — ${courts.split(',')[0]?.trim() || 'Court'}`,
+      category: resType || undefined,
     })
   }
 
@@ -326,6 +328,7 @@ export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
         price,
         isCancelled: false,
         title: `${progName} — ${courts.split(',')[0]?.trim() || 'Court'}`,
+        category: category || progName || undefined,
       })
     }
 
@@ -493,6 +496,7 @@ async function _runImportPipeline(
           registeredCount: session.isCancelled ? 0 : session.memberCount,
           pricePerSlot: session.price ?? undefined,
           status: session.isCancelled ? 'CANCELLED' : 'COMPLETED',
+          category: session.category ?? null,
         }
 
         if (sessionId) {

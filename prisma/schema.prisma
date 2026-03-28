@@ -1538,6 +1538,7 @@ model PlaySession {
   startTime   String
   endTime     String
   format      PlaySessionFormat    @default(OPEN_PLAY)
+  category    String?
   skillLevel  PlaySessionSkillLevel @default(ALL_LEVELS)
   maxPlayers  Int                  @default(8)
   pricePerSlot    Float?

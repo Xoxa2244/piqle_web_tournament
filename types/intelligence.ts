@@ -26,6 +26,7 @@ export interface PlaySessionData {
   title: string;
   description: string | null;
   format: PlaySessionFormat;
+  category?: string | null;
   skillLevel: PlaySessionSkillLevel;
   date: Date;
   startTime: string; // "HH:MM"
@@ -459,6 +460,7 @@ export interface BookingWithSession {
     date: Date
     startTime: string      // "HH:MM"
     format: string         // PlaySessionFormat
+    category?: string | null  // raw club-specific category (e.g. "Competitive (3.5-3.99)")
   }
 }
 
@@ -466,6 +468,7 @@ export interface InferredPreferences {
   preferredDays: DayOfWeek[]
   preferredTimeSlots: Record<TimeSlot, boolean>
   preferredFormats: string[]
+  preferredCategories: string[]  // raw club-specific categories (e.g. "Competitive (3.5-3.99)")
   confidence: number        // 0-100, scales with booking count
   bookingsAnalyzed: number
 }

@@ -257,7 +257,7 @@ export async function getSlotFillerRecommendations(
       where: { userId: { in: memberUserIds } },
       select: {
         userId: true, status: true, bookedAt: true,
-        playSession: { select: { date: true, startTime: true, format: true } },
+        playSession: { select: { date: true, startTime: true, format: true, category: true } },
       },
       orderBy: { bookedAt: 'desc' },
     }),
@@ -280,7 +280,7 @@ export async function getSlotFillerRecommendations(
       const userBookings = (bookingsByUser.get(cf.user.id) || []).slice(0, 50)
       const bookingsForInference: BookingWithSession[] = userBookings
         .filter((b: any) => b.playSession)
-        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }))
       return {
         member: toMemberData(cf.user),
         preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
@@ -540,13 +540,13 @@ export async function getWeeklyPlan(prisma: any, input: z.infer<typeof weeklyPla
   // Load bookings for inference fallback
   const bookingsRaw = await prisma.playSessionBooking.findMany({
     where: { userId },
-    select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
+    select: { status: true, playSession: { select: { date: true, startTime: true, format: true, category: true } } },
     orderBy: { bookedAt: 'desc' },
     take: 50,
   });
   const bookingsForInference: BookingWithSession[] = bookingsRaw
     .filter((b: any) => b.playSession)
-    .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }));
+    .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }));
 
   const resolvedPref = resolvePreferences(toPreferenceData(preference), bookingsForInference);
 
@@ -918,7 +918,7 @@ export async function getReactivationCandidates(
           userId: true,
           status: true,
           bookedAt: true,
-          playSession: { select: { date: true, startTime: true, format: true, clubId: true } },
+          playSession: { select: { date: true, startTime: true, format: true, category: true, clubId: true } },
         },
         orderBy: { bookedAt: 'desc' },
       }),
@@ -957,7 +957,7 @@ export async function getReactivationCandidates(
       const bookingsForInference: BookingWithSession[] = userBookings
         .slice(0, 50)
         .filter((b: any) => b.playSession)
-        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }));
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }));
 
       const preference = preferenceMap.get(cf.user.id) ?? null;
       return {
@@ -1310,13 +1310,13 @@ export async function sendReactivationMessages(
       const history = await buildBookingHistory(prisma, cf.user.id)
       const bookingsRaw = await prisma.playSessionBooking.findMany({
         where: { userId: cf.user.id },
-        select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
+        select: { status: true, playSession: { select: { date: true, startTime: true, format: true, category: true } } },
         orderBy: { bookedAt: 'desc' },
         take: 50,
       })
       const bookingsForInference: BookingWithSession[] = bookingsRaw
         .filter((b: any) => b.playSession)
-        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }))
       return {
         member: toMemberData(cf.user),
         preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
@@ -1762,13 +1762,13 @@ export async function getEventRecommendations(
         const history = await buildBookingHistory(prisma, cf.user.id)
         const bookingsRaw = await prisma.playSessionBooking.findMany({
           where: { userId: cf.user.id },
-          select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
+          select: { status: true, playSession: { select: { date: true, startTime: true, format: true, category: true } } },
           orderBy: { bookedAt: 'desc' },
           take: 50,
         })
         const bookingsForInference: BookingWithSession[] = bookingsRaw
           .filter((b: any) => b.playSession)
-          .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
+          .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }))
         return { member: toMemberData(cf.user), preference: resolvePreferences(toPreferenceData(preference), bookingsForInference), history }
       })
     )
@@ -1905,11 +1905,11 @@ export async function sendOutreachMessage(
   // Resolve preferences: use DB preference if set, otherwise infer from booking history
   const memberBookings = await prisma.playSessionBooking.findMany({
     where: { userId: memberId, playSession: { clubId } },
-    select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
+    select: { status: true, playSession: { select: { date: true, startTime: true, format: true, category: true } } },
   })
   const bookingsForInference: BookingWithSession[] = memberBookings
     .filter((b: any) => b.playSession)
-    .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }))
+    .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }))
   const resolvedPref = resolvePreferences(toPreferenceData(memberPref), bookingsForInference)
 
   const memberSkillLevel = inferSkillLevel(user.duprRatingDoubles ? Number(user.duprRatingDoubles) : null)

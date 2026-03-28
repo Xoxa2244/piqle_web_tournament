@@ -21,6 +21,7 @@ interface ImportedSession {
   capacity: number
   pricePerPlayer: number | null
   playerNames: string[]
+  category?: string
 }
 
 // Map parser formats to DB enum values
@@ -178,6 +179,7 @@ export async function importSessionsToDB(
     registeredCount: number
     status: string
     playerNames: string[]
+    category: string | null
   }
 
   const sessionRows: SessionRow[] = []
@@ -219,6 +221,7 @@ export async function importSessionsToDB(
       registeredCount: s.registered,
       status: isPast ? 'COMPLETED' : 'SCHEDULED',
       playerNames: s.playerNames,
+      category: s.category ?? null,
     })
   }
 
@@ -236,9 +239,9 @@ export async function importSessionsToDB(
     const valuesClauses: string[] = []
 
     batch.forEach((row, j) => {
-      const offset = j * 13
+      const offset = j * 14
       valuesClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13}::float)`
+        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13}::float, $${offset + 14}::text)`
       )
       params.push(
         row.id,
@@ -254,11 +257,12 @@ export async function importSessionsToDB(
         row.registeredCount,
         row.status,
         row.pricePerSlot, // price per player
+        row.category,
       )
     })
 
     await prisma.$executeRawUnsafe(
-      `INSERT INTO play_sessions (id, "clubId", "courtId", title, date, "startTime", "endTime", format, "skillLevel", "maxPlayers", registered_count, status, "pricePerSlot", "createdAt", "updatedAt")
+      `INSERT INTO play_sessions (id, "clubId", "courtId", title, date, "startTime", "endTime", format, "skillLevel", "maxPlayers", registered_count, status, "pricePerSlot", category, "createdAt", "updatedAt")
        VALUES ${valuesClauses.map(v => v.replace(/\)$/, `, '${nowISO}'::timestamp, '${nowISO}'::timestamp)`)).join(', ')}
        ON CONFLICT DO NOTHING`,
       ...params,

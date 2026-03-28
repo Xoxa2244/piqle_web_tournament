@@ -36,6 +36,7 @@ export function inferPreferencesFromBookings(
   const dayCounts = new Map<DayOfWeek, number>()
   const timeCounts = new Map<TimeSlot, number>()
   const formatCounts = new Map<string, number>()
+  const categoryCounts = new Map<string, number>()
 
   for (const b of confirmed) {
     const day = getDayName(new Date(b.session.date))
@@ -46,6 +47,9 @@ export function inferPreferencesFromBookings(
 
     const fmt = b.session.format
     formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1)
+
+    const cat = b.session.category
+    if (cat) categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1)
   }
 
   const total = confirmed.length
@@ -70,6 +74,12 @@ export function inferPreferencesFromBookings(
     if (count >= threshold) preferredFormats.push(fmt)
   })
 
+  // Club-specific categories that appear in ≥ 30% of bookings
+  const preferredCategories: string[] = []
+  categoryCounts.forEach((count, cat) => {
+    if (count >= threshold) preferredCategories.push(cat)
+  })
+
   // Confidence: scales from 30 (5 bookings) to 95 (20+ bookings)
   const confidence = clamp(Math.round((total / 20) * 100), 30, 95)
 
@@ -77,6 +87,7 @@ export function inferPreferencesFromBookings(
     preferredDays,
     preferredTimeSlots,
     preferredFormats,
+    preferredCategories,
     confidence,
     bookingsAnalyzed: total,
   }
