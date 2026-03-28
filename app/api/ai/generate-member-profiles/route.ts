@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const forceRegenerate = body.forceRegenerate === true
 
   const startTime = Date.now()
-  const results: Array<{ clubId: string; name: string; generated: number; skipped: number; errors: number }> = []
+  const results: Array<{ clubId: string; name: string; generated: number; skipped: number; errors: number; sampleError?: string }> = []
 
   try {
     // Get clubs to process
