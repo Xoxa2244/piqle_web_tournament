@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { checkFeatureAccess } from '@/lib/subscription'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
@@ -2800,5 +2800,77 @@ export const intelligenceRouter = createTRPCRouter({
         ctx.prisma, input.userId, input.clubId, club?.name || 'Your Club'
       )
       return profile
+    }),
+
+  // ── Session Interest Requests ──
+
+  submitInterestRequest: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      preferredDays: z.array(z.string()),
+      preferredFormats: z.array(z.string()),
+      preferredTimeSlots: z.object({ morning: z.boolean(), afternoon: z.boolean(), evening: z.boolean() }),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { verifyInterestToken } = await import('@/lib/utils/interest-token')
+      const decoded = verifyInterestToken(input.token)
+      if (!decoded) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired link' })
+      const { userId, clubId } = decoded
+      await ctx.prisma.sessionInterestRequest.upsert({
+        where: { userId_clubId: { userId, clubId } },
+        create: {
+          userId, clubId,
+          preferredDays: input.preferredDays,
+          preferredFormats: input.preferredFormats,
+          preferredTimeSlots: input.preferredTimeSlots,
+          token: input.token,
+          status: 'pending',
+        },
+        update: {
+          preferredDays: input.preferredDays,
+          preferredFormats: input.preferredFormats,
+          preferredTimeSlots: input.preferredTimeSlots,
+          token: input.token,
+          status: 'pending',
+          notifiedAt: null,
+        },
+      })
+      return { success: true }
+    }),
+
+  getInterestRequests: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      status: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const where: any = { clubId: input.clubId }
+      if (input.status) where.status = input.status
+      const requests = await ctx.prisma.sessionInterestRequest.findMany({
+        where,
+        include: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+      return requests
+    }),
+
+  notifyInterestedMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userIds: z.array(z.string()),
+      sessionId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const result = await ctx.prisma.sessionInterestRequest.updateMany({
+        where: { clubId: input.clubId, userId: { in: input.userIds } },
+        data: {
+          status: 'notified',
+          notifiedAt: new Date(),
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        },
+      })
+      return { updated: result.count }
     }),
 })

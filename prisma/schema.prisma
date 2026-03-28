@@ -80,6 +80,9 @@ model User {
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
 
+  // Session Interest
+  sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
+
   @@map("users")
 }
 
@@ -253,6 +256,9 @@ model Club {
 
   // Connectors
   connectors              ClubConnector[]
+
+  // Session Interest
+  sessionInterestRequests SessionInterestRequest[]   @relation("SessionInterestRequests")
 
   @@map("clubs")
 }
@@ -1766,4 +1772,27 @@ model MemberAiProfile {
   @@index([userId])
   @@index([riskSegment])
   @@map("member_ai_profiles")
+}
+
+model SessionInterestRequest {
+  id                 String    @id @default(uuid())
+  userId             String    @map("user_id")
+  clubId             String    @map("club_id")
+  preferredDays      String[]  @default([]) @map("preferred_days")
+  preferredFormats   String[]  @default([]) @map("preferred_formats")
+  preferredTimeSlots Json      @default("{}") @map("preferred_time_slots")
+  token              String    @unique
+  status             String    @default("pending")
+  notifiedAt         DateTime? @map("notified_at")
+  sessionId          String?   @map("session_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user User @relation("SessionInterestRequests", fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation("SessionInterestRequests", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([clubId])
+  @@index([status])
+  @@map("session_interest_requests")
 }

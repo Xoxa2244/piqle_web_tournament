@@ -480,6 +480,18 @@ export function useRegenerateMemberProfiles() {
   return trpc.intelligence.regenerateMemberProfiles.useMutation()
 }
 
+// ── Session Interest Requests ──
+export function useInterestRequests(clubId: string, status?: string) {
+  return trpc.intelligence.getInterestRequests.useQuery(
+    { clubId, status },
+    { enabled: !!clubId, staleTime: 2 * 60 * 1000 }
+  )
+}
+
+export function useNotifyInterestedMembers() {
+  return trpc.intelligence.notifyInterestedMembers.useMutation()
+}
+
 // ── Member AI Profiles ──
 export function useMemberAiProfiles(clubId: string, userIds?: string[], refetchInterval?: number) {
   const isDemo = useIsDemo()
