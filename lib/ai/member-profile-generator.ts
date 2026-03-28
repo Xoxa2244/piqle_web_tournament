@@ -168,11 +168,10 @@ export async function generateSingleMemberProfile(
       preferredCategories: [],
     }
 
-    // 5. Get play preference (persona)
+    // 5. Get play preference (persona) — detectedPersona may not exist in DB yet
     const playPref = await prisma.userPlayPreference.findFirst({
       where: { userId, clubId },
-      select: { detectedPersona: true },
-    })
+    }).catch(() => null)
 
     // 6. Compute risk score using RFM+E formula
     const daysSince = history.daysSinceLastConfirmedBooking ?? 999
