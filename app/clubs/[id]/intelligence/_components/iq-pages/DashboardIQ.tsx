@@ -1070,7 +1070,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600, boxShadow: "0 2px 10px rgba(139,92,246,0.3)" }}
             >
               <Upload className="w-3 h-3" />
-              Import CSV/XLSX
+              Import Files
             </motion.button>
           </div>
           <div className="space-y-2.5">
@@ -1425,8 +1425,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
                       setDeleteConfirm(null)
                       window.location.reload()
-                    } catch (err) {
+                    } catch (err: any) {
                       console.error('[Delete Import] Failed:', err)
+                      alert('Delete failed: ' + (err?.message || JSON.stringify(err)))
                     } finally {
                       setDeleting(false)
                     }

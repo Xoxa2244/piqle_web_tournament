@@ -562,6 +562,38 @@ export async function runCourtReserveExcelImport(
     }
   }
 
+  // Create an upload history marker so the dashboard Data Uploads section reflects this import
+  if (result.sessions.created + result.sessions.updated > 0 || result.members.created + result.members.updated > 0) {
+    try {
+      const importBatchId = `excel-${Date.now()}`
+      const sessionCount = result.sessions.created + result.sessions.updated
+      const meta = JSON.stringify({
+        importBatchId,
+        sourceFileName: 'CourtReserve Excel',
+        membersImported: result.members.created + result.members.updated,
+        sessionsImported: sessionCount,
+        bookingsImported: result.bookings.created,
+      })
+      const content = `CourtReserve Excel import: ${result.members.created + result.members.updated} members, ${sessionCount} sessions, ${result.bookings.created} bookings`
+      await prisma.$executeRaw`
+        INSERT INTO document_embeddings (id, club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
+        VALUES (
+          gen_random_uuid(),
+          ${clubId}::uuid,
+          ${content},
+          'import_marker',
+          ${meta}::jsonb,
+          array_fill(0, ARRAY[1536])::vector(1536),
+          ${importBatchId},
+          'play_sessions',
+          0
+        )
+      `
+    } catch (err) {
+      console.warn('[Excel Import] Upload history marker failed (non-critical):', err)
+    }
+  }
+
   return result
 }
 
