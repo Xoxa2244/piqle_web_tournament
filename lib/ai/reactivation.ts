@@ -49,7 +49,13 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
         bookingHistory: history,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      // Sort by risk first (high < 30, medium 30-59, low 60+), then by days inactive desc
+      const riskA = a.score < 30 ? 0 : a.score < 60 ? 1 : 2;
+      const riskB = b.score < 30 ? 0 : b.score < 60 ? 1 : 2;
+      if (riskA !== riskB) return riskA - riskB;
+      return b.daysSinceLastActivity - a.daysSinceLastActivity;
+    });
 
   return candidates;
 }
