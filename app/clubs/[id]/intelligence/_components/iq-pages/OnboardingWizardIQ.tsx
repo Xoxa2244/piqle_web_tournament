@@ -70,11 +70,19 @@ function FileUploadSlot({ label, description, file, onFile }: {
     )
   }
 
+  const [dragOver, setDragOver] = useState(false)
+
   return (
     <div
-      className="rounded-xl p-4 cursor-pointer transition-all hover:border-violet-500/30"
-      style={{ background: 'var(--subtle)', border: '1px dashed var(--card-border)' }}
+      className="rounded-xl p-4 cursor-pointer transition-all"
+      style={{
+        background: dragOver ? (isDark ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.08)') : 'var(--subtle)',
+        border: dragOver ? '2px solid rgba(139,92,246,0.5)' : '1px dashed var(--card-border)',
+      }}
       onClick={() => ref.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) onFile(f) }}
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
@@ -84,7 +92,7 @@ function FileUploadSlot({ label, description, file, onFile }: {
           <p className="text-sm font-medium" style={{ color: 'var(--heading)' }}>{label}</p>
           <p className="text-xs" style={{ color: 'var(--t4)' }}>{description}</p>
         </div>
-        <Upload className="w-4 h-4 shrink-0 ml-auto" style={{ color: 'var(--t4)' }} />
+        <Upload className="w-4 h-4 shrink-0 ml-auto" style={{ color: dragOver ? '#A78BFA' : 'var(--t4)' }} />
       </div>
       <input ref={ref} type="file" accept=".csv,.tsv,.xlsx,.xls" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
