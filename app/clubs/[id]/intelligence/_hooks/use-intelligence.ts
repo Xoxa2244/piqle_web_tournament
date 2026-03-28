@@ -475,6 +475,11 @@ export function useRevenueForecast(clubId: string) {
   return query
 }
 
+// ── Regenerate Member AI Profiles (fire-and-forget mutation) ──
+export function useRegenerateMemberProfiles() {
+  return trpc.intelligence.regenerateMemberProfiles.useMutation()
+}
+
 // ── Member AI Profiles ──
 export function useMemberAiProfiles(clubId: string, userIds?: string[]) {
   const isDemo = useIsDemo()

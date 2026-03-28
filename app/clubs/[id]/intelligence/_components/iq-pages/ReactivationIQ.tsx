@@ -201,6 +201,7 @@ type ReactivationIQProps = {
   sendReactivation?: any;
   clubId?: string;
   aiProfiles?: Record<string, any>; // userId → MemberAiProfileData
+  regenerateProfiles?: any;
 };
 
 function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskMember[] {
@@ -244,7 +245,7 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
   });
 }
 
-export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -252,6 +253,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
+  const [aiGenerating, setAiGenerating] = useState(false);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -436,6 +438,35 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
           <div className="flex items-center gap-3">
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>At-Risk Members</h3>
             <span className="text-xs" style={{ color: "var(--t4)" }}>{filtered.length} total</span>
+            {/* AI Profiles status + generate button */}
+            {clubId && regenerateProfiles && (() => {
+              const total = reactivationData?.candidates?.length || 0;
+              const withProfile = Object.keys(aiProfiles || {}).length;
+              const allDone = total > 0 && withProfile >= total;
+              if (allDone) return null;
+              return (
+                <button
+                  onClick={() => {
+                    if (aiGenerating) return;
+                    setAiGenerating(true);
+                    regenerateProfiles.mutate({ clubId }, {
+                      onSuccess: () => setTimeout(() => setAiGenerating(false), 3000),
+                      onError: () => setAiGenerating(false),
+                    });
+                  }}
+                  disabled={aiGenerating}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                  style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA", border: "1px solid rgba(139,92,246,0.2)", fontWeight: 600, opacity: aiGenerating ? 0.7 : 1 }}
+                >
+                  {aiGenerating ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }} className="w-3 h-3 rounded-full" style={{ border: "2px solid rgba(167,139,250,0.3)", borderTopColor: "#A78BFA" }} />
+                  ) : (
+                    <Sparkles className="w-3 h-3" />
+                  )}
+                  {aiGenerating ? `Generating AI profiles…` : `Generate AI profiles (${withProfile}/${total})`}
+                </button>
+              );
+            })()}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 200 }}>
