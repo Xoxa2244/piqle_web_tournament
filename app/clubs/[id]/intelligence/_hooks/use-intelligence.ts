@@ -93,7 +93,7 @@ export function useReactivationCandidates(clubId: string, inactivityDays: number
   const isDemo = useIsDemo()
 
   const query = trpc.intelligence.getReactivationCandidates.useQuery(
-    { clubId, inactivityDays, limit: 200 },
+    { clubId, inactivityDays, limit: 5000 },
     { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
 
