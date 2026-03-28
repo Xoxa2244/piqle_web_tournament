@@ -906,30 +906,67 @@ export async function getReactivationCandidates(
   }
 
   if (hasRealBookings) {
-    // ── Real DB path: build from PlaySessionBooking ──
-    membersWithData = await Promise.all(
-      members.map(async (cf: any) => {
-        const preference = await prisma.userPlayPreference.findUnique({
-          where: { userId_clubId: { userId: cf.user.id, clubId } },
-        });
-        const history = await buildBookingHistory(prisma, cf.user.id);
-        const bookingsRaw = await prisma.playSessionBooking.findMany({
-          where: { userId: cf.user.id },
-          select: { status: true, playSession: { select: { date: true, startTime: true, format: true } } },
-          orderBy: { bookedAt: 'desc' },
-          take: 50,
-        });
-        const bookingsForInference: BookingWithSession[] = bookingsRaw
-          .filter((b: any) => b.playSession)
-          .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }));
-        return {
-          member: toMemberData(cf.user),
-          preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
-          history,
-          bookings: bookingsForInference,
-        };
-      })
-    );
+    // ── Real DB path: bulk fetch all data, then map per-member ──
+    // Replaces N×3 individual queries with 2 bulk queries
+    const [allPreferences, allBookingsRaw] = await Promise.all([
+      prisma.userPlayPreference.findMany({
+        where: { userId: { in: memberUserIds }, clubId },
+      }),
+      prisma.playSessionBooking.findMany({
+        where: { userId: { in: memberUserIds } },
+        select: {
+          userId: true,
+          status: true,
+          bookedAt: true,
+          playSession: { select: { date: true, startTime: true, format: true, clubId: true } },
+        },
+        orderBy: { bookedAt: 'desc' },
+      }),
+    ]);
+
+    const preferenceMap = new Map(allPreferences.map((p: any) => [p.userId, p]));
+    const bookingsByUser = new Map<string, any[]>();
+    for (const b of allBookingsRaw) {
+      if (!b.playSession || b.playSession.clubId !== clubId) continue;
+      if (!bookingsByUser.has(b.userId)) bookingsByUser.set(b.userId, []);
+      bookingsByUser.get(b.userId)!.push(b);
+    }
+
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    membersWithData = members.map((cf: any) => {
+      const userBookings = bookingsByUser.get(cf.user.id) ?? [];
+      const confirmed = userBookings.filter((b: any) => b.status === 'CONFIRMED');
+      const lastConfirmed = confirmed[0];
+      const daysSinceLast = lastConfirmed
+        ? Math.floor((now.getTime() - new Date(lastConfirmed.bookedAt).getTime()) / 86400000)
+        : null;
+
+      const history: BookingHistory = {
+        totalBookings: userBookings.length,
+        bookingsLastWeek: confirmed.filter((b: any) => new Date(b.bookedAt) >= sevenDaysAgo).length,
+        bookingsLastMonth: confirmed.filter((b: any) => new Date(b.bookedAt) >= thirtyDaysAgo).length,
+        daysSinceLastConfirmedBooking: daysSinceLast,
+        cancelledCount: userBookings.filter((b: any) => b.status === 'CANCELLED').length,
+        noShowCount: userBookings.filter((b: any) => b.status === 'NO_SHOW').length,
+        inviteAcceptanceRate: userBookings.length > 0 ? confirmed.length / userBookings.length : 0.5,
+      };
+
+      const bookingsForInference: BookingWithSession[] = userBookings
+        .slice(0, 50)
+        .filter((b: any) => b.playSession)
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format } }));
+
+      const preference = preferenceMap.get(cf.user.id) ?? null;
+      return {
+        member: toMemberData(cf.user),
+        preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
+        history,
+        bookings: bookingsForInference,
+      };
+    });
     upcomingSessions = await prisma.playSession.findMany({
       where: { clubId, status: 'SCHEDULED', date: { gte: new Date() } },
       include: { _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } } },
