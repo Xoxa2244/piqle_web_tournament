@@ -125,8 +125,8 @@ export async function generateSingleMemberProfile(
 ): Promise<MemberAiProfileData | null> {
   try {
     // 1. Get member info
-    const follower = await prisma.clubFollower.findUnique({
-      where: { userId_clubId: { userId, clubId } },
+    const follower = await prisma.clubFollower.findFirst({
+      where: { userId, clubId },
       include: { user: { select: { id: true, name: true, duprRatingDoubles: true } } },
     })
     if (!follower) return null
@@ -280,32 +280,21 @@ export async function generateSingleMemberProfile(
 
     const { reactivationMessage, slotFillerProfile } = parseAiResponse(aiResult.text)
 
-    // 9. Upsert profile
-    const profile = await prisma.memberAiProfile.upsert({
-      where: { userId_clubId: { userId, clubId } },
-      create: {
-        userId,
-        clubId,
-        riskSegment,
-        riskScore,
-        preferredCategories: inferred.preferredCategories,
-        reactivationMessage,
-        slotFillerProfile,
-        generatedAt: new Date(),
-        modelUsed: aiResult.model,
-        generationMs,
-      },
-      update: {
-        riskSegment,
-        riskScore,
-        preferredCategories: inferred.preferredCategories,
-        reactivationMessage,
-        slotFillerProfile,
-        generatedAt: new Date(),
-        modelUsed: aiResult.model,
-        generationMs,
-      },
-    })
+    // 9. Upsert profile (use raw SQL ON CONFLICT to avoid Prisma unique-index mismatch)
+    const profileData = {
+      riskSegment,
+      riskScore,
+      preferredCategories: inferred.preferredCategories,
+      reactivationMessage,
+      slotFillerProfile,
+      generatedAt: new Date(),
+      modelUsed: aiResult.model,
+      generationMs,
+    }
+    const existing = await prisma.memberAiProfile.findFirst({ where: { userId, clubId }, select: { id: true } })
+    const profile = existing
+      ? await prisma.memberAiProfile.update({ where: { id: existing.id }, data: profileData })
+      : await prisma.memberAiProfile.create({ data: { userId, clubId, ...profileData } })
 
     return {
       id: profile.id,
