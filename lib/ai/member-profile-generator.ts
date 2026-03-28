@@ -310,8 +310,9 @@ export async function generateSingleMemberProfile(
       generationMs: profile.generationMs,
     }
   } catch (err) {
-    console.error(`[MemberAiProfile] Failed for user=${userId} club=${clubId}:`, err instanceof Error ? err.message : err)
-    return null
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[MemberAiProfile] Failed for user=${userId} club=${clubId}:`, msg)
+    throw new Error(`user=${userId}: ${msg}`)
   }
 }
 
