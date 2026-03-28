@@ -394,11 +394,11 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof period
         { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
         { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
         {
-          label: isMembership ? "Player Sessions" : "Revenue",
-          value: isMembership ? m.bookings.value : m.bookings.value,
+          label: "Player Sessions",
+          value: m.bookings.value,
           change: `${m.bookings.trend.direction === 'up' ? '+' : ''}${m.bookings.trend.changePercent}%`,
           up: m.bookings.trend.direction === 'up',
-          icon: isMembership ? Activity : DollarSign,
+          icon: Activity,
           gradient: "from-emerald-500 to-green-500",
           href: "/sessions",
           sparkData: m.bookings.trend.sparkline || [],
@@ -436,6 +436,36 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+
+  // Compute data date bounds from sparkline or sessions for custom picker constraints
+  const dataDateBounds = useMemo(() => {
+    // Use a wide range — club has data from import, so allow from 2020 to today
+    const today = new Date().toISOString().slice(0, 10);
+    // Find earliest session from sparkline (7-point array covers last 7 periods)
+    // As a reasonable approximation, allow any date up to today
+    return { min: '2020-01-01', max: today };
+  }, []);
+
+  // Compute date range from period for real data re-fetching
+  const periodDates = useMemo(() => {
+    const now = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const today = iso(now);
+    if (period === 'week') return { dateFrom: iso(new Date(now.getTime() - 7 * 86400000)), dateTo: today };
+    if (period === 'month') return { dateFrom: iso(new Date(now.getTime() - 30 * 86400000)), dateTo: today };
+    if (period === 'quarter') return { dateFrom: iso(new Date(now.getTime() - 90 * 86400000)), dateTo: today };
+    if (period === 'custom' && customFrom && customTo) return { dateFrom: customFrom, dateTo: customTo };
+    return {};
+  }, [period, customFrom, customTo]);
+
+  // Internal period query — re-fetches when period changes (replaces prop data)
+  const periodQuery = trpc.intelligence.getDashboardV2.useQuery(
+    { clubId, ...periodDates },
+    { enabled: !!clubId && !externalLoading },
+  );
+  // Use period-specific data if available, fall back to passed prop
+  const activeDashboardData = periodQuery.data ?? dashboardData;
+  const isPeriodLoading = periodQuery.isFetching;
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -535,9 +565,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Use real data if available, otherwise fall back to mocks only in demo mode
   let realData: ReturnType<typeof mapRealDataToPeriod> = null;
   try {
-    realData = mapRealDataToPeriod(dashboardData, healthData);
+    realData = mapRealDataToPeriod(activeDashboardData, healthData);
   } catch (err) {
-    console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { dashboardData, healthData });
+    console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { activeDashboardData, healthData });
   }
   // Check if this is a demo/IQ preview (no real clubId or demo route)
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
@@ -556,7 +586,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     OPEN_PLAY: "Open Play", CLINIC: "Clinic", DRILL: "Drill",
     LEAGUE_PLAY: "League", SOCIAL: "Social", OTHER: "Other",
   }
-  const byFormat = dashboardData?.occupancy?.byFormat || []
+  const byFormat = activeDashboardData?.occupancy?.byFormat || []
   const displayFormats: { name: string; value: number; color: string }[] = byFormat.length > 0
     ? byFormat.map((f: any) => ({
         name: formatLabelsMap[f.format] || f.format,
@@ -598,13 +628,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   // AI Insights — generated from real data + goals
   const clubGoals: string[] = settingsData?.settings?.goals || [];
-  const displayInsights = generateInsights(dashboardData, healthData, heatmapData, clubGoals.length > 0 ? clubGoals : undefined);
+  const displayInsights = generateInsights(activeDashboardData, healthData, heatmapData, clubGoals.length > 0 ? clubGoals : undefined);
 
   // Determine if club has real data or is still empty
-  const bookingsVal = dashboardData?.metrics?.bookings?.value;
+  const bookingsVal = activeDashboardData?.metrics?.bookings?.value;
   const totalSessions = typeof bookingsVal === 'number' ? bookingsVal : (typeof bookingsVal === 'string' && bookingsVal !== 'N/A' ? parseInt(bookingsVal, 10) || 0 : 0);
   const totalMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0);
-  const hasRealData = !!realData && !!dashboardData && (totalSessions > 0 || totalMembers > 0);
+  const hasRealData = !!realData && !!activeDashboardData && (totalSessions > 0 || totalMembers > 0);
   const hasSessions = hasRealData && totalSessions > 0;
   const hasMembers = totalMembers > 0;
   const hasUploads = !!uploadHistoryData?.uploads?.length;
@@ -637,7 +667,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className="px-4 py-2 rounded-xl text-xs capitalize transition-all"
+              className="px-4 py-2 rounded-xl text-xs capitalize transition-all flex items-center gap-1.5"
               style={{
                 background: period === p ? "var(--pill-active)" : "transparent",
                 color: period === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
@@ -645,7 +675,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 border: period === p ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
               }}
             >
-              {p}
+              {p === 'week' ? 'Week' : p === 'month' ? 'Month' : p === 'quarter' ? 'Quarter' : 'Custom'}
+              {period === p && isPeriodLoading && (
+                <span className="inline-block w-2.5 h-2.5 rounded-full border border-current border-t-transparent animate-spin" />
+              )}
             </button>
           ))}
           {period === "custom" && (
@@ -653,6 +686,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <input
                 type="date"
                 value={customFrom}
+                min={dataDateBounds.min}
+                max={customTo || dataDateBounds.max}
                 onChange={(e) => setCustomFrom(e.target.value)}
                 className="h-8 px-2 text-xs rounded-lg outline-none"
                 style={{
@@ -666,6 +701,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <input
                 type="date"
                 value={customTo}
+                min={customFrom || dataDateBounds.min}
+                max={dataDateBounds.max}
                 onChange={(e) => setCustomTo(e.target.value)}
                 className="h-8 px-2 text-xs rounded-lg outline-none"
                 style={{
@@ -878,7 +915,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           </div>
           {/* Inactive members note — links Health to Reactivation */}
           {(() => {
-            const inactiveCount = dashboardData?.players?.inactiveCount;
+            const inactiveCount = activeDashboardData?.players?.inactiveCount;
             if (!inactiveCount) return null;
             return (
               <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
@@ -913,7 +950,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
             <div className="space-y-4 text-sm" style={{ color: "var(--t2)", lineHeight: 1.7 }}>
               {(() => {
-                const m = dashboardData?.metrics;
+                const m = activeDashboardData?.metrics;
                 const hs = healthData?.summary;
                 const totalMembers = hs ? (hs.healthy + hs.watch + hs.atRisk + hs.critical) : 0;
                 const atRiskCount = hs?.atRisk || 0;
