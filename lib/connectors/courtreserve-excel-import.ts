@@ -80,8 +80,18 @@ function mapFormat(type?: string): string {
   if (lower.includes('drill')) return 'DRILL'
   if (lower.includes('league')) return 'LEAGUE_PLAY'
   if (lower.includes('social') || lower.includes('mixer')) return 'SOCIAL'
+  if (lower.includes('tournament')) return 'LEAGUE_PLAY'
+  if (lower.includes('private lesson') || lower.includes('lesson')) return 'CLINIC'
+  if (lower.includes('class') || lower.includes('instructional')) return 'CLINIC'
+  if (lower.includes('doubles')) return 'OPEN_PLAY'
+  if (lower.includes('singles')) return 'OPEN_PLAY'
+  if (lower.includes('ball machine')) return 'DRILL'
   if (lower.includes('open play')) return 'OPEN_PLAY'
-  if (lower.includes('doubles') || lower.includes('singles')) return 'OPEN_PLAY'
+  // Skill-level based open play: "Intermediate (3.0-3.49)", "Competitive", "Advanced", "Casual", "Beginner"
+  if (lower.includes('intermediate') || lower.includes('competitive') || lower.includes('advanced') || lower.includes('casual') || lower.includes('beginner')) return 'OPEN_PLAY'
+  if (lower.includes('skill assessment') || lower.includes('dupr')) return 'CLINIC'
+  if (lower.includes('special event')) return 'SOCIAL'
+  if (lower.includes('badminton')) return 'OPEN_PLAY'
   return 'OPEN_PLAY'
 }
 
@@ -248,7 +258,7 @@ export function mapReservationRows(rows: Record<string, any>[]): ParsedSession[]
       endTime: endDate ? parseTimeFromExcel(endDateVal) : parseTimeFromExcel(startDateVal),
       courtName: courts.split(',')[0]?.trim(),
       format: mapFormat(resType),
-      skillLevel: 'ALL_LEVELS',
+      skillLevel: mapSkillLevel(resType),
       memberNames,
       memberExternalIds: [],
       memberCount: membersCount || memberNames.length,
