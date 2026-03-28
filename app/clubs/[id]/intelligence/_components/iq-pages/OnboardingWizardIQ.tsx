@@ -3,12 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import {
-  MapPin, Calendar, DollarSign, Target, ChevronRight, ChevronLeft,
-  Check, Upload, Sparkles, Building2, Dumbbell,
+  MapPin, ChevronRight, ChevronLeft,
+  Sparkles, Upload, FileSpreadsheet, CheckCircle2, Database, HelpCircle,
 } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import { AILoadingAnimation } from './AILoadingAnimation'
-import { IQFileDropZone } from './IQFileDropZone'
 import { trpc } from '@/lib/trpc'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 
@@ -19,31 +18,13 @@ type Props = {
   onCreateClub?: (data: { name: string; kind: 'VENUE' | 'COMMUNITY'; address?: string; city?: string; state?: string; country?: string }) => Promise<string>
 }
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const SPORTS = ['pickleball', 'padel', 'tennis', 'squash', 'badminton']
-const GOALS = [
-  { id: 'fill_sessions', label: 'Fill empty court time', icon: '🎯' },
-  { id: 'grow_membership', label: 'Bring in new players', icon: '📈' },
-  { id: 'improve_retention', label: 'Keep players coming back', icon: '🔄' },
-  { id: 'increase_revenue', label: 'Grow revenue', icon: '💰' },
-  { id: 'reduce_no_shows', label: 'Cut down on no-shows', icon: '✅' },
-]
-
 // Map Google timezone IDs from lat/lng (simple lookup by country)
 const COUNTRY_TZ: Record<string, string> = {
   'United States': 'America/New_York',
   'Canada': 'America/Toronto',
   'United Kingdom': 'Europe/London',
   'Germany': 'Europe/Berlin',
-  'France': 'Europe/Berlin',
-  'Spain': 'Europe/Berlin',
-  'Russia': 'Europe/Moscow',
-  'Japan': 'Asia/Tokyo',
-  'China': 'Asia/Shanghai',
-  'India': 'Asia/Kolkata',
   'Australia': 'Australia/Sydney',
-  'New Zealand': 'Pacific/Auckland',
-  'United Arab Emirates': 'Asia/Dubai',
 }
 
 // Refine US timezone by state
@@ -54,6 +35,12 @@ const US_STATE_TZ: Record<string, string> = {
   'ND': 'America/Chicago', 'SD': 'America/Chicago', 'NE': 'America/Chicago', 'KS': 'America/Chicago', 'MN': 'America/Chicago', 'IA': 'America/Chicago', 'MO': 'America/Chicago', 'WI': 'America/Chicago', 'IL': 'America/Chicago', 'TX': 'America/Chicago', 'OK': 'America/Chicago', 'AR': 'America/Chicago', 'LA': 'America/Chicago', 'MS': 'America/Chicago', 'AL': 'America/Chicago', 'TN': 'America/Chicago',
 }
 
+const SOFTWARE_OPTIONS = [
+  { id: 'courtreserve', label: 'CourtReserve', icon: '🎾', files: ['Members Report', 'Reservation Report', 'Event Registrants Report'] },
+  { id: 'other', label: 'Other / Custom', icon: '📄', files: [] },
+  { id: 'none', label: 'No software yet', icon: '🆕', files: [] },
+]
+
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl p-6 ${className}`} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)', boxShadow: 'var(--card-shadow)' }}>
@@ -62,36 +49,45 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   )
 }
 
-function Chip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
-  const { isDark } = useTheme()
-  return (
-    <button onClick={onClick} className="px-4 py-2 rounded-xl text-sm transition-all" style={{
-      background: selected ? 'var(--pill-active)' : 'var(--subtle)',
-      color: selected ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
-      fontWeight: selected ? 600 : 500,
-      border: selected ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
-    }}>
-      {children}
-    </button>
-  )
-}
-
-function InputField({ label, value, onChange, placeholder, type = 'text', inputMode, ref: inputRef }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; inputMode?: 'numeric' | 'text'; ref?: React.Ref<HTMLInputElement>
+function FileUploadSlot({ label, description, file, onFile }: {
+  label: string; description: string; file: File | null; onFile: (f: File) => void
 }) {
+  const ref = useRef<HTMLInputElement>(null)
+  const { isDark } = useTheme()
+
+  if (file) {
+    return (
+      <div className="rounded-xl p-4 flex items-center gap-3" style={{
+        background: isDark ? 'rgba(16, 185, 129, 0.08)' : 'rgba(16, 185, 129, 0.06)',
+        border: '1px solid rgba(16, 185, 129, 0.2)',
+      }}>
+        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--heading)' }}>{file.name}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{(file.size / 1024).toFixed(0)} KB</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div>
-      <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>{label}</label>
-      <input
-        ref={inputRef}
-        type={type}
-        inputMode={inputMode}
-        value={value}
-        onChange={e => onChange(type === 'text' && inputMode === 'numeric' ? e.target.value.replace(/[^0-9.]/g, '') : e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all focus:ring-2 focus:ring-violet-500/30"
-        style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-      />
+    <div
+      className="rounded-xl p-4 cursor-pointer transition-all hover:border-violet-500/30"
+      style={{ background: 'var(--subtle)', border: '1px dashed var(--card-border)' }}
+      onClick={() => ref.current?.click()}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.06)' }}>
+          <FileSpreadsheet className="w-5 h-5" style={{ color: '#A78BFA' }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: 'var(--heading)' }}>{label}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{description}</p>
+        </div>
+        <Upload className="w-4 h-4 shrink-0 ml-auto" style={{ color: 'var(--t4)' }} />
+      </div>
+      <input ref={ref} type="file" accept=".csv,.tsv,.xlsx,.xls" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
     </div>
   )
 }
@@ -103,12 +99,10 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const [processing, setProcessing] = useState(false)
   const [importProgress, setImportProgress] = useState(0)
   const [importStatus, setImportStatus] = useState('')
-  const [importDone, setImportDone] = useState(false)
-  const hasCsvRef = useRef(false)
+  const hasFilesRef = useRef(false)
 
-  // Step 1: Club Info
+  // Step 0: Club Info
   const [clubName, setClubName] = useState('')
-  const [clubKind, setClubKind] = useState<'VENUE' | 'COMMUNITY'>('VENUE')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
@@ -116,28 +110,12 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const [timezone, setTimezone] = useState('')
   const [addressSelected, setAddressSelected] = useState(false)
 
-  // Step 2: Sports & Courts
-  const [sports, setSports] = useState<string[]>(['pickleball'])
-  const [courtsStr, setCourtsStr] = useState('4')
-  const courts = Number(courtsStr) || 1
-  const [indoor, setIndoor] = useState(true)
-  const [outdoor, setOutdoor] = useState(false)
-
-  // Step 3: Schedule
-  const [days, setDays] = useState<string[]>(DAYS)
-  const [openTime, setOpenTime] = useState('06:00')
-  const [closeTime, setCloseTime] = useState('22:00')
-
-  // Step 4: Pricing & CSV
-  const [pricingModel, setPricingModel] = useState('per_session')
-  const [priceStr, setPriceStr] = useState('15')
-  const price = Number(priceStr) || 0
-  const [channel, setChannel] = useState('email')
-  const [tone, setTone] = useState('friendly')
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-
-  // Step 5: Goals
-  const [goals, setGoals] = useState<string[]>(['fill_sessions', 'improve_retention'])
+  // Step 1: Software + Files
+  const [software, setSoftware] = useState<string | null>(null)
+  const [membersFile, setMembersFile] = useState<File | null>(null)
+  const [reservationsFile, setReservationsFile] = useState<File | null>(null)
+  const [eventsFile, setEventsFile] = useState<File | null>(null)
+  const [genericFile, setGenericFile] = useState<File | null>(null)
 
   // Google Maps autocomplete
   const addressInputRef = useRef<HTMLInputElement | null>(null)
@@ -162,7 +140,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
         if (!place?.formatted_address) return
         const components = place.address_components ?? []
         const find = (type: string) => components.find((c: any) => c.types?.includes(type))
-        const newCity = find('locality')?.long_name ?? find('postal_town')?.long_name ?? find('sublocality')?.long_name ?? ''
+        const newCity = find('locality')?.long_name ?? find('postal_town')?.long_name ?? ''
         const newState = find('administrative_area_level_1')?.short_name ?? ''
         const newCountry = find('country')?.long_name ?? ''
 
@@ -172,7 +150,6 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
         setCountry(newCountry)
         setAddressSelected(true)
 
-        // Auto-detect timezone
         let tz = COUNTRY_TZ[newCountry] || 'America/New_York'
         if (newCountry === 'United States' && newState) {
           tz = US_STATE_TZ[newState] || tz
@@ -198,12 +175,9 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const updateClub = trpc.club.update.useMutation()
   const saveMutation = trpc.intelligence.saveIntelligenceSettings.useMutation()
 
-  const toggleSport = (s: string) => setSports(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
-  const toggleDay = (d: string) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
-  const toggleGoal = (g: string) => setGoals(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
-
   const handleComplete = async () => {
-    hasCsvRef.current = !!csvFile
+    const hasAnyFile = !!(membersFile || reservationsFile || eventsFile || genericFile)
+    hasFilesRef.current = hasAnyFile
     setProcessing(true)
 
     // 1. Create or update club
@@ -211,66 +185,62 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     const clubName_ = (clubName || '').trim().length >= 2 ? clubName.trim() : 'My Club'
 
     if (isNewClub && onCreateClub) {
-      // New club flow — create first
       try {
         clubId = await onCreateClub({
           name: clubName_,
-          kind: clubKind,
+          kind: 'VENUE',
           address: address || undefined,
           city: city || undefined,
           state: state || undefined,
           country: country || 'United States',
         })
         setResolvedClubId(clubId)
-        console.log('[Onboarding] Club created:', clubId)
       } catch (err: any) {
         console.error('[Onboarding] Club creation failed:', err?.message || err)
-        return // can't continue without clubId
+        return
       }
     } else if (clubId && clubId !== 'pending') {
-      // Existing club — update info
       try {
         await updateClub.mutateAsync({
           id: clubId,
           name: clubName_,
-          kind: clubKind,
+          kind: 'VENUE',
           joinPolicy: 'OPEN',
           address: address || undefined,
           city: city || undefined,
           state: state || undefined,
           country: country || 'United States',
         })
-        console.log('[Onboarding] Club updated')
       } catch (err: any) {
         console.error('[Onboarding] Club update failed:', err?.message || err)
       }
     }
 
-    // 2. Save intelligence settings
+    // 2. Save intelligence settings with defaults
     try {
       await saveMutation.mutateAsync({
         clubId,
         settings: {
           timezone: timezone || 'America/New_York',
-          sportTypes: sports,
-          courtCount: courts,
-          hasIndoorCourts: indoor,
-          hasOutdoorCourts: outdoor,
-          operatingDays: days as any,
-          operatingHours: { open: openTime, close: closeTime },
+          sportTypes: ['pickleball'],
+          courtCount: 8,
+          hasIndoorCourts: true,
+          hasOutdoorCourts: true,
+          operatingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as any,
+          operatingHours: { open: '06:00', close: '22:00' },
           peakHours: { start: '17:00', end: '20:00' },
           typicalSessionDurationMinutes: 90,
-          pricingModel: pricingModel as any,
-          avgSessionPriceCents: pricingModel === 'free' ? null : Math.round(price * 100),
-          communicationPreferences: { preferredChannel: channel as any, tone: tone as any, maxMessagesPerWeek: 4 },
-          goals: goals as any,
+          pricingModel: 'per_session' as any,
+          avgSessionPriceCents: 1500,
+          communicationPreferences: { preferredChannel: 'email' as any, tone: 'friendly' as any, maxMessagesPerWeek: 4 },
+          goals: ['fill_sessions', 'improve_retention', 'increase_revenue'] as any,
           onboardingCompletedAt: new Date().toISOString(),
-          onboardingVersion: 1,
+          onboardingVersion: 2,
+          connectedSoftware: software || undefined,
         },
       })
-      console.log('[Onboarding] Intelligence settings saved')
     } catch (err) {
-      console.error('[Onboarding] Settings save failed, trying minimal:', err)
+      console.error('[Onboarding] Settings save failed:', err)
       try {
         await saveMutation.mutateAsync({ clubId, settings: { onboardingCompletedAt: new Date().toISOString() } })
       } catch (err2) {
@@ -278,82 +248,62 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       }
     }
 
-    // 3. Upload CSV if provided
-    if (csvFile) {
+    // 3. Import files if provided
+    if (hasAnyFile) {
       try {
-        setImportStatus('Parsing CSV file...')
-        setImportProgress(5)
-        const text = await csvFile.text()
-        const parseRes = await fetch('/api/ai/parse-csv', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvContent: text, fileName: csvFile.name }),
-        })
-        if (parseRes.ok) {
-          const { sessions, totalParsed } = await parseRes.json()
-          setImportStatus(`Parsed ${totalParsed || sessions?.length || 0} sessions`)
-          setImportProgress(20)
+        const filesToImport = software === 'courtreserve'
+          ? [
+            membersFile && { type: 'members', file: membersFile },
+            reservationsFile && { type: 'reservations', file: reservationsFile },
+            eventsFile && { type: 'events', file: eventsFile },
+          ].filter(Boolean) as { type: string; file: File }[]
+          : genericFile ? [{ type: 'generic', file: genericFile }] : []
 
-          if (sessions?.length) {
-            setImportStatus('Importing sessions to database...')
-            const importRes = await fetch('/api/ai/import-sessions', {
+        setImportStatus(`Importing ${filesToImport.length} file${filesToImport.length > 1 ? 's' : ''}...`)
+        setImportProgress(10)
+
+        for (let i = 0; i < filesToImport.length; i++) {
+          const { type, file } = filesToImport[i]
+          setImportStatus(`Processing ${file.name}...`)
+          setImportProgress(10 + Math.round((i / filesToImport.length) * 70))
+
+          // Convert to base64
+          const arrayBuffer = await file.arrayBuffer()
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j])
+          const base64 = btoa(binary)
+
+          try {
+            const res = await fetch('/api/connectors/courtreserve/import-excel', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clubId, sessions, fileName: csvFile.name }),
+              body: JSON.stringify({ clubId, fileType: type, data: base64, fileName: file.name }),
             })
-
-            // Read SSE progress stream
-            if (importRes.ok && importRes.body) {
-              const reader = importRes.body.getReader()
-              const decoder = new TextDecoder()
-              let buffer = ''
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split('\n')
-                buffer = lines.pop() || ''
-                for (const line of lines) {
-                  const trimmed = line.trim()
-                  if (!trimmed) continue
-                  try {
-                    const evt = JSON.parse(trimmed)
-                    if (evt.phase === 'session' && evt.total) {
-                      const pct = 20 + Math.round((evt.current / evt.total) * 30)
-                      setImportProgress(pct)
-                      setImportStatus(evt.message || `Importing sessions... (${evt.current}/${evt.total})`)
-                    } else if (evt.phase === 'campaign') {
-                      setImportProgress(55)
-                      setImportStatus(evt.message || 'Calculating health scores...')
-                    } else if (evt.phase === 'embedding' && evt.total) {
-                      const pct = 60 + Math.round((evt.current / evt.total) * 35)
-                      setImportProgress(pct)
-                      setImportStatus(evt.message || `Generating AI embeddings... (${evt.current}/${evt.total})`)
-                    } else if (evt.message) {
-                      setImportStatus(evt.message)
-                    }
-                  } catch { /* not JSON */ }
-                }
-              }
+            if (res.ok) {
+              const result = await res.json()
+              setImportStatus(`${file.name}: ${result.message || 'Done'}`)
+            } else {
+              const err = await res.text()
+              console.error(`[Import] ${file.name} failed:`, err)
+              setImportStatus(`${file.name}: Import failed`)
             }
-            setImportProgress(98)
-            setImportStatus('Finalizing...')
+          } catch (err) {
+            console.error(`[Import] ${file.name} error:`, err)
           }
-        } else {
-          setImportStatus('CSV parsing failed')
         }
+
+        setImportProgress(95)
+        setImportStatus('Finalizing...')
       } catch (err) {
-        console.error('[Onboarding] CSV import failed:', err)
+        console.error('[Onboarding] Import failed:', err)
         setImportStatus('Import failed')
       }
     }
 
-    // Done — set progress to 100 and auto-redirect after delay
+    // Done
     setImportProgress(100)
     setImportStatus('System ready')
-    setImportDone(true)
-
-    // Wait for animation to show "Ready!" then redirect
     await new Promise(r => setTimeout(r, 2000))
     onComplete()
   }
@@ -368,10 +318,20 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           <Sparkles className="w-10 h-10 text-white" />
         </motion.div>
         <h2 className="text-2xl mb-2" style={{ fontWeight: 800, color: 'var(--heading)' }}>Welcome to IQSport</h2>
-        <p className="text-sm" style={{ color: 'var(--t3)' }}>Set up your club in under 2 minutes</p>
+        <p className="text-sm" style={{ color: 'var(--t3)' }}>Set up your club in under a minute</p>
       </div>
 
-      <InputField label="Club name" value={clubName} onChange={setClubName} placeholder="Sunset Pickleball Club" />
+      <div>
+        <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Club name</label>
+        <input
+          type="text"
+          value={clubName}
+          onChange={e => setClubName(e.target.value)}
+          placeholder="Sunset Pickleball Club"
+          className="w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all focus:ring-2 focus:ring-violet-500/30"
+          style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+        />
+      </div>
 
       <div>
         <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>
@@ -392,127 +352,64 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           </p>
         )}
       </div>
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Club type</label>
-        <div className="flex gap-3">
-          <Chip selected={clubKind === 'VENUE'} onClick={() => setClubKind('VENUE')}>🏟 Venue</Chip>
-          <Chip selected={clubKind === 'COMMUNITY'} onClick={() => setClubKind('COMMUNITY')}>👥 Community</Chip>
-        </div>
-      </div>
     </div>,
 
-    // Step 1: Sports & Courts
+    // Step 1: Software + File Upload
     <div key="1" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
-        <Dumbbell className="w-5 h-5 inline mr-2" />Sports & Courts
-      </h3>
-
       <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>What sports do you offer?</label>
-        <div className="flex flex-wrap gap-2">
-          {SPORTS.map(s => <Chip key={s} selected={sports.includes(s)} onClick={() => toggleSport(s)}>{s.charAt(0).toUpperCase() + s.slice(1)}</Chip>)}
-        </div>
+        <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+          <Database className="w-5 h-5 inline mr-2" />Import your data
+        </h3>
+        <p className="text-sm" style={{ color: 'var(--t3)' }}>What software does your club use?</p>
       </div>
 
-      <InputField label="Number of courts" value={courtsStr} onChange={v => setCourtsStr(v.replace(/[^0-9]/g, ''))} inputMode="numeric" />
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Court type</label>
-        <div className="flex gap-3">
-          <Chip selected={indoor} onClick={() => setIndoor(!indoor)}>🏢 Indoor</Chip>
-          <Chip selected={outdoor} onClick={() => setOutdoor(!outdoor)}>🌤 Outdoor</Chip>
-        </div>
-      </div>
-    </div>,
-
-    // Step 2: Schedule
-    <div key="2" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
-        <Calendar className="w-5 h-5 inline mr-2" />Operating Schedule
-      </h3>
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Operating days</label>
-        <div className="flex flex-wrap gap-2">
-          {DAYS.map(d => <Chip key={d} selected={days.includes(d)} onClick={() => toggleDay(d)}>{d.slice(0, 3)}</Chip>)}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Open</label>
-          <input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-            style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)', colorScheme: isDark ? 'dark' : 'light' }} />
-        </div>
-        <div>
-          <label className="text-sm mb-2 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Close</label>
-          <input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
-            style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)', colorScheme: isDark ? 'dark' : 'light' }} />
-        </div>
-      </div>
-    </div>,
-
-    // Step 3: Pricing + Communication + CSV
-    <div key="3" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
-        <DollarSign className="w-5 h-5 inline mr-2" />Pricing & Data
-      </h3>
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Pricing model</label>
-        <div className="flex flex-wrap gap-2">
-          {[['per_session', '💳 Per Session'], ['membership', '🎫 Membership'], ['free', '🆓 Free'], ['hybrid', '🔀 Hybrid']].map(([id, label]) => (
-            <Chip key={id} selected={pricingModel === id} onClick={() => setPricingModel(id)}>{label}</Chip>
-          ))}
-        </div>
-      </div>
-
-      {pricingModel !== 'free' && (
-        <InputField label="Average price per player ($)" value={priceStr} onChange={v => setPriceStr(v.replace(/[^0-9.]/g, ''))} inputMode="numeric" />
-      )}
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Communication channel</label>
-        <div className="flex flex-wrap gap-2">
-          {[['email', '📧 Email'], ['sms', '💬 SMS'], ['both', '📧💬 Both']].map(([id, label]) => (
-            <Chip key={id} selected={channel === id} onClick={() => setChannel(id)}>{label}</Chip>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm mb-3 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>
-          <Upload className="w-4 h-4 inline mr-1" />
-          Import session history (optional)
-        </label>
-        <IQFileDropZone onFile={(file) => setCsvFile(file)} loadedFileName={csvFile?.name} />
-      </div>
-    </div>,
-
-    // Step 4: Goals
-    <div key="4" className="space-y-6">
-      <h3 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
-        <Target className="w-5 h-5 inline mr-2" />What are your goals?
-      </h3>
-      <p className="text-sm" style={{ color: 'var(--t3)' }}>Select what matters most — AI will prioritize these.</p>
-
+      {/* Software selector */}
       <div className="space-y-2">
-        {GOALS.map(g => (
-          <button key={g.id} onClick={() => toggleGoal(g.id)}
+        {SOFTWARE_OPTIONS.map(opt => (
+          <button key={opt.id} onClick={() => setSoftware(opt.id)}
             className="w-full flex items-center gap-3 p-4 rounded-xl text-left transition-all"
             style={{
-              background: goals.includes(g.id) ? 'var(--pill-active)' : 'var(--subtle)',
-              border: goals.includes(g.id) ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
+              background: software === opt.id ? 'var(--pill-active)' : 'var(--subtle)',
+              border: software === opt.id ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
             }}>
-            <span className="text-xl">{g.icon}</span>
-            <span className="text-sm" style={{ fontWeight: goals.includes(g.id) ? 600 : 500, color: goals.includes(g.id) ? 'var(--heading)' : 'var(--t2)' }}>{g.label}</span>
-            {goals.includes(g.id) && <Check className="w-4 h-4 ml-auto" style={{ color: '#8B5CF6' }} />}
+            <span className="text-xl">{opt.icon}</span>
+            <span className="text-sm" style={{ fontWeight: software === opt.id ? 600 : 500, color: software === opt.id ? 'var(--heading)' : 'var(--t2)' }}>{opt.label}</span>
+            {software === opt.id && <CheckCircle2 className="w-4 h-4 ml-auto" style={{ color: '#8B5CF6' }} />}
           </button>
         ))}
       </div>
+
+      {/* CourtReserve: 3 specific file slots */}
+      {software === 'courtreserve' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+          <div className="rounded-xl p-4" style={{ background: isDark ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.1)' }}>
+            <p className="text-xs" style={{ color: 'var(--t3)' }}>
+              <HelpCircle className="w-3.5 h-3.5 inline mr-1" />
+              In CourtReserve, go to <strong>Reports</strong> and export each file. You can upload 1, 2, or all 3 — import more later from Integrations.
+            </p>
+          </div>
+          <FileUploadSlot label="Members Report" description="Reports → Members → Export" file={membersFile} onFile={setMembersFile} />
+          <FileUploadSlot label="Reservation Report" description="Reports → Reservations → Export" file={reservationsFile} onFile={setReservationsFile} />
+          <FileUploadSlot label="Event Registrants Report" description="Reports → Events → Registrants → Export" file={eventsFile} onFile={setEventsFile} />
+        </motion.div>
+      )}
+
+      {/* Other: generic upload */}
+      {software === 'other' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <FileUploadSlot label="Upload your data file" description="CSV, XLSX — we'll auto-detect the format" file={genericFile} onFile={setGenericFile} />
+        </motion.div>
+      )}
+
+      {/* No software: skip message */}
+      {software === 'none' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl p-4 text-center" style={{ background: 'var(--subtle)' }}>
+          <p className="text-sm" style={{ color: 'var(--t3)' }}>
+            No problem! You can add data later from Settings → Integrations, or use the platform manually.
+          </p>
+        </motion.div>
+      )}
     </div>,
   ]
 
@@ -520,15 +417,15 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     return (
       <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
         <AILoadingAnimation
-          progress={hasCsvRef.current ? importProgress : undefined}
-          statusMessage={hasCsvRef.current ? importStatus : undefined}
+          progress={hasFilesRef.current ? importProgress : undefined}
+          statusMessage={hasFilesRef.current ? importStatus : undefined}
         />
       </div>
     )
   }
 
   const isLast = step === steps.length - 1
-  const canProceed = step === 0 ? clubName.trim().length >= 2 : true
+  const canProceed = step === 0 ? clubName.trim().length >= 2 : !!software
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
