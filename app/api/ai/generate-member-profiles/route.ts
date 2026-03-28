@@ -7,6 +7,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
 
@@ -14,10 +16,15 @@ export const maxDuration = 300 // 5 minutes (Vercel Pro)
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  // Auth check
   const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const isCron = auth === `Bearer ${process.env.CRON_SECRET}`
+
+  // Accept either CRON_SECRET (nightly job) or a logged-in club admin session
+  if (!isCron) {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
 
   const body = await req.json().catch(() => ({}))

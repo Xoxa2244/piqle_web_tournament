@@ -451,9 +451,14 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                     if (aiGenerating) return;
                     setAiGenerating(true);
                     onGenerationStarted?.();
-                    regenerateProfiles.mutate({ clubId }, {
-                      onSettled: () => setAiGenerating(false),
-                    });
+                    // Direct fetch — bypasses Lambda kill-on-response, uses maxDuration=300
+                    fetch('/api/ai/generate-member-profiles', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clubId }),
+                    })
+                      .then(() => setAiGenerating(false))
+                      .catch(() => setAiGenerating(false));
                   }}
                   disabled={aiGenerating}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
