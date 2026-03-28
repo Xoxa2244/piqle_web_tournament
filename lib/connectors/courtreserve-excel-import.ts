@@ -363,7 +363,7 @@ async function _runImportPipeline(
   const courtIdMap = new Map(courtMappings.map(m => [m.externalId, m.internalId]))
 
   // ── 1. Courts (small set, sequential is fine) ──
-  const courtNames = new Set(parsedSessions.map(s => s.courtName).filter(Boolean) as string[])
+  const courtNames = Array.from(new Set(parsedSessions.map(s => s.courtName).filter(Boolean) as string[]))
   for (const courtName of courtNames) {
     try {
       const externalId = `court_${courtName.replace(/\s+/g, '_').toLowerCase()}`
@@ -386,7 +386,7 @@ async function _runImportPipeline(
   }
 
   // ── 2. Members — bulk email lookup + parallel batches ──
-  const emailList = [...new Set(parsedMembers.map(m => m.email.toLowerCase().trim()).filter(Boolean))]
+  const emailList = Array.from(new Set(parsedMembers.map(m => m.email.toLowerCase().trim()).filter(Boolean)))
   const existingUsers = emailList.length > 0
     ? await prisma.user.findMany({ where: { email: { in: emailList } }, select: { id: true, email: true } })
     : []
