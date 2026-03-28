@@ -271,25 +271,28 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
 
         for (let i = 0; i < filesToImport.length; i++) {
           const { type, file } = filesToImport[i]
-          setImportStatus(`Processing ${file.name}...`)
+          setImportStatus(`Parsing ${file.name}...`)
           setImportProgress(10 + Math.round((i / filesToImport.length) * 70))
 
-          // Convert to base64
-          const arrayBuffer = await file.arrayBuffer()
-          const bytes = new Uint8Array(arrayBuffer)
-          let binary = ''
-          for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j])
-          const base64 = btoa(binary)
-
           try {
-            const res = await fetch('/api/connectors/courtreserve/import-excel', {
+            // Parse Excel in browser — avoids 413/504 server-side issues
+            const XLSX = await import('xlsx')
+            const arrayBuffer = await file.arrayBuffer()
+            const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
+            const ws = wb.Sheets[wb.SheetNames[0]]
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[]
+
+            setImportStatus(`Importing ${rows.length} rows from ${file.name}...`)
+
+            const res = await fetch('/api/connectors/courtreserve/import-rows', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clubId, fileType: type, data: base64, fileName: file.name }),
+              body: JSON.stringify({ clubId, fileType: type, rows }),
             })
             if (res.ok) {
               const result = await res.json()
-              setImportStatus(`${file.name}: ${result.message || 'Done'}`)
+              setImportStatus(`${file.name}: Done`)
+              console.log(`[Import] ${file.name}:`, result)
             } else {
               const err = await res.text()
               console.error(`[Import] ${file.name} failed:`, err)
