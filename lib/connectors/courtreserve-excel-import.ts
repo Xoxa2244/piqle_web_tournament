@@ -178,9 +178,8 @@ function col(row: Record<string, any>, ...names: string[]): any {
   return undefined
 }
 
-export function parseMembersExcel(base64Data: string): ParsedMember[] {
-  const wb = parseWorkbook(base64Data)
-  const rows = getRows(wb)
+/** Map pre-parsed rows (from sheet_to_json) to ParsedMember objects */
+export function mapMemberRows(rows: Record<string, any>[]): ParsedMember[] {
   const members: ParsedMember[] = []
 
   for (const row of rows) {
@@ -216,9 +215,8 @@ export function parseMembersExcel(base64Data: string): ParsedMember[] {
   return members
 }
 
-export function parseReservationsExcel(base64Data: string): ParsedSession[] {
-  const wb = parseWorkbook(base64Data)
-  const rows = getRows(wb)
+/** Map pre-parsed rows (from sheet_to_json) to ParsedSession objects for reservations */
+export function mapReservationRows(rows: Record<string, any>[]): ParsedSession[] {
   const sessions: ParsedSession[] = []
 
   for (const row of rows) {
@@ -263,9 +261,8 @@ export function parseReservationsExcel(base64Data: string): ParsedSession[] {
   return sessions
 }
 
-export function parseEventsExcel(base64Data: string): ParsedSession[] {
-  const wb = parseWorkbook(base64Data)
-  const rows = getRows(wb)
+/** Map pre-parsed rows (from sheet_to_json) to ParsedSession objects for events */
+export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
   const sessions: ParsedSession[] = []
 
   // Group by Programming Name + Date to create unique sessions
@@ -324,43 +321,35 @@ export function parseEventsExcel(base64Data: string): ParsedSession[] {
   return sessions
 }
 
+export function parseMembersExcel(base64Data: string): ParsedMember[] {
+  const wb = parseWorkbook(base64Data)
+  const rows = getRows(wb)
+  return mapMemberRows(rows)
+}
+
+export function parseReservationsExcel(base64Data: string): ParsedSession[] {
+  const wb = parseWorkbook(base64Data)
+  const rows = getRows(wb)
+  return mapReservationRows(rows)
+}
+
+export function parseEventsExcel(base64Data: string): ParsedSession[] {
+  const wb = parseWorkbook(base64Data)
+  const rows = getRows(wb)
+  return mapEventRows(rows)
+}
+
 // ── Main Import Orchestrator ──
 
-export async function runCourtReserveExcelImport(
+/** Shared pipeline: courts → members → sessions + bookings → upload marker */
+async function _runImportPipeline(
   clubId: string,
-  files: { type: string; data: string }[]
-): Promise<ExcelImportResult> {
-  const partnerId = await ensurePartner(clubId)
-
-  const result: ExcelImportResult = {
-    courts: { created: 0, updated: 0, errors: 0 },
-    members: { created: 0, updated: 0, matched: 0, errors: 0 },
-    sessions: { created: 0, updated: 0, errors: 0 },
-    bookings: { created: 0, updated: 0, errors: 0 },
-  }
-
-  // 1. Parse all files first
-  let parsedMembers: ParsedMember[] = []
-  let parsedSessions: ParsedSession[] = []
-
-  for (const file of files) {
-    switch (file.type) {
-      case 'members':
-        parsedMembers = parseMembersExcel(file.data)
-        console.log(`[Excel Import] Parsed ${parsedMembers.length} members`)
-        break
-      case 'reservations':
-        parsedSessions.push(...parseReservationsExcel(file.data))
-        console.log(`[Excel Import] Parsed ${parsedSessions.length} reservations`)
-        break
-      case 'events':
-        parsedSessions.push(...parseEventsExcel(file.data))
-        console.log(`[Excel Import] Parsed ${parsedSessions.length} event sessions`)
-        break
-    }
-  }
-
-  // 2. Extract courts from sessions
+  partnerId: string,
+  parsedMembers: ParsedMember[],
+  parsedSessions: ParsedSession[],
+  result: ExcelImportResult
+): Promise<void> {
+  // 1. Extract courts from sessions
   const courtNames = new Set<string>()
   for (const s of parsedSessions) {
     if (s.courtName) courtNames.add(s.courtName)
@@ -394,7 +383,7 @@ export async function runCourtReserveExcelImport(
     }
   }
 
-  // 3. Import members
+  // 2. Import members
   for (const member of parsedMembers) {
     try {
       if (!member.email) continue
@@ -459,7 +448,7 @@ export async function runCourtReserveExcelImport(
     }
   }
 
-  // 4. Import sessions + bookings
+  // 3. Import sessions + bookings
   for (const session of parsedSessions) {
     try {
       const externalId = session.externalId
@@ -562,7 +551,7 @@ export async function runCourtReserveExcelImport(
     }
   }
 
-  // Create an upload history marker so the dashboard Data Uploads section reflects this import
+  // 4. Create an upload history marker so the dashboard Data Uploads section reflects this import
   if (result.sessions.created + result.sessions.updated > 0 || result.members.created + result.members.updated > 0) {
     try {
       const importBatchId = `excel-${Date.now()}`
@@ -593,7 +582,84 @@ export async function runCourtReserveExcelImport(
       console.warn('[Excel Import] Upload history marker failed (non-critical):', err)
     }
   }
+}
 
+/**
+ * Import from pre-parsed rows (browser-side xlsx parsing).
+ * Accepts rows already extracted via sheet_to_json — no base64 needed.
+ */
+export async function runCourtReserveRowImport(
+  clubId: string,
+  files: { type: string; rows: Record<string, any>[] }[]
+): Promise<ExcelImportResult> {
+  const partnerId = await ensurePartner(clubId)
+
+  const result: ExcelImportResult = {
+    courts: { created: 0, updated: 0, errors: 0 },
+    members: { created: 0, updated: 0, matched: 0, errors: 0 },
+    sessions: { created: 0, updated: 0, errors: 0 },
+    bookings: { created: 0, updated: 0, errors: 0 },
+  }
+
+  let parsedMembers: ParsedMember[] = []
+  let parsedSessions: ParsedSession[] = []
+
+  for (const file of files) {
+    switch (file.type) {
+      case 'members':
+        parsedMembers = mapMemberRows(file.rows)
+        console.log(`[Excel Import] Mapped ${parsedMembers.length} members from rows`)
+        break
+      case 'reservations':
+        parsedSessions.push(...mapReservationRows(file.rows))
+        console.log(`[Excel Import] Mapped ${parsedSessions.length} reservations from rows`)
+        break
+      case 'events':
+        parsedSessions.push(...mapEventRows(file.rows))
+        console.log(`[Excel Import] Mapped ${parsedSessions.length} event sessions from rows`)
+        break
+    }
+  }
+
+  await _runImportPipeline(clubId, partnerId, parsedMembers, parsedSessions, result)
+  return result
+}
+
+export async function runCourtReserveExcelImport(
+  clubId: string,
+  files: { type: string; data: string }[]
+): Promise<ExcelImportResult> {
+  const partnerId = await ensurePartner(clubId)
+
+  const result: ExcelImportResult = {
+    courts: { created: 0, updated: 0, errors: 0 },
+    members: { created: 0, updated: 0, matched: 0, errors: 0 },
+    sessions: { created: 0, updated: 0, errors: 0 },
+    bookings: { created: 0, updated: 0, errors: 0 },
+  }
+
+  // Parse all files first
+  let parsedMembers: ParsedMember[] = []
+  let parsedSessions: ParsedSession[] = []
+
+  for (const file of files) {
+    switch (file.type) {
+      case 'members':
+        parsedMembers = parseMembersExcel(file.data)
+        console.log(`[Excel Import] Parsed ${parsedMembers.length} members`)
+        break
+      case 'reservations':
+        parsedSessions.push(...parseReservationsExcel(file.data))
+        console.log(`[Excel Import] Parsed ${parsedSessions.length} reservations`)
+        break
+      case 'events':
+        parsedSessions.push(...parseEventsExcel(file.data))
+        console.log(`[Excel Import] Parsed ${parsedSessions.length} event sessions`)
+        break
+    }
+  }
+
+  await _runImportPipeline(clubId, partnerId, parsedMembers, parsedSessions, result)
   return result
 }
 

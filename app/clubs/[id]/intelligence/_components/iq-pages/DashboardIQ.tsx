@@ -19,7 +19,7 @@ import { AILoadingAnimation } from "./AILoadingAnimation";
 import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rawFile: File }
+type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
 function ExcelSlot({ label, description, file, onFile, isDark }: {
   label: string; description: string; file: ExcelFileSlot | null;
@@ -29,8 +29,13 @@ function ExcelSlot({ label, description, file, onFile, isDark }: {
   const [dragOver, setDragOver] = useState(false)
   const type = description.includes('Member') ? 'members' : description.includes('Reservation') ? 'reservations' : 'events'
 
-  const handleFile = (raw: File) => {
-    onFile({ type, name: raw.name, rawFile: raw })
+  const handleFile = async (raw: File) => {
+    const XLSX = await import('xlsx')
+    const arrayBuffer = await raw.arrayBuffer()
+    const wb = XLSX.read(arrayBuffer, { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[]
+    onFile({ type, name: raw.name, rows })
   }
 
   if (file) {
@@ -444,24 +449,37 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     setImportStatus("Importing files...")
     setImportError(null)
 
-    // Accumulate results across files
+    const CHUNK_SIZE = 500
+    // Accumulate results across files and chunks
     const totals = { members: 0, sessions: 0, bookings: 0, errors: 0 }
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i]
-        setImportStatus(`Uploading ${f.name} (${i + 1}/${files.length})...`)
-        setImportProgress(10 + Math.round((i / files.length) * 80))
+      // Total chunk count across all files for progress tracking
+      const allChunks: { file: ExcelFileSlot; chunk: Record<string, any>[]; chunkIndex: number; totalChunks: number }[] = []
+      for (const f of files) {
+        const totalChunks = Math.max(1, Math.ceil(f.rows.length / CHUNK_SIZE))
+        for (let c = 0; c < totalChunks; c++) {
+          allChunks.push({ file: f, chunk: f.rows.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE), chunkIndex: c, totalChunks })
+        }
+      }
 
-        // Use FormData (multipart) to avoid 4.5MB JSON body limit — supports large files
-        const form = new FormData()
-        form.append('clubId', clubId)
-        form.append('fileType', f.type)
-        form.append('file', f.rawFile, f.name)
+      for (let i = 0; i < allChunks.length; i++) {
+        const { file: f, chunk, chunkIndex, totalChunks } = allChunks[i]
+        const chunkLabel = totalChunks > 1 ? ` (chunk ${chunkIndex + 1}/${totalChunks})` : ''
+        setImportStatus(`Importing ${f.name}${chunkLabel}...`)
+        setImportProgress(10 + Math.round((i / allChunks.length) * 80))
 
-        const res = await fetch('/api/connectors/courtreserve/import-excel', {
+        const res = await fetch('/api/connectors/courtreserve/import-rows', {
           method: 'POST',
-          body: form,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clubId,
+            fileType: f.type,
+            rows: chunk,
+            chunkIndex,
+            totalChunks,
+            isLastChunk: chunkIndex === totalChunks - 1,
+          }),
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }))
