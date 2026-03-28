@@ -213,7 +213,7 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
       name: c.member?.name || c.member?.email || "Unknown",
       avatar: (c.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
       rating: c.member?.duprRatingDoubles || 0,
-      risk: c.score < 25 ? "high" as const : c.score < 50 ? "medium" as const : "low" as const,
+      risk: c.score < 20 ? "high" as const : c.score < 35 ? "medium" as const : "low" as const,
       healthScore: c.score || 0,
       daysSincePlay: c.daysSinceLastActivity || 0,
       totalSessions: c.totalHistoricalBookings || 0,
@@ -284,9 +284,11 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   // Risk segments from real reactivation data
   const displayRiskSegments = reactivationData?.candidates
     ? (() => {
-        const high = reactivationData.candidates.filter((c: any) => c.score < 25).length;
-        const medium = reactivationData.candidates.filter((c: any) => c.score >= 25 && c.score < 50).length;
-        const low = reactivationData.candidates.filter((c: any) => c.score >= 50 && c.score < 70).length;
+        // Inactive members max out at ~50 (Trend always=5 for inactive).
+        // Thresholds calibrated to the real achievable range for at-risk candidates.
+        const high = reactivationData.candidates.filter((c: any) => c.score < 20).length;
+        const medium = reactivationData.candidates.filter((c: any) => c.score >= 20 && c.score < 35).length;
+        const low = reactivationData.candidates.filter((c: any) => c.score >= 35 && c.score < 50).length;
         const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
           { name: "High Risk", value: high, color: "#EF4444" },

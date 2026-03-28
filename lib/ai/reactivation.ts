@@ -55,9 +55,9 @@ export function generateReactivationCandidates(input: ReactivationInput): Reacti
       };
     })
     .sort((a, b) => {
-      // Sort by risk first (high < 25, medium 25-49, low 50+), then by days inactive desc
-      const riskA = a.score < 25 ? 0 : a.score < 50 ? 1 : 2;
-      const riskB = b.score < 25 ? 0 : b.score < 50 ? 1 : 2;
+      // Sort by risk first (high < 20, medium 20-34, low 35+), then by days inactive desc
+      const riskA = a.score < 20 ? 0 : a.score < 35 ? 1 : 2;
+      const riskB = b.score < 20 ? 0 : b.score < 35 ? 1 : 2;
       if (riskA !== riskB) return riskA - riskB;
       return b.daysSinceLastActivity - a.daysSinceLastActivity;
     });
