@@ -19,22 +19,18 @@ import { AILoadingAnimation } from "./AILoadingAnimation";
 import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; data: string }
+type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rawFile: File }
 
 function ExcelSlot({ label, description, file, onFile, isDark }: {
   label: string; description: string; file: ExcelFileSlot | null;
-  onFile: (f: ExcelFileSlot) => void; isDark: boolean;
+  onFile: (f: ExcelFileSlot | null) => void; isDark: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const type = description.includes('Member') ? 'members' : description.includes('Reservation') ? 'reservations' : 'events'
 
-  const handleFile = async (raw: File) => {
-    const arrayBuffer = await raw.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
-    let binary = ''
-    for (let j = 0; j < bytes.length; j++) binary += String.fromCharCode(bytes[j])
-    onFile({ type, name: raw.name, data: btoa(binary) })
+  const handleFile = (raw: File) => {
+    onFile({ type, name: raw.name, rawFile: raw })
   }
 
   if (file) {
@@ -433,7 +429,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const deleteImportMutation = trpc.intelligence.deleteImport.useMutation();
   const [excelFiles, setExcelFiles] = useState<(ExcelFileSlot | null)[]>([null, null, null]);
   const [importError, setImportError] = useState<string | null>(null);
-  const importExcelMutation = trpc.connectors.importExcel.useMutation();
   const trpcUtils = trpc.useUtils();
 
   const handleExcelFileSet = (idx: number, f: ExcelFileSlot | null) => {
@@ -458,15 +453,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         setImportStatus(`Uploading ${f.name} (${i + 1}/${files.length})...`)
         setImportProgress(10 + Math.round((i / files.length) * 80))
 
-        // Send one file at a time to stay under Vercel's 4.5MB body limit
-        const res = await importExcelMutation.mutateAsync({
-          clubId,
-          files: [{ type: f.type, data: f.data }],
+        // Use FormData (multipart) to avoid 4.5MB JSON body limit — supports large files
+        const form = new FormData()
+        form.append('clubId', clubId)
+        form.append('fileType', f.type)
+        form.append('file', f.rawFile, f.name)
+
+        const res = await fetch('/api/connectors/courtreserve/import-excel', {
+          method: 'POST',
+          body: form,
         })
-        totals.members += (res.members?.created || 0) + (res.members?.updated || 0)
-        totals.sessions += (res.sessions?.created || 0) + (res.sessions?.updated || 0)
-        totals.bookings += (res.bookings?.created || 0)
-        totals.errors += (res.members?.errors || 0) + (res.sessions?.errors || 0)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `Upload failed (${res.status})`)
+        }
+        const data = await res.json()
+        totals.members += (data.members?.created || 0) + (data.members?.updated || 0)
+        totals.sessions += (data.sessions?.created || 0) + (data.sessions?.updated || 0)
+        totals.bookings += (data.bookings?.created || 0)
+        totals.errors += (data.members?.errors || 0) + (data.sessions?.errors || 0)
       }
 
       setImportResult({
