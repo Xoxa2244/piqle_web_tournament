@@ -432,7 +432,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [deleting, setDeleting] = useState(false);
   const deleteImportMutation = trpc.intelligence.deleteImport.useMutation();
   const [excelFiles, setExcelFiles] = useState<(ExcelFileSlot | null)[]>([null, null, null]);
+  const [importError, setImportError] = useState<string | null>(null);
   const importExcelMutation = trpc.connectors.importExcel.useMutation();
+  const trpcUtils = trpc.useUtils();
 
   const handleExcelFileSet = (idx: number, f: ExcelFileSlot | null) => {
     setExcelFiles(prev => { const next = [...prev]; next[idx] = f; return next; })
@@ -445,19 +447,27 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     setImportModal("processing")
     setImportProgress(5)
     setImportStatus("Importing files...")
+    setImportError(null)
     try {
       const res = await importExcelMutation.mutateAsync({
         clubId,
         files: files.map(f => ({ type: f.type, data: f.data })),
       })
-      setImportProgress(100)
       const total = (res.members?.created || 0) + (res.members?.updated || 0)
       const sessions = (res.sessions?.created || 0) + (res.sessions?.updated || 0)
-      setImportResult({ totalParsed: sessions, totalErrors: 0, found: [`${total} members`, `${sessions} sessions`, `${(res.bookings?.created || 0)} bookings`], missing: [] })
+      const bookings = (res.bookings?.created || 0)
+      setImportResult({ totalParsed: sessions, totalErrors: res.members?.errors || 0, found: [`${total} members`, `${sessions} sessions`, `${bookings} bookings`], missing: [] })
       setImportStatus("Import complete!")
-    } catch (err: any) {
+      // Invalidate dashboard queries so data refreshes
+      trpcUtils.intelligence.getDashboardV2.invalidate({ clubId })
+      trpcUtils.intelligence.getMemberHealth.invalidate({ clubId })
+      trpcUtils.intelligence.getUploadHistory.invalidate({ clubId })
       setImportProgress(100)
-      setImportStatus(err.message || "Import failed")
+    } catch (err: any) {
+      const msg = err?.data?.message || err?.message || "Import failed"
+      setImportError(msg)
+      setImportProgress(100)
+      setImportStatus(msg)
     }
   }
   const ref = useRef(null);
@@ -1209,7 +1219,27 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-5 py-4"
                   >
-                    {/* Success header */}
+                    {/* Error state */}
+                    {importError ? (
+                      <div className="text-center">
+                        <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #EF4444, #DC2626)", boxShadow: "0 8px 30px rgba(239,68,68,0.3)" }}>
+                          <AlertTriangle className="w-8 h-8 text-white" />
+                        </div>
+                        <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>Import Failed</h3>
+                        <div className="rounded-xl p-4 mt-3 text-left" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                          <p className="text-sm font-mono" style={{ color: "#EF4444" }}>{importError}</p>
+                        </div>
+                        <div className="flex justify-center gap-3 mt-5">
+                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                            onClick={() => { setImportModal("upload"); setImportError(null); setImportResult(null); }}
+                            className="px-6 py-2.5 rounded-xl text-sm text-white"
+                            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600 }}>
+                            Try Again
+                          </motion.button>
+                        </div>
+                      </div>
+                    ) : (
+                    /* Success header */
                     <div className="text-center">
                       <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}>
                         <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #059669)", boxShadow: "0 8px 30px rgba(16,185,129,0.3)" }}>
@@ -1224,6 +1254,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         {importResult?.totalErrors ? ` (${importResult.totalErrors} rows skipped)` : ''}
                       </p>
                     </div>
+                    )}
 
                     {/* Gap report */}
                     {importResult && (
@@ -1265,11 +1296,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                       </div>
                     )}
 
+                    {!importError && (
                     <div className="flex justify-center gap-3 pt-2">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => { setImportModal("closed"); setImportFileName(null); setImportResult(null); window.location.reload(); }}
+                        onClick={() => { setImportModal("closed"); setImportFileName(null); setImportResult(null); setImportError(null); }}
                         className="px-6 py-2.5 rounded-xl text-sm text-white"
                         style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
                       >
@@ -1279,7 +1311,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         <motion.button
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
-                          onClick={() => { setImportModal("upload"); setImportFileName(null); setImportResult(null); }}
+                          onClick={() => { setImportModal("upload"); setImportFileName(null); setImportResult(null); setImportError(null); }}
                           className="px-6 py-2.5 rounded-xl text-sm"
                           style={{ color: "var(--t2)", fontWeight: 500, border: "1px solid var(--card-border)" }}
                         >
@@ -1287,6 +1319,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         </motion.button>
                       ) : null}
                     </div>
+                    )}
                   </motion.div>
                 )}
               </div>
