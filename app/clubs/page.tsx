@@ -149,20 +149,10 @@ function ClubsPageContent() {
     )
   }
 
-  // IQ brand: auto-redirect to dashboard if user has exactly 1 club
-  // Skip if ?add=true (user wants to add another club)
-  const wantsToAdd = searchParams.get('add') === 'true'
-  if (brand.key === 'iqsport' && isLoggedIn && !isLoading && !wantsToAdd) {
+  // IQ brand: determine user's clubs for conditional rendering
+  if (brand.key === 'iqsport' && isLoggedIn && !isLoading) {
     const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
-
-    if (myClubs.length === 1) {
-      router.replace(`/clubs/${myClubs[0].id}/intelligence`)
-      return (
-        <div className="min-h-screen flex items-center justify-center" style={{ background: '#0B0D17' }}>
-          <div className="text-gray-500 text-sm">Loading...</div>
-        </div>
-      )
-    }
+    // No auto-redirect — always show /clubs page so user can manage clubs
 
     // IQ user avatar + dropdown (shared between 0-clubs and 2+-clubs screens)
     const iqUserAvatar = isLoggedIn && (
