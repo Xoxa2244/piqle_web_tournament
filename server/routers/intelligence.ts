@@ -203,7 +203,7 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({
       clubId: z.string().uuid(),
       inactivityDays: z.number().int().min(7).default(21),
-      limit: z.number().int().min(1).max(500).default(200),
+      limit: z.number().int().min(1).max(5000).default(500),
       enhance: z.boolean().default(false),
     }))
     .query(async ({ ctx, input }) => {
