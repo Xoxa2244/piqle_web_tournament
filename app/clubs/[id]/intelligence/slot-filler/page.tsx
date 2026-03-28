@@ -15,7 +15,7 @@ import { OccupancyBadge } from '../_components/charts'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
-import { useDashboardV2, useSlotFillerRecommendations, useSendInvites } from '../_hooks/use-intelligence'
+import { useDashboardV2, useSlotFillerRecommendations, useSendInvites, useMemberAiProfiles } from '../_hooks/use-intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { generateSlotFillerMessages, classifySlotFillerPlayerType, playerTypeLabels } from '@/lib/ai/slot-filler-messages'
 import { useSetPageContext } from '../_hooks/usePageContext'
@@ -43,6 +43,13 @@ export default function SlotFillerPage() {
 
   // Get recommendations for selected session (pass clubId for CSV sessions)
   const { data: recommendations, isLoading: loadingRecs } = useSlotFillerRecommendations(selectedSessionId, 15, clubId)
+
+  // AI profiles for slot filler sub-line
+  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId)
+  const aiProfilesMap = useMemo(() => {
+    if (!aiProfilesRaw?.length) return {}
+    return Object.fromEntries(aiProfilesRaw.map((p: any) => [p.userId, p]))
+  }, [aiProfilesRaw])
 
   // Send invites mutation
   const sendInvitesMutationRaw = useSendInvites()
@@ -201,7 +208,7 @@ export default function SlotFillerPage() {
   }
 
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai')
-  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={isDemo ? false : loadingDashboard} loadingRecs={loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} onSelectSession={(id: string) => { setSelectedSessionId(id); setInviteSent(false); setSelectedUserIds(new Set()); }} selectedSessionId={selectedSessionId} />
+  if (brand.key === 'iqsport') return <SlotFillerIQ dashboardData={dashboard} recommendations={recommendations} isLoading={isDemo ? false : loadingDashboard} loadingRecs={loadingRecs} sendInvites={sendInvitesMutationRaw} clubId={clubId} onSelectSession={(id: string) => { setSelectedSessionId(id); setInviteSent(false); setSelectedUserIds(new Set()); }} selectedSessionId={selectedSessionId} aiProfiles={aiProfilesMap} />
 
   // ── Session selector state ──
   if (!selectedSessionId) {

@@ -59,6 +59,11 @@ interface AtRiskMember {
   contacted: boolean;
   responded: boolean;
   healthFactors: HealthFactor[];
+  // AI Profile fields
+  preferredCategories?: string[];
+  reactivationMessage?: string | null;
+  slotFillerProfile?: string | null;
+  hasAiProfile?: boolean;
 }
 
 const atRiskMembers: AtRiskMember[] = [
@@ -195,41 +200,51 @@ type ReactivationIQProps = {
   error?: any;
   sendReactivation?: any;
   clubId?: string;
+  aiProfiles?: Record<string, any>; // userId → MemberAiProfileData
 };
 
-function mapRealCandidates(data: any): AtRiskMember[] {
+function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskMember[] {
   if (!data?.candidates) return [];
-  return data.candidates.map((c: any) => ({
-    id: c.member?.id || c.memberId || String(Math.random()),
-    name: c.member?.name || c.member?.email || "Unknown",
-    avatar: (c.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
-    rating: c.member?.duprRatingDoubles || 0,
-    risk: c.score < 20 ? "high" as const : c.score < 50 ? "medium" as const : "low" as const,
-    healthScore: c.score || 0,
-    daysSincePlay: c.daysSinceLastActivity || 0,
-    totalSessions: c.totalHistoricalBookings || 0,
-    memberSince: "N/A",
-    revenue: 0,
-    churnReason: c.churnReasons && c.churnReasons.length > 0
-      ? c.churnReasons.map((r: any) => r.summary).join('. ')
-      : (c.reasoning?.summary || "Declining engagement"),
-    suggestedAction: c.suggestedAction || (c.suggestedSessions?.[0]?.title ? `Invite to ${c.suggestedSessions[0].title}` : "Send personalized win-back message"),
-    email: c.member?.email || "",
-    phone: "",
-    contacted: !!c.lastContactedAt,
-    responded: c.lastContactStatus === "responded",
-    healthFactors: c.reasoning?.components
-      ? Object.entries(c.reasoning.components).map(([key, comp]: [string, any]) => ({
-          name: key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          score: comp.score || 0,
-          weight: comp.weight || 20,
-          label: comp.explanation || `Score: ${comp.score || 0}`,
-        }))
-      : [],
-  }));
+  return data.candidates.map((c: any) => {
+    const userId = c.member?.id;
+    const aiProfile = userId && aiProfiles ? aiProfiles[userId] : undefined;
+    return {
+      id: userId || c.memberId || String(Math.random()),
+      name: c.member?.name || c.member?.email || "Unknown",
+      avatar: (c.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
+      rating: c.member?.duprRatingDoubles || 0,
+      risk: c.score < 30 ? "high" as const : c.score < 56 ? "medium" as const : "low" as const,
+      healthScore: c.score || 0,
+      daysSincePlay: c.daysSinceLastActivity || 0,
+      totalSessions: c.totalHistoricalBookings || 0,
+      memberSince: "N/A",
+      revenue: 0,
+      churnReason: c.churnReasons && c.churnReasons.length > 0
+        ? c.churnReasons.map((r: any) => r.summary).join('. ')
+        : (c.reasoning?.summary || "Declining engagement"),
+      suggestedAction: c.suggestedAction || (c.suggestedSessions?.[0]?.title ? `Invite to ${c.suggestedSessions[0].title}` : "Send personalized win-back message"),
+      email: c.member?.email || "",
+      phone: "",
+      contacted: !!c.lastContactedAt,
+      responded: c.lastContactStatus === "responded",
+      healthFactors: c.reasoning?.components
+        ? Object.entries(c.reasoning.components).map(([key, comp]: [string, any]) => ({
+            name: key.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            score: comp.score || 0,
+            weight: comp.weight || 20,
+            label: comp.explanation || `Score: ${comp.score || 0}`,
+          }))
+        : [],
+      // AI Profile
+      preferredCategories: aiProfile?.preferredCategories || [],
+      reactivationMessage: aiProfile?.reactivationMessage || null,
+      slotFillerProfile: aiProfile?.slotFillerProfile || null,
+      hasAiProfile: !!aiProfile,
+    };
+  });
 }
 
-export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId }: ReactivationIQProps = {}) {
+export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
@@ -242,7 +257,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
 
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
-  const realCandidates = mapRealCandidates(reactivationData);
+  const realCandidates = mapRealCandidates(reactivationData, aiProfiles);
   const allMembers = realCandidates.length > 0 ? realCandidates : (isDemo ? atRiskMembers : []);
 
   const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
@@ -530,6 +545,18 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                         className="overflow-hidden"
                       >
                         <div className="px-5 pb-5 pt-2 space-y-4" style={{ borderTop: "1px solid var(--divider)" }}>
+                          {/* Preferred categories (from AI profile) */}
+                          {member.preferredCategories && member.preferredCategories.length > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Plays:</span>
+                              {member.preferredCategories.map((cat) => (
+                                <span key={cat} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(99,102,241,0.12)", color: "#818CF8", fontWeight: 600 }}>
+                                  {cat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           <div className="grid md:grid-cols-2 gap-4">
                             <div>
                               <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--t4)", fontWeight: 600 }}>Churn Reason (AI Analysis)</div>
@@ -538,13 +565,25 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               </div>
                             </div>
                             <div>
-                              <div className="text-[10px] uppercase tracking-wider mb-2" style={{ color: "var(--t4)", fontWeight: 600 }}>Suggested Action</div>
-                              <div className="p-3 rounded-xl text-sm" style={{ background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.1)", color: "var(--t2)", lineHeight: 1.6 }}>
-                                <div className="flex items-start gap-2">
-                                  <Sparkles className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                                  {member.suggestedAction}
-                                </div>
+                              <div className="text-[10px] uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: "var(--t4)", fontWeight: 600 }}>
+                                <Sparkles className="w-3 h-3 text-violet-400" />
+                                Win-Back Message (AI)
                               </div>
+                              {member.reactivationMessage ? (
+                                <div className="p-3 rounded-xl text-sm" style={{ background: "rgba(139,92,246,0.05)", border: "1px solid rgba(139,92,246,0.15)", color: "var(--t2)", lineHeight: 1.7 }}>
+                                  {member.reactivationMessage}
+                                </div>
+                              ) : (
+                                <div className="p-3 rounded-xl text-sm flex items-center gap-2" style={{ background: "rgba(139,92,246,0.03)", border: "1px dashed rgba(139,92,246,0.2)", color: "var(--t4)" }}>
+                                  <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                    className="w-3.5 h-3.5 rounded-full shrink-0"
+                                    style={{ border: "2px solid rgba(139,92,246,0.3)", borderTopColor: "#A78BFA" }}
+                                  />
+                                  <span className="text-xs">AI profile generating…</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -576,6 +615,17 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               })}
                             </div>
                           </div>
+
+                          {/* Slot Filler Profile */}
+                          {member.slotFillerProfile && (
+                            <div className="p-3 rounded-xl flex items-start gap-2.5" style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)" }}>
+                              <Target className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#10B981" }} />
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#10B981", fontWeight: 600 }}>Slot Filler Profile</div>
+                                <div className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.6 }}>{member.slotFillerProfile}</div>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Outreach Actions */}
                           <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>

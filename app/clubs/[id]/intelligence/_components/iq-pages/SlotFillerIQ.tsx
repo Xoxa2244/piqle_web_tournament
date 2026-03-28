@@ -134,7 +134,7 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 /*            SLOT FILLER PAGE                    */
 /* ============================================= */
-export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null } = {}) {
+export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId, aiProfiles }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null; aiProfiles?: Record<string, any> } = {}) {
   const { isDark } = useTheme();
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
@@ -424,7 +424,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                     </div>
 
                     {/* Info */}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-xs" style={{ fontWeight: 600, color: "var(--heading)" }}>{player.name}</span>
                         {player.status === "tentative" && !isSent && (
@@ -439,6 +439,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                         <span>Last: {player.lastPlayed}</span>
                         <span>{player.preferredTime}</span>
                       </div>
+                      {aiProfiles?.[player.id]?.slotFillerProfile && (
+                        <div className="mt-1 text-[10px] leading-snug truncate" style={{ color: "var(--t4)" }}>
+                          <Sparkles className="w-2.5 h-2.5 inline mr-0.5" style={{ color: "#A78BFA" }} />
+                          {aiProfiles[player.id].slotFillerProfile}
+                        </div>
+                      )}
                     </div>
                   </div>
 
