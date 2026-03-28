@@ -126,9 +126,9 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
   const progress = externalProgress !== undefined ? externalProgress : ((currentStage + 1) / stages.length) * 100;
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
-      {/* Neural Network Visualization */}
-      <div className="relative h-[420px] rounded-2xl overflow-hidden" style={{
+    <div className="flex flex-col gap-4 max-w-3xl mx-auto">
+      {/* Neural Network Visualization — compact */}
+      <div className="relative h-[200px] rounded-2xl overflow-hidden flex-shrink-0" style={{
         background: "linear-gradient(180deg, #080A14, #0B0D17)",
         border: "1px solid rgba(139, 92, 246, 0.15)",
       }}>
@@ -178,29 +178,29 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div animate={{ scale: [1, 1.05, 1], opacity: [0.9, 1, 0.9] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="relative">
             {/* Outer rings */}
-            {[0, 1, 2, 3].map((i) => (
-              <motion.div key={i} animate={{ rotate: i % 2 === 0 ? 360 : -360 }} transition={{ duration: 12 + i * 4, repeat: Infinity, ease: "linear" }} className="absolute rounded-full" style={{ inset: -(30 + i * 35), border: `1px solid rgba(139, 92, 246, ${0.2 - i * 0.04})` }} />
+            {[0, 1, 2].map((i) => (
+              <motion.div key={i} animate={{ rotate: i % 2 === 0 ? 360 : -360 }} transition={{ duration: 10 + i * 4, repeat: Infinity, ease: "linear" }} className="absolute rounded-full" style={{ inset: -(20 + i * 22), border: `1px solid rgba(139, 92, 246, ${0.2 - i * 0.05})` }} />
             ))}
 
             {/* Glow */}
-            <div className="absolute inset-0 rounded-full blur-3xl scale-[2]" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.2), rgba(6,182,212,0.1), transparent)" }} />
+            <div className="absolute inset-0 rounded-full blur-2xl scale-[2]" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.25), rgba(6,182,212,0.1), transparent)" }} />
 
             {/* Core */}
-            <div className="relative w-36 h-36 rounded-full flex items-center justify-center" style={{
+            <div className="relative w-20 h-20 rounded-full flex items-center justify-center" style={{
               background: "linear-gradient(135deg, #8B5CF6, #6D28D9, #06B6D4)",
-              boxShadow: "0 0 80px rgba(139, 92, 246, 0.6), 0 0 160px rgba(6, 182, 212, 0.3)",
+              boxShadow: "0 0 50px rgba(139, 92, 246, 0.6), 0 0 100px rgba(6, 182, 212, 0.25)",
             }}>
-              <Brain className="w-16 h-16 text-white" />
+              <Brain className="w-10 h-10 text-white" />
             </div>
 
             {/* Orbiting nodes */}
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <motion.div key={i} animate={{ rotate: 360 }} transition={{ duration: 6 + i * 0.5, repeat: Infinity, ease: "linear", delay: i * 0.4 }} className="absolute inset-0">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <motion.div key={i} animate={{ rotate: 360 }} transition={{ duration: 5 + i * 0.6, repeat: Infinity, ease: "linear", delay: i * 0.4 }} className="absolute inset-0">
                 <div className="absolute rounded-full" style={{
-                  width: 7 - (i % 3), height: 7 - (i % 3), top: "50%", left: "50%",
-                  transform: `translate(-50%, -50%) translateY(-${90 + i * 14}px)`,
+                  width: 6 - (i % 3), height: 6 - (i % 3), top: "50%", left: "50%",
+                  transform: `translate(-50%, -50%) translateY(-${55 + i * 10}px)`,
                   background: i % 2 === 0 ? "linear-gradient(135deg, #8B5CF6, #A78BFA)" : "linear-gradient(135deg, #06B6D4, #22D3EE)",
-                  boxShadow: i % 2 === 0 ? "0 0 16px rgba(139,92,246,0.8)" : "0 0 16px rgba(6,182,212,0.8)",
+                  boxShadow: i % 2 === 0 ? "0 0 12px rgba(139,92,246,0.8)" : "0 0 12px rgba(6,182,212,0.8)",
                 }} />
               </motion.div>
             ))}
@@ -209,7 +209,7 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
 
         {/* Synaptic connections */}
         <svg className="absolute inset-0 w-full h-full">
-          {[...Array(18)].map((_, i) => (
+          {[...Array(12)].map((_, i) => (
             <motion.line
               key={i}
               x1={`${10 + Math.random() * 80}%`} y1={`${10 + Math.random() * 80}%`}
@@ -218,88 +218,112 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
               strokeWidth="1"
               initial={{ pathLength: 0, opacity: 0 }}
               animate={{ pathLength: [0, 1, 0], opacity: [0, 0.6, 0] }}
-              transition={{ duration: 2, repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
+              transition={{ duration: 2, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
             />
           ))}
         </svg>
       </div>
 
-      {/* Progress Bar */}
-      <div className="space-y-2">
-        <div className="h-3 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
-          <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5 }} style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", boxShadow: "0 0 20px rgba(139, 92, 246, 0.5)" }} />
+      {/* Progress + current stage — side by side */}
+      <div className="flex items-center gap-4">
+        {/* Stage icon */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStage}
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            transition={{ duration: 0.25 }}
+            className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 4px 16px rgba(139, 92, 246, 0.35)" }}
+          >
+            {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-5 h-5 text-white" />; })()}
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Progress bar + label */}
+        <div className="flex-1 min-w-0">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={currentStage}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25 }}
+              className="text-sm mb-1.5 truncate"
+              style={{ fontWeight: 600, color: "var(--heading)" }}
+            >
+              {stages[currentStage].title}
+            </motion.p>
+          </AnimatePresence>
+          <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+            <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5 }} style={{ background: "linear-gradient(90deg, #8B5CF6, #06B6D4)", boxShadow: "0 0 12px rgba(139, 92, 246, 0.5)" }} />
+          </div>
         </div>
-        <div className="text-right text-sm" style={{ fontWeight: 600, color: "var(--t3)" }}>{Math.round(progress)}%</div>
+
+        {/* Percentage */}
+        <div className="text-sm font-mono flex-shrink-0" style={{ fontWeight: 700, color: "var(--t3)", minWidth: 36, textAlign: "right" }}>
+          {Math.round(progress)}%
+        </div>
       </div>
 
-      {/* Current Stage */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentStage}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-          className="rounded-2xl p-6"
-          style={{ background: "var(--card-bg)", border: "1px solid rgba(139, 92, 246, 0.1)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}
-        >
-          <div className="flex items-start gap-5">
-            <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 4px 20px rgba(139, 92, 246, 0.3)" }}>
-              {(() => { const Icon = stages[currentStage].icon; return <Icon className="w-7 h-7 text-white" />; })()}
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: "var(--heading)" }}>{stages[currentStage].title}</h3>
-              <p className="text-sm" style={{ color: "var(--t3)" }}>{stages[currentStage].description}</p>
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Stage Indicators */}
-      <div className="flex justify-between">
+      {/* Stage indicators strip */}
+      <div className="flex items-center gap-2">
         {stages.map((stage, idx) => {
           const Icon = stage.icon;
           const isComplete = idx < currentStage;
           const isCurrent = idx === currentStage;
           return (
-            <motion.div key={idx} className="flex flex-col items-center gap-2" animate={isCurrent ? { scale: [1, 1.1, 1] } : {}} transition={{ duration: 1.5, repeat: Infinity }}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center transition-all" style={{
-                background: isComplete ? "linear-gradient(135deg, #10B981, #059669)" : isCurrent ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "rgba(255,255,255,0.05)",
-                boxShadow: isCurrent ? "0 4px 20px rgba(139, 92, 246, 0.4)" : isComplete ? "0 4px 15px rgba(16, 185, 129, 0.3)" : "none",
+            <motion.div
+              key={idx}
+              className="flex-1 flex items-center gap-1.5 rounded-xl px-2 py-2"
+              animate={isCurrent ? { scale: [1, 1.02, 1] } : {}}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              style={{
+                background: isComplete
+                  ? "rgba(16, 185, 129, 0.12)"
+                  : isCurrent
+                  ? "rgba(139, 92, 246, 0.15)"
+                  : "rgba(255,255,255,0.03)",
+                border: `1px solid ${isComplete ? "rgba(16,185,129,0.2)" : isCurrent ? "rgba(139,92,246,0.3)" : "rgba(255,255,255,0.05)"}`,
+              }}
+            >
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{
+                background: isComplete ? "linear-gradient(135deg, #10B981, #059669)" : isCurrent ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "transparent",
               }}>
-                <Icon className={`w-5 h-5 ${isComplete || isCurrent ? "text-white" : "text-white/20"}`} />
+                <Icon className={`w-3.5 h-3.5 ${isComplete || isCurrent ? "text-white" : "text-white/20"}`} />
               </div>
-              <div className="text-xs text-center max-w-[72px]" style={{ fontWeight: isCurrent ? 600 : 400, color: isCurrent ? "var(--t1)" : "var(--t5)" }}>
+              <span className="text-xs truncate hidden sm:block" style={{ fontWeight: isCurrent ? 600 : 400, color: isCurrent ? "var(--t1)" : isComplete ? "rgba(16,185,129,0.8)" : "var(--t5)" }}>
                 {stage.title.replace("...", "")}
-              </div>
+              </span>
             </motion.div>
           );
         })}
       </div>
 
-      {/* Terminal */}
-      <div className="rounded-2xl p-6 font-mono text-sm overflow-hidden" style={{ background: "rgba(8, 10, 20, 0.9)", border: "1px solid rgba(139, 92, 246, 0.1)" }}>
-        <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <div className="w-3 h-3 rounded-full bg-red-500/60" />
-          <div className="w-3 h-3 rounded-full bg-amber-500/60" />
-          <div className="w-3 h-3 rounded-full bg-emerald-500/60" />
-          <span className="text-xs text-white/20 ml-2">iqsport-ai-engine</span>
+      {/* Terminal — compact */}
+      <div className="rounded-2xl px-4 py-3 font-mono text-xs overflow-hidden flex-shrink-0" style={{ background: "rgba(8, 10, 20, 0.9)", border: "1px solid rgba(139, 92, 246, 0.1)" }}>
+        <div className="flex items-center gap-1.5 mb-2 pb-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+          <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
+          <span className="text-[10px] text-white/20 ml-1.5">iqsport-ai-engine</span>
         </div>
-        <div className="space-y-1.5">
-          {visibleLines.filter(Boolean).map((line, idx) => (
+        <div className="space-y-1">
+          {visibleLines.filter(Boolean).slice(-4).map((line, idx, arr) => (
             <motion.div
               key={`${line}-${idx}`}
-              initial={{ opacity: 0, x: -10 }}
+              initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: 0.25 }}
               style={{
                 color: (line || '').includes("ready") || (line || '').includes("97.3") ? "#06B6D4" : "#8B5CF6",
                 textShadow: `0 0 8px ${(line || '').includes("ready") ? "rgba(6,182,212,0.5)" : "rgba(139,92,246,0.3)"}`,
               }}
             >
               {line}
-              {idx === visibleLines.length - 1 && (
-                <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.8, repeat: Infinity }} className="ml-1">|</motion.span>
+              {idx === arr.length - 1 && (
+                <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.8, repeat: Infinity }} className="ml-0.5">|</motion.span>
               )}
             </motion.div>
           ))}
