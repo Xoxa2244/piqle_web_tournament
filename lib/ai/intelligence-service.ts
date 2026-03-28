@@ -144,7 +144,7 @@ const preferencesInput = z.object({
 
 // ── Helper: Build booking history for a user ──
 
-async function buildBookingHistory(prisma: any, userId: string): Promise<BookingHistory> {
+export async function buildBookingHistory(prisma: any, userId: string): Promise<BookingHistory> {
   const now = new Date();
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

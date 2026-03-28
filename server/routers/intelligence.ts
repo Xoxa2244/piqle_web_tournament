@@ -16,6 +16,7 @@ import {
   getPreferences,
 } from '@/lib/ai/intelligence-service'
 import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
+import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 
 // ── In-memory caches (per serverless instance, 5 min TTL) ──
 const calendarCache = new Map<string, { data: any; ts: number }>()
@@ -2739,5 +2740,65 @@ export const intelligenceRouter = createTRPCRouter({
       }
 
       return { actual, forecast, summary }
+    }),
+
+  // ── Member AI Profiles ──
+
+  getMemberAiProfiles: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userIds: z.array(z.string()).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const where: any = { clubId: input.clubId }
+      if (input.userIds?.length) where.userId = { in: input.userIds }
+      const profiles = await ctx.prisma.memberAiProfile.findMany({
+        where,
+        orderBy: { riskScore: 'asc' },
+      })
+      return profiles
+    }),
+
+  getMemberAiProfile: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userId: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      return ctx.prisma.memberAiProfile.findUnique({
+        where: { userId_clubId: { userId: input.userId, clubId: input.clubId } },
+      })
+    }),
+
+  regenerateMemberProfiles: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      forceRegenerate: z.boolean().optional().default(false),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await checkFeatureAccess(input.clubId, 'reactivation')
+      // Fire-and-forget in background
+      generateMemberProfilesForClub(ctx.prisma, input.clubId, {
+        forceRegenerate: input.forceRegenerate,
+        batchSize: 10,
+        delayMs: 300,
+      }).catch(err => console.error('[tRPC] regenerateMemberProfiles failed:', err))
+      return { status: 'started' }
+    }),
+
+  regenerateSingleMemberProfile: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+      const profile = await generateSingleMemberProfile(
+        ctx.prisma, input.userId, input.clubId, club?.name || 'Your Club'
+      )
+      return profile
     }),
 })

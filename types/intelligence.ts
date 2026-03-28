@@ -512,3 +512,21 @@ export interface ClubAutomationSettingsV2 {
   channel: 'email' | 'sms' | 'both'
   intelligence?: ClubIntelligenceSettings
 }
+
+// ====== Member AI Profile Cache ======
+
+export type RiskSegment = 'high_risk' | 'medium_risk' | 'low_risk' | 'healthy'
+
+export interface MemberAiProfileData {
+  id: string
+  userId: string
+  clubId: string
+  riskSegment: RiskSegment
+  riskScore: number
+  preferredCategories: string[]
+  reactivationMessage: string | null
+  slotFillerProfile: string | null
+  generatedAt: Date
+  modelUsed: string | null
+  generationMs: number | null
+}

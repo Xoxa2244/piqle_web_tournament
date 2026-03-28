@@ -6,6 +6,7 @@
 import { prisma } from '@/lib/prisma'
 import { ExternalEntityType } from '@prisma/client'
 import * as XLSX from 'xlsx'
+import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
 
 // ── Types ──
 
@@ -621,6 +622,14 @@ export async function runCourtReserveRowImport(
   }
 
   await _runImportPipeline(clubId, partnerId, parsedMembers, parsedSessions, result)
+
+  // ── Fire-and-forget: generate AI member profiles after import ──
+  if (result.members.created + result.members.updated > 0 || result.sessions.created > 0) {
+    generateMemberProfilesForClub(prisma, clubId, { batchSize: 10, delayMs: 300 })
+      .then(r => console.log(`[AI Profiles] Post-import generation done: ${r.generated} generated, ${r.errors} errors`))
+      .catch(err => console.error('[AI Profiles] Post-import generation failed:', err instanceof Error ? err.message : err))
+  }
+
   return result
 }
 

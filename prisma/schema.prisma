@@ -75,6 +75,7 @@ model User {
   aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
   memberHealthSnapshots    MemberHealthSnapshot[]     @relation("MemberHealthSnapshots")
+  memberAiProfiles         MemberAiProfile[]          @relation("MemberAiProfiles")
 
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
@@ -240,6 +241,7 @@ model Club {
   userPlayPreferences     UserPlayPreference[]
   aiRecommendationLogs    AIRecommendationLog[]
   memberHealthSnapshots   MemberHealthSnapshot[]     @relation("ClubMemberHealthSnapshots")
+  memberAiProfiles        MemberAiProfile[]          @relation("MemberAiProfiles")
 
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
@@ -1739,4 +1741,29 @@ model WeeklySummary {
   @@unique([clubId, weekStart])
   @@index([clubId])
   @@map("weekly_summaries")
+}
+
+model MemberAiProfile {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  clubId               String   @map("club_id")
+  riskSegment          String   @default("healthy") @map("risk_segment")
+  riskScore            Int      @default(50) @map("risk_score")
+  preferredCategories  String[] @default([]) @map("preferred_categories")
+  reactivationMessage  String?  @map("reactivation_message")
+  slotFillerProfile    String?  @map("slot_filler_profile")
+  generatedAt          DateTime @map("generated_at")
+  modelUsed            String?  @map("model_used")
+  generationMs         Int?     @map("generation_ms")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user  User @relation("MemberAiProfiles", fields: [userId], references: [id], onDelete: Cascade)
+  club  Club @relation("MemberAiProfiles", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+  @@index([clubId])
+  @@index([userId])
+  @@index([riskSegment])
+  @@map("member_ai_profiles")
 }
