@@ -229,6 +229,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [sentMessages, setSentMessages] = useState<Record<string, string>>({});
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -288,6 +290,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       if (sortBy === "sessions") return b.sessionsThisMonth - a.sessionsThisMonth;
       return 0;
     });
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const activeMember = allMembers.find((m) => m.id === selectedMember);
 
@@ -431,7 +436,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
             <input
               placeholder="Search by name or email..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="bg-transparent border-none outline-none text-sm w-full"
               style={{ color: "var(--t1)" }}
             />
@@ -454,6 +459,14 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                 </button>
               ))}
             </div>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              className="text-[11px] px-2 py-1.5 rounded-xl outline-none"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+            >
+              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+            </select>
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
               {([{ mode: "grid" as const, Icon: LayoutGrid }, { mode: "list" as const, Icon: List }]).map(({ mode, Icon }) => (
                 <button
@@ -524,7 +537,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       {/* Member Grid */}
       {viewMode === "grid" ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((member, i) => (
+          {paginated.map((member, i) => (
             <motion.div
               key={member.id}
               initial={{ opacity: 0, y: 10 }}
@@ -633,7 +646,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
             <span className="hidden lg:block">Last Active</span>
             <span />
           </div>
-          {filtered.map((member, i) => {
+          {paginated.map((member, i) => {
             const seg = segmentConfig[member.segment];
             return (
               <motion.div
@@ -691,9 +704,49 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         </Card>
       )}
 
-      {/* Summary */}
-      <div className="text-center text-xs py-4" style={{ color: "var(--t4)" }}>
-        Showing {filtered.length} of {allMembers.length} members
+      {/* Pagination */}
+      <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid var(--divider)" }}>
+        <span className="text-xs" style={{ color: "var(--t4)" }}>
+          Showing {filtered.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, filtered.length)} of {filtered.length} members
+        </span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+            >
+              ← Prev
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              const p = totalPages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= totalPages - 3 ? totalPages - 6 + i : page - 3 + i;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className="w-8 h-8 rounded-lg text-xs transition-all"
+                  style={{
+                    background: page === p ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)",
+                    border: `1px solid ${page === p ? "transparent" : "var(--card-border)"}`,
+                    color: page === p ? "white" : "var(--t2)",
+                    fontWeight: page === p ? 700 : 500,
+                  }}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   );
