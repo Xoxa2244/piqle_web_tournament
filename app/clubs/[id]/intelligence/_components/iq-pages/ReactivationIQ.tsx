@@ -292,7 +292,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         // Thresholds calibrated to the real achievable range for at-risk candidates.
         const high = reactivationData.candidates.filter((c: any) => c.score < 20).length;
         const medium = reactivationData.candidates.filter((c: any) => c.score >= 20 && c.score < 35).length;
-        const low = reactivationData.candidates.filter((c: any) => c.score >= 35 && c.score < 50).length;
+        const low = reactivationData.candidates.filter((c: any) => c.score >= 35).length; // all remaining candidates
         const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
           { name: "High Risk", value: high, color: "#EF4444" },
@@ -350,11 +350,11 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {(() => {
-          const atRiskCount = allMembers.filter(m => m.risk === "high" || m.risk === "medium").length;
+          const highMediumCount = allMembers.filter(m => m.risk === "high" || m.risk === "medium").length;
           const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
           const totalRevenue = allMembers.reduce((s, m) => s + (m.revenue || 0), 0);
           return [
-            { label: "At-Risk Members", value: String(atRiskCount), icon: AlertTriangle, gradient: "from-red-500 to-orange-500", change: `${allMembers.length} tracked`, up: false },
+            { label: "Inactive Members", value: String(allMembers.length), icon: AlertTriangle, gradient: "from-red-500 to-orange-500", change: `${highMediumCount} high/medium risk`, up: false },
             { label: "Reactivated (30d)", value: "—", icon: UserPlus, gradient: "from-emerald-500 to-green-500", change: "tracking", up: true },
             { label: "Revenue at Risk", value: totalRevenue > 0 ? `$${(totalRevenue / 1000).toFixed(1)}K` : "$0", icon: DollarSign, gradient: "from-violet-500 to-purple-600", change: "lifetime value", up: false },
             { label: "Avg Health Score", value: String(avgHealth), icon: Heart, gradient: "from-pink-500 to-rose-500", change: "at-risk segment", up: false },
