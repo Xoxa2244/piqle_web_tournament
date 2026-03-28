@@ -150,7 +150,9 @@ function ClubsPageContent() {
   }
 
   // IQ brand: auto-redirect to dashboard if user has exactly 1 club
-  if (brand.key === 'iqsport' && isLoggedIn && !isLoading) {
+  // Skip if ?add=true (user wants to add another club)
+  const wantsToAdd = searchParams.get('add') === 'true'
+  if (brand.key === 'iqsport' && isLoggedIn && !isLoading && !wantsToAdd) {
     const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing)
 
     if (myClubs.length === 1) {
