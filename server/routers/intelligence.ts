@@ -1497,6 +1497,59 @@ export const intelligenceRouter = createTRPCRouter({
       return sendOutreachMessage(ctx.prisma, input)
     }),
 
+  // ── Delete ALL imported data for a club (clean slate) ──
+  deleteAllClubData: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { isAdmin } = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can delete club data' })
+
+      const clubId = input.clubId
+      const deleted: Record<string, number> = {}
+
+      // 1. Bookings (depends on sessions)
+      const d1 = await ctx.prisma.playSessionBooking.deleteMany({ where: { playSession: { clubId } } })
+      deleted.bookings = d1.count
+
+      // 2. Play sessions
+      const d2 = await ctx.prisma.playSession.deleteMany({ where: { clubId } })
+      deleted.sessions = d2.count
+
+      // 3. Document embeddings (sessions, members, patterns, etc.)
+      deleted.embeddings = Number(await ctx.prisma.$executeRaw`DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid`)
+
+      // 4. AI profiles
+      const d4 = await ctx.prisma.memberAiProfile.deleteMany({ where: { clubId } })
+      deleted.aiProfiles = d4.count
+
+      // 5. Health snapshots
+      const d5 = await ctx.prisma.memberHealthSnapshot.deleteMany({ where: { clubId } })
+      deleted.healthSnapshots = d5.count
+
+      // 6. Recommendation logs
+      const d6 = await ctx.prisma.aIRecommendationLog.deleteMany({ where: { clubId } })
+      deleted.recommendationLogs = d6.count
+
+      // 7. External ID mappings
+      deleted.externalMappings = Number(await ctx.prisma.$executeRaw`
+        DELETE FROM external_id_mappings WHERE partner_id LIKE ${'courtreserve-excel-' + clubId + '%'}
+      `)
+
+      // 8. Club followers (member associations)
+      const d8 = await ctx.prisma.clubFollower.deleteMany({ where: { clubId } })
+      deleted.followers = d8.count
+
+      // 9. Weekly summaries
+      const d9 = await ctx.prisma.weeklySummary.deleteMany({ where: { clubId } })
+      deleted.weeklySummaries = d9.count
+
+      // Clear in-memory caches
+      calendarCache.delete(`calendar:${clubId}`)
+
+      console.log(`[deleteAllClubData] Club ${clubId} cleaned:`, deleted)
+      return { ok: true, deleted }
+    }),
+
   // ── RAG: Trigger embedding index for a club ──
   reindexClub: protectedProcedure
     .input(z.object({

@@ -470,10 +470,13 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
   const [files, setFiles] = useState<ExcelFile[]>([])
   const [importing, setImporting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const importMutation = trpc.connectors.importExcel.useMutation()
+  const deleteMutation = trpc.intelligence.deleteAllClubData.useMutation()
 
   const fileSlots: { type: ExcelFile['type']; label: string; icon: any; description: string }[] = [
     { type: 'members', label: 'Members', icon: Users, description: 'MembersReport.xlsx' },
@@ -502,19 +505,81 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
   const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
 
+  const handleDeleteAll = async () => {
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await deleteMutation.mutateAsync({ clubId })
+      setConfirmDelete(false)
+      setResult(null)
+      setFiles([])
+      setProgress({ current: '', done: [], errors: [] })
+      alert(`All data deleted. Removed: ${Object.entries(res.deleted).filter(([,v]) => (v as number) > 0).map(([k,v]) => `${v} ${k}`).join(', ')}`)
+    } catch (err: any) {
+      setError(err.message || 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // Import files ONE BY ONE — parse XLSX client-side, send JSON rows to avoid timeout
   const handleImport = async () => {
     if (files.length === 0) return
     setImporting(true)
     setError(null)
     setResult(null)
-    try {
-      const res = await importMutation.mutateAsync({ clubId, files: files.map(f => ({ type: f.type, data: f.data })) })
-      setResult(res)
-    } catch (err: any) {
-      setError(err.message || 'Import failed')
-    } finally {
-      setImporting(false)
+    setProgress({ current: '', done: [], errors: [] })
+
+    const XLSX = (await import('xlsx')).default
+    const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
+
+    // Import order: members first, then reservations, then events
+    const ordered = ['members', 'reservations', 'events'] as const
+    for (const fileType of ordered) {
+      const file = files.find(f => f.type === fileType)
+      if (!file) continue
+
+      setProgress(prev => ({ ...prev, current: file.name }))
+
+      try {
+        // Parse XLSX client-side
+        const binary = atob(file.data)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        const wb = XLSX.read(bytes, { type: 'array' })
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+
+        // Send rows as JSON (no base64 bloat)
+        const res = await fetch('/api/connectors/courtreserve/import-rows', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clubId, fileType, rows }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }))
+          throw new Error(err.error || `HTTP ${res.status}`)
+        }
+
+        const data = await res.json()
+        // Merge results
+        for (const key of ['members', 'sessions', 'bookings'] as const) {
+          if (data[key]) {
+            combined[key].created += data[key].created || 0
+            combined[key].updated += data[key].updated || 0
+            combined[key].errors += data[key].errors || 0
+          }
+        }
+
+        setProgress(prev => ({ ...prev, done: [...prev.done, file.name] }))
+      } catch (err: any) {
+        setProgress(prev => ({ ...prev, errors: [...prev.errors, `${file.name}: ${err.message}`] }))
+      }
     }
+
+    setResult(combined)
+    setProgress(prev => ({ ...prev, current: '' }))
+    setImporting(false)
   }
 
   return (
@@ -527,28 +592,59 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
         }}>
           <FileSpreadsheet size={24} color="white" />
         </div>
-        <div>
-          <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Manual Import</p>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Data Import</p>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Upload CourtReserve Excel exports</p>
         </div>
+        {/* Delete All Button */}
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none',
+            background: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)',
+            color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>
+            <Unplug size={14} />
+            Delete All Data
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={handleDeleteAll} disabled={deleting} style={{
+              padding: '8px 14px', borderRadius: 8, border: 'none',
+              background: '#ef4444', color: 'white', fontSize: 12, fontWeight: 600,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+            }}>
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : 'Yes, Delete Everything'}
+            </button>
+            <button onClick={() => setConfirmDelete(false)} style={{
+              padding: '8px 14px', borderRadius: 8, border: '1px solid var(--card-border)',
+              background: 'transparent', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer',
+            }}>
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
         Export your data from CourtReserve (Reports → Members, Reservations, Event Registrants) and upload the .xlsx files below.
+        Files are processed one at a time to handle large datasets.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
         {fileSlots.map(slot => {
           const file = files.find(f => f.type === slot.type)
+          const isDone = progress.done.some(d => d === file?.name)
+          const isActive = progress.current === file?.name
+          const hasError = progress.errors.some(e => e.startsWith(file?.name || '---'))
           const Icon = slot.icon
           return (
-            <div key={slot.type} onClick={() => !file && handleFileSelect(slot.type)} style={{
+            <div key={slot.type} onClick={() => !file && !importing && handleFileSelect(slot.type)} style={{
               padding: 14, borderRadius: 10, textAlign: 'center', position: 'relative',
-              border: file ? '1px solid rgba(16,185,129,0.4)' : '1px dashed var(--card-border)',
-              background: file ? (isDark ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.05)') : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
-              cursor: file ? 'default' : 'pointer', transition: 'all 0.2s',
+              border: isDone ? '1px solid rgba(16,185,129,0.4)' : isActive ? '1px solid rgba(139,92,246,0.4)' : hasError ? '1px solid rgba(239,68,68,0.4)' : file ? '1px solid rgba(16,185,129,0.4)' : '1px dashed var(--card-border)',
+              background: isDone ? 'rgba(16,185,129,0.08)' : isActive ? 'rgba(139,92,246,0.08)' : file ? (isDark ? 'rgba(16,185,129,0.05)' : 'rgba(16,185,129,0.03)') : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
+              cursor: file || importing ? 'default' : 'pointer', transition: 'all 0.2s',
             }}>
-              {file && (
+              {file && !importing && (
                 <button onClick={(e) => { e.stopPropagation(); removeFile(slot.type) }} style={{
                   position: 'absolute', top: 6, right: 6, background: 'rgba(239,68,68,0.2)', border: 'none',
                   borderRadius: 6, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -557,12 +653,17 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
                   <X size={12} />
                 </button>
               )}
-              <Icon size={20} style={{ color: file ? '#10b981' : 'var(--text-secondary)', marginBottom: 6 }} />
+              {isActive ? (
+                <Loader2 size={20} className="animate-spin" style={{ color: '#8B5CF6', marginBottom: 6, display: 'inline-block' }} />
+              ) : (
+                <Icon size={20} style={{ color: isDone ? '#10b981' : file ? '#10b981' : 'var(--text-secondary)', marginBottom: 6 }} />
+              )}
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{slot.label}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                {file ? file.name.substring(0, 20) + (file.name.length > 20 ? '...' : '') : slot.description}
+              <div style={{ fontSize: 11, color: isActive ? '#8B5CF6' : 'var(--text-secondary)', marginTop: 2 }}>
+                {isActive ? 'Importing...' : file ? file.name.substring(0, 20) + (file.name.length > 20 ? '...' : '') : slot.description}
               </div>
-              {file && <CheckCircle2 size={14} style={{ color: '#10b981', marginTop: 6 }} />}
+              {isDone && <CheckCircle2 size={14} style={{ color: '#10b981', marginTop: 6 }} />}
+              {hasError && <AlertCircle size={14} style={{ color: '#ef4444', marginTop: 6 }} />}
             </div>
           )
         })}
@@ -575,8 +676,14 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
         fontSize: 14, fontWeight: 600, cursor: files.length > 0 && !importing ? 'pointer' : 'not-allowed',
       }}>
         {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-        {importing ? 'Importing...' : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
+        {importing ? `Importing (${progress.done.length}/${files.length})...` : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
       </button>
+
+      {progress.errors.length > 0 && (
+        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
+          {progress.errors.map((e, i) => <div key={i}><AlertCircle size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />{e}</div>)}
+        </div>
+      )}
 
       {error && (
         <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
@@ -584,7 +691,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
         </div>
       )}
 
-      {result && (
+      {result && !importing && (
         <div style={{ marginTop: 12 }}>
           <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 13, color: '#10b981' }}>
             <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />Import complete!
