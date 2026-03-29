@@ -102,105 +102,14 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
 
 type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; href: string };
 
-const periodData: Record<Period, {
-  kpis: KpiItem[];
-  health: { level: string; count: number; pct: number; color: string }[];
-  healthMetrics: { improved: number; improvedPct: number; declined: number; declinedPct: number; avgScore: number; avgScorePrev: number; churnedThisPeriod: number; churnChange: number };
-  comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
-}> = {
-  week: {
-    kpis: [
-      { label: "Active Members", value: "89", change: "+4.7%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [60, 62, 58, 65, 70, 72, 75, 78, 80, 82, 85, 89] },
-      { label: "Court Occupancy", value: "58%", change: "+1.8%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [48, 50, 52, 55, 53, 56, 54, 57, 55, 56, 57, 58] },
-      { label: "Weekly Revenue", value: "$4.6K", change: "+9.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [3.2, 3.4, 3.1, 3.6, 3.8, 4.0, 4.2, 4.1, 4.3, 4.4, 4.5, 4.6] },
-      { label: "Lost Revenue", value: "$980", change: "-5.1%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [1.4, 1.3, 1.2, 1.1, 1.15, 1.1, 1.05, 1.02, 1.0, 0.98, 0.99, 0.98] },
-    ],
-    health: [
-      { level: "Healthy", count: 52, pct: 58, color: "#10B981" },
-      { level: "Watch", count: 18, pct: 20, color: "#F59E0B" },
-      { level: "At-Risk", count: 12, pct: 14, color: "#F97316" },
-      { level: "Critical", count: 7, pct: 8, color: "#EF4444" },
-    ],
-    healthMetrics: { improved: 8, improvedPct: 9.0, declined: 3, declinedPct: 3.4, avgScore: 70, avgScorePrev: 68, churnedThisPeriod: 1, churnChange: -50 },
-    comparison: [
-      { metric: "Total Revenue", current: 4600, previous: 4200, format: "currency" },
-      { metric: "Active Members", current: 89, previous: 85, format: "number" },
-      { metric: "Rev per Member", current: 52, previous: 49, format: "currency" },
-      { metric: "Court Utilization", current: 58, previous: 57, format: "percent" },
-      { metric: "Avg Health Score", current: 70, previous: 68, format: "number" },
-      { metric: "Churn Rate", current: 1.1, previous: 2.4, format: "percent" },
-    ],
-  },
-  month: {
-    kpis: [
-      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
-      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
-      { label: "Monthly Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
-      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
-    ],
-    health: [
-      { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
-      { level: "Watch", count: 25, pct: 20, color: "#F59E0B" },
-      { level: "At-Risk", count: 18, pct: 14, color: "#F97316" },
-      { level: "Critical", count: 12, pct: 9, color: "#EF4444" },
-    ],
-    healthMetrics: { improved: 23, improvedPct: 18.1, declined: 9, declinedPct: 7.1, avgScore: 68, avgScorePrev: 64, churnedThisPeriod: 5, churnChange: -37.5 },
-    comparison: [
-      { metric: "Total Revenue", current: 19450, previous: 17300, format: "currency" },
-      { metric: "Active Members", current: 127, previous: 118, format: "number" },
-      { metric: "Rev per Member", current: 153, previous: 147, format: "currency" },
-      { metric: "Court Utilization", current: 74, previous: 68, format: "percent" },
-      { metric: "Avg Health Score", current: 68, previous: 64, format: "number" },
-      { metric: "Churn Rate", current: 3.9, previous: 5.2, format: "percent" },
-    ],
-  },
-  quarter: {
-    kpis: [
-      { label: "Active Members", value: "142", change: "+14.5%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [90, 95, 100, 105, 108, 112, 118, 122, 128, 132, 138, 142] },
-      { label: "Court Occupancy", value: "65%", change: "+5.2%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [55, 56, 58, 59, 60, 61, 62, 63, 62, 64, 64, 65] },
-      { label: "Quarterly Revenue", value: "$54.8K", change: "+18.3%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [38, 40, 42, 44, 45, 46, 48, 50, 51, 52, 53, 54.8] },
-      { label: "Lost Revenue", value: "$11.6K", change: "-8.4%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [15, 14.5, 14, 13.8, 13.5, 13, 12.8, 12.5, 12.2, 12, 11.8, 11.6] },
-    ],
-    health: [
-      { level: "Healthy", count: 82, pct: 58, color: "#10B981" },
-      { level: "Watch", count: 28, pct: 20, color: "#F59E0B" },
-      { level: "At-Risk", count: 20, pct: 14, color: "#F97316" },
-      { level: "Critical", count: 12, pct: 8, color: "#EF4444" },
-    ],
-    healthMetrics: { improved: 38, improvedPct: 26.8, declined: 14, declinedPct: 9.9, avgScore: 71, avgScorePrev: 63, churnedThisPeriod: 8, churnChange: -42.9 },
-    comparison: [
-      { metric: "Total Revenue", current: 54800, previous: 46300, format: "currency" },
-      { metric: "Active Members", current: 142, previous: 124, format: "number" },
-      { metric: "Rev per Member", current: 386, previous: 373, format: "currency" },
-      { metric: "Court Utilization", current: 65, previous: 62, format: "percent" },
-      { metric: "Avg Health Score", current: 71, previous: 63, format: "number" },
-      { metric: "Churn Rate", current: 5.6, previous: 8.1, format: "percent" },
-    ],
-  },
-  custom: {
-    kpis: [
-      { label: "Active Members", value: "127", change: "+8.2%", up: true, icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: [40, 45, 42, 50, 48, 55, 58, 62, 60, 65, 68, 72] },
-      { label: "Court Occupancy", value: "62%", change: "+3.1%", up: true, icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: [50, 52, 48, 55, 58, 60, 56, 62, 64, 60, 63, 62] },
-      { label: "Revenue", value: "$18.4K", change: "+12.5%", up: true, icon: DollarSign, gradient: "from-emerald-500 to-green-500", href: "/revenue", sparkData: [12, 13, 11, 14, 15, 14, 16, 17, 16, 18, 17, 18.4] },
-      { label: "Lost Revenue", value: "$4.2K", change: "-2.3%", up: false, icon: AlertTriangle, gradient: "from-red-500 to-orange-500", href: "/slot-filler", sparkData: [6, 5.5, 5.8, 5.2, 5, 4.8, 5, 4.6, 4.5, 4.4, 4.3, 4.2] },
-    ],
-    health: [
-      { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
-      { level: "Watch", count: 25, pct: 20, color: "#F59E0B" },
-      { level: "At-Risk", count: 18, pct: 14, color: "#F97316" },
-      { level: "Critical", count: 12, pct: 9, color: "#EF4444" },
-    ],
-    healthMetrics: { improved: 23, improvedPct: 18.1, declined: 9, declinedPct: 7.1, avgScore: 68, avgScorePrev: 64, churnedThisPeriod: 5, churnChange: -37.5 },
-    comparison: [
-      { metric: "Total Revenue", current: 19450, previous: 17300, format: "currency" },
-      { metric: "Active Members", current: 127, previous: 118, format: "number" },
-      { metric: "Rev per Member", current: 153, previous: 147, format: "currency" },
-      { metric: "Court Utilization", current: 74, previous: 68, format: "percent" },
-      { metric: "Avg Health Score", current: 68, previous: 64, format: "number" },
-      { metric: "Churn Rate", current: 3.9, previous: 5.2, format: "percent" },
-    ],
-  },
-};
+const emptyHealth = [
+  { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
+  { level: "Watch", count: 0, pct: 0, color: "#F59E0B" },
+  { level: "At-Risk", count: 0, pct: 0, color: "#F97316" },
+  { level: "Critical", count: 0, pct: 0, color: "#EF4444" },
+];
+const emptyHealthMetrics = { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: 0, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 };
+const emptyComparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[] = [];
 
 const occupancyHeatmap = [
   { day: "Mon", slots: [30, 45, 72, 85, 60, 40, 25] },
@@ -214,22 +123,11 @@ const occupancyHeatmap = [
 const heatmapTimes = ["6AM", "9AM", "12PM", "3PM", "6PM", "8PM", "10PM"];
 
 
-const dataUploadHistory = [
-  { id: "u1", date: "Mar 15, 2026", records: 1247, quality: 98, status: "success" as const, source: "CourtReserve CSV", duration: "2.4s" },
-  { id: "u2", date: "Mar 8, 2026", records: 1183, quality: 95, status: "success" as const, source: "CourtReserve CSV", duration: "2.1s" },
-  { id: "u3", date: "Mar 1, 2026", records: 1156, quality: 92, status: "warning" as const, source: "Manual Upload", duration: "3.8s" },
-  { id: "u4", date: "Feb 22, 2026", records: 1098, quality: 97, status: "success" as const, source: "CourtReserve CSV", duration: "1.9s" },
-  { id: "u5", date: "Feb 15, 2026", records: 1042, quality: 88, status: "warning" as const, source: "Manual Upload", duration: "4.2s" },
-];
 
-const defaultAiInsights = [
-  { title: "Weekend Peak Optimization", desc: "Saturday 3-6PM is at 98% capacity. Consider adding overflow courts or waitlist pricing.", priority: "high", icon: TrendingUp },
-  { title: "Tuesday Morning Gap", desc: "Only 38% occupancy Tue 9-12. Recommend a beginner clinic — 23 eligible members identified.", priority: "medium", icon: Target },
-  { title: "Reactivation Opportunity", desc: "12 members haven't played in 30+ days. Personalized win-back campaign ready to launch.", priority: "medium", icon: Users },
-];
 
-function generateInsights(dashboardData: any, healthData: any, heatmapData: any, goals?: string[]): typeof defaultAiInsights {
-  const insights: typeof defaultAiInsights = [];
+type AiInsight = { title: string; desc: string; priority: string; icon: any };
+function generateInsights(dashboardData: any, healthData: any, heatmapData: any, goals?: string[]): AiInsight[] {
+  const insights: AiInsight[] = [];
   // 1. Find peak slots from heatmap
   if (heatmapData?.heatmap) {
     let peakSlot = { day: '', time: '', value: 0 };
@@ -293,7 +191,7 @@ function generateInsights(dashboardData: any, healthData: any, heatmapData: any,
     }
   }
 
-  return insights.length > 0 ? insights.slice(0, 4) : defaultAiInsights;
+  return insights.slice(0, 4);
 }
 
 /* --- Sparkline Mini Chart --- */
@@ -383,7 +281,14 @@ type DashboardIQProps = {
   clubId?: string;
 };
 
-function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?: string): typeof periodData["month"] | null {
+type PeriodData = {
+  kpis: KpiItem[];
+  health: { level: string; count: number; pct: number; color: string }[];
+  healthMetrics: { improved: number; improvedPct: number; declined: number; declinedPct: number; avgScore: number; avgScorePrev: number; churnedThisPeriod: number; churnChange: number };
+  comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
+};
+
+function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?: string): PeriodData | null {
   if (!dashboardData) return null;
   const m = dashboardData.metrics;
   const hs = healthData?.summary;
@@ -413,7 +318,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
             up: false,
             icon: UserPlus,
             gradient: "from-amber-500 to-orange-500",
-            href: "/members",
+            href: "/members?view=reactivation",
             sparkData: [],
           }
         : {
@@ -433,9 +338,9 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
       { level: "Watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
       { level: "At-Risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
       { level: "Critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
-    ] : periodData.month.health,
-    healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : periodData.month.healthMetrics,
-    comparison: periodData.month.comparison, // comparison requires previous period — keep mock for now
+    ] : emptyHealth,
+    healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : emptyHealthMetrics,
+    comparison: emptyComparison,
   };
 }
 
@@ -627,9 +532,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   } catch (err) {
     console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { activeDashboardData, healthData });
   }
-  // Check if this is a demo/IQ preview (no real clubId or demo route)
-  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
-  const data = realData || (isDemo ? periodData[period] : null);
+  const data = realData || null;
   const isEmptyClub = !data;
   const labels = getPeriodLabel(period);
 
@@ -1126,7 +1029,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </div>
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
-              {displayInsights.map((insight) => (
+              {displayInsights.length > 0 ? displayInsights.map((insight) => (
                 <div
                   key={insight.title}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] cursor-pointer transition-all hover:scale-105"
@@ -1140,7 +1043,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   <insight.icon className="w-3 h-3" />
                   {insight.title}
                 </div>
-              ))}
+              )) : (
+                <span className="text-[11px]" style={{ color: "var(--t4)" }}>No insights available yet</span>
+              )}
             </div>
           </div>
         </Card>

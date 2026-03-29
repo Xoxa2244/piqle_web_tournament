@@ -326,7 +326,7 @@ function ChannelIcon({ channel }: { channel: string }) {
         sent: c.sent, opened: c.opened, clicked: c.clicked, converted: c.converted, revenue: 0,
         date: c.date, audience: `${c.sent} members`,
       }))
-    : (isDemo ? campaigns : []);
+    : [];
 
   const displayCampaignPerformance = campaignListData?.campaigns?.length
     ? (() => {
@@ -340,7 +340,7 @@ function ChannelIcon({ channel }: { channel: string }) {
         });
         return Array.from(weeks.entries()).map(([week, data]) => ({ week, ...data }));
       })()
-    : (isDemo ? campaignPerformance : []);
+    : [];
 
   const filtered = displayCampaigns.filter((c: any) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -359,8 +359,8 @@ function ChannelIcon({ channel }: { channel: string }) {
     : sentCampaigns.length > 0 ? Math.round(sentCampaigns.reduce((s: number, c: any) => s + ((c.converted || 0) / c.sent) * 100, 0) / sentCampaigns.length) : 0;
 
   const hasData = displayCampaigns.length > 0;
-  if (!hasData && !isDemo && !externalLoading) {
-    return <EmptyStateIQ icon={Send} title="No campaigns yet" description="Start tracking member outreach to see campaign performance, open rates, and conversion analytics." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  if (!hasData && !externalLoading) {
+    return <EmptyStateIQ icon={Send} title="No campaigns yet" description="Send outreach messages to members from the Members page to see campaign performance here. Check-ins, retention boosts, and reactivation messages will all appear here." ctaLabel="Go to Members" ctaHref={clubId ? `/clubs/${clubId}/intelligence/members` : undefined} />;
   }
 
   return (

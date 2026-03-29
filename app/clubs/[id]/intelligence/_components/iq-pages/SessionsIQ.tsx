@@ -1,10 +1,11 @@
 'use client'
 import React, { useState, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import {
-  CalendarDays, Clock, Users, TrendingUp, Filter, Search,
-  ChevronDown, ChevronUp, MapPin, Star, Zap, ArrowUpRight, ArrowDownRight,
-  BarChart3, Eye, Lightbulb, UserPlus, X, Mail, Smartphone, Bell, Send, Check,
+  CalendarDays, Users, Filter, Search,
+  ChevronDown, MapPin, Zap,
+  BarChart3, X,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,77 +15,19 @@ import { useTheme } from "../IQThemeProvider";
 import { EventsIQ } from "./EventsIQ";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 
-/* --- Mock Data --- */
-const weeklyData = [
-  { day: "Mon", sessions: 18, occupancy: 52, revenue: 1240 },
-  { day: "Tue", sessions: 14, occupancy: 38, revenue: 980 },
-  { day: "Wed", sessions: 22, occupancy: 65, revenue: 1580 },
-  { day: "Thu", sessions: 20, occupancy: 58, revenue: 1420 },
-  { day: "Fri", sessions: 26, occupancy: 78, revenue: 1860 },
-  { day: "Sat", sessions: 32, occupancy: 92, revenue: 2440 },
-  { day: "Sun", sessions: 28, occupancy: 85, revenue: 2100 },
-];
-
-const hourlyPattern = [
-  { time: "6AM", avg: 15 }, { time: "7AM", avg: 28 }, { time: "8AM", avg: 45 },
-  { time: "9AM", avg: 62 }, { time: "10AM", avg: 78 }, { time: "11AM", avg: 72 },
-  { time: "12PM", avg: 65 }, { time: "1PM", avg: 58 }, { time: "2PM", avg: 52 },
-  { time: "3PM", avg: 70 }, { time: "4PM", avg: 85 }, { time: "5PM", avg: 92 },
-  { time: "6PM", avg: 88 }, { time: "7PM", avg: 75 }, { time: "8PM", avg: 60 },
-  { time: "9PM", avg: 42 }, { time: "10PM", avg: 25 },
-];
-
-const formatBreakdown = [
-  { format: "Open Play", sessions: 45, pct: 32, revenue: 3200, trend: "+5%", up: true },
-  { format: "League Match", sessions: 28, pct: 20, revenue: 4800, trend: "+12%", up: true },
-  { format: "Private Lesson", sessions: 22, pct: 16, revenue: 5500, trend: "+8%", up: true },
-  { format: "Round Robin", sessions: 18, pct: 13, revenue: 2100, trend: "-3%", up: false },
-  { format: "Clinic", sessions: 15, pct: 11, revenue: 1800, trend: "+15%", up: true },
-  { format: "Tournament", sessions: 12, pct: 8, revenue: 3600, trend: "+22%", up: true },
-];
-
-const recentSessions = [
-  { id: "S-1849", court: "Court 2", format: "Open Play", date: "Tomorrow, 9:00 AM", players: 4, maxPlayers: 8, duration: "90 min", revenue: 60, status: "upcoming" },
-  { id: "S-1848", court: "Court 1", format: "Clinic", date: "Tomorrow, 11:00 AM", players: 6, maxPlayers: 12, duration: "120 min", revenue: 150, status: "upcoming" },
-  { id: "S-1847", court: "Court 1", format: "Open Play", date: "Today, 2:00 PM", players: 8, maxPlayers: 8, duration: "90 min", revenue: 120, status: "active" },
-  { id: "S-1846", court: "Court 2", format: "League Match", date: "Today, 1:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "active" },
-  { id: "S-1845", court: "Court 3", format: "Private Lesson", date: "Today, 12:00 PM", players: 2, maxPlayers: 2, duration: "60 min", revenue: 85, status: "completed" },
-  { id: "S-1844", court: "Court 1", format: "Clinic", date: "Today, 10:00 AM", players: 10, maxPlayers: 12, duration: "120 min", revenue: 300, status: "completed" },
-  { id: "S-1843", court: "Court 4", format: "Round Robin", date: "Today, 9:00 AM", players: 12, maxPlayers: 16, duration: "120 min", revenue: 180, status: "completed" },
-  { id: "S-1842", court: "Court 2", format: "Open Play", date: "Yesterday, 6:00 PM", players: 6, maxPlayers: 8, duration: "90 min", revenue: 90, status: "completed" },
-  { id: "S-1841", court: "Court 3", format: "Tournament", date: "Yesterday, 2:00 PM", players: 16, maxPlayers: 16, duration: "180 min", revenue: 640, status: "completed" },
-  { id: "S-1840", court: "Court 1", format: "League Match", date: "Yesterday, 12:00 PM", players: 4, maxPlayers: 4, duration: "60 min", revenue: 200, status: "completed" },
-];
-
-/* AI insights per session */
-const sessionInsights: Record<string, { fillRate: number; insight: string; suggestedPlayers: string[]; revenuePerPlayer: number; tip: string }> = {
-  "S-1849": { fillRate: 50, insight: "4 spots open. 6 members with morning preferences haven't booked yet.", suggestedPlayers: ["Emma W.", "Jake R.", "Lisa K.", "Tom B."], revenuePerPlayer: 15, tip: "Morning open play fills 85% on average — send invites now to hit that target." },
-  "S-1848": { fillRate: 50, insight: "6 spots open. Popular clinic format — usually fills to 90%.", suggestedPlayers: ["Sarah D.", "Mike C.", "Anna M.", "Chris L.", "Diana P."], revenuePerPlayer: 25, tip: "Clinic attendees convert to regulars at 3x rate. Worth a targeted push." },
-  "S-1847": { fillRate: 100, insight: "Fully booked — consider adding a second Open Play slot at this time.", suggestedPlayers: [], revenuePerPlayer: 15, tip: "High demand detected. 3 waitlisted players last week at this time." },
-  "S-1846": { fillRate: 100, insight: "League match always fills. Revenue per player is 2x open play.", suggestedPlayers: [], revenuePerPlayer: 50, tip: "Consider premium pricing for league slots." },
-  "S-1845": { fillRate: 100, insight: "Private lesson completed with full attendance.", suggestedPlayers: [], revenuePerPlayer: 42.5, tip: "Student has booked 8 lessons this month — offer a package deal." },
-  "S-1844": { fillRate: 83, insight: "2 empty spots. 5 members with matching preferences were available.", suggestedPlayers: ["Maria K.", "Alex T.", "Jordan P."], revenuePerPlayer: 25, tip: "Auto-invite could have filled this session and added $50 revenue." },
-  "S-1843": { fillRate: 75, insight: "4 spots unfilled. Format is losing popularity on mornings.", suggestedPlayers: ["Sam R.", "Nina L.", "Chris B.", "Tanya M."], revenuePerPlayer: 11.25, tip: "Try moving Round Robin to afternoon — 82% fill rate at 3PM." },
-  "S-1842": { fillRate: 75, insight: "2 spots unfilled. 3 members canceled within 2 hours of start.", suggestedPlayers: ["Liam N.", "Priya S."], revenuePerPlayer: 15, tip: "Late cancellations cost $30. Consider a cancellation fee policy." },
-  "S-1841": { fillRate: 100, insight: "Tournament fully booked. Highest revenue session this week.", suggestedPlayers: [], revenuePerPlayer: 40, tip: "Waitlist of 4 — consider expanding to 20 players next time." },
-  "S-1840": { fillRate: 100, insight: "League match consistent at 100% fill rate.", suggestedPlayers: [], revenuePerPlayer: 50, tip: "3rd consecutive full league match. Add another weekly league slot." },
-};
+/* --- Filter options (used for dropdown filters in session list) --- */
 
 const allFormats = ["Open Play", "League Match", "Private Lesson", "Round Robin", "Clinic", "Tournament"];
 const allCourts = ["Court 1", "Court 2", "Court 3", "Court 4"];
 const allStatuses = ["upcoming", "active", "completed", "cancelled"];
 
-const courtStats = [
-  { name: "Court 1", occupancy: 72, sessions: 42, revenue: 3800, sport: "Pickleball" },
-  { name: "Court 2", occupancy: 65, sessions: 38, revenue: 3200, sport: "Pickleball" },
-  { name: "Court 3", occupancy: 58, sessions: 34, revenue: 2900, sport: "Padel" },
-  { name: "Court 4", occupancy: 48, sessions: 28, revenue: 2100, sport: "Tennis" },
-];
 
 /* --- Map real calendarData to SessionsIQ format --- */
 type RealSession = { id: string; date: string; startTime: string; endTime: string; court: string; format: string; registered: number; capacity: number; occupancy: number; pricePerPlayer: number | null; revenue: number | null; status: 'past' | 'today' | 'upcoming'; recommendations: any[] };
 
-function mapCalendarToSessions(calendarData: any): typeof recentSessions {
+type MappedSession = { id: string; court: string; format: string; date: string; players: number; maxPlayers: number; duration: string; revenue: number; status: string };
+
+function mapCalendarToSessions(calendarData: any): MappedSession[] {
   if (!calendarData?.sessions?.length) return [];
   const now = new Date();
   return calendarData.sessions
@@ -300,56 +243,48 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   const [filterFormat, setFilterFormat] = useState<string>("");
   const [filterCourt, setFilterCourt] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
-  const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerName" -> "email"|"sms"
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
   const activeFilterCount = [filterFormat, filterCourt, filterStatus].filter(Boolean).length;
 
-  // Use real data — no mock fallback for real clubs
-  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
-
+  const router = useRouter();
 
   // Cache last successful data to prevent empty-state flash on re-fetch
   const lastGoodData = useRef<{ sessions: any[]; weekly: any[]; formats: any[]; courts: any[]; hourly: any[] }>({ sessions: [], weekly: [], formats: [], courts: [], hourly: [] });
 
-  const realSessions = useMemo(() => {
+  const displaySessions = useMemo(() => {
     const mapped = mapCalendarToSessions(calendarData);
     if (mapped.length > 0) lastGoodData.current.sessions = mapped;
     return mapped.length > 0 ? mapped : lastGoodData.current.sessions;
   }, [calendarData]);
-  const displaySessions = realSessions.length > 0 ? realSessions : (isDemo ? recentSessions : []);
   // hasData: true when we have sessions to display, OR calendarData was fetched and has at least 1 session
   const hasData = displaySessions.length > 0
     || (calendarData != null && Array.isArray(calendarData.sessions) && calendarData.sessions.length > 0);
 
-  const derivedWeekly = useMemo(() => {
+  const displayWeekly = useMemo(() => {
     const d = deriveWeeklyData(calendarData);
     if (d.length > 0) lastGoodData.current.weekly = d;
     return d.length > 0 ? d : lastGoodData.current.weekly;
   }, [calendarData]);
-  const displayWeekly = derivedWeekly.length > 0 ? derivedWeekly : (isDemo ? weeklyData : []);
 
-  const derivedFormats = useMemo(() => {
+  const displayFormats = useMemo(() => {
     const d = deriveFormatBreakdown(calendarData);
     if (d.length > 0) lastGoodData.current.formats = d;
     return d.length > 0 ? d : lastGoodData.current.formats;
   }, [calendarData]);
-  const displayFormats = derivedFormats.length > 0 ? derivedFormats : (isDemo ? formatBreakdown : []);
 
-  const derivedCourts = useMemo(() => {
+  const displayCourts = useMemo(() => {
     const d = deriveCourtStats(calendarData);
     if (d.length > 0) lastGoodData.current.courts = d;
     return d.length > 0 ? d : lastGoodData.current.courts;
   }, [calendarData]);
-  const displayCourts = derivedCourts.length > 0 ? derivedCourts : (isDemo ? courtStats : []);
 
-  const derivedHourly = useMemo(() => {
+  const displayHourly = useMemo(() => {
     const d = deriveHourlyPattern(calendarData);
     if (d.length > 0) lastGoodData.current.hourly = d;
     return d.length > 0 ? d : lastGoodData.current.hourly;
   }, [calendarData]);
-  const displayHourly = derivedHourly.length > 0 ? derivedHourly : (isDemo ? hourlyPattern : []);
 
   const eventsListData = useMemo(() => deriveEventsListData(calendarData), [calendarData]);
 
@@ -368,9 +303,9 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
   // Only show empty state if we have a definitive "no data" signal:
   // calendarData must have been loaded (not undefined) and contain no sessions,
-  // AND we're not currently loading, AND we're not in demo mode.
+  // AND we're not currently loading.
   const definitelyEmpty = calendarData !== undefined && !hasData;
-  if (definitelyEmpty && !isDemo && !externalLoading) {
+  if (definitelyEmpty && !externalLoading) {
     return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
   }
 
@@ -693,7 +628,6 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                 <tbody>
                   {filteredSessions.map((s, i) => {
                     const isExpanded = expandedId === s.id;
-                    const insights = sessionInsights[s.id];
                     const fillPct = Math.round((s.players / s.maxPlayers) * 100);
                     return (
                       <React.Fragment key={s.id}>
@@ -733,13 +667,22 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                                   }}
                                 />
                               </div>
+                              {fillPct < 50 && clubId && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); router.push(`/clubs/${clubId}/intelligence/slot-filler`); }}
+                                  className="text-[10px] whitespace-nowrap transition-colors hover:underline"
+                                  style={{ color: "#8B5CF6", fontWeight: 600 }}
+                                >
+                                  Fill → Slot Filler
+                                </button>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
                           <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                         </motion.tr>
-                        {isExpanded && insights && (
+                        {isExpanded && (
                           <tr style={{ borderBottom: "1px solid var(--divider)" }}>
                             <td colSpan={8} className="p-0" style={{ background: "var(--subtle)" }}>
                               <motion.div
@@ -772,116 +715,17 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                                     </div>
                                     <div className="flex items-center justify-between mt-1.5">
                                       <span className="text-[11px]" style={{ color: "var(--t4)" }}>{s.players} of {s.maxPlayers} players</span>
-                                      <span className="text-[11px]" style={{ color: "var(--t4)" }}>${insights.revenuePerPlayer}/player</span>
-                                    </div>
-                                  </div>
-
-                                  {/* AI Insights */}
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(139,92,246,0.15)" }}>
-                                          <Lightbulb className="w-3.5 h-3.5" style={{ color: "#A78BFA" }} />
-                                        </div>
-                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>AI Insight</span>
-                                      </div>
-                                      <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.insight}</p>
-                                    </div>
-                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(6,182,212,0.15)" }}>
-                                          <Zap className="w-3.5 h-3.5" style={{ color: "#22D3EE" }} />
-                                        </div>
-                                        <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Recommendation</span>
-                                      </div>
-                                      <p className="text-xs leading-relaxed" style={{ color: "var(--t2)" }}>{insights.tip}</p>
-                                    </div>
-                                  </div>
-
-                                  {/* Suggested Players with Invite Actions — only for non-completed sessions */}
-                                  {insights.suggestedPlayers.length > 0 && s.status !== "completed" && (
-                                    <div className="p-3 rounded-xl" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: "rgba(16,185,129,0.15)" }}>
-                                            <UserPlus className="w-3.5 h-3.5" style={{ color: "#34D399" }} />
-                                          </div>
-                                          <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>Invite Players to Fill</span>
-                                        </div>
+                                      {fillPct < 50 && clubId && (
                                         <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const newInvites = { ...sentInvites };
-                                            insights.suggestedPlayers.forEach((name) => { if (!newInvites[name]) newInvites[name] = "email"; });
-                                            setSentInvites(newInvites);
-                                          }}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
-                                          style={{
-                                            background: "linear-gradient(135deg, #8B5CF6, #06B6D4)",
-                                            color: "#fff",
-                                            fontWeight: 600,
-                                          }}
+                                          onClick={(e) => { e.stopPropagation(); router.push(`/clubs/${clubId}/intelligence/slot-filler`); }}
+                                          className="text-[11px] transition-colors hover:underline"
+                                          style={{ color: "#8B5CF6", fontWeight: 600 }}
                                         >
-                                          <Send className="w-3 h-3" />
-                                          Invite All via Email
+                                          Fill → Slot Filler
                                         </button>
-                                      </div>
-                                      <div className="space-y-2">
-                                        {insights.suggestedPlayers.map((name) => {
-                                          const inviteKey = name;
-                                          const isSent = !!sentInvites[inviteKey];
-                                          return (
-                                            <div
-                                              key={name}
-                                              className="flex items-center justify-between p-2.5 rounded-xl"
-                                              style={{ background: "var(--subtle)" }}
-                                            >
-                                              <div className="flex items-center gap-2.5">
-                                                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[11px]" style={{ background: "linear-gradient(135deg, #8B5CF622, #8B5CF644)", color: "#8B5CF6", fontWeight: 700 }}>
-                                                  {name.split(" ").map((n) => n[0]).join("")}
-                                                </div>
-                                                <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 500 }}>{name}</span>
-                                                {isSent && (
-                                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
-                                                    <Check className="w-3 h-3" />
-                                                    Sent via {sentInvites[inviteKey]}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              {!isSent && (
-                                                <div className="flex items-center gap-1.5">
-                                                  <button
-                                                    onClick={(e) => { e.stopPropagation(); setSentInvites((prev) => ({ ...prev, [inviteKey]: "email" })); }}
-                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
-                                                    style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
-                                                  >
-                                                    <Mail className="w-3 h-3" />
-                                                    Email
-                                                  </button>
-                                                  <button
-                                                    onClick={(e) => { e.stopPropagation(); setSentInvites((prev) => ({ ...prev, [inviteKey]: "sms" })); }}
-                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
-                                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
-                                                  >
-                                                    <Smartphone className="w-3 h-3" />
-                                                    SMS
-                                                  </button>
-                                                  <span
-                                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
-                                                    style={{ color: "var(--t4)", fontWeight: 500 }}
-                                                  >
-                                                    <Bell className="w-3 h-3" />
-                                                    Push
-                                                    <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>
-                                                  </span>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
+                                      )}
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               </motion.div>
                             </td>

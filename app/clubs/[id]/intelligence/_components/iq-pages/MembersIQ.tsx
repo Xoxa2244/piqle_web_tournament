@@ -15,24 +15,6 @@ import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 
-/* --- Mock Data --- */
-const memberGrowth = [
-  { month: "Oct", total: 98, new: 12, churned: 4 },
-  { month: "Nov", total: 104, new: 14, churned: 8 },
-  { month: "Dec", total: 108, new: 10, churned: 6 },
-  { month: "Jan", total: 114, new: 15, churned: 9 },
-  { month: "Feb", total: 121, new: 16, churned: 9 },
-  { month: "Mar", total: 127, new: 14, churned: 8 },
-];
-
-const activityDistribution = [
-  { range: "0", count: 10 },
-  { range: "1-2", count: 18 },
-  { range: "3-4", count: 35 },
-  { range: "5-6", count: 28 },
-  { range: "7-8", count: 22 },
-  { range: "9+", count: 14 },
-];
 
 type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "critical";
 
@@ -61,20 +43,6 @@ interface Member {
   totalRevenue: number;
 }
 
-const members: Member[] = [
-  { id: "m1", name: "Sarah Mitchell", avatar: "SM", email: "sarah.m@email.com", phone: "+1 (555) 100-2001", rating: 3.8, sport: "Pickleball", segment: "power", healthScore: 95, sessionsThisMonth: 12, totalSessions: 156, memberSince: "Jun 2023", lastPlayed: "Today", revenue: 2840, trend: "up", favoriteTime: "Morning", favoriteFormat: "League", activityLevel: "power", engagementTrend: "stable", valueTier: "high", avgSessionsPerWeek: 3.2, totalRevenue: 2840 },
-  { id: "m2", name: "James Wilson", avatar: "JW", email: "james.w@email.com", phone: "+1 (555) 100-2002", rating: 3.5, sport: "Pickleball", segment: "power", healthScore: 92, sessionsThisMonth: 10, totalSessions: 134, memberSince: "Aug 2023", lastPlayed: "Yesterday", revenue: 2450, trend: "up", favoriteTime: "Evening", favoriteFormat: "Open Play", activityLevel: "power", engagementTrend: "growing", valueTier: "high", avgSessionsPerWeek: 2.8, totalRevenue: 2450 },
-  { id: "m3", name: "Emma Johnson", avatar: "EJ", email: "emma.j@email.com", phone: "+1 (555) 100-2003", rating: 3.2, sport: "Padel", segment: "regular", healthScore: 78, sessionsThisMonth: 6, totalSessions: 89, memberSince: "Oct 2023", lastPlayed: "2 days ago", revenue: 1680, trend: "stable", favoriteTime: "Afternoon", favoriteFormat: "Doubles", activityLevel: "regular", engagementTrend: "stable", valueTier: "medium", avgSessionsPerWeek: 1.5, totalRevenue: 1680 },
-  { id: "m4", name: "Michael Chen", avatar: "MC", email: "michael.c@email.com", phone: "+1 (555) 100-2004", rating: 2.8, sport: "Pickleball", segment: "regular", healthScore: 72, sessionsThisMonth: 5, totalSessions: 67, memberSince: "Jan 2024", lastPlayed: "3 days ago", revenue: 1120, trend: "stable", favoriteTime: "Morning", favoriteFormat: "Clinic", activityLevel: "regular", engagementTrend: "growing", valueTier: "medium", avgSessionsPerWeek: 1.3, totalRevenue: 1120 },
-  { id: "m5", name: "Lisa Park", avatar: "LP", email: "lisa.p@email.com", phone: "+1 (555) 100-2005", rating: 3.0, sport: "Tennis", segment: "regular", healthScore: 75, sessionsThisMonth: 5, totalSessions: 72, memberSince: "Dec 2023", lastPlayed: "1 day ago", revenue: 1340, trend: "up", favoriteTime: "Evening", favoriteFormat: "Singles", activityLevel: "regular", engagementTrend: "growing", valueTier: "high", avgSessionsPerWeek: 1.4, totalRevenue: 1340 },
-  { id: "m6", name: "David Brown", avatar: "DB", email: "david.b@email.com", phone: "+1 (555) 100-2006", rating: 2.5, sport: "Pickleball", segment: "casual", healthScore: 55, sessionsThisMonth: 2, totalSessions: 28, memberSince: "May 2024", lastPlayed: "8 days ago", revenue: 420, trend: "down", favoriteTime: "Weekend", favoriteFormat: "Open Play", activityLevel: "casual", engagementTrend: "declining", valueTier: "low", avgSessionsPerWeek: 0.5, totalRevenue: 420 },
-  { id: "m7", name: "Anna Garcia", avatar: "AG", email: "anna.g@email.com", phone: "+1 (555) 100-2007", rating: 2.2, sport: "Padel", segment: "casual", healthScore: 48, sessionsThisMonth: 1, totalSessions: 15, memberSince: "Aug 2024", lastPlayed: "12 days ago", revenue: 240, trend: "down", favoriteTime: "Morning", favoriteFormat: "Clinic", activityLevel: "occasional", engagementTrend: "declining", valueTier: "low", avgSessionsPerWeek: 0.3, totalRevenue: 240 },
-  { id: "m8", name: "Tom Rivera", avatar: "TR", email: "tom.r@email.com", phone: "+1 (555) 100-2008", rating: 3.4, sport: "Pickleball", segment: "at-risk", healthScore: 28, sessionsThisMonth: 1, totalSessions: 92, memberSince: "Sep 2023", lastPlayed: "18 days ago", revenue: 1780, trend: "down", favoriteTime: "Evening", favoriteFormat: "Round Robin", activityLevel: "regular", engagementTrend: "declining", valueTier: "medium", avgSessionsPerWeek: 0.3, totalRevenue: 1780 },
-  { id: "m9", name: "Maria Santos", avatar: "MS", email: "maria.s@email.com", phone: "+1 (555) 100-2009", rating: 3.2, sport: "Pickleball", segment: "at-risk", healthScore: 18, sessionsThisMonth: 0, totalSessions: 86, memberSince: "Jan 2024", lastPlayed: "42 days ago", revenue: 1240, trend: "down", favoriteTime: "Morning", favoriteFormat: "League", activityLevel: "occasional", engagementTrend: "churning", valueTier: "medium", avgSessionsPerWeek: 0, totalRevenue: 1240 },
-  { id: "m10", name: "Kevin Lee", avatar: "KL", email: "kevin.l@email.com", phone: "+1 (555) 100-2010", rating: 2.6, sport: "Tennis", segment: "critical", healthScore: 8, sessionsThisMonth: 0, totalSessions: 34, memberSince: "Mar 2024", lastPlayed: "65 days ago", revenue: 560, trend: "down", favoriteTime: "Afternoon", favoriteFormat: "Singles", activityLevel: "occasional", engagementTrend: "churning", valueTier: "low", avgSessionsPerWeek: 0, totalRevenue: 560 },
-  { id: "m11", name: "Rachel Kim", avatar: "RK", email: "rachel.k@email.com", phone: "+1 (555) 100-2011", rating: 3.6, sport: "Pickleball", segment: "power", healthScore: 88, sessionsThisMonth: 9, totalSessions: 112, memberSince: "Jul 2023", lastPlayed: "Today", revenue: 2200, trend: "up", favoriteTime: "Morning", favoriteFormat: "Tournament", activityLevel: "power", engagementTrend: "stable", valueTier: "high", avgSessionsPerWeek: 2.5, totalRevenue: 2200 },
-  { id: "m12", name: "Chris Taylor", avatar: "CT", email: "chris.t@email.com", phone: "+1 (555) 100-2012", rating: 2.9, sport: "Padel", segment: "regular", healthScore: 68, sessionsThisMonth: 4, totalSessions: 48, memberSince: "Feb 2024", lastPlayed: "4 days ago", revenue: 860, trend: "stable", favoriteTime: "Evening", favoriteFormat: "Doubles", activityLevel: "casual", engagementTrend: "stable", valueTier: "medium", avgSessionsPerWeek: 1.0, totalRevenue: 860 },
-];
 
 const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string; tooltip: string }> = {
   power: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Power Player", tooltip: "4+ sessions/week, health score 80+" },
@@ -258,19 +226,17 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
     }
   };
 
-  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
-
-  // Use real data if available, otherwise fall back to mocks (only in demo mode)
+  // Use real data — no mock fallback
   const realMembers = mapRealMembers(memberHealthData);
-  const allMembers = realMembers.length > 0 ? realMembers : (isDemo ? members : []);
+  const allMembers = realMembers.length > 0 ? realMembers : [];
 
-  // Member growth chart — from real data or mocks
+  // Member growth chart — from real data
   const displayMemberGrowth = memberGrowthData?.growth?.length
     ? memberGrowthData.growth.map((g: any) => ({
         month: new Date(g.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
         total: g.total, new: g.new, churned: g.churned,
       }))
-    : (isDemo ? memberGrowth : []);
+    : [];
 
   // Activity distribution — derive from real member sessions data
   const displayActivityDistribution = realMembers.length > 0
@@ -278,7 +244,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         const ranges = [{ range: "0", min: 0, max: 0 }, { range: "1-2", min: 1, max: 2 }, { range: "3-4", min: 3, max: 4 }, { range: "5-6", min: 5, max: 6 }, { range: "7-8", min: 7, max: 8 }, { range: "9+", min: 9, max: 999 }];
         return ranges.map(r => ({ range: r.range, count: realMembers.filter((m: any) => m.sessionsThisMonth >= r.min && m.sessionsThisMonth <= r.max).length }));
       })()
-    : (isDemo ? activityDistribution : []);
+    : [];
 
   const filtered = allMembers
     .filter((m) => {
@@ -305,7 +271,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
   const activeMember = allMembers.find((m) => m.id === selectedMember);
 
   const hasData = allMembers.length > 0;
-  if (!hasData && !isDemo && !externalLoading) {
+  if (!hasData && !externalLoading) {
     return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 

@@ -140,7 +140,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
 
   // Build slot list from dashboard data (stable — does NOT depend on recommendations)
   const dashboardSlots = useMemo(() => buildSlotsFromDashboard(dashboardData), [dashboardData]);
-  const displaySlots = dashboardSlots.length > 0 ? dashboardSlots : (isDemo ? emptySlots : []);
+  const displaySlots = dashboardSlots.length > 0 ? dashboardSlots : [];
 
   // Player matches come from recommendations (only for the selected slot)
   const currentMatches = useMemo(() => mapRecommendationsToMatches(recommendations), [recommendations]);
