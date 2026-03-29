@@ -108,22 +108,39 @@ function deriveFormatBreakdown(calendarData: any) {
 
 function deriveCourtStats(calendarData: any) {
   if (!calendarData?.sessions?.length) return [];
-  const buckets: Record<string, { sessions: number; occSum: number; totalPlayers: number }> = {};
+  const OPEN = 6, CLOSE = 23; // 6AM-11PM
+  const courtHoursMap = new Map<string, Set<string>>(); // court → Set of "date|hour"
+  const courtDays = new Map<string, Set<string>>(); // court → Set of dates
+  const courtPlayers = new Map<string, number>();
+
   calendarData.sessions.forEach((s: RealSession) => {
-    if (!buckets[s.court]) buckets[s.court] = { sessions: 0, occSum: 0, totalPlayers: 0 };
-    buckets[s.court].sessions++;
-    buckets[s.court].occSum += s.occupancy;
-    buckets[s.court].totalPlayers += s.registered || 0;
+    const court = s.court;
+    const startH = parseInt(s.startTime?.slice(0, 2) || '0');
+    const endH = parseInt(s.endTime?.slice(0, 2) || '0') || startH + 1;
+
+    if (!courtHoursMap.has(court)) courtHoursMap.set(court, new Set());
+    if (!courtDays.has(court)) courtDays.set(court, new Set());
+    courtPlayers.set(court, (courtPlayers.get(court) || 0) + (s.registered || 0));
+    courtDays.get(court)!.add(s.date);
+
+    for (let h = Math.max(startH, OPEN); h < Math.min(endH, CLOSE); h++) {
+      courtHoursMap.get(court)!.add(s.date + '|' + h);
+    }
   });
-  return Object.entries(buckets)
-    .sort(([, a], [, b]) => b.sessions - a.sessions)
-    .map(([name, data]) => ({
+
+  const result: { name: string; occupancy: number; sessions: number; revenue: number; sport: string }[] = [];
+  courtHoursMap.forEach((hours, name) => {
+    const days = courtDays.get(name)?.size || 1;
+    const available = days * (CLOSE - OPEN);
+    result.push({
       name,
-      occupancy: Math.round(data.occSum / data.sessions),
-      sessions: data.sessions,
-      revenue: data.totalPlayers, // reusing field name for compat — shows total players not $
+      occupancy: available > 0 ? Math.round((hours.size / available) * 100) : 0,
+      sessions: calendarData.sessions.filter((s: RealSession) => s.court === name).length,
+      revenue: courtPlayers.get(name) || 0,
       sport: "Pickleball",
-    }));
+    });
+  });
+  return result.sort((a, b) => b.sessions - a.sessions);
 }
 
 function deriveEventsListData(calendarData: any) {
@@ -243,6 +260,9 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   const [filterFormat, setFilterFormat] = useState<string>("");
   const [filterCourt, setFilterCourt] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [sessionPeriod, setSessionPeriod] = useState<'week' | 'month' | 'quarter' | 'custom'>('month');
+  const [sessionCustomFrom, setSessionCustomFrom] = useState('');
+  const [sessionCustomTo, setSessionCustomTo] = useState('');
   const ref = useRef(null);
   const inView = useInView(ref, { once: true });
 
@@ -253,40 +273,57 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
   // Cache last successful data to prevent empty-state flash on re-fetch
   const lastGoodData = useRef<{ sessions: any[]; weekly: any[]; formats: any[]; courts: any[]; hourly: any[] }>({ sessions: [], weekly: [], formats: [], courts: [], hourly: [] });
 
+  const periodFilteredCalendarData = useMemo(() => {
+    if (!calendarData?.sessions?.length) return calendarData;
+    const now = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    let from: string, to: string;
+    if (sessionPeriod === 'week') { from = iso(new Date(now.getTime() - 7*86400000)); to = iso(now); }
+    else if (sessionPeriod === 'month') { from = iso(new Date(now.getTime() - 30*86400000)); to = iso(now); }
+    else if (sessionPeriod === 'quarter') { from = iso(new Date(now.getTime() - 90*86400000)); to = iso(now); }
+    else if (sessionPeriod === 'custom' && sessionCustomFrom && sessionCustomTo) { from = sessionCustomFrom; to = sessionCustomTo; }
+    else return calendarData;
+
+    return {
+      ...calendarData,
+      sessions: calendarData.sessions.filter((s: any) => s.date >= from && s.date <= to),
+    };
+  }, [calendarData, sessionPeriod, sessionCustomFrom, sessionCustomTo]);
+
   const displaySessions = useMemo(() => {
-    const mapped = mapCalendarToSessions(calendarData);
+    const mapped = mapCalendarToSessions(periodFilteredCalendarData);
     if (mapped.length > 0) lastGoodData.current.sessions = mapped;
     return mapped.length > 0 ? mapped : lastGoodData.current.sessions;
-  }, [calendarData]);
+  }, [periodFilteredCalendarData]);
   // hasData: true when we have sessions to display, OR calendarData was fetched and has at least 1 session
   const hasData = displaySessions.length > 0
     || (calendarData != null && Array.isArray(calendarData.sessions) && calendarData.sessions.length > 0);
 
   const displayWeekly = useMemo(() => {
-    const d = deriveWeeklyData(calendarData);
+    const d = deriveWeeklyData(periodFilteredCalendarData);
     if (d.length > 0) lastGoodData.current.weekly = d;
     return d.length > 0 ? d : lastGoodData.current.weekly;
-  }, [calendarData]);
+  }, [periodFilteredCalendarData]);
 
   const displayFormats = useMemo(() => {
-    const d = deriveFormatBreakdown(calendarData);
+    const d = deriveFormatBreakdown(periodFilteredCalendarData);
     if (d.length > 0) lastGoodData.current.formats = d;
     return d.length > 0 ? d : lastGoodData.current.formats;
-  }, [calendarData]);
+  }, [periodFilteredCalendarData]);
 
   const displayCourts = useMemo(() => {
-    const d = deriveCourtStats(calendarData);
+    const d = deriveCourtStats(periodFilteredCalendarData);
     if (d.length > 0) lastGoodData.current.courts = d;
     return d.length > 0 ? d : lastGoodData.current.courts;
-  }, [calendarData]);
+  }, [periodFilteredCalendarData]);
 
   const displayHourly = useMemo(() => {
-    const d = deriveHourlyPattern(calendarData);
+    const d = deriveHourlyPattern(periodFilteredCalendarData);
     if (d.length > 0) lastGoodData.current.hourly = d;
     return d.length > 0 ? d : lastGoodData.current.hourly;
-  }, [calendarData]);
+  }, [periodFilteredCalendarData]);
 
-  const eventsListData = useMemo(() => deriveEventsListData(calendarData), [calendarData]);
+  const eventsListData = useMemo(() => deriveEventsListData(periodFilteredCalendarData), [periodFilteredCalendarData]);
 
   const filteredSessions = useMemo(() => {
     return displaySessions.filter((s) => {
@@ -343,6 +380,34 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
         </div>
       </div>
 
+      {/* Period Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+          {(["week", "month", "quarter", "custom"] as const).map((p) => (
+            <button key={p} onClick={() => setSessionPeriod(p)}
+              className="px-4 py-2 text-xs capitalize transition-all"
+              style={{
+                background: sessionPeriod === p ? "var(--pill-active)" : "transparent",
+                color: sessionPeriod === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                fontWeight: sessionPeriod === p ? 600 : 500,
+              }}>
+              {p}
+            </button>
+          ))}
+        </div>
+        {sessionPeriod === "custom" && (
+          <div className="flex items-center gap-2">
+            <input type="date" value={sessionCustomFrom} onChange={(e) => setSessionCustomFrom(e.target.value)}
+              className="h-8 px-2 text-xs rounded-lg outline-none"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+            <span className="text-xs" style={{ color: "var(--t4)" }}>to</span>
+            <input type="date" value={sessionCustomTo} onChange={(e) => setSessionCustomTo(e.target.value)}
+              className="h-8 px-2 text-xs rounded-lg outline-none"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+          </div>
+        )}
+      </div>
+
       {view === "analytics" ? (
         <>
           {/* Format Filter Tabs */}
@@ -370,14 +435,28 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
           {/* KPI Row — computed from ALL calendarData sessions, not sliced list */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {(() => {
-              const allSessions: RealSession[] = calendarData?.sessions || [];
+              const allSessions: RealSession[] = periodFilteredCalendarData?.sessions || [];
               const filtered = filterFormat
                 ? allSessions.filter((s: RealSession) => s.format === filterFormat)
                 : allSessions;
               const totalSessions = filtered.length;
               const totalRegistered = filtered.reduce((s: number, x: RealSession) => s + (x.registered || 0), 0);
-              const totalCapacity = filtered.reduce((s: number, x: RealSession) => s + (x.capacity || 0), 0);
-              const avgOcc = totalCapacity > 0 ? Math.round((totalRegistered / totalCapacity) * 100) : 0;
+              // Hours-based occupancy: unique court-hours occupied / total available court-hours
+              const OPEN_KPI = 6, CLOSE_KPI = 23;
+              const allCourtHours = new Set<string>();
+              const allCourtDays = new Map<string, Set<string>>();
+              filtered.forEach((s: any) => {
+                const startH = parseInt(s.startTime?.slice(0,2) || '0');
+                const endH = parseInt(s.endTime?.slice(0,2) || '0') || startH + 1;
+                if (!allCourtDays.has(s.court)) allCourtDays.set(s.court, new Set());
+                allCourtDays.get(s.court)!.add(s.date);
+                for (let h = Math.max(startH, OPEN_KPI); h < Math.min(endH, CLOSE_KPI); h++) {
+                  allCourtHours.add(s.court + '|' + s.date + '|' + h);
+                }
+              });
+              let totalAvailable = 0;
+              allCourtDays.forEach((days) => { totalAvailable += days.size * (CLOSE_KPI - OPEN_KPI); });
+              const avgOcc = totalAvailable > 0 ? Math.round((allCourtHours.size / totalAvailable) * 100) : 0;
               const peakOcc = filtered.reduce((best: number, s: RealSession) => {
                 const occ = s.capacity > 0 ? Math.round((s.registered / s.capacity) * 100) : 0;
                 return occ > best ? occ : best;
