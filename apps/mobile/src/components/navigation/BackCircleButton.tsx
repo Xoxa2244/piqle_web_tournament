@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, type Insets, type StyleProp, type ViewStyle } from 'react-native'
 
-import { palette } from '../../lib/theme'
+import { useAppTheme } from '../../providers/ThemeProvider'
 
 type Props = {
   onPress: () => void
@@ -18,6 +18,8 @@ export function BackCircleButton({
   hitSlop = 12,
   style,
 }: Props) {
+  const { colors } = useAppTheme()
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -30,13 +32,18 @@ export function BackCircleButton({
           width: size,
           height: size,
           borderRadius: size / 2,
+          backgroundColor: colors.surfaceOverlay,
+          borderColor: colors.border,
         },
-        styles.light,
-        pressed && styles.lightPressed,
+        pressed && {
+          backgroundColor: colors.surfaceMuted,
+          borderColor: colors.brandPrimaryBorder,
+          transform: [{ scale: 0.94 }],
+        },
         style,
       ]}
     >
-      <Feather name="arrow-left" size={iconSize} color={palette.text} />
+      <Feather name="arrow-left" size={iconSize} color={colors.text} />
     </Pressable>
   )
 }
@@ -46,14 +53,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-  },
-  light: {
-    backgroundColor: palette.surfaceOverlay,
-    borderColor: palette.border,
-  },
-  lightPressed: {
-    backgroundColor: palette.surfaceMuted,
-    borderColor: palette.brandPrimaryBorder,
-    transform: [{ scale: 0.94 }],
   },
 })

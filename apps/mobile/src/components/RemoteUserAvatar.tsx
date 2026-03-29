@@ -36,13 +36,18 @@ export function RemoteUserAvatar({
     return <AvatarInitialsBadge label={initialsLabel || 'User'} size={size} />
   }
 
+  const ringBackground =
+    showImage || fallback === 'tournament'
+      ? { backgroundColor: 'transparent' as const }
+      : { backgroundColor: '#e5e7eb' as const }
+
   return (
-    <View style={[styles.ring, { width: size, height: size, borderRadius: r }]}>
+    <View style={[styles.ring, { width: size, height: size, borderRadius: r }, ringBackground]}>
       {showImage ? (
         <Image
           accessibilityIgnoresInvertColors
           source={{ uri: uri! }}
-          style={[StyleSheet.absoluteFillObject, { borderRadius: r }]}
+          style={[StyleSheet.absoluteFillObject, { borderRadius: r, borderWidth: 0 }]}
           resizeMode="cover"
           onError={() => setFailed(true)}
         />
@@ -65,9 +70,6 @@ export function RemoteUserAvatar({
 const styles = StyleSheet.create({
   ring: {
     overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(226, 232, 240, 0.95)',
-    backgroundColor: '#e5e7eb',
     alignItems: 'center',
     justifyContent: 'center',
   },

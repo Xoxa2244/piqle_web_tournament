@@ -223,7 +223,7 @@ export const ActionButton = ({
       : variant === 'outline'
       ? colors.secondaryPressed
       : variant === 'neutral'
-      ? '#9ca3af'
+      ? colors.secondaryPressed
       : variant === 'danger'
       ? '#eb0067'
       : variant === 'ghost'
@@ -235,17 +235,15 @@ export const ActionButton = ({
       : variant === 'outline'
       ? { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }
       : variant === 'neutral'
-      ? { backgroundColor: '#cbd5e1', borderWidth: 0, borderColor: 'transparent' }
+      ? { backgroundColor: colors.surfaceMuted, borderWidth: 0, borderColor: 'transparent' }
       : variant === 'danger'
       ? { backgroundColor: colors.danger }
       : variant === 'ghost'
       ? { backgroundColor: 'transparent', borderWidth: 0, borderColor: 'transparent' }
       : { backgroundColor: colors.primary }
   const textColor =
-    variant === 'secondary' || variant === 'ghost' || variant === 'outline'
+    variant === 'secondary' || variant === 'ghost' || variant === 'outline' || variant === 'neutral'
       ? colors.text
-      : variant === 'neutral'
-      ? '#1f2937'
       : colors.white
 
   return (

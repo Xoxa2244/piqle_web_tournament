@@ -19,6 +19,18 @@ export const DUPR_CLIENT_KEY = String(
 export const buildApiUrl = (path: string) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 export const buildWebUrl = (path: string) => `${WEB_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 
+/**
+ * URL лого из `public/logodupr.png` на веб-домене.
+ * После замены файла подними `EXPO_PUBLIC_LOGO_VERSION` в `.env` (и на Vercel),
+ * иначе CDN/кэш приложения может показывать старую картинку по тому же пути.
+ */
+export const duprLogoWebUrl = () => {
+  const v = String(process.env.EXPO_PUBLIC_LOGO_VERSION ?? '1').trim() || '1'
+  const base = buildWebUrl('/logodupr.png')
+  const sep = base.includes('?') ? '&' : '?'
+  return `${base}${sep}v=${encodeURIComponent(v)}`
+}
+
 /** Официальный wordmark (как на dashboard.dupr.com). */
 export const DUPR_LOGO_PNG_URL = 'https://dupr.s3.amazonaws.com/static/logo/dupr.png'
 export const DUPR_LOGO_LIGHT_PNG_URL = 'https://dupr.s3.amazonaws.com/static/logo/dupr_light.png'

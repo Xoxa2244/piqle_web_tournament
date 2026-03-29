@@ -3,11 +3,10 @@ import { router } from 'expo-router'
 import { useState } from 'react'
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
 
-import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { SubpageHeader } from '../../src/components/navigation/SubpageHeader'
-import { SurfaceCard } from '../../src/components/ui'
+import { ActionButton, SurfaceCard } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
-import { getPalette, radius, spacing, type ThemePalette } from '../../src/lib/theme'
+import { getPalette, spacing, type AppTheme, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
@@ -44,6 +43,7 @@ const SettingItem = ({
   type = 'switch',
   onPress,
   colors,
+  showBottomDivider = true,
 }: {
   icon: keyof typeof Feather.glyphMap
   title: string
@@ -53,12 +53,17 @@ const SettingItem = ({
   type?: 'switch' | 'link'
   onPress?: () => void
   colors: ThemePalette
+  /** Ложь у последней строки в блоке — без линии у нижнего края карточки. */
+  showBottomDivider?: boolean
 }) => (
   <Pressable
     onPress={type === 'link' ? onPress : onChange}
     style={({ pressed }) => [
       styles.settingRow,
-      { borderBottomColor: colors.border },
+      {
+        borderBottomColor: colors.border,
+        borderBottomWidth: showBottomDivider ? 1 : 0,
+      },
       pressed && styles.settingRowPressed,
     ]}
   >
@@ -86,123 +91,55 @@ const SettingItem = ({
   </Pressable>
 )
 
-const ActionRowButton = ({
-  icon,
-  label,
-  destructive,
-  onPress,
-  colors,
-}: {
-  icon: keyof typeof Feather.glyphMap
-  label: string
-  destructive?: boolean
-  onPress?: () => void
-  colors: ThemePalette
-}) => (
-  <Pressable
-    onPress={onPress}
-    style={({ pressed }) => [
-      styles.actionRowButton,
-      destructive
-        ? [styles.actionRowButtonDestructive, { backgroundColor: colors.dangerSoft, borderColor: 'rgba(255, 0, 110, 0.16)' }]
-        : [styles.actionRowButtonDefault, { backgroundColor: colors.surface, borderColor: colors.border }],
-      pressed && styles.actionRowButtonPressed,
-    ]}
-  >
-    <Feather name={icon} size={16} color={destructive ? colors.danger : colors.text} />
-    <Text
-      style={[
-        styles.actionRowButtonText,
-        { color: destructive ? colors.danger : colors.text },
-      ]}
-    >
-      {label}
-    </Text>
-  </Pressable>
-)
-
-const AppearanceThemeToggle = ({
+const AppearanceThemeRow = ({
   theme,
   colors,
-  onToggle,
+  setTheme,
+  showBottomDivider = true,
 }: {
-  theme: 'light' | 'dark'
+  theme: AppTheme
   colors: ThemePalette
-  onToggle: () => void
+  setTheme: (next: AppTheme) => void
+  showBottomDivider?: boolean
 }) => {
   const isDark = theme === 'dark'
-  const themeSwitchThumbStyle = {
-    left: isDark ? 28 : 4,
-  } as const
-
   return (
-    <View style={styles.appearanceBlock}>
-      <View style={styles.themeLabelRow}>
-        <Feather name="moon" size={16} color={colors.textMuted} />
-        <Text style={[styles.themeLabelText, { color: colors.text }]}>Theme</Text>
-      </View>
-
-      <Pressable
-        onPress={onToggle}
-        style={({ pressed }) => [
-          styles.themeToggleCard,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-          pressed && styles.settingRowPressed,
-        ]}
-      >
-        <View style={styles.themeToggleLeft}>
-          <OptionalLinearGradient
-            colors={[colors.primary, colors.purple]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.themeToggleIconFrame}
-            fallbackColor={colors.primary}
-          >
-            <View style={[styles.themeToggleIconWrap, { backgroundColor: colors.surface }]}>
-              <Feather
-                name={isDark ? 'moon' : 'sun'}
-                size={24}
-                color={isDark ? colors.primary : colors.warning}
-              />
-            </View>
-          </OptionalLinearGradient>
-
-          <View style={styles.themeToggleCopy}>
-            <Text style={[styles.themeToggleTitle, { color: colors.text }]}>
-              {isDark ? 'Dark Mode' : 'Light Mode'}
-            </Text>
-            <Text style={[styles.themeToggleSubtitle, { color: colors.textMuted }]}>
-              {isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            </Text>
-          </View>
+    <Pressable
+      onPress={() => setTheme(isDark ? 'light' : 'dark')}
+      style={({ pressed }) => [
+        styles.settingRow,
+        {
+          borderBottomColor: colors.border,
+          borderBottomWidth: showBottomDivider ? 1 : 0,
+        },
+        pressed && styles.settingRowPressed,
+      ]}
+    >
+      <View style={styles.settingRowLeft}>
+        <View style={[styles.settingIconWrap, { backgroundColor: colors.brandPrimaryTint }]}>
+          <Feather name={isDark ? 'moon' : 'sun'} size={18} color={colors.primary} />
         </View>
-
-        {isDark ? (
-          <OptionalLinearGradient
-            colors={[colors.primary, colors.purple]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.themeSwitchTrack}
-            fallbackColor={colors.primary}
-          >
-            <View style={[styles.themeSwitchThumb, themeSwitchThumbStyle]} />
-          </OptionalLinearGradient>
-        ) : (
-          <View style={[styles.themeSwitchTrack, { backgroundColor: colors.switchBackground }]}>
-            <View style={[styles.themeSwitchThumb, themeSwitchThumbStyle]} />
-          </View>
-        )}
-      </Pressable>
-    </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.settingTitle, { color: colors.text }]}>Dark mode</Text>
+          <Text style={[styles.settingDescription, { color: colors.textMuted }]}>
+            {isDark ? 'Dark appearance' : 'Light appearance'}
+          </Text>
+        </View>
+      </View>
+      <Switch
+        value={isDark}
+        onValueChange={(v) => setTheme(v ? 'dark' : 'light')}
+        trackColor={{ false: colors.switchBackground, true: colors.primary }}
+        thumbColor={colors.white}
+        ios_backgroundColor={colors.switchBackground}
+      />
+    </Pressable>
   )
 }
 
 export default function ProfileSettingsScreen() {
   const { token, user, signOut } = useAuth()
-  const { theme, toggleTheme } = useAppTheme()
+  const { theme, setTheme } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
@@ -344,7 +281,7 @@ export default function ProfileSettingsScreen() {
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Account</Text>
-          <View style={[styles.dividedGroup, { borderTopColor: colors.border }]}>
+          <View>
             <SettingItem colors={colors} icon="mail" title="Email" description={profile.email} type="link" />
             <SettingItem
               colors={colors}
@@ -360,27 +297,28 @@ export default function ProfileSettingsScreen() {
               title="Two-Factor Authentication"
               description="Add extra security to your account"
               type="link"
+              showBottomDivider={false}
             />
           </View>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Appearance</Text>
-          <View style={styles.appearanceSection}>
-            <AppearanceThemeToggle theme={theme} colors={colors} onToggle={toggleTheme} />
+          <AppearanceThemeRow theme={theme} colors={colors} setTheme={setTheme} />
 
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-            <SettingItem colors={colors} icon="globe" title="Language" description="English (US)" type="link" />
-          </View>
+          <SettingItem
+            colors={colors}
+            icon="globe"
+            title="Language"
+            description="English (US)"
+            type="link"
+            showBottomDivider={false}
+          />
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <View style={styles.sectionTitleRow}>
-            <Feather name="bell" size={18} color={colors.primary} />
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Notifications</Text>
-          </View>
-          <View style={[styles.dividedGroup, { borderTopColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Notifications</Text>
+          <View>
             <SettingItem
               colors={colors}
               icon="bell"
@@ -428,16 +366,14 @@ export default function ProfileSettingsScreen() {
               description="Updates from your clubs"
               value={settings.notifications.clubAnnouncements}
               onChange={() => toggleSetting('notifications', 'clubAnnouncements')}
+              showBottomDivider={false}
             />
           </View>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <View style={styles.sectionTitleRow}>
-            <Feather name="shield" size={18} color={colors.primary} />
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Security</Text>
-          </View>
-          <View style={[styles.dividedGroup, { borderTopColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Security</Text>
+          <View>
             <SettingItem
               colors={colors}
               icon="eye"
@@ -478,13 +414,13 @@ export default function ProfileSettingsScreen() {
               value={settings.privacy.showActivity}
               onChange={() => toggleSetting('privacy', 'showActivity')}
             />
-            <SettingItem colors={colors} icon="user-x" title="Blocked Users" type="link" />
+            <SettingItem colors={colors} icon="user-x" title="Blocked Users" type="link" showBottomDivider={false} />
           </View>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>About & Support</Text>
-          <View style={[styles.dividedGroup, { borderTopColor: colors.border }]}>
+          <View>
             <SettingItem colors={colors} icon="help-circle" title="Help Center" type="link" onPress={() => void openExternal()} />
             <SettingItem colors={colors} icon="external-link" title="Terms of Service" type="link" onPress={() => void openExternal()} />
             <SettingItem colors={colors} icon="external-link" title="Privacy Policy" type="link" onPress={() => void openExternal()} />
@@ -494,14 +430,15 @@ export default function ProfileSettingsScreen() {
               title="Contact Support"
               type="link"
               onPress={() => void Linking.openURL('mailto:info@piqle.io')}
+              showBottomDivider={false}
             />
           </View>
-          <Text style={[styles.versionText, { borderTopColor: colors.border, color: colors.textMuted }]}>Piqle v1.0.0</Text>
+          <Text style={[styles.versionText, { color: colors.textMuted }]}>Piqle v1.0.0</Text>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Data & Storage</Text>
-          <View style={[styles.dividedGroup, { borderTopColor: colors.border }]}>
+          <View>
             <SettingItem
               colors={colors}
               icon="download"
@@ -517,6 +454,7 @@ export default function ProfileSettingsScreen() {
               description="Refresh locally cached app data"
               type="link"
               onPress={() => void clearCache()}
+              showBottomDivider={false}
             />
           </View>
         </SurfaceCard>
@@ -524,21 +462,20 @@ export default function ProfileSettingsScreen() {
         <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Account Actions</Text>
           <View style={styles.actionButtons}>
-            <ActionRowButton
-              colors={colors}
-              icon="log-out"
+            <ActionButton
               label="Log Out"
+              variant="secondary"
               onPress={async () => {
                 await signOut()
                 router.replace('/(tabs)')
               }}
+              icon={<Feather name="log-out" size={18} color={colors.text} />}
             />
-            <ActionRowButton
-              colors={colors}
-              icon="trash-2"
+            <ActionButton
               label="Delete Account"
-              destructive
+              variant="neutral"
               onPress={() => void requestDeleteAccount()}
+              icon={<Feather name="trash-2" size={18} color={colors.textMuted} />}
             />
           </View>
         </SurfaceCard>
@@ -580,16 +517,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  dividedGroup: {
-    borderTopWidth: 1,
-  },
   settingRow: {
     minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    borderBottomWidth: 1,
     paddingVertical: 12,
   },
   settingRowPressed: {
@@ -617,86 +550,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  appearanceSection: {
-    gap: spacing.md,
-  },
-  appearanceBlock: {
-    gap: 12,
-  },
-  themeLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  themeLabelText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  themeToggleCard: {
-    minHeight: 80,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  themeToggleLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  themeToggleIconFrame: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.sm,
-    padding: 2,
-  },
-  themeToggleIconWrap: {
-    flex: 1,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  themeToggleCopy: {
-    flex: 1,
-  },
-  themeToggleTitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
-  },
-  themeToggleSubtitle: {
-    marginTop: 2,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  themeSwitchTrack: {
-    width: 56,
-    height: 32,
-    borderRadius: radius.pill,
-    position: 'relative',
-  },
-  themeSwitchThumb: {
-    position: 'absolute',
-    top: 4,
-    width: 24,
-    height: 24,
-    borderRadius: radius.pill,
-    backgroundColor: '#ffffff',
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-  },
-  divider: {
-    height: 1,
-  },
   loadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -705,40 +558,14 @@ const styles = StyleSheet.create({
   loadingLabel: {
     fontSize: 15,
   },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   versionText: {
-    marginTop: 4,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
     fontSize: 13,
     textAlign: 'center',
   },
   actionButtons: {
-    gap: 10,
-  },
-  actionRowButton: {
-    minHeight: 50,
-    borderRadius: radius.pill,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionRowButtonDefault: {
-    borderWidth: 1,
-  },
-  actionRowButtonDestructive: {
-    borderWidth: 1,
-  },
-  actionRowButtonPressed: {
-    opacity: 0.88,
-  },
-  actionRowButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    gap: spacing.sm,
+    alignSelf: 'stretch',
   },
 })

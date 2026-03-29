@@ -4,7 +4,7 @@ import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { OptionalLinearGradient } from '../OptionalLinearGradient'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
 import { SurfaceCard } from '../ui'
-import { buildWebUrl } from '../../lib/config'
+import { duprLogoWebUrl } from '../../lib/config'
 import { palette, radius, spacing } from '../../lib/theme'
 import { useAppTheme } from '../../providers/ThemeProvider'
 
@@ -150,7 +150,7 @@ export function ProfileStatsDuprSection({
       >
         <View style={styles.duprHeaderRow}>
           <Image
-            source={{ uri: buildWebUrl('/logodupr.png') }}
+            source={{ uri: duprLogoWebUrl() }}
             style={styles.duprLogoImage}
             resizeMode="contain"
             accessibilityLabel="DUPR"

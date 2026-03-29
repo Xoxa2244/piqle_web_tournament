@@ -4,29 +4,31 @@ import { StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { getPalette, spacing, type AppTheme } from '../../lib/theme'
+import { useAppTheme } from '../../providers/ThemeProvider'
 import { BackCircleButton } from './BackCircleButton'
 
-const HEADER_DIVIDER_COLOR = 'rgba(0,0,0,0.06)'
 const HEADER_DIVIDER_WIDTH = StyleSheet.hairlineWidth
 
 export const SubpageHeader = ({
   title,
   onBack,
   right,
-  themeMode = 'light',
+  themeMode,
 }: {
   title: string
   onBack?: () => void
   right?: ReactNode
+  /** Если не задан — берётся активная тема из `ThemeProvider`. */
   themeMode?: AppTheme
 }) => {
-  const colors = getPalette(themeMode)
+  const { theme: contextTheme } = useAppTheme()
+  const colors = getPalette(themeMode ?? contextTheme)
 
   return (
     <SafeAreaView
       style={[
         styles.safeArea,
-        { backgroundColor: colors.surfaceOverlay, borderBottomColor: HEADER_DIVIDER_COLOR },
+        { backgroundColor: colors.surfaceOverlay, borderBottomColor: colors.border },
       ]}
       edges={['top']}
     >
@@ -43,9 +45,7 @@ export const SubpageHeader = ({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderBottomWidth: HEADER_DIVIDER_WIDTH,
-    borderBottomColor: HEADER_DIVIDER_COLOR,
   },
   header: {
     minHeight: 64,

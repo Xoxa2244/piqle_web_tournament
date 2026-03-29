@@ -4,7 +4,8 @@ import { Platform, StyleSheet, Text, View } from 'react-native'
 import type { ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 
-const INSET = 2
+/** Без внешнего «кольца» — иначе выглядит как серая/лишняя обводка. */
+const INSET = 0
 
 export type AvatarInitialsBadgeProps = {
   label: string
