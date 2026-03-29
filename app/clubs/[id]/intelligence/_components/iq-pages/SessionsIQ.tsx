@@ -411,14 +411,47 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
       {view === "analytics" ? (
         <>
+          {/* Format Filter Tabs */}
+          {displayFormats.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Filter:</span>
+              {[{ format: "", label: "All" }, ...displayFormats.map(f => ({ format: f.format, label: f.format.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) }))].map(f => (
+                <button
+                  key={f.format}
+                  onClick={() => setFilterFormat(f.format)}
+                  className="px-3 py-1.5 rounded-lg text-xs transition-all"
+                  style={{
+                    background: filterFormat === f.format ? "var(--pill-active)" : "transparent",
+                    color: filterFormat === f.format ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                    fontWeight: filterFormat === f.format ? 600 : 500,
+                    border: `1px solid ${filterFormat === f.format ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* KPI Row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { label: "Total Sessions", value: "160", change: "+11%", up: true, icon: CalendarDays, gradient: "from-violet-500 to-purple-600" },
-              { label: "Avg Occupancy", value: "62%", change: "+3.1%", up: true, icon: BarChart3, gradient: "from-cyan-500 to-teal-500" },
-              { label: "Session Revenue", value: "$12.6K", change: "+8.4%", up: true, icon: TrendingUp, gradient: "from-emerald-500 to-green-500" },
-              { label: "Peak Utilization", value: "92%", change: "+5%", up: true, icon: Zap, gradient: "from-amber-500 to-orange-500" },
-            ].map((kpi, i) => {
+            {(() => {
+              const totalSessions = filteredSessions.length;
+              const totalRegistered = filteredSessions.reduce((s, x) => s + (x.registered || 0), 0);
+              const totalCapacity = filteredSessions.reduce((s, x) => s + (x.capacity || 0), 0);
+              const avgOcc = totalCapacity > 0 ? Math.round((totalRegistered / totalCapacity) * 100) : 0;
+              const peakSession = filteredSessions.reduce((best, s) => {
+                const occ = s.capacity > 0 ? s.registered / s.capacity : 0;
+                return occ > (best.capacity > 0 ? best.registered / best.capacity : 0) ? s : best;
+              }, filteredSessions[0] || { registered: 0, capacity: 0 });
+              const peakOcc = peakSession && peakSession.capacity > 0 ? Math.round((peakSession.registered / peakSession.capacity) * 100) : 0;
+              return [
+                { label: "Total Sessions", value: totalSessions.toLocaleString(), icon: CalendarDays, gradient: "from-violet-500 to-purple-600" },
+                { label: "Avg Occupancy", value: `${avgOcc}%`, icon: BarChart3, gradient: "from-cyan-500 to-teal-500" },
+                { label: "Total Registrations", value: totalRegistered.toLocaleString(), icon: Users, gradient: "from-emerald-500 to-green-500" },
+                { label: "Peak Utilization", value: `${peakOcc}%`, icon: Zap, gradient: "from-amber-500 to-orange-500" },
+              ];
+            })().map((kpi, i) => {
               const Icon = kpi.icon;
               return (
                 <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
@@ -432,9 +465,8 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                         <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
                       </div>
                     </div>
-                    <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
-                      {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                      {kpi.change} vs last period
+                    <div className="text-xs" style={{ color: "var(--t4)" }}>
+                      Current period
                     </div>
                   </Card>
                 </motion.div>

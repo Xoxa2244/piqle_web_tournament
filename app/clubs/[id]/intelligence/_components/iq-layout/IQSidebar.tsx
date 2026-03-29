@@ -52,17 +52,15 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     items: [
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
       { icon: Puzzle, label: "Slot Filler", path: "/slot-filler", isAI: true },
-      { icon: UserPlus, label: "Reactivation", path: "/reactivation", isAI: true },
     ],
   },
   {
-    id: "management",
-    title: "MANAGEMENT",
+    id: "engage",
+    title: "ENGAGE",
     icon: Building2,
     items: [
       { icon: Users, label: "Members", path: "/members" },
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
-      { icon: PartyPopper, label: "Events", path: "/events" },
       { icon: CreditCard, label: "Billing", path: "/billing" },
       { icon: Plug, label: "Integrations", path: "/integrations" },
     ],

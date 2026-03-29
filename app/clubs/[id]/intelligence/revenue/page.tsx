@@ -26,6 +26,8 @@ import { useDashboardV2, useRevenueAnalytics, usePricingOpportunities, useRevenu
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { RevenueIQ } from '../_components/iq-pages/RevenueIQ'
+import { UtilizationIQ } from '../_components/iq-pages/UtilizationIQ'
+import { useOccupancyHeatmap, useMemberHealth } from '../_hooks/use-intelligence'
 
 const timeSlotLabels: Record<string, string> = {
   morning: 'Morning (6–12)',
@@ -68,12 +70,15 @@ export default function RevenueIntelligencePage() {
     setPageContext(parts.join('\n'))
   }, [dashboard, setPageContext])
 
+  const { data: heatmapData } = useOccupancyHeatmap(clubId)
+  const { data: memberHealth } = useMemberHealth(clubId)
+
   const brand = useBrand()
   if (brand.key === 'iqsport') {
-    if (isLoading) return <RevenueIQ isLoading={true} clubId={clubId} />
+    // Membership clubs → Utilization view (no fake revenue data)
     return (
       <ErrorBoundaryRevenue>
-        <RevenueIQ revenueData={revenueData} dashboardData={dashboard} pricingData={pricingData} forecastData={forecastData} isLoading={false} clubId={clubId} />
+        <UtilizationIQ dashboardData={dashboard} heatmapData={heatmapData} memberHealthData={memberHealth} isLoading={isLoading} clubId={clubId} />
       </ErrorBoundaryRevenue>
     )
   }

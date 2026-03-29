@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
+import { MembersReactivationSection } from "./MembersReactivationSection";
 
 /* --- Mock Data --- */
 const memberGrowth = [
@@ -169,6 +170,10 @@ type MembersIQProps = {
   isLoading?: boolean;
   sendOutreach?: any;
   clubId?: string;
+  reactivationCandidates?: any[];
+  aiProfiles?: Record<string, any>;
+  onRegenerateProfiles?: () => void;
+  sendReactivation?: any;
 };
 
 function riskToSegment(risk: string): Exclude<Segment, "all"> {
@@ -215,8 +220,9 @@ function mapRealMembers(data: any): Member[] {
   }));
 }
 
-export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: externalLoading, sendOutreach, clubId }: MembersIQProps = {}) {
+export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: externalLoading, sendOutreach, clubId, reactivationCandidates, aiProfiles, onRegenerateProfiles, sendReactivation }: MembersIQProps = {}) {
   const { isDark } = useTheme();
+  const [view, setView] = useState<"all" | "at-risk" | "reactivation">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActivity, setFilterActivity] = useState<string>("all");
   const [filterRisk, setFilterRisk] = useState<string>("all");
@@ -276,6 +282,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
 
   const filtered = allMembers
     .filter((m) => {
+      // At-risk subtab: only show at-risk + critical segments
+      if (view === "at-risk" && m.segment !== "at-risk" && m.segment !== "critical") return false;
       if (filterActivity !== "all" && m.activityLevel !== filterActivity) return false;
       if (filterRisk !== "all" && m.segment !== filterRisk) return false;
       if (filterTrend !== "all" && m.engagementTrend !== filterTrend) return false;
@@ -325,6 +333,56 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
           Add Member
         </motion.button>
       </div>
+
+      {/* View Subtabs */}
+      {(() => {
+        const atRiskCount = allMembers.filter(m => m.segment === "at-risk" || m.segment === "critical").length;
+        const reactivationCount = reactivationCandidates?.length || 0;
+        const tabs: { key: typeof view; label: string; count?: number }[] = [
+          { key: "all", label: "All Members" },
+          { key: "at-risk", label: "At-Risk", count: atRiskCount },
+          { key: "reactivation", label: "Reactivation", count: reactivationCount },
+        ];
+        return (
+          <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => { setView(tab.key); setPage(1); }}
+                className="px-4 py-2 text-xs transition-all flex items-center gap-1.5"
+                style={{
+                  background: view === tab.key ? "var(--pill-active)" : "transparent",
+                  color: view === tab.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                  fontWeight: view === tab.key ? 600 : 500,
+                }}
+              >
+                {tab.label}
+                {tab.count != null && tab.count > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-md text-[9px]" style={{
+                    background: view === tab.key ? "rgba(139,92,246,0.2)" : "var(--subtle)",
+                    fontWeight: 700,
+                  }}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Reactivation View */}
+      {view === "reactivation" ? (
+        <MembersReactivationSection
+          candidates={reactivationCandidates}
+          aiProfiles={aiProfiles}
+          isLoading={externalLoading}
+          onRegenerate={onRegenerateProfiles}
+          sendOutreach={sendReactivation}
+          clubId={clubId}
+          isDark={isDark}
+        />
+      ) : (<>
 
       {/* Period Tabs */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -748,6 +806,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
           </div>
         )}
       </div>
+      </>)}
     </motion.div>
   );
 }
