@@ -453,7 +453,22 @@ async function _runImportPipeline(
         if (member.name) nameToUserIdMap.set(member.name.toLowerCase(), userId)
         memberIdToUserIdMap.set(member.externalId, userId)
 
-        // mapping + clubFollower in parallel
+        // mapping + clubFollower + member embedding in parallel
+        const memberMeta = {
+          name: member.name,
+          email,
+          membership: member.membership || null,
+          lastVisit: member.lastVisit || null,
+          firstVisit: member.firstVisit || null,
+          reservationCount: member.reservationCount || 0,
+          skillLevel: member.skillLevel || null,
+          duprSingles: member.duprSingles || null,
+          duprDoubles: member.duprDoubles || null,
+          externalId: member.externalId,
+        }
+        const memberContent = `Member: ${member.name || email}${member.membership ? ` | Membership: ${member.membership}` : ''}${member.lastVisit ? ` | Last visit: ${member.lastVisit}` : ''}${member.firstVisit ? ` | First visit: ${member.firstVisit}` : ''}`
+        const memberEmbeddingId = `member_${partnerId}_${member.externalId}`
+
         await Promise.all([
           prisma.externalIdMapping.upsert({
             where: { partnerId_entityType_externalId: { partnerId, entityType: ExternalEntityType.MEMBER, externalId: member.externalId } },
@@ -465,6 +480,11 @@ async function _runImportPipeline(
             create: { clubId, userId },
             update: {},
           }),
+          prisma.$executeRaw`
+            INSERT INTO document_embeddings (id, club_id, content_type, source_table, source_id, content, metadata, created_at)
+            VALUES (${memberEmbeddingId}, ${clubId}::uuid, 'member', 'csv_import', ${userId}, ${memberContent}, ${JSON.stringify(memberMeta)}::jsonb, NOW())
+            ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata
+          `,
         ])
       } catch (err: any) {
         result.members.errors++
