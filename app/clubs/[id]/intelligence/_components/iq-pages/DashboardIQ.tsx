@@ -17,6 +17,7 @@ import { useTheme } from "../IQThemeProvider";
 import { useParams, useRouter } from "next/navigation";
 import { IQFileDropZone } from "./IQFileDropZone";
 import { AILoadingAnimation } from "./AILoadingAnimation";
+import { MonthCalendar } from "../MonthCalendar";
 import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -437,10 +438,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   // Comparison period state
-  type CompMode = 'prev_period' | 'prev_year' | 'custom';
+  type CompMode = 'prev_period' | 'prev_year' | 'calendar';
   const [compMode, setCompMode] = useState<CompMode>('prev_period');
-  const [compCustomFrom, setCompCustomFrom] = useState("");
-  const [compCustomTo, setCompCustomTo] = useState("");
+  // Calendar mode: Period A and Period B selected via calendar pickers
+  const [calAFrom, setCalAFrom] = useState("");
+  const [calATo, setCalATo] = useState("");
+  const [calBFrom, setCalBFrom] = useState("");
+  const [calBTo, setCalBTo] = useState("");
 
   // Compute data date bounds from sparkline or sessions for custom picker constraints
   const dataDateBounds = useMemo(() => {
@@ -472,11 +476,11 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const activeDashboardData = periodQuery.data ?? dashboardData;
   const isPeriodLoading = periodQuery.isFetching;
 
-  // Comparison period — previous period dates
+  // Comparison period — previous period dates (for quick modes and calendar B)
   const compDates = useMemo(() => {
     const iso = (d: Date) => d.toISOString().slice(0, 10);
-    if (compMode === 'custom' && compCustomFrom && compCustomTo) {
-      return { dateFrom: compCustomFrom, dateTo: compCustomTo };
+    if (compMode === 'calendar' && calBFrom && calBTo) {
+      return { dateFrom: calBFrom, dateTo: calBTo };
     }
     // Determine current period span in days
     const spanDays = period === 'week' ? 7 : period === 'quarter' ? 90 : 30;
@@ -490,14 +494,20 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     const curFrom = periodDates.dateFrom
       ? new Date(periodDates.dateFrom).getTime()
       : now.getTime() - spanDays * 86400000;
-    const prevTo = new Date(curFrom - 86400000); // day before current period starts
+    const prevTo = new Date(curFrom - 86400000);
     const prevFrom = new Date(prevTo.getTime() - (spanDays - 1) * 86400000);
     return { dateFrom: iso(prevFrom), dateTo: iso(prevTo) };
-  }, [compMode, compCustomFrom, compCustomTo, period, periodDates]);
+  }, [compMode, calBFrom, calBTo, period, periodDates]);
 
   const compQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, ...compDates },
     { enabled: !!clubId && !externalLoading },
+  );
+
+  // Calendar mode — Period A (independent from main period tabs)
+  const calAQuery = trpc.intelligence.getDashboardV2.useQuery(
+    { clubId, dateFrom: calAFrom, dateTo: calATo },
+    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId },
   );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
@@ -1285,23 +1295,20 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             <div>
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
               <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
-                <span style={{ color: "var(--t2)", fontWeight: 500 }}>{labels.current}</span>
-                {" vs "}
-                <span style={{ color: "var(--t2)", fontWeight: 500 }}>
-                  {compMode === 'prev_period' ? labels.previous
-                    : compMode === 'prev_year' ? 'Same period last year'
-                    : (compCustomFrom && compCustomTo ? `${compCustomFrom} – ${compCustomTo}` : 'Custom range')}
-                </span>
+                {compMode === 'calendar'
+                  ? <>{calAFrom && calATo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{calAFrom} – {calATo}</span> : <span style={{ color: "var(--t4)" }}>Period A</span>} vs {calBFrom && calBTo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{calBFrom} – {calBTo}</span> : <span style={{ color: "var(--t4)" }}>Period B</span>}</>
+                  : <><span style={{ color: "var(--t2)", fontWeight: 500 }}>{labels.current}</span>{" vs "}<span style={{ color: "var(--t2)", fontWeight: 500 }}>{compMode === 'prev_period' ? labels.previous : 'Same period last year'}</span></>
+                }
               </p>
             </div>
           </div>
-          {/* Compare-to selector */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Compare-to mode selector */}
+          <div className="flex items-center gap-1.5">
             <span className="text-[11px]" style={{ color: "var(--t4)" }}>Compare to:</span>
             {([
               { key: 'prev_period', label: 'Prev period' },
               { key: 'prev_year', label: 'Last year' },
-              { key: 'custom', label: 'Custom' },
+              { key: 'calendar', label: '📅 Pick dates' },
             ] as const).map(opt => (
               <button
                 key={opt.key}
@@ -1315,36 +1322,52 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 }}
               >{opt.label}</button>
             ))}
-            {compMode === 'custom' && (
-              <div className="flex items-center gap-1.5 mt-1 w-full">
-                <input
-                  type="date"
-                  value={compCustomFrom}
-                  max={compCustomTo || new Date().toISOString().slice(0, 10)}
-                  onChange={e => setCompCustomFrom(e.target.value)}
-                  className="h-7 px-2 text-[11px] rounded-lg outline-none"
-                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }}
-                />
-                <span className="text-[10px]" style={{ color: "var(--t4)" }}>to</span>
-                <input
-                  type="date"
-                  value={compCustomTo}
-                  min={compCustomFrom}
-                  max={new Date().toISOString().slice(0, 10)}
-                  onChange={e => setCompCustomTo(e.target.value)}
-                  className="h-7 px-2 text-[11px] rounded-lg outline-none"
-                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }}
-                />
-              </div>
-            )}
           </div>
         </div>
 
+        {/* Calendar pickers — shown when "Pick dates" mode selected */}
+        {compMode === 'calendar' && (
+          <div className="flex flex-col sm:flex-row gap-6 mb-6 p-4 rounded-2xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+            <MonthCalendar
+              label="Period A"
+              from={calAFrom}
+              to={calATo}
+              onChange={(f, t) => { setCalAFrom(f); setCalATo(t); }}
+              isDark={isDark}
+              accentColor="#8B5CF6"
+            />
+            <div className="hidden sm:flex flex-col items-center justify-center gap-1" style={{ color: "var(--t4)" }}>
+              <div className="w-px flex-1" style={{ background: "var(--divider)" }} />
+              <span className="text-xs font-semibold px-2" style={{ color: "var(--t3)" }}>vs</span>
+              <div className="w-px flex-1" style={{ background: "var(--divider)" }} />
+            </div>
+            <div className="sm:hidden h-px w-full" style={{ background: "var(--divider)" }} />
+            <MonthCalendar
+              label="Period B"
+              from={calBFrom}
+              to={calBTo}
+              onChange={(f, t) => { setCalBFrom(f); setCalBTo(t); }}
+              isDark={isDark}
+              accentColor="#06B6D4"
+            />
+          </div>
+        )}
+
         {/* Real comparison metrics */}
         {(() => {
-          const cur = activeDashboardData?.metrics;
+          // In calendar mode: use calAQuery for "current", compQuery for "previous"
+          const curData = compMode === 'calendar' && (calAFrom && calATo) ? calAQuery.data : activeDashboardData;
+          const cur = curData?.metrics;
           const prv = compQuery.data?.metrics;
-          const isLoading = compQuery.isFetching || isPeriodLoading;
+          const isLoading = compQuery.isFetching || isPeriodLoading || calAQuery.isFetching;
+          // In calendar mode, show placeholder if periods not yet selected
+          if (compMode === 'calendar' && (!calAFrom || !calATo || !calBFrom || !calBTo)) {
+            return (
+              <div className="py-4 text-center text-xs" style={{ color: "var(--t4)" }}>
+                Select Period A and Period B above to compare
+              </div>
+            );
+          }
 
           const toNum = (v: any): number => {
             if (typeof v === 'number') return v;
