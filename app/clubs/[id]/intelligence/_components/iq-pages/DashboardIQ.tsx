@@ -315,9 +315,9 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
             const mb = dashboardData?.players?.membershipBreakdown;
             const notActive = (mb?.suspended || 0) + (mb?.expired || 0) + (mb?.noMembership || 0);
             return {
-              label: "Churned / Inactive",
+              label: "Not Active",
               value: notActive || dashboardData?.players?.inactiveCount || 0,
-              change: mb ? `${mb.suspended || 0} frozen · ${mb.noMembership || 0} no plan · ${mb.expired || 0} expired` : "",
+              change: "",
               up: false,
               icon: UserPlus,
               gradient: "from-amber-500 to-orange-500",
