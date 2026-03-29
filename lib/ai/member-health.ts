@@ -383,9 +383,9 @@ function scoreNoShowTrend(history: BookingHistory): HealthScoreComponent {
 // ── Classification Helpers ──
 
 function getRiskLevel(healthScore: number): RiskLevel {
-  if (healthScore >= 75) return 'healthy';
-  if (healthScore >= 50) return 'watch';
-  if (healthScore >= 25) return 'at_risk';
+  if (healthScore >= 60) return 'healthy';
+  if (healthScore >= 35) return 'watch';
+  if (healthScore >= 15) return 'at_risk';
   return 'critical';
 }
 
@@ -394,8 +394,8 @@ function getLifecycleStage(
   joinedDaysAgo: number,
   daysSinceLast: number | null,
 ): LifecycleStage {
-  // Churned overrides everything
-  if (daysSinceLast !== null && daysSinceLast >= 21) return 'churned';
+  // Churned overrides everything — 45 days without play signals true churn
+  if (daysSinceLast !== null && daysSinceLast >= 45) return 'churned';
 
   // Tenure-based stages for early members
   if (joinedDaysAgo < 14) return 'onboarding';

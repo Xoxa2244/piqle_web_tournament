@@ -881,7 +881,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             return (
               <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
                 <span className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  incl. <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> inactive 21+ days
+                  incl. <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> inactive 45+ days
                 </span>
                 <button
                   onClick={() => router.push(`/clubs/${clubId}/intelligence/reactivation`)}
@@ -974,7 +974,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   goalParas.push(
                     <p key="goal-retention">
                       <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Retention:</span>{" "}
-                      {atRiskCount + criticalCount} members need attention. Consider personalized outreach before they churn.
+                      Check the Reactivation tab in Members to send personalized outreach to inactive members.
                     </p>
                   );
                 }
