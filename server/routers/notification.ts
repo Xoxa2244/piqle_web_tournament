@@ -155,7 +155,7 @@ export const notificationRouter = createTRPCRouter({
               })
             }
           }
-          const uniqueClubIds = [...countByClub.keys()]
+          const uniqueClubIds = Array.from(countByClub.keys())
           const clubs = await ctx.prisma.club.findMany({
             where: { id: { in: uniqueClubIds } },
             select: { id: true, name: true },
