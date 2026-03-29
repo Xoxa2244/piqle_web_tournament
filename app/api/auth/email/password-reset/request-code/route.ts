@@ -11,7 +11,6 @@ import {
   normalizeEmail,
 } from '@/lib/emailOtp'
 import { prisma } from '@/lib/prisma'
-import { prismaUserWithAccountsSelect } from '@/lib/prismaUserSelect'
 
 const requestSchema = z.object({
   email: z.string().email(),
