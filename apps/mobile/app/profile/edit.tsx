@@ -10,6 +10,7 @@ import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 
 const splitName = (value?: string | null) => {
   const parts = String(value ?? '')
@@ -62,6 +63,7 @@ const HeaderSaveButton = ({
 export default function ProfileEditScreen() {
   const params = useLocalSearchParams<{ anchor?: string | string[] }>()
   const { token, user } = useAuth()
+  const toast = useToast()
   const { theme, colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
@@ -71,7 +73,11 @@ export default function ProfileEditScreen() {
   const updateProfile = api.user.updateProfile.useMutation({
     onSuccess: async () => {
       await utils.user.getProfile.invalidate()
+      toast.success('Profile saved.')
       router.back()
+    },
+    onError: (err: { message?: string }) => {
+      toast.error(err?.message || 'Could not save profile.')
     },
   })
 

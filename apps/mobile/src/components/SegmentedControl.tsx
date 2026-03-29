@@ -5,7 +5,14 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 
-export type SegmentedOption<T extends string> = { value: T; label: string; badgeCount?: number }
+export type SegmentedOption<T extends string> = {
+  value: T
+  label: string
+  /** Числовой бейдж (например заявки в клуб); если > 0 — показывается вместо точки. */
+  badgeCount?: number
+  /** Точка «есть непрочитанное» без числа (чаты и т.п.). */
+  showDot?: boolean
+}
 
 type SegmentedControlProps<T extends string> = {
   options: SegmentedOption<T>[]
@@ -117,6 +124,8 @@ export function SegmentedControl<T extends string>({
                     {item.badgeCount! > 99 ? '99+' : String(item.badgeCount)}
                   </Text>
                 </View>
+              ) : item.showDot ? (
+                <View style={styles.segmentDot} />
               ) : null}
             </View>
           </Pressable>
@@ -189,5 +198,11 @@ const createStyles = (colors: ThemePalette) =>
       color: '#FFFFFF',
       fontSize: 10,
       fontWeight: '700',
+    },
+    segmentDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#EF4444',
     },
   })

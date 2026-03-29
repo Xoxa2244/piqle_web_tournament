@@ -68,6 +68,10 @@ model User {
   aiCoachState                   AiCoachState?
   feedbacksAuthored              Feedback[]                 @relation("FeedbackAuthor")
   feedbacksAboutTd               Feedback[]                 @relation("FeedbackTdSubject")
+  /// Колокольчик: уведомления с `createdAt` ≤ этого не считаются непрочитанными (бейдж).
+  bellNotificationsReadThrough     DateTime?                  @map("bell_notifications_read_through")
+  /// Скрывать уведомления с `createdAt` ≤ этого (действие «удалить всё»).
+  bellNotificationsClearedBefore   DateTime?                  @map("bell_notifications_cleared_before")
 
   @@map("users")
 }

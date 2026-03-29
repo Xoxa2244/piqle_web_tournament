@@ -374,6 +374,46 @@ export default function TournamentsTab() {
     selectedDivisions.length +
     (maxFee !== null ? 1 : 0)
 
+  const hasNarrowing =
+    search.trim().length > 0 ||
+    thisMonthOnly ||
+    selectedFormats.length > 0 ||
+    selectedDivisions.length > 0 ||
+    maxFee !== null
+
+  const tournamentsEmptyState = useMemo(() => {
+    if (mode === 'registered') {
+      if (hasNarrowing) {
+        return {
+          title: 'No matching events',
+          body: 'Adjust your search or filters to find tournaments you participate in.',
+        }
+      }
+      return {
+        title: 'No tournaments yet',
+        body: isAuthenticated
+          ? 'Tournaments where you are registered or have admin access will appear here.'
+          : 'Sign in to see tournaments where you are registered or admin.',
+      }
+    }
+    if (hasNarrowing) {
+      return {
+        title: 'No matching events',
+        body: 'Try different keywords or clear filters to see more tournaments.',
+      }
+    }
+    if (mode === 'past') {
+      return {
+        title: 'No past tournaments',
+        body: 'Finished tournaments in this list will appear here.',
+      }
+    }
+    return {
+      title: 'No upcoming tournaments',
+      body: 'New public events will show up here when organizers publish them.',
+    }
+  }, [hasNarrowing, isAuthenticated, mode])
+
   const toggleFormat = (value: string) => {
     setSelectedFormats((current) =>
       current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
@@ -509,16 +549,7 @@ export default function TournamentsTab() {
           ) : null}
 
           {!tournamentsQuery.isError && !tournamentsInitialLoading && !isStatusContextLoading && filtered.length === 0 ? (
-            <EmptyState
-              title={mode === 'registered' ? 'No tournaments yet' : 'Nothing matched this search'}
-              body={
-                mode === 'registered'
-                  ? isAuthenticated
-                    ? 'Tournaments where you are registered or have admin access will appear here.'
-                    : 'Sign in to see tournaments where you are registered or admin.'
-                  : 'Try another search or clear the active filters.'
-              }
-            />
+            <EmptyState title={tournamentsEmptyState.title} body={tournamentsEmptyState.body} />
           ) : null}
 
           {!tournamentsQuery.isError &&

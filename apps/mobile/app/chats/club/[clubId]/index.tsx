@@ -18,6 +18,7 @@ import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { palette, spacing } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
+import { useToast } from '../../../../src/providers/ToastProvider'
 
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
@@ -27,6 +28,7 @@ export default function ClubChatScreen() {
   const clubId = params.clubId
   const clubName = params.name || 'Club chat'
   const { token, user } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
@@ -62,13 +64,17 @@ export default function ClubChatScreen() {
     },
   })
   const sendMessage = trpc.clubChat.send.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (data: { wasFiltered?: boolean }) => {
       setDraft('')
       await Promise.all([
         messagesQuery.refetch(),
         utils.club.listMyChatClubs.invalidate(),
       ])
+      if (data?.wasFiltered) {
+        toast.success('Some words were filtered.', 'Filtered')
+      }
     },
+    onError: (e) => toast.error(e.message || 'Failed to send message'),
   })
   const deleteMessage = trpc.clubChat.delete.useMutation({
     onSuccess: async () => {

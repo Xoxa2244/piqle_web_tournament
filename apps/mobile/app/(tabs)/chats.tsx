@@ -77,6 +77,19 @@ export default function ChatsTab() {
   const clubTotal = (clubChatsQuery.data ?? []).length
   const eventTotal = (eventChatsQuery.data ?? []).length
 
+  const clubsSegmentHasUnread = useMemo(() => {
+    const list = clubChatsQuery.data ?? []
+    return list.some((c: { unreadCount?: number }) => (c.unreadCount ?? 0) > 0)
+  }, [clubChatsQuery.data])
+
+  const eventsSegmentHasUnread = useMemo(() => {
+    const list = (eventChatsQuery.data ?? []) as EventChatListEvent[]
+    return list.some((e) => {
+      const divSum = (e.divisions ?? []).reduce((s, d) => s + (d.unreadCount ?? 0), 0)
+      return (e.unreadCount ?? 0) + divSum > 0
+    })
+  }, [eventChatsQuery.data])
+
   const toggleArchiveEventExpanded = (eventId: string) => {
     setExpandedArchiveEventIds((prev) => {
       const next = new Set(prev)
@@ -145,8 +158,16 @@ export default function ChatsTab() {
 
         <SegmentedControl<Segment>
           options={[
-            { value: 'clubs', label: `Club chats${clubTotal > 0 ? ` (${clubTotal})` : ''}` },
-            { value: 'events', label: `Event chats${eventTotal > 0 ? ` (${eventTotal})` : ''}` },
+            {
+              value: 'clubs',
+              label: `Club chats${clubTotal > 0 ? ` (${clubTotal})` : ''}`,
+              showDot: clubsSegmentHasUnread,
+            },
+            {
+              value: 'events',
+              label: `Event chats${eventTotal > 0 ? ` (${eventTotal})` : ''}`,
+              showDot: eventsSegmentHasUnread,
+            },
           ]}
           value={segment}
           onChange={setSegment}

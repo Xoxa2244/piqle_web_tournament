@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Feather } from '@expo/vector-icons'
-import { useLocalSearchParams, router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
@@ -9,17 +9,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native'
 
+import { EntityImage } from '../src/components/EntityImage'
 import { OptionalLinearGradient } from '../src/components/OptionalLinearGradient'
+import { RemoteUserAvatar } from '../src/components/RemoteUserAvatar'
+import { TournamentThumbnail } from '../src/components/TournamentThumbnail'
 import { PageLayout } from '../src/components/navigation/PageLayout'
-import { SurfaceCard } from '../src/components/ui'
+import { SearchField, SectionTitle, SurfaceCard } from '../src/components/ui'
 import { formatDate, formatLocation } from '../src/lib/formatters'
-import { radius, spacing, type ThemePalette } from '../src/lib/theme'
+import { radius, spacing, type AppTheme, type ThemePalette } from '../src/lib/theme'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useToast } from '../src/providers/ToastProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
 
 const SEARCH_HISTORY_KEY = 'piqle.mobile.search.history'
@@ -30,28 +33,34 @@ const DEFAULT_RECENT_SEARCHES = [
 ]
 const MAX_RECENT_SEARCHES = 6
 
-type SearchResultType = 'tournament' | 'club' | 'player'
+type SuggestionVisual =
+  | { kind: 'tournament'; imageUri?: string | null }
+  | { kind: 'club'; logoUri?: string | null }
+  | { kind: 'player'; imageUri?: string | null; initialsLabel: string }
+  | { kind: 'location' }
 
 type SearchResultItem = {
   key: string
-  type: SearchResultType
   title: string
   subtitle: string
   route: string
+  visual: Exclude<SuggestionVisual, { kind: 'location' }>
 }
 
 type SuggestionCardItem = {
   key: string
   title: string
   subtitle: string
-  icon: keyof typeof Feather.glyphMap
+  visual: SuggestionVisual
+  /** Есть маршрут — сразу переход (Trending), иначе можно подставить текст в поле */
+  route?: string
   queryValue?: string
   onPress?: () => void
 }
 
 const useSearchTheme = () => {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { colors, theme } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
 
   return { colors, styles }
 }
@@ -85,30 +94,38 @@ const compactLocation = (parts: Array<string | null | undefined>) => {
 const joinMeta = (parts: Array<string | null | undefined>) =>
   parts.map((part) => String(part ?? '').trim()).filter(Boolean).join(' • ')
 
-const SearchSectionHeader = ({
-  icon,
-  title,
-  actionLabel,
-  onActionPress,
-}: {
-  icon: keyof typeof Feather.glyphMap
-  title: string
-  actionLabel?: string
-  onActionPress?: () => void
-}) => {
+/** Превью сущности в поиске (Trending + результаты): турнир / клуб / игрок — см. правило mobile-search-entity-previews */
+const SearchEntityLead = ({ visual }: { visual: SuggestionVisual }) => {
   const { colors, styles } = useSearchTheme()
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleWrap}>
-        <Feather name={icon} size={16} color={icon === 'trending-up' ? colors.primary : colors.textMuted} />
-        <Text style={styles.sectionTitle}>{title}</Text>
+  if (visual.kind === 'location') {
+    return (
+      <View style={styles.suggestionIcon}>
+        <Feather name="map-pin" size={20} color={colors.white} />
       </View>
-      {actionLabel && onActionPress ? (
-        <Pressable onPress={onActionPress} style={({ pressed }) => [styles.sectionAction, pressed && styles.pressed]}>
-          <Text style={styles.sectionActionText}>{actionLabel}</Text>
-        </Pressable>
-      ) : null}
-    </View>
+    )
+  }
+  if (visual.kind === 'tournament') {
+    return <TournamentThumbnail imageUri={visual.imageUri} size={42} />
+  }
+  if (visual.kind === 'club') {
+    return (
+      <View style={styles.suggestionClubThumb}>
+        <EntityImage
+          uri={visual.logoUri}
+          style={styles.suggestionClubImage}
+          resizeMode="cover"
+          placeholderResizeMode="contain"
+        />
+      </View>
+    )
+  }
+  return (
+    <RemoteUserAvatar
+      uri={visual.imageUri}
+      size={42}
+      fallback="initials"
+      initialsLabel={visual.initialsLabel}
+    />
   )
 }
 
@@ -130,8 +147,8 @@ const SuggestionCard = ({
           end={{ x: 1, y: 0.8 }}
           style={styles.suggestionGradient}
         />
-        <View style={styles.suggestionIcon}>
-          <Feather name={item.icon} size={20} color={colors.white} />
+        <View style={styles.suggestionLead}>
+          <SearchEntityLead visual={item.visual} />
         </View>
         <View style={styles.cardCopy}>
           <Text style={styles.cardTitle} numberOfLines={1}>
@@ -153,18 +170,12 @@ const SearchResultRow = ({
   item: SearchResultItem
   onPress: () => void
 }) => {
-  const { colors, styles } = useSearchTheme()
-  const iconByType: Record<SearchResultType, keyof typeof Feather.glyphMap> = {
-    tournament: 'award',
-    club: 'users',
-    player: 'user',
-  }
-
+  const { styles } = useSearchTheme()
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
       <View style={styles.resultRow}>
-        <View style={styles.resultIcon}>
-          <Feather name={iconByType[item.type]} size={18} color={colors.white} />
+        <View style={styles.suggestionLead}>
+          <SearchEntityLead visual={item.visual} />
         </View>
         <View style={styles.cardCopy}>
           <Text style={styles.cardTitle} numberOfLines={1}>
@@ -194,8 +205,10 @@ const EmptySearchCard = ({ query }: { query: string }) => {
 
 export default function SearchScreen() {
   const { colors, styles } = useSearchTheme()
-  const params = useLocalSearchParams<{ returnTo?: string }>()
+  /** TopBar передаёт `returnTo` при открытии поиска; оставляем для совместимости маршрута */
+  useLocalSearchParams<{ returnTo?: string }>()
   const { token } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const [query, setQuery] = useState('')
@@ -203,14 +216,16 @@ export default function SearchScreen() {
   const deferredQuery = useDeferredValue(query)
   const normalizedQuery = normalizeSearchTerm(deferredQuery).toLowerCase()
   const rawQuery = normalizeSearchTerm(query)
-  const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo
-
   const tournamentsQuery = api.public.listBoards.useQuery()
   const clubsQuery = api.club.list.useQuery(undefined)
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
   const playersQuery = api.user.directory.useQuery(
     { query: normalizedQuery, limit: 8 },
     { enabled: isAuthenticated && normalizedQuery.length >= 2 }
+  )
+  const trendingPlayersQuery = api.user.directory.useQuery(
+    { limit: 12 },
+    { enabled: isAuthenticated }
   )
 
   useEffect(() => {
@@ -276,7 +291,6 @@ export default function SearchScreen() {
       .slice(0, 8)
       .map((item) => ({
         key: `tournament-${item.id}`,
-        type: 'tournament',
         title: item.title || 'Tournament',
         subtitle:
           joinMeta([
@@ -285,6 +299,7 @@ export default function SearchScreen() {
             item.startDate ? formatDate(item.startDate) : null,
           ]) || 'Tournament',
         route: `/tournaments/${item.id}`,
+        visual: { kind: 'tournament' as const, imageUri: item.image },
       }))
   }, [normalizedQuery, tournaments])
 
@@ -304,7 +319,6 @@ export default function SearchScreen() {
       .slice(0, 8)
       .map((item) => ({
         key: `club-${item.id}`,
-        type: 'club',
         title: item.name || 'Club',
         subtitle:
           joinMeta([
@@ -313,13 +327,13 @@ export default function SearchScreen() {
             item.isVerified ? 'Verified' : null,
           ]) || 'Club',
         route: `/clubs/${item.id}`,
+        visual: { kind: 'club' as const, logoUri: item.logoUrl },
       }))
   }, [clubs, normalizedQuery])
 
   const playerResults = useMemo<SearchResultItem[]>(() => {
     return players.map((item) => ({
       key: `player-${item.id}`,
-      type: 'player',
       title: item.name || 'Player',
       subtitle:
         joinMeta([
@@ -332,6 +346,11 @@ export default function SearchScreen() {
             : null,
         ]) || 'Player',
       route: `/profile/${item.id}`,
+      visual: {
+        kind: 'player' as const,
+        imageUri: item.image,
+        initialsLabel: item.name || 'Player',
+      },
     }))
   }, [players])
 
@@ -348,46 +367,64 @@ export default function SearchScreen() {
   const suggestionCards = useMemo<SuggestionCardItem[]>(() => {
     const trendingTournament = tournaments[0]
     const trendingClub = clubs.find((club) => club.isVerified) ?? clubs[0]
+    const trendingPlayer = ((trendingPlayersQuery.data ?? []) as any[])[0] as
+      | { id?: string; name?: string | null; image?: string | null; city?: string | null }
+      | undefined
+
+    const rowPlayer: SuggestionCardItem | null =
+      isAuthenticated && trendingPlayer
+        ? {
+            key: 'trending-player',
+            title: trendingPlayer.name || 'Player',
+            subtitle: joinMeta(['Player', trendingPlayer.city || null]) || 'Player',
+            visual: {
+              kind: 'player',
+              imageUri: trendingPlayer.image,
+              initialsLabel: trendingPlayer.name || 'Player',
+            },
+            ...(trendingPlayer.id
+              ? { route: `/profile/${trendingPlayer.id}` }
+              : { queryValue: trendingPlayer.name || undefined }),
+          }
+        : null
+
+    const rowNearby: SuggestionCardItem = {
+      key: 'trending-nearby',
+      title: 'Tournaments near me',
+      subtitle: userCity || 'Location',
+      visual: { kind: 'location' },
+      queryValue: userCity || undefined,
+      onPress: userCity ? undefined : () => router.replace('/tournaments'),
+    }
 
     return [
       {
         key: 'trending-tournament',
         title: trendingTournament?.title || 'Summer Championship 2026',
         subtitle: 'Tournament',
-        icon: 'award',
-        queryValue: trendingTournament?.title || 'Summer Championship 2026',
+        visual: { kind: 'tournament', imageUri: trendingTournament?.image },
+        ...(trendingTournament?.id
+          ? { route: `/tournaments/${trendingTournament.id}` }
+          : { queryValue: 'Summer Championship 2026' }),
       },
       {
         key: 'trending-club',
         title: trendingClub?.name || 'Downtown Pickleball Club',
         subtitle: 'Club',
-        icon: 'users',
-        queryValue: trendingClub?.name || 'Downtown Pickleball Club',
+        visual: { kind: 'club', logoUri: trendingClub?.logoUrl },
+        ...(trendingClub?.id
+          ? { route: `/clubs/${trendingClub.id}` }
+          : { queryValue: 'Downtown Pickleball Club' }),
       },
-      {
-        key: 'trending-nearby',
-        title: 'Tournaments near me',
-        subtitle: userCity || 'Location',
-        icon: 'map-pin',
-        queryValue: userCity || undefined,
-        onPress: userCity ? undefined : () => router.replace('/tournaments'),
-      },
+      rowPlayer ?? rowNearby,
     ]
-  }, [clubs, tournaments, userCity])
+  }, [clubs, isAuthenticated, tournaments, trendingPlayersQuery.data, userCity])
 
   const isSearching =
     Boolean(rawQuery) &&
     (tournamentsQuery.isLoading ||
       clubsQuery.isLoading ||
       (isAuthenticated && normalizedQuery.length >= 2 && playersQuery.isFetching))
-
-  const closeSearch = () => {
-    if (returnToParam && returnToParam.startsWith('/')) {
-      router.replace(returnToParam as never)
-      return
-    }
-    router.replace('/' as never)
-  }
 
   const openResult = (item: SearchResultItem) => {
     rememberSearch(rawQuery || item.title)
@@ -404,26 +441,27 @@ export default function SearchScreen() {
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
       <View style={styles.page}>
         <View style={styles.searchRow}>
-          <Pressable onPress={closeSearch} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-            <Feather name="x" size={22} color={colors.text} />
-          </Pressable>
-
-          <View style={styles.searchInputShell}>
-            <Feather name="search" size={20} color={colors.textMuted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search tournaments, clubs, players..."
-              placeholderTextColor={colors.textMuted}
-              selectionColor={colors.primary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              returnKeyType="search"
-              onSubmitEditing={() => rememberSearch(query)}
-              style={styles.searchInput}
-            />
-          </View>
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search tournaments, clubs, players..."
+            containerStyle={styles.searchFieldFlex}
+            returnKeyType="search"
+            onSubmitEditing={() => rememberSearch(query)}
+            right={
+              query.length > 0 ? (
+                <Pressable
+                  onPress={() => setQuery('')}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search text"
+                  style={({ pressed }) => [styles.clearInInputButton, pressed && styles.pressed]}
+                >
+                  <Feather name="x" size={18} color={colors.textMuted} />
+                </Pressable>
+              ) : null
+            }
+          />
         </View>
 
         <ScrollView
@@ -438,7 +476,7 @@ export default function SearchScreen() {
           {showDiscovery ? (
             <>
               <View style={styles.sectionBlock}>
-                <SearchSectionHeader icon="trending-up" title="Trending" />
+                <SectionTitle title="Trending" />
                 <View style={styles.cardsColumn}>
                   {suggestionCards.map((item) => (
                     <SuggestionCard
@@ -447,6 +485,11 @@ export default function SearchScreen() {
                       onPress={() => {
                         if (item.onPress) {
                           item.onPress()
+                          return
+                        }
+                        if (item.route) {
+                          rememberSearch(item.title)
+                          router.push(item.route as never)
                           return
                         }
                         if (item.queryValue) {
@@ -460,11 +503,13 @@ export default function SearchScreen() {
 
               {visibleRecentSearches.length > 0 ? (
                 <View style={styles.sectionBlock}>
-                  <SearchSectionHeader
-                    icon="clock"
+                  <SectionTitle
                     title="Recent"
                     actionLabel="Clear all"
-                    onActionPress={() => persistRecentSearches([])}
+                    onActionPress={() => {
+                      persistRecentSearches([])
+                      toast.show({ message: 'Recent searches cleared.', variant: 'default' })
+                    }}
                   />
                   <View style={styles.cardsColumn}>
                     {visibleRecentSearches.map((item) => (
@@ -494,16 +539,7 @@ export default function SearchScreen() {
 
               {resultSections.map((section) => (
                 <View key={section.key} style={styles.sectionBlock}>
-                  <SearchSectionHeader
-                    icon={
-                      section.key === 'events'
-                        ? 'award'
-                        : section.key === 'clubs'
-                        ? 'users'
-                        : 'user'
-                    }
-                    title={section.title}
-                  />
+                  <SectionTitle title={section.title} />
                   <View style={styles.cardsColumn}>
                     {section.items.map((item) => (
                       <SearchResultRow key={item.key} item={item} onPress={() => openResult(item)} />
@@ -528,7 +564,7 @@ export default function SearchScreen() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, theme: AppTheme) =>
   StyleSheet.create({
     layoutContent: {
       paddingTop: 0,
@@ -542,35 +578,22 @@ const createStyles = (colors: ThemePalette) =>
     searchRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.md,
       paddingBottom: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      /** Светлее, чем `colors.border`, чтобы линия под поиском была мягче */
+      borderBottomColor:
+        theme === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(10, 10, 10, 0.05)',
     },
-    closeButton: {
+    searchFieldFlex: {
+      flex: 1,
+    },
+    clearInInputButton: {
       width: 36,
       height: 36,
-      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    searchInputShell: {
-      flex: 1,
-      height: 44,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceElevated,
-      paddingHorizontal: 14,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    searchInput: {
-      flex: 1,
-      color: colors.text,
-      fontSize: 15,
-      paddingVertical: 0,
     },
     contentScroll: {
       flex: 1,
@@ -583,33 +606,6 @@ const createStyles = (colors: ThemePalette) =>
     },
     sectionBlock: {
       gap: 14,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 10,
-    },
-    sectionTitleWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    sectionTitle: {
-      color: colors.text,
-      fontSize: 19,
-      fontWeight: '800',
-      letterSpacing: -0.3,
-    },
-    sectionAction: {
-      borderRadius: 999,
-      paddingHorizontal: 4,
-      paddingVertical: 2,
-    },
-    sectionActionText: {
-      color: '#56708b',
-      fontSize: 13,
-      fontWeight: '600',
     },
     cardsColumn: {
       gap: 10,
@@ -633,6 +629,21 @@ const createStyles = (colors: ThemePalette) =>
     suggestionGradient: {
       ...StyleSheet.absoluteFillObject,
       borderRadius: radius.lg,
+    },
+    suggestionLead: {
+      flexShrink: 0,
+    },
+    suggestionClubThumb: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceMuted,
+    },
+    suggestionClubImage: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
     },
     suggestionIcon: {
       width: 42,
@@ -664,14 +675,6 @@ const createStyles = (colors: ThemePalette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-    },
-    resultIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primary,
     },
     cardCopy: {
       flex: 1,

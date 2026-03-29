@@ -6,6 +6,7 @@ import { formatEventStartInTimezone, getEventTimezoneLabel } from '../lib/format
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
+import { UnreadIndicatorDot } from './UnreadIndicatorDot'
 
 export type EventChatDivision = {
   id: string
@@ -26,7 +27,7 @@ export type EventChatListEvent = {
   divisions: EventChatDivision[]
 }
 
-function UnreadBadge({
+function UnreadDotRow({
   count,
   compact,
   styles,
@@ -37,10 +38,8 @@ function UnreadBadge({
 }) {
   if (count <= 0) return null
   return (
-    <View style={[styles.unreadBadge, compact && styles.unreadBadgeCompact]}>
-      <Text style={[styles.unreadText, compact && styles.unreadTextCompact]}>
-        {count > 99 ? '99+' : String(count)}
-      </Text>
+    <View style={[styles.unreadDotWrap, compact && styles.unreadDotWrapCompact]} accessibilityLabel="Unread messages">
+      <UnreadIndicatorDot size={compact ? 7 : 8} />
     </View>
   )
 }
@@ -70,7 +69,7 @@ export function EventChatListItemActive({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} styles={styles} /> : null}
+              {event.unreadCount > 0 ? <UnreadDotRow count={event.unreadCount} styles={styles} /> : null}
             </View>
             <Text style={styles.meta}>{meta}</Text>
             {event.club?.name ? (
@@ -96,7 +95,7 @@ export function EventChatListItemActive({
               <Text style={styles.divisionName} numberOfLines={2}>
                 {division.name}
               </Text>
-              <UnreadBadge count={division.unreadCount ?? 0} compact styles={styles} />
+              <UnreadDotRow count={division.unreadCount ?? 0} compact styles={styles} />
             </Pressable>
           ))}
         </View>
@@ -140,7 +139,7 @@ export function EventChatListItemArchived({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadBadge count={event.unreadCount} styles={styles} /> : null}
+              {event.unreadCount > 0 ? <UnreadDotRow count={event.unreadCount} styles={styles} /> : null}
             </View>
             <Text style={styles.meta}>{meta}</Text>
             {event.club?.name ? (
@@ -169,7 +168,7 @@ export function EventChatListItemArchived({
               <Text style={styles.divisionName} numberOfLines={2}>
                 {division.name}
               </Text>
-              <UnreadBadge count={division.unreadCount ?? 0} compact styles={styles} />
+              <UnreadDotRow count={division.unreadCount ?? 0} compact styles={styles} />
             </Pressable>
           ))}
         </View>
@@ -216,28 +215,14 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     minWidth: 0,
   },
-  unreadBadge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#dc2626',
+  unreadDotWrap: {
+    marginLeft: 6,
+    justifyContent: 'flex-start',
+    paddingTop: 2,
   },
-  unreadBadgeCompact: {
-    minWidth: 20,
-    height: 18,
-    paddingHorizontal: 6,
-    borderRadius: 9,
-  },
-  unreadText: {
-    color: colors.white,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  unreadTextCompact: {
-    fontSize: 10,
+  unreadDotWrapCompact: {
+    marginLeft: 4,
+    paddingTop: 0,
   },
   meta: {
     marginTop: 4,

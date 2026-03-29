@@ -5,6 +5,7 @@ import { formatDateTime } from '../lib/formatters'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
+import { UnreadIndicatorDot } from './UnreadIndicatorDot'
 
 export const ChatPreviewCard = ({
   title,
@@ -33,19 +34,16 @@ export const ChatPreviewCard = ({
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
-              <Text style={styles.previewTime} numberOfLines={1}>
-                {''}
-              </Text>
+              {unreadCount && unreadCount > 0 ? (
+                <View style={styles.titleUnreadDot} accessibilityLabel="Unread messages">
+                  <UnreadIndicatorDot />
+                </View>
+              ) : null}
             </View>
             <View style={styles.subtitleRow}>
               <Text numberOfLines={1} style={styles.subtitle}>
                 {subtitle}
               </Text>
-              {unreadCount && unreadCount > 0 ? (
-                <View style={styles.unread}>
-                  <Text style={styles.unreadText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
-                </View>
-              ) : null}
             </View>
           </View>
         </View>
@@ -111,35 +109,20 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     minWidth: 0,
   },
-  previewTime: {
-    color: colors.textMuted,
-    fontSize: 12,
+  titleUnreadDot: {
+    marginLeft: 6,
+    justifyContent: 'center',
   },
   subtitleRow: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 10,
   },
   subtitle: {
     color: colors.textMuted,
     fontSize: 13,
     flex: 1,
-  },
-  unread: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  unreadText: {
-    color: colors.white,
-    fontWeight: '800',
-    fontSize: 12,
   },
   messageWrap: {
     alignItems: 'flex-start',

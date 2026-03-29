@@ -1,0 +1,31 @@
+# Mobile: No System Alerts for Confirmations
+
+- Do not use `Alert.alert` from `react-native` for user confirmations (delete, clear, leave, destructive actions).
+- Use `AppBottomSheet` with `AppConfirmActions` in the `footer` (Cancel + primary/destructive confirm, `confirmLoading` when needed). Dismiss via backdrop or Cancel — no header close cross (see `mobile-modal-no-close-cross`).
+- For reference, see `apps/mobile/app/chats/club/[clubId]/index.tsx` and `apps/mobile/app/notifications.tsx` (clear-all flow).
+
+## Examples
+
+```tsx
+// Good
+const [confirmOpen, setConfirmOpen] = useState(false)
+<AppBottomSheet
+  open={confirmOpen}
+  onClose={() => setConfirmOpen(false)}
+  title="Clear all?"
+  subtitle="This cannot be undone."
+  footer={
+    <AppConfirmActions
+      intent="destructive"
+      cancelLabel="Cancel"
+      confirmLabel="Clear"
+      onCancel={() => setConfirmOpen(false)}
+      onConfirm={() => void mutation.mutateAsync().then(() => setConfirmOpen(false))}
+      confirmLoading={mutation.isPending}
+    />
+  }
+/>
+
+// Bad
+Alert.alert('Clear all?', '…', [{ text: 'Cancel' }, { text: 'OK', onPress: … }])
+```

@@ -143,8 +143,8 @@ export const ClubCard = ({ club, onPress, onRatingPress, onJoin, joinLoading }: 
               ) : null}
               {showPending ? (
                 <View style={[styles.statusBadge, styles.statusBadgePending]}>
-                  <Feather name="clock" size={12} color={colors.primary} />
-                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextDark]}>Pending</Text>
+                  <Feather name="clock" size={12} color="#A16207" />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextPending]}>Pending</Text>
                 </View>
               ) : null}
             </View>
@@ -341,9 +341,9 @@ const createStyles = (colors: ThemePalette) =>
       borderColor: 'rgba(255, 193, 7, 0.24)',
     },
     statusBadgePending: {
-      backgroundColor: 'rgba(245, 158, 11, 0.14)',
-      borderWidth: 1,
-      borderColor: 'rgba(245, 158, 11, 0.2)',
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      borderColor: 'transparent',
     },
     statusBadgeText: {
       color: '#2F6BFF',
@@ -351,14 +351,14 @@ const createStyles = (colors: ThemePalette) =>
       fontSize: 13,
       lineHeight: 20,
     },
-    statusBadgeTextDark: {
-      color: '#A16207',
-    },
     statusBadgeTextMember: {
       color: colors.primary,
     },
     statusBadgeTextOwner: {
       color: '#A06B00',
+    },
+    statusBadgeTextPending: {
+      color: '#A16207',
     },
     chipRow: {
       flexDirection: 'row',

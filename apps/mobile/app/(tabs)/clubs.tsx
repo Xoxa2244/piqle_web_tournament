@@ -18,6 +18,7 @@ import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 const normalizeLocationValue = (value: string | null | undefined) =>
@@ -62,6 +63,7 @@ const ClubListItem = memo(function ClubListItem({
 export default function ClubsTab() {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
+  const toast = useToast()
   const { token } = useAuth()
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
@@ -76,12 +78,24 @@ export default function ClubsTab() {
     enabled: isAuthenticated,
   })
   const toggleFollow = api.club.toggleFollow.useMutation({
-    onSuccess: (_data: unknown, variables: { clubId: string }) => {
+    onSuccess: (
+      data: { status: string; isFollowing: boolean; isJoinPending: boolean },
+      variables: { clubId: string },
+    ) => {
       void Promise.all([
         utils.club.list.invalidate(),
         utils.club.listMyChatClubs.invalidate(),
         utils.club.get.invalidate({ id: variables.clubId }),
       ])
+      if (data.status === 'pending') toast.success('Request sent.')
+      else if (data.status === 'joined') toast.success('You joined the club.')
+      else if (data.status === 'left') toast.success('You left the club.')
+      else if (data.status === 'admin') {
+        toast.show({ message: 'You manage this club as an admin.', variant: 'default' })
+      }
+    },
+    onError: (e: { message?: string }) => {
+      toast.error(e?.message || 'Something went wrong')
     },
   })
 

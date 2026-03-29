@@ -9,6 +9,7 @@ import { getClientAuthToken } from '../lib/authStorage'
 import { trpc } from '../lib/trpc'
 import { AuthProvider, useAuth } from './AuthProvider'
 import { ThemeProvider } from './ThemeProvider'
+import { ToastProvider } from './ToastProvider'
 
 const TrpcLayer = ({ children }: PropsWithChildren) => {
   const { token } = useAuth()
@@ -74,7 +75,9 @@ export const AppProviders = ({ children }: PropsWithChildren) => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <TrpcLayer>{children}</TrpcLayer>
+        <ToastProvider>
+          <TrpcLayer>{children}</TrpcLayer>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   )

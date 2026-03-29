@@ -3,7 +3,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
-import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../src/components/AppBottomSheet'
+import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
 import { ChatComposer } from '../../src/components/ChatComposer'
 import { ChatThreadRoot } from '../../src/components/ChatThreadRoot'
 import { useChatKeyboardVerticalOffset } from '../../src/hooks/useChatKeyboardVerticalOffset'
@@ -15,6 +15,7 @@ import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 
 type Message = {
   id: string
@@ -102,6 +103,7 @@ const renderInlineMarkdown = (input: string, keyPrefix: string, styles: ReturnTy
 
 export default function AITab() {
   const { token } = useAuth()
+  const toast = useToast()
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
@@ -140,7 +142,6 @@ export default function AITab() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
-  const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null)
   const chatMutation = trpc.aiCoach.chat.useMutation({
     onError: (err) => {
       setMessages((prev) => [
@@ -248,11 +249,18 @@ export default function AITab() {
         duration: 220,
         useNativeDriver: true,
       }).start()
-      await historyQuery.refetch()
+      try {
+        await historyQuery.refetch()
+      } catch (refetchErr: any) {
+        toast.error(refetchErr?.message || 'Failed to refresh chat history.', 'Update failed')
+        scrollToBottom(false)
+        return
+      }
+      toast.success('AI Coach chat was reset.')
       scrollToBottom(false)
     } catch (err: any) {
       setResetConfirmOpen(false)
-      setResetErrorMessage(err?.message || 'Unable to reset right now. Please try again.')
+      toast.error(err?.message || 'Unable to reset right now. Please try again.', 'Reset failed')
     }
   }
 
@@ -430,14 +438,7 @@ export default function AITab() {
           />
         }
       />
-      <AppBottomSheet
-        open={Boolean(resetErrorMessage)}
-        onClose={() => setResetErrorMessage(null)}
-        title="Reset failed"
-        subtitle={resetErrorMessage ?? ''}
-        footer={<AppInfoFooter onPress={() => setResetErrorMessage(null)} />}
-      />
-    </PageLayout>
+   </PageLayout>
   )
 }
 

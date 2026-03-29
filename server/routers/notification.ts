@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { pushToUser } from '@/lib/realtime'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { buildExtraBellItems } from '../utils/bellNotificationItems'
 
 const formatPromptDate = (value: Date) =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
@@ -37,6 +39,7 @@ export const notificationRouter = createTRPCRouter({
               select: {
                 id: true,
                 title: true,
+                image: true,
               },
             },
           },
@@ -62,6 +65,7 @@ export const notificationRouter = createTRPCRouter({
         readAt: null as string | null,
         invitationId: inv.id,
         tournamentId: inv.tournament.id,
+        tournamentImage: inv.tournament.image ?? null,
         targetUrl: `/?open=${inv.tournament.id}`,
         clubId: null as string | null,
       }))
@@ -76,6 +80,8 @@ export const notificationRouter = createTRPCRouter({
         clubId: string
         clubName: string
         targetUrl: string
+        userAvatarUrl: string | null
+        requesterName: string
       }> = []
       let feedbackPromptItems: Array<{
         id: string
@@ -93,7 +99,7 @@ export const notificationRouter = createTRPCRouter({
       const clubIds = adminClubs.map((a) => a.clubId)
       if (clubIds.length > 0) {
         try {
-          const [requestsByClub, clubs] = await Promise.all([
+          const [requestsByClub, clubs, latestJoinRows] = await Promise.all([
             ctx.prisma.clubJoinRequest.groupBy({
               by: ['clubId'],
               where: { clubId: { in: clubIds } },
@@ -104,7 +110,24 @@ export const notificationRouter = createTRPCRouter({
               where: { id: { in: clubIds } },
               select: { id: true, name: true },
             }),
+            ctx.prisma.clubJoinRequest.findMany({
+              where: { clubId: { in: clubIds } },
+              orderBy: { createdAt: 'desc' },
+              select: {
+                clubId: true,
+                user: { select: { image: true, name: true, email: true } },
+              },
+            }),
           ])
+          const latestJoinByClub = new Map<string, { image: string | null; label: string }>()
+          for (const row of latestJoinRows) {
+            if (latestJoinByClub.has(row.clubId)) continue
+            const label = row.user?.name || row.user?.email || 'Member'
+            latestJoinByClub.set(row.clubId, {
+              image: row.user?.image ?? null,
+              label,
+            })
+          }
           let seenMap = new Map<string, Date>()
           try {
             const seenByClub = await ctx.prisma.clubJoinRequestSeen.findMany({
@@ -122,6 +145,7 @@ export const notificationRouter = createTRPCRouter({
             if (seenAt && r._max.createdAt <= seenAt) continue
             const club = clubByNameId.get(r.clubId)
             if (!club) continue
+            const lead = latestJoinByClub.get(r.clubId)
             clubJoinItems.push({
               id: `club-join-request-${r.clubId}`,
               type: 'CLUB_JOIN_REQUEST',
@@ -132,6 +156,8 @@ export const notificationRouter = createTRPCRouter({
               clubId: r.clubId,
               clubName: club.name,
               targetUrl: `/clubs/${r.clubId}?tab=members`,
+              userAvatarUrl: lead?.image ?? null,
+              requesterName: lead?.label ?? club.name,
             })
           }
         } catch (err) {
@@ -311,15 +337,42 @@ export const notificationRouter = createTRPCRouter({
         if (!isMissingDbRelation(err, 'feedback')) throw err
       }
 
+      let extraBellItems: Array<Record<string, unknown> & { _sort: string }> = []
+      try {
+        extraBellItems = await buildExtraBellItems(ctx.prisma, userId)
+      } catch {
+        extraBellItems = []
+      }
+
       const allItems = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...feedbackPromptItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...extraBellItems.map((i) => ({ ...i })),
       ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
-      const items = allItems.slice(0, limit).map(({ _sort, ...rest }) => rest)
+      const sorted = allItems.map(({ _sort, ...rest }) => rest) as Array<
+        { createdAt: string } & Record<string, unknown>
+      >
+
+      const prefs = await ctx.prisma.user.findUnique({
+        where: { id: userId },
+        select: { bellNotificationsReadThrough: true, bellNotificationsClearedBefore: true },
+      })
+      const readThrough = prefs?.bellNotificationsReadThrough ?? null
+      const clearedBefore = prefs?.bellNotificationsClearedBefore ?? null
+
+      const visible = sorted.filter((i) => {
+        if (!clearedBefore) return true
+        return new Date(i.createdAt) > clearedBefore
+      })
+      const unreadCount = visible.filter((i) => {
+        if (!readThrough) return true
+        return new Date(i.createdAt) > readThrough
+      }).length
+      const items = visible.slice(0, limit)
 
       return {
-        unreadCount: invitationCount + clubJoinItems.length + feedbackPromptItems.length,
+        unreadCount,
         items,
       }
     }),
@@ -343,7 +396,44 @@ export const notificationRouter = createTRPCRouter({
       return { success: true }
     }),
 
-  markAllRead: protectedProcedure.mutation(async () => {
-    return { success: true }
+  markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = ctx.session.user.id
+    const now = new Date()
+    await ctx.prisma.user.update({
+      where: { id: userId },
+      data: { bellNotificationsReadThrough: now },
+    })
+    const adminClubs = await ctx.prisma.clubAdmin.findMany({
+      where: { userId },
+      select: { clubId: true },
+    })
+    for (const { clubId } of adminClubs) {
+      try {
+        await ctx.prisma.clubJoinRequestSeen.upsert({
+          where: { userId_clubId: { userId, clubId } },
+          create: { userId, clubId },
+          update: { seenAt: now },
+        })
+      } catch (err) {
+        if (!isMissingDbRelation(err, 'club_join_request_seen')) throw err
+      }
+    }
+    pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+    return { success: true as const }
+  }),
+
+  /** Скрыть все текущие уведомления в списке; новые появятся снова. */
+  clearAll: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = ctx.session.user.id
+    const now = new Date()
+    await ctx.prisma.user.update({
+      where: { id: userId },
+      data: {
+        bellNotificationsClearedBefore: now,
+        bellNotificationsReadThrough: now,
+      },
+    })
+    pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+    return { success: true as const }
   }),
 })

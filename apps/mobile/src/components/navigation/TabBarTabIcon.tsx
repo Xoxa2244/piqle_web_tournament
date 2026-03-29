@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 
+import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../providers/AuthProvider'
+import { useAppTheme } from '../../providers/ThemeProvider'
 import { useTabRepeat } from '../../contexts/TabRepeatContext'
 
 export const tabIcons = {
@@ -27,12 +30,16 @@ export function TabBarTabIcon({
   focused,
   tabActive,
   tabInactive,
+  showUnreadDot,
 }: {
   routeName: TabRouteName
   focused: boolean
   tabActive: string
   tabInactive: string
+  /** Только для `chats`: точка при непрочитанных в клубных/ивентных чатах. */
+  showUnreadDot?: boolean
 }) {
+  const { colors } = useAppTheme()
   const { tabShakeVersion } = useTabRepeat()
   const shakeGen = tabShakeVersion[routeName] ?? 0
   const wobble = useRef(new Animated.Value(0)).current
@@ -81,9 +88,17 @@ export function TabBarTabIcon({
   return (
     <View style={styles.tabSlot}>
       <View style={styles.tabItem}>
-        <Animated.View style={{ transform: [{ rotate }] }}>
-          <Ionicons name={iconName} size={22} color={color} />
-        </Animated.View>
+        <View style={styles.iconWrap}>
+          <Animated.View style={{ transform: [{ rotate }] }}>
+            <Ionicons name={iconName} size={22} color={color} />
+          </Animated.View>
+          {showUnreadDot ? (
+            <View
+              style={[styles.unreadTabDot, { borderColor: colors.surfaceOverlay }]}
+              accessibilityLabel="Unread messages"
+            />
+          ) : null}
+        </View>
         <Text style={[styles.tabLabel, { color }]} numberOfLines={2}>
           {label}
         </Text>
@@ -92,11 +107,57 @@ export function TabBarTabIcon({
   )
 }
 
+/** Иконка вкладки Chats с точкой, если есть непрочитанные в списках клубов/ивентов. */
+export function ChatsTabBarIcon({ focused }: { focused: boolean }) {
+  const { colors } = useAppTheme()
+  const { token } = useAuth()
+  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: Boolean(token) })
+  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, { enabled: Boolean(token) })
+  const showUnreadDot = useMemo(() => {
+    if (!token) return false
+    const clubs = clubChatsQuery.data ?? []
+    if (clubs.some((c: { unreadCount?: number }) => (c.unreadCount ?? 0) > 0)) return true
+    const events = (eventChatsQuery.data ?? []) as {
+      unreadCount?: number
+      divisions?: { unreadCount?: number }[]
+    }[]
+    return events.some((e) => {
+      const divSum = (e.divisions ?? []).reduce((s, d) => s + (d.unreadCount ?? 0), 0)
+      return (e.unreadCount ?? 0) + divSum > 0
+    })
+  }, [token, clubChatsQuery.data, eventChatsQuery.data])
+
+  return (
+    <TabBarTabIcon
+      routeName="chats"
+      focused={focused}
+      tabActive={colors.primary}
+      tabInactive={colors.textMuted}
+      showUnreadDot={showUnreadDot}
+    />
+  )
+}
+
 export const tabBarIconStyles = StyleSheet.create({
   tabSlot: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadTabDot: {
+    position: 'absolute',
+    top: -2,
+    right: -6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
   },
   tabItem: {
     width: '100%',

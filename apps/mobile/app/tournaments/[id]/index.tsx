@@ -1117,12 +1117,12 @@ export default function TournamentDetailScreen() {
                   </View>
                 ) : null}
               </Pressable>
-              <Pressable
+                <Pressable
                 onPress={handleShare}
                 style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
               >
                 <Feather name="share-2" size={18} color={colors.text} />
-              </Pressable>
+                </Pressable>
               {canLeaveTournament ? (
                 <Pressable
                   onPress={() => setLeaveTournamentSheetOpen(true)}
@@ -1146,7 +1146,7 @@ export default function TournamentDetailScreen() {
                     resizeMode="cover"
                     placeholderResizeMode="contain"
                   />
-                </View>
+            </View>
                 <View style={styles.eventHeroMain}>
                   <View style={styles.eventHeroTitleRow}>
                     <Text style={styles.eventHeroTitle} numberOfLines={2}>
@@ -1157,16 +1157,16 @@ export default function TournamentDetailScreen() {
                         <Feather name={getCompactStatusIcon(compactHeroStatusLabel)} size={14} color={colors.white} />
                         <Text style={styles.eventHeroCompactStatusText} numberOfLines={1}>
                           {compactHeroStatusLabel}
-                        </Text>
-                      </View>
+              </Text>
+            </View>
                     ) : null}
-                  </View>
+          </View>
                   <View style={styles.eventHeroMetaRow}>
                     <View style={styles.eventHeroChip}>
                       <Text style={styles.eventHeroChipText} numberOfLines={1}>
                         {formatTournamentFormat(tournament.format)}
                       </Text>
-                    </View>
+        </View>
                     <Pressable
                       onPress={() => setTournamentFeedbackInfoOpen(true)}
                       style={({ pressed }) => [styles.eventHeroRatingPill, pressed && styles.eventHeroRatingPillPressed]}
@@ -1182,8 +1182,8 @@ export default function TournamentDetailScreen() {
                 </View>
               </View>
             </View>
-          </SurfaceCard>
-        </View>
+            </SurfaceCard>
+          </View>
 
         <PickleRefreshScrollView
           ref={scrollRef as any}
@@ -1206,7 +1206,7 @@ export default function TournamentDetailScreen() {
                 <Text style={styles.closedTournamentNoticeText}>
                   This tournament may be closed or invite-only
                 </Text>
-              </View>
+        </View>
             </View>
           </View>
         ) : null}
@@ -1231,7 +1231,7 @@ export default function TournamentDetailScreen() {
                   >
                     <Text style={styles.inlineCtaText}>
                       {createCheckout.isPending ? 'Opening payment...' : `Pay now ${feeLabel}`}
-                    </Text>
+                  </Text>
                   </OptionalLinearGradient>
                 </Pressable>
               ) : null}
@@ -1260,7 +1260,7 @@ export default function TournamentDetailScreen() {
                   </OptionalLinearGradient>
                 </Pressable>
               ) : null}
-            </View>
+          </View>
           </View>
         ) : null}
 
@@ -1326,7 +1326,7 @@ export default function TournamentDetailScreen() {
               ) : null}
 
               {tournamentDescription ? (
-                <SurfaceCard style={styles.detailCard}>
+              <SurfaceCard style={styles.detailCard}>
                   {tournamentDescriptionExpandable ? (
                     <Pressable
                       accessibilityRole="button"
@@ -1337,18 +1337,18 @@ export default function TournamentDetailScreen() {
                         pressed && styles.aboutDescriptionTapAreaPressed,
                       ]}
                     >
-                      <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
+                <Text style={[styles.cardTitle, styles.cardTitleTight]}>About</Text>
                       <Text
                         style={styles.descriptionText}
                         numberOfLines={tournamentDescriptionExpanded ? undefined : 3}
                       >
                         {tournamentDescription}
-                      </Text>
+                </Text>
                       <View style={styles.descriptionLinkPressable}>
                         <Text style={styles.descriptionLinkText}>
                           {tournamentDescriptionExpanded ? 'Hide description' : 'Show full description'}
                         </Text>
-                      </View>
+                </View>
                     </Pressable>
                   ) : (
                     <>
@@ -1371,7 +1371,7 @@ export default function TournamentDetailScreen() {
                       </Text>
                     </>
                   )}
-                </SurfaceCard>
+              </SurfaceCard>
               ) : null}
 
               <SurfaceCard style={styles.detailCard}>
@@ -1408,26 +1408,26 @@ export default function TournamentDetailScreen() {
                     </View>
                   ) : null}
                 </View>
-                <Pressable
-                  disabled={locationLabel === 'Location not set'}
-                  onPress={handleOpenMaps}
+                    <Pressable
+                      disabled={locationLabel === 'Location not set'}
+                      onPress={handleOpenMaps}
                   style={({ pressed }) => [styles.infoLocationRow, pressed && locationLabel !== 'Location not set' && styles.inlineLinkPressed]}
-                >
+                    >
                   <Feather
                     name="map-pin"
                     size={14}
                     color={colors.textMuted}
                   />
-                  <Text
+                      <Text
                     numberOfLines={1}
-                    style={[
+                        style={[
                       styles.infoLocationText,
                       locationLabel === 'Location not set' && styles.infoLocationTextDisabled,
-                    ]}
-                  >
+                        ]}
+                      >
                     {locationLabel}
-                  </Text>
-                </Pressable>
+                      </Text>
+                    </Pressable>
 
                 {hasLinkedClubLabel ? (
                   canOpenLinkedClub ? (
@@ -1444,7 +1444,7 @@ export default function TournamentDetailScreen() {
                         <Text numberOfLines={1} style={styles.infoClubLinkText}>
                           {clubLabel}
                         </Text>
-                      </View>
+                  </View>
                     </Pressable>
                   ) : (
                     <View style={styles.infoClubLinkWrap}>
@@ -1453,23 +1453,23 @@ export default function TournamentDetailScreen() {
                         <Text numberOfLines={1} style={styles.infoClubLinkText}>
                           {clubLabel}
                         </Text>
-                      </View>
+                </View>
                     </View>
                   )
                 ) : null}
 
                 <View style={styles.infoAmenitiesRow}>
-                  {amenityLabels.length ? (
-                    <View style={styles.badgeWrap}>
-                      {amenityLabels.map((label) => (
-                        <View key={label} style={styles.secondaryBadge}>
-                          <Text style={styles.secondaryBadgeText}>{label}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={styles.mutedBodyText}>More venue details will be added by the organizer soon.</Text>
-                  )}
+                {amenityLabels.length ? (
+                  <View style={styles.badgeWrap}>
+                    {amenityLabels.map((label) => (
+                      <View key={label} style={styles.secondaryBadge}>
+                        <Text style={styles.secondaryBadgeText}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.mutedBodyText}>More venue details will be added by the organizer soon.</Text>
+                )}
                 </View>
               </SurfaceCard>
 
@@ -1508,7 +1508,7 @@ export default function TournamentDetailScreen() {
                       <Text style={styles.feedbackValueMuted}>No rating yet</Text>
                     )}
                   </Pressable>
-                </View>
+                  </View>
               </SurfaceCard>
 
               <View
@@ -1520,7 +1520,7 @@ export default function TournamentDetailScreen() {
                   <View style={styles.commentsHeaderRow}>
                     <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Comments</Text>
                     <Text style={styles.commentsCount}>{String(commentCountQuery.data ?? 0)}</Text>
-                  </View>
+                </View>
 
                   {commentsQuery.isLoading ? (
                     <LoadingBlock label="Loading comments..." />
@@ -1597,9 +1597,9 @@ export default function TournamentDetailScreen() {
                         safeAreaBottom={false}
                         multiline={false}
                       />
-                    </View>
+                </View>
                   )}
-                </SurfaceCard>
+              </SurfaceCard>
               </View>
 
             </View>
@@ -1898,7 +1898,7 @@ export default function TournamentDetailScreen() {
                                   ]}
                                 >
                                   All dates
-                                </Text>
+                  </Text>
                               </Pressable>
                               <Text style={styles.dashboardLeagueDaysOr}>or</Text>
                               {dashboardLeagueMatchDaysQuery.isLoading ? (
@@ -1961,8 +1961,8 @@ export default function TournamentDetailScreen() {
                                 </Text>
                               )}
                             </View>
-                          </View>
-                        ) : null}
+                </View>
+              ) : null}
 
                         {divisions.length > 1 ? (
                           <View
@@ -1997,12 +1997,12 @@ export default function TournamentDetailScreen() {
                                       ]}
                                     >
                                       {division.name}
-                                    </Text>
+                    </Text>
                                   </Pressable>
                                 )
                               })}
                             </RNScrollView>
-                          </View>
+                  </View>
                         ) : null}
 
                         <View style={[styles.dashboardDivisionCard, hasMyTeam && styles.dashboardDivisionCardActive]}>
@@ -2054,7 +2054,7 @@ export default function TournamentDetailScreen() {
                                       idx === rows.length - 1 && styles.dashboardStandingRowLast,
                                     ]}
                                   >
-                                    <Pressable
+                  <Pressable
                                       onPress={() => toggleDashboardTeamExpand(rowKey)}
                                       style={({ pressed }) => [styles.dashboardStandingRowMain, pressed && styles.dashboardStandingRowPressed]}
                                     >
@@ -2074,7 +2074,7 @@ export default function TournamentDetailScreen() {
                                       <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsFor ?? 0)}</Text>
                                       <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointsAgainst ?? 0)}</Text>
                                       <Text style={[styles.dashboardStandingCell, isMine && styles.dashboardStandingTextMine]}>{Number(row.pointDiff ?? 0)}</Text>
-                                    </Pressable>
+                  </Pressable>
                                     {isExpanded ? (
                                       <View style={styles.dashboardTeamMembersList}>
                                         {members.length ? (
@@ -2112,7 +2112,7 @@ export default function TournamentDetailScreen() {
                               )
                             })}
                           </View>
-                        </View>
+                </View>
 
                         {isMatchDayDashboardFormat &&
                         dashboardLeagueDayMode === 'DAY_ONLY' &&
@@ -2160,7 +2160,7 @@ export default function TournamentDetailScreen() {
                                                       {mu.court.name}
                                                     </Text>
                                                   ) : null}
-                                                </View>
+                        </View>
                                                 <Feather
                                                   name={isExpanded ? 'chevron-up' : 'chevron-down'}
                                                   size={18}
@@ -2531,15 +2531,15 @@ export default function TournamentDetailScreen() {
                       </SegmentedContentFade>
                     )
                   })()}
-                </View>
-              ) : (
-                <View style={styles.dashboardEmptyWrap}>
-                  <EmptyState
-                    title="Dashboard unavailable"
-                    body="The public scoreboard could not be prepared for this tournament yet."
-                  />
-                </View>
-              )}
+                  </View>
+                ) : (
+                  <View style={styles.dashboardEmptyWrap}>
+                    <EmptyState
+                      title="Dashboard unavailable"
+                      body="The public scoreboard could not be prepared for this tournament yet."
+                    />
+                  </View>
+                )}
             </View>
           ) : null}
 
@@ -2686,7 +2686,7 @@ export default function TournamentDetailScreen() {
             })}
             <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
           </View>
-        ) : null}
+              ) : null}
         <View style={styles.feedbackChipsWrap}>
           {(tdSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
             (tdSummaryQuery.data?.topChips?.length
@@ -2706,21 +2706,21 @@ export default function TournamentDetailScreen() {
           )}
         </View>
         {!hasRatedTd ? (
-          <Pressable
+              <Pressable
             disabled={!tdUserId}
             onPress={() => {
               if (!tdUserId) return
               setTdFeedbackInfoOpen(false)
               setTimeout(() => setTdFeedbackOpen(true), 260)
             }}
-            style={({ pressed }) => [
+                style={({ pressed }) => [
               styles.primaryFeedbackCtaBtn,
               pressed && tdUserId && styles.primaryFeedbackCtaBtnPressed,
               !tdUserId && styles.outlineButtonDisabled,
             ]}
           >
             <Text style={styles.primaryFeedbackCtaText}>Rate this organizer</Text>
-          </Pressable>
+              </Pressable>
         ) : (
           <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
         )}
@@ -4431,5 +4431,5 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 18,
     fontWeight: '700',
   },
-  })
+})
 

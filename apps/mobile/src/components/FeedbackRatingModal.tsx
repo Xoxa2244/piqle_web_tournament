@@ -7,6 +7,7 @@ import { FEEDBACK_API_ENABLED } from '../lib/config'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { trpc } from '../lib/trpc'
 import { useAppTheme } from '../providers/ThemeProvider'
+import { useToast } from '../providers/ToastProvider'
 
 type EntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 const DEV_COMMENT_LIMIT = 400
@@ -63,6 +64,7 @@ export function FeedbackRatingModal({
   onSubmitted?: () => void
 }) {
   const { colors } = useAppTheme()
+  const toast = useToast()
   const styles = useMemo(() => createStyles(colors), [colors])
   const [rating, setRating] = useState<number>(0)
   const [chips, setChips] = useState<string[]>([])
@@ -74,8 +76,12 @@ export function FeedbackRatingModal({
   )
   const submitMutation = trpc.feedback.submit.useMutation({
     onSuccess: () => {
+      toast.success('Thanks — your feedback was sent.')
       onSubmitted?.()
       onClose()
+    },
+    onError: (e) => {
+      toast.error(e.message || 'Could not submit feedback.')
     },
   })
 
@@ -118,6 +124,7 @@ export function FeedbackRatingModal({
           onConfirm={() => {
             if (!canSubmit) return
             if (useLocalFallback) {
+              toast.success('Thanks — feedback recorded (offline).')
               onSubmitted?.()
               onClose()
               return

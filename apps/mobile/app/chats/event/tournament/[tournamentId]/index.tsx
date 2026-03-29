@@ -20,12 +20,14 @@ import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadM
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
 import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
+import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../../../src/providers/ThemeProvider'
+import { useToast } from '../../../../../src/providers/ToastProvider'
 
 /** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
@@ -45,6 +47,7 @@ export default function TournamentChatScreen() {
 
   const activeDivisionId = selectedDivisionId
   const { token, user } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const scrollRef = useRef<ScrollView>(null)
@@ -109,22 +112,30 @@ export default function TournamentChatScreen() {
     },
   })
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (data: { wasFiltered?: boolean }) => {
       setDraft('')
       await Promise.all([
         tournamentMessagesQuery.refetch(),
         utils.tournamentChat.listMyEventChats.invalidate(),
       ])
+      if (data?.wasFiltered) {
+        toast.success('Some words were filtered.', 'Filtered')
+      }
     },
+    onError: (e) => toast.error(e.message || 'Failed to send message'),
   })
   const sendDivisionMessage = trpc.tournamentChat.sendDivision.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (data: { wasFiltered?: boolean }) => {
       setDraft('')
       await Promise.all([
         divisionMessagesQuery.refetch(),
         utils.tournamentChat.listMyEventChats.invalidate(),
       ])
+      if (data?.wasFiltered) {
+        toast.success('Some words were filtered.', 'Filtered')
+      }
     },
+    onError: (e) => toast.error(e.message || 'Failed to send message'),
   })
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
     onSuccess: async () => {
@@ -224,8 +235,8 @@ export default function TournamentChatScreen() {
             <Text style={[styles.topicPillText, !activeDivisionId && styles.topicPillTextActive]}>General Chat</Text>
           </Pressable>
           {eventMeta?.unreadCount ? (
-            <View style={styles.topicUnread}>
-              <Text style={styles.topicUnreadText}>{eventMeta.unreadCount > 99 ? '99+' : String(eventMeta.unreadCount)}</Text>
+            <View style={styles.topicUnreadDotWrap} accessibilityLabel="Unread messages">
+              <UnreadIndicatorDot />
             </View>
           ) : null}
         </View>
@@ -245,8 +256,8 @@ export default function TournamentChatScreen() {
               </Text>
             </Pressable>
             {d.unreadCount ? (
-              <View style={styles.topicUnread}>
-                <Text style={styles.topicUnreadText}>{d.unreadCount > 99 ? '99+' : String(d.unreadCount)}</Text>
+              <View style={styles.topicUnreadDotWrap} accessibilityLabel="Unread messages">
+                <UnreadIndicatorDot />
               </View>
             ) : null}
           </View>
@@ -415,22 +426,9 @@ const createStyles = (colors: ThemePalette) =>
   topicPillTextActive: {
     color: colors.white,
   },
-  topicUnread: {
-    marginLeft: -10,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 7,
-    alignItems: 'center',
+  topicUnreadDotWrap: {
+    marginLeft: 8,
     justifyContent: 'center',
-    backgroundColor: '#FF2D78',
-    borderWidth: 2,
-    borderColor: colors.background,
-  },
-  topicUnreadText: {
-    color: colors.white,
-    fontWeight: '900',
-    fontSize: 12,
   },
   contextRow: {
     paddingHorizontal: spacing.lg,

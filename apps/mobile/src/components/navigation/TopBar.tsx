@@ -314,12 +314,15 @@ export const TopBar = ({
   titleOverride,
   ambient = false,
   refreshPulseKey,
+  /** Если задано — вместо поиска, колокольчика и аватара показывается этот слот (например экран уведомлений). */
+  rightSlot,
 }: {
   titleAccessory?: ReactNode
   titleAccessoryLeading?: boolean
   titleOverride?: string
   ambient?: boolean
   refreshPulseKey?: number
+  rightSlot?: ReactNode
 }) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -407,32 +410,38 @@ export const TopBar = ({
         </View>
       </View>
       <View style={styles.actions}>
-        <IconBubble
-          icon="search"
-          active={routePathname === '/search'}
-          onPress={() => {
-            if (routePathname === '/search') return
-            router.push({ pathname: '/search', params: { returnTo: searchReturnTo } })
-          }}
-        />
-        <IconBubble
-          icon="bell"
-          active={routePathname === '/notifications'}
-          onPress={() => {
-            if (routePathname === '/notifications') return
-            router.push('/notifications')
-          }}
-          showDot={showNotificationDot}
-        />
-        <Pressable
-          onPress={() => {
-            if (routePathname === '/profile') return
-            router.push('/profile')
-          }}
-          style={({ pressed }) => [styles.avatarBtn, pressed && styles.avatarBtnPressed]}
-        >
-          <RemoteUserAvatar uri={avatarUri} size={36} fallback="initials" initialsLabel={initialsLabel} />
-        </Pressable>
+        {rightSlot !== undefined ? (
+          rightSlot
+        ) : (
+          <>
+            <IconBubble
+              icon="search"
+              active={routePathname === '/search'}
+              onPress={() => {
+                if (routePathname === '/search') return
+                router.push({ pathname: '/search', params: { returnTo: searchReturnTo } })
+              }}
+            />
+            <IconBubble
+              icon="bell"
+              active={routePathname === '/notifications'}
+              onPress={() => {
+                if (routePathname === '/notifications') return
+                router.push('/notifications')
+              }}
+              showDot={showNotificationDot}
+            />
+            <Pressable
+              onPress={() => {
+                if (routePathname === '/profile') return
+                router.push('/profile')
+              }}
+              style={({ pressed }) => [styles.avatarBtn, pressed && styles.avatarBtnPressed]}
+            >
+              <RemoteUserAvatar uri={avatarUri} size={36} fallback="initials" initialsLabel={initialsLabel} />
+            </Pressable>
+          </>
+        )}
       </View>
     </View>
   )

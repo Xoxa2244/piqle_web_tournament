@@ -32,9 +32,11 @@ const FADE_EASING = Easing.bezier(0.45, 0, 0.55, 1)
 
 /**
  * Режим `opacityOnly`: стартовая непрозрачность перед доводкой до 1.
- * 0.97→1 почти незаметно на реальном UI; 0.86–0.88 даёт читаемый кроссфейд без «мигания».
+ * Важно: сброс opacity делаем ещё в фазе рендера при смене `activeKey`, иначе первый кадр
+ * с новым контентом рисуется при opacity 1 — визуально «анимации нет».
  */
-const OPACITY_ONLY_START = 0.87
+const OPACITY_ONLY_START = 0.78
+const OPACITY_ONLY_DURATION_MS = 400
 
 /**
  * Обёртка под `SegmentedControl`: лёгкий горизонтальный сдвиг по направлению таба + без резкого затемнения (без «мигания»).
@@ -49,13 +51,46 @@ export function SegmentedContentFade({
   const opacity = React.useRef(new Animated.Value(1)).current
   const translateX = React.useRef(new Animated.Value(0)).current
   const prevKey = React.useRef<string | undefined>(undefined)
+  const opacityOnlyMountedRef = React.useRef(false)
+  const opacityOnlyPrevKeyRef = React.useRef(activeKey)
   const segmentOrderRef = React.useRef(segmentOrder)
   const slideAnimRef = React.useRef<Animated.CompositeAnimation | null>(null)
   const fadeAnimRef = React.useRef<Animated.CompositeAnimation | null>(null)
   segmentOrderRef.current = segmentOrder
 
-  // useLayoutEffect: стартовый translateX до первого paint — без «двойного» рывка после отрисовки.
+  if (opacityOnly) {
+    if (opacityOnlyMountedRef.current && opacityOnlyPrevKeyRef.current !== activeKey) {
+      slideAnimRef.current?.stop()
+      fadeAnimRef.current?.stop()
+      opacity.stopAnimation()
+      translateX.setValue(0)
+      opacity.setValue(OPACITY_ONLY_START)
+    }
+    opacityOnlyPrevKeyRef.current = activeKey
+  }
+
+  // useLayoutEffect: для opacityOnly — доводка до 1 после сброса в рендере; иначе слайд/фейд как раньше.
   React.useLayoutEffect(() => {
+    if (opacityOnly) {
+      if (!opacityOnlyMountedRef.current) {
+        opacityOnlyMountedRef.current = true
+        return
+      }
+      fadeAnimRef.current?.stop()
+      opacity.stopAnimation()
+      const fade = Animated.timing(opacity, {
+        toValue: 1,
+        duration: OPACITY_ONLY_DURATION_MS,
+        easing: FADE_EASING,
+        useNativeDriver: true,
+      })
+      fadeAnimRef.current = fade
+      fade.start(({ finished }) => {
+        if (finished) fadeAnimRef.current = null
+      })
+      return
+    }
+
     if (prevKey.current === undefined) {
       prevKey.current = activeKey
       return
@@ -70,22 +105,6 @@ export function SegmentedContentFade({
     fadeAnimRef.current?.stop()
     opacity.stopAnimation()
     translateX.stopAnimation()
-
-    if (opacityOnly) {
-      translateX.setValue(0)
-      opacity.setValue(OPACITY_ONLY_START)
-      const fade = Animated.timing(opacity, {
-        toValue: 1,
-        duration: FADE_DURATION_MS,
-        easing: FADE_EASING,
-        useNativeDriver: true,
-      })
-      fadeAnimRef.current = fade
-      fade.start(({ finished }) => {
-        if (finished) fadeAnimRef.current = null
-      })
-      return
-    }
 
     const order = segmentOrderRef.current
     let dir = 0

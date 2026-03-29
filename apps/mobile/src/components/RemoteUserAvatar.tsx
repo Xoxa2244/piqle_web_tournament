@@ -4,7 +4,7 @@ import { Image, StyleSheet, View } from 'react-native'
 
 import { tournamentPlaceholder } from '../constants/images'
 import { isRemoteImageUri } from '../lib/imageUri'
-import { AvatarBadge } from './ui'
+import { AvatarInitialsBadge } from './AvatarInitialsBadge'
 
 type Props = {
   uri?: string | null
@@ -14,7 +14,7 @@ type Props = {
    * `tournament` — плейсхолдер-мячик для не-user сущностей; `icon` — нейтральная иконка.
    */
   fallback?: 'tournament' | 'icon' | 'initials'
-  /** Имя/email для `AvatarBadge`, когда `fallback="initials"` */
+  /** Имя/email для `AvatarInitialsBadge`, когда `fallback="initials"` */
   initialsLabel?: string
 }
 
@@ -33,7 +33,7 @@ export function RemoteUserAvatar({
   const iconSize = Math.max(14, Math.round(size * 0.48))
 
   if (!showImage && fallback === 'initials') {
-    return <AvatarBadge label={initialsLabel || 'User'} size={size} />
+    return <AvatarInitialsBadge label={initialsLabel || 'User'} size={size} />
   }
 
   return (

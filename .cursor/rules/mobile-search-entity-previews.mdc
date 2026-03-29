@@ -1,0 +1,13 @@
+---
+description: Global search rows use tournament/club/user previews, not generic icons
+alwaysApply: true
+---
+
+# Mobile Search Entity Previews
+
+- On the **search** screen (`apps/mobile/app/search.tsx`), any row for a **tournament**, **club**, or **player** must use the shared **`SearchEntityLead`** pattern (or equivalent): **`TournamentThumbnail`** for events, **`EntityImage`** for clubs (logo → ball placeholder), **`RemoteUserAvatar`** with **`initialsLabel`** for users.
+- Do **not** use Feather icons in a colored circle for these entities; that pattern is only for non-entity UI (e.g. the **location** “near me” suggestion with `map-pin`).
+- **Trending** cards and **search result** rows must use the same **`SuggestionVisual`** semantics so logos/avatars stay consistent whenever search UI is extended.
+- When adding new search result types or another search list, wire **`image` / `logoUrl` / `image`+name** from the API into `visual` — do not ship text-only rows for tournaments/clubs/players.
+
+See also: `image-fallback-consistency.mdc`.

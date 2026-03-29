@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { WebView } from 'react-native-webview'
 
-import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
+import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { TournamentCard } from '../../src/components/TournamentCard'
@@ -16,6 +16,7 @@ import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 
 const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'long',
@@ -129,34 +130,30 @@ const ProfileActionButton = ({
 
 export default function ProfileTab() {
   const { token, user } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
   const [showDuprConnect, setShowDuprConnect] = useState(false)
-  const [duprInfoMessage, setDuprInfoMessage] = useState<{ title: string; body: string } | null>(null)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const linkDupr = api.user.linkDupr.useMutation({
     onSuccess: async () => {
       await utils.user.getProfile.invalidate()
       setShowDuprConnect(false)
-      setDuprInfoMessage({ title: 'DUPR connected', body: 'Your DUPR account is now linked.' })
+      toast.success('Your DUPR account is now linked.', 'DUPR connected')
     },
     onError: (err: any) => {
       setShowDuprConnect(false)
-      setDuprInfoMessage({
-        title: 'DUPR connect failed',
-        body: err?.message || 'Unable to connect DUPR right now.',
-      })
+      toast.error(err?.message || 'Unable to connect DUPR right now.', 'DUPR connect failed')
     },
   })
 
   const startDuprConnect = () => {
     if (!DUPR_CLIENT_KEY) {
-      setDuprInfoMessage({
-        title: 'DUPR not configured',
-        body:
-          'Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.',
-      })
+      toast.error(
+        'Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.',
+        'DUPR not configured',
+      )
       return
     }
     setShowDuprConnect(true)
@@ -483,13 +480,6 @@ export default function ProfileTab() {
             )}
           </AppBottomSheet>
 
-          <AppBottomSheet
-            open={Boolean(duprInfoMessage)}
-            onClose={() => setDuprInfoMessage(null)}
-            title={duprInfoMessage?.title}
-            subtitle={duprInfoMessage?.body}
-            footer={<AppInfoFooter onPress={() => setDuprInfoMessage(null)} />}
-          />
           <AppBottomSheet
             open={tdFeedbackInfoOpen}
             onClose={() => setTdFeedbackInfoOpen(false)}

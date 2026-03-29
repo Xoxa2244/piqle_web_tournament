@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
+import { AiAssistantIconAnimated } from '../../src/components/icons/AiAssistantIcon'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
@@ -299,7 +300,7 @@ export default function HomeTab() {
             />
             <View style={styles.aiRow}>
               <View style={styles.aiIcon}>
-                <Feather name="zap" size={20} color={colors.white} />
+                <AiAssistantIconAnimated size={22} color={colors.white} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.aiTitle}>AI Assistant</Text>
@@ -340,7 +341,9 @@ export default function HomeTab() {
         <SurfaceCard tone="soft">
           <Text style={styles.emptyEventsTitle}>No upcoming events right now</Text>
           <Text style={styles.emptyEventsBody}>
-            Tournaments where you are registered or have admin access will show up here.{' '}
+            Tournaments where you are registered or have admin access will show up here.
+          </Text>
+          <Text style={styles.emptyEventsLinkLine}>
             <Text style={styles.emptyEventsLink} onPress={() => router.push('/tournaments')}>
               Find events here.
             </Text>
@@ -518,6 +521,11 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   emptyEventsBody: {
     marginTop: 8,
     color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  emptyEventsLinkLine: {
+    marginTop: 6,
     fontSize: 14,
     lineHeight: 20,
   },

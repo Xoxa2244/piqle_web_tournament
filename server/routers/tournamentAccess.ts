@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { pushToUser } from '@/lib/realtime'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 
@@ -680,6 +681,7 @@ export const tournamentAccessRouter = createTRPCRouter({
               updatedAt: new Date(),
             },
           })
+          pushToUser(tournament.userId, { type: 'invalidate', keys: ['notification.list'] })
           // Возвращаем обновленный запрос
           return await ctx.prisma.tournamentAccessRequest.findUnique({
             where: { id: existingRequest.id },
@@ -729,6 +731,8 @@ export const tournamentAccessRouter = createTRPCRouter({
           },
         },
       })
+
+      pushToUser(tournament.userId, { type: 'invalidate', keys: ['notification.list'] })
 
       return request
     }),
@@ -856,6 +860,8 @@ export const tournamentAccessRouter = createTRPCRouter({
         data: { status: 'APPROVED' },
       })
 
+      pushToUser(request.userId, { type: 'invalidate', keys: ['notification.list'] })
+
       // Audit log
       await ctx.prisma.auditLog.create({
         data: {
@@ -910,10 +916,14 @@ export const tournamentAccessRouter = createTRPCRouter({
         })
       }
 
+      const rejectedUserId = request.userId
+
       // Удаляем запрос (пользователь сможет подать заявку снова)
       await ctx.prisma.tournamentAccessRequest.delete({
         where: { id: input.requestId },
       })
+
+      pushToUser(rejectedUserId, { type: 'invalidate', keys: ['notification.list'] })
 
       // Audit log
       await ctx.prisma.auditLog.create({

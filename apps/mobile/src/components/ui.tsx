@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import React, { useEffect, useMemo, useRef, type PropsWithChildren, type ReactNode } from 'react'
+import React, { useEffect, useMemo, useRef, useState, type PropsWithChildren, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Animated,
@@ -286,6 +286,9 @@ export const InputField = ({
   keyboardType,
   returnKeyType,
   onSubmitEditing,
+  appearance = 'field',
+  onFocus: onFocusProp,
+  onBlur: onBlurProp,
 }: {
   value: string
   onChangeText: (value: string) => void
@@ -301,10 +304,30 @@ export const InputField = ({
   keyboardType?: TextInputProps['keyboardType']
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
+  /** `search` — строка поиска (SearchField): подсветка при фокусе как у остальных поисков */
+  appearance?: 'field' | 'search'
+  onFocus?: TextInputProps['onFocus']
+  onBlur?: TextInputProps['onBlur']
 }) => {
   const { colors, styles } = useThemedUi()
+  const [focused, setFocused] = useState(false)
+  const focusShellStyle =
+    focused && appearance === 'search'
+      ? styles.searchFieldShellFocused
+      : focused && appearance === 'field'
+        ? styles.inputShellFocused
+        : null
+
   return (
-    <View style={[styles.inputShell, multiline && styles.inputShellMultiline, !editable && styles.inputDisabled, containerStyle]}>
+    <View
+      style={[
+        styles.inputShell,
+        multiline && styles.inputShellMultiline,
+        !editable && styles.inputDisabled,
+        containerStyle,
+        focusShellStyle,
+      ]}
+    >
       {left ? <View style={styles.inputAdornment}>{left}</View> : null}
       <TextInput
         value={value}
@@ -321,6 +344,14 @@ export const InputField = ({
         onSubmitEditing={onSubmitEditing}
         style={[styles.input, multiline && styles.inputMultiline]}
         textAlignVertical={multiline ? 'top' : 'center'}
+        onFocus={(e) => {
+          setFocused(true)
+          onFocusProp?.(e)
+        }}
+        onBlur={(e) => {
+          setFocused(false)
+          onBlurProp?.(e)
+        }}
       />
       {right ? <View style={styles.inputAdornment}>{right}</View> : null}
     </View>
@@ -335,21 +366,31 @@ export const SearchField = ({
   onChangeText,
   placeholder = 'Search',
   containerStyle,
+  right,
+  returnKeyType = 'search',
+  onSubmitEditing,
 }: {
   value: string
   onChangeText: (value: string) => void
   placeholder?: string
   containerStyle?: StyleProp<ViewStyle>
+  right?: ReactNode
+  returnKeyType?: TextInputProps['returnKeyType']
+  onSubmitEditing?: TextInputProps['onSubmitEditing']
 }) => {
   const { colors, styles } = useThemedUi()
   return (
     <InputField
+      appearance="search"
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
       autoCapitalize="none"
       containerStyle={[styles.searchFieldShell, containerStyle]}
       left={<Feather name="search" size={18} color={colors.textMuted} />}
+      right={right}
+      returnKeyType={returnKeyType}
+      onSubmitEditing={onSubmitEditing}
     />
   )
 }
@@ -412,57 +453,6 @@ export const LoadingBlock = ({ label = 'Loading…' }: { label?: string }) => {
         <Text style={styles.loadingLabel}>{label}</Text>
       </View>
     </SurfaceCard>
-  )
-}
-
-export const AvatarBadge = ({ label, size = 48 }: { label: string; size?: number }) => {
-  const { styles } = useThemedUi()
-  const initials = label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('')
-
-  const hashString = (value: string) => {
-    let hash = 0
-    for (let i = 0; i < value.length; i++) {
-      hash = (hash * 31 + value.charCodeAt(i)) | 0
-    }
-    return Math.abs(hash)
-  }
-
-  const hash = hashString(String(label ?? ''))
-  // Vary hue within green spectrum (mint → grass → lime), but keep it "Piqle-green" adjacent.
-  const hue = 118 + (hash % 38) // 118..155
-  const sat = 62 + (Math.floor(hash / 37) % 18) // 62..79
-  const light = 40 + (Math.floor(hash / 997) % 14) // 40..53
-  const inner = `hsl(${hue} ${sat}% ${light}%)`
-  const outer = `hsla(${hue} ${sat}% ${Math.min(92, light + 35)}% / 0.40)`
-
-  return (
-    <View
-      style={[
-        styles.avatarBadge,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: outer },
-      ]}
-    >
-      <View style={[styles.avatarBadgeInner, { borderRadius: size / 2, backgroundColor: inner }]}>
-        <Text
-          style={[
-            styles.avatarBadgeText,
-            {
-              fontSize: Math.max(9, Math.min(18, size * 0.42 - (initials.length >= 2 ? 1 : 0))),
-              lineHeight: Math.max(10, Math.min(20, size * 0.42)),
-            },
-          ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {initials || 'P'}
-        </Text>
-      </View>
-    </View>
   )
 }
 
@@ -672,6 +662,10 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   inputDisabled: {
     opacity: 0.6,
   },
+  inputShellFocused: {
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.surfaceElevated,
+  },
   /** Базовый вид SearchField (вкладка Events): переопределяет inputShell */
   searchFieldShell: {
     minHeight: 44,
@@ -682,6 +676,12 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     gap: 8,
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  /** Фокус: зелёная обводка, фон без тинта */
+  searchFieldShellFocused: {
+    borderWidth: 1,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.surfaceElevated,
   },
   emptyTitle: {
     fontSize: 18,
@@ -728,26 +728,6 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   iconButtonPressed: {
     opacity: 0.85,
-  },
-  avatarBadge: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 2,
-    shadowColor: colors.shadowStrong,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  avatarBadgeInner: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarBadgeText: {
-    color: colors.white,
-    fontWeight: '700',
   },
   metricTile: {
     flex: 1,

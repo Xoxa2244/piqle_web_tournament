@@ -27,6 +27,7 @@ import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessI
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
+import { useToast } from '../../../src/providers/ToastProvider'
 
 type TeamKind = 'SINGLES_1v1' | 'DOUBLES_2v2' | 'SQUAD_4v4'
 
@@ -85,6 +86,7 @@ export default function TournamentRegistrationScreen() {
   const tournamentId = params.id
   const paymentState = typeof params.payment === 'string' ? params.payment : null
   const { token } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [teamAnchors, setTeamAnchors] = useState<Record<string, number>>({})
@@ -112,7 +114,9 @@ export default function TournamentRegistrationScreen() {
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
       ])
+      toast.success("You're registered!")
     },
+    onError: (e) => toast.error(e.message || 'Failed to claim slot'),
   })
   const joinWaitlist = trpc.registration.joinWaitlist.useMutation({
     onSuccess: async () => {
@@ -120,7 +124,9 @@ export default function TournamentRegistrationScreen() {
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
       ])
+      toast.success("You're on the waitlist.")
     },
+    onError: (e) => toast.error(e.message || 'Failed to join waitlist'),
   })
   const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
     onSuccess: async () => {
@@ -128,9 +134,13 @@ export default function TournamentRegistrationScreen() {
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
       ])
+      toast.success('You left the waitlist.')
     },
+    onError: (e) => toast.error(e.message || 'Failed to leave waitlist'),
   })
-  const createCheckout = trpc.payment.createCheckoutSession.useMutation()
+  const createCheckout = trpc.payment.createCheckoutSession.useMutation({
+    onError: (e) => toast.error(e.message || 'Failed to start payment'),
+  })
 
   const onRefreshRegistration = async () => {
     await Promise.all([

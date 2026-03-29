@@ -35,12 +35,14 @@ import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, radius, spacing } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { useToast } from '../../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 
 export default function ClubDetailScreen() {
   const params = useLocalSearchParams<{ id: string; tab?: string }>()
   const clubId = params.id
   const { token, user } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [tab, setTab] = useState<'feed' | 'events' | 'members'>('events')
@@ -57,13 +59,17 @@ export default function ClubDetailScreen() {
   )
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
   const toggleFollow = trpc.club.toggleFollow.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       void Promise.all([
         utils.club.get.invalidate({ id: clubId as string }),
         utils.club.list.invalidate(),
         utils.club.listMyChatClubs.invalidate(),
       ])
+      if (data.status === 'pending') toast.success('Request sent.')
+      else if (data.status === 'joined') toast.success('You joined the club.')
+      else if (data.status === 'left') toast.success('You left the club.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const cancelJoinRequest = trpc.club.cancelJoinRequest.useMutation({
     onSuccess: () => {
@@ -71,22 +77,30 @@ export default function ClubDetailScreen() {
         utils.club.get.invalidate({ id: clubId as string }),
         utils.club.list.invalidate(),
       ])
+      toast.success('Join request cancelled.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const createAnnouncement = trpc.club.createAnnouncement.useMutation({
     onSuccess: async () => {
       await utils.club.get.invalidate({ id: clubId })
+      toast.success('Announcement published.')
     },
+    onError: (e) => toast.error(e.message || 'Failed to post'),
   })
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation({
     onSuccess: async () => {
       await utils.club.get.invalidate({ id: clubId })
+      toast.success('Announcement updated.')
     },
+    onError: (e) => toast.error(e.message || 'Failed to update'),
   })
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation({
     onSuccess: async () => {
       await utils.club.get.invalidate({ id: clubId })
+      toast.success('Announcement removed.')
     },
+    onError: (e) => toast.error(e.message || 'Failed to delete'),
   })
   const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
     onSuccess: async () => {
@@ -94,7 +108,9 @@ export default function ClubDetailScreen() {
         utils.club.get.invalidate({ id: clubId }),
         utils.club.listMembers.invalidate({ clubId }),
       ])
+      toast.success('User joined the club.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const rejectJoinRequest = trpc.club.rejectJoinRequest.useMutation({
     onSuccess: async () => {
@@ -102,7 +118,9 @@ export default function ClubDetailScreen() {
         utils.club.get.invalidate({ id: clubId }),
         utils.club.listMembers.invalidate({ clubId }),
       ])
+      toast.success('Request rejected.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const kickMember = trpc.club.kickMember.useMutation({
     onSuccess: async () => {
@@ -110,7 +128,9 @@ export default function ClubDetailScreen() {
         utils.club.get.invalidate({ id: clubId }),
         utils.club.listMembers.invalidate({ clubId }),
       ])
+      toast.success('Member removed from the club.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const banUser = trpc.club.banUser.useMutation({
     onSuccess: async () => {
@@ -118,12 +138,16 @@ export default function ClubDetailScreen() {
         utils.club.get.invalidate({ id: clubId }),
         utils.club.listMembers.invalidate({ clubId }),
       ])
+      toast.success('User banned.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const unbanUser = trpc.club.unbanUser.useMutation({
     onSuccess: async () => {
       await utils.club.listMembers.invalidate({ clubId })
+      toast.success('User can join again.')
     },
+    onError: (e) => toast.error(e.message || 'Something went wrong'),
   })
   const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
     onSuccess: async () => {
@@ -234,11 +258,11 @@ export default function ClubDetailScreen() {
       try {
         await Haptics.selectionAsync()
       } catch {}
-      Alert.alert('Copied', 'Invite link copied to clipboard.')
+      toast.success('Invite link copied to clipboard.', 'Copied')
     } catch {
-      Alert.alert('Copy failed', 'Please copy it manually.')
+      toast.error('Please copy it manually.', 'Copy failed')
     }
-  }, [clubInviteUrl])
+  }, [clubInviteUrl, toast])
 
   const handleShareInvite = useCallback(async () => {
     try {

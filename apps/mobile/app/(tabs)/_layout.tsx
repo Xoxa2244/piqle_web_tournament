@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics'
 import { Fragment } from 'react'
 import { Easing, Platform } from 'react-native'
 
-import { TabBarTabIcon, tabIcons } from '../../src/components/navigation/TabBarTabIcon'
+import { ChatsTabBarIcon, TabBarTabIcon, tabIcons } from '../../src/components/navigation/TabBarTabIcon'
 import { TabDataWarmup } from '../../src/components/TabDataWarmup'
 import { TabRepeatProvider, useTabRepeat } from '../../src/contexts/TabRepeatContext'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
@@ -86,6 +86,9 @@ function TabsLayoutInner() {
         },
         tabBarIcon: ({ focused }) => {
           const name = route.name as keyof typeof tabIcons
+          if (name === 'chats') {
+            return <ChatsTabBarIcon focused={focused} />
+          }
           return (
             <TabBarTabIcon
               routeName={name}

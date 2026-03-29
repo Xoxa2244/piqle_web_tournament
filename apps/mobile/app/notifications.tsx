@@ -1,13 +1,18 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
-import { EntityImage } from '../src/components/EntityImage'
+import { AppBottomSheet, AppConfirmActions } from '../src/components/AppBottomSheet'
+import {
+  BellNotificationLeadIcon,
+  BELL_NOTIFICATION_ERROR_COLOR,
+  isBellErrorLike,
+} from '../src/components/BellNotificationLeadIcon'
 import { FeedbackRatingModal } from '../src/components/FeedbackRatingModal'
 import { FeedbackEntityContextCard } from '../src/components/FeedbackEntityContextCard'
+import { NotificationQuotedBody } from '../src/components/NotificationQuotedBody'
 import { RatingStarIcon } from '../src/components/icons/RatingStarIcon'
-import { RemoteUserAvatar } from '../src/components/RemoteUserAvatar'
 import { PiqleLogo } from '../src/components/navigation/PiqleLogo'
 import { PageLayout } from '../src/components/navigation/PageLayout'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
@@ -15,14 +20,21 @@ import { formatDateRange, formatLocation } from '../src/lib/formatters'
 import { palette, spacing } from '../src/lib/theme'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useAppTheme } from '../src/providers/ThemeProvider'
+import { useToast } from '../src/providers/ToastProvider'
 
 type FeedbackEntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 
 export default function NotificationsScreen() {
   const { token } = useAuth()
+  const toast = useToast()
+  const { colors } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const [devFeedbackPromptsEnabled, setDevFeedbackPromptsEnabled] = useState(false)
+  /** Моки доступа, вейтлиста, матчей, платежей — для проверки UI без бэкенда. */
+  const [devBellExtrasEnabled, setDevBellExtrasEnabled] = useState(false)
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null)
+  const [clearAllSheetOpen, setClearAllSheetOpen] = useState(false)
   const navigationLock = useRef<{ id: string; at: number } | null>(null)
   const [activePrompt, setActivePrompt] = useState<{
     entityType: FeedbackEntityType
@@ -50,6 +62,20 @@ export default function NotificationsScreen() {
       await notificationsQuery.refetch()
     },
   })
+  const markAllReadMutation = trpc.notification.markAllRead.useMutation({
+    onSuccess: async () => {
+      await notificationsQuery.refetch()
+      toast.success('All notifications marked as read.')
+    },
+    onError: (e: any) => toast.error(e?.message || 'Could not update notifications.'),
+  })
+  const clearAllMutation = trpc.notification.clearAll.useMutation({
+    onSuccess: async () => {
+      await notificationsQuery.refetch()
+      toast.success('All notifications cleared.')
+    },
+    onError: (e: any) => toast.error(e?.message || 'Could not clear notifications.'),
+  })
   const isDevEntity = Boolean(activePrompt?.entityId && String(activePrompt.entityId).startsWith('dev-'))
   const tournamentPreviewQuery = api.public.getTournamentById.useQuery(
     { id: activePrompt?.entityId ?? '' },
@@ -66,9 +92,111 @@ export default function NotificationsScreen() {
 
   const items = useMemo(() => {
     const serverItems = (notificationsQuery.data?.items ?? []) as any[]
-    if (!devFeedbackPromptsEnabled) return serverItems
-
     const nowIso = new Date().toISOString()
+
+    const devBellItems = [
+      {
+        id: 'dev-bell-access-pending',
+        type: 'TOURNAMENT_ACCESS_PENDING' as const,
+        title: 'Tournament access request',
+        body: '"Jamie Lee" requested staff access for "Spring Open (Dev)".',
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+        userAvatarUrl: null,
+        requesterName: 'Jamie Lee',
+        requestId: 'dev-request-id',
+      },
+      {
+        id: 'dev-bell-access-granted',
+        type: 'TOURNAMENT_ACCESS_GRANTED' as const,
+        title: 'Tournament access approved',
+        body: 'You can now help run "Pacific Classic (Dev)".',
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+      },
+      {
+        id: 'dev-bell-access-denied',
+        type: 'TOURNAMENT_ACCESS_DENIED' as const,
+        title: 'Access request declined',
+        body: 'Your request to help run "Weekend Slam (Dev)" was declined.',
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+      },
+      {
+        id: 'dev-bell-waitlist-promoted',
+        type: 'WAITLIST_PROMOTED' as const,
+        title: 'Moved off waitlist',
+        body: `You're in the draw for "Indy League Demo".`,
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+      },
+      {
+        id: 'dev-bell-reg-waitlist',
+        type: 'REGISTRATION_WAITLIST' as const,
+        title: 'Waitlist spot',
+        body: `You're on the waitlist for "Round Robin Test (Dev)".`,
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+      },
+      {
+        id: 'dev-bell-match-reminder',
+        type: 'MATCH_REMINDER' as const,
+        title: 'Upcoming match',
+        body: '"Spring Open (Dev)" · Team A vs Team B (Mar 28, 2026)',
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+      },
+      {
+        id: 'dev-bell-payment-paid',
+        type: 'PAYMENT_STATUS' as const,
+        title: 'Payment received',
+        body: `Entry fee paid for "Spring Open (Dev)".`,
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+        paymentStatus: 'PAID',
+      },
+      {
+        id: 'dev-bell-payment-failed',
+        type: 'PAYMENT_STATUS' as const,
+        title: 'Payment failed',
+        body: `We couldn't process payment for "Pacific Classic (Dev)". Try again from registration.`,
+        createdAt: nowIso,
+        readAt: null,
+        targetUrl: '/tournaments/dev-tournament-id',
+        tournamentId: 'dev-tournament-id',
+        tournamentImage: null,
+        paymentStatus: 'FAILED',
+      },
+    ]
+
+    let merged = serverItems
+    if (devBellExtrasEnabled) {
+      merged = [...devBellItems, ...merged]
+    }
+
+    if (!devFeedbackPromptsEnabled) return merged
+
     const devItems = [
       {
         id: 'dev-feedback-prompt-tournament',
@@ -139,8 +267,113 @@ export default function NotificationsScreen() {
         avatarUrl: null,
       },
     ]
-    return [...devItems, ...serverItems]
-  }, [notificationsQuery.data?.items, devFeedbackPromptsEnabled])
+    return [...devItems, ...merged]
+  }, [notificationsQuery.data?.items, devFeedbackPromptsEnabled, devBellExtrasEnabled])
+
+  const notificationTextStyles = useMemo(
+    () => ({
+      base: [styles.itemBody, { color: colors.textMuted }] as const,
+      strong: [styles.itemBodyStrong, { color: colors.text }] as const,
+    }),
+    [colors.text, colors.textMuted],
+  )
+
+  const onClearAllPress = useCallback(() => {
+    setClearAllSheetOpen(true)
+  }, [])
+
+  const headerCircleStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        headerActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+        headerIconCircle: {
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.border,
+        },
+        headerIconCirclePressed: {
+          backgroundColor: colors.surfaceMuted,
+          borderColor: colors.brandPrimaryBorder,
+          transform: [{ scale: 0.94 }],
+        },
+        chatCheckWrap: {
+          width: 22,
+          height: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        chatCheckBadge: {
+          position: 'absolute' as const,
+          right: -2,
+          bottom: -3,
+          backgroundColor: colors.surface,
+          borderRadius: 5,
+          padding: 1,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+        },
+      }),
+    [colors],
+  )
+
+  const notificationsTopBarRight = useMemo(() => {
+    if (!isAuthenticated) return null
+    const busy = markAllReadMutation.isPending || clearAllMutation.isPending
+    return (
+      <View style={headerCircleStyles.headerActionsRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Mark all notifications as read"
+          disabled={busy}
+          onPress={() => void markAllReadMutation.mutateAsync().catch(() => {})}
+          style={({ pressed }) => [
+            headerCircleStyles.headerIconCircle,
+            pressed && !busy && headerCircleStyles.headerIconCirclePressed,
+          ]}
+        >
+          {markAllReadMutation.isPending ? (
+            <ActivityIndicator size="small" color={colors.text} />
+          ) : (
+            <View style={headerCircleStyles.chatCheckWrap}>
+              <Feather name="message-circle" size={17} color={colors.text} />
+              <View style={headerCircleStyles.chatCheckBadge}>
+                <Feather name="check" size={9} color={colors.primary} />
+              </View>
+            </View>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Clear all notifications from the list"
+          disabled={busy}
+          onPress={onClearAllPress}
+          style={({ pressed }) => [
+            headerCircleStyles.headerIconCircle,
+            pressed && !busy && headerCircleStyles.headerIconCirclePressed,
+          ]}
+        >
+          {clearAllMutation.isPending ? (
+            <ActivityIndicator size="small" color={colors.text} />
+          ) : (
+            <Feather name="trash-2" size={18} color={colors.text} />
+          )}
+        </Pressable>
+      </View>
+    )
+  }, [
+    isAuthenticated,
+    headerCircleStyles,
+    colors.text,
+    colors.primary,
+    markAllReadMutation.isPending,
+    clearAllMutation.isPending,
+    onClearAllPress,
+  ])
 
   const openTarget = (targetUrl?: string) => {
     if (!targetUrl) return
@@ -178,7 +411,7 @@ export default function NotificationsScreen() {
     setOpeningNotificationId(String(item?.id ?? ''))
 
     // Не ждём мутации: переход должен стартовать сразу, а отметку "seen" делаем в фоне.
-    if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId) {
+    if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId && !String(item.id ?? '').startsWith('dev-')) {
       void markClubJoinRequestSeen
         .mutateAsync({ clubId: item.clubId })
         .then(() => notificationsQuery.refetch())
@@ -189,73 +422,6 @@ export default function NotificationsScreen() {
     setTimeout(() => {
       setOpeningNotificationId((prev) => (prev === String(item?.id ?? '') ? null : prev))
     }, 1200)
-  }
-
-  const renderItemIcon = (item: any) => {
-    if (item.type === 'FEEDBACK_PROMPT') {
-      if (item.entityType === 'APP') {
-        return (
-          <View style={[styles.itemIcon, styles.appIcon]}>
-            <Feather name="smartphone" size={16} color={palette.white} />
-          </View>
-        )
-      }
-      if (item.entityType === 'TD') {
-        const tdName =
-          item.context?.name ??
-          (String(item.body || '').match(/"([^"]+)"/)?.[1] ?? 'Tournament director')
-        return (
-          <View style={styles.avatarWrap}>
-            <RemoteUserAvatar
-              uri={item.avatarUrl ?? item.context?.avatarUrl ?? null}
-              size={32}
-              fallback="initials"
-              initialsLabel={tdName}
-            />
-          </View>
-        )
-      }
-      return (
-        <EntityImage
-          uri={item.avatarUrl ?? item.context?.imageUrl ?? null}
-          style={styles.entityImage}
-          resizeMode="cover"
-          placeholderResizeMode="contain"
-        />
-      )
-    }
-
-    if (item.type === 'CLUB_JOIN_REQUEST') {
-      return (
-        <View style={styles.itemIcon}>
-          <Feather name="users" size={16} color={palette.white} />
-        </View>
-      )
-    }
-
-    return (
-      <View style={styles.itemIcon}>
-        <Feather name={item.type === 'TOURNAMENT_INVITATION' ? 'mail' : 'bell'} size={16} color={palette.white} />
-      </View>
-    )
-  }
-
-  const renderFeedbackBody = (text: string) => {
-    const safe = String(text ?? '')
-    const parts = safe.split(/(".*?")/g)
-    return (
-      <Text style={styles.itemBody}>
-        {parts.map((part, idx) => {
-          const quoted = part.startsWith('"') && part.endsWith('"')
-          if (!quoted) return <Text key={`${idx}-${part}`}>{part}</Text>
-          return (
-            <Text key={`${idx}-${part}`} style={styles.itemBodyStrong}>
-              {part.slice(1, -1)}
-            </Text>
-          )
-        })}
-      </Text>
-    )
   }
 
   const promptContextCard = useMemo(() => {
@@ -330,7 +496,7 @@ export default function NotificationsScreen() {
   }, [activePrompt, tournamentPreviewQuery.data, clubPreviewQuery.data, tdPreviewQuery.data])
 
   return (
-    <PageLayout>
+    <PageLayout topBarTitle="Notifications" topBarRightSlot={notificationsTopBarRight}>
       <View style={styles.page}>
         <SurfaceCard style={styles.devCard}>
           <View style={styles.devRow}>
@@ -346,48 +512,97 @@ export default function NotificationsScreen() {
             />
           </View>
         </SurfaceCard>
+        <SurfaceCard style={styles.devCard}>
+          <View style={styles.devRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.devTitle}>Test: access, waitlist, matches, payments</Text>
+              <Text style={styles.devBody}>
+                Mock rows for new bell types (staff access, waitlist, match reminder, payment status). Tap opens a dev
+                tournament route.
+              </Text>
+            </View>
+            <Switch
+              value={devBellExtrasEnabled}
+              onValueChange={setDevBellExtrasEnabled}
+              trackColor={{ false: '#D8D8DC', true: '#9CD9A3' }}
+              thumbColor={devBellExtrasEnabled ? '#1E7A32' : '#F4F4F5'}
+            />
+          </View>
+        </SurfaceCard>
         {!isAuthenticated ? <EmptyState title="Sign in required" body="Sign in to view your notifications." /> : null}
         {isAuthenticated && notificationsQuery.isLoading ? <LoadingBlock label="Loading notifications..." /> : null}
         {isAuthenticated && !notificationsQuery.isLoading && items.length === 0 ? (
           <EmptyState title="No notifications yet" body="New invitations and feedback prompts will appear here." />
         ) : null}
 
-        {items.map((item) => (
-          <Pressable
-            key={item.id}
-            disabled={openingNotificationId === String(item.id)}
-            onPress={() => void onNotificationPress(item)}
-            style={({ pressed }) => [
-              pressed ? { opacity: 0.92 } : null,
-              openingNotificationId === String(item.id) ? { opacity: 0.72 } : null,
-            ]}
-          >
-            <SurfaceCard style={styles.itemCard}>
-              <View style={styles.itemHead}>
-                {renderItemIcon(item)}
-                <View style={{ flex: 1 }}>
-                  <View style={styles.itemTitleRow}>
-                    <Text style={styles.itemTitle}>{item.title}</Text>
-                    {item.type === 'FEEDBACK_PROMPT' ? (
-                      <RatingStarIcon size={15} filled color="#F2C94C" />
-                    ) : null}
+        {items.map((item) => {
+          const errorLike = isBellErrorLike(item)
+          return (
+            <Pressable
+              key={item.id}
+              disabled={openingNotificationId === String(item.id)}
+              onPress={() => void onNotificationPress(item)}
+              style={({ pressed }) => [
+                pressed ? { opacity: 0.92 } : null,
+                openingNotificationId === String(item.id) ? { opacity: 0.72 } : null,
+              ]}
+            >
+              <SurfaceCard style={styles.itemCard}>
+                <View style={styles.itemHead}>
+                  <BellNotificationLeadIcon item={item} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.itemTitleRow}>
+                      <Text
+                        style={[
+                          styles.itemTitle,
+                          { color: errorLike ? BELL_NOTIFICATION_ERROR_COLOR : colors.text },
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
+                      {item.type === 'FEEDBACK_PROMPT' ? (
+                        <RatingStarIcon size={15} filled color="#F2C94C" />
+                      ) : null}
+                    </View>
+                    <NotificationQuotedBody
+                      text={item.body}
+                      baseStyle={notificationTextStyles.base}
+                      strongStyle={notificationTextStyles.strong}
+                    />
                   </View>
-                  {item.type === 'FEEDBACK_PROMPT' || item.type === 'CLUB_JOIN_REQUEST' ? (
-                    renderFeedbackBody(item.body)
-                  ) : (
-                    <Text style={styles.itemBody}>{item.body}</Text>
-                  )}
+                  {openingNotificationId === String(item.id) ? (
+                    <View style={styles.openingSpinner} pointerEvents="none">
+                      <ActivityIndicator size="small" color={colors.textMuted} />
+                    </View>
+                  ) : null}
                 </View>
-                {openingNotificationId === String(item.id) ? (
-                  <View style={styles.openingSpinner} pointerEvents="none">
-                    <ActivityIndicator size="small" color={palette.textMuted} />
-                  </View>
-                ) : null}
-              </View>
-            </SurfaceCard>
-          </Pressable>
-        ))}
+              </SurfaceCard>
+            </Pressable>
+          )
+        })}
       </View>
+
+      <AppBottomSheet
+        open={clearAllSheetOpen}
+        onClose={() => setClearAllSheetOpen(false)}
+        title="Clear all notifications?"
+        subtitle="They will disappear from this list. New invitations and reminders will show again when available."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel="Clear all"
+            onCancel={() => setClearAllSheetOpen(false)}
+            onConfirm={() => {
+              void clearAllMutation
+                .mutateAsync()
+                .then(() => setClearAllSheetOpen(false))
+                .catch(() => {})
+            }}
+            confirmLoading={clearAllMutation.isPending}
+          />
+        }
+      />
 
       <FeedbackRatingModal
         open={Boolean(activePrompt)}
@@ -420,30 +635,7 @@ const styles = StyleSheet.create({
   devBody: { marginTop: 4, color: palette.textMuted, fontSize: 12 },
   itemCard: { padding: spacing.md },
   itemHead: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
-  itemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: palette.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appIcon: {
-    backgroundColor: '#111827',
-  },
-  avatarWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  entityImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: palette.surfaceMuted,
-  },
-  itemTitle: { color: palette.text, fontSize: 15, fontWeight: '700' },
+  itemTitle: { fontSize: 15, fontWeight: '700' },
   itemTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemBody: { marginTop: 4, color: palette.textMuted, fontSize: 13, lineHeight: 18 },
   itemBodyStrong: { color: palette.text, fontWeight: '700' },

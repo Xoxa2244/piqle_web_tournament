@@ -22,6 +22,7 @@ export const PageLayout = ({
   topBarTitleAccessory,
   topBarTitleAccessoryLeading = false,
   topBarTitle,
+  topBarRightSlot,
   pullToRefresh,
   chatAmbient = false,
   topBarRefreshPulseKey,
@@ -32,6 +33,8 @@ export const PageLayout = ({
   topBarTitleAccessoryLeading?: boolean
   /** Переопределение заголовка TopBar (иначе из pathname) */
   topBarTitle?: string
+  /** Заменяет правый блок TopBar (поиск / колокольчик / аватар), например на экране уведомлений */
+  topBarRightSlot?: React.ReactNode
   pullToRefresh?: PageLayoutPullToRefresh
   /** Полноэкранный едва заметный градиент (например AI Coach) */
   chatAmbient?: boolean
@@ -46,6 +49,7 @@ export const PageLayout = ({
         titleAccessory={topBarTitleAccessory}
         titleAccessoryLeading={topBarTitleAccessoryLeading}
         titleOverride={topBarTitle}
+        rightSlot={topBarRightSlot}
         ambient={chatAmbient}
         refreshPulseKey={topBarRefreshPulseKey}
       />
