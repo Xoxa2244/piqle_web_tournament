@@ -14,7 +14,21 @@ import {
 import { radius } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 
-const DISMISS_VELOCITY = 1.15
+/** Порог скорости влево (px/с) — быстрый «флик» дотягивает до удаления. */
+const FLING_DISMISS_V_PX_PER_SEC = -450
+/** Минимальная доля ширины для dismiss при медленном отпускании. */
+const DISMISS_POSITION_FRACTION = 0.28
+
+/** PanResponder даёт `vx` в px/мс; Animated.spring — в px/с. */
+function vxToPxPerSec(vx: number): number {
+  return vx * 1000
+}
+
+/** Сопротивление при перетягивании левее полного открытия (как rubber-band в iOS). */
+function rubberLeftOverscroll(overshoot: number): number {
+  if (overshoot <= 0) return 0
+  return (1 - Math.exp(-overshoot / 42)) * 22
+}
 
 type Props = {
   children: ReactNode
@@ -26,12 +40,13 @@ type Props = {
 }
 
 /**
- * Свайп влево: красная плашка справа, при отпускании после ~50% ширины — догон анимацией и `onDismiss`.
+ * Свайп влево: красная плашка справа; жест с инерцией (spring + velocity), как в системных списках iOS / чатах.
  */
 export function SwipeDismissNotificationRow({ children, onDismiss, disabled, style }: Props) {
   const { colors } = useAppTheme()
   const widthRef = useRef(0)
   const translateX = useRef(new Animated.Value(0)).current
+  const rowOpacity = useRef(new Animated.Value(1)).current
   const startOffsetRef = useRef(0)
   const posRef = useRef(0)
 
@@ -39,20 +54,35 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
     widthRef.current = e.nativeEvent.layout.width
   }, [])
 
-  const runDismiss = useCallback(() => {
-    const w = widthRef.current
-    if (w <= 0) {
-      onDismiss()
-      return
-    }
-    Animated.timing(translateX, {
-      toValue: -w,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) onDismiss()
-    })
-  }, [onDismiss, translateX])
+  const runDismiss = useCallback(
+    (releaseVelocityPxPerSec: number = 0) => {
+      const w = widthRef.current
+      if (w <= 0) {
+        onDismiss()
+        return
+      }
+      Animated.spring(translateX, {
+        toValue: -w,
+        useNativeDriver: true,
+        friction: 9,
+        tension: 118,
+        velocity: releaseVelocityPxPerSec,
+        overshootClamping: true,
+        restDisplacementThreshold: 0.5,
+        restSpeedThreshold: 0.5,
+      }).start(({ finished }) => {
+        if (!finished) return
+        Animated.timing(rowOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(({ finished: faded }) => {
+          if (faded) onDismiss()
+        })
+      })
+    },
+    [onDismiss, rowOpacity, translateX],
+  )
 
   const panResponder = useMemo(
     () =>
@@ -69,7 +99,12 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
         onPanResponderMove: (_, g) => {
           const w = widthRef.current
           if (w <= 0) return
-          const next = Math.min(0, Math.max(-w, startOffsetRef.current + g.dx))
+          let next = startOffsetRef.current + g.dx
+          if (next > 0) next = 0
+          else if (next < -w) {
+            const overshoot = -(next + w)
+            next = -w - rubberLeftOverscroll(overshoot)
+          }
           posRef.current = next
           translateX.setValue(next)
         },
@@ -77,16 +112,21 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
           const w = widthRef.current
           if (w <= 0) return
           const pos = posRef.current
-          const pastHalf = pos < -w * 0.5
-          const flingLeft = g.vx < -DISMISS_VELOCITY
-          if (pastHalf || flingLeft) {
-            runDismiss()
+          const vxPxPerSec = vxToPxPerSec(g.vx)
+          const pastReveal = pos < -w * DISMISS_POSITION_FRACTION
+          const flingDismiss = vxPxPerSec < FLING_DISMISS_V_PX_PER_SEC
+          if (pastReveal || flingDismiss) {
+            runDismiss(vxPxPerSec)
           } else {
             Animated.spring(translateX, {
               toValue: 0,
               useNativeDriver: true,
-              friction: 9,
-              tension: 80,
+              friction: 8,
+              tension: 210,
+              velocity: vxPxPerSec,
+              overshootClamping: true,
+              restDisplacementThreshold: 0.5,
+              restSpeedThreshold: 0.5,
             }).start(() => {
               posRef.current = 0
               startOffsetRef.current = 0
@@ -102,17 +142,14 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
   }
 
   return (
-    <View style={[styles.root, style]} onLayout={onLayout}>
+    <Animated.View style={[styles.root, style, { opacity: rowOpacity }]} onLayout={onLayout}>
       <View
         style={[styles.deleteUnderlay, { backgroundColor: colors.danger }]}
         pointerEvents="none"
       >
         <View style={styles.deleteUnderlayContent}>
           <Feather name="trash-2" size={22} color="rgba(255,255,255,0.96)" />
-          <View>
-            <Text style={styles.deleteTitle}>Удалить</Text>
-            <Text style={styles.deleteSubtitle}>уведомление</Text>
-          </View>
+          <Text style={styles.deleteLabel}>Delete</Text>
         </View>
       </View>
       <Animated.View
@@ -121,7 +158,7 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
       >
         {children}
       </Animated.View>
-    </View>
+    </Animated.View>
   )
 }
 
@@ -145,16 +182,10 @@ const styles = StyleSheet.create({
     maxWidth: '46%',
     justifyContent: 'flex-end',
   },
-  deleteTitle: {
+  deleteLabel: {
     color: 'rgba(255,255,255,0.98)',
     fontSize: 15,
-    fontWeight: '800',
-  },
-  deleteSubtitle: {
-    marginTop: 1,
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '400',
   },
   foreground: {
     width: '100%',

@@ -838,8 +838,8 @@ const createStyles = (colors: ThemePalette) =>
   },
   errorBox: {
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 110, 0.18)',
-    backgroundColor: 'rgba(255, 0, 110, 0.08)',
+    borderColor: 'rgba(220, 38, 38, 0.18)',
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
     borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,

@@ -168,17 +168,19 @@ export const notificationRouter = createTRPCRouter({
           for (const r of requestsByClub) {
             if (r._count.id === 0 || !r._max.createdAt) continue
             const seenAt = seenMap.get(r.clubId)
-            if (seenAt && r._max.createdAt <= seenAt) continue
             const club = clubByNameId.get(r.clubId)
             if (!club) continue
             const lead = latestJoinByClub.get(r.clubId)
+            /** Пока есть pending — строка остаётся в ленте; «прочитано» только для бейджа. */
+            const readAt =
+              seenAt && r._max.createdAt <= seenAt ? seenAt.toISOString() : null
             clubJoinItems.push({
               id: `club-join-request-${r.clubId}`,
               type: 'CLUB_JOIN_REQUEST',
               title: 'Club join request',
               body: `${r._count.id} pending request${r._count.id === 1 ? '' : 's'} in "${club.name}".`,
               createdAt: r._max.createdAt.toISOString(),
-              readAt: null,
+              readAt,
               clubId: r.clubId,
               clubName: club.name,
               targetUrl: `/clubs/${r.clubId}?tab=members`,
@@ -430,15 +432,22 @@ export const notificationRouter = createTRPCRouter({
         extraBellItems = []
       }
 
-      const allItems = [
+      type Merged = Record<string, unknown> & { _sort: string; type?: string }
+      const merged: Merged[] = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubLeaveItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubOpenJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...feedbackPromptItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...extraBellItems.map((i) => ({ ...i })),
-      ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
-      const sorted = allItems.map(({ _sort, ...rest }) => rest) as Array<
+      ]
+      const sortDesc = (a: Merged, b: Merged) => b._sort.localeCompare(a._sort)
+      /** Админские pending (клуб / доступ к турниру) — вверху, чтобы не вытеснялись лимитом списка. */
+      const priorityTypes = new Set(['CLUB_JOIN_REQUEST', 'TOURNAMENT_ACCESS_PENDING'])
+      const priorityMerged = merged.filter((x) => priorityTypes.has(String(x.type ?? '')))
+      const restMerged = merged.filter((x) => !priorityTypes.has(String(x.type ?? '')))
+      const ordered = [...priorityMerged.sort(sortDesc), ...restMerged.sort(sortDesc)]
+      const sorted = ordered.map(({ _sort, ...rest }) => rest) as Array<
         { createdAt: string } & Record<string, unknown>
       >
 
@@ -462,12 +471,21 @@ export const notificationRouter = createTRPCRouter({
       const visible = sorted
         .filter((i) => {
           if (!clearedBefore) return true
+          // «Очистить всё» режет по дате строки; у pending-заявок createdAt = время события,
+          // иначе висящие запросы пропадали бы из колокольчика навсегда.
+          const tp = (i as { type?: string }).type
+          if (tp === 'CLUB_JOIN_REQUEST' || tp === 'TOURNAMENT_ACCESS_PENDING') return true
           return new Date(i.createdAt) > clearedBefore
         })
         .filter((i) => !dismissedIds.has(String((i as { id?: string }).id ?? '')))
       const unreadCount = visible.filter((i) => {
         // Подсказки фидбека в списке остаются, но не раздувают бейдж колокольчика.
         if ((i as { type?: string }).type === 'FEEDBACK_PROMPT') return false
+        const t = (i as { type?: string }).type
+        if (t === 'CLUB_JOIN_REQUEST') {
+          const ra = (i as { readAt?: string | null }).readAt
+          return !ra
+        }
         if (!readThrough) return true
         return new Date(i.createdAt) > readThrough
       }).length

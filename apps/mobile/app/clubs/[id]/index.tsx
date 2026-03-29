@@ -2028,7 +2028,7 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   pendingIconBtnReject: {
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 110, 0.28)',
+    borderColor: 'rgba(220, 38, 38, 0.28)',
   },
   /** Состояние загрузки списка участников — те же поля, что у `membersWrap`, плюс вертикальные отступы у блока. */
   membersLoadingWrap: {
@@ -2139,8 +2139,8 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255, 0, 110, 0.2)',
-    backgroundColor: 'rgba(255, 0, 110, 0.08)',
+    borderColor: 'rgba(220, 38, 38, 0.2)',
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
   },
   bannedPillText: {
     color: colors.danger,
