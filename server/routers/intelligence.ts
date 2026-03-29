@@ -798,6 +798,20 @@ export const intelligenceRouter = createTRPCRouter({
             activeCount,
             inactiveCount,
             newThisMonth: newMembersThisMonth,
+            membershipBreakdown: await (async () => {
+              try {
+                const rows = await ctx.prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
+                  SELECT metadata->>'membershipStatus' as status, count(*) as cnt
+                  FROM document_embeddings
+                  WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+                  GROUP BY metadata->>'membershipStatus'
+                `
+                if (rows.length === 0) return null
+                const map: Record<string, number> = {}
+                rows.forEach(r => { map[r.status] = Number(r.cnt) })
+                return { active: map['Currently Active'] || 0, suspended: map['Suspended'] || 0, noMembership: map['No Membership'] || 0, expired: map['Expired'] || 0 }
+              } catch { return null }
+            })(),
           },
         }
       } catch (err) {
