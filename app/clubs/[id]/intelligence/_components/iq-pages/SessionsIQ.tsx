@@ -184,6 +184,50 @@ function deriveCourtStats(calendarData: any) {
     }));
 }
 
+function deriveEventsListData(calendarData: any) {
+  if (!calendarData?.sessions?.length) return null;
+  const sessions: RealSession[] = calendarData.sessions;
+
+  // Events list — map each session to the shape EventsIQ expects
+  const fmtLabel: Record<string, string> = {
+    OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', DRILL: 'Drill',
+    LEAGUE_PLAY: 'League Night', SOCIAL: 'Social Mixer',
+    TOURNAMENT: 'Tournament', PRIVATE_LESSON: 'Private Lesson',
+    ROUND_ROBIN: 'Round Robin',
+  };
+  const events = sessions.map((s, i) => ({
+    id: s.id || `s-${i}`,
+    name: `${fmtLabel[s.format] || s.format}${s.court ? ` · ${s.court}` : ''}`,
+    type: s.format,
+    status: s.status === 'past' ? 'COMPLETED' : s.status === 'today' ? 'IN_PROGRESS' : 'SCHEDULED',
+    date: s.date,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    court: s.court || 'TBD',
+    registered: s.registered,
+    capacity: s.capacity,
+    revenue: s.revenue ?? (s.pricePerPlayer != null ? s.pricePerPlayer * s.registered : 0),
+    waitlist: 0,
+    price: s.pricePerPlayer ?? 0,
+  }));
+
+  // Monthly revenue — last 12 months, past sessions only
+  const monthMap: Record<string, { revenue: number; events: number }> = {};
+  for (const s of sessions) {
+    if (s.status === 'upcoming') continue;
+    const month = String(s.date).slice(0, 7); // 'YYYY-MM'
+    if (!monthMap[month]) monthMap[month] = { revenue: 0, events: 0 };
+    monthMap[month].revenue += s.revenue ?? (s.pricePerPlayer != null ? s.pricePerPlayer * s.registered : 0);
+    monthMap[month].events++;
+  }
+  const eventRevenue = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-12)
+    .map(([month, data]) => ({ month, revenue: Math.round(data.revenue), events: data.events }));
+
+  return { events, eventRevenue };
+}
+
 function deriveHourlyPattern(calendarData: any) {
   if (!calendarData?.sessions?.length) return [];
   const times = ['6AM','7AM','8AM','9AM','10AM','11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM'];
@@ -307,6 +351,8 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
     return d.length > 0 ? d : lastGoodData.current.hourly;
   }, [calendarData]);
   const displayHourly = derivedHourly.length > 0 ? derivedHourly : (isDemo ? hourlyPattern : []);
+
+  const eventsListData = useMemo(() => deriveEventsListData(calendarData), [calendarData]);
 
   const filteredSessions = useMemo(() => {
     return displaySessions.filter((s) => {
@@ -510,7 +556,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
           </div>
 
           {/* Events Section */}
-          <EventsIQ embedded />
+          <EventsIQ embedded eventsListData={eventsListData ?? undefined} />
         </>
       ) : (
         /* Session List View */

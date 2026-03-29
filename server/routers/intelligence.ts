@@ -1255,24 +1255,33 @@ export const intelligenceRouter = createTRPCRouter({
       try {
         const dbSessions = await ctx.prisma.playSession.findMany({
           where: { clubId: input.clubId },
-          include: {
-            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+          select: {
+            date: true, startTime: true, endTime: true, format: true,
+            skillLevel: true, maxPlayers: true, pricePerSlot: true, registeredCount: true,
             clubCourt: { select: { name: true } },
+            _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
           },
         })
-        csvSessions = dbSessions.map((s: any) => ({
-          date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
-          startTime: s.startTime,
-          endTime: s.endTime,
-          court: s.clubCourt?.name || '',
-          format: s.format,
-          skillLevel: s.skillLevel,
-          registered: s._count.bookings,
-          capacity: s.maxPlayers,
-          occupancy: s.maxPlayers > 0 ? Math.round((s._count.bookings / s.maxPlayers) * 100) : 0,
-          pricePerPlayer: s.pricePerSlot != null ? Number(s.pricePerSlot) : null,
-          playerNames: [],
-        }))
+        csvSessions = dbSessions.map((s: any) => {
+          // Prefer registeredCount (set during Excel/CSV import) over booking join count
+          // _count.bookings may be 0 for Excel-imported sessions where members weren't matched
+          const registered = (s.registeredCount != null && s.registeredCount > 0)
+            ? s.registeredCount
+            : s._count.bookings;
+          return {
+            date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+            startTime: s.startTime,
+            endTime: s.endTime,
+            court: s.clubCourt?.name || '',
+            format: s.format,
+            skillLevel: s.skillLevel,
+            registered,
+            capacity: s.maxPlayers,
+            occupancy: s.maxPlayers > 0 ? Math.round((registered / s.maxPlayers) * 100) : 0,
+            pricePerPlayer: s.pricePerSlot != null ? Number(s.pricePerSlot) : null,
+            playerNames: [],
+          };
+        })
       } catch (err) {
         console.warn('[Intelligence] getSessionsCalendar play_sessions query failed:', (err as Error).message?.slice(0, 80))
       }
