@@ -273,7 +273,7 @@ function generateInsights(dashboardData: any, healthData: any, heatmapData: any,
       insights.push({ title: "Fill Empty Slots", desc: `Occupancy is ${occNum}% — below your 70% target. Use Slot Filler to send targeted invites and fill open sessions.`, priority: "high", icon: Target });
     }
     if (goals.includes('improve_retention') && atRisk > 0 && !insights.some(i => i.title === "Reactivation Opportunity")) {
-      insights.push({ title: "Retention Alert", desc: `${atRisk} members are at risk of churning. Launch a reactivation campaign to bring them back before they leave.`, priority: "high", icon: Heart });
+      insights.push({ title: "Re-engagement Opportunity", desc: `${atRisk} members show reduced activity recently. A reactivation campaign could help bring them back.`, priority: "high", icon: Heart });
     }
     if (goals.includes('increase_revenue')) {
       const lostVal = dashboardData?.metrics?.lostRevenue?.value;
@@ -390,7 +390,11 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any): typeof period
   return {
     kpis: (() => {
       // Detect membership model: no real per-session prices → use utilization metrics instead of revenue
-      const isMembership = typeof m.lostRevenue.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.');
+      // Checks: subtitle has "est." (estimated prices) OR lostRevenue value is $0 (no actual revenue tracked)
+      const isMembership = (typeof m.lostRevenue.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.'))
+        || String(m.lostRevenue.value).replace(/[\s,]/g, '') === '$0'
+        || m.lostRevenue.value === 0
+        || !m.lostRevenue.value;
       return [
         { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
         { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
@@ -1003,7 +1007,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 const revenueVal = m?.bookings?.value || 0;
                 const revChange = m?.bookings?.trend?.changePercent || 0;
                 const revDir = m?.bookings?.trend?.direction || 'up';
-                const isMembership = typeof m?.lostRevenue?.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.');
+                const isMembership = (typeof m?.lostRevenue?.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.'))
+                  || String(m?.lostRevenue?.value).replace(/[\s,]/g, '') === '$0'
+                  || m?.lostRevenue?.value === 0
+                  || !m?.lostRevenue?.value;
 
                 if (!m || totalMembers === 0) {
                   return (
@@ -1038,8 +1045,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
                 const riskText = atRiskCount + criticalCount > 0
                   ? isMembership
-                    ? `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help re-engage them.`
-                    : `${atRiskCount + criticalCount} members are at risk of churning. A targeted reactivation campaign could help recover revenue.`
+                    ? `${atRiskCount + criticalCount} members show reduced engagement based on recent activity. A reactivation campaign could help bring them back.`
+                    : `${atRiskCount + criticalCount} members show reduced engagement. A reactivation campaign could recover that activity.`
                   : `All members are in good health — keep up the engagement!`;
 
                 // Goal-specific summary paragraphs
@@ -1376,9 +1383,21 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           };
           const toOcc = (v: any): number => parseFloat(String(v || '0').replace('%','')) || 0;
 
-          // Metrics: [label, currentVal, prevVal, format, invertGood]
-          const metrics: Array<{ label: string; cur: number; prev: number; format: 'number'|'percent'; invert?: boolean }> = cur ? [
-            { label: "Player Sessions", cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number' },
+          // Extract session counts from subtitles (e.g. "42 sessions")
+          const parseSessionCount = (subtitle: any): string | null => {
+            if (typeof subtitle !== 'string') return null;
+            const m = subtitle.match(/^(\d[\d,]*)\s+sessions?/);
+            return m ? `${m[1]} sessions` : null;
+          };
+
+          // Metrics: [label, currentVal, prevVal, format, invertGood, subtitle]
+          const metrics: Array<{ label: string; cur: number; prev: number; format: 'number'|'percent'; invert?: boolean; curSub?: string | null; prevSub?: string | null }> = cur ? [
+            {
+              label: "Player Registrations",
+              cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number',
+              curSub: parseSessionCount(cur.occupancy?.subtitle),
+              prevSub: parseSessionCount(prv?.occupancy?.subtitle),
+            },
             { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
             { label: "Active Members", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
             { label: "Unused Slots", cur: toNum(cur.lostRevenue?.trend?.value), prev: toNum(prv?.lostRevenue?.trend?.value), format: 'number', invert: true },
@@ -1405,7 +1424,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         <div style={{ fontSize: "22px", fontWeight: 700, color: "var(--heading)" }}>{dispCur}</div>
                         <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
                           {prv ? `was ${dispPrev}` : '— no comparison data'}
+                          {row.curSub && ` · ${row.curSub}`}
                         </div>
+                        {row.prevSub && (
+                          <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)', opacity: 0.7 }}>
+                            was: {row.prevSub}
+                          </div>
+                        )}
                       </div>
                       {prv && row.prev > 0 && (
                         <div

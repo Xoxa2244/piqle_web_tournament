@@ -573,7 +573,7 @@ export const intelligenceRouter = createTRPCRouter({
           recentBookers,
         ] = await Promise.all([
           ctx.prisma.playSession.findMany({
-            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30 } },
+            where: { clubId: input.clubId, status: 'COMPLETED', date: { gte: d30, lte: currentEnd } },
             include: {
               clubCourt: true,
               _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
@@ -586,7 +586,7 @@ export const intelligenceRouter = createTRPCRouter({
             },
           }),
           ctx.prisma.playSessionBooking.count({
-            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30 } },
+            where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d30, lte: currentEnd } },
           }),
           ctx.prisma.playSessionBooking.count({
             where: { status: 'CONFIRMED', playSession: { clubId: input.clubId }, bookedAt: { gte: d60, lt: d30 } },
@@ -1009,7 +1009,8 @@ export const intelligenceRouter = createTRPCRouter({
           .sort((a, b) => b.count - a.count)
 
         // Player counts from CSV (more meaningful than clubFollower count)
-        const csvPlayerCount = allPlayers.size
+        // csvPlayerCount = unique players in the current period (period-sensitive)
+        const csvPlayerCount = recentPlayers.size
         const prevAllPlayers = new Set<string>()
         for (const s of previousSessions) {
           for (const name of (s.playerNames || [])) prevAllPlayers.add(name)
@@ -1031,7 +1032,7 @@ export const intelligenceRouter = createTRPCRouter({
 
         // New players: in current period but not in previous period
         let newPlayers = 0
-        allPlayers.forEach(p => { if (!prevAllPlayers.has(p)) newPlayers++ })
+        recentPlayers.forEach(p => { if (!prevAllPlayers.has(p)) newPlayers++ })
 
         return {
           metrics: {
