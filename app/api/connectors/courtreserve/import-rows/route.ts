@@ -1,3 +1,5 @@
+export const maxDuration = 300 // Pro plan: 5 min for large imports
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'

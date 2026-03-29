@@ -1335,20 +1335,29 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
 
-        // Load membership data from embeddings
+        // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
         const memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
           SELECT source_id, metadata FROM document_embeddings
           WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
         `
-        const membershipMap = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
+        const membershipByEmail = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
+        const membershipBySourceId = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
         for (const e of memberEmbeddings) {
           const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata
-          membershipMap.set(e.source_id, {
+          const info = {
             membership: m?.membership || null,
             membershipStatus: m?.membershipStatus || null,
             lastVisit: m?.lastVisit || null,
             firstVisit: m?.firstVisit || null,
-          })
+          }
+          membershipBySourceId.set(e.source_id, info)
+          if (m?.email) membershipByEmail.set(String(m.email).toLowerCase().trim(), info)
+        }
+        // Build lookup: try userId first, then email
+        const getMembershipInfo = (userId: string, email: string | null) => {
+          return membershipBySourceId.get(userId)
+            || (email ? membershipByEmail.get(email.toLowerCase().trim()) : null)
+            || null
         }
 
         // Get all bookings for these users at this club
@@ -1440,7 +1449,7 @@ export const intelligenceRouter = createTRPCRouter({
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
             previousPeriodBookings: bookings30to60,
-            membershipInfo: membershipMap.get(f.userId) || null,
+            membershipInfo: getMembershipInfo(f.userId, f.user.email),
             bookingsWithSessions: userBookings.map(b => ({
               date: (b as any).playSession?.date ?? b.bookedAt,
               startTime: (b as any).playSession?.startTime ?? '12:00',
