@@ -2503,7 +2503,7 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       const embeddings = await ctx.prisma.documentEmbedding.findMany({
-        where: { clubId: input.clubId },
+        where: { clubId: input.clubId, contentType: { notIn: ['member', 'member_pattern', 'booking_trend', 'club_info'] } },
         select: { id: true, contentType: true, createdAt: true, sourceId: true, sourceTable: true, metadata: true },
         orderBy: { createdAt: 'desc' },
       })
