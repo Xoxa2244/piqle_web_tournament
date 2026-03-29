@@ -311,16 +311,20 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           sparkData: m.bookings.trend.sparkline || [],
         },
         isMembership
-        ? {
-            label: "Inactive Members",
-            value: dashboardData?.players?.inactiveCount ?? 0,
-            change: "",
-            up: false,
-            icon: UserPlus,
-            gradient: "from-amber-500 to-orange-500",
-            href: "/members?view=reactivation",
-            sparkData: [],
-          }
+        ? (() => {
+            const mb = dashboardData?.players?.membershipBreakdown;
+            const notActive = (mb?.suspended || 0) + (mb?.expired || 0) + (mb?.noMembership || 0);
+            return {
+              label: "Churned / Inactive",
+              value: notActive || dashboardData?.players?.inactiveCount || 0,
+              change: mb ? `${mb.suspended || 0} frozen · ${mb.noMembership || 0} no plan · ${mb.expired || 0} expired` : "",
+              up: false,
+              icon: UserPlus,
+              gradient: "from-amber-500 to-orange-500",
+              href: "/members",
+              sparkData: [],
+            };
+          })()
         : {
             label: "Lost Revenue",
             value: m.lostRevenue.value,
@@ -876,12 +880,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           </div>
           {/* Inactive members note — links Health to Reactivation */}
           {(() => {
-            const inactiveCount = activeDashboardData?.players?.inactiveCount;
+            const mb = activeDashboardData?.players?.membershipBreakdown;
+            const inactiveCount = mb ? (mb.suspended || 0) + (mb.expired || 0) + (mb.noMembership || 0) : activeDashboardData?.players?.inactiveCount;
             if (!inactiveCount) return null;
             return (
               <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
                 <span className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  incl. <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> inactive 45+ days
+                  <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> {mb ? 'suspended / no membership / expired' : 'inactive members'}
                 </span>
                 <button
                   onClick={() => router.push(`/clubs/${clubId}/intelligence/reactivation`)}
