@@ -301,8 +301,8 @@ export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
   const sessionMap = new Map<string, ParsedSession>()
 
   for (const row of rows) {
-    const progName = safeStr(col(row, 'Programming Name', 'ProgrammingName', 'Name'))
-    const progDate = col(row, 'Programming Date', 'ProgrammingDate', 'Date')
+    const progName = safeStr(col(row, 'Programming Name', 'ProgrammingName', 'Pickleball Program Name', 'Name'))
+    const progDate = col(row, 'Programming Date', 'ProgrammingDate', 'Pickleball Program Date', 'Date')
     const memberNum = safeStr(col(row, 'Member Number', 'Member_Number', 'Member #'))
     const memberName = [
       safeStr(col(row, 'Member First Name', 'First Name', 'FirstName')),
@@ -315,8 +315,8 @@ export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
     if (!date) continue
 
     const dateKey = `${progName}__${date.toISOString().split('T')[0]}`
-    const startTimeVal = col(row, 'Start DateTime', 'StartDateTime', 'Programming Time', 'Start Time')
-    const endTimeVal = col(row, 'End DateTime', 'EndDateTime', 'End Time')
+    const startTimeVal = col(row, 'Start Date/Time', 'Start Date / Time', 'Start DateTime', 'StartDateTime', 'Programming Time', 'Start Time')
+    const endTimeVal = col(row, 'End Date/Time', 'End Date / Time', 'End DateTime', 'EndDateTime', 'End Time')
     const category = safeStr(col(row, 'Programming Category', 'Category'))
     const courts = safeStr(col(row, 'Programming Courts', 'Courts'))
     const price = safeNum(col(row, 'Programming Price', 'Price'))
