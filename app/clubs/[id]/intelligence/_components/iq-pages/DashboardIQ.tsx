@@ -1313,7 +1313,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             },
             { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
             { label: "Active Members", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
-            { label: "Unused Slots", cur: toNum(cur.lostRevenue?.trend?.value), prev: toNum(prv?.lostRevenue?.trend?.value), format: 'number', invert: true },
+            {
+              label: "Avg Sessions/Member",
+              cur: toNum(cur.players?.activeCount) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.players?.activeCount)) * 10) / 10 : 0,
+              prev: toNum(prv?.players?.activeCount) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.players?.activeCount)) * 10) / 10 : 0,
+              format: 'number',
+            },
           ] : [];
 
           if (!cur) return (
