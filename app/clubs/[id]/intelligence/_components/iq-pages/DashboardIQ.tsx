@@ -7,7 +7,7 @@ import {
   Users, CalendarDays, DollarSign, TrendingUp, TrendingDown,
   Sparkles, ArrowUpRight, ArrowDownRight, Clock, Target,
   BarChart3, Zap, AlertTriangle, CheckCircle2, Brain,
-  Upload, Heart, Activity,
+  Upload, Heart, Activity, UserPlus,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell,
@@ -410,16 +410,27 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           href: "/sessions",
           sparkData: m.bookings.trend.sparkline || [],
         },
-        {
-          label: isMembership ? "Unused Slots" : "Lost Revenue",
-          value: isMembership ? (m.lostRevenue.subtitle?.match(/(\d+)\s*empty/)?.[1] ?? m.lostRevenue.value) : m.lostRevenue.value,
-          change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
-          up: m.lostRevenue.trend.direction === 'down',
-          icon: isMembership ? BarChart3 : AlertTriangle,
-          gradient: isMembership ? "from-cyan-500 to-blue-500" : "from-red-500 to-orange-500",
-          href: "/slot-filler",
-          sparkData: m.lostRevenue.trend.sparkline || [],
-        },
+        isMembership
+        ? {
+            label: "Inactive Members",
+            value: dashboardData?.players?.inactiveCount ?? 0,
+            change: "",
+            up: false,
+            icon: UserPlus,
+            gradient: "from-amber-500 to-orange-500",
+            href: "/members",
+            sparkData: [],
+          }
+        : {
+            label: "Lost Revenue",
+            value: m.lostRevenue.value,
+            change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
+            up: m.lostRevenue.trend.direction === 'down',
+            icon: AlertTriangle,
+            gradient: "from-red-500 to-orange-500",
+            href: "/slot-filler",
+            sparkData: m.lostRevenue.trend.sparkline || [],
+          },
       ];
     })(),
     health: hs ? [
