@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { router } from 'expo-router'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
 import { AppBottomSheet, AppConfirmActions } from '../src/components/AppBottomSheet'
@@ -23,10 +23,21 @@ import { palette, spacing } from '../src/lib/theme'
 import { realtimeAwareQueryOptions } from '../src/lib/realtimePoll'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useNotificationSwipeHidden } from '../src/providers/NotificationSwipeHiddenProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
 import { useToast } from '../src/providers/ToastProvider'
 
 type FeedbackEntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
+
+/** Тап → переход: убрать строку из колокольника (pending club/tournament access обрабатываются на сервере). */
+const BELL_DISMISS_ON_NAVIGATE_TYPES = new Set([
+  'TOURNAMENT_ACCESS_GRANTED',
+  'TOURNAMENT_ACCESS_DENIED',
+  'WAITLIST_PROMOTED',
+  'REGISTRATION_WAITLIST',
+  'MATCH_REMINDER',
+  'PAYMENT_STATUS',
+])
 
 export default function NotificationsScreen() {
   const { token } = useAuth()
@@ -39,6 +50,8 @@ export default function NotificationsScreen() {
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null)
   const [clearAllSheetOpen, setClearAllSheetOpen] = useState(false)
   const navigationLock = useRef<{ id: string; at: number } | null>(null)
+  /** Сервер не хранит dismiss для club/staff pending — скрываем строку локально до новой активности (AsyncStorage в провайдере). */
+  const { swipeHiddenIds, setSwipeHiddenIds, swipeHiddenSnapRef, clearSwipeHidden } = useNotificationSwipeHidden()
   const [activePrompt, setActivePrompt] = useState<{
     entityType: FeedbackEntityType
     entityId: string
@@ -64,13 +77,9 @@ export default function NotificationsScreen() {
     { limit: 40 },
     { enabled: isAuthenticated, ...realtimeAwareQueryOptions }
   )
-  const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
-    onSuccess: async () => {
-      await utils.notification.list.invalidate()
-    },
-  })
   const clearAllMutation = trpc.notification.clearAll.useMutation({
     onSuccess: async () => {
+      clearSwipeHidden()
       await utils.notification.list.invalidate()
       toast.success('All notifications cleared.')
     },
@@ -82,6 +91,31 @@ export default function NotificationsScreen() {
     },
     onError: (e: any) => toast.error(e?.message || 'Could not remove this notification.'),
   })
+
+  useEffect(() => {
+    const list = (notificationsQuery.data?.items ?? []) as Array<{ id?: string; body?: string; createdAt?: string }>
+    setSwipeHiddenIds((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set(prev)
+      for (const id of prev) {
+        const cur = list.find((x) => String(x.id) === id)
+        const snap = swipeHiddenSnapRef.current.get(id)
+        if (!cur) {
+          next.delete(id)
+          swipeHiddenSnapRef.current.delete(id)
+          continue
+        }
+        if (
+          snap &&
+          (cur.body !== snap.body || String(cur.createdAt ?? '') !== String(snap.createdAt ?? ''))
+        ) {
+          next.delete(id)
+          swipeHiddenSnapRef.current.delete(id)
+        }
+      }
+      return next.size === prev.size ? prev : next
+    })
+  }, [notificationsQuery.data?.items])
   const isDevEntity = Boolean(activePrompt?.entityId && String(activePrompt.entityId).startsWith('dev-'))
   const tournamentPreviewQuery = api.public.getTournamentById.useQuery(
     { id: activePrompt?.entityId ?? '' },
@@ -201,7 +235,10 @@ export default function NotificationsScreen() {
       merged = [...devBellItems, ...merged]
     }
 
-    if (!devFeedbackPromptsEnabled) return merged
+    const hideSwipe = (rows: any[]) =>
+      rows.filter((x) => !swipeHiddenIds.has(String(x.id ?? '')))
+
+    if (!devFeedbackPromptsEnabled) return hideSwipe(merged)
 
     const devItems = [
       {
@@ -273,8 +310,8 @@ export default function NotificationsScreen() {
         avatarUrl: null,
       },
     ]
-    return [...devItems, ...merged]
-  }, [notificationsQuery.data?.items, devFeedbackPromptsEnabled, devBellExtrasEnabled])
+    return hideSwipe([...devItems, ...merged])
+  }, [notificationsQuery.data?.items, devFeedbackPromptsEnabled, devBellExtrasEnabled, swipeHiddenIds])
 
   const notificationTextStyles = useMemo(
     () => ({
@@ -371,12 +408,31 @@ export default function NotificationsScreen() {
     navigationLock.current = { id: String(item?.id ?? ''), at: now }
     setOpeningNotificationId(String(item?.id ?? ''))
 
-    // Не ждём мутации: переход должен стартовать сразу, а отметку "seen" делаем в фоне.
-    if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId && !String(item.id ?? '').startsWith('dev-')) {
-      void markClubJoinRequestSeen
-        .mutateAsync({ clubId: item.clubId })
+    // Club join request: не dismiss здесь — на экране клуба при пустой очереди (clubs/[id]).
+    // markClubJoinRequestSeen — на экране клуба при tab=members.
+    const idStr = String(item.id ?? '')
+    const isDevBell = idStr.startsWith('dev-')
+    const tp = String(item.type ?? '')
+    const dismissBellOnNavigate =
+      !isDevBell &&
+      (tp === 'CLUB_MEMBER_LEFT' ||
+        tp === 'TOURNAMENT_ACCESS_PENDING' ||
+        BELL_DISMISS_ON_NAVIGATE_TYPES.has(tp))
+    if (dismissBellOnNavigate) {
+      void dismissNotification
+        .mutateAsync({ notificationId: idStr })
         .then(() => utils.notification.list.invalidate())
         .catch(() => {})
+    }
+
+    // Участники / join requests: иначе после тапа виден старый кэш до pull-to-refresh.
+    const clubBellRefreshTypes = new Set(['CLUB_MEMBER_LEFT', 'CLUB_JOIN_REQUEST', 'CLUB_MEMBER_JOINED'])
+    const clubIdFromBell = item.clubId != null ? String(item.clubId).trim() : ''
+    if (clubIdFromBell && !isDevBell && clubBellRefreshTypes.has(tp)) {
+      void Promise.all([
+        utils.club.get.invalidate({ id: clubIdFromBell }),
+        utils.club.listMembers.invalidate({ clubId: clubIdFromBell }),
+      ]).catch(() => undefined)
     }
 
     openTarget(targetUrl)
@@ -501,17 +557,31 @@ export default function NotificationsScreen() {
           return (
             <SwipeDismissNotificationRow
               key={item.id}
-              disabled={
-                openingNotificationId === String(item.id) ||
-                item.type === 'CLUB_JOIN_REQUEST' ||
-                item.type === 'TOURNAMENT_ACCESS_PENDING'
-              }
+              disabled={openingNotificationId === String(item.id)}
               onDismiss={async () => {
+                const id = String(item.id)
+                const localHide =
+                  item.type === 'CLUB_JOIN_REQUEST' || item.type === 'TOURNAMENT_ACCESS_PENDING'
+                if (localHide) {
+                  swipeHiddenSnapRef.current.set(id, {
+                    body: String(item.body ?? ''),
+                    createdAt: String(item.createdAt ?? ''),
+                  })
+                  setSwipeHiddenIds((prev) => new Set(prev).add(id))
+                }
                 try {
-                  await dismissNotification.mutateAsync({ notificationId: String(item.id) })
+                  await dismissNotification.mutateAsync({ notificationId: id })
                   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
                   toast.success('Notification removed.')
                 } catch (e: any) {
+                  if (localHide) {
+                    swipeHiddenSnapRef.current.delete(id)
+                    setSwipeHiddenIds((prev) => {
+                      const n = new Set(prev)
+                      n.delete(id)
+                      return n
+                    })
+                  }
                   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
                   toast.error(e?.message ?? 'Could not remove notification.')
                   throw e

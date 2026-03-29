@@ -10,6 +10,7 @@ import { realtimeAwareQueryOptions } from '../../lib/realtimePoll'
 import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
+import { useNotificationSwipeHidden } from '../../providers/NotificationSwipeHiddenProvider'
 import { useAppTheme } from '../../providers/ThemeProvider'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
 import { BackCircleButton } from './BackCircleButton'
@@ -331,13 +332,22 @@ export const TopBar = ({
   const routePathname = usePathname()
   const navigation = useNavigation()
   const { user, token } = useAuth()
+  const { swipeHiddenIds, swipeHiddenHydrated } = useNotificationSwipeHidden()
   const api = trpc as any
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: Boolean(token) })
   const notificationsQuery = api.notification.list.useQuery(
     { limit: 40 },
     { enabled: Boolean(token), ...realtimeAwareQueryOptions }
   )
-  const unreadCount = Number(notificationsQuery.data?.unreadCount ?? 0)
+  const unreadCount = useMemo(() => {
+    const server = Number(notificationsQuery.data?.unreadCount ?? 0)
+    if (!swipeHiddenHydrated) return server
+    const items = (notificationsQuery.data?.items ?? []) as { id?: string; readAt?: string | null }[]
+    const hiddenUnread = items.filter(
+      (i) => swipeHiddenIds.has(String(i.id ?? '')) && !(i.readAt ?? null),
+    ).length
+    return Math.max(0, server - hiddenUnread)
+  }, [notificationsQuery.data?.unreadCount, notificationsQuery.data?.items, swipeHiddenHydrated, swipeHiddenIds])
   const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = titleOverride ?? getTitle(pathname)
   const headerPathname =

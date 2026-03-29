@@ -123,6 +123,8 @@ export const notificationRouter = createTRPCRouter({
         context?: Record<string, unknown>
       }> = []
       const clubIds = adminClubs.map((a) => a.clubId)
+      /** Клубы с активными join request — строка `club-join-request-${id}` должна показываться даже если id в bellDismissed (новая волна заявок). */
+      let activeJoinClubIds = new Set<string>()
 
       /** Pending join: через связь Club.admins (надёжнее, чем groupBy + clubId IN — совпадает с правами на странице клуба). */
       try {
@@ -156,6 +158,7 @@ export const notificationRouter = createTRPCRouter({
             }
           }
           const uniqueClubIds = Array.from(countByClub.keys())
+          activeJoinClubIds = new Set(uniqueClubIds)
           const clubs = await ctx.prisma.club.findMany({
             where: { id: { in: uniqueClubIds } },
             select: { id: true, name: true },
@@ -441,6 +444,13 @@ export const notificationRouter = createTRPCRouter({
         extraBellItems = []
       }
 
+      const activePendingAccessIds = new Set(
+        extraBellItems
+          .filter((x) => String((x as { type?: string }).type ?? '') === 'TOURNAMENT_ACCESS_PENDING')
+          .map((x) => String((x as { id?: string }).id ?? ''))
+          .filter(Boolean)
+      )
+
       type Merged = Record<string, unknown> & { _sort: string; type?: string }
       const merged: Merged[] = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
@@ -489,8 +499,19 @@ export const notificationRouter = createTRPCRouter({
         .filter((i) => {
           const id = String((i as { id?: string }).id ?? '')
           const tp = (i as { type?: string }).type
-          // Свайп «удалить» не должен навсегда прятать pending заявки (id оставался в bellDismissedNotificationIds).
-          if (tp === 'CLUB_JOIN_REQUEST' || tp === 'TOURNAMENT_ACCESS_PENDING') return true
+          const cid = (i as { clubId?: string | null }).clubId
+          if (tp === 'CLUB_JOIN_REQUEST' && cid && activeJoinClubIds.has(cid)) {
+            return true
+          }
+          if (tp === 'TOURNAMENT_ACCESS_PENDING' && id && activePendingAccessIds.has(id)) {
+            return true
+          }
+          if (tp === 'TOURNAMENT_ACCESS_PENDING') {
+            return !dismissedIds.has(id)
+          }
+          if (tp === 'CLUB_JOIN_REQUEST') {
+            return !dismissedIds.has(id)
+          }
           return !dismissedIds.has(id)
         })
       const unreadCount = visible.filter((i) => {
@@ -578,13 +599,44 @@ export const notificationRouter = createTRPCRouter({
     .input(z.object({ notificationId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
-      // Pending заявки нельзя хранить в bellDismissedNotificationIds — иначе пропадали бы навсегда.
-      if (
-        input.notificationId.startsWith('club-join-request-') ||
-        input.notificationId.startsWith('tournament-access-pending-')
-      ) {
-        pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
-        return { success: true as const }
+      // tournament-access-pending-${requestId}: пока заявка PENDING — не пишем dismiss (как club join).
+      if (input.notificationId.startsWith('tournament-access-pending-')) {
+        const requestId = input.notificationId.slice('tournament-access-pending-'.length)
+        const row = await ctx.prisma.tournamentAccessRequest.findUnique({
+          where: { id: requestId },
+          select: {
+            status: true,
+            tournament: { select: { userId: true } },
+          },
+        })
+        if (!row || row.tournament.userId !== userId) {
+          pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+          return { success: true as const, persisted: false as const }
+        }
+        if (row.status === 'PENDING') {
+          pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+          return { success: true as const, persisted: false as const }
+        }
+        // fall through — заявка обработана, можно записать dismiss
+      }
+      // club-join-request-${clubId}: сохраняем dismiss только если очередь пуста (после принятия/отклонения).
+      // Пока есть pending — не пишем в bellDismissedNotificationIds (новая волна с тем же id снова покажется).
+      if (input.notificationId.startsWith('club-join-request-')) {
+        const clubId = input.notificationId.slice('club-join-request-'.length)
+        const isAdmin = await ctx.prisma.clubAdmin.findFirst({
+          where: { userId, clubId },
+          select: { id: true },
+        })
+        if (!isAdmin) {
+          pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+          return { success: true as const, persisted: false as const }
+        }
+        const pending = await ctx.prisma.clubJoinRequest.count({ where: { clubId } })
+        if (pending > 0) {
+          pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+          return { success: true as const, persisted: false as const }
+        }
+        // fall through — записать id в bellDismissedNotificationIds
       }
       const user = await ctx.prisma.user.findUnique({
         where: { id: userId },
@@ -596,7 +648,7 @@ export const notificationRouter = createTRPCRouter({
         : []
       if (existing.includes(input.notificationId)) {
         pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
-        return { success: true as const }
+        return { success: true as const, persisted: true as const }
       }
       const next = [...existing, input.notificationId].slice(-500)
       await ctx.prisma.user.update({
@@ -604,6 +656,6 @@ export const notificationRouter = createTRPCRouter({
         data: { bellDismissedNotificationIds: next },
       })
       pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
-      return { success: true as const }
+      return { success: true as const, persisted: true as const }
     }),
 })

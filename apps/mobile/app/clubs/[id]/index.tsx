@@ -180,6 +180,11 @@ export default function ClubDetailScreen() {
       await utils.notification.list.invalidate()
     },
   })
+  const dismissClubJoinBellRow = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
 
   const [showNewPostForm, setShowNewPostForm] = useState(false)
   const [announcementForm, setAnnouncementForm] = useState({ title: '', body: '' })
@@ -205,6 +210,8 @@ export default function ClubDetailScreen() {
     | null
   >(null)
   const pendingUnbanAfterBannedMenuClose = useRef<{ userId: string; name: string } | null>(null)
+  /** Снимаем строку club-join-request в колокольнике только когда очередь пуста (после принятия/отклонения). */
+  const joinRequestBellDismissedRef = useRef(false)
 
   const onMemberMenuDismissed = useCallback(() => {
     const p = pendingAfterMemberClose.current
@@ -278,6 +285,39 @@ export default function ClubDetailScreen() {
     if (tab !== 'members' || !club?.isAdmin || !clubId) return
     void markClubJoinRequestSeen.mutateAsync({ clubId }).catch(() => undefined)
   }, [tab, club?.isAdmin, clubId])
+
+  useEffect(() => {
+    joinRequestBellDismissedRef.current = false
+  }, [clubId])
+
+  useEffect(() => {
+    const pending = membersQuery.data?.joinRequests?.length ?? 0
+    if (pending > 0) {
+      joinRequestBellDismissedRef.current = false
+    }
+  }, [membersQuery.data?.joinRequests?.length])
+
+  useEffect(() => {
+    if (tab !== 'members' || !club?.isAdmin || !clubId) return
+    if (!membersQuery.isFetched || !membersQuery.data) return
+    const pending = membersQuery.data.joinRequests?.length ?? 0
+    if (pending > 0) return
+    if (joinRequestBellDismissedRef.current) return
+    void dismissClubJoinBellRow
+      .mutateAsync({ notificationId: `club-join-request-${clubId}` })
+      .then((r) => {
+        if (r.persisted) {
+          joinRequestBellDismissedRef.current = true
+        }
+      })
+      .catch(() => undefined)
+  }, [
+    tab,
+    club?.isAdmin,
+    clubId,
+    membersQuery.isFetched,
+    membersQuery.data?.joinRequests?.length,
+  ])
 
   useEffect(() => {
     setClubDescriptionExpanded(false)

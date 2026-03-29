@@ -9,6 +9,7 @@ import { isAbortLikeError } from '../lib/isAbortLikeError'
 import { getClientAuthToken } from '../lib/authStorage'
 import { trpc } from '../lib/trpc'
 import { AuthProvider, useAuth } from './AuthProvider'
+import { NotificationSwipeHiddenProvider } from './NotificationSwipeHiddenProvider'
 import { ThemeProvider } from './ThemeProvider'
 import { ToastProvider } from './ToastProvider'
 
@@ -88,7 +89,7 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <MobileForegroundSync />
-        {children}
+        <NotificationSwipeHiddenProvider>{children}</NotificationSwipeHiddenProvider>
       </QueryClientProvider>
     </trpc.Provider>
   )
