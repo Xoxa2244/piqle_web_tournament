@@ -81,7 +81,11 @@ export function BellNotificationLeadIcon({ item }: { item: any }) {
     )
   }
 
-  if (item.type === 'CLUB_JOIN_REQUEST') {
+  if (
+    item.type === 'CLUB_JOIN_REQUEST' ||
+    item.type === 'CLUB_MEMBER_LEFT' ||
+    item.type === 'CLUB_MEMBER_JOINED'
+  ) {
     return (
       <View style={styles.avatarWrap}>
         <RemoteUserAvatar

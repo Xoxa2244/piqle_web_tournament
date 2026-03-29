@@ -18,6 +18,7 @@ import { PageLayout } from '../src/components/navigation/PageLayout'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
 import { formatDateRange, formatLocation } from '../src/lib/formatters'
 import { palette, spacing } from '../src/lib/theme'
+import { realtimeAwareQueryOptions } from '../src/lib/realtimePoll'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
@@ -56,22 +57,19 @@ export default function NotificationsScreen() {
     }
   } | null>(null)
   const api = trpc as any
-  const notificationsQuery = trpc.notification.list.useQuery({ limit: 40 }, { enabled: isAuthenticated })
+  const utils = trpc.useUtils()
+  const notificationsQuery = trpc.notification.list.useQuery(
+    { limit: 40 },
+    { enabled: isAuthenticated, ...realtimeAwareQueryOptions }
+  )
   const markClubJoinRequestSeen = trpc.notification.markClubJoinRequestSeen.useMutation({
     onSuccess: async () => {
-      await notificationsQuery.refetch()
+      await utils.notification.list.invalidate()
     },
-  })
-  const markAllReadMutation = trpc.notification.markAllRead.useMutation({
-    onSuccess: async () => {
-      await notificationsQuery.refetch()
-      toast.success('All notifications marked as read.')
-    },
-    onError: (e: any) => toast.error(e?.message || 'Could not update notifications.'),
   })
   const clearAllMutation = trpc.notification.clearAll.useMutation({
     onSuccess: async () => {
-      await notificationsQuery.refetch()
+      await utils.notification.list.invalidate()
       toast.success('All notifications cleared.')
     },
     onError: (e: any) => toast.error(e?.message || 'Could not clear notifications.'),
@@ -301,52 +299,15 @@ export default function NotificationsScreen() {
           borderColor: colors.brandPrimaryBorder,
           transform: [{ scale: 0.94 }],
         },
-        chatCheckWrap: {
-          width: 22,
-          height: 20,
-          alignItems: 'center',
-          justifyContent: 'center',
-        },
-        chatCheckBadge: {
-          position: 'absolute' as const,
-          right: -2,
-          bottom: -3,
-          backgroundColor: colors.surface,
-          borderRadius: 5,
-          padding: 1,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.border,
-        },
       }),
     [colors],
   )
 
   const notificationsTopBarRight = useMemo(() => {
     if (!isAuthenticated) return null
-    const busy = markAllReadMutation.isPending || clearAllMutation.isPending
+    const busy = clearAllMutation.isPending
     return (
       <View style={headerCircleStyles.headerActionsRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Mark all notifications as read"
-          disabled={busy}
-          onPress={() => void markAllReadMutation.mutateAsync().catch(() => {})}
-          style={({ pressed }) => [
-            headerCircleStyles.headerIconCircle,
-            pressed && !busy && headerCircleStyles.headerIconCirclePressed,
-          ]}
-        >
-          {markAllReadMutation.isPending ? (
-            <ActivityIndicator size="small" color={colors.text} />
-          ) : (
-            <View style={headerCircleStyles.chatCheckWrap}>
-              <Feather name="message-circle" size={17} color={colors.text} />
-              <View style={headerCircleStyles.chatCheckBadge}>
-                <Feather name="check" size={9} color={colors.primary} />
-              </View>
-            </View>
-          )}
-        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Clear all notifications from the list"
@@ -365,15 +326,7 @@ export default function NotificationsScreen() {
         </Pressable>
       </View>
     )
-  }, [
-    isAuthenticated,
-    headerCircleStyles,
-    colors.text,
-    colors.primary,
-    markAllReadMutation.isPending,
-    clearAllMutation.isPending,
-    onClearAllPress,
-  ])
+  }, [isAuthenticated, headerCircleStyles, colors.text, clearAllMutation.isPending, onClearAllPress])
 
   const openTarget = (targetUrl?: string) => {
     if (!targetUrl) return
@@ -414,7 +367,7 @@ export default function NotificationsScreen() {
     if (item.type === 'CLUB_JOIN_REQUEST' && item.clubId && !String(item.id ?? '').startsWith('dev-')) {
       void markClubJoinRequestSeen
         .mutateAsync({ clubId: item.clubId })
-        .then(() => notificationsQuery.refetch())
+        .then(() => utils.notification.list.invalidate())
         .catch(() => {})
     }
 

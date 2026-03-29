@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react'
+import type { PropsWithChildren, ReactNode } from 'react'
 import React from 'react'
 import { useMemo } from 'react'
 import { ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
@@ -26,6 +26,8 @@ export const PageLayout = ({
   pullToRefresh,
   chatAmbient = false,
   topBarRefreshPulseKey,
+  /** Контент под TopBar, вне скролла (например хиро-карточка профиля / клуба). */
+  fixedUnderTopBar,
 }: PropsWithChildren<{
   scroll?: boolean
   contentStyle?: StyleProp<ViewStyle>
@@ -40,6 +42,7 @@ export const PageLayout = ({
   chatAmbient?: boolean
   /** Триггер анимации лого в TopBar (главная + pull-to-refresh) */
   topBarRefreshPulseKey?: number
+  fixedUnderTopBar?: ReactNode
 }>) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -56,9 +59,14 @@ export const PageLayout = ({
       {scroll ? (
         pullToRefresh ? (
           <View style={styles.fill}>
+            {fixedUnderTopBar}
             <PickleRefreshScrollView
               style={{ flex: 1, backgroundColor: colors.background }}
-              contentContainerStyle={[styles.content, contentStyle]}
+              contentContainerStyle={[
+                styles.content,
+                fixedUnderTopBar && styles.contentWithFixedUpper,
+                contentStyle,
+              ]}
               showsVerticalScrollIndicator={false}
               refreshing={pullToRefresh.refreshing}
               onRefresh={pullToRefresh.onRefresh}
@@ -68,14 +76,17 @@ export const PageLayout = ({
             </PickleRefreshScrollView>
           </View>
         ) : (
-          <ScrollView
-            style={{ backgroundColor: colors.background }}
-            contentContainerStyle={[styles.content, contentStyle]}
-            showsVerticalScrollIndicator={false}
-            bounces
-          >
-            {children}
-          </ScrollView>
+          <View style={styles.fill}>
+            {fixedUnderTopBar}
+            <ScrollView
+              style={{ flex: 1, backgroundColor: colors.background }}
+              contentContainerStyle={[styles.content, fixedUnderTopBar && styles.contentWithFixedUpper, contentStyle]}
+              showsVerticalScrollIndicator={false}
+              bounces
+            >
+              {children}
+            </ScrollView>
+          </View>
         )
       ) : (
         <View
@@ -143,5 +154,9 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   fill: {
     flex: 1,
+  },
+  /** Как у клуба: зазор под хиро задаёт сам `heroWrap` (`paddingBottom`), без дублирующего отступа скролла. */
+  contentWithFixedUpper: {
+    paddingTop: 0,
   },
 })

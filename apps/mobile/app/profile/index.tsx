@@ -1,27 +1,22 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { WebView } from 'react-native-webview'
 
-import { AppBottomSheet } from '../../src/components/AppBottomSheet'
-import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
+import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
+import { ProfileHeroCard, ProfileStatsDuprSection } from '../../src/components/profile/ProfileIdentityBlock'
+import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
 import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
 import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
-import { formatDate, formatLocation } from '../../src/lib/formatters'
+import { formatGenderLabel, formatLocation } from '../../src/lib/formatters'
 import { DUPR_CLIENT_KEY, FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { useToast } from '../../src/providers/ToastProvider'
-
-const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
-  month: 'long',
-  year: 'numeric',
-})
 
 const parseNumberish = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -82,51 +77,37 @@ const statusTone = (statusLabel: string): 'muted' | 'primary' | 'danger' | 'succ
   return 'muted'
 }
 
-const ProfileAvatar = ({
-  label,
-  image,
-  onCameraPress,
-}: {
-  label: string
-  image?: string | null
-  onCameraPress?: () => void
-}) => {
-  const size = 96
-
+function ProfileTopBarActions() {
+  const { colors } = useAppTheme()
   return (
-    <View style={styles.avatarWrap}>
-      <RemoteUserAvatar uri={image} size={size} fallback="initials" initialsLabel={label} />
-
-      <Pressable onPress={onCameraPress} style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraButtonPressed]}>
-        <Feather name="camera" size={14} color={palette.white} />
+    <View style={styles.profileTopBarActions}>
+      <Pressable
+        onPress={() => router.push('/profile/edit')}
+        accessibilityRole="button"
+        accessibilityLabel="Edit profile"
+        style={({ pressed }) => [
+          styles.profileTopBarIconBtn,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          pressed && { opacity: 0.88, backgroundColor: colors.surfaceMuted },
+        ]}
+      >
+        <Feather name="edit-2" size={18} color={colors.text} />
+      </Pressable>
+      <Pressable
+        onPress={() => router.push('/profile/settings')}
+        accessibilityRole="button"
+        accessibilityLabel="Settings"
+        style={({ pressed }) => [
+          styles.profileTopBarIconBtn,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          pressed && { opacity: 0.88, backgroundColor: colors.surfaceMuted },
+        ]}
+      >
+        <Feather name="settings" size={18} color={colors.text} />
       </Pressable>
     </View>
   )
 }
-
-const ProfileActionButton = ({
-  label,
-  icon,
-  onPress,
-  variant = 'outline',
-}: {
-  label: string
-  icon?: keyof typeof Feather.glyphMap
-  onPress?: () => void
-  variant?: 'outline' | 'ghost'
-}) => (
-  <Pressable
-    onPress={onPress}
-    style={({ pressed }) => [
-      styles.profileActionButton,
-      variant === 'outline' ? styles.profileActionButtonOutline : styles.profileActionButtonGhost,
-      pressed && styles.profileActionButtonPressed,
-    ]}
-  >
-    {icon ? <Feather name={icon} size={16} color={palette.text} /> : null}
-    <Text style={styles.profileActionLabel}>{label}</Text>
-  </Pressable>
-)
 
 export default function ProfileTab() {
   const { token, user } = useAuth()
@@ -135,6 +116,7 @@ export default function ProfileTab() {
   const api = trpc as any
   const utils = trpc.useUtils() as any
   const [showDuprConnect, setShowDuprConnect] = useState(false)
+  const [duprWebLoading, setDuprWebLoading] = useState(true)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const linkDupr = api.user.linkDupr.useMutation({
     onSuccess: async () => {
@@ -156,6 +138,7 @@ export default function ProfileTab() {
       )
       return
     }
+    setDuprWebLoading(true)
     setShowDuprConnect(true)
   }
 
@@ -165,22 +148,31 @@ export default function ProfileTab() {
     return `https://dashboard.dupr.com/login-external-app/${base64}`
   }, [DUPR_CLIENT_KEY])
 
+  /** Регистрируем до контента — postMessage от DUPR не должен теряться. */
   const duprBridgeJs = `
     (function () {
       try {
-        window.addEventListener('message', function (event) {
+        function forward(event) {
           try {
-            var data = event && event.data ? event.data : event;
-            window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
-              origin: event && event.origin ? event.origin : null,
-              data: data
-            }));
+            var raw = event && event.data !== undefined ? event.data : event;
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                origin: event && event.origin ? event.origin : null,
+                data: raw
+              }));
+            }
           } catch (e) {}
-        });
+        }
+        window.addEventListener('message', forward);
       } catch (e) {}
       true;
     })();
   `
+
+  const duprWebUserAgent =
+    Platform.OS === 'ios'
+      ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+      : 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
 
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
   const tdSummaryQuery = api.feedback.getEntitySummary.useQuery(
@@ -228,22 +220,18 @@ export default function ProfileTab() {
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            <SurfaceCard tone="hero" style={styles.guestCard}>
-              <View style={styles.guestIconWrap}>
-                <Feather name="user" size={22} color={palette.primary} />
-              </View>
-              <Text style={styles.guestTitle}>You are browsing as a guest</Text>
-              <Text style={styles.guestBody}>
-                Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity.
-              </Text>
-              <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
-            </SurfaceCard>
-          </ScrollView>
-        </OptionalLinearGradient>
-      </SafeAreaView>
+      <PageLayout topBarTitle="Profile">
+        <SurfaceCard tone="hero" style={styles.guestCard}>
+          <View style={styles.guestIconWrap}>
+            <Feather name="user" size={22} color={palette.primary} />
+          </View>
+          <Text style={styles.guestTitle}>You are browsing as a guest</Text>
+          <Text style={styles.guestBody}>
+            Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity.
+          </Text>
+          <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+        </SurfaceCard>
+      </PageLayout>
     )
   }
 
@@ -253,25 +241,21 @@ export default function ProfileTab() {
 
   if (profileQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
-          <View style={styles.loadingWrap}>
-            <LoadingBlock label="Loading profile…" />
-          </View>
-        </OptionalLinearGradient>
-      </SafeAreaView>
+      <PageLayout topBarTitle="Profile" topBarRightSlot={<ProfileTopBarActions />}>
+        <View style={styles.loadingWrap}>
+          <LoadingBlock label="Loading profile…" />
+        </View>
+      </PageLayout>
     )
   }
 
   if (!profile) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
-          <View style={styles.loadingWrap}>
-            <EmptyState title="Profile unavailable" body="We could not load your player profile right now." />
-          </View>
-        </OptionalLinearGradient>
-      </SafeAreaView>
+      <PageLayout topBarTitle="Profile" topBarRightSlot={<ProfileTopBarActions />}>
+        <View style={styles.loadingWrap}>
+          <EmptyState title="Profile unavailable" body="We could not load your player profile right now." />
+        </View>
+      </PageLayout>
     )
   }
 
@@ -301,103 +285,34 @@ export default function ProfileTab() {
           { id: 'dev-td-3', title: 'Conflict Solver' },
         ]
       : []
-  const handleLabel = `@${String(profile.email || '').split('@')[0] || 'piqle'}`
-  const memberSinceLabel = profile.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
   const locationLabel = formatLocation([profile.city])
+  const genderLabel = formatGenderLabel(profile.gender)
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <OptionalLinearGradient colors={[palette.background, palette.surfaceElevated]} style={styles.fill}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.headerCard}>
-            <View style={styles.headerTopRow}>
-              <ProfileAvatar
-                label={profile.name || profile.email}
-                image={profile.image}
-                onCameraPress={() => router.push('/profile/edit')}
-              />
-
-              <View style={styles.headerActions}>
-                <View style={styles.headerActionItem}>
-                  <ProfileActionButton label="Edit Profile" onPress={() => router.push('/profile/edit')} />
-                </View>
-                <View style={styles.headerActionItem}>
-                  <ProfileActionButton
-                    label="Settings"
-                    icon="settings"
-                    variant="outline"
-                    onPress={() => router.push('/profile/settings')}
-                  />
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.userInfoBlock}>
-              <Text style={styles.userName}>{profile.name || profile.email}</Text>
-              <Text style={styles.userHandle}>{handleLabel}</Text>
-
-              <View style={styles.userMetaRow}>
-                <Text style={styles.userMetaText}>{`📍 ${locationLabel}`}</Text>
-                <Text style={styles.userMetaSeparator}>•</Text>
-                <Text style={styles.userMetaText}>{`Member since ${memberSinceLabel}`}</Text>
-              </View>
-            </View>
-
-            <SurfaceCard>
-              <View style={styles.statsGrid}>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{profile?.clubsJoinedCount ?? 0}</Text>
-                  <Text style={styles.statsLabel}>Clubs</Text>
-                </View>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{profile?.tournamentsPlayedCount ?? 0}</Text>
-                  <Text style={styles.statsLabel}>Played</Text>
-                </View>
-                <View style={styles.statsItem}>
-                  <Text style={styles.statsValue}>{profile?.tournamentsCreatedCount ?? 0}</Text>
-                  <Text style={styles.statsLabel}>Hosted</Text>
-                </View>
-              </View>
-
-              <View style={styles.profileDuprRow}>
-                <View style={styles.profileDuprPill}>
-                  <Text style={styles.profileDuprPillLabel}>Singles</Text>
-                  <Text style={styles.profileDuprPillValue}>{singlesRatingLabel}</Text>
-                </View>
-                <View style={styles.profileDuprPill}>
-                  <Text style={styles.profileDuprPillLabel}>Doubles</Text>
-                  <Text style={styles.profileDuprPillValue}>{doublesRatingLabel}</Text>
-                </View>
-              </View>
-            </SurfaceCard>
-
-            <View style={styles.duprCardOuter}>
-              <View style={styles.duprHeaderRow}>
-                <View style={styles.duprCircleIcon}>
-                  <Feather name="trending-up" size={20} color={palette.white} />
-                </View>
-                <Text style={styles.duprRatingTitle}>DUPR Rating</Text>
-              </View>
-
-              <View style={styles.duprPillsRow}>
-                <View style={styles.duprPill}>
-                  <Text style={styles.duprPillLabel}>Singles</Text>
-                  <Text style={styles.duprPillValue}>{singlesRatingLabel}</Text>
-                </View>
-                <View style={styles.duprPill}>
-                  <Text style={styles.duprPillLabel}>Doubles</Text>
-                  <Text style={styles.duprPillValue}>{doublesRatingLabel}</Text>
-                </View>
-              </View>
-
-              {!profile.duprLinked ? (
-                <ProfileActionButton
-                  label={linkDupr.isPending ? 'Connecting...' : 'Connect DUPR'}
-                  icon="link"
-                  onPress={startDuprConnect}
-                />
-              ) : null}
-            </View>
+    <PageLayout
+      topBarTitle="Profile"
+      topBarRightSlot={<ProfileTopBarActions />}
+      fixedUnderTopBar={
+        <ProfileHeroCard
+          displayName={profile.name || profile.email}
+          genderLabel={genderLabel}
+          imageUri={profile.image}
+          initialsLabel={profile.name || profile.email}
+          locationLabel={locationLabel}
+        />
+      }
+    >
+      <View style={styles.headerCard}>
+        <ProfileStatsDuprSection
+          clubsJoinedCount={profile?.clubsJoinedCount ?? 0}
+          tournamentsPlayedCount={profile?.tournamentsPlayedCount ?? 0}
+          tournamentsCreatedCount={profile?.tournamentsCreatedCount ?? 0}
+          singlesRatingLabel={singlesRatingLabel}
+          doublesRatingLabel={doublesRatingLabel}
+          showDuprConnect={!profile.duprLinked}
+          onDuprConnect={startDuprConnect}
+          duprConnectPending={linkDupr.isPending}
+        />
 
             {isTd ? (
               <SurfaceCard>
@@ -433,46 +348,89 @@ export default function ProfileTab() {
                 ) : null}
               </SurfaceCard>
             ) : null}
-          </View>
+      </View>
 
           <AppBottomSheet
             open={showDuprConnect}
             onClose={() => setShowDuprConnect(false)}
             title="Connect DUPR"
+            subtitle="Sign in to DUPR below. When login completes, we link your account automatically."
+            footer={<AppInfoFooter label="Close" onPress={() => setShowDuprConnect(false)} />}
           >
             {duprLoginUrl ? (
-              <WebView
-                style={{ height: 420 }}
-                source={{ uri: duprLoginUrl }}
-                originWhitelist={['*']}
-                injectedJavaScript={duprBridgeJs}
-                onMessage={(event) => {
-                  try {
-                    const payload = JSON.parse(event.nativeEvent.data)
-                    const data = payload?.data ?? {}
-                    const numericId = data.id || data.userId
-                    const duprId = data.duprId || data.dupr_id
-                    const accessToken = data.userToken || data.accessToken || data.access_token
-                    const refreshToken = data.refreshToken || data.refresh_token
-                    const stats = data.stats || {
-                      rating: data.rating,
-                      singlesRating: data.singlesRating || data.singles_rating,
-                      doublesRating: data.doublesRating || data.doubles_rating,
-                      name: data.name,
-                    }
+              <View style={styles.duprWebWrap}>
+                <WebView
+                  style={styles.duprWebView}
+                  source={{ uri: duprLoginUrl }}
+                  originWhitelist={['*']}
+                  userAgent={duprWebUserAgent}
+                  javaScriptEnabled
+                  domStorageEnabled
+                  sharedCookiesEnabled
+                  thirdPartyCookiesEnabled
+                  cacheEnabled
+                  allowsInlineMediaPlayback
+                  mediaPlaybackRequiresUserAction={false}
+                  mixedContentMode="compatibility"
+                  setSupportMultipleWindows={true}
+                  javaScriptCanOpenWindowsAutomatically={true}
+                  injectedJavaScriptBeforeContentLoaded={duprBridgeJs}
+                  onLoadStart={() => setDuprWebLoading(true)}
+                  onLoadEnd={() => setDuprWebLoading(false)}
+                  onError={(e) => {
+                    setDuprWebLoading(false)
+                    const desc = e.nativeEvent.description
+                    if (__DEV__) console.warn('[DUPR WebView]', desc)
+                    toast.error(desc || 'Could not load DUPR page.', 'DUPR')
+                  }}
+                  onHttpError={(e) => {
+                    if (__DEV__) console.warn('[DUPR WebView HTTP]', e.nativeEvent.statusCode, e.nativeEvent.url)
+                  }}
+                  onMessage={(event) => {
+                    try {
+                      const payload = JSON.parse(event.nativeEvent.data) as { data?: unknown }
+                      let data = payload?.data as Record<string, unknown> | string | undefined
+                      if (typeof data === 'string') {
+                        try {
+                          data = JSON.parse(data) as Record<string, unknown>
+                        } catch {
+                          return
+                        }
+                      }
+                      if (!data || typeof data !== 'object') return
+                      const d = data as Record<string, unknown>
+                      const numericId = d.id ?? d.userId
+                      const duprId = d.duprId ?? d.dupr_id
+                      const accessToken = d.userToken ?? d.accessToken ?? d.access_token
+                      const refreshToken = d.refreshToken ?? d.refresh_token
+                      const stats = d.stats ?? {
+                        rating: d.rating,
+                        singlesRating: d.singlesRating ?? d.singles_rating,
+                        doublesRating: d.doublesRating ?? d.doubles_rating,
+                        name: d.name,
+                      }
 
-                    if ((duprId || numericId) && accessToken && refreshToken) {
-                      linkDupr.mutate({
-                        duprId: duprId ? String(duprId) : undefined,
-                        numericId: numericId ? Number(numericId) : undefined,
-                        accessToken: String(accessToken),
-                        refreshToken: String(refreshToken),
-                        stats,
-                      })
+                      if ((duprId || numericId) && accessToken && refreshToken) {
+                        linkDupr.mutate({
+                          duprId: duprId != null ? String(duprId) : undefined,
+                          numericId: numericId != null ? Number(numericId) : undefined,
+                          accessToken: String(accessToken),
+                          refreshToken: String(refreshToken),
+                          stats,
+                        })
+                      }
+                    } catch {
+                      /* ignore malformed bridge messages */
                     }
-                  } catch {}
-                }}
-              />
+                  }}
+                />
+                {duprWebLoading ? (
+                  <View style={styles.duprWebLoading}>
+                    <ActivityIndicator size="large" color={palette.primary} />
+                    <Text style={styles.duprWebLoadingText}>Loading DUPR…</Text>
+                  </View>
+                ) : null}
+              </View>
             ) : (
               <View style={{ paddingVertical: spacing.md }}>
                 <Text style={{ color: palette.textMuted }}>DUPR client key is missing.</Text>
@@ -563,27 +521,12 @@ export default function ProfileTab() {
             })}
           </View>
 
-          <View style={styles.footerSpace} />
-        </ScrollView>
-      </OptionalLinearGradient>
-    </SafeAreaView>
+      <View style={styles.footerSpace} />
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: palette.background,
-  },
-  fill: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: 120,
-    gap: spacing.lg,
-  },
   loadingWrap: {
     flex: 1,
     paddingHorizontal: spacing.md,
@@ -613,175 +556,18 @@ const styles = StyleSheet.create({
   headerCard: {
     gap: spacing.md,
   },
-  headerTopRow: {
+  profileTopBarActions: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    alignItems: 'center',
+    gap: 6,
   },
-  avatarWrap: {
-    position: 'relative',
-  },
-  cameraButton: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  profileTopBarIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
-    borderWidth: 3,
-    borderColor: palette.surface,
-  },
-  cameraButtonPressed: {
-    opacity: 0.88,
-  },
-  headerActions: {
-    flex: 1,
-    gap: 10,
-    paddingTop: 6,
-  },
-  headerActionItem: {
-    flex: 1,
-  },
-  profileActionButton: {
-    minHeight: 44,
-    borderRadius: radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  profileActionButtonOutline: {
-    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: palette.border,
-  },
-  profileActionButtonGhost: {
-    backgroundColor: 'transparent',
-  },
-  profileActionButtonPressed: {
-    opacity: 0.85,
-  },
-  profileActionLabel: {
-    color: palette.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  userInfoBlock: {
-    gap: 4,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  statsItem: {
-    flex: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
-  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  profileDuprRow: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
-  profileDuprPill: {
-    flex: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  profileDuprPillLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  profileDuprPillValue: { marginTop: 3, color: palette.text, fontSize: 22, fontWeight: '800' },
-  userName: {
-    color: palette.text,
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.9,
-  },
-  userHandle: {
-    color: palette.textMuted,
-    fontSize: 15,
-  },
-  userMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  userMetaText: {
-    color: palette.textMuted,
-    fontSize: 13,
-  },
-  userMetaSeparator: {
-    color: palette.textMuted,
-    fontSize: 13,
-  },
-  /** DUPR card — match design spec (mint container, white rating pills) */
-  duprCardOuter: {
-    backgroundColor: '#f0faf4',
-    borderWidth: 1,
-    borderColor: 'rgba(52, 199, 89, 0.28)',
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  duprHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  duprCircleIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#34d399',
-  },
-  duprRatingTitle: {
-    color: '#6b7280',
-    fontSize: 16,
-    fontWeight: '500',
-    letterSpacing: -0.2,
-  },
-  duprPillsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  duprPill: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: palette.white,
-    borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.07)',
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingTop: 14,
-    paddingBottom: 18,
-  },
-  duprPillLabel: {
-    color: '#9ca3af',
-    fontSize: 13,
-    fontWeight: '500',
-    marginBottom: 10,
-  },
-  duprPillValue: {
-    color: palette.text,
-    fontSize: 30,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    textAlign: 'left',
-    alignSelf: 'flex-start',
-    fontVariant: ['tabular-nums'],
   },
   tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
   tdRatingRowBtn: {
@@ -902,6 +688,29 @@ const styles = StyleSheet.create({
   },
   cardPressed: {
     opacity: 0.92,
+  },
+  duprWebWrap: {
+    height: 420,
+    position: 'relative',
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: palette.surfaceMuted,
+  },
+  duprWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  duprWebLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.surface,
+    gap: 10,
+  },
+  duprWebLoadingText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
   },
   footerSpace: {
     height: 16,

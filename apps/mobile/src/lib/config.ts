@@ -18,3 +18,7 @@ export const DUPR_CLIENT_KEY = String(
 
 export const buildApiUrl = (path: string) => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 export const buildWebUrl = (path: string) => `${WEB_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+
+/** Официальный wordmark (как на dashboard.dupr.com). */
+export const DUPR_LOGO_PNG_URL = 'https://dupr.s3.amazonaws.com/static/logo/dupr.png'
+export const DUPR_LOGO_LIGHT_PNG_URL = 'https://dupr.s3.amazonaws.com/static/logo/dupr_light.png'

@@ -13,6 +13,7 @@ import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
+import { realtimeAwareQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { palette, spacing } from '../../../../src/lib/theme'
@@ -43,7 +44,10 @@ export default function ClubChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
-  const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
+  const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
+    enabled: isAuthenticated,
+    ...realtimeAwareQueryOptions,
+  })
   const clubDetailQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) && isAuthenticated })
   const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
   /** Список чатов может ещё не подгрузиться — logo из club.get; иначе логотип в шапке пропадает. */
@@ -53,7 +57,7 @@ export default function ClubChatScreen() {
 
   const messagesQuery = trpc.clubChat.list.useQuery(
     { clubId, limit: 100 },
-    { enabled: Boolean(clubId) && isAuthenticated }
+    { enabled: Boolean(clubId) && isAuthenticated, ...realtimeAwareQueryOptions }
   )
   const pendingFeedbackQuery = trpc.feedback.getPendingPrompts.useQuery(undefined, {
     enabled: isAuthenticated && FEEDBACK_API_ENABLED,

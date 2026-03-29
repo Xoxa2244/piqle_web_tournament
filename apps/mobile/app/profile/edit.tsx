@@ -12,18 +12,6 @@ import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { useToast } from '../../src/providers/ToastProvider'
 
-const splitName = (value?: string | null) => {
-  const parts = String(value ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  return {
-    firstName: parts[0] ?? '',
-    lastName: parts.slice(1).join(' '),
-  }
-}
-
 const formatRating = (value?: string | number | null) => {
   if (value === null || value === undefined || value === '') return '—'
   const parsed = Number(value)
@@ -64,7 +52,7 @@ export default function ProfileEditScreen() {
   const params = useLocalSearchParams<{ anchor?: string | string[] }>()
   const { token, user } = useAuth()
   const toast = useToast()
-  const { theme, colors } = useAppTheme()
+  const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -81,8 +69,7 @@ export default function ProfileEditScreen() {
     },
   })
 
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [name, setName] = useState('')
   const [city, setCity] = useState('')
   const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
   const [duprLink, setDuprLink] = useState('')
@@ -93,9 +80,7 @@ export default function ProfileEditScreen() {
 
   useEffect(() => {
     if (!profileQuery.data) return
-    const nextName = splitName(profileQuery.data.name)
-    setFirstName(nextName.firstName)
-    setLastName(nextName.lastName)
+    setName(profileQuery.data.name || '')
     setCity(profileQuery.data.city || '')
     setGender((profileQuery.data.gender as 'M' | 'F' | 'X' | null) || '')
     setDuprLink(profileQuery.data.duprLink || '')
@@ -137,12 +122,9 @@ export default function ProfileEditScreen() {
           duprRatingDoubles: null,
         }
       : null)
-  const username = useMemo(() => String(profile?.email || '').split('@')[0] || '', [profile?.email])
-  const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ').trim()
-
   const handleSave = () => {
     updateProfile.mutate({
-      name: fullName || undefined,
+      name: name.trim() || undefined,
       city: city.trim() || undefined,
       gender: gender || undefined,
       duprLink: duprLink.trim(),
@@ -222,137 +204,71 @@ export default function ProfileEditScreen() {
           </View>
         </SurfaceCard>
 
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>Personal Information</Text>
-          <View style={styles.fieldStack}>
-            <View>
-              <Text style={styles.fieldLabel}>First Name</Text>
-              <InputField value={firstName} onChangeText={setFirstName} placeholder="First name" />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>Last Name</Text>
-              <InputField value={lastName} onChangeText={setLastName} placeholder="Last name" />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>Username</Text>
-              <InputField value={username} onChangeText={() => {}} placeholder="@username" editable={false} />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>Bio</Text>
-              <InputField
-                value=""
-                onChangeText={() => {}}
-                placeholder="More profile fields will sync from the web profile soon."
-                editable={false}
-                multiline
-              />
-            </View>
-          </View>
-        </SurfaceCard>
-
         <View
           onLayout={(event) => {
             contactCardY.current = event.nativeEvent.layout.y
             tryScrollToCityAnchor()
           }}
         >
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>Contact Information</Text>
-          <View style={styles.fieldStack}>
-            <View>
-              <Text style={styles.fieldLabel}>Email</Text>
-              <InputField value={profile.email} onChangeText={() => {}} editable={false} keyboardType="email-address" />
-            </View>
+          <SurfaceCard style={styles.card}>
+            <Text style={styles.cardTitle}>Profile</Text>
+            <View style={styles.fieldStack}>
+              <View>
+                <Text style={styles.fieldLabel}>Name</Text>
+                <InputField value={name} onChangeText={setName} placeholder="Your name" />
+              </View>
 
-            <View>
-              <Text style={styles.fieldLabel}>Phone</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="Add from web profile" editable={false} keyboardType="phone-pad" />
-            </View>
+              <View>
+                <Text style={styles.fieldLabel}>Gender</Text>
+                <View style={styles.genderRow}>
+                  {(['', 'M', 'F', 'X'] as const).map((value) => (
+                    <ActionButton
+                      key={value || 'unset'}
+                      label={value || 'Unset'}
+                      variant={gender === value ? 'primary' : 'secondary'}
+                      onPress={() => setGender(value)}
+                    />
+                  ))}
+                </View>
+              </View>
 
-            <View
-              onLayout={(event) => {
-                cityFieldOffsetY.current = event.nativeEvent.layout.y
-                tryScrollToCityAnchor()
-              }}
-            >
-              <Text style={styles.fieldLabel}>Location</Text>
-              <InputField value={city} onChangeText={setCity} placeholder="City, State" />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>Birth Date</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="Managed on web" editable={false} />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>Gender</Text>
-              <View style={styles.genderRow}>
-                {(['', 'M', 'F', 'X'] as const).map((value) => (
-                  <ActionButton
-                    key={value || 'unset'}
-                    label={value || 'Unset'}
-                    variant={gender === value ? 'primary' : 'secondary'}
-                    onPress={() => setGender(value)}
-                  />
-                ))}
+              <View
+                onLayout={(event) => {
+                  cityFieldOffsetY.current = event.nativeEvent.layout.y
+                  tryScrollToCityAnchor()
+                }}
+              >
+                <Text style={styles.fieldLabel}>City</Text>
+                <InputField value={city} onChangeText={setCity} placeholder="Enter your city" />
               </View>
             </View>
-          </View>
-        </SurfaceCard>
+          </SurfaceCard>
         </View>
 
         <SurfaceCard style={styles.card}>
-          <View style={styles.sectionTitleRow}>
-            <Feather name="award" size={18} color={colors.primary} />
-            <Text style={styles.cardTitle}>Pickleball Profile</Text>
-          </View>
-
+          <Text style={styles.cardTitle}>DUPR</Text>
           <View style={styles.fieldStack}>
             <View>
-              <Text style={styles.fieldLabel}>DUPR Rating</Text>
+              <Text style={styles.fieldLabel}>DUPR rating</Text>
               <InputField
                 value={formatRating(profile.duprRatingSingles || profile.duprRatingDoubles)}
                 onChangeText={() => {}}
                 editable={false}
               />
-              <Text style={styles.helperText}>Current rating synced from your linked DUPR profile</Text>
+              <Text style={styles.helperText}>Synced from your linked DUPR account</Text>
             </View>
 
             <View>
-              <Text style={styles.fieldLabel}>Preferred Position</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="Managed on web" editable={false} />
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>DUPR Link</Text>
+              <Text style={styles.fieldLabel}>DUPR link</Text>
               <InputField
                 value={duprLink}
                 onChangeText={setDuprLink}
                 placeholder="https://..."
                 autoCapitalize="none"
                 keyboardType="url"
+                editable={false}
               />
-            </View>
-          </View>
-        </SurfaceCard>
-
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>Social Links</Text>
-          <View style={styles.fieldStack}>
-            <View>
-              <Text style={styles.fieldLabel}>Instagram</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="@username" editable={false} />
-            </View>
-            <View>
-              <Text style={styles.fieldLabel}>Twitter / X</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="@username" editable={false} />
-            </View>
-            <View>
-              <Text style={styles.fieldLabel}>Website</Text>
-              <InputField value="" onChangeText={() => {}} placeholder="https://your-site.com" editable={false} />
+              <Text style={styles.helperText}>Connect or manage DUPR from your profile on the web or in the app.</Text>
             </View>
           </View>
         </SurfaceCard>
@@ -464,11 +380,6 @@ const createStyles = (colors: ThemePalette) =>
   genderRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
   helperText: {

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useMemo, useRef } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 
+import { realtimeAwareQueryOptions } from '../../lib/realtimePoll'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
 import { useAppTheme } from '../../providers/ThemeProvider'
@@ -111,8 +112,14 @@ export function TabBarTabIcon({
 export function ChatsTabBarIcon({ focused }: { focused: boolean }) {
   const { colors } = useAppTheme()
   const { token } = useAuth()
-  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: Boolean(token) })
-  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, { enabled: Boolean(token) })
+  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
+    enabled: Boolean(token),
+    ...realtimeAwareQueryOptions,
+  })
+  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
+    enabled: Boolean(token),
+    ...realtimeAwareQueryOptions,
+  })
   const showUnreadDot = useMemo(() => {
     if (!token) return false
     const clubs = clubChatsQuery.data ?? []

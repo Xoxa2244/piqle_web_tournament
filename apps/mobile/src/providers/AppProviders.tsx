@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { httpLink } from '@trpc/client'
 import type { PropsWithChildren } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { AppState, type AppStateStatus } from 'react-native'
 
 import { buildApiUrl } from '../lib/config'
 import { isAbortLikeError } from '../lib/isAbortLikeError'
@@ -10,6 +11,25 @@ import { trpc } from '../lib/trpc'
 import { AuthProvider, useAuth } from './AuthProvider'
 import { ThemeProvider } from './ThemeProvider'
 import { ToastProvider } from './ToastProvider'
+
+/** Инвалидация при возврате в приложение (аналог refetchOnWindowFocus на вебе). */
+function MobileForegroundSync() {
+  const utils = trpc.useUtils()
+  const { token } = useAuth()
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      if (state !== 'active' || !token) return
+      void Promise.all([
+        utils.notification.list.invalidate(),
+        utils.club.listMyChatClubs.invalidate(),
+        utils.tournamentChat.listMyEventChats.invalidate(),
+      ])
+    }
+    const sub = AppState.addEventListener('change', onChange)
+    return () => sub.remove()
+  }, [utils, token])
+  return null
+}
 
 const TrpcLayer = ({ children }: PropsWithChildren) => {
   const { token } = useAuth()
@@ -66,7 +86,10 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <MobileForegroundSync />
+        {children}
+      </QueryClientProvider>
     </trpc.Provider>
   )
 }

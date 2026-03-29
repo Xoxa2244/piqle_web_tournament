@@ -456,7 +456,9 @@ export default function ClubDetailScreen() {
               />
             </View>
           ) : membersQuery.isLoading ? (
-            <LoadingBlock label="Loading members…" />
+            <View style={styles.membersLoadingWrap}>
+              <LoadingBlock label="Loading members…" />
+            </View>
           ) : (
             <View style={styles.membersWrap}>
               {admins.length > 0 ? (
@@ -1995,6 +1997,13 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surface,
     borderWidth: 1,
     borderColor: 'rgba(255, 0, 110, 0.28)',
+  },
+  /** Состояние загрузки списка участников — те же поля, что у `membersWrap`, плюс вертикальные отступы у блока. */
+  membersLoadingWrap: {
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   membersWrap: {
     marginTop: spacing.xl,

@@ -1,27 +1,21 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons'
-import { useLocalSearchParams, router } from 'expo-router'
+import { Redirect, useLocalSearchParams, router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { FeedbackEntityContextCard } from '../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../src/components/FeedbackRatingModal'
 import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
 import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
-import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
-import { TopBar } from '../../src/components/navigation/TopBar'
+import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { ProfileHeroCard, ProfileStatsDuprSection } from '../../src/components/profile/ProfileIdentityBlock'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
-import { formatDate, formatLocation } from '../../src/lib/formatters'
+import { formatDate, formatGenderLabel, formatLocation } from '../../src/lib/formatters'
 import { palette, radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
-
-const memberSinceFormatter = new Intl.DateTimeFormat('en-US', {
-  month: 'long',
-  year: 'numeric',
-})
 
 const parseNumberish = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -38,8 +32,8 @@ const parseNumberish = (value: unknown) => {
 
 export default function PublicProfileScreen() {
   const params = useLocalSearchParams<{ id: string }>()
-  const profileId = String(params.id ?? '')
-  const { token, user } = useAuth()
+  const profileId = String(params.id ?? '').trim()
+  const { isReady, token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
@@ -83,8 +77,6 @@ export default function PublicProfileScreen() {
           { id: 'dev-td-2', title: 'Clear Communicator' },
           { id: 'dev-td-3', title: 'Conflict Solver' },
         ]
-  const tdBadgeIcons: Array<keyof typeof MaterialIcons.glyphMap> = ['bolt', 'campaign', 'gavel', 'verified', 'emoji-events']
-
   const profile = profileQuery.data as any
   const createdTournaments = useMemo(() => {
     const rows = ((tournamentsQuery.data ?? []) as any[]).filter((t) => t.user?.id === profileId)
@@ -93,99 +85,84 @@ export default function PublicProfileScreen() {
       .slice(0, 6)
   }, [profileId, tournamentsQuery.data])
   const isTd = Number(profile?.tournamentsCreatedCount ?? 0) > 0 || createdTournaments.length > 0
-  const memberSince = profile?.createdAt ? memberSinceFormatter.format(new Date(profile.createdAt)) : 'Recently'
   const singlesNum = parseNumberish(profile?.duprRatingSingles)
   const doublesNum = parseNumberish(profile?.duprRatingDoubles)
   const singlesRatingLabel = singlesNum !== null ? singlesNum.toFixed(2) : '—'
   const doublesRatingLabel = doublesNum !== null ? doublesNum.toFixed(2) : '—'
 
+  /** Свой профиль всегда через вкладку / стек `profile/index` (редактирование, DUPR Connect и т.д.). */
+  if (isReady && token && user?.id && profileId && user.id === profileId) {
+    return <Redirect href="/profile" />
+  }
+
   if (profileQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+      <PageLayout topBarTitle="Profile">
         <View style={styles.loadingWrap}>
           <LoadingBlock label="Loading profile..." />
         </View>
-      </SafeAreaView>
+      </PageLayout>
     )
   }
   if (!profile) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+      <PageLayout topBarTitle="Profile">
         <View style={styles.loadingWrap}>
           <EmptyState title="Profile unavailable" body="Could not load this player profile." />
         </View>
-      </SafeAreaView>
+      </PageLayout>
     )
   }
 
+  const locationLabel = formatLocation([profile.city])
+  const genderLabel = formatGenderLabel(profile?.gender)
+
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <TopBar />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <SurfaceCard>
-          <View style={styles.headRow}>
-            <RemoteUserAvatar uri={profile?.image} size={72} fallback="initials" initialsLabel={profile?.name ?? 'TD'} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{profile?.name ?? 'Player'}</Text>
-              <Text style={styles.meta}>{formatLocation([profile?.city])}</Text>
-              <Text style={styles.meta}>Member since {memberSince}</Text>
-            </View>
-          </View>
-
-          <View style={styles.statsGrid}>
-            <View style={styles.statsItem}>
-              <Text style={styles.statsValue}>{profile?.clubsJoinedCount ?? 0}</Text>
-              <Text style={styles.statsLabel}>Clubs</Text>
-            </View>
-            <View style={styles.statsItem}>
-              <Text style={styles.statsValue}>{profile?.tournamentsPlayedCount ?? 0}</Text>
-              <Text style={styles.statsLabel}>Played</Text>
-            </View>
-            <View style={styles.statsItem}>
-              <Text style={styles.statsValue}>{profile?.tournamentsCreatedCount ?? 0}</Text>
-              <Text style={styles.statsLabel}>Hosted</Text>
-            </View>
-          </View>
-
-          <View style={styles.duprRow}>
-            <View style={styles.duprPill}>
-              <Text style={styles.duprPillLabel}>Singles</Text>
-              <Text style={styles.duprPillValue}>{singlesRatingLabel}</Text>
-            </View>
-            <View style={styles.duprPill}>
-              <Text style={styles.duprPillLabel}>Doubles</Text>
-              <Text style={styles.duprPillValue}>{doublesRatingLabel}</Text>
-            </View>
-          </View>
-        </SurfaceCard>
+    <PageLayout
+      topBarTitle="Profile"
+      fixedUnderTopBar={
+        <ProfileHeroCard
+          displayName={profile?.name ?? 'Player'}
+          genderLabel={genderLabel}
+          imageUri={profile?.image}
+          initialsLabel={profile?.name ?? 'Player'}
+          locationLabel={locationLabel}
+        />
+      }
+    >
+      <View style={styles.headerCard}>
+        <ProfileStatsDuprSection
+          clubsJoinedCount={profile?.clubsJoinedCount ?? 0}
+          tournamentsPlayedCount={profile?.tournamentsPlayedCount ?? 0}
+          tournamentsCreatedCount={profile?.tournamentsCreatedCount ?? 0}
+          singlesRatingLabel={singlesRatingLabel}
+          doublesRatingLabel={doublesRatingLabel}
+          showDuprConnect={false}
+        />
 
         {isTd ? (
           <SurfaceCard>
             <Text style={styles.tdRatingTitle}>Tournament director rating</Text>
-            <View style={styles.ratingRow}>
-              <Pressable
-                onPress={() => setTdFeedbackInfoOpen(true)}
-                style={({ pressed }) => [styles.tdRatingRowBtn, pressed && styles.ratingPillBtnPressed]}
-              >
-                <View style={styles.tdStarsRow}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <MaterialIcons
-                      key={star}
-                      name={tdCanPublishEffective && tdAverageEffective && star <= Math.round(tdAverageEffective) ? 'star' : 'star-border'}
-                      size={18}
-                      color="#F4B000"
-                    />
-                  ))}
-                </View>
-                {tdCanPublishEffective && tdAverageEffective ? (
-                  <Text style={styles.tdRatingValue}>{tdAverageEffective.toFixed(1)}</Text>
-                ) : (
-                  <Text style={styles.feedbackValueMuted}>No rating yet</Text>
-                )}
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={() => setTdFeedbackInfoOpen(true)}
+              style={({ pressed }) => [styles.tdRatingRowBtn, pressed && styles.tdRatingRowPressed]}
+            >
+              <View style={styles.tdStarsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <MaterialIcons
+                    key={star}
+                    name={tdCanPublishEffective && tdAverageEffective && star <= Math.round(tdAverageEffective) ? 'star' : 'star-border'}
+                    size={19}
+                    color="#F4B000"
+                  />
+                ))}
+              </View>
+              {tdCanPublishEffective && tdAverageEffective ? (
+                <Text style={styles.tdRatingValue}>{tdAverageEffective.toFixed(1)}</Text>
+              ) : (
+                <Text style={styles.tdRatingMuted}>No rating yet</Text>
+              )}
+            </Pressable>
             {achievements.length > 0 ? (
               <View style={styles.tdAchievementsWordsRow}>
                 {achievements.map((item: { id: string; title: string }) => (
@@ -209,6 +186,7 @@ export default function PublicProfileScreen() {
             ) : null}
           </SurfaceCard>
         ) : null}
+      </View>
 
         <View style={styles.sectionBlock}>
           <Text style={styles.sectionTitle}>Hosted tournaments</Text>
@@ -239,7 +217,6 @@ export default function PublicProfileScreen() {
             ))
           )}
         </View>
-      </ScrollView>
 
       <FeedbackRatingModal
         open={tdFeedbackOpen}
@@ -302,52 +279,25 @@ export default function PublicProfileScreen() {
           )}
         </View>
       </AppBottomSheet>
-    </SafeAreaView>
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: palette.background },
   loadingWrap: { flex: 1, justifyContent: 'center', padding: spacing.lg },
-  content: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
-  headRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { color: palette.text, fontSize: 20, fontWeight: '800' },
-  meta: { marginTop: 2, color: palette.textMuted, fontSize: 13 },
-  statsGrid: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
-  statsItem: {
-    flex: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
-  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  duprRow: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm },
-  duprPill: {
-    flex: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-  },
-  duprPillLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
-  duprPillValue: { marginTop: 3, color: palette.text, fontSize: 22, fontWeight: '800' },
-  ratingRow: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  headerCard: {
+    gap: spacing.md,
   },
   tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
   tdRatingRowBtn: {
+    marginTop: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    alignSelf: 'flex-start',
+  },
+  tdRatingRowPressed: {
+    opacity: 0.85,
   },
   tdStarsRow: {
     flexDirection: 'row',
@@ -355,20 +305,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   tdRatingValue: { color: palette.text, fontSize: 16, fontWeight: '800' },
-  ratingPillBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(10,10,10,0.08)',
-    borderRadius: 9999,
-    backgroundColor: 'rgba(10,10,10,0.03)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  ratingPillBtnPressed: {
-    opacity: 0.86,
-  },
+  tdRatingMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },
   feedbackLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   feedbackValue: { color: palette.text, fontSize: 14, fontWeight: '700' },
   feedbackValueMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },

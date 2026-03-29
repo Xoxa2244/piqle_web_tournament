@@ -16,6 +16,7 @@ import {
   SegmentedContentFade,
   SurfaceCard,
 } from '../../src/components/ui'
+import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -34,8 +35,14 @@ export default function ChatsTab() {
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
 
-  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
-  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, { enabled: isAuthenticated })
+  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
+    enabled: isAuthenticated,
+    ...realtimeAwareQueryOptions,
+  })
+  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
+    enabled: isAuthenticated,
+    ...realtimeAwareQueryOptions,
+  })
 
   const filteredClubChats = useMemo(() => {
     const term = search.trim().toLowerCase()

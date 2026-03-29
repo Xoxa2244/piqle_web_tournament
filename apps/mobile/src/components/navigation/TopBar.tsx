@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native'
 
 import { useEffectivePathname } from '../../hooks/useEffectivePathname'
+import { realtimeAwareQueryOptions } from '../../lib/realtimePoll'
 import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
@@ -332,7 +333,10 @@ export const TopBar = ({
   const { user, token } = useAuth()
   const api = trpc as any
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: Boolean(token) })
-  const notificationsQuery = api.notification.list.useQuery(undefined, { enabled: Boolean(token) })
+  const notificationsQuery = api.notification.list.useQuery(
+    { limit: 40 },
+    { enabled: Boolean(token), ...realtimeAwareQueryOptions }
+  )
   const unreadCount = Number(notificationsQuery.data?.unreadCount ?? 0)
   const showNotificationDot = Boolean(token && unreadCount > 0)
   const title = titleOverride ?? getTitle(pathname)

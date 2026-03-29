@@ -22,6 +22,7 @@ import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
+import { realtimeAwareQueryOptions } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -83,6 +84,7 @@ export default function TournamentChatScreen() {
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
+    ...realtimeAwareQueryOptions,
   })
   const eventMeta = useMemo(() => {
     const all = (eventChatsQuery.data ?? []) as any[]
@@ -95,11 +97,14 @@ export default function TournamentChatScreen() {
   )
   const tournamentMessagesQuery = trpc.tournamentChat.listTournament.useQuery(
     { tournamentId, limit: 100 },
-    { enabled: Boolean(tournamentId) && isAuthenticated && !activeDivisionId }
+    {
+      enabled: Boolean(tournamentId) && isAuthenticated && !activeDivisionId,
+      ...realtimeAwareQueryOptions,
+    }
   )
   const divisionMessagesQuery = trpc.tournamentChat.listDivision.useQuery(
     { divisionId: activeDivisionId || '', limit: 100 },
-    { enabled: Boolean(activeDivisionId) && isAuthenticated }
+    { enabled: Boolean(activeDivisionId) && isAuthenticated, ...realtimeAwareQueryOptions }
   )
   const markRead = trpc.tournamentChat.markTournamentRead.useMutation({
     onSuccess: async () => {

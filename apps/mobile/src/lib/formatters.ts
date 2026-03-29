@@ -80,6 +80,15 @@ export const formatLocation = (parts: Array<string | null | undefined>) => {
   return parts.map((part) => String(part ?? '').trim()).filter(Boolean).join(', ') || 'Location not set'
 }
 
+/** Gender line under the name on profile (English only). */
+export const formatGenderLabel = (gender?: string | null) => {
+  const g = String(gender ?? '').trim().toUpperCase()
+  if (g === 'M') return 'Male'
+  if (g === 'F') return 'Female'
+  if (g === 'X') return 'Other'
+  return 'Gender not specified'
+}
+
 export const formatPlayerName = (input: {
   firstName?: string | null
   lastName?: string | null

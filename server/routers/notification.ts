@@ -83,6 +83,32 @@ export const notificationRouter = createTRPCRouter({
         userAvatarUrl: string | null
         requesterName: string
       }> = []
+      let clubLeaveItems: Array<{
+        id: string
+        type: 'CLUB_MEMBER_LEFT'
+        title: string
+        body: string
+        createdAt: string
+        readAt: string | null
+        clubId: string
+        clubName: string
+        targetUrl: string
+        userAvatarUrl: string | null
+        requesterName: string
+      }> = []
+      let clubOpenJoinItems: Array<{
+        id: string
+        type: 'CLUB_MEMBER_JOINED'
+        title: string
+        body: string
+        createdAt: string
+        readAt: string | null
+        clubId: string
+        clubName: string
+        targetUrl: string
+        userAvatarUrl: string | null
+        requesterName: string
+      }> = []
       let feedbackPromptItems: Array<{
         id: string
         type: 'FEEDBACK_PROMPT'
@@ -162,6 +188,66 @@ export const notificationRouter = createTRPCRouter({
           }
         } catch (err) {
           if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+        }
+        try {
+          const since = new Date(Date.now() - 90 * 86400000)
+          const leaves = await ctx.prisma.clubMemberLeaveLog.findMany({
+            where: { clubId: { in: clubIds }, createdAt: { gte: since } },
+            orderBy: { createdAt: 'desc' },
+            take: 40,
+            include: {
+              leaver: { select: { name: true, email: true, image: true } },
+              club: { select: { name: true } },
+            },
+          })
+          for (const row of leaves) {
+            const name = row.leaver?.name || row.leaver?.email || 'Member'
+            clubLeaveItems.push({
+              id: `club-member-left-${row.id}`,
+              type: 'CLUB_MEMBER_LEFT',
+              title: 'Member left club',
+              body: `${name} left "${row.club.name}".`,
+              createdAt: row.createdAt.toISOString(),
+              readAt: null,
+              clubId: row.clubId,
+              clubName: row.club.name,
+              targetUrl: `/clubs/${row.clubId}?tab=members`,
+              userAvatarUrl: row.leaver?.image ?? null,
+              requesterName: name,
+            })
+          }
+        } catch (errLeave) {
+          if (!isMissingDbRelation(errLeave, 'club_member_leave_logs')) throw errLeave
+        }
+        try {
+          const sinceJoin = new Date(Date.now() - 90 * 86400000)
+          const openJoins = await ctx.prisma.clubMemberJoinLog.findMany({
+            where: { clubId: { in: clubIds }, createdAt: { gte: sinceJoin } },
+            orderBy: { createdAt: 'desc' },
+            take: 40,
+            include: {
+              joiner: { select: { name: true, email: true, image: true } },
+              club: { select: { name: true } },
+            },
+          })
+          for (const row of openJoins) {
+            const name = row.joiner?.name || row.joiner?.email || 'Member'
+            clubOpenJoinItems.push({
+              id: `club-member-joined-${row.id}`,
+              type: 'CLUB_MEMBER_JOINED',
+              title: 'New club member',
+              body: `${name} joined "${row.club.name}".`,
+              createdAt: row.createdAt.toISOString(),
+              readAt: null,
+              clubId: row.clubId,
+              clubName: row.club.name,
+              targetUrl: `/clubs/${row.clubId}?tab=members`,
+              userAvatarUrl: row.joiner?.image ?? null,
+              requesterName: name,
+            })
+          }
+        } catch (errOpenJoin) {
+          if (!isMissingDbRelation(errOpenJoin, 'club_member_join_logs')) throw errOpenJoin
         }
       }
 
@@ -347,6 +433,8 @@ export const notificationRouter = createTRPCRouter({
       const allItems = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...clubLeaveItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...clubOpenJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...feedbackPromptItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...extraBellItems.map((i) => ({ ...i })),
       ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
@@ -366,6 +454,8 @@ export const notificationRouter = createTRPCRouter({
         return new Date(i.createdAt) > clearedBefore
       })
       const unreadCount = visible.filter((i) => {
+        // Подсказки фидбека в списке остаются, но не раздувают бейдж колокольчика.
+        if ((i as { type?: string }).type === 'FEEDBACK_PROMPT') return false
         if (!readThrough) return true
         return new Date(i.createdAt) > readThrough
       }).length

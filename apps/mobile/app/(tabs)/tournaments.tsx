@@ -20,6 +20,7 @@ import {
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
+import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
@@ -217,7 +218,7 @@ export default function TournamentsTab() {
   )
   const notificationsQuery = api.notification.list.useQuery(
     { limit: 8 },
-    { enabled: isAuthenticated }
+    { enabled: isAuthenticated, ...realtimeAwareQueryOptions }
   )
 
   const acceptInvitation = api.tournamentInvitation.accept.useMutation({

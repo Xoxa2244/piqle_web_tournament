@@ -801,6 +801,19 @@ export const clubRouter = createTRPCRouter({
         } catch (err: any) {
           if (!isMissingDbRelation(err, 'club_join_requests')) throw err
         }
+        try {
+          await ctx.prisma.clubMemberLeaveLog.create({
+            data: { clubId: input.clubId, leaverUserId: userId },
+          })
+          const admins = await ctx.prisma.clubAdmin.findMany({
+            where: { clubId: input.clubId },
+            select: { userId: true },
+          })
+          const adminIds = admins.map((a) => a.userId).filter((id) => id !== userId)
+          pushToUsers(adminIds, { type: 'invalidate', keys: ['notification.list'] })
+        } catch (err: any) {
+          if (!isMissingDbRelation(err, 'club_member_leave_logs')) throw err
+        }
         return { isFollowing: false, isJoinPending: false, status: 'left' as const }
       }
 
@@ -851,6 +864,20 @@ export const clubRouter = createTRPCRouter({
           userId,
         },
       })
+
+      try {
+        await ctx.prisma.clubMemberJoinLog.create({
+          data: { clubId: input.clubId, joinerUserId: userId },
+        })
+        const admins = await ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        })
+        const adminIds = admins.map((a) => a.userId).filter((id) => id !== userId)
+        pushToUsers(adminIds, { type: 'invalidate', keys: ['notification.list'] })
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_member_join_logs')) throw err
+      }
 
       // Best-effort cleanup: open clubs should not have join requests.
       try {

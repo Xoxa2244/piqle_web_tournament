@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id                             String                    @id @default(uuid())
+  id                             String                    @id @default(uuid()) @db.Text
   email                          String                    @unique
   name                           String?
   image                          String?
@@ -44,6 +44,8 @@ model User {
   clubInvitesSent                ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived            ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests               ClubJoinRequest[]
+  clubMemberJoinLogs             ClubMemberJoinLog[]       @relation("ClubMemberJoinJoiner")
+  clubMemberLeaveLogs            ClubMemberLeaveLog[]      @relation("ClubMemberLeaveLeaver")
   clubJoinRequestSeen            ClubJoinRequestSeen[]
   clubBans                       ClubBan[]
   clubBansIssued                 ClubBan[]                 @relation("ClubBanBannedBy")
@@ -196,7 +198,7 @@ model TournamentInvitation {
 }
 
 model Club {
-  id                  String         @id @default(uuid())
+  id                  String         @id @default(uuid()) @db.Uuid
   name                String
   kind                ClubKind       @default(VENUE)
   joinPolicy          ClubJoinPolicy @default(OPEN) @map("join_policy")
@@ -225,6 +227,8 @@ model Club {
   invites             ClubInvite[]
   bans                ClubBan[]
   feedbacks           Feedback[]               @relation("FeedbackClub")
+  memberJoinLogs      ClubMemberJoinLog[]
+  memberLeaveLogs     ClubMemberLeaveLog[]
 
   @@map("clubs")
 }
@@ -241,6 +245,34 @@ model ClubFollower {
   @@unique([clubId, userId])
   @@index([userId])
   @@map("club_followers")
+}
+
+/// Запись на колокольчик админам: участник вступил в открытый клуб (OPEN, без заявки).
+model ClubMemberJoinLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  clubId       String   @map("club_id") @db.Uuid
+  joinerUserId String   @map("joiner_user_id") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  club   Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  joiner User @relation("ClubMemberJoinJoiner", fields: [joinerUserId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, createdAt])
+  @@map("club_member_join_logs")
+}
+
+/// Запись на колокольчик админам: участник сам вышел из клуба (toggle follow off).
+model ClubMemberLeaveLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  clubId       String   @map("club_id") @db.Uuid
+  leaverUserId String   @map("leaver_user_id") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  club   Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  leaver User @relation("ClubMemberLeaveLeaver", fields: [leaverUserId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, createdAt])
+  @@map("club_member_leave_logs")
 }
 
 model ClubJoinRequest {
