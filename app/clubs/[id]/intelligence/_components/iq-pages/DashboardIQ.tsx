@@ -1315,8 +1315,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             { label: "Active Members", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
             {
               label: "Avg Sessions/Member",
-              cur: toNum(cur.players?.activeCount) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.players?.activeCount)) * 10) / 10 : 0,
-              prev: toNum(prv?.players?.activeCount) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.players?.activeCount)) * 10) / 10 : 0,
+              cur: toNum(cur.members?.value) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.members?.value)) * 10) / 10 : 0,
+              prev: toNum(prv?.members?.value) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.members?.value)) * 10) / 10 : 0,
               format: 'number',
             },
           ] : [];
