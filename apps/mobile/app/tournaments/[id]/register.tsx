@@ -25,6 +25,7 @@ import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
+import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { useToast } from '../../../src/providers/ToastProvider'
@@ -100,6 +101,15 @@ export default function TournamentRegistrationScreen() {
     { tournamentId },
     { enabled: Boolean(tournamentId) && isAuthenticated }
   )
+  useToastWhenEntityMissing({
+    enabled: Boolean(tournamentId) && isAuthenticated,
+    entityKey: String(tournamentId ?? ''),
+    toastMessage: 'This tournament no longer exists or the link is invalid.',
+    isLoading: seatMapQuery.isLoading,
+    hasData: Boolean(seatMapQuery.data),
+    isError: seatMapQuery.isError,
+    errorMessage: seatMapQuery.error?.message,
+  })
   const protectedQueriesEnabled =
     Boolean(tournamentId) && isAuthenticated && Boolean(seatMapQuery.data)
   const myStatusQuery = trpc.registration.getMyStatus.useQuery(

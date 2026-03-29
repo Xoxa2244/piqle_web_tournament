@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons'
+import * as Haptics from 'expo-haptics'
 import { router } from 'expo-router'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
@@ -15,6 +16,7 @@ import { NotificationQuotedBody } from '../src/components/NotificationQuotedBody
 import { RatingStarIcon } from '../src/components/icons/RatingStarIcon'
 import { PiqleLogo } from '../src/components/navigation/PiqleLogo'
 import { PageLayout } from '../src/components/navigation/PageLayout'
+import { SwipeDismissNotificationRow } from '../src/components/SwipeDismissNotificationRow'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
 import { formatDateRange, formatLocation } from '../src/lib/formatters'
 import { palette, spacing } from '../src/lib/theme'
@@ -73,6 +75,12 @@ export default function NotificationsScreen() {
       toast.success('All notifications cleared.')
     },
     onError: (e: any) => toast.error(e?.message || 'Could not clear notifications.'),
+  })
+  const dismissNotification = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+    onError: (e: any) => toast.error(e?.message || 'Could not remove this notification.'),
   })
   const isDevEntity = Boolean(activePrompt?.entityId && String(activePrompt.entityId).startsWith('dev-'))
   const tournamentPreviewQuery = api.public.getTournamentById.useQuery(
@@ -491,46 +499,54 @@ export default function NotificationsScreen() {
         {items.map((item) => {
           const errorLike = isBellErrorLike(item)
           return (
-            <Pressable
+            <SwipeDismissNotificationRow
               key={item.id}
               disabled={openingNotificationId === String(item.id)}
-              onPress={() => void onNotificationPress(item)}
-              style={({ pressed }) => [
-                pressed ? { opacity: 0.92 } : null,
-                openingNotificationId === String(item.id) ? { opacity: 0.72 } : null,
-              ]}
+              onDismiss={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+                dismissNotification.mutate({ notificationId: String(item.id) })
+              }}
             >
-              <SurfaceCard style={styles.itemCard}>
-                <View style={styles.itemHead}>
-                  <BellNotificationLeadIcon item={item} />
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.itemTitleRow}>
-                      <Text
-                        style={[
-                          styles.itemTitle,
-                          { color: errorLike ? BELL_NOTIFICATION_ERROR_COLOR : colors.text },
-                        ]}
-                      >
-                        {item.title}
-                      </Text>
-                      {item.type === 'FEEDBACK_PROMPT' ? (
-                        <RatingStarIcon size={15} filled color="#F2C94C" />
-                      ) : null}
+              <Pressable
+                disabled={openingNotificationId === String(item.id)}
+                onPress={() => void onNotificationPress(item)}
+                style={({ pressed }) => [
+                  pressed ? { opacity: 0.92 } : null,
+                  openingNotificationId === String(item.id) ? { opacity: 0.72 } : null,
+                ]}
+              >
+                <SurfaceCard style={styles.itemCard}>
+                  <View style={styles.itemHead}>
+                    <BellNotificationLeadIcon item={item} />
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.itemTitleRow}>
+                        <Text
+                          style={[
+                            styles.itemTitle,
+                            { color: errorLike ? BELL_NOTIFICATION_ERROR_COLOR : colors.text },
+                          ]}
+                        >
+                          {item.title}
+                        </Text>
+                        {item.type === 'FEEDBACK_PROMPT' ? (
+                          <RatingStarIcon size={15} filled color="#F2C94C" />
+                        ) : null}
+                      </View>
+                      <NotificationQuotedBody
+                        text={item.body}
+                        baseStyle={notificationTextStyles.base}
+                        strongStyle={notificationTextStyles.strong}
+                      />
                     </View>
-                    <NotificationQuotedBody
-                      text={item.body}
-                      baseStyle={notificationTextStyles.base}
-                      strongStyle={notificationTextStyles.strong}
-                    />
+                    {openingNotificationId === String(item.id) ? (
+                      <View style={styles.openingSpinner} pointerEvents="none">
+                        <ActivityIndicator size="small" color={colors.textMuted} />
+                      </View>
+                    ) : null}
                   </View>
-                  {openingNotificationId === String(item.id) ? (
-                    <View style={styles.openingSpinner} pointerEvents="none">
-                      <ActivityIndicator size="small" color={colors.textMuted} />
-                    </View>
-                  ) : null}
-                </View>
-              </SurfaceCard>
-            </Pressable>
+                </SurfaceCard>
+              </Pressable>
+            </SwipeDismissNotificationRow>
           )
         })}
       </View>

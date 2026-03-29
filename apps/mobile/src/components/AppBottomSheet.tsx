@@ -33,6 +33,8 @@ export type AppBottomSheetProps = PropsWithChildren<{
   footer?: ReactNode
   /** Доп. отступ снизу внутри панели (до safe area). */
   bottomPaddingExtra?: number
+  /** Вызывается после завершения анимации закрытия (удобно для цепочки шторок без двух Modal одновременно). */
+  onDismissed?: () => void
 }>
 
 /**
@@ -47,6 +49,7 @@ export function AppBottomSheet({
   children,
   footer,
   bottomPaddingExtra = 0,
+  onDismissed,
 }: AppBottomSheetProps) {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -55,6 +58,8 @@ export function AppBottomSheet({
   const backdropOp = useRef(new Animated.Value(0)).current
   const sheetY = useRef(new Animated.Value(SHEET_OFF_Y)).current
   const wasOpen = useRef(false)
+  const onDismissedRef = useRef(onDismissed)
+  onDismissedRef.current = onDismissed
 
   useEffect(() => {
     if (open) {
@@ -93,6 +98,7 @@ export function AppBottomSheet({
       ]).start(() => {
         setMounted(false)
         wasOpen.current = false
+        onDismissedRef.current?.()
       })
     }
   }, [open, backdropOp, sheetY])

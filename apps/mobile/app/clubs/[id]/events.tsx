@@ -6,6 +6,7 @@ import { EmptyState, LoadingBlock } from '../../../src/components/ui'
 import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
 import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
 import { BrandGradientText } from '../../../src/components/navigation/BrandGradientText'
+import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 import { trpc } from '../../../src/lib/trpc'
 import { palette, spacing } from '../../../src/lib/theme'
 
@@ -14,6 +15,15 @@ export default function ClubEventsScreen() {
   const clubId = String(params.id ?? '')
 
   const clubQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) })
+  useToastWhenEntityMissing({
+    enabled: Boolean(clubId),
+    entityKey: clubId,
+    toastMessage: 'This club no longer exists or the link is invalid.',
+    isLoading: clubQuery.isLoading,
+    hasData: Boolean(clubQuery.data),
+    isError: clubQuery.isError,
+    errorMessage: clubQuery.error?.message,
+  })
 
   if (clubQuery.isLoading) {
     return (

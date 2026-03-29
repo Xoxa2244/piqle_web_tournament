@@ -15,6 +15,7 @@ import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { formatDate, formatGenderLabel, formatLocation } from '../../src/lib/formatters'
 import { radius, spacing } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
+import { useToastWhenEntityMissing } from '../../src/hooks/useToastWhenEntityMissing'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 
@@ -44,6 +45,17 @@ export default function PublicProfileScreen() {
     { id: profileId },
     { enabled: Boolean(profileId) },
   )
+  useToastWhenEntityMissing({
+    enabled:
+      Boolean(profileId) &&
+      !(isReady && token && user?.id && profileId && user.id === profileId),
+    entityKey: profileId,
+    toastMessage: 'This profile is unavailable or the link is invalid.',
+    isLoading: profileQuery.isLoading,
+    hasData: Boolean(profileQuery.data),
+    isError: profileQuery.isError,
+    errorMessage: profileQuery.error?.message,
+  })
   const tdSummaryQuery = trpc.feedback.getEntitySummary.useQuery(
     { entityType: 'TD', entityId: profileId },
     { enabled: FEEDBACK_API_ENABLED && Boolean(profileId) && isAuthenticated, retry: false },

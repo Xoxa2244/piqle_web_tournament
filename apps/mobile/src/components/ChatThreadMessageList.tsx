@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import { formatChatTime, groupMessagesByDate } from '../lib/chatMessages'
-import { type ThemePalette } from '../lib/theme'
+import { type AppTheme, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { RemoteUserAvatar } from './RemoteUserAvatar'
 
@@ -51,8 +51,8 @@ export function ChatThreadMessageList({
   onRequestDelete,
   deleteDisabled,
 }: Props) {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { colors, theme } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
   const groups = groupMessagesByDate(messages)
 
   const tryDelete = useCallback(
@@ -148,7 +148,7 @@ export function ChatThreadMessageList({
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, theme: AppTheme) =>
   StyleSheet.create({
   root: {
     paddingHorizontal: 4,
@@ -206,18 +206,24 @@ const createStyles = (colors: ThemePalette) =>
   },
   bubbleMine: {
     borderBottomRightRadius: 6,
-    backgroundColor: colors.primary,
-    shadowColor: colors.shadowStrong,
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    backgroundColor: theme === 'dark' ? colors.chip : colors.primary,
+    ...(theme === 'dark'
+      ? {
+          shadowOpacity: 0,
+          elevation: 0,
+        }
+      : {
+          shadowColor: colors.shadowStrong,
+          shadowOpacity: 0.06,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 1 },
+          elevation: 1,
+        }),
   },
   bubbleOther: {
     borderBottomLeftRadius: 6,
-    backgroundColor: colors.surfaceOverlay,
-    borderWidth: 1,
-    borderColor: colors.border,
+    /** Светлая тема: едва заметный серый; тёмная: приглушённая поверхность без обводки */
+    backgroundColor: theme === 'light' ? 'rgba(10, 10, 10, 0.045)' : colors.surfaceMuted,
   },
   authorName: {
     fontSize: 12,
@@ -239,6 +245,6 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.textMuted,
   },
   timeMine: {
-    color: 'rgba(255,255,255,0.75)',
+    color: theme === 'dark' ? colors.textMuted : 'rgba(255,255,255,0.75)',
   },
 })

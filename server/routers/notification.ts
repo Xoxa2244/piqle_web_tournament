@@ -444,15 +444,27 @@ export const notificationRouter = createTRPCRouter({
 
       const prefs = await ctx.prisma.user.findUnique({
         where: { id: userId },
-        select: { bellNotificationsReadThrough: true, bellNotificationsClearedBefore: true },
+        select: {
+          bellNotificationsReadThrough: true,
+          bellNotificationsClearedBefore: true,
+          bellDismissedNotificationIds: true,
+        },
       })
       const readThrough = prefs?.bellNotificationsReadThrough ?? null
       const clearedBefore = prefs?.bellNotificationsClearedBefore ?? null
+      const rawDismissed = prefs?.bellDismissedNotificationIds
+      const dismissedIds = new Set(
+        Array.isArray(rawDismissed)
+          ? (rawDismissed as unknown[]).filter((x): x is string => typeof x === 'string')
+          : []
+      )
 
-      const visible = sorted.filter((i) => {
-        if (!clearedBefore) return true
-        return new Date(i.createdAt) > clearedBefore
-      })
+      const visible = sorted
+        .filter((i) => {
+          if (!clearedBefore) return true
+          return new Date(i.createdAt) > clearedBefore
+        })
+        .filter((i) => !dismissedIds.has(String((i as { id?: string }).id ?? '')))
       const unreadCount = visible.filter((i) => {
         // Подсказки фидбека в списке остаются, но не раздувают бейдж колокольчика.
         if ((i as { type?: string }).type === 'FEEDBACK_PROMPT') return false
@@ -521,9 +533,36 @@ export const notificationRouter = createTRPCRouter({
       data: {
         bellNotificationsClearedBefore: now,
         bellNotificationsReadThrough: now,
+        bellDismissedNotificationIds: [],
       },
     })
     pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
     return { success: true as const }
   }),
+
+  /** Скрыть одну строку колокольника (свайп «удалить»). */
+  dismiss: protectedProcedure
+    .input(z.object({ notificationId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: userId },
+        select: { bellDismissedNotificationIds: true },
+      })
+      const raw = user?.bellDismissedNotificationIds
+      const existing = Array.isArray(raw)
+        ? (raw as unknown[]).filter((x): x is string => typeof x === 'string')
+        : []
+      if (existing.includes(input.notificationId)) {
+        pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+        return { success: true as const }
+      }
+      const next = [...existing, input.notificationId].slice(-500)
+      await ctx.prisma.user.update({
+        where: { id: userId },
+        data: { bellDismissedNotificationIds: next },
+      })
+      pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+      return { success: true as const }
+    }),
 })

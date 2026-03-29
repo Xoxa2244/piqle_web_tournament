@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 
@@ -16,15 +16,18 @@ import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/c
 import { realtimeAwareQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
-import { palette, spacing } from '../../../../src/lib/theme'
+import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../../src/providers/ThemeProvider'
 import { useToast } from '../../../../src/providers/ToastProvider'
 
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 
 export default function ClubChatScreen() {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ clubId: string; name?: string }>()
   const clubId = params.clubId
   const clubName = params.name || 'Club chat'
@@ -259,7 +262,8 @@ export default function ClubChatScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) =>
+  StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -267,7 +271,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   error: {
-    color: palette.danger,
+    color: colors.danger,
     lineHeight: 20,
   },
   scrollContent: {
@@ -295,21 +299,21 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.22)',
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 6,
   },
   systemMessageLabel: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   feedbackPromptTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '800',
   },
@@ -319,13 +323,13 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   feedbackPromptBody: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   titleClubLogo: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
   },
-})
+  })

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
+import { StatusBar } from 'expo-status-bar'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -18,7 +19,7 @@ import {
   useWindowDimensions,
   type ScrollView as RNScrollViewType,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { AppBottomSheet, AppConfirmActions, AppInfoFooter } from '../../../src/components/AppBottomSheet'
 import { EntityImage } from '../../../src/components/EntityImage'
@@ -38,7 +39,6 @@ import {
   SectionTitle,
   SurfaceCard,
 } from '../../../src/components/ui'
-import { TopBar } from '../../../src/components/navigation/TopBar'
 import { GradientTrophyIcon, TROPHY_GRADIENT_BRONZE, TROPHY_GRADIENT_GOLD, TROPHY_GRADIENT_SILVER } from '../../../src/components/GradientTrophyIcon'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
@@ -56,6 +56,7 @@ const COMMENTS_COMPOSER_ESTIMATED_H = 84
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
+import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
 
 const longDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -231,7 +232,12 @@ const fetchFullTournamentById = async (id: string) => {
   const payload = await response.json()
 
   if (!response.ok || payload?.error) {
-    throw new Error(payload?.error?.message || `Failed to load full tournament ${id}`)
+    const msg = payload?.error?.message || `Failed to load full tournament ${id}`
+    // Нет сущности — не бросаем (иначе шум в консоли и лишний error в React Query).
+    if (typeof msg === 'string' && /tournament not found/i.test(msg)) {
+      return null
+    }
+    throw new Error(msg)
   }
 
   return payload?.result?.data ?? null
@@ -414,7 +420,8 @@ function getPlayoffPlacementsFromMatches(
 }
 
 export default function TournamentDetailScreen() {
-  const { colors } = useAppTheme()
+  const { colors, theme } = useAppTheme()
+  const insets = useSafeAreaInsets()
   const styles = useMemo(() => createStyles(colors), [colors])
   const params = useLocalSearchParams<{ id: string; payment?: string }>()
   const tournamentId = String(params.id ?? '')
@@ -507,6 +514,17 @@ export default function TournamentDetailScreen() {
     retry: false,
     queryFn: () => fetchFullTournamentById(tournamentId),
   })
+
+  useToastWhenEntityMissing({
+    enabled: Boolean(tournamentId),
+    entityKey: tournamentId,
+    toastMessage: 'This tournament no longer exists or the link is invalid.',
+    isLoading: tournamentQuery.isLoading,
+    hasData: Boolean(tournamentQuery.data),
+    isError: tournamentQuery.isError,
+    errorMessage: tournamentQuery.error?.message,
+  })
+
   const protectedQueriesEnabled =
     Boolean(tournamentId) && isAuthenticated && Boolean(tournamentQuery.data)
   const myStatusQuery = api.registration.getMyStatus.useQuery(
@@ -693,21 +711,40 @@ export default function TournamentDetailScreen() {
     utils.registration.getMyStatuses,
   ])
 
+  const tournamentMissingStateHeader = (
+    <View
+      style={{
+        paddingTop: insets.top,
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.sm,
+        backgroundColor: colors.surfaceOverlay,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <View style={styles.eventMiniBar}>
+        <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.eventMiniBarButton} />
+      </View>
+    </View>
+  )
+
   if (tournamentQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
         <View style={styles.loadingWrap}>
           <LoadingBlock label="Loading tournament..." />
         </View>
-      </SafeAreaView>
+      </View>
     )
   }
 
   if (tournamentQuery.isError) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
         <View style={[styles.loadingWrap, { gap: 16 }]}>
           <EmptyState
             title="Could not load tournament"
@@ -715,20 +752,21 @@ export default function TournamentDetailScreen() {
           />
           <ActionButton label="Try again" onPress={() => tournamentQuery.refetch()} />
         </View>
-      </SafeAreaView>
+      </View>
     )
   }
 
   if (!tournamentQuery.data) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <TopBar />
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
         <View style={styles.loadingWrap}>
           <SurfaceCard>
             <Text style={styles.muted}>Tournament not found.</Text>
           </SurfaceCard>
         </View>
-      </SafeAreaView>
+      </View>
     )
   }
 

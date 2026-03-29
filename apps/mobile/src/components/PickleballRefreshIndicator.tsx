@@ -35,9 +35,9 @@ function PickleballSvg() {
   )
 }
 
-/** Мягкое пятно: радиальный градиент (без жёсткой кромки) */
-function SoftShadowSvg() {
-  const id = 'pbGroundShadow'
+/** Мягкое пятно: радиальный градиент (без жёсткой кромки). В тёмной теме — чуть светлее, иначе на фоне не читается. */
+function SoftShadowSvg({ isDark }: { isDark: boolean }) {
+  const id = isDark ? 'pbGroundShadowDark' : 'pbGroundShadowLight'
   const cx = SHADOW_W / 2
   const cy = SHADOW_H / 2
   const rx = SHADOW_W / 2 - 0.5
@@ -55,9 +55,17 @@ function SoftShadowSvg() {
           fx={cx}
           fy={cy}
         >
-          <Stop offset="0" stopColor="rgba(0,0,0,0.24)" stopOpacity={1} />
-          <Stop offset="0.42" stopColor="rgba(0,0,0,0.09)" stopOpacity={1} />
-          <Stop offset="1" stopColor="rgba(0,0,0,0)" stopOpacity={0} />
+          <Stop
+            offset="0"
+            stopColor={isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.24)'}
+            stopOpacity={1}
+          />
+          <Stop
+            offset={isDark ? '0.4' : '0.42'}
+            stopColor={isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.09)'}
+            stopOpacity={1}
+          />
+          <Stop offset="1" stopColor={isDark ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0)'} stopOpacity={0} />
         </RadialGradient>
       </Defs>
       <Ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${id})`} />
@@ -98,6 +106,8 @@ function bounceOnce(
  * сжимается и бледнеет, когда мяч выше (translateY < 0).
  */
 export function PickleballRefreshIndicator({ active, windingDown = false }: Props) {
+  const { theme } = useAppTheme()
+  const isDark = theme === 'dark'
   const translateY = useRef(new Animated.Value(0)).current
 
   const shadowScaleX = translateY.interpolate({
@@ -112,7 +122,7 @@ export function PickleballRefreshIndicator({ active, windingDown = false }: Prop
   })
   const shadowOpacity = translateY.interpolate({
     inputRange: [-JUMP_MAX, 0],
-    outputRange: [0.12, 0.5],
+    outputRange: isDark ? [0.2, 0.72] : [0.12, 0.5],
     extrapolate: 'clamp',
   })
 
@@ -158,7 +168,7 @@ export function PickleballRefreshIndicator({ active, windingDown = false }: Prop
               },
             ]}
           >
-            <SoftShadowSvg />
+            <SoftShadowSvg isDark={isDark} />
           </Animated.View>
         </View>
         <View style={styles.jumpArea}>

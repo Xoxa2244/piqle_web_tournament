@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -33,22 +33,48 @@ import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGr
 import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, radius, spacing } from '../../../src/lib/theme'
+import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { useToast } from '../../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
+import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 
 export default function ClubDetailScreen() {
   const params = useLocalSearchParams<{ id: string; tab?: string }>()
-  const clubId = params.id
+  const clubId = String(
+    Array.isArray(params.id) ? params.id[0] : params.id ?? '',
+  ).trim()
   const { token, user } = useAuth()
+  const { colors, theme } = useAppTheme()
   const toast = useToast()
   const isAuthenticated = Boolean(token)
   const utils = trpc.useUtils()
   const [tab, setTab] = useState<'feed' | 'events' | 'members'>('events')
   const [membersSearch, setMembersSearch] = useState('')
 
+  const styles = useMemo(() => createStyles(colors), [colors])
+
+  const clubHeroGradientColors = useMemo(
+    () =>
+      [
+        'rgba(40, 205, 65, 0.10)',
+        'rgba(82, 224, 104, 0.06)',
+        theme === 'dark' ? 'rgba(26, 26, 26, 0)' : 'rgba(255, 255, 255, 0)',
+      ] as const,
+    [theme],
+  )
+
   const clubQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) })
+  useToastWhenEntityMissing({
+    enabled: Boolean(clubId),
+    entityKey: clubId,
+    toastMessage: 'This club no longer exists or the link is invalid.',
+    isLoading: clubQuery.isLoading,
+    hasData: Boolean(clubQuery.data),
+    isError: clubQuery.isError,
+    errorMessage: clubQuery.error?.message,
+  })
   const club = clubQuery.data
   const canViewMembers = Boolean(
     club && isAuthenticated && (club.isFollowing || club.isAdmin)
@@ -172,6 +198,28 @@ export default function ClubDetailScreen() {
   const [banReason, setBanReason] = useState('')
   const [clubDescriptionExpanded, setClubDescriptionExpanded] = useState(false)
   const [clubDescriptionExpandable, setClubDescriptionExpandable] = useState(false)
+
+  const pendingAfterMemberClose = useRef<
+    | { kind: 'kick'; target: { userId: string; name: string } }
+    | { kind: 'ban'; target: { userId: string; name: string } }
+    | null
+  >(null)
+  const pendingUnbanAfterBannedMenuClose = useRef<{ userId: string; name: string } | null>(null)
+
+  const onMemberMenuDismissed = useCallback(() => {
+    const p = pendingAfterMemberClose.current
+    pendingAfterMemberClose.current = null
+    if (!p) return
+    if (p.kind === 'kick') setKickTarget(p.target)
+    else setBanTarget(p.target)
+  }, [])
+
+  const onBannedMenuDismissed = useCallback(() => {
+    const p = pendingUnbanAfterBannedMenuClose.current
+    pendingUnbanAfterBannedMenuClose.current = null
+    if (!p) return
+    setUnbanTarget(p)
+  }, [])
 
   const onRefreshClubDetail = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [clubQuery.refetch()]
@@ -425,7 +473,7 @@ export default function ClubDetailScreen() {
                             ]}
                             hitSlop={10}
                           >
-                            <Feather name="check" size={18} color={palette.white} />
+                            <Feather name="check" size={18} color={colors.white} />
                           </Pressable>
                           <Pressable
                             onPress={() => rejectJoinRequest.mutate({ clubId, userId: req.userId })}
@@ -437,7 +485,7 @@ export default function ClubDetailScreen() {
                             ]}
                             hitSlop={10}
                           >
-                            <Feather name="x" size={18} color={palette.danger} />
+                            <Feather name="x" size={18} color={colors.danger} />
                           </Pressable>
                         </View>
                       </View>
@@ -621,7 +669,7 @@ export default function ClubDetailScreen() {
                             hitSlop={10}
                             style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
                           >
-                            <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                            <Feather name="more-vertical" size={18} color={colors.textMuted} />
                           </Pressable>
                         ) : null}
                       </View>
@@ -686,7 +734,7 @@ export default function ClubDetailScreen() {
                                     </Pressable>
                                   </View>
                                   <View style={styles.bannedPill}>
-                                    <Feather name="slash" size={12} color={palette.danger} />
+                                    <Feather name="slash" size={12} color={colors.danger} />
                                     <Text style={styles.bannedPillText}>banned</Text>
                                   </View>
                                 </View>
@@ -706,7 +754,7 @@ export default function ClubDetailScreen() {
                                 hitSlop={10}
                                 style={({ pressed }) => [styles.kebabBtn, pressed && styles.kebabBtnPressed]}
                               >
-                                <Feather name="more-vertical" size={18} color={palette.textMuted} />
+                                <Feather name="more-vertical" size={18} color={colors.textMuted} />
                               </Pressable>
                             </View>
                           </SurfaceCard>
@@ -736,7 +784,7 @@ export default function ClubDetailScreen() {
 
   if (clubQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top']}>
         <TopBar />
         <View style={styles.loadingWrap}>
           <LoadingBlock label="Loading club…" />
@@ -747,7 +795,7 @@ export default function ClubDetailScreen() {
 
   if (!clubQuery.data) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top']}>
         <TopBar />
         <View style={styles.loadingWrap}>
           <EmptyState title="Club not found" body="This club could not be loaded." />
@@ -791,7 +839,7 @@ export default function ClubDetailScreen() {
             }}
             style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
           >
-            <Feather name="message-circle" size={18} color={palette.text} />
+            <Feather name="message-circle" size={18} color={colors.text} />
             {unreadClubChatCount > 0 ? (
               <View style={styles.clubChatUnreadBadge}>
                 <Text style={styles.clubChatUnreadText}>{unreadClubChatCount > 99 ? '99+' : String(unreadClubChatCount)}</Text>
@@ -811,7 +859,7 @@ export default function ClubDetailScreen() {
               }}
               style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
             >
-              <Feather name="external-link" size={18} color={palette.text} />
+              <Feather name="external-link" size={18} color={colors.text} />
             </Pressable>
           ) : null}
           <Pressable
@@ -820,7 +868,7 @@ export default function ClubDetailScreen() {
             }}
             style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
           >
-            <Feather name="share-2" size={18} color={palette.text} />
+            <Feather name="share-2" size={18} color={colors.text} />
           </Pressable>
           {canLeaveClub ? (
             <Pressable
@@ -830,7 +878,7 @@ export default function ClubDetailScreen() {
               style={({ pressed }) => [styles.clubMiniBarButton, pressed && styles.clubMiniBarButtonPressed]}
               accessibilityLabel="Leave club"
             >
-              <Feather name="log-out" size={18} color={palette.text} />
+              <Feather name="log-out" size={18} color={colors.text} />
             </Pressable>
           ) : null}
         </View>
@@ -840,7 +888,7 @@ export default function ClubDetailScreen() {
         <View style={styles.clubHeroCardHeader}>
           <OptionalLinearGradient
             pointerEvents="none"
-            colors={['rgba(40, 205, 65, 0.10)', 'rgba(82, 224, 104, 0.06)', 'rgba(255, 255, 255, 0)']}
+            colors={clubHeroGradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.clubHeroGradient}
@@ -850,7 +898,7 @@ export default function ClubDetailScreen() {
             <View style={styles.clubHeroMain}>
               <Text style={styles.clubHeroTitle} numberOfLines={2}>{club.name}</Text>
               <View style={styles.clubHeroMetaRow}>
-                <Feather name="map-pin" size={16} color={palette.primary} />
+                <Feather name="map-pin" size={16} color={colors.primary} />
                 <Text style={styles.clubHeroMetaText} numberOfLines={1}>
                   {formatLocation([club.city, club.state])}
                 </Text>
@@ -983,7 +1031,7 @@ export default function ClubDetailScreen() {
               hitSlop={8}
               style={({ pressed }) => [styles.shareCopyButton, pressed && styles.shareCopyButtonPressed]}
             >
-              <Feather name="copy" size={18} color={palette.text} />
+              <Feather name="copy" size={18} color={colors.text} />
             </Pressable>
           </View>
           <View style={styles.shareQrWrap}>
@@ -1033,6 +1081,7 @@ export default function ClubDetailScreen() {
       <AppBottomSheet
         open={Boolean(memberMenuTarget)}
         onClose={() => setMemberMenuTarget(null)}
+        onDismissed={onMemberMenuDismissed}
         title={memberMenuTarget?.name ?? 'Member actions'}
       >
         <View style={styles.memberActionSheetBody}>
@@ -1042,10 +1091,8 @@ export default function ClubDetailScreen() {
             onPress={() => {
               if (!memberMenuTarget) return
               const nextTarget = memberMenuTarget
+              pendingAfterMemberClose.current = { kind: 'kick', target: nextTarget }
               setMemberMenuTarget(null)
-              setTimeout(() => {
-                setKickTarget(nextTarget)
-              }, 260)
             }}
           />
           <ActionButton
@@ -1055,10 +1102,8 @@ export default function ClubDetailScreen() {
               if (!memberMenuTarget) return
               const nextTarget = memberMenuTarget
               setBanReason('')
+              pendingAfterMemberClose.current = { kind: 'ban', target: nextTarget }
               setMemberMenuTarget(null)
-              setTimeout(() => {
-                setBanTarget(nextTarget)
-              }, 260)
             }}
           />
         </View>
@@ -1066,31 +1111,18 @@ export default function ClubDetailScreen() {
       <AppBottomSheet
         open={Boolean(bannedMenuTarget)}
         onClose={() => setBannedMenuTarget(null)}
+        onDismissed={onBannedMenuDismissed}
         title={bannedMenuTarget?.name ?? 'Banned user actions'}
       >
         <View style={styles.memberActionSheetBody}>
-          <ActionButton
-            label="Kick from club"
-            variant="outline"
-            onPress={() => {
-              if (!bannedMenuTarget) return
-              const nextTarget = bannedMenuTarget
-              setBannedMenuTarget(null)
-              setTimeout(() => {
-                setKickTarget(nextTarget)
-              }, 260)
-            }}
-          />
           <ActionButton
             label="Unban user"
             variant="secondary"
             onPress={() => {
               if (!bannedMenuTarget) return
               const nextTarget = bannedMenuTarget
+              pendingUnbanAfterBannedMenuClose.current = nextTarget
               setBannedMenuTarget(null)
-              setTimeout(() => {
-                setUnbanTarget(nextTarget)
-              }, 260)
             }}
           />
         </View>
@@ -1190,10 +1222,10 @@ export default function ClubDetailScreen() {
   )
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['top']}>
       {hero}
       <PickleRefreshScrollView
-        style={styles.contentScroll}
+        style={[styles.contentScroll, { backgroundColor: colors.background }]}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshing={pullToRefresh.refreshing}
@@ -1261,7 +1293,7 @@ export default function ClubDetailScreen() {
                   onPress={() => setShowNewPostForm(true)}
                   style={({ pressed }) => [styles.createPostButton, pressed && styles.createPostButtonPressed]}
                 >
-                  <Feather name="plus" size={20} color={palette.primary} />
+                  <Feather name="plus" size={20} color={colors.primary} />
                   <Text style={styles.createPostButtonText}>Create new post</Text>
                 </Pressable>
               )
@@ -1342,14 +1374,14 @@ export default function ClubDetailScreen() {
                                 }}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
-                                <Feather name="edit-2" size={16} color={palette.primary} />
+                                <Feather name="edit-2" size={16} color={colors.primary} />
                               </Pressable>
                               <Pressable
                                 onPress={() => setAnnouncementToDelete(announcement.id)}
                                 disabled={deleteAnnouncement.isPending}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
-                                <Feather name="trash-2" size={16} color={palette.danger} />
+                                <Feather name="trash-2" size={16} color={colors.danger} />
                               </Pressable>
                             </View>
                           ) : null}
@@ -1362,7 +1394,7 @@ export default function ClubDetailScreen() {
             ) : (
               <SurfaceCard tone="soft" style={styles.emptyShell}>
                 <View style={styles.emptyIcon}>
-                  <Feather name="calendar" size={28} color={palette.textMuted} />
+                  <Feather name="calendar" size={28} color={colors.textMuted} />
                 </View>
                 <Text style={styles.emptyTitle}>Welcome to the Club!</Text>
                 <Text style={styles.emptyBody}>Stay updated with announcements and events</Text>
@@ -1390,7 +1422,7 @@ export default function ClubDetailScreen() {
               <Text style={styles.clubSectionTitle}>Calendar</Text>
               <Text style={styles.clubSectionSubtitle}>Upcoming club events</Text>
               <View style={styles.calendarStub}>
-                <Feather name="calendar" size={20} color={palette.primary} />
+                <Feather name="calendar" size={20} color={colors.primary} />
                 <Text style={styles.calendarStubText}>Calendar view coming next.</Text>
               </View>
             </SurfaceCard>
@@ -1505,10 +1537,10 @@ export default function ClubDetailScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
+  /** Фон страницы задаётся через `useAppTheme().colors.background` на корне и скролле. */
   screen: {
     flex: 1,
-    backgroundColor: palette.background,
   },
   contentScroll: {
     flex: 1,
@@ -1545,24 +1577,24 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   feedbackValue: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
   },
   feedbackValueMuted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 16,
     fontWeight: '600',
   },
   feedbackCount: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   feedbackInfoBtn: {
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -1570,7 +1602,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   feedbackInfoBtnText: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1579,18 +1611,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   feedbackRateBtnPressed: {
     opacity: 0.9,
   },
   feedbackRateBtnText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 15,
     fontWeight: '700',
   },
   feedbackThanksText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   feedbackChipsWrap: {
@@ -1621,7 +1653,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   feedbackEmptyText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
   },
   modalStarsRow: {
@@ -1633,7 +1665,7 @@ const styles = StyleSheet.create({
   },
   modalRatingValueInline: {
     marginLeft: 8,
-    color: palette.text,
+    color: colors.text,
     fontSize: 24,
     fontWeight: '800',
   },
@@ -1659,14 +1691,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
   },
   clubMiniBarButtonPressed: {
     opacity: 1,
-    backgroundColor: palette.surfaceMuted,
-    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.brandPrimaryBorder,
     transform: [{ scale: 0.94 }],
   },
   clubChatUnreadBadge: {
@@ -1679,10 +1711,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   clubChatUnreadText: {
-    color: palette.white,
+    color: colors.white,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -1693,7 +1725,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     padding: spacing.md,
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
   },
   clubHeroGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1707,7 +1739,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 16,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   clubHeroMain: {
     flex: 1,
@@ -1716,7 +1748,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   clubHeroTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -1727,7 +1759,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   clubHeroMetaText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 20,
     flex: 1,
@@ -1750,12 +1782,12 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   clubHeroRatingText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   clubHeroRatingMuted: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '500',
   },
@@ -1764,7 +1796,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   shareSheetLabel: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1772,8 +1804,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surfaceElevated,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
     paddingLeft: spacing.md,
     paddingRight: 8,
     flexDirection: 'row',
@@ -1782,7 +1814,7 @@ const styles = StyleSheet.create({
   },
   shareLinkText: {
     flex: 1,
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
   },
   shareCopyButton: {
@@ -1791,14 +1823,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
   },
   shareCopyButtonPressed: {
     opacity: 1,
-    backgroundColor: palette.surfaceMuted,
-    borderColor: palette.brandPrimaryBorder,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.brandPrimaryBorder,
     transform: [{ scale: 0.94 }],
   },
   shareQrWrap: {
@@ -1808,8 +1840,8 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.white,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
   },
   shareQrImage: {
     width: 168,
@@ -1825,7 +1857,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   membershipHint: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 14,
     paddingVertical: spacing.sm,
     fontWeight: '700',
@@ -1843,14 +1875,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   clubSectionTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
   clubSectionSubtitle: {
     marginTop: 2,
     marginBottom: 8,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1861,13 +1893,13 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   clubAboutTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 8,
   },
   clubDescriptionText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 21,
   },
@@ -1892,7 +1924,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   clubInfoLinkText: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1920,7 +1952,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   pendingHeaderTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.2,
@@ -1932,10 +1964,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.chip,
+    backgroundColor: colors.chip,
   },
   pendingCountText: {
-    color: palette.chipText,
+    color: colors.chipText,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -1946,7 +1978,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     shadowOpacity: 0,
     elevation: 0,
     padding: spacing.md,
@@ -1965,13 +1997,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pendingName: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 16,
   },
   pendingWhen: {
     marginTop: 4,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1991,10 +2023,10 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   pendingIconBtnApprove: {
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   pendingIconBtnReject: {
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: 'rgba(255, 0, 110, 0.28)',
   },
@@ -2027,13 +2059,13 @@ const styles = StyleSheet.create({
     height: 12,
   },
   membersHeaderTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   membersHeaderCount: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -2048,14 +2080,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.08)',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     shadowOpacity: 0,
     elevation: 0,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
   memberCardOwner: {
-    borderColor: palette.primary,
+    borderColor: colors.primary,
   },
   memberCardRow: {
     flexDirection: 'row',
@@ -2084,18 +2116,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
-    backgroundColor: palette.brandPrimaryTint,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.brandPrimaryTint,
   },
   rolePillText: {
-    color: palette.primary,
+    color: colors.primary,
     fontWeight: '700',
     fontSize: 11,
     textTransform: 'lowercase',
   },
   memberMetaText: {
     marginTop: 2,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 18,
   },
@@ -2111,14 +2143,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 0, 110, 0.08)',
   },
   bannedPillText: {
-    color: palette.danger,
+    color: colors.danger,
     fontWeight: '700',
     fontSize: 11,
     textTransform: 'lowercase',
   },
   bannedReasonText: {
     marginTop: 2,
-    color: palette.text,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 18,
   },
@@ -2151,22 +2183,22 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   body: {
-    color: palette.text,
+    color: colors.text,
     lineHeight: 22,
   },
   announcementTitle: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 20,
     marginBottom: spacing.sm,
   },
   smallMeta: {
     marginTop: spacing.sm,
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 12,
   },
   postFormLabel: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '700',
     fontSize: 15,
     marginBottom: spacing.sm,
@@ -2181,24 +2213,24 @@ const styles = StyleSheet.create({
   },
   postFormButton: {
     flex: 1,
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
   postFormButtonSecondary: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   postFormButtonPressed: {
     opacity: 0.9,
   },
   postFormButtonText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '700',
     fontSize: 15,
   },
   postFormButtonSecondaryText: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 15,
   },
@@ -2211,14 +2243,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
-    backgroundColor: palette.brandPrimaryTint,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.brandPrimaryTint,
   },
   createPostButtonPressed: {
     opacity: 0.9,
   },
   createPostButtonText: {
-    color: palette.primary,
+    color: colors.primary,
     fontWeight: '700',
     fontSize: 15,
   },
@@ -2236,21 +2268,21 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   editFormBtnCancel: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   editFormBtnSave: {
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   editFormBtnPressed: {
     opacity: 0.9,
   },
   editFormBtnCancelText: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 14,
   },
   editFormBtnSaveText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -2279,19 +2311,19 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 20,
     fontWeight: '800',
   },
   emptyBody: {
     marginTop: 6,
-    color: palette.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -2303,11 +2335,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   calendarStubText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontWeight: '600',
   },
   upcomingSection: {
@@ -2321,7 +2353,7 @@ const styles = StyleSheet.create({
     minHeight: 96,
   },
   emptyUpcomingText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     textAlign: 'center',
   },
@@ -2339,9 +2371,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
+    backgroundColor: colors.brandPrimaryTint,
     borderWidth: 1,
-    borderColor: palette.brandPrimaryBorder,
+    borderColor: colors.brandPrimaryBorder,
   },
   eventTopRow: {
     flexDirection: 'row',
@@ -2350,7 +2382,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eventTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
@@ -2368,7 +2400,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   eventMeta: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     flex: 1,
   },
@@ -2385,7 +2417,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   memberName: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 16,
   },
@@ -2393,10 +2425,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: palette.chip,
+    backgroundColor: colors.chip,
   },
   adminPillText: {
-    color: palette.chipText,
+    color: colors.chipText,
     fontWeight: '800',
     fontSize: 12,
   },
@@ -2410,35 +2442,35 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   actionBtnPrimary: {
-    backgroundColor: palette.primary,
+    backgroundColor: colors.primary,
   },
   actionBtnSecondary: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   actionBtnDanger: {
-    backgroundColor: palette.dangerSoft,
+    backgroundColor: colors.dangerSoft,
   },
   actionBtnPressed: {
     opacity: 0.9,
   },
   actionBtnPrimaryText: {
-    color: palette.white,
+    color: colors.white,
     fontWeight: '700',
     fontSize: 13,
   },
   actionBtnSecondaryText: {
-    color: palette.text,
+    color: colors.text,
     fontWeight: '600',
     fontSize: 13,
   },
   actionBtnDangerText: {
-    color: palette.danger,
+    color: colors.danger,
     fontWeight: '700',
     fontSize: 13,
   },
   banReason: {
     marginTop: 4,
     fontSize: 12,
-    color: palette.textMuted,
+    color: colors.textMuted,
   },
 })

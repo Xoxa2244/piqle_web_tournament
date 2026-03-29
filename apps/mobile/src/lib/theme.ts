@@ -87,6 +87,10 @@ export const getPalette = (theme: AppTheme): ThemePalette =>
 export const keyboardAppearanceForTheme = (theme: AppTheme): 'light' | 'dark' =>
   theme === 'dark' ? 'dark' : 'light'
 
+/** Фон под плейсхолдером лого/турнира (`tournament-placeholder`): светлая тема — белый, тёмная — surfaceMuted. */
+export const entityPlaceholderBackground = (theme: AppTheme, colors: ThemePalette): string =>
+  theme === 'light' ? colors.white : colors.surfaceMuted
+
 export const palette: ThemePalette = { ...lightPalette }
 
 export const applyThemePalette = (theme: AppTheme) => {

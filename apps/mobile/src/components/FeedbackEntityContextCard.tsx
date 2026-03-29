@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons'
+import { useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
-import { palette, spacing } from '../lib/theme'
+import { spacing, type ThemePalette } from '../lib/theme'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { EntityImage } from './EntityImage'
 import { RemoteUserAvatar } from './RemoteUserAvatar'
 import { SurfaceCard } from './ui'
@@ -33,6 +35,9 @@ type TdProps = {
 type Props = TournamentProps | ClubProps | TdProps
 
 export function FeedbackEntityContextCard(props: Props) {
+  const { colors } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors), [colors])
+
   if (props.entityType === 'TOURNAMENT') {
     return (
       <SurfaceCard padded={false} style={styles.tournamentCard}>
@@ -44,7 +49,7 @@ export function FeedbackEntityContextCard(props: Props) {
             </Text>
             {props.formatLabel ? (
               <View style={styles.formatRow}>
-                <Feather name="award" size={14} color={palette.primary} />
+                <Feather name="award" size={14} color={colors.primary} />
                 <Text style={styles.formatText} numberOfLines={1}>
                   {props.formatLabel}
                 </Text>
@@ -58,7 +63,7 @@ export function FeedbackEntityContextCard(props: Props) {
               <View style={styles.metaCell}>
                 {props.dateLabel ? (
                   <View style={styles.metaRow}>
-                    <Feather name="calendar" size={16} color={palette.primary} />
+                    <Feather name="calendar" size={16} color={colors.primary} />
                     <Text style={styles.metaText}>{props.dateLabel}</Text>
                   </View>
                 ) : null}
@@ -66,7 +71,7 @@ export function FeedbackEntityContextCard(props: Props) {
               <View style={styles.metaCell}>
                 {props.addressLabel ? (
                   <View style={[styles.metaRow, styles.rightAlignRow]}>
-                    <Feather name="map-pin" size={16} color={palette.primary} />
+                    <Feather name="map-pin" size={16} color={colors.primary} />
                     <Text style={styles.metaText} numberOfLines={1}>
                       {props.addressLabel}
                     </Text>
@@ -98,7 +103,7 @@ export function FeedbackEntityContextCard(props: Props) {
               <View style={styles.metaCell}>
                 {membersLabel ? (
                   <View style={styles.metaRow}>
-                    <Feather name="users" size={16} color={palette.primary} />
+                    <Feather name="users" size={16} color={colors.primary} />
                     <Text style={styles.metaText}>{membersLabel}</Text>
                   </View>
                 ) : null}
@@ -106,7 +111,7 @@ export function FeedbackEntityContextCard(props: Props) {
               <View style={styles.metaCell}>
                 {props.addressLabel ? (
                   <View style={[styles.metaRow, styles.rightAlignRow]}>
-                    <Feather name="map-pin" size={16} color={palette.primary} />
+                    <Feather name="map-pin" size={16} color={colors.primary} />
                     <Text style={styles.metaText} numberOfLines={1}>
                       {props.addressLabel}
                     </Text>
@@ -130,7 +135,7 @@ export function FeedbackEntityContextCard(props: Props) {
           <Text style={styles.entityTitle}>{props.name}</Text>
           {props.tournamentLabel ? (
             <View style={styles.metaRow}>
-              <Feather name="award" size={16} color={palette.primary} />
+              <Feather name="award" size={16} color={colors.primary} />
               <Text style={styles.metaText} numberOfLines={1}>
                 {props.tournamentLabel}
               </Text>
@@ -142,14 +147,14 @@ export function FeedbackEntityContextCard(props: Props) {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   tournamentCard: {
     overflow: 'hidden',
   },
   plainCard: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: palette.border,
+    borderColor: colors.border,
     shadowOpacity: 0,
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
@@ -159,18 +164,18 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     minHeight: 88,
     justifyContent: 'center',
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: colors.border,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
   cardHero: {
     padding: spacing.md,
-    backgroundColor: palette.surface,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: colors.border,
   },
   headerRow: {
     flexDirection: 'row',
@@ -185,13 +190,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   entityImage: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   cardBody: {
     padding: spacing.md,
@@ -218,19 +223,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   formatText: {
-    color: palette.textMuted,
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
   },
   entityTitle: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '700',
     flex: 1,
   },
   metaText: {
-    color: palette.text,
+    color: colors.text,
     fontSize: 14,
     flexShrink: 1,
   },
