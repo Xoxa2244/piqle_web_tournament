@@ -37,6 +37,8 @@ export const lightPalette = {
   switchBackground: '#dee2e6',
   white: '#ffffff',
   black: '#0a0a0a',
+  /** Hero карточки ивента: тот же зелёный, что primary. */
+  eventHeroBackground: '#28CD41',
 }
 
 export const darkPalette = {
@@ -76,6 +78,8 @@ export const darkPalette = {
   switchBackground: '#495057',
   white: '#ffffff',
   black: '#0a0a0a',
+  /** Hero ивента в тёмной теме: зелёный бренда, затемнённый (не нейтральный серый). */
+  eventHeroBackground: '#155A28',
 } as const
 
 export type ThemePalette = typeof lightPalette

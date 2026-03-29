@@ -602,7 +602,7 @@ const createStyles = (colors: ThemePalette) =>
       paddingVertical: spacing.md,
       height: spacing.md * 2 + HERO_TEXT_COLUMN_H,
       justifyContent: 'center',
-      backgroundColor: colors.primary,
+      backgroundColor: colors.eventHeroBackground,
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
       borderBottomWidth: 0,

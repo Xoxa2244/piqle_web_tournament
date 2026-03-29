@@ -374,7 +374,7 @@ export default function HomeTab() {
       })}
 
       {!tournamentsQuery.isError ? (
-      <SurfaceCard tone="hero" style={styles.monthCard}>
+      <SurfaceCard tone="default" style={styles.monthCard}>
         <Text style={styles.monthTitle}>This Month</Text>
         <View style={styles.statsRow}>
           <View style={styles.statCell}>

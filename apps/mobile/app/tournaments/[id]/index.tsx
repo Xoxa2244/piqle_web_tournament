@@ -2866,7 +2866,7 @@ const createStyles = (colors: ThemePalette) =>
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
     elevation: 0,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.eventHeroBackground,
   },
   eventHeroHeader: {
     position: 'relative',
