@@ -41,6 +41,9 @@ interface Member {
   valueTier: 'high' | 'medium' | 'low';
   avgSessionsPerWeek: number;
   totalRevenue: number;
+  membershipType: string | null;
+  membershipStatus: string | null;
+  suggestedAction: string;
 }
 
 
@@ -185,6 +188,9 @@ function mapRealMembers(data: any): Member[] {
     valueTier: (m.segment?.valueTier || 'medium') as Member['valueTier'],
     avgSessionsPerWeek: m.avgSessionsPerWeek || 0,
     totalRevenue: m.totalRevenue || 0,
+    membershipType: m.membershipType || null,
+    membershipStatus: m.membershipStatus || null,
+    suggestedAction: m.suggestedAction || '',
   }));
 }
 
@@ -196,6 +202,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
   const [filterRisk, setFilterRisk] = useState<string>("all");
   const [filterTrend, setFilterTrend] = useState<string>("all");
   const [filterValue, setFilterValue] = useState<string>("all");
+  const [filterMembership, setFilterMembership] = useState<string>("all");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -254,6 +261,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       if (filterRisk !== "all" && m.segment !== filterRisk) return false;
       if (filterTrend !== "all" && m.engagementTrend !== filterTrend) return false;
       if (filterValue !== "all" && m.valueTier !== filterValue) return false;
+      if (filterMembership !== "all" && m.membershipStatus !== filterMembership) return false;
       if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     })
@@ -377,20 +385,20 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         )}
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Membership Status KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {(() => {
-          const total = allMembers.length;
-          const avgHealth = total > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / total) : 0;
-          const activeCount = allMembers.filter(m => m.sessionsThisMonth > 0).length;
-          const activePct = total > 0 ? Math.round((activeCount / total) * 100) : 0;
-          const totalRev = allMembers.reduce((s, m) => s + m.revenue, 0);
-          const avgRev = total > 0 ? Math.round(totalRev / total) : 0;
+          const active = allMembers.filter(m => m.membershipStatus === 'Currently Active').length;
+          const suspended = allMembers.filter(m => m.membershipStatus === 'Suspended').length;
+          const noMembership = allMembers.filter(m => m.membershipStatus === 'No Membership').length;
+          const expired = allMembers.filter(m => m.membershipStatus === 'Expired').length;
+          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
           return [
-            { label: "Total Members", value: String(total), change: `${total} tracked`, icon: Users, gradient: "from-violet-500 to-purple-600" },
-            { label: "Avg Health Score", value: String(avgHealth), change: "current period", icon: Heart, gradient: "from-emerald-500 to-green-500" },
-            { label: "Active This Week", value: String(activeCount), change: `${activePct}% of total`, icon: Target, gradient: "from-cyan-500 to-teal-500" },
-            { label: "Avg Revenue/Member", value: `$${avgRev}`, change: "current period", icon: DollarSign, gradient: "from-amber-500 to-orange-500" },
+            { label: "Active Members", value: String(active || allMembers.length), icon: Users, gradient: "from-violet-500 to-purple-600", sub: `of ${allMembers.length} total` },
+            { label: "Avg Health", value: String(avgHealth), icon: Heart, gradient: "from-emerald-500 to-green-500", sub: "engagement score" },
+            { label: "Suspended", value: String(suspended), icon: Clock, gradient: "from-amber-500 to-orange-500", sub: suspended > 0 ? "frozen memberships" : "none" },
+            { label: "No Membership", value: String(noMembership), icon: UserPlus, gradient: "from-cyan-500 to-teal-500", sub: noMembership > 0 ? "potential converts" : "none" },
+            { label: "Expired", value: String(expired), icon: CalendarDays, gradient: "from-red-500 to-orange-500", sub: expired > 0 ? "need renewal" : "none" },
           ];
         })().map((kpi, i) => {
           const Icon = kpi.icon;
@@ -406,11 +414,37 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                     <div className="text-[11px]" style={{ color: "var(--t3)" }}>{kpi.label}</div>
                   </div>
                 </div>
-                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>{kpi.change}</div>
+                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>{kpi.sub}</div>
               </Card>
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Membership Status Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Membership:</span>
+        {[
+          { key: "all", label: "All" },
+          { key: "Currently Active", label: "Active" },
+          { key: "Suspended", label: "Suspended" },
+          { key: "No Membership", label: "No Membership" },
+          { key: "Expired", label: "Expired" },
+        ].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setFilterMembership(f.key)}
+            className="px-3 py-1.5 rounded-lg text-xs transition-all"
+            style={{
+              background: filterMembership === f.key ? "var(--pill-active)" : "transparent",
+              color: filterMembership === f.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+              fontWeight: filterMembership === f.key ? 600 : 500,
+              border: `1px solid ${filterMembership === f.key ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Charts */}
@@ -596,15 +630,38 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                       )}
                       <span className="text-[9px] self-center" style={{ color: "var(--t4)" }}>{member.sport}</span>
                     </div>
+                    {/* Membership badge */}
+                    {member.membershipType && (
+                      <div className="text-[9px] truncate max-w-[200px]" style={{ color: "var(--t4)" }} title={member.membershipType}>
+                        {member.membershipType.length > 35 ? member.membershipType.slice(0, 35) + '…' : member.membershipType}
+                      </div>
+                    )}
+                    {member.membershipStatus && member.membershipStatus !== 'Currently Active' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px]" style={{
+                        background: member.membershipStatus === 'Suspended' ? "rgba(245,158,11,0.15)" : member.membershipStatus === 'Expired' ? "rgba(239,68,68,0.15)" : "rgba(148,163,184,0.15)",
+                        color: member.membershipStatus === 'Suspended' ? "#F59E0B" : member.membershipStatus === 'Expired' ? "#EF4444" : "#94A3B8",
+                        fontWeight: 600,
+                      }}>
+                        {member.membershipStatus}
+                      </span>
+                    )}
                   </div>
                   <HealthBar score={member.healthScore} />
                 </div>
 
+                {/* Suggested action for at-risk members */}
+                {member.suggestedAction && (member.segment === 'at-risk' || member.segment === 'critical' || (member.membershipStatus && member.membershipStatus !== 'Currently Active')) && (
+                  <div className="mb-3 px-3 py-2 rounded-lg text-[11px] flex items-start gap-2" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.15)", color: "#A78BFA" }}>
+                    <Target className="w-3 h-3 mt-0.5 shrink-0" />
+                    {member.suggestedAction}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   {[
-                    { label: "Rating", value: `\u2B50 ${member.rating}` },
+                    { label: "Rating", value: member.rating ? `\u2B50 ${member.rating}` : "N/A" },
                     { label: getPeriodLabel(period), value: `${getSessionsForPeriod(member, period)} sessions` },
-                    { label: "Revenue", value: `$${member.revenue.toLocaleString()}` },
+                    { label: "Avg/Week", value: `${member.avgSessionsPerWeek} sessions` },
                   ].map((stat) => (
                     <div key={stat.label} className="text-center p-2 rounded-lg" style={{ background: "var(--subtle)" }}>
                       <div className="text-[10px]" style={{ color: "var(--t4)" }}>{stat.label}</div>
