@@ -87,11 +87,11 @@ function deriveWeeklyData(calendarData: any) {
 
 function deriveFormatBreakdown(calendarData: any) {
   if (!calendarData?.sessions?.length) return [];
-  const buckets: Record<string, { sessions: number; revenue: number }> = {};
+  const buckets: Record<string, { sessions: number; totalPlayers: number }> = {};
   calendarData.sessions.forEach((s: RealSession) => {
-    if (!buckets[s.format]) buckets[s.format] = { sessions: 0, revenue: 0 };
+    if (!buckets[s.format]) buckets[s.format] = { sessions: 0, totalPlayers: 0 };
     buckets[s.format].sessions++;
-    buckets[s.format].revenue += s.revenue ?? 0;
+    buckets[s.format].totalPlayers += s.registered || 0;
   });
   const total = Object.values(buckets).reduce((s, b) => s + b.sessions, 0);
   return Object.entries(buckets)
@@ -100,7 +100,7 @@ function deriveFormatBreakdown(calendarData: any) {
       format,
       sessions: data.sessions,
       pct: Math.round((data.sessions / total) * 100),
-      revenue: Math.round(data.revenue),
+      revenue: data.totalPlayers, // reusing field — shows players not $
       trend: "+0%",
       up: true,
     }));
@@ -108,12 +108,12 @@ function deriveFormatBreakdown(calendarData: any) {
 
 function deriveCourtStats(calendarData: any) {
   if (!calendarData?.sessions?.length) return [];
-  const buckets: Record<string, { sessions: number; occSum: number; revSum: number }> = {};
+  const buckets: Record<string, { sessions: number; occSum: number; totalPlayers: number }> = {};
   calendarData.sessions.forEach((s: RealSession) => {
-    if (!buckets[s.court]) buckets[s.court] = { sessions: 0, occSum: 0, revSum: 0 };
+    if (!buckets[s.court]) buckets[s.court] = { sessions: 0, occSum: 0, totalPlayers: 0 };
     buckets[s.court].sessions++;
     buckets[s.court].occSum += s.occupancy;
-    buckets[s.court].revSum += s.revenue ?? 0;
+    buckets[s.court].totalPlayers += s.registered || 0;
   });
   return Object.entries(buckets)
     .sort(([, a], [, b]) => b.sessions - a.sessions)
@@ -121,7 +121,7 @@ function deriveCourtStats(calendarData: any) {
       name,
       occupancy: Math.round(data.occSum / data.sessions),
       sessions: data.sessions,
-      revenue: Math.round(data.revSum),
+      revenue: data.totalPlayers, // reusing field name for compat — shows total players not $
       sport: "Pickleball",
     }));
 }
@@ -482,7 +482,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                       </div>
                     </div>
                     <div className="text-xs text-right w-12" style={{ color: "var(--t1)", fontWeight: 600 }}>{f.sessions}</div>
-                    <div className="text-xs text-right w-14" style={{ color: "var(--t3)" }}>${f.revenue.toLocaleString()}</div>
+                    <div className="text-xs text-right w-20" style={{ color: "var(--t3)" }}>{f.revenue.toLocaleString()} players</div>
                     <div className={`text-xs w-10 text-right ${f.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>{f.trend}</div>
                   </div>
                 ))}
@@ -509,7 +509,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-[11px]" style={{ color: "var(--t3)" }}>
                         <span>{court.sessions} sessions</span>
-                        <span>${court.revenue.toLocaleString()}</span>
+                        <span>{court.revenue.toLocaleString()} players</span>
                       </div>
                     </div>
                     <div className="text-right">
@@ -618,7 +618,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--divider)" }}>
-                    {["Session ID", "Court", "Format", "Date / Time", "Players", "Duration", "Revenue", "Status"].map((h) => (
+                    {["Session ID", "Court", "Format", "Date / Time", "Players", "Duration", "Status"].map((h) => (
                       <th key={h} className="text-left px-4 py-3 text-[11px] uppercase tracking-wider" style={{ color: "var(--t4)", fontWeight: 600 }}>
                         {h}
                       </th>
@@ -679,7 +679,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
                             </div>
                           </td>
                           <td className="px-4 py-3 text-xs" style={{ color: "var(--t3)" }}>{s.duration}</td>
-                          <td className="px-4 py-3 text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>${s.revenue}</td>
+                          {/* Revenue column removed for membership clubs */}
                           <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                         </motion.tr>
                         {isExpanded && (
