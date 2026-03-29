@@ -981,12 +981,12 @@ export const intelligenceRouter = createTRPCRouter({
         const problematicSessions = [...allMapped].sort((a, b) => a.occupancyPercent - b.occupancyPercent).slice(0, 5)
 
         // ── Player activity from CSV player names ──
-        // "Active" = played in the current period (not just last 14d)
-        const allPlayers = new Set<string>()
+        // "Active" = played in the current period
+        const prevPlayers = new Set<string>()
         const recentPlayers = new Set<string>()
-        for (const s of allCsvSessions) {
+        for (const s of previousSessions) {
           for (const name of (s.playerNames || [])) {
-            allPlayers.add(name)
+            prevPlayers.add(name)
           }
         }
         for (const s of currentSessions) {
@@ -995,7 +995,9 @@ export const intelligenceRouter = createTRPCRouter({
           }
         }
         const csvActive = recentPlayers.size
-        const csvInactive = Math.max(0, allPlayers.size - csvActive)
+        // Inactive = played in previous period but NOT in current period
+        let csvInactive = 0
+        prevPlayers.forEach(name => { if (!recentPlayers.has(name)) csvInactive++ })
 
         // Format preference from registrations
         const fmtBookings: Record<string, number> = {}
