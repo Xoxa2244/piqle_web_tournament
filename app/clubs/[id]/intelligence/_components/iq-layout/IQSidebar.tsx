@@ -61,6 +61,13 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     items: [
       { icon: Users, label: "Members", path: "/members" },
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
+    ],
+  },
+  {
+    id: "system",
+    title: "SYSTEM",
+    icon: Settings,
+    items: [
       { icon: CreditCard, label: "Billing", path: "/billing" },
       { icon: Plug, label: "Integrations", path: "/integrations" },
     ],
