@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, Puzzle, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X, CreditCard, Plug,
+  Menu, X, CreditCard, Plug, Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -31,7 +31,8 @@ interface NavSection {
   items: NavItem[];
 }
 
-const navSections: NavSection[] = [
+function buildNavSections(isMembership: boolean): NavSection[] {
+  return [
   {
     id: "analytics",
     title: "ANALYTICS",
@@ -39,7 +40,9 @@ const navSections: NavSection[] = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Sessions", path: "/sessions" },
-      { icon: DollarSign, label: "Revenue", path: "/revenue" },
+      isMembership
+        ? { icon: Activity, label: "Utilization", path: "/revenue" }
+        : { icon: DollarSign, label: "Revenue", path: "/revenue" },
     ],
   },
   {
@@ -64,7 +67,8 @@ const navSections: NavSection[] = [
       { icon: Plug, label: "Integrations", path: "/integrations" },
     ],
   },
-];
+  ]
+}
 
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -78,6 +82,13 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { data: clubs } = trpc.club.list.useQuery({}, { staleTime: 60_000 });
+  const { data: intelligenceSettings } = trpc.intelligence.getIntelligenceSettings.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 60_000 }
+  );
+  const pricingModel = intelligenceSettings?.settings?.pricingModel;
+  const isMembershipClub = pricingModel === 'membership' || pricingModel === 'free';
+  const navSections = buildNavSections(isMembershipClub);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
   const userEmail = session?.user?.email || "";

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import {
   MapPin, ChevronRight, ChevronLeft,
   Sparkles, Upload, FileSpreadsheet, CheckCircle2, Database, HelpCircle,
+  CreditCard, Zap, Shuffle,
 } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import { AILoadingAnimation } from './AILoadingAnimation'
@@ -117,7 +118,10 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const [timezone, setTimezone] = useState('')
   const [addressSelected, setAddressSelected] = useState(false)
 
-  // Step 1: Software + Files
+  // Step 1: Pricing model
+  const [pricingModel, setPricingModel] = useState<'membership' | 'per_session' | 'hybrid' | null>(null)
+
+  // Step 2: Software + Files
   const [software, setSoftware] = useState<string | null>(null)
   const [membersFile, setMembersFile] = useState<File | null>(null)
   const [reservationsFile, setReservationsFile] = useState<File | null>(null)
@@ -237,7 +241,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           operatingHours: { open: '06:00', close: '22:00' },
           peakHours: { start: '17:00', end: '20:00' },
           typicalSessionDurationMinutes: 90,
-          pricingModel: 'per_session' as any,
+          pricingModel: (pricingModel ?? 'per_session') as any,
           avgSessionPriceCents: 1500,
           communicationPreferences: { preferredChannel: 'email' as any, tone: 'friendly' as any, maxMessagesPerWeek: 4 },
           goals: ['fill_sessions', 'improve_retention', 'increase_revenue'] as any,
@@ -318,6 +322,30 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     onComplete()
   }
 
+  const PRICING_OPTIONS = [
+    {
+      id: 'membership' as const,
+      icon: CreditCard,
+      label: 'Membership',
+      desc: 'Members pay monthly or annual fees — unlimited play',
+      color: '#8B5CF6',
+    },
+    {
+      id: 'per_session' as const,
+      icon: Zap,
+      label: 'Pay-per-session',
+      desc: 'Players pay for each court booking or drop-in',
+      color: '#06B6D4',
+    },
+    {
+      id: 'hybrid' as const,
+      icon: Shuffle,
+      label: 'Mixed',
+      desc: 'Both memberships and pay-per-session options',
+      color: '#10B981',
+    },
+  ]
+
   const steps = [
     // Step 0: Club Info + Address
     <div key="0" className="space-y-6">
@@ -364,8 +392,42 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       </div>
     </div>,
 
-    // Step 1: Software + File Upload
+    // Step 1: Pricing Model
     <div key="1" className="space-y-6">
+      <div>
+        <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+          How does your club work?
+        </h3>
+        <p className="text-sm" style={{ color: 'var(--t3)' }}>This shapes what metrics and insights we show you.</p>
+      </div>
+      <div className="space-y-3">
+        {PRICING_OPTIONS.map(opt => {
+          const Icon = opt.icon
+          const selected = pricingModel === opt.id
+          return (
+            <button key={opt.id} onClick={() => setPricingModel(opt.id)}
+              className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all"
+              style={{
+                background: selected ? `${opt.color}18` : 'var(--subtle)',
+                border: selected ? `1px solid ${opt.color}50` : '1px solid transparent',
+              }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: selected ? `${opt.color}20` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
+                <Icon className="w-5 h-5" style={{ color: selected ? opt.color : 'var(--t3)' }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm" style={{ fontWeight: 600, color: selected ? 'var(--heading)' : 'var(--t2)' }}>{opt.label}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--t4)' }}>{opt.desc}</p>
+              </div>
+              {selected && <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: opt.color }} />}
+            </button>
+          )
+        })}
+      </div>
+    </div>,
+
+    // Step 2: Software + File Upload
+    <div key="2" className="space-y-6">
       <div>
         <h3 className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
           <Database className="w-5 h-5 inline mr-2" />Import your data
@@ -435,7 +497,11 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   }
 
   const isLast = step === steps.length - 1
-  const canProceed = step === 0 ? clubName.trim().length >= 2 : !!software
+  const canProceed = step === 0
+    ? clubName.trim().length >= 2
+    : step === 1
+    ? !!pricingModel
+    : !!software
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
