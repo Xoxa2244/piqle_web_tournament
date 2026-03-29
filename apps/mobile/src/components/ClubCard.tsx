@@ -47,8 +47,18 @@ type ClubCardProps = {
 }
 
 export const ClubCard = ({ club, onPress, onRatingPress, onJoin, joinLoading }: ClubCardProps) => {
-  const { colors } = useAppTheme()
+  const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
+  /** Те же стопы, что и заливка хиро (слева зелёный тинт → к прозрачному). */
+  const clubCardHeroGradientColors = useMemo(
+    () =>
+      [
+        'rgba(40, 205, 65, 0.10)',
+        'rgba(82, 224, 104, 0.06)',
+        theme === 'dark' ? 'rgba(26, 26, 26, 0)' : 'rgba(255, 255, 255, 0)',
+      ] as const,
+    [theme],
+  )
   const isOwner = String(club.role ?? '').toUpperCase() === 'OWNER'
   const isAdmin = Boolean(club.isAdmin && !isOwner)
   const showMember = Boolean(club.isFollowing && !club.isAdmin && !isOwner)
@@ -64,7 +74,7 @@ export const ClubCard = ({ club, onPress, onRatingPress, onJoin, joinLoading }: 
         <View style={styles.headerSection}>
           <OptionalLinearGradient
             pointerEvents="none"
-            colors={['rgba(40, 205, 65, 0.10)', 'rgba(82, 224, 104, 0.06)', 'rgba(255, 255, 255, 0)']}
+            colors={clubCardHeroGradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.headerGradient}
@@ -223,8 +233,6 @@ const createStyles = (colors: ThemePalette) =>
       overflow: 'hidden',
       padding: spacing.md,
       backgroundColor: colors.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.brandPrimaryBorder,
     },
     headerGradient: {
       ...StyleSheet.absoluteFillObject,
