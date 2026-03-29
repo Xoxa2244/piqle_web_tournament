@@ -501,10 +501,21 @@ export default function NotificationsScreen() {
           return (
             <SwipeDismissNotificationRow
               key={item.id}
-              disabled={openingNotificationId === String(item.id)}
-              onDismiss={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-                dismissNotification.mutate({ notificationId: String(item.id) })
+              disabled={
+                openingNotificationId === String(item.id) ||
+                item.type === 'CLUB_JOIN_REQUEST' ||
+                item.type === 'TOURNAMENT_ACCESS_PENDING'
+              }
+              onDismiss={async () => {
+                try {
+                  await dismissNotification.mutateAsync({ notificationId: String(item.id) })
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+                  toast.success('Notification removed.')
+                } catch (e: any) {
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+                  toast.error(e?.message ?? 'Could not remove notification.')
+                  throw e
+                }
               }}
             >
               <Pressable

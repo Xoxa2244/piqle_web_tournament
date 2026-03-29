@@ -123,74 +123,83 @@ export const notificationRouter = createTRPCRouter({
         context?: Record<string, unknown>
       }> = []
       const clubIds = adminClubs.map((a) => a.clubId)
-      if (clubIds.length > 0) {
-        try {
-          const [requestsByClub, clubs, latestJoinRows] = await Promise.all([
-            ctx.prisma.clubJoinRequest.groupBy({
-              by: ['clubId'],
-              where: { clubId: { in: clubIds } },
-              _count: { id: true },
-              _max: { createdAt: true },
-            }),
-            ctx.prisma.club.findMany({
-              where: { id: { in: clubIds } },
-              select: { id: true, name: true },
-            }),
-            ctx.prisma.clubJoinRequest.findMany({
-              where: { clubId: { in: clubIds } },
-              orderBy: { createdAt: 'desc' },
-              select: {
-                clubId: true,
-                user: { select: { image: true, name: true, email: true } },
-              },
-            }),
-          ])
-          const latestJoinByClub = new Map<string, { image: string | null; label: string }>()
-          for (const row of latestJoinRows) {
-            if (latestJoinByClub.has(row.clubId)) continue
-            const label = row.user?.name || row.user?.email || 'Member'
-            latestJoinByClub.set(row.clubId, {
-              image: row.user?.image ?? null,
-              label,
-            })
+
+      /** Pending join: через связь Club.admins (надёжнее, чем groupBy + clubId IN — совпадает с правами на странице клуба). */
+      try {
+        const joinRows = await ctx.prisma.clubJoinRequest.findMany({
+          where: {
+            club: {
+              admins: { some: { userId } },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            clubId: true,
+            createdAt: true,
+            user: { select: { image: true, name: true, email: true } },
+          },
+        })
+        if (joinRows.length > 0) {
+          const countByClub = new Map<string, number>()
+          const maxAtByClub = new Map<string, Date>()
+          const leadByClub = new Map<string, { image: string | null; label: string }>()
+          for (const row of joinRows) {
+            countByClub.set(row.clubId, (countByClub.get(row.clubId) ?? 0) + 1)
+            const prevMax = maxAtByClub.get(row.clubId)
+            if (!prevMax || row.createdAt > prevMax) maxAtByClub.set(row.clubId, row.createdAt)
+            if (!leadByClub.has(row.clubId)) {
+              const label = row.user?.name || row.user?.email || 'Member'
+              leadByClub.set(row.clubId, {
+                image: row.user?.image ?? null,
+                label,
+              })
+            }
           }
+          const uniqueClubIds = [...countByClub.keys()]
+          const clubs = await ctx.prisma.club.findMany({
+            where: { id: { in: uniqueClubIds } },
+            select: { id: true, name: true },
+          })
+          const clubById = new Map(clubs.map((c) => [c.id, c]))
           let seenMap = new Map<string, Date>()
           try {
             const seenByClub = await ctx.prisma.clubJoinRequestSeen.findMany({
-              where: { userId, clubId: { in: clubIds } },
+              where: { userId, clubId: { in: uniqueClubIds } },
               select: { clubId: true, seenAt: true },
             })
             seenMap = new Map(seenByClub.map((s) => [s.clubId, s.seenAt]))
           } catch (errSeen) {
             if (!isMissingDbRelation(errSeen, 'club_join_request_seen')) throw errSeen
           }
-          const clubByNameId = new Map(clubs.map((c) => [c.id, c]))
-          for (const r of requestsByClub) {
-            if (r._count.id === 0 || !r._max.createdAt) continue
-            const seenAt = seenMap.get(r.clubId)
-            const club = clubByNameId.get(r.clubId)
-            if (!club) continue
-            const lead = latestJoinByClub.get(r.clubId)
-            /** Пока есть pending — строка остаётся в ленте; «прочитано» только для бейджа. */
+          for (const cid of uniqueClubIds) {
+            const club = clubById.get(cid)
+            const cnt = countByClub.get(cid) ?? 0
+            const maxAt = maxAtByClub.get(cid)
+            if (!club || !maxAt || cnt === 0) continue
+            const seenAt = seenMap.get(cid)
             const readAt =
-              seenAt && r._max.createdAt <= seenAt ? seenAt.toISOString() : null
+              seenAt && maxAt <= seenAt ? seenAt.toISOString() : null
+            const lead = leadByClub.get(cid)
             clubJoinItems.push({
-              id: `club-join-request-${r.clubId}`,
+              id: `club-join-request-${cid}`,
               type: 'CLUB_JOIN_REQUEST',
               title: 'Club join request',
-              body: `${r._count.id} pending request${r._count.id === 1 ? '' : 's'} in "${club.name}".`,
-              createdAt: r._max.createdAt.toISOString(),
+              body: `${cnt} pending request${cnt === 1 ? '' : 's'} in "${club.name}".`,
+              createdAt: maxAt.toISOString(),
               readAt,
-              clubId: r.clubId,
+              clubId: cid,
               clubName: club.name,
-              targetUrl: `/clubs/${r.clubId}?tab=members`,
+              targetUrl: `/clubs/${cid}?tab=members`,
               userAvatarUrl: lead?.image ?? null,
               requesterName: lead?.label ?? club.name,
             })
           }
-        } catch (err) {
-          if (!isMissingDbRelation(err, 'club_join_requests')) throw err
         }
+      } catch (err) {
+        if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+      }
+
+      if (clubIds.length > 0) {
         try {
           const since = new Date(Date.now() - 90 * 86400000)
           const leaves = await ctx.prisma.clubMemberLeaveLog.findMany({
@@ -477,7 +486,13 @@ export const notificationRouter = createTRPCRouter({
           if (tp === 'CLUB_JOIN_REQUEST' || tp === 'TOURNAMENT_ACCESS_PENDING') return true
           return new Date(i.createdAt) > clearedBefore
         })
-        .filter((i) => !dismissedIds.has(String((i as { id?: string }).id ?? '')))
+        .filter((i) => {
+          const id = String((i as { id?: string }).id ?? '')
+          const tp = (i as { type?: string }).type
+          // Свайп «удалить» не должен навсегда прятать pending заявки (id оставался в bellDismissedNotificationIds).
+          if (tp === 'CLUB_JOIN_REQUEST' || tp === 'TOURNAMENT_ACCESS_PENDING') return true
+          return !dismissedIds.has(id)
+        })
       const unreadCount = visible.filter((i) => {
         // Подсказки фидбека в списке остаются, но не раздувают бейдж колокольчика.
         if ((i as { type?: string }).type === 'FEEDBACK_PROMPT') return false
@@ -563,6 +578,14 @@ export const notificationRouter = createTRPCRouter({
     .input(z.object({ notificationId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
+      // Pending заявки нельзя хранить в bellDismissedNotificationIds — иначе пропадали бы навсегда.
+      if (
+        input.notificationId.startsWith('club-join-request-') ||
+        input.notificationId.startsWith('tournament-access-pending-')
+      ) {
+        pushToUser(userId, { type: 'invalidate', keys: ['notification.list'] })
+        return { success: true as const }
+      }
       const user = await ctx.prisma.user.findUnique({
         where: { id: userId },
         select: { bellDismissedNotificationIds: true },
