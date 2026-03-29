@@ -411,6 +411,10 @@ export interface MemberHealthResult {
   segmentLabel?: SegmentLabel
   avgSessionsPerWeek?: number
   totalRevenue?: number
+  // Membership tier data
+  rawHealthScore?: number          // Score before tier adjustment
+  membershipType?: string | null   // e.g. "Open Play Pass - $49.99/Month"
+  membershipStatus?: string | null // "Currently Active" | "Suspended" | "Expired" | "No Membership"
 }
 
 export interface MemberHealthSummary {

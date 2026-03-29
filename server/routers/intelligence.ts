@@ -1335,6 +1335,22 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
 
+        // Load membership data from embeddings
+        const memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
+          SELECT source_id, metadata FROM document_embeddings
+          WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+        `
+        const membershipMap = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
+        for (const e of memberEmbeddings) {
+          const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata
+          membershipMap.set(e.source_id, {
+            membership: m?.membership || null,
+            membershipStatus: m?.membershipStatus || null,
+            lastVisit: m?.lastVisit || null,
+            firstVisit: m?.firstVisit || null,
+          })
+        }
+
         // Get all bookings for these users at this club
         const userIds = followers.map(f => f.userId)
         const bookings = await ctx.prisma.playSessionBooking.findMany({
@@ -1424,6 +1440,7 @@ export const intelligenceRouter = createTRPCRouter({
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
             previousPeriodBookings: bookings30to60,
+            membershipInfo: membershipMap.get(f.userId) || null,
             bookingsWithSessions: userBookings.map(b => ({
               date: (b as any).playSession?.date ?? b.bookedAt,
               startTime: (b as any).playSession?.startTime ?? '12:00',

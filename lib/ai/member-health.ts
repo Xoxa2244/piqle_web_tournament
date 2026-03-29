@@ -18,6 +18,13 @@ export interface BookingWithSession {
   status: 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW';
 }
 
+interface MembershipInfo {
+  membership: string | null;
+  membershipStatus: string | null;
+  lastVisit: string | null;
+  firstVisit: string | null;
+}
+
 interface MemberHealthInput {
   member: MemberData;
   preference: UserPlayPreferenceData | null;
@@ -27,6 +34,8 @@ interface MemberHealthInput {
   previousPeriodBookings: number;
   // Extended: session-level data for segmentation
   bookingsWithSessions?: BookingWithSession[];
+  // Membership data from CourtReserve import
+  membershipInfo?: MembershipInfo | null;
 }
 
 // ── Segmentation Classifiers ──
@@ -178,8 +187,12 @@ function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
     0, 100
   ));
 
-  const riskLevel = getRiskLevel(healthScore);
-  const lifecycleStage = getLifecycleStage(healthScore, joinedDaysAgo, history.daysSinceLastConfirmedBooking);
+  // Apply membership tier adjustment — Guest Pass members churn faster
+  const tierWeight = getMembershipTierWeight(input.membershipInfo?.membership || null);
+  const adjustedScore = Math.round(clamp(healthScore * tierWeight, 0, 100));
+
+  const riskLevel = getRiskLevel(adjustedScore);
+  const lifecycleStage = getLifecycleStage(adjustedScore, joinedDaysAgo, history.daysSinceLastConfirmedBooking);
 
   // Trend: compare current score conceptually to last week
   // Simple heuristic: if recent bookings > previous → improving
@@ -214,15 +227,26 @@ function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
     behavioral: classifyBehavioral(bws),
   }
 
+  // Add membership tier risk to topRisks if applicable
+  if (tierWeight < 1.0 && adjustedScore < healthScore) {
+    const tierName = input.membershipInfo?.membership || 'Guest';
+    const shortTier = tierName.length > 30 ? tierName.slice(0, 30) + '…' : tierName;
+    topRisks.push(`${shortTier} — higher churn risk tier`);
+  }
+
+  // Membership-aware suggested action
+  const membershipAction = getMembershipSuggestedAction(input.membershipInfo, riskLevel, adjustedScore);
+
   return {
     memberId: member.id,
     member,
-    healthScore,
+    healthScore: adjustedScore,
+    rawHealthScore: healthScore,
     riskLevel,
     lifecycleStage,
     components: { frequencyTrend, recency, consistency, patternBreak, noShowTrend },
     topRisks: topRisks.slice(0, 3),
-    suggestedAction,
+    suggestedAction: membershipAction || suggestedAction,
     trend,
     daysSinceLastBooking: history.daysSinceLastConfirmedBooking,
     totalBookings: history.totalBookings,
@@ -231,6 +255,8 @@ function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
     segmentLabel: buildSegmentLabel(segment),
     avgSessionsPerWeek: Math.round(avgSessionsPerWeek * 10) / 10,
     totalRevenue,
+    membershipType: input.membershipInfo?.membership || null,
+    membershipStatus: input.membershipInfo?.membershipStatus || null,
   };
 }
 
@@ -378,6 +404,49 @@ function scoreNoShowTrend(history: BookingHistory): HealthScoreComponent {
     return { score: 60, weight: 5, label: `No-show rate ${Math.round(noShowRate * 100)}% — slightly elevated` };
   }
   return { score: 20, weight: 5, label: `High no-show rate (${Math.round(noShowRate * 100)}%) — disengagement signal` };
+}
+
+// ── Membership Tier Helpers ──
+
+function getMembershipTierWeight(membership: string | null): number {
+  if (!membership) return 0.7; // No membership info → assume higher risk
+  const lower = membership.toLowerCase();
+  if (lower.includes('guest pass') || lower.includes('pay per play')) return 0.7;
+  if (lower.includes('court pass') || lower.includes('14.99')) return 0.85;
+  if (lower.includes('open play pass') || lower.includes('49.99')) return 0.9;
+  if (lower.includes('hero discount') || lower.includes('39.99')) return 0.9;
+  if (lower.includes('vip') || lower.includes('89.99')) return 1.0;
+  if (lower.includes('silver sneakers') || lower.includes('renew active') || lower.includes('tivity') || lower.includes('one pass')) return 1.0;
+  if (lower.includes('friends') || lower.includes('comped')) return 1.0;
+  return 0.9; // default
+}
+
+function getMembershipSuggestedAction(
+  info: MembershipInfo | null | undefined,
+  riskLevel: RiskLevel,
+  adjustedScore: number,
+): string | null {
+  if (!info) return null;
+  const status = info.membershipStatus;
+  const membership = info.membership?.toLowerCase() || '';
+
+  if (status === 'Suspended') return 'Membership frozen — send "Welcome back" unfreeze campaign';
+  if (status === 'Expired') return 'Membership expired — send renewal offer with discount';
+  if (status === 'No Membership') return 'No membership — send trial/first-month-free offer';
+
+  // Active members: tier-specific suggestions
+  if (riskLevel === 'at_risk' || riskLevel === 'critical') {
+    if (membership.includes('guest pass') || membership.includes('pay per play')) {
+      return 'Guest Pass member disengaging — suggest upgrade to monthly pass';
+    }
+    if (membership.includes('open play') || membership.includes('49.99') || membership.includes('39.99')) {
+      return 'Monthly member at risk — send personal check-in + invite to upcoming event';
+    }
+    if (membership.includes('vip') || membership.includes('89.99')) {
+      return 'High-value VIP disengaging — manager should call personally';
+    }
+  }
+  return null;
 }
 
 // ── Classification Helpers ──
