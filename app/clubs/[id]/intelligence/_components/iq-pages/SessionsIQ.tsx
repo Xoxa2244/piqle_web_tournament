@@ -93,7 +93,6 @@ function mapCalendarToSessions(calendarData: any): typeof recentSessions {
       const db = new Date(`${b.date}T${b.startTime}`);
       return db.getTime() - da.getTime();
     })
-    .slice(0, 20)
     .map((s: RealSession, i: number) => {
       const dt = new Date(`${s.date}T${s.startTime}`);
       const diff = Math.round((dt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -433,18 +432,21 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
             </div>
           )}
 
-          {/* KPI Row */}
+          {/* KPI Row — computed from ALL calendarData sessions, not sliced list */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {(() => {
-              const totalSessions = filteredSessions.length;
-              const totalRegistered = filteredSessions.reduce((s, x) => s + (x.registered || 0), 0);
-              const totalCapacity = filteredSessions.reduce((s, x) => s + (x.capacity || 0), 0);
+              const allSessions: RealSession[] = calendarData?.sessions || [];
+              const filtered = filterFormat
+                ? allSessions.filter((s: RealSession) => s.format === filterFormat)
+                : allSessions;
+              const totalSessions = filtered.length;
+              const totalRegistered = filtered.reduce((s: number, x: RealSession) => s + (x.registered || 0), 0);
+              const totalCapacity = filtered.reduce((s: number, x: RealSession) => s + (x.capacity || 0), 0);
               const avgOcc = totalCapacity > 0 ? Math.round((totalRegistered / totalCapacity) * 100) : 0;
-              const peakSession = filteredSessions.reduce((best, s) => {
-                const occ = s.capacity > 0 ? s.registered / s.capacity : 0;
-                return occ > (best.capacity > 0 ? best.registered / best.capacity : 0) ? s : best;
-              }, filteredSessions[0] || { registered: 0, capacity: 0 });
-              const peakOcc = peakSession && peakSession.capacity > 0 ? Math.round((peakSession.registered / peakSession.capacity) * 100) : 0;
+              const peakOcc = filtered.reduce((best: number, s: RealSession) => {
+                const occ = s.capacity > 0 ? Math.round((s.registered / s.capacity) * 100) : 0;
+                return occ > best ? occ : best;
+              }, 0);
               return [
                 { label: "Total Sessions", value: totalSessions.toLocaleString(), icon: CalendarDays, gradient: "from-violet-500 to-purple-600" },
                 { label: "Avg Occupancy", value: `${avgOcc}%`, icon: BarChart3, gradient: "from-cyan-500 to-teal-500" },
