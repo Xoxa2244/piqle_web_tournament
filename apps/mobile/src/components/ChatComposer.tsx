@@ -3,7 +3,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { radius, type ThemePalette } from '../lib/theme'
+import { keyboardAppearanceForTheme, radius, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 
 export type ChatComposerProps = {
@@ -42,7 +42,7 @@ export const ChatComposer = ({
   onFocus,
   onBlur,
 }: ChatComposerProps) => {
-  const { colors } = useAppTheme()
+  const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const insets = useSafeAreaInsets()
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0)
@@ -79,6 +79,7 @@ export const ChatComposer = ({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
+          keyboardAppearance={keyboardAppearanceForTheme(theme)}
           style={[styles.input, multiline && styles.inputMultiline]}
           multiline={multiline}
           returnKeyType={returnKeyType}
@@ -125,7 +126,7 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: radius.pill,
     paddingHorizontal: 16,
     paddingVertical: 0,
-    backgroundColor: '#EEF0F2',
+    backgroundColor: colors.surfaceMuted,
     color: colors.text,
     fontSize: 14,
     fontWeight: '600',

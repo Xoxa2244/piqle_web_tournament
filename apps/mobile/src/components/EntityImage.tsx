@@ -3,6 +3,7 @@ import { Image, type ImageStyle, type StyleProp } from 'react-native'
 
 import { tournamentPlaceholder } from '../constants/images'
 import { isRemoteImageUri, resolveRemoteImageUriForApp } from '../lib/imageUri'
+import { useAppTheme } from '../providers/ThemeProvider'
 
 type Props = {
   uri?: string | null
@@ -17,6 +18,7 @@ export const EntityImage = memo(function EntityImage({
   resizeMode = 'cover',
   placeholderResizeMode = 'contain',
 }: Props) {
+  const { colors } = useAppTheme()
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export const EntityImage = memo(function EntityImage({
     <Image
       accessibilityIgnoresInvertColors
       source={imageSource}
-      style={style}
+      style={[style, !showRemote && { backgroundColor: colors.surfaceMuted }]}
       resizeMode={showRemote ? resizeMode : placeholderResizeMode}
       onError={() => setFailed(true)}
     />

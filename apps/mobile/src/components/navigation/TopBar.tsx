@@ -66,7 +66,7 @@ const createStyles = (colors: ThemePalette) =>
     headerAmbient: {
       backgroundColor: 'transparent',
       borderBottomWidth: HEADER_DIVIDER_WIDTH,
-      borderBottomColor: HEADER_DIVIDER_COLOR,
+      borderBottomColor: colors.border,
     },
     titleRow: {
       flex: 1,

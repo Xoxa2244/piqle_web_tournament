@@ -2,11 +2,11 @@ import type { PropsWithChildren, ReactNode } from 'react'
 import React from 'react'
 import { useMemo } from 'react'
 import { ScrollView, StyleProp, StyleSheet, View, type ViewStyle } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from '../chatAmbient'
+import { ChatAmbientBackground } from '../chatAmbient'
 import { PickleRefreshScrollView } from '../PickleRefreshScrollView'
-import { spacing, type ThemePalette } from '../../lib/theme'
+import { spacing } from '../../lib/theme'
 import { useAppTheme } from '../../providers/ThemeProvider'
 import { TopBar } from './TopBar'
 
@@ -45,17 +45,25 @@ export const PageLayout = ({
   fixedUnderTopBar?: ReactNode
 }>) => {
   const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const insets = useSafeAreaInsets()
+  const styles = useMemo(() => createStyles(), [])
   const main = (
     <>
-      <TopBar
-        titleAccessory={topBarTitleAccessory}
-        titleAccessoryLeading={topBarTitleAccessoryLeading}
-        titleOverride={topBarTitle}
-        rightSlot={topBarRightSlot}
-        ambient={chatAmbient}
-        refreshPulseKey={topBarRefreshPulseKey}
-      />
+      <View
+        style={{
+          paddingTop: insets.top,
+          backgroundColor: chatAmbient ? 'transparent' : colors.surfaceOverlay,
+        }}
+      >
+        <TopBar
+          titleAccessory={topBarTitleAccessory}
+          titleAccessoryLeading={topBarTitleAccessoryLeading}
+          titleOverride={topBarTitle}
+          rightSlot={topBarRightSlot}
+          ambient={chatAmbient}
+          refreshPulseKey={topBarRefreshPulseKey}
+        />
+      </View>
       {scroll ? (
         pullToRefresh ? (
           <View style={styles.fill}>
@@ -104,32 +112,26 @@ export const PageLayout = ({
   )
 
   if (!chatAmbient) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {main}
-      </SafeAreaView>
-    )
+    return <View style={[styles.root, { backgroundColor: colors.background }]}>{main}</View>
   }
 
   return (
-    <View style={styles.chatAmbientRoot}>
+    <View style={[styles.chatAmbientRoot, { backgroundColor: colors.background }]}>
       <ChatAmbientBackground />
       {/* Только top: нижний отступ даёт сам tab bar экрана; bottom + padding дублировали зазор над меню */}
-      <SafeAreaView style={styles.safeAreaChatAmbientFill} edges={['top']}>
+      <View style={styles.safeAreaChatAmbientFill}>
         <View style={styles.chatAmbientForeground}>{main}</View>
-      </SafeAreaView>
+      </View>
     </View>
   )
 }
 
-const createStyles = (colors: ThemePalette) => StyleSheet.create({
-  safeArea: {
+const createStyles = () => StyleSheet.create({
+  root: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   chatAmbientRoot: {
     flex: 1,
-    backgroundColor: CHAT_AMBIENT_FALLBACK,
   },
   safeAreaChatAmbientFill: {
     flex: 1,

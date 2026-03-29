@@ -5,7 +5,7 @@ import { OptionalLinearGradient } from '../OptionalLinearGradient'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
 import { SurfaceCard } from '../ui'
 import { duprLogoWebUrl } from '../../lib/config'
-import { palette, radius, spacing } from '../../lib/theme'
+import { radius, spacing } from '../../lib/theme'
 import { useAppTheme } from '../../providers/ThemeProvider'
 
 type DuprConnectButtonProps = {
@@ -122,21 +122,27 @@ export function ProfileStatsDuprSection({
   onDuprConnect,
   duprConnectPending = false,
 }: ProfileStatsDuprSectionProps) {
+  const { colors } = useAppTheme()
+  const statCard = [
+    styles.statsItem,
+    { backgroundColor: colors.surface, borderColor: colors.border },
+  ] as const
+
   return (
     <View style={styles.statsDuprRoot}>
       <View style={styles.statsGridWrap}>
         <View style={styles.statsGrid}>
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{clubsJoinedCount}</Text>
-            <Text style={styles.statsLabel}>Clubs</Text>
+          <View style={statCard}>
+            <Text style={[styles.statsValue, { color: colors.text }]}>{clubsJoinedCount}</Text>
+            <Text style={[styles.statsLabel, { color: colors.textMuted }]}>Clubs</Text>
           </View>
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{tournamentsPlayedCount}</Text>
-            <Text style={styles.statsLabel}>Played</Text>
+          <View style={statCard}>
+            <Text style={[styles.statsValue, { color: colors.text }]}>{tournamentsPlayedCount}</Text>
+            <Text style={[styles.statsLabel, { color: colors.textMuted }]}>Played</Text>
           </View>
-          <View style={styles.statsItem}>
-            <Text style={styles.statsValue}>{tournamentsCreatedCount}</Text>
-            <Text style={styles.statsLabel}>Hosted</Text>
+          <View style={statCard}>
+            <Text style={[styles.statsValue, { color: colors.text }]}>{tournamentsCreatedCount}</Text>
+            <Text style={[styles.statsLabel, { color: colors.textMuted }]}>Hosted</Text>
           </View>
         </View>
       </View>
@@ -250,13 +256,11 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
     paddingVertical: 10,
     alignItems: 'center',
   },
-  statsValue: { color: palette.text, fontSize: 18, fontWeight: '800' },
-  statsLabel: { marginTop: 2, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
+  statsValue: { fontSize: 18, fontWeight: '800' },
+  statsLabel: { marginTop: 2, fontSize: 12, fontWeight: '600' },
   duprCardOuter: {
     borderRadius: radius.lg,
     padding: spacing.md,

@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
 import { RatingStarIcon } from './icons/RatingStarIcon'
 import { FEEDBACK_API_ENABLED } from '../lib/config'
-import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { keyboardAppearanceForTheme, radius, spacing, type ThemePalette } from '../lib/theme'
 import { trpc } from '../lib/trpc'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { useToast } from '../providers/ToastProvider'
@@ -63,7 +63,7 @@ export function FeedbackRatingModal({
   contextCard?: ReactNode
   onSubmitted?: () => void
 }) {
-  const { colors } = useAppTheme()
+  const { colors, theme } = useAppTheme()
   const toast = useToast()
   const styles = useMemo(() => createStyles(colors), [colors])
   const [rating, setRating] = useState<number>(0)
@@ -189,6 +189,7 @@ export function FeedbackRatingModal({
               onChangeText={(text) => setComment(text.slice(0, commentLimit))}
               placeholder="Optional comment"
               placeholderTextColor={colors.textMuted}
+              keyboardAppearance={keyboardAppearanceForTheme(theme)}
               multiline
               maxLength={commentLimit}
               style={styles.commentInput}

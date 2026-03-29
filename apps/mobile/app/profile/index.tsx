@@ -110,6 +110,7 @@ function ProfileTopBarActions() {
 }
 
 export default function ProfileTab() {
+  const { colors } = useAppTheme()
   const { token, user } = useAuth()
   const toast = useToast()
   const isAuthenticated = Boolean(token)
@@ -316,10 +317,10 @@ export default function ProfileTab() {
 
             {isTd ? (
               <SurfaceCard>
-                <Text style={styles.tdRatingTitle}>Tournament director rating</Text>
+                <Text style={[styles.tdRatingTitle, { color: colors.text }]}>Tournament director rating</Text>
                 <Pressable
                   onPress={() => setTdFeedbackInfoOpen(true)}
-                  style={({ pressed }) => [styles.tdRatingRowBtn, pressed && styles.profileActionButtonPressed]}
+                  style={({ pressed }) => [styles.tdRatingRowBtn, pressed && { opacity: 0.85 }]}
                 >
                   <View style={styles.tdStarsRow}>
                     {[1, 2, 3, 4, 5].map((star) => (
@@ -332,16 +333,22 @@ export default function ProfileTab() {
                     ))}
                   </View>
                   {tdCanPublishEffective && tdAverageEffective ? (
-                    <Text style={styles.tdRatingValue}>{tdAverageEffective.toFixed(1)}</Text>
+                    <Text style={[styles.tdRatingValue, { color: colors.text }]}>{tdAverageEffective.toFixed(1)}</Text>
                   ) : (
-                    <Text style={styles.tdRatingMuted}>No rating yet</Text>
+                    <Text style={[styles.tdRatingMuted, { color: colors.textMuted }]}>No rating yet</Text>
                   )}
                 </Pressable>
                 {tdAchievements.length > 0 ? (
                   <View style={styles.tdAchievementsWordsRow}>
                     {tdAchievements.map((item: { id: string; title: string }) => (
-                      <View key={item.id} style={styles.tdAchievementWordChip}>
-                        <Text style={styles.tdAchievementWordText}>{item.title}</Text>
+                      <View
+                        key={item.id}
+                        style={[
+                          styles.tdAchievementWordChip,
+                          { borderColor: colors.brandPrimaryBorder, backgroundColor: colors.chip },
+                        ]}
+                      >
+                        <Text style={[styles.tdAchievementWordText, { color: colors.chipText }]}>{item.title}</Text>
                       </View>
                     ))}
                   </View>
@@ -451,10 +458,16 @@ export default function ProfileTab() {
                 {[1, 2, 3, 4, 5].map((star) => {
                   const active = star <= Math.round(tdAverageEffective)
                   return (
-                    <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
+                    <RatingStarIcon
+                      key={star}
+                      size={40}
+                      filled={active}
+                      color="#F2C94C"
+                      inactiveColor={colors.textMuted}
+                    />
                   )
                 })}
-                <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
+                <Text style={[styles.modalRatingValueInline, { color: colors.text }]}>{tdAverageEffective.toFixed(1)}</Text>
               </View>
             ) : null}
             <View style={styles.feedbackChipsWrap}>
@@ -467,25 +480,31 @@ export default function ProfileTab() {
                       { label: 'On-time schedule', count: 7 },
                     ]
                 ).map((chip: { label: string; count: number }) => (
-                  <View key={chip.label} style={styles.feedbackChip}>
-                    <Text style={styles.feedbackChipText}>{chip.label}</Text>
+                  <View
+                    key={chip.label}
+                    style={[
+                      styles.feedbackChip,
+                      { borderColor: colors.brandPrimaryBorder, backgroundColor: colors.chip },
+                    ]}
+                  >
+                    <Text style={[styles.feedbackChipText, { color: colors.chipText }]}>{chip.label}</Text>
                   </View>
                 ))
               ) : (
-                <Text style={styles.emptyCardBody}>Not enough public data yet.</Text>
+                <Text style={[styles.emptyCardBody, { color: colors.textMuted }]}>Not enough public data yet.</Text>
               )}
             </View>
           </AppBottomSheet>
 
           <View style={styles.sectionBlock}>
-            <Text style={styles.sectionTitle}>Recent Tournaments</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Tournaments</Text>
 
             {isActivityLoading ? <LoadingBlock label="Loading activity…" /> : null}
 
             {!isActivityLoading && recentTournaments.length === 0 ? (
               <SurfaceCard style={styles.emptyCard}>
-                <Text style={styles.emptyCardTitle}>No tournaments yet</Text>
-                <Text style={styles.emptyCardBody}>
+                <Text style={[styles.emptyCardTitle, { color: colors.text }]}>No tournaments yet</Text>
+                <Text style={[styles.emptyCardBody, { color: colors.textMuted }]}>
                   Once you register for an event, it will show up here with status and date.
                 </Text>
               </SurfaceCard>
@@ -569,7 +588,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
-  tdRatingTitle: { color: palette.text, fontSize: 16, fontWeight: '600' },
+  tdRatingTitle: { fontSize: 16, fontWeight: '600' },
   tdRatingRowBtn: {
     marginTop: spacing.md,
     flexDirection: 'row',
@@ -582,8 +601,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-  tdRatingValue: { color: palette.text, fontSize: 16, fontWeight: '800' },
-  tdRatingMuted: { color: palette.textMuted, fontSize: 16, fontWeight: '700' },
+  tdRatingValue: { fontSize: 16, fontWeight: '800' },
+  tdRatingMuted: { fontSize: 16, fontWeight: '700' },
   tdAchievementsWordsRow: {
     marginTop: spacing.sm,
     flexDirection: 'row',
@@ -593,13 +612,10 @@ const styles = StyleSheet.create({
   tdAchievementWordChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#9CD9A3',
-    backgroundColor: '#E8F7EB',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   tdAchievementWordText: {
-    color: '#1E7A32',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -611,7 +627,6 @@ const styles = StyleSheet.create({
   },
   modalRatingValueInline: {
     marginLeft: 8,
-    color: palette.text,
     fontSize: 24,
     fontWeight: '800',
   },
@@ -619,17 +634,14 @@ const styles = StyleSheet.create({
   feedbackChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#9CD9A3',
-    backgroundColor: '#E8F7EB',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  feedbackChipText: { color: '#1E7A32', fontSize: 13, fontWeight: '600' },
+  feedbackChipText: { fontSize: 13, fontWeight: '600' },
   sectionBlock: {
     gap: spacing.md,
   },
   sectionTitle: {
-    color: palette.text,
     fontSize: 18,
     fontWeight: '700',
   },
@@ -637,12 +649,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyCardTitle: {
-    color: palette.text,
     fontSize: 17,
     fontWeight: '700',
   },
   emptyCardBody: {
-    color: palette.textMuted,
     lineHeight: 21,
   },
   activityCard: {

@@ -26,7 +26,8 @@ const config: ExpoConfig = {
   scheme: 'piqle',
   version: '0.1.0',
   orientation: 'portrait',
-  userInterfaceStyle: 'light',
+  /** Иначе системная клавиатура и часть нативного UI остаются светлыми при тёмной теме приложения. */
+  userInterfaceStyle: 'automatic',
   plugins,
   experiments: {
     typedRoutes: true,

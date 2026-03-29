@@ -83,6 +83,10 @@ export type ThemePalette = typeof lightPalette
 export const getPalette = (theme: AppTheme): ThemePalette =>
   theme === 'dark' ? darkPalette : lightPalette
 
+/** iOS `TextInput`: внешний вид системной клавиатуры (см. также `userInterfaceStyle` в app.config). */
+export const keyboardAppearanceForTheme = (theme: AppTheme): 'light' | 'dark' =>
+  theme === 'dark' ? 'dark' : 'light'
+
 export const palette: ThemePalette = { ...lightPalette }
 
 export const applyThemePalette = (theme: AppTheme) => {

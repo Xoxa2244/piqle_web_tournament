@@ -1,7 +1,7 @@
 import { router } from 'expo-router'
 import type { ReactNode } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getPalette, spacing, type AppTheme } from '../../lib/theme'
 import { useAppTheme } from '../../providers/ThemeProvider'
@@ -23,14 +23,18 @@ export const SubpageHeader = ({
 }) => {
   const { theme: contextTheme } = useAppTheme()
   const colors = getPalette(themeMode ?? contextTheme)
+  const insets = useSafeAreaInsets()
 
   return (
-    <SafeAreaView
+    <View
       style={[
         styles.safeArea,
-        { backgroundColor: colors.surfaceOverlay, borderBottomColor: colors.border },
+        {
+          paddingTop: insets.top,
+          backgroundColor: colors.surfaceOverlay,
+          borderBottomColor: colors.border,
+        },
       ]}
-      edges={['top']}
     >
       <View style={styles.header}>
         <BackCircleButton onPress={onBack ?? (() => router.back())} style={styles.backButton} />
@@ -39,7 +43,7 @@ export const SubpageHeader = ({
         </Text>
         <View style={styles.rightSlot}>{right ?? <View style={styles.placeholder} />}</View>
       </View>
-    </SafeAreaView>
+    </View>
   )
 }
 

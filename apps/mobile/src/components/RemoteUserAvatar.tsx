@@ -4,6 +4,7 @@ import { Image, StyleSheet, View } from 'react-native'
 
 import { tournamentPlaceholder } from '../constants/images'
 import { isRemoteImageUri } from '../lib/imageUri'
+import { useAppTheme } from '../providers/ThemeProvider'
 import { AvatarInitialsBadge } from './AvatarInitialsBadge'
 
 type Props = {
@@ -27,6 +28,7 @@ export function RemoteUserAvatar({
   fallback = 'initials',
   initialsLabel = 'User',
 }: Props) {
+  const { colors } = useAppTheme()
   const [failed, setFailed] = useState(false)
   const showImage = Boolean(uri && isRemoteImageUri(uri) && !failed)
   const r = size / 2
@@ -39,7 +41,7 @@ export function RemoteUserAvatar({
   const ringBackground =
     showImage || fallback === 'tournament'
       ? { backgroundColor: 'transparent' as const }
-      : { backgroundColor: '#e5e7eb' as const }
+      : { backgroundColor: colors.surfaceMuted }
 
   return (
     <View style={[styles.ring, { width: size, height: size, borderRadius: r }, ringBackground]}>
@@ -55,12 +57,12 @@ export function RemoteUserAvatar({
         <Image
           accessibilityIgnoresInvertColors
           source={tournamentPlaceholder}
-          style={{ width: size, height: size }}
+          style={{ width: size, height: size, backgroundColor: colors.surfaceMuted }}
           resizeMode="contain"
         />
       ) : (
-        <View style={[styles.fallbackIcon, { borderRadius: r }]}>
-          <Feather name="user" size={iconSize} color="#6b7280" />
+        <View style={[styles.fallbackIcon, { borderRadius: r, backgroundColor: colors.surfaceMuted }]}>
+          <Feather name="user" size={iconSize} color={colors.textMuted} />
         </View>
       )}
     </View>
@@ -77,6 +79,5 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#e5e7eb',
   },
 })

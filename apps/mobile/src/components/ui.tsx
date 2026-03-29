@@ -14,11 +14,11 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { keyboardAppearanceForTheme, radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
-import { CHAT_AMBIENT_FALLBACK, ChatAmbientBackground } from './chatAmbient'
+import { ChatAmbientBackground } from './chatAmbient'
 import { OptionalLinearGradient } from './OptionalLinearGradient'
 
 type ScreenProps = PropsWithChildren<{
@@ -33,10 +33,10 @@ type ScreenProps = PropsWithChildren<{
 }>
 
 const useThemedUi = () => {
-  const { colors } = useAppTheme()
+  const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
 
-  return { colors, styles }
+  return { colors, styles, theme }
 }
 
 export const Screen = ({
@@ -49,7 +49,8 @@ export const Screen = ({
   contentStyle,
   chatAmbient = false,
 }: ScreenProps) => {
-  const { styles } = useThemedUi()
+  const { colors, styles } = useThemedUi()
+  const insets = useSafeAreaInsets()
   const content = (
     <>
       {title ? (
@@ -88,9 +89,9 @@ export const Screen = ({
 
   if (!chatAmbient) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {body}
-      </SafeAreaView>
+      <View style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={{ flex: 1, paddingTop: insets.top }}>{body}</View>
+      </View>
     )
   }
 
@@ -98,9 +99,9 @@ export const Screen = ({
     <View style={styles.chatAmbientRoot}>
       <ChatAmbientBackground />
       {/* bottom убран: иначе с KAV на iOS суммируется «домашняя» зона и клавиатура — инпут уезжает вверх */}
-      <SafeAreaView style={styles.safeAreaChatAmbientFill} edges={['top']}>
+      <View style={[styles.safeAreaChatAmbientFill, { paddingTop: insets.top }]}>
         <View style={styles.chatAmbientForeground}>{body}</View>
-      </SafeAreaView>
+      </View>
     </View>
   )
 }
@@ -307,7 +308,7 @@ export const InputField = ({
   onFocus?: TextInputProps['onFocus']
   onBlur?: TextInputProps['onBlur']
 }) => {
-  const { colors, styles } = useThemedUi()
+  const { colors, styles, theme } = useThemedUi()
   const [focused, setFocused] = useState(false)
   const focusShellStyle =
     focused && appearance === 'search'
@@ -338,6 +339,7 @@ export const InputField = ({
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         keyboardType={keyboardType}
+        keyboardAppearance={keyboardAppearanceForTheme(theme)}
         returnKeyType={returnKeyType}
         onSubmitEditing={onSubmitEditing}
         style={[styles.input, multiline && styles.inputMultiline]}
@@ -486,11 +488,10 @@ export const DataRow = ({ label, value }: { label: string; value: string }) => {
 const createStyles = (colors: ThemePalette) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   chatAmbientRoot: {
     flex: 1,
-    backgroundColor: CHAT_AMBIENT_FALLBACK,
+    backgroundColor: colors.background,
   },
   safeAreaChatAmbientFill: {
     flex: 1,
