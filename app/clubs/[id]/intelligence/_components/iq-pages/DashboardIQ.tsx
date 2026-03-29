@@ -390,13 +390,8 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
   return {
     kpis: (() => {
       // Prefer explicit pricingModel from onboarding settings; fall back to heuristic detection
-      const isMembership = pricingModel === 'membership' || pricingModel === 'free'
-        || (pricingModel == null && (
-          (typeof m.lostRevenue.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.'))
-          || String(m.lostRevenue.value).replace(/[\s,]/g, '') === '$0'
-          || m.lostRevenue.value === 0
-          || !m.lostRevenue.value
-        ));
+      // Default to membership when pricingModel not configured
+      const isMembership = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
       return [
         { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
         { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
@@ -624,7 +619,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   // Use real data if available, otherwise fall back to mocks only in demo mode
   const pricingModel: string | undefined = settingsData?.settings?.pricingModel;
-  const isMembershipClub = pricingModel === 'membership' || pricingModel === 'free';
+  const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
 
   let realData: ReturnType<typeof mapRealDataToPeriod> = null;
   try {
@@ -1023,13 +1018,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 const revenueVal = m?.bookings?.value || 0;
                 const revChange = m?.bookings?.trend?.changePercent || 0;
                 const revDir = m?.bookings?.trend?.direction || 'up';
-                const isMembership = isMembershipClub
-                  || (pricingModel == null && (
-                    (typeof m?.lostRevenue?.subtitle === 'string' && m.lostRevenue.subtitle.includes('est.'))
-                    || String(m?.lostRevenue?.value).replace(/[\s,]/g, '') === '$0'
-                    || m?.lostRevenue?.value === 0
-                    || !m?.lostRevenue?.value
-                  ));
+                const isMembership = isMembershipClub;
 
                 if (!m || totalMembers === 0) {
                   return (

@@ -92,7 +92,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
     { enabled: !!clubId, staleTime: 60_000 }
   );
   const pricingModel = intelligenceSettings?.settings?.pricingModel;
-  const isMembershipClub = pricingModel === 'membership' || pricingModel === 'free';
+  // Default to membership when pricingModel is not yet configured (most clubs are membership-based)
+  const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
   const navSections = buildNavSections(isMembershipClub);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
