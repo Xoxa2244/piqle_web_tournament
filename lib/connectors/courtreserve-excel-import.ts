@@ -30,6 +30,10 @@ interface ParsedMember {
   duprDoubles?: number
   skillLevel?: string
   membership?: string
+  membershipStatus?: string
+  membershipStartDate?: string
+  membershipCancelDate?: string
+  firstMembershipStartDate?: string
   lastVisit?: string
   firstVisit?: string
   reservationCount?: number
@@ -218,6 +222,10 @@ export function mapMemberRows(rows: Record<string, any>[]): ParsedMember[] {
       duprDoubles,
       skillLevel: safeStr(col(row, 'Skill Level', 'SkillLevel', 'IPC Verified Rating')),
       membership: safeStr(col(row, 'Current Membership', 'Membership', 'MembershipType')),
+      membershipStatus: safeStr(col(row, 'Membership Status', 'MembershipStatus')),
+      membershipStartDate: safeStr(col(row, 'Current Membership Start Date', 'MembershipStartDate')),
+      membershipCancelDate: safeStr(col(row, 'Membership Cancellation Date', 'MembershipCancellationDate', 'CancellationDate')),
+      firstMembershipStartDate: safeStr(col(row, 'First Membership Start Date', 'FirstMembershipStartDate')),
       lastVisit: safeStr(col(row, 'Last Visit Date', 'LastVisitDate')),
       firstVisit: safeStr(col(row, 'First Visit Date', 'FirstVisitDate')),
       reservationCount: safeNum(col(row, '# of Reservations', 'ReservationCount')),
@@ -458,6 +466,10 @@ async function _runImportPipeline(
           name: member.name,
           email,
           membership: member.membership || null,
+          membershipStatus: member.membershipStatus || null,
+          membershipStartDate: member.membershipStartDate || null,
+          membershipCancelDate: member.membershipCancelDate || null,
+          firstMembershipStartDate: member.firstMembershipStartDate || null,
           lastVisit: member.lastVisit || null,
           firstVisit: member.firstVisit || null,
           reservationCount: member.reservationCount || 0,
@@ -466,7 +478,7 @@ async function _runImportPipeline(
           duprDoubles: member.duprDoubles || null,
           externalId: member.externalId,
         }
-        const memberContent = `Member: ${member.name || email}${member.membership ? ` | Membership: ${member.membership}` : ''}${member.lastVisit ? ` | Last visit: ${member.lastVisit}` : ''}${member.firstVisit ? ` | First visit: ${member.firstVisit}` : ''}`
+        const memberContent = `Member: ${member.name || email}${member.membership ? ` | Membership: ${member.membership}` : ''}${member.membershipStatus ? ` | Status: ${member.membershipStatus}` : ''}${member.lastVisit ? ` | Last visit: ${member.lastVisit}` : ''}${member.firstVisit ? ` | First visit: ${member.firstVisit}` : ''}`
         const memberEmbeddingId = `member_${partnerId}_${member.externalId}`
 
         await Promise.all([
