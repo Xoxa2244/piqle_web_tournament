@@ -360,7 +360,7 @@ function TypeIcon({ type }: { type: string }) {
 }
 /* ============================================= */ /*              EVENTS PAGE                       */ /* ============================================= */
 
-export function EventsIQ({ embedded = false, eventsListData }: { embedded?: boolean; eventsListData?: any }) {
+export function EventsIQ({ embedded = false, eventsListData, clubId }: { embedded?: boolean; eventsListData?: any; clubId?: string }) {
   const { isDark } = useTheme();
   const [statusFilter, setStatusFilter] = useState<'all' | EventStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -707,10 +707,10 @@ export function EventsIQ({ embedded = false, eventsListData }: { embedded?: bool
                   <div className="text-right hidden sm:block">
                     {' '}
                     <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 700 }}>
-                      ${event.revenue.toLocaleString()}
+                      {event.registered}/{event.capacity}
                     </div>{' '}
                     <div className="text-[10px]" style={{ color: 'var(--t4)' }}>
-                      ${event.price}/person
+                      players
                     </div>{' '}
                   </div>{' '}
                   <motion.div
@@ -736,36 +736,46 @@ export function EventsIQ({ embedded = false, eventsListData }: { embedded?: bool
                         className="px-5 pb-5 pt-2 space-y-4"
                         style={{ borderTop: '1px solid var(--divider)' }}
                       >
-                        {' '}
-                        <p className="text-sm" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
-                          {event.description}
-                        </p>{' '}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          {' '}
                           {[
-                            { label: 'Duration', value: event.duration },
-                            { label: 'Price', value: `$${event.price}` },
+                            { label: 'Time', value: event.time || '' },
+                            { label: 'Court', value: event.court },
                             { label: 'Registered', value: `${event.registered}/${event.capacity}` },
-                            { label: 'Revenue', value: `$${event.revenue.toLocaleString()}` },
+                            { label: 'Fill Rate', value: event.capacity > 0 ? `${Math.round((event.registered / event.capacity) * 100)}%` : 'N/A' },
                           ].map((stat) => (
                             <div
                               key={stat.label}
                               className="p-3 rounded-lg text-center"
                               style={{ background: 'var(--subtle)' }}
                             >
-                              {' '}
                               <div className="text-[10px] mb-1" style={{ color: 'var(--t4)' }}>
                                 {stat.label}
-                              </div>{' '}
+                              </div>
                               <div
                                 className="text-xs"
                                 style={{ color: 'var(--t1)', fontWeight: 700 }}
                               >
                                 {stat.value}
-                              </div>{' '}
+                              </div>
                             </div>
-                          ))}{' '}
-                        </div>{' '}
+                          ))}
+                        </div>
+                        {/* Underfilled → link to Slot Filler */}
+                        {event.registered < event.capacity && event.status !== 'completed' && clubId && (
+                          <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.12)' }}>
+                            <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+                            <span className="text-xs" style={{ color: 'var(--t2)' }}>
+                              {event.capacity - event.registered} spots available — find matching players to fill this session
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); window.location.href = `/clubs/${clubId}/intelligence/slot-filler`; }}
+                              className="ml-auto px-3 py-1.5 rounded-lg text-xs whitespace-nowrap"
+                              style={{ background: 'rgba(139,92,246,0.15)', color: '#A78BFA', fontWeight: 600 }}
+                            >
+                              Fill → Slot Filler
+                            </button>
+                          </div>
+                        )}{' '}
                         {/* AI Prediction */}{' '}
                         {event.aiPrediction && (
                           <div

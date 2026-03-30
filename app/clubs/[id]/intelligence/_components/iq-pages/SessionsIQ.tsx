@@ -604,7 +604,7 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
           </div>
 
           {/* Events Section */}
-          <EventsIQ embedded eventsListData={eventsListData ?? undefined} />
+          <EventsIQ embedded eventsListData={eventsListData ?? undefined} clubId={clubId} />
         </>
       ) : (
         /* Session List View */
