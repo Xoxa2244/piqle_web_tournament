@@ -40,9 +40,6 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Sessions", path: "/sessions" },
-      isMembership
-        ? { icon: Activity, label: "Utilization", path: "/revenue" }
-        : { icon: DollarSign, label: "Revenue", path: "/revenue" },
     ],
   },
   {
@@ -51,7 +48,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: Cpu,
     items: [
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-      { icon: Puzzle, label: "Slot Filler", path: "/slot-filler", isAI: true },
+      { icon: Puzzle, label: "Court Optimizer", path: "/slot-filler", isAI: true },
     ],
   },
   {
