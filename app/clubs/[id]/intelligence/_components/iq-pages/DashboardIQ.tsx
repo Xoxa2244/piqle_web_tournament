@@ -7,7 +7,7 @@ import {
   Users, CalendarDays, DollarSign, TrendingUp, TrendingDown,
   Sparkles, ArrowUpRight, ArrowDownRight, Clock, Target,
   BarChart3, Zap, AlertTriangle, CheckCircle2, Brain,
-  Upload, Heart, Activity, UserPlus,
+  Upload, Heart, Activity, UserPlus, MapPin, Calendar,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell,
@@ -901,7 +901,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           })()}
         </Card>
 
-        {/* AI Weekly Summary — generated from real data */}
+        {/* AI Insights — powered by getClubInsights endpoint */}
         <Card className="relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 pointer-events-none" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.08), transparent 70%)" }} />
           <div className="relative">
@@ -910,129 +910,96 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Weekly Summary</h3>
-                <p className="text-[10px]" style={{ color: "var(--t4)" }}>Generated from your data</p>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Insights</h3>
+                <p className="text-[10px]" style={{ color: "var(--t4)" }}>Prioritized recommendations</p>
               </div>
             </div>
 
-            <div className="space-y-4 text-sm" style={{ color: "var(--t2)", lineHeight: 1.7 }}>
-              {(() => {
-                const m = activeDashboardData?.metrics;
-                const hs = healthData?.summary;
-                const totalMembers = hs ? (hs.healthy + hs.watch + hs.atRisk + hs.critical) : 0;
-                const atRiskCount = hs?.atRisk || 0;
-                const criticalCount = hs?.critical || 0;
-                const occupancy = m?.occupancy?.value || "0%";
-                const occNum = parseInt(String(occupancy).replace('%','')) || 0;
-                const revenueVal = m?.bookings?.value || 0;
-                const revChange = m?.bookings?.trend?.changePercent || 0;
-                const revDir = m?.bookings?.trend?.direction || 'up';
-                const isMembership = isMembershipClub;
+            {(() => {
+              const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
+                { clubId: clubId! },
+                { enabled: !!clubId },
+              );
 
-                if (!m || totalMembers === 0) {
-                  return (
-                    <p>
-                      <span style={{ fontWeight: 600, color: "var(--heading)" }}>Getting started.</span>{" "}
-                      Import your session data to unlock AI-powered weekly insights about your club performance, member health, and revenue opportunities.
-                    </p>
-                  );
-                }
+              const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+                court_optimization: MapPin,
+                member_retention: Users,
+                growth: TrendingUp,
+                alert: AlertTriangle,
+                schedule: Calendar,
+              };
 
-                const headline = revDir === 'up' && revChange > 5
-                  ? `Strong performance.`
-                  : revDir === 'up'
-                  ? `Steady growth.`
-                  : revChange < -10
-                  ? `Needs attention.`
-                  : `Holding steady.`;
+              const priorityColor: Record<string, string> = {
+                high: "#EF4444",
+                medium: "#F59E0B",
+                low: "#10B981",
+              };
 
-                const revText = isMembership
-                  ? (revDir === 'up'
-                    ? `Player sessions are up ${revChange}% vs last period — ${totalMembers} members tracked.`
-                    : `Player sessions are down ${Math.abs(revChange)}% vs last period. ${totalMembers} members tracked.`)
-                  : (revDir === 'up'
-                    ? `Revenue is up ${revChange}% vs last period with ${totalMembers} active members tracked.`
-                    : `Revenue is down ${Math.abs(revChange)}% vs last period. ${totalMembers} members are being tracked.`);
-
-                const occText = occNum >= 80
-                  ? `Court occupancy is strong at ${occupancy}.`
-                  : occNum >= 50
-                  ? `Court occupancy at ${occupancy} — room to grow.`
-                  : `Court occupancy is low at ${occupancy}. Consider promotions or schedule adjustments.`;
-
-                const riskText = atRiskCount + criticalCount > 0
-                  ? isMembership
-                    ? `${atRiskCount + criticalCount} members show reduced engagement based on recent activity. A reactivation campaign could help bring them back.`
-                    : `${atRiskCount + criticalCount} members show reduced engagement. A reactivation campaign could recover that activity.`
-                  : `All members are in good health — keep up the engagement!`;
-
-                // Goal-specific summary paragraphs
-                const goalParas: React.ReactNode[] = [];
-                if (clubGoals.includes('fill_sessions') && occNum < 70) {
-                  goalParas.push(
-                    <p key="goal-fill">
-                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Fill Sessions:</span>{" "}
-                      Occupancy is at {occupancy}, below your target. Use Slot Filler to send targeted invites for underbooked sessions.
-                    </p>
-                  );
-                }
-                if (clubGoals.includes('improve_retention') && (atRiskCount + criticalCount) > 0) {
-                  goalParas.push(
-                    <p key="goal-retention">
-                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Retention:</span>{" "}
-                      Check the Reactivation tab in Members to send personalized outreach to inactive members.
-                    </p>
-                  );
-                }
-                if (clubGoals.includes('increase_revenue')) {
-                  const lostVal = m?.lostRevenue?.value;
-                  if (lostVal && lostVal !== '$0' && lostVal !== 'N/A') {
-                    goalParas.push(
-                      <p key="goal-revenue">
-                        <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Revenue:</span>{" "}
-                        {lostVal} in lost revenue detected. Dynamic pricing and fill campaigns can help recover it.
-                      </p>
-                    );
-                  }
-                }
-                if (clubGoals.includes('reduce_no_shows')) {
-                  goalParas.push(
-                    <p key="goal-noshows">
-                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — No-Shows:</span>{" "}
-                      Automated reminders before sessions can reduce no-shows by up to 30%.
-                    </p>
-                  );
-                }
-                if (clubGoals.includes('grow_membership') && totalMembers > 0) {
-                  goalParas.push(
-                    <p key="goal-growth">
-                      <span className="text-violet-400" style={{ fontWeight: 600 }}>Goal — Growth:</span>{" "}
-                      With {totalMembers} members, referral programs and trial offers can drive the next wave of signups.
-                    </p>
-                  );
-                }
-
+              if (insightsQuery.isLoading) {
                 return (
-                  <>
-                    <p>
-                      <span style={{ fontWeight: 600, color: "var(--heading)" }}>{headline}</span>{" "}
-                      {revText}
-                    </p>
-                    <p>
-                      <span className="text-cyan-400" style={{ fontWeight: 600 }}>Occupancy:</span>{" "}
-                      {occText}
-                    </p>
-                    <p>
-                      <span className={atRiskCount + criticalCount > 0 ? "text-amber-400" : "text-emerald-400"} style={{ fontWeight: 600 }}>
-                        {atRiskCount + criticalCount > 0 ? "Watch out:" : "Looking good:"}
-                      </span>{" "}
-                      {riskText}
-                    </p>
-                    {goalParas.length > 0 && goalParas}
-                  </>
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="flex items-start gap-3 animate-pulse">
+                        <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: "var(--card-border)" }} />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3 rounded" style={{ background: "var(--card-border)", width: "60%" }} />
+                          <div className="h-2.5 rounded" style={{ background: "var(--card-border)", width: "90%" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 );
-              })()}
-            </div>
+              }
+
+              const insights = insightsQuery.data?.slice(0, 5) ?? [];
+
+              if (insights.length === 0) {
+                return (
+                  <div className="flex items-center gap-2 py-4">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <p className="text-sm" style={{ color: "var(--t3)" }}>All good! No actionable insights right now.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-0">
+                  {insights.map((insight, idx) => {
+                    const Icon = insightTypeIcon[insight.type] || Zap;
+                    const dotColor = priorityColor[insight.priority] || "#10B981";
+                    return (
+                      <div key={insight.id}>
+                        {idx > 0 && <div style={{ height: 1, background: "var(--divider)", margin: "0" }} />}
+                        <div className="flex items-start gap-2.5 py-2.5">
+                          <span
+                            className="mt-1.5 shrink-0 rounded-full"
+                            style={{ width: 8, height: 8, background: dotColor }}
+                          />
+                          <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "var(--t3)" }} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] leading-tight" style={{ fontWeight: 600, color: "var(--heading)" }}>
+                              {insight.title}
+                            </p>
+                            <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--t3)" }}>
+                              {insight.description}
+                            </p>
+                          </div>
+                          {insight.actionLink && (
+                            <button
+                              onClick={() => router.push(insight.actionLink!)}
+                              className="text-[11px] shrink-0 mt-0.5 transition-opacity hover:opacity-80"
+                              style={{ color: "#8B5CF6", fontWeight: 600, whiteSpace: "nowrap" }}
+                            >
+                              {insight.action || "View"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
               {displayInsights.length > 0 ? displayInsights.map((insight) => (
