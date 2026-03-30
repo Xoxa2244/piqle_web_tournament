@@ -133,89 +133,64 @@ export const intelligenceRouter = createTRPCRouter({
         limit: number,
       ) {
         try {
-          // Query bookings from last 90 days for this club, grouped by user
+          // Raw SQL aggregation — scores 21K+ bookings in DB, returns only top N
           const since = new Date()
           since.setDate(since.getDate() - 90)
-
-          const bookings = await prisma.playSessionBooking.findMany({
-            where: {
-              status: 'CONFIRMED',
-              playSession: {
-                clubId,
-                date: { gte: since },
-              },
-            },
-            select: {
-              userId: true,
-              playSession: { select: { format: true, startTime: true, courtId: true } },
-            },
-          })
-
-          // Score each player: +3 for same format, +2 for similar time (same hour), +1 for same court, +1 per booking
-          const scores = new Map<string, { total: number; formatMatch: number; timeMatch: number; bookingCount: number }>()
           const sessionHour = sessionInfo.startTime ? parseInt(sessionInfo.startTime.split(':')[0] || '0') : -1
+          const fmt = sessionInfo.format || ''
+          const crtId = sessionInfo.courtId || ''
 
-          for (const b of bookings) {
-            if (alreadyBookedUserIds.has(b.userId)) continue
-            const existing = scores.get(b.userId) || { total: 0, formatMatch: 0, timeMatch: 0, bookingCount: 0 }
-            existing.bookingCount++
-            existing.total += 1 // base point per booking
-            if (sessionInfo.format && b.playSession?.format === sessionInfo.format) {
-              existing.formatMatch++
-              existing.total += 3
-            }
-            if (sessionHour >= 0 && b.playSession?.startTime) {
-              const bookingHour = parseInt(b.playSession.startTime.split(':')[0] || '0')
-              if (Math.abs(bookingHour - sessionHour) <= 1) {
-                existing.timeMatch++
-                existing.total += 2
-              }
-            }
-            if (sessionInfo.courtId && b.playSession?.courtId === sessionInfo.courtId) {
-              existing.total += 1
-            }
-            scores.set(b.userId, existing)
-          }
+          const rows: any[] = await prisma.$queryRawUnsafe(`
+            SELECT
+              b.user_id,
+              u.name,
+              u.email,
+              u.image,
+              COUNT(*)::int as booking_count,
+              COUNT(*) FILTER (WHERE ps.format = $2)::int as format_match,
+              COUNT(*) FILTER (WHERE ps.court_id = $4)::int as court_match,
+              CASE WHEN $3 >= 0 THEN
+                COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps.start_time::time) - $3) <= 1)::int
+              ELSE 0 END as time_match
+            FROM play_session_bookings b
+            JOIN play_sessions ps ON ps.id = b.session_id
+            JOIN users u ON u.id = b.user_id
+            WHERE ps.club_id = $1::uuid
+              AND ps.date >= $5
+              AND b.status = 'CONFIRMED'
+            GROUP BY b.user_id, u.name, u.email, u.image
+            ORDER BY (
+              COUNT(*)
+              + COUNT(*) FILTER (WHERE ps.format = $2) * 3
+              + CASE WHEN $3 >= 0 THEN COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps.start_time::time) - $3) <= 1) * 2 ELSE 0 END
+              + COUNT(*) FILTER (WHERE ps.court_id = $4)
+            ) DESC
+            LIMIT $6
+          `, clubId, fmt, sessionHour, crtId, since, limit)
 
-          // Sort by score descending, take top N
-          const topUserIds = Array.from(scores.entries())
-            .sort(([, a], [, b]) => b.total - a.total)
-            .slice(0, limit)
-            .map(([userId]) => userId)
-
-          if (topUserIds.length === 0) return []
-
-          // Load user info
-          const users = await prisma.user.findMany({
-            where: { id: { in: topUserIds } },
-            select: { id: true, name: true, email: true, image: true, duprRatingDoubles: true },
-          })
-          const userMap = new Map<string, any>(users.map((u: any) => [u.id, u]))
-
-          return topUserIds.map(userId => {
-            const user = userMap.get(userId)
-            const s = scores.get(userId)!
-            if (!user) return null
+          return rows.map((r: any) => {
+            if (alreadyBookedUserIds.has(r.user_id)) return null
+            const totalScore = r.booking_count + r.format_match * 3 + r.time_match * 2 + r.court_match
             return {
               member: {
-                id: user.id,
-                name: user.name || 'Unknown',
-                email: user.email || '',
-                image: user.image,
-                duprRating: user.duprRatingDoubles,
-                duprRatingDoubles: user.duprRatingDoubles,
+                id: r.user_id,
+                name: r.name || 'Unknown',
+                email: r.email || '',
+                image: r.image,
+                duprRating: null,
+                duprRatingDoubles: null,
                 lastPlayedDaysAgo: null,
               },
-              score: Math.min(Math.round((s.total / Math.max(s.bookingCount, 1)) * 20), 99),
-              estimatedLikelihood: 'medium' as const,
+              score: Math.min(Math.round((totalScore / Math.max(r.booking_count, 1)) * 20), 99),
+              estimatedLikelihood: r.booking_count >= 10 ? 'high' as const : r.booking_count >= 3 ? 'medium' as const : 'low' as const,
               reasoning: {
-                summary: `Frequently plays ${s.formatMatch > 0 ? 'this format' : 'at this club'}${s.timeMatch > 0 ? ' at similar times' : ''} (${s.bookingCount} sessions in 90d)`,
+                summary: `Plays ${r.format_match > 0 ? 'this format' : 'at this club'}${r.time_match > 0 ? ' at similar times' : ''} (${r.booking_count} sessions in 90d)`,
                 components: {} as Record<string, any>,
               },
               factors: {
-                preferredTimeMatch: s.timeMatch > 0,
-                formatMatch: s.formatMatch > 0,
-                frequentPlayer: s.bookingCount >= 3,
+                preferredTimeMatch: r.time_match > 0,
+                formatMatch: r.format_match > 0,
+                frequentPlayer: r.booking_count >= 3,
               },
               source: 'frequent_player' as const,
             }
