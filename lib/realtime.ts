@@ -5,7 +5,13 @@
 
 export type RealtimeEvent = {
   type: 'invalidate'
-  keys: ('notification.list' | 'club.listMyChatClubs' | 'tournamentChat.listMyEventChats')[]
+  keys: (
+    | 'notification.list'
+    | 'club.listMyChatClubs'
+    | 'tournamentChat.listMyEventChats'
+    | 'registration.getMyStatus'
+    | 'registration.getSeatMap'
+  )[]
 }
 
 type SendFn = (event: RealtimeEvent) => void

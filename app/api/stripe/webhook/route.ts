@@ -71,7 +71,10 @@ export async function POST(request: Request) {
         include: { player: { select: { userId: true } } },
       })
       if (payer?.player?.userId) {
-        pushToUser(payer.player.userId, { type: 'invalidate', keys: ['notification.list'] })
+        pushToUser(payer.player.userId, {
+          type: 'invalidate',
+          keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+        })
       }
       return
     }
@@ -100,7 +103,10 @@ export async function POST(request: Request) {
       include: { player: { select: { userId: true } } },
     })
     if (payerPaid?.player?.userId) {
-      pushToUser(payerPaid.player.userId, { type: 'invalidate', keys: ['notification.list'] })
+      pushToUser(payerPaid.player.userId, {
+        type: 'invalidate',
+        keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+      })
     }
   }
 

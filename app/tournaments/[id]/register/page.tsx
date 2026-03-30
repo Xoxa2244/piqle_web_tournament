@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
@@ -57,11 +57,16 @@ export default function TournamentRegistrationPage() {
   const tournamentId = params.id as string
   const { data: session, status: authStatus } = useSession()
 
-  const { data: seatMap, isLoading, error } = trpc.registration.getSeatMap.useQuery(
+  const {
+    data: seatMap,
+    isLoading,
+    error,
+    refetch: refetchSeatMap,
+  } = trpc.registration.getSeatMap.useQuery(
     { tournamentId },
     { enabled: !!tournamentId }
   )
-  const { data: myStatus } = trpc.registration.getMyStatus.useQuery(
+  const { data: myStatus, refetch: refetchMyStatus } = trpc.registration.getMyStatus.useQuery(
     { tournamentId },
     { enabled: !!tournamentId }
   )
@@ -75,6 +80,7 @@ export default function TournamentRegistrationPage() {
   const [saveCardLoading, setSaveCardLoading] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
+  const handledPaymentResultRef = useRef<string | null>(null)
   const utils = trpc.useUtils()
 
   useEffect(() => {
@@ -122,6 +128,77 @@ export default function TournamentRegistrationPage() {
       ])
     }
   }, [tournamentId, utils])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (authStatus !== 'authenticated' || !tournamentId) return
+
+    let cancelled = false
+
+    const refreshRegistrationState = async () => {
+      await Promise.all([refetchMyStatus(), refetchSeatMap()])
+    }
+
+    const handleReturnFromPayment = async () => {
+      const params = new URLSearchParams(window.location.search)
+      const paymentResult = params.get('payment')
+      if (!paymentResult || handledPaymentResultRef.current === paymentResult) return
+
+      handledPaymentResultRef.current = paymentResult
+
+      if (paymentResult === 'cancel') {
+        await refreshRegistrationState()
+        toast({ description: 'Payment was canceled.', variant: 'default' })
+      }
+
+      if (paymentResult === 'success') {
+        let isPaid = false
+        const maxAttempts = 10
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          const [{ data: refreshedStatus }] = await Promise.all([
+            refetchMyStatus(),
+            refetchSeatMap(),
+          ])
+
+          if (cancelled) return
+
+          isPaid = Boolean(refreshedStatus?.status === 'active' && refreshedStatus?.isPaid)
+          if (isPaid) break
+
+          await new Promise((resolve) => window.setTimeout(resolve, 1500))
+        }
+
+        if (cancelled) return
+
+        toast({
+          description: isPaid
+            ? 'Payment confirmed.'
+            : 'Payment is being confirmed. The registration status will update automatically.',
+          variant: 'success',
+        })
+      }
+
+      params.delete('payment')
+      const nextQuery = params.toString()
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`
+      window.history.replaceState({}, '', nextUrl)
+    }
+
+    const handleWindowFocus = () => {
+      void refreshRegistrationState()
+    }
+
+    void handleReturnFromPayment()
+    window.addEventListener('focus', handleWindowFocus)
+    window.addEventListener('pageshow', handleWindowFocus)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', handleWindowFocus)
+      window.removeEventListener('pageshow', handleWindowFocus)
+    }
+  }, [authStatus, tournamentId, refetchMyStatus, refetchSeatMap])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
