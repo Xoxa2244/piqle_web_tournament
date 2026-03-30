@@ -147,8 +147,8 @@ export const intelligenceRouter = createTRPCRouter({
               u.email,
               u.image,
               COUNT(*)::int as booking_count,
-              COUNT(*) FILTER (WHERE ps.format = $2)::int as format_match,
-              COUNT(*) FILTER (WHERE ps."courtId" = $4)::int as court_match,
+              COUNT(*) FILTER (WHERE ps.format::text = $2)::int as format_match,
+              COUNT(*) FILTER (WHERE ps."courtId"::text = $4)::int as court_match,
               CASE WHEN $3 >= 0 THEN
                 COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps."startTime"::time) - $3) <= 1)::int
               ELSE 0 END as time_match
@@ -157,13 +157,13 @@ export const intelligenceRouter = createTRPCRouter({
             JOIN users u ON u.id = b."userId"
             WHERE ps."clubId" = $1::uuid
               AND ps.date >= $5
-              AND b.status = 'CONFIRMED'::"BookingStatus"
+              AND b.status::text = 'CONFIRMED'
             GROUP BY b."userId", u.name, u.email, u.image
             ORDER BY (
               COUNT(*)
-              + COUNT(*) FILTER (WHERE ps.format = $2) * 3
+              + COUNT(*) FILTER (WHERE ps.format::text = $2) * 3
               + CASE WHEN $3 >= 0 THEN COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps."startTime"::time) - $3) <= 1) * 2 ELSE 0 END
-              + COUNT(*) FILTER (WHERE ps."courtId" = $4)
+              + COUNT(*) FILTER (WHERE ps."courtId"::text = $4)
             ) DESC
             LIMIT $6
           `, clubId, fmt, sessionHour, crtId, since, limit)
