@@ -381,15 +381,10 @@ async function executeSequenceStep(
       }
 
       const { sendSms, isTwilioConfigured } = await import('../sms')
-      // Try to get user's phone
-      const phone = user.phone
-      const pref = await prisma.userPlayPreference.findUnique({
-        where: { userId_clubId: { userId, clubId } },
-        select: { phone: true },
-      }).catch(() => null)
+      const phoneNumber = user.phone
 
-      const phoneNumber = phone || pref?.phone
-      if (phoneNumber && isTwilioConfigured()) {
+      // Guard: only send SMS if user has explicitly opted in
+      if (user.smsOptIn && phoneNumber && isTwilioConfigured()) {
         const result = await sendSms({
           to: phoneNumber,
           body: message.smsBody,
@@ -397,7 +392,11 @@ async function executeSequenceStep(
         })
         externalMessageId = result.sid
         sent = true
-      } else if (!phoneNumber) {
+      } else if (!user.smsOptIn) {
+        console.warn(`[Campaign] SMS skipped — user ${userId} has not opted in, falling back to email`)
+      }
+
+      if (!sent) {
         // No phone — fallback to email for SMS steps
         const { isMandrillConfigured, sendViaMandrill } = await import('../mailchimp')
         if (isMandrillConfigured() && user.email) {

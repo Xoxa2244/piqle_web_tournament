@@ -232,8 +232,8 @@ export const intelligenceRouter = createTRPCRouter({
                 membershipType: memLabel,
               },
               score: Math.min(Math.round((totalScore / Math.max(r.booking_count, 1)) * 15), 99),
-              estimatedLikelihood: (r.days_since_last <= 7 && r.format_match > 3) ? 'high' as const
-                : (r.days_since_last <= 21 && r.format_match > 0) ? 'medium' as const
+              estimatedLikelihood: (r.days_since_last <= 21 && r.format_match >= 3) ? 'high' as const
+                : (r.days_since_last <= 45 && r.booking_count >= 5) ? 'medium' as const
                 : 'low' as const,
               reasoning: {
                 summary: reasons.length > 0

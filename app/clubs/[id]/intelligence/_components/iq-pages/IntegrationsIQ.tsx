@@ -205,10 +205,13 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
                 style={{ marginTop: 3, accentColor: '#6366F1', width: 16, height: 16, flexShrink: 0 }}
               />
               <span>
-                I confirm that I have the authority to share my club&apos;s member data with IQSport for analytics purposes, and that I agree to the{' '}
+                I confirm that I have the authority to share my club&apos;s member data with IQSport for analytics and communication purposes, and that I agree to the{' '}
                 <a href="/dpa" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Data Processing Agreement</a>,{' '}
-                <a href="/privacy" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Privacy Policy</a>, and{' '}
-                <a href="/terms" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Terms of Service</a>.
+                <a href="/privacy" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Privacy Policy</a>,{' '}
+                <a href="/terms" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>Terms of Service</a>, and{' '}
+                <a href="/sms-terms" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>SMS Terms</a>.
+                I will obtain SMS consent from members before enabling SMS notifications, or share the{' '}
+                <a href="/sms-opt-in" target="_blank" style={{ color: '#6366F1', textDecoration: 'underline' }}>SMS opt-in link</a> with them.
               </span>
             </label>
 

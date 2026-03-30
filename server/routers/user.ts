@@ -171,6 +171,8 @@ export const userRouter = createTRPCRouter({
           image: true,
           gender: true,
           city: true,
+          phone: true,
+          smsOptIn: true,
           duprLink: true,
           duprId: true,
           duprRatingSingles: true,

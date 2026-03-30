@@ -1125,9 +1125,9 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
 
   // Load users
   const memberIds = realCandidates.map(c => c.memberId)
-  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+  const users: Array<{ id: string; email: string; name: string | null; phone: string | null; smsOptIn: boolean }> = await prisma.user.findMany({
     where: { id: { in: memberIds } },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
   const usersById = new Map(users.map(u => [u.id, u]))
 
@@ -1212,9 +1212,9 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
     // Send SMS (only if user opted in)
     if (candidate.channel === 'sms' || candidate.channel === 'both') {
       try {
-        const phone = (user as any).phone
+        const phone = user.phone
         if (!phone) throw new Error('Phone number not available')
-        const smsOptIn = (user as any).smsOptIn
+        const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
         const body = buildSlotFillerSms({
           memberName: user.name || 'there',
@@ -1283,9 +1283,9 @@ export async function sendReactivationMessages(
 
   // Load users
   const memberIds = candidateInputs.map(c => c.memberId)
-  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+  const users: Array<{ id: string; email: string; name: string | null; phone: string | null; smsOptIn: boolean }> = await prisma.user.findMany({
     where: { id: { in: memberIds } },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
   const usersById = new Map(users.map(u => [u.id, u]))
 
@@ -1476,9 +1476,9 @@ export async function sendEventInviteMessages(
 
   // Load users
   const memberIds = realCandidates.map(c => c.memberId)
-  const users: Array<{ id: string; email: string; name: string | null }> = await prisma.user.findMany({
+  const users: Array<{ id: string; email: string; name: string | null; phone: string | null; smsOptIn: boolean }> = await prisma.user.findMany({
     where: { id: { in: memberIds } },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
   const usersById = new Map(users.map((u: { id: string; email: string; name: string | null }) => [u.id, u]))
 
@@ -1524,9 +1524,9 @@ export async function sendEventInviteMessages(
     // Send SMS (only if user opted in)
     if (candidate.channel === 'sms' || candidate.channel === 'both') {
       try {
-        const phone = (user as any).phone
+        const phone = user.phone
         if (!phone) throw new Error('Phone number not available')
-        const smsOptIn = (user as any).smsOptIn
+        const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
         await sendSms({ to: phone, body: candidate.customMessage })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })

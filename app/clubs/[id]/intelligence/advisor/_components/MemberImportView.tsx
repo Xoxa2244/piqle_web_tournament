@@ -223,6 +223,19 @@ export function MemberImportView({ clubId, onDone, onCancel }: MemberImportViewP
           </div>
         </div>
 
+        {/* SMS consent notice */}
+        {withPhone.length > 0 && (
+          <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg px-3 py-2.5">
+            <span className="shrink-0 mt-0.5">📱</span>
+            <span>
+              <strong className="text-foreground">{withPhone.length} members have phone numbers.</strong>{' '}
+              SMS notifications will only be sent to members who have opted in.
+              Share this link with members so they can opt in:{' '}
+              <a href="/sms-opt-in" target="_blank" className="text-blue-600 underline">app.iqsport.ai/sms-opt-in</a>
+            </span>
+          </div>
+        )}
+
         {parseError && (
           <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
