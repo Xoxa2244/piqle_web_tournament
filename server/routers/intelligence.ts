@@ -241,38 +241,30 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
       await checkFeatureAccess(session.clubId, 'slot-filler')
 
-      // Try AI recommendations first, fall back to frequent players on any error
-      let result: any = null
+      // Get already booked users for this session
+      const alreadyBooked = new Set<string>()
       try {
-        result = await getSlotFillerRecommendations(ctx.prisma, input)
-      } catch (err) {
-        console.warn('[SlotFiller] AI recommendations failed, using fallback:', (err as Error).message)
+        const bookings = await ctx.prisma.playSessionBooking.findMany({
+          where: { sessionId: input.sessionId, status: 'CONFIRMED' },
+          select: { userId: true },
+        })
+        bookings.forEach((b: any) => alreadyBooked.add(b.userId))
+      } catch { /* non-critical */ }
+
+      // Fast SQL-based recommendations from booking history
+      const players = await getFrequentPlayersFallback(
+        ctx.prisma, session.clubId,
+        { format: session.format, startTime: session.startTime, courtId: session.courtId },
+        alreadyBooked, input.limit,
+      )
+
+      return {
+        session: { id: input.sessionId, ...session },
+        recommendations: players,
+        totalCandidatesScored: players.length,
+        aiEnhancements: [],
+        source: 'frequent_players',
       }
-
-      // Fallback: frequent players from booking history
-      if (!result || result.recommendations.length === 0) {
-        const alreadyBooked = new Set<string>()
-        try {
-          const bookings = await ctx.prisma.playSessionBooking.findMany({
-            where: { sessionId: input.sessionId, status: 'CONFIRMED' },
-            select: { userId: true },
-          })
-          bookings.forEach((b: any) => alreadyBooked.add(b.userId))
-        } catch { /* non-critical */ }
-
-        const fallbackPlayers = await getFrequentPlayersFallback(
-          ctx.prisma, session.clubId,
-          { format: session.format, startTime: session.startTime, courtId: session.courtId },
-          alreadyBooked, input.limit,
-        )
-        const baseResult = result || { session: { id: input.sessionId, ...session }, recommendations: [], metrics: {} }
-        if (fallbackPlayers.length > 0) {
-          return { ...baseResult, recommendations: fallbackPlayers, aiEnhancements: [], source: 'frequent_players' }
-        }
-        return { ...baseResult, recommendations: [], aiEnhancements: [], source: 'frequent_players' }
-      }
-
-      return { ...result, aiEnhancements: [] }
     }),
 
   // ── Weekly Plan: Personalized session plan for a player ──
