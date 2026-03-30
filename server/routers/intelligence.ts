@@ -240,10 +240,17 @@ export const intelligenceRouter = createTRPCRouter({
       }
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
       await checkFeatureAccess(session.clubId, 'slot-filler')
-      const result = await getSlotFillerRecommendations(ctx.prisma, input)
 
-      // Fallback: if no AI recommendations, show frequent players from booking data
-      if (result.recommendations.length === 0) {
+      // Try AI recommendations first, fall back to frequent players on any error
+      let result: any = null
+      try {
+        result = await getSlotFillerRecommendations(ctx.prisma, input)
+      } catch (err) {
+        console.warn('[SlotFiller] AI recommendations failed, using fallback:', (err as Error).message)
+      }
+
+      // Fallback: frequent players from booking history
+      if (!result || result.recommendations.length === 0) {
         const alreadyBooked = new Set<string>()
         try {
           const bookings = await ctx.prisma.playSessionBooking.findMany({
@@ -258,26 +265,11 @@ export const intelligenceRouter = createTRPCRouter({
           { format: session.format, startTime: session.startTime, courtId: session.courtId },
           alreadyBooked, input.limit,
         )
+        const baseResult = result || { session: { id: input.sessionId, ...session }, recommendations: [], metrics: {} }
         if (fallbackPlayers.length > 0) {
-          return { ...result, recommendations: fallbackPlayers, aiEnhancements: [], source: 'frequent_players' }
+          return { ...baseResult, recommendations: fallbackPlayers, aiEnhancements: [], source: 'frequent_players' }
         }
-      }
-
-      // Optional: enhance with LLM
-      if (input.enhance && result.recommendations.length > 0) {
-        try {
-          const { enhanceSlotFillerWithLLM } = await import('@/lib/ai/llm/enhancer')
-          const enhancements = await enhanceSlotFillerWithLLM(
-            result.recommendations,
-            result.session as any
-          )
-          return {
-            ...result,
-            aiEnhancements: enhancements,
-          }
-        } catch (err) {
-          console.error('[Intelligence] Slot filler LLM enhancement failed:', err)
-        }
+        return { ...baseResult, recommendations: [], aiEnhancements: [], source: 'frequent_players' }
       }
 
       return { ...result, aiEnhancements: [] }
