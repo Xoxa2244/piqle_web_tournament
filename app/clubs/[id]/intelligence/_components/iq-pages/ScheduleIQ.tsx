@@ -105,15 +105,20 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
   )
 
   const sessionGrid = useMemo(() => {
-    const map: Record<string, (SessionCalendarItem & { rowSpan: number })[]> = {}
+    const map: Record<string, (SessionCalendarItem & { rowSpan: number; fractionalSpan: number })[]> = {}
     const occupied: Set<string> = new Set()
     for (const s of daySessions) {
       const startH = parseInt(s.startTime.split(':')[0], 10)
+      const startM = parseInt(s.startTime.split(':')[1] || '0', 10)
       const endH = parseInt(s.endTime.split(':')[0], 10)
-      const span = Math.max(1, endH - startH)
+      const endM = parseInt(s.endTime.split(':')[1] || '0', 10)
+      // Fractional hours for CSS height (e.g. 1.5 for 90 min)
+      const fractionalSpan = Math.max(1, (endH + endM / 60) - (startH + startM / 60))
+      // Integer span for grid rows
+      const span = Math.max(1, Math.ceil(fractionalSpan))
       const key = `${s.court}|${startH}`
       if (!map[key]) map[key] = []
-      map[key].push({ ...s, rowSpan: span })
+      map[key].push({ ...s, rowSpan: span, fractionalSpan })
       for (let h = startH + 1; h < startH + span; h++) {
         occupied.add(`${s.court}|${h}`)
       }
@@ -277,6 +282,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                           if (isOccupied) return null
 
                           const span = cellSessions?.[0]?.rowSpan || 1
+                          const fractional = (cellSessions?.[0] as any)?.fractionalSpan || span
 
                           return (
                             <div
@@ -285,6 +291,8 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                               style={{
                                 gridColumn: colIdx + 2,
                                 gridRow: span > 1 ? `${rowIdx + 1} / span ${span}` : rowIdx + 1,
+                                // For fractional spans (e.g. 1.5h session in 2-row span), clip the content
+                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * 56}px` } : {}),
                                 borderTop: '1px solid var(--card-border)',
                                 borderLeft: '1px solid var(--card-border)',
                                 background: isNow ? 'rgba(139,92,246,0.03)' : 'transparent',
