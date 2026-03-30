@@ -63,10 +63,31 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
   const spotsLeft = Math.max(0, (session.capacity || 0) - session.registered)
   const baseline = session.peerAvgOccupancy ?? 70
 
+  // Human-readable title: "Open Play · Advanced" or "Drill" or "League"
+  const formatLabel = useMemo(() => {
+    const f = (session.format || '').toUpperCase()
+    const parts: string[] = []
+    if (f.includes('OPEN_PLAY') || f.includes('OPEN PLAY')) parts.push('Open Play')
+    else if (f.includes('DRILL')) parts.push('Drill')
+    else if (f.includes('CLINIC')) parts.push('Clinic')
+    else if (f.includes('LEAGUE')) parts.push('League')
+    else if (f.includes('SOCIAL')) parts.push('Social')
+    else parts.push(session.format || 'Session')
+    if (sk.label !== 'All Levels' && sk.label !== parts[0]) parts.push(sk.label)
+    return parts.join(' · ')
+  }, [session.format, sk.label])
+
   const dateLabel = useMemo(() => {
     const d = new Date(session.date + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }, [session.date])
+
+  // Load registered players for this session
+  const { data: playersData } = trpc.intelligence.getSessionPlayers.useQuery(
+    { sessionId: session.id, clubId },
+    { enabled: !!session.id },
+  )
+  const players: { id: string; name: string }[] = (playersData?.players ?? session.playerNames?.map((n: string, i: number) => ({ id: String(i), name: n })) ?? []).map((p: any) => ({ id: p.id || '', name: p.name || 'Unknown' }))
 
   // Load recommendations
   const { data: recsData, isLoading: recsLoading } = trpc.intelligence.getSlotFillerRecommendations.useQuery(
@@ -96,7 +117,7 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
           <ArrowLeft className="w-4 h-4" /> Back to Schedule
         </button>
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--heading)' }}>{session.format || sk.label} Open Play</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--heading)' }}>{formatLabel}</h1>
           <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}>
             {sk.label}{sk.range ? ` (${sk.range})` : ''}
           </span>
@@ -132,14 +153,14 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
             <Users className="w-4 h-4" style={{ color: '#8B5CF6' }} />
             <span className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Players ({session.registered} registered)</span>
           </div>
-          {session.playerNames && session.playerNames.length > 0 ? (
-            <div className="space-y-2">
-              {session.playerNames.map((name, i) => (
-                <div key={i} className="flex items-center gap-3 py-1.5">
+          {players.length > 0 ? (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {players.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 py-1.5">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
-                    {initials(name)}
+                    {initials(p.name)}
                   </div>
-                  <span className="text-sm" style={{ color: 'var(--t2)' }}>{name}</span>
+                  <span className="text-sm" style={{ color: 'var(--t2)' }}>{p.name}</span>
                 </div>
               ))}
             </div>

@@ -3208,4 +3208,16 @@ export const intelligenceRouter = createTRPCRouter({
       const insights = await generateClubInsights(ctx.prisma, input.clubId)
       return insights
     }),
+
+  // ── Session players: load registered players for a session ──
+  getSessionPlayers: protectedProcedure
+    .input(z.object({ sessionId: z.string(), clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const bookings = await ctx.prisma.playSessionBooking.findMany({
+        where: { sessionId: input.sessionId, status: 'CONFIRMED' },
+        select: { userId: true, user: { select: { id: true, name: true, image: true } } },
+      })
+      return { players: bookings.map((b: any) => ({ id: b.userId, name: b.user?.name || 'Unknown', image: b.user?.image })) }
+    }),
 })
