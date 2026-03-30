@@ -196,18 +196,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
     );
   }
 
-  /* --- Empty state for real clubs with no data --- */
-  const hasData = displaySlots.length > 0;
-  if (!hasData && !isDemo) {
-    return <EmptyStateIQ icon={Zap} title="No underfilled sessions" description="Once you import session and booking data, the AI will identify underfilled court times and suggest the best players to invite." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  /* --- No data at all --- */
+  if (!dashboardData && !heatmapData && !externalLoading) {
+    return <EmptyStateIQ icon={Zap} title="No session data" description="Import session and booking data to see court utilization and fill recommendations." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
-  /* If somehow still no activeSlot (shouldn't happen after checks above), bail */
-  if (!activeSlot) {
-    return <EmptyStateIQ icon={Zap} title="No underfilled sessions" description="Once you import session and booking data, the AI will identify underfilled court times and suggest the best players to invite." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
-  }
-
-  const potentialRevenue = activeSlot.spotsNeeded * activeSlot.pricePerPlayer;
+  const hasSlots = displaySlots.length > 0;
 
   return (
     <motion.div
@@ -242,7 +236,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
               AI Powered
             </span>
           </div>
-          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>AI matches perfect players to empty slots. One click to fill.</p>
+          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Court utilization heatmap and AI-powered slot filling</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
@@ -254,6 +248,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         </div>
       </div>
 
+      {hasSlots && activeSlot && (<>
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -282,7 +277,9 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         })}
       </div>
 
-      {/* Occupancy Heatmap */}
+      </>)}
+
+      {/* Occupancy Heatmap — always visible */}
       {heatmapData?.heatmap && (
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Court Occupancy Heatmap</h3>
@@ -324,6 +321,18 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         </Card>
       )}
 
+      {/* Underfilled Sessions List */}
+      {!hasSlots && (
+        <Card>
+          <div className="text-center py-8">
+            <Zap className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--t4)" }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--heading)" }}>No underfilled sessions right now</div>
+            <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>All upcoming sessions are above 80% capacity. Check back later or review the heatmap above for utilization patterns.</div>
+          </div>
+        </Card>
+      )}
+
+      {hasSlots && activeSlot && (<>
       {/* Main Content */}
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Slot List */}
@@ -584,9 +593,9 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                 <Zap className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1">
-                <h4 className="text-xs" style={{ fontWeight: 700, color: "var(--heading)" }}>Revenue Impact</h4>
+                <h4 className="text-xs" style={{ fontWeight: 700, color: "var(--heading)" }}>Session Impact</h4>
                 <p className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  Filling this slot recovers <span className="text-emerald-400" style={{ fontWeight: 700 }}>${potentialRevenue}</span> in lost revenue
+                  Filling this slot adds <span className="text-emerald-400" style={{ fontWeight: 700 }}>{activeSlot?.spotsNeeded || 0} players</span> to court utilization
                 </p>
               </div>
               <div className="text-right">
@@ -613,6 +622,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           </Card>
         </div>
       </div>
+      </>)}
     </motion.div>
   );
 }
