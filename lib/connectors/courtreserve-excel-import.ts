@@ -314,37 +314,48 @@ export function mapEventRows(rows: Record<string, any>[]): ParsedSession[] {
     const date = parseDateFromExcel(progDate)
     if (!date) continue
 
-    const dateKey = `${progName}__${date.toISOString().split('T')[0]}`
     const startTimeVal = col(row, 'Start Date/Time', 'Start Date / Time', 'Start DateTime', 'StartDateTime', 'Programming Time', 'Start Time')
     const endTimeVal = col(row, 'End Date/Time', 'End Date / Time', 'End DateTime', 'EndDateTime', 'End Time')
     const category = safeStr(col(row, 'Programming Category', 'Category'))
     const courts = safeStr(col(row, 'Programming Courts', 'Courts'))
+    // Key includes time so "Open Play 9AM" and "Open Play 11AM" are separate sessions
+    const startTimeParsed = parseTimeFromExcel(startTimeVal)
+    const dateKey = `${progName}__${date.toISOString().split('T')[0]}__${startTimeParsed}`
     const price = safeNum(col(row, 'Programming Price', 'Price'))
     const skill = safeStr(col(row, 'Skill Level', 'SkillLevel'))
 
-    if (!sessionMap.has(dateKey)) {
-      sessionMap.set(dateKey, {
-        externalId: `event_${dateKey}`,
-        date,
-        startTime: parseTimeFromExcel(startTimeVal),
-        endTime: endTimeVal ? parseTimeFromExcel(endTimeVal) : parseTimeFromExcel(startTimeVal),
-        courtName: courts.split(',')[0]?.trim(),
-        format: mapFormat(category || progName),
-        skillLevel: mapSkillLevel(skill || category),
-        memberNames: [],
-        memberExternalIds: [],
-        memberCount: 0,
-        price,
-        isCancelled: false,
-        title: `${progName} — ${courts.split(',')[0]?.trim() || 'Court'}`,
-        category: category || progName || undefined,
-      })
+    // Split multi-court events into one session per court for accurate occupancy
+    const courtList = courts ? courts.split(',').map(c => c.trim()).filter(Boolean) : ['']
+    for (const courtEntry of courtList) {
+      const courtKey = `${dateKey}__${courtEntry}`
+      if (!sessionMap.has(courtKey)) {
+        sessionMap.set(courtKey, {
+          externalId: `event_${courtKey}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 200),
+          date,
+          startTime: startTimeParsed,
+          endTime: endTimeVal ? parseTimeFromExcel(endTimeVal) : startTimeParsed,
+          courtName: courtEntry || undefined,
+          format: mapFormat(category || progName),
+          skillLevel: mapSkillLevel(skill || category),
+          memberNames: [],
+          memberExternalIds: [],
+          memberCount: 0,
+          price,
+          isCancelled: false,
+          title: `${progName} — ${courtEntry || 'Court'}`,
+          category: category || progName || undefined,
+        })
+      }
     }
 
-    const session = sessionMap.get(dateKey)!
-    if (memberName) session.memberNames.push(memberName)
-    if (memberNum) session.memberExternalIds.push(memberNum)
-    session.memberCount = session.memberNames.length
+    // Add member to the first court's session (members are shared across courts)
+    const firstCourtKey = `${dateKey}__${courtList[0]}`
+    const session = sessionMap.get(firstCourtKey)
+    if (session) {
+      if (memberName) session.memberNames.push(memberName)
+      if (memberNum) session.memberExternalIds.push(memberNum)
+      session.memberCount = session.memberNames.length
+    }
   }
 
   sessionMap.forEach(session => {
