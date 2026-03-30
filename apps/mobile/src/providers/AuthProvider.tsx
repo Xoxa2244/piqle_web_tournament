@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
+import { TurboModuleRegistry } from 'react-native'
 
 import { authApi, type SignUpInput } from '../lib/authApi'
 import { authStorage, type MobileUser, type StoredAuthSession } from '../lib/authStorage'
@@ -27,20 +28,23 @@ const getGoogleErrorCode = (error: unknown) => {
   return typeof code === 'string' ? code : code != null ? String(code) : null
 }
 
-let googleSignInModulePromise: Promise<GoogleSignInModule> | null = null
+let googleSignInModulePromise: Promise<GoogleSignInModule | null> | null = null
 let googleSignInConfigPromise: Promise<GoogleSignInRuntimeConfig> | null = null
 let isGoogleSigninConfigured = false
 
-const loadGoogleSignInModule = (): Promise<GoogleSignInModule> => {
+/** Резолвит `null`, если нативного модуля нет (Expo Go, старая сборка) — без `require` пакета, иначе внутри него падает getEnforcing. */
+const loadGoogleSignInModule = (): Promise<GoogleSignInModule | null> => {
   if (!googleSignInModulePromise) {
-    googleSignInModulePromise = new Promise((resolve, reject) => {
-      try {
-        const mod = require('@react-native-google-signin/google-signin') as GoogleSignInModule
-        resolve(mod)
-      } catch (e) {
-        reject(e)
+    googleSignInModulePromise = (async () => {
+      if (TurboModuleRegistry.get('RNGoogleSignin') == null) {
+        return null
       }
-    })
+      try {
+        return require('@react-native-google-signin/google-signin') as GoogleSignInModule
+      } catch {
+        return null
+      }
+    })()
   }
   return googleSignInModulePromise
 }
@@ -197,9 +201,10 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     },
     async signInWithGoogle() {
       console.log('[Google Sign-In] Starting sign-in flow')
-      const googleSignIn = await loadGoogleSignInModule().catch((error) => {
-        throw normalizeGoogleSignInError(error)
-      })
+      const googleSignIn = await loadGoogleSignInModule()
+      if (!googleSignIn) {
+        throw new Error(GOOGLE_REBUILD_MESSAGE)
+      }
       const { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } = googleSignIn
 
       try {
@@ -253,7 +258,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       }
     },
     async signOut() {
-      const googleSignIn = await loadGoogleSignInModule().catch(() => null)
+      const googleSignIn = await loadGoogleSignInModule()
 
       if (googleSignIn) {
         try {
