@@ -2347,8 +2347,8 @@ export const intelligenceRouter = createTRPCRouter({
       const totalCourts = Math.max(await ctx.prisma.clubCourt.count({ where: { clubId: input.clubId } }), 1)
 
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-      const timeSlots = ['6AM', '9AM', '12PM', '3PM', '6PM', '8PM', '10PM']
-      const slotStartHours = [6, 9, 12, 15, 18, 20, 22]
+      const timeSlots = ['6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', '10PM']
+      const slotStartHours = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
       // Real occupancy: unique court-hours booked / available court-hours per slot
       const courtHourSets: Record<string, Set<string>> = {}
