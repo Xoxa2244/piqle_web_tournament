@@ -1452,8 +1452,9 @@ export const intelligenceRouter = createTRPCRouter({
         const dbSessions = await ctx.prisma.playSession.findMany({
           where: { clubId: input.clubId },
           select: {
-            date: true, startTime: true, endTime: true, format: true,
+            id: true, date: true, startTime: true, endTime: true, format: true,
             skillLevel: true, maxPlayers: true, pricePerSlot: true, registeredCount: true,
+            title: true, courtId: true,
             clubCourt: { select: { name: true } },
             _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
           },
@@ -1465,12 +1466,15 @@ export const intelligenceRouter = createTRPCRouter({
             ? s.registeredCount
             : s._count.bookings;
           return {
+            id: s.id,
             date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
             startTime: s.startTime,
             endTime: s.endTime,
             court: s.clubCourt?.name || '',
+            courtId: s.courtId,
             format: s.format,
             skillLevel: s.skillLevel,
+            title: s.title,
             registered,
             capacity: s.maxPlayers,
             occupancy: s.maxPlayers > 0 ? Math.round((registered / s.maxPlayers) * 100) : 0,
