@@ -89,7 +89,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
     title: `${underused.length} court${underused.length > 1 ? 's' : ''} under 25% occupancy`,
     description: `${worst.courtName} is at ${Number(worst.occupancyPct)}% occupancy vs ${busiest.courtName} at ${Number(busiest.occupancyPct)}%. Consider consolidating sessions to fewer courts or adding programming to underused ones.`,
     action: 'Review court allocation and consider moving sessions to underutilized courts',
-    actionLink: '/intelligence/revenue',
+    actionLink: '/sessions',
     metrics: {
       underutilizedCourts: underused.length,
       lowestOccupancy: Number(worst.occupancyPct),
@@ -132,7 +132,7 @@ async function peakHourOverflow(prisma: any, clubId: string): Promise<Insight | 
     title: `${overflow.length} time slot${overflow.length > 1 ? 's' : ''} over 80% capacity`,
     description: `The ${label} slot runs at ${peakPct}% capacity on average. ${overflow.length > 1 ? `${overflow.length} slots total are near overflow.` : ''} Adding parallel sessions or extending hours could capture unmet demand.`,
     action: 'Add parallel sessions during peak hours to capture overflow demand',
-    actionLink: '/intelligence/slot-filler',
+    actionLink: '/sessions',
     metrics: {
       overflowSlots: overflow.length,
       peakHour,
@@ -192,7 +192,7 @@ async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | 
     title: `${rows.length} VIP member${rows.length > 1 ? 's' : ''} at risk`,
     description: `${rows.length} premium members haven't played in 14+ days, representing $${Math.round(totalDues)}/mo in revenue at risk. Personal outreach can prevent cancellations.`,
     action: 'Send personal outreach to VIP members inactive 14+ days',
-    actionLink: '/intelligence/reactivation',
+    actionLink: '/members?view=reactivation',
     metrics: {
       atRiskVips: rows.length,
       monthlyRevenueAtRisk: Math.round(totalDues),
@@ -251,7 +251,7 @@ async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | n
     title: `${rows.length} guest${rows.length > 1 ? 's' : ''} ready for membership`,
     description: `${rows.length} Guest Pass holders played ${avgBookings}+ times in 30 days. They're clearly engaged and likely to convert to a full membership.`,
     action: 'Send membership conversion offers to frequent guests',
-    actionLink: '/members?view=guests',
+    actionLink: '/members?view=at-risk',
     metrics: {
       readyToConvert: rows.length,
       avgBookings,
@@ -302,7 +302,7 @@ async function suspendedWinback(prisma: any, clubId: string): Promise<Insight | 
     title: `${rows.length} suspended member${rows.length > 1 ? 's' : ''} — ${recentlyActive} were recently active`,
     description: `${rows.length} members are suspended. ${recentlyActive > 0 ? `${recentlyActive} of them played within the last 30 days — they may reactivate with a targeted offer.` : 'None have played recently, but a win-back campaign could re-engage some.'}`,
     action: recentlyActive > 0 ? 'Send targeted win-back offers to recently active suspended members' : 'Consider a win-back campaign for suspended members',
-    actionLink: '/intelligence/reactivation',
+    actionLink: '/members?view=reactivation',
     metrics: {
       suspendedMembers: rows.length,
       recentlyActive,
@@ -344,7 +344,7 @@ async function formatMismatch(prisma: any, clubId: string): Promise<Insight | nu
     title: `Format imbalance: ${emptyLabel} underbooked`,
     description: `${emptyLabel} sessions average ${Math.round(Number(empty[0].avgOccupancy))}% occupancy while ${fullLabel} runs at ${Math.round(Number(full[0].avgOccupancy))}%. Consider converting some ${emptyLabel} slots to ${fullLabel}.`,
     action: `Rebalance schedule: convert low-demand ${emptyLabel} sessions to high-demand ${fullLabel}`,
-    actionLink: '/intelligence/slot-filler',
+    actionLink: '/sessions',
     metrics: {
       lowOccupancyPct: Math.round(Number(empty[0].avgOccupancy)),
       highOccupancyPct: Math.round(Number(full[0].avgOccupancy)),
@@ -388,7 +388,7 @@ async function dayOfWeekGap(prisma: any, clubId: string): Promise<Insight | null
     title: `${quietest.dayName.trim()} is ${Math.round(gap)}pp behind ${busiest.dayName.trim()}`,
     description: `${quietest.dayName.trim()} averages ${Number(quietest.occupancyPct)}% occupancy vs ${Number(busiest.occupancyPct)}% on ${busiest.dayName.trim()}. A promotion or social event on ${quietest.dayName.trim()} could balance the week.`,
     action: `Run a promotion or add social events on ${quietest.dayName.trim()} to boost attendance`,
-    actionLink: '/intelligence/revenue',
+    actionLink: '/sessions',
     metrics: {
       quietestDayOccupancy: Number(quietest.occupancyPct),
       busiestDayOccupancy: Number(busiest.occupancyPct),
@@ -442,7 +442,7 @@ async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight
     title: `${rows.length} new member${rows.length > 1 ? 's' : ''} need onboarding follow-up`,
     description: `${rows.length} members joined in the last 30 days but played only 0-2 times. ${neverPlayed > 0 ? `${neverPlayed} haven't played at all.` : 'They need encouragement to build the habit.'} Early engagement is critical for retention.`,
     action: 'Send a welcome sequence with session recommendations to new members',
-    actionLink: '/intelligence/reactivation',
+    actionLink: '/members?view=reactivation',
     metrics: {
       newMembersNeedingFollowup: rows.length,
       neverPlayed,
@@ -492,7 +492,8 @@ async function skillProgression(prisma: any, clubId: string): Promise<Insight | 
     title: `${rows.length} member${rows.length > 1 ? 's' : ''} leveled up from Beginner`,
     description: `${rows.length} members started at Beginner and now play at ${toAdvanced > 0 ? 'Intermediate/Advanced' : 'Intermediate'} level. Recognizing their progress builds loyalty and encourages others.`,
     action: 'Send congratulations and offer advanced programming to progressed members',
-    actionLink: '/members',
+    actionLink: '/members'
+,
     metrics: {
       progressedMembers: rows.length,
       reachedAdvanced: toAdvanced,
@@ -530,7 +531,7 @@ async function emptyEveningSlots(prisma: any, clubId: string): Promise<Insight |
     title: `Evening sessions averaging ${Math.round(avgOcc)}% occupancy`,
     description: `${totalEvening} evening sessions (after 7 PM) in the last 30 days averaged only ${Math.round(avgOcc)}% occupancy with ${emptySlots} empty player slots. Social events or league nights could fill these.`,
     action: 'Launch social events or league nights for evening time slots',
-    actionLink: '/intelligence/slot-filler',
+    actionLink: '/sessions',
     metrics: {
       eveningSessions: totalEvening,
       avgEveningOccupancy: Math.round(avgOcc),
