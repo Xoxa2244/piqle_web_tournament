@@ -212,6 +212,7 @@ export default function SignInScreen() {
           style={[styles.backgroundImage, theme === 'dark' && styles.backgroundImageDark]}
           resizeMode="stretch"
         />
+        {theme === 'dark' ? <View style={styles.authBgDarkVeil} pointerEvents="none" /> : null}
       </View>
 
       <KeyboardAvoidingView
@@ -745,7 +746,11 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     ...StyleSheet.absoluteFillObject,
   },
   backgroundImageDark: {
-    opacity: 0.34,
+    opacity: 0.1,
+  },
+  authBgDarkVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
   },
   keyboardAvoid: {
     flex: 1,

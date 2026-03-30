@@ -43,7 +43,8 @@ export const lightPalette = {
 
 export const darkPalette = {
   background: '#0a0a0a',
-  authBackground: '#0a0a0a',
+  /** Логин / регистрация: чуть темнее основного фона приложения. */
+  authBackground: '#000000',
   surface: '#1a1a1a',
   surfaceMuted: '#2d2d2d',
   surfaceElevated: '#222222',
