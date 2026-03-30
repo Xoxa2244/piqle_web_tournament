@@ -8,6 +8,7 @@ import {
 import { useTheme } from "../IQThemeProvider"
 import { useRouter } from "next/navigation"
 import type { SessionCalendarItem } from "@/types/intelligence"
+import { SessionDetailIQ } from "./SessionDetailIQ"
 
 // ── Constants ──
 
@@ -38,23 +39,35 @@ const SKILL_COLORS: Record<SkillTier, { bg: string; border: string; text: string
   other:        { bg: 'rgba(148,163,184,0.1)',  border: 'rgba(148,163,184,0.2)', text: '#94A3B8' },
 }
 
-function classifySkill(format: string, skillLevel: string): { tier: SkillTier; label: string; range: string } {
+function classifySkill(format: string, skillLevel: string, title?: string): { tier: SkillTier; label: string; range: string } {
   const sl = (skillLevel || '').toUpperCase()
   const fmt = (format || '').toUpperCase()
+  const t = (title || '').toUpperCase()
 
-  if (sl.includes('ADVANCED') || sl.includes('4.0'))   return { tier: 'advanced', label: 'Advanced', range: '4.0+' }
-  if (sl.includes('COMPETITIVE') || sl.includes('3.5')) return { tier: 'competitive', label: 'Competitive', range: '3.5 - 3.99' }
-  if (sl.includes('INTERMEDIATE') || sl.includes('3.0')) return { tier: 'intermediate', label: 'Intermediate', range: '3.0 - 3.49' }
-  if (sl.includes('CASUAL') || sl.includes('2.5'))      return { tier: 'casual', label: 'Casual', range: '2.5 - 2.99' }
-  if (sl.includes('BEGINNER') || sl.includes('2.0'))    return { tier: 'beginner', label: 'Beginner', range: '2.0 - 2.49' }
+  // Determine format prefix
+  const fmtPrefix = fmt.includes('LEAGUE') ? 'League'
+    : fmt.includes('DRILL') ? 'Drill'
+    : fmt.includes('CLINIC') ? 'Clinic'
+    : fmt.includes('SOCIAL') ? 'Social'
+    : fmt.includes('OPEN') ? 'Open Play'
+    : ''
 
-  // Try format-based
-  if (fmt.includes('DRILL'))  return { tier: 'other', label: 'Drill', range: '' }
-  if (fmt.includes('CLINIC')) return { tier: 'other', label: 'Clinic', range: '' }
-  if (fmt.includes('LEAGUE')) return { tier: 'other', label: 'League', range: '' }
-  if (fmt.includes('SOCIAL')) return { tier: 'other', label: 'Social', range: '' }
+  // Determine skill tier from skillLevel, title, or format
+  const combined = sl + ' ' + t
+  let tier: SkillTier = 'other', skillLabel = '', range = ''
 
-  return { tier: 'other', label: 'All Levels', range: '' }
+  if (combined.includes('ADVANCED') || combined.includes('4.0'))   { tier = 'advanced'; skillLabel = 'Advanced'; range = '4.0+' }
+  else if (combined.includes('COMPETITIVE') || combined.includes('3.5')) { tier = 'competitive'; skillLabel = 'Competitive'; range = '3.5 - 3.99' }
+  else if (combined.includes('INTERMEDIATE') || combined.includes('3.0')) { tier = 'intermediate'; skillLabel = 'Intermediate'; range = '3.0 - 3.49' }
+  else if (combined.includes('CASUAL') || combined.includes('2.5'))      { tier = 'casual'; skillLabel = 'Casual'; range = '2.5 - 2.99' }
+  else if (combined.includes('BEGINNER') || combined.includes('2.0'))    { tier = 'beginner'; skillLabel = 'Beginner'; range = '2.0 - 2.49' }
+
+  // Build label: "Open Play · Advanced" or "League · Competitive" or just "Drill"
+  const label = fmtPrefix && skillLabel
+    ? `${fmtPrefix} · ${skillLabel}`
+    : fmtPrefix || skillLabel || 'All Levels'
+
+  return { tier: tier || 'other', label, range }
 }
 
 function shortenCourt(court: string): string {
@@ -83,7 +96,7 @@ function SessionDetail({ session, onClose, clubId, isDark }: {
   session: SessionCalendarItem; onClose: () => void; clubId: string; isDark: boolean
 }) {
   const router = useRouter()
-  const sk = classifySkill(session.format, session.skillLevel)
+  const sk = classifySkill(session.format, session.skillLevel, session.title)
   const colors = SKILL_COLORS[sk.tier]
   const occPct = Math.round((session.registered / (session.capacity || 1)) * 100)
 
@@ -257,6 +270,11 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
 
   const currentHour = new Date().getHours()
 
+  // Session detail view
+  if (selectedSession) {
+    return <SessionDetailIQ session={selectedSession} clubId={clubId} onBack={() => setSelectedSession(null)} />
+  }
+
   return (
     <div className="space-y-4">
       {/* ── Day navigation ── */}
@@ -361,7 +379,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                               <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.2 }} />
                             ) : (
                               cellSessions.map((s) => {
-                                const sk = classifySkill(s.format, s.skillLevel)
+                                const sk = classifySkill(s.format, s.skillLevel, s.title)
                                 const colors = SKILL_COLORS[sk.tier]
                                 const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
                                 return (
@@ -392,27 +410,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
           )}
         </div>
 
-        {/* Detail panel (desktop) */}
-        <AnimatePresence>
-          {selectedSession && (
-            <div className="w-[340px] shrink-0 hidden lg:block">
-              <SessionDetail session={selectedSession} onClose={() => setSelectedSession(null)} clubId={clubId} isDark={isDark} />
-            </div>
-          )}
-        </AnimatePresence>
       </div>
-
-      {/* Mobile detail modal */}
-      <AnimatePresence>
-        {selectedSession && (
-          <div className="lg:hidden fixed inset-0 z-50">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedSession(null)} className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="absolute bottom-0 left-0 right-0 max-h-[85vh] overflow-y-auto rounded-t-2xl">
-              <SessionDetail session={selectedSession} onClose={() => setSelectedSession(null)} clubId={clubId} isDark={isDark} />
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
