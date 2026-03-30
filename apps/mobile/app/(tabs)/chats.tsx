@@ -3,19 +3,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 
 import { Feather } from '@expo/vector-icons'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ChatPreviewCard } from '../../src/components/ChatPreviewCard'
 import { EventChatListItemActive, EventChatListItemArchived, type EventChatListEvent } from '../../src/components/EventChatListItem'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { SegmentedControl } from '../../src/components/SegmentedControl'
-import {
-  ActionButton,
-  EmptyState,
-  LoadingBlock,
-  SearchField,
-  SegmentedContentFade,
-  SurfaceCard,
-} from '../../src/components/ui'
+import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
@@ -145,13 +139,10 @@ export default function ChatsTab() {
   if (!isAuthenticated) {
     return (
       <PageLayout>
-        <SurfaceCard tone="hero">
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 18 }}>Sign in to open chats</Text>
-          <Text style={{ marginTop: 8, color: colors.textMuted, lineHeight: 20 }}>
-            Club chat, tournament chat, and division chat all use the same backend membership rules as the web app.
-          </Text>
-        </SurfaceCard>
-        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+        <AuthRequiredCard
+          title="Sign in to open chats"
+          body="Club chat, tournament chat, and division chat all use the same backend membership rules as the web app."
+        />
       </PageLayout>
     )
   }

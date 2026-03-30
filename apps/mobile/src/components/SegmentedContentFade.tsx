@@ -125,7 +125,11 @@ export function SegmentedContentFade({
       })
       slideAnimRef.current = slide
       slide.start(({ finished }) => {
-        if (finished) slideAnimRef.current = null
+        if (finished) {
+          slideAnimRef.current = null
+          /** Снимаем дробный остаток после native driver — на Android список иначе визуально «уезжает» вбок. */
+          translateX.setValue(0)
+        }
       })
       return
     }

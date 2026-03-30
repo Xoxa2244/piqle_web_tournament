@@ -2,9 +2,20 @@ import { Feather } from '@expo/vector-icons'
 import * as Haptics from 'expo-haptics'
 import { router } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  UIManager,
+  View,
+} from 'react-native'
 
 import { AppBottomSheet, AppConfirmActions } from '../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../src/components/AuthRequiredCard'
 import {
   BellNotificationLeadIcon,
   BELL_NOTIFICATION_ERROR_COLOR,
@@ -91,6 +102,44 @@ export default function NotificationsScreen() {
     },
     onError: (e: any) => toast.error(e?.message || 'Could not remove this notification.'),
   })
+
+  const notifyNotificationListReflow = useCallback(() => {
+    LayoutAnimation.configureNext({
+      duration: 320,
+      update: {
+        type: LayoutAnimation.Types.spring,
+        springDamping: 0.82,
+      },
+      delete: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+    })
+  }, [])
+
+  const removeNotificationFromListCache = useCallback(
+    (notificationId: string) => {
+      utils.notification.list.setData({ limit: 40 }, (old) => {
+        if (!old?.items) return old
+        const items = old.items as { id?: string; readAt?: string | null }[]
+        const removed = items.find((x) => String(x.id ?? '') === notificationId)
+        const nextItems = items.filter((x) => String(x.id ?? '') !== notificationId)
+        const wasUnread = Boolean(removed && !(removed.readAt ?? null))
+        return {
+          ...old,
+          items: nextItems,
+          unreadCount: Math.max(0, (old.unreadCount ?? 0) - (wasUnread ? 1 : 0)),
+        }
+      })
+    },
+    [utils.notification.list],
+  )
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true)
+    }
+  }, [])
 
   useEffect(() => {
     const list = (notificationsQuery.data?.items ?? []) as Array<{ id?: string; body?: string; createdAt?: string }>
@@ -546,7 +595,7 @@ export default function NotificationsScreen() {
             />
           </View>
         </SurfaceCard>
-        {!isAuthenticated ? <EmptyState title="Sign in required" body="Sign in to view your notifications." /> : null}
+        {!isAuthenticated ? <AuthRequiredCard title="Sign in required" body="Sign in to view your notifications." /> : null}
         {isAuthenticated && notificationsQuery.isLoading ? <LoadingBlock label="Loading notifications..." /> : null}
         {isAuthenticated && !notificationsQuery.isLoading && items.length === 0 ? (
           <EmptyState title="No notifications yet" body="New invitations and feedback prompts will appear here." />
@@ -562,12 +611,15 @@ export default function NotificationsScreen() {
                 const id = String(item.id)
                 const localHide =
                   item.type === 'CLUB_JOIN_REQUEST' || item.type === 'TOURNAMENT_ACCESS_PENDING'
+                notifyNotificationListReflow()
                 if (localHide) {
                   swipeHiddenSnapRef.current.set(id, {
                     body: String(item.body ?? ''),
                     createdAt: String(item.createdAt ?? ''),
                   })
                   setSwipeHiddenIds((prev) => new Set(prev).add(id))
+                } else {
+                  removeNotificationFromListCache(id)
                 }
                 try {
                   await dismissNotification.mutateAsync({ notificationId: id })
@@ -581,10 +633,11 @@ export default function NotificationsScreen() {
                       n.delete(id)
                       return n
                     })
+                  } else {
+                    void utils.notification.list.invalidate()
                   }
                   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
                   toast.error(e?.message ?? 'Could not remove notification.')
-                  throw e
                 }
               }}
             >

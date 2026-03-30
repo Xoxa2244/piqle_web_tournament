@@ -5,6 +5,7 @@ import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from '
 import { WebView } from 'react-native-webview'
 
 import { AppBottomSheet, AppInfoFooter } from '../../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ProfileHeroCard, ProfileStatsDuprSection } from '../../src/components/profile/ProfileIdentityBlock'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
@@ -202,18 +203,20 @@ export default function ProfileTab() {
   const profile = profileQuery.data as any
   const statuses = (registrationStatusesQuery.data ?? {}) as Record<string, { status?: string }>
 
-  const recentTournaments = useMemo(() => {
+  const allPastTournaments = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
+    const now = Date.now()
     return items
       .filter((item) => {
         const status = statuses[item.id]?.status
         const isHostedByMe = Boolean(user?.id && item.user?.id === user.id)
-        return status === 'active' || status === 'waitlisted' || isHostedByMe
+        const isPast = new Date(item.endDate ?? item.startDate).getTime() < now
+        return isPast && (status === 'active' || status === 'waitlisted' || isHostedByMe)
       })
       .sort((left, right) => new Date(right.startDate).getTime() - new Date(left.startDate).getTime())
-      .slice(0, 3)
       .map((item) => ({ ...item, myStatus: statuses[item.id]?.status }))
   }, [statuses, tournamentsQuery.data, user?.id])
+  const pastTournamentsPreview = useMemo(() => allPastTournaments.slice(0, 3), [allPastTournaments])
   const hostedByMeCount = useMemo(() => {
     const items = (tournamentsQuery.data ?? []) as any[]
     return items.filter((item) => Boolean(user?.id && item.user?.id === user.id)).length
@@ -222,16 +225,7 @@ export default function ProfileTab() {
   if (!isAuthenticated) {
     return (
       <PageLayout topBarTitle="Profile">
-        <SurfaceCard tone="hero" style={styles.guestCard}>
-          <View style={styles.guestIconWrap}>
-            <Feather name="user" size={22} color={palette.primary} />
-          </View>
-          <Text style={styles.guestTitle}>You are browsing as a guest</Text>
-          <Text style={styles.guestBody}>
-            Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity.
-          </Text>
-          <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
-        </SurfaceCard>
+        <AuthRequiredCard body="Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity." />
       </PageLayout>
     )
   }
@@ -497,20 +491,30 @@ export default function ProfileTab() {
           </AppBottomSheet>
 
           <View style={styles.sectionBlock}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Tournaments</Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Past tournaments</Text>
+              {allPastTournaments.length > 0 ? (
+                <Pressable
+                  onPress={() => router.push('/profile/tournaments')}
+                  style={({ pressed }) => [styles.sectionActionBtn, pressed && styles.sectionActionBtnPressed]}
+                >
+                  <Text style={[styles.sectionActionText, { color: colors.primary }]}>View all</Text>
+                </Pressable>
+              ) : null}
+            </View>
 
             {isActivityLoading ? <LoadingBlock label="Loading activity…" /> : null}
 
-            {!isActivityLoading && recentTournaments.length === 0 ? (
+            {!isActivityLoading && pastTournamentsPreview.length === 0 ? (
               <SurfaceCard style={styles.emptyCard}>
-                <Text style={[styles.emptyCardTitle, { color: colors.text }]}>No tournaments yet</Text>
+                <Text style={[styles.emptyCardTitle, { color: colors.text }]}>No past tournaments yet</Text>
                 <Text style={[styles.emptyCardBody, { color: colors.textMuted }]}>
-                  Once you register for an event, it will show up here with status and date.
+                  Finished events where you played or had admin access will appear here.
                 </Text>
               </SurfaceCard>
             ) : null}
 
-            {recentTournaments.map((tournament) => {
+            {pastTournamentsPreview.map((tournament) => {
               const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
               const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(tournament.id))
               const status = statusMeta(tournament.myStatus, hasPrivilegedAccess)
@@ -550,27 +554,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
-  },
-  guestCard: {
-    gap: spacing.md,
-  },
-  guestIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.brandPrimaryTint,
-  },
-  guestTitle: {
-    color: palette.text,
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  guestBody: {
-    color: palette.textMuted,
-    lineHeight: 21,
   },
   headerCard: {
     gap: spacing.md,
@@ -641,8 +624,25 @@ const styles = StyleSheet.create({
   sectionBlock: {
     gap: spacing.md,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   sectionTitle: {
     fontSize: 18,
+    fontWeight: '700',
+  },
+  sectionActionBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  sectionActionBtnPressed: {
+    opacity: 0.8,
+  },
+  sectionActionText: {
+    fontSize: 14,
     fontWeight: '700',
   },
   emptyCard: {

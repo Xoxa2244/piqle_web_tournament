@@ -3,6 +3,7 @@ import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleS
 import { router, useLocalSearchParams } from 'expo-router'
 
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
 import { FeedbackEntityContextCard } from '../../../../src/components/FeedbackEntityContextCard'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
@@ -123,8 +124,10 @@ export default function ClubChatScreen() {
   if (!isAuthenticated) {
     return (
       <Screen title={clubName} subtitle="Sign in to access club messages.">
-        <EmptyState title="Authentication required" body="Club chat follows the same membership and moderation rules as the web app." />
-        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+        <AuthRequiredCard
+          title="Authentication required"
+          body="Club chat follows the same membership and moderation rules as the web app."
+        />
       </Screen>
     )
   }

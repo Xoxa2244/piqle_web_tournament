@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
-import { SubpageHeader } from '../../src/components/navigation/SubpageHeader'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
+import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, InputField, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
@@ -131,47 +132,51 @@ export default function ProfileEditScreen() {
     })
   }
 
+  const editTopBarRight =
+    profileQuery.isLoading && !user ? (
+      <HeaderSaveButton loading colors={colors} styles={styles} />
+    ) : profile ? (
+      <HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />
+    ) : undefined
+
   if (!isAuthenticated) {
     return (
-      <View style={styles.screen}>
-        <SubpageHeader title="Edit Profile" />
+      <PageLayout scroll={false} topBarTitle="Edit Profile" contentStyle={styles.pageRoot}>
         <View style={styles.bodyPad}>
-          <EmptyState title="Sign in required" body="Sign in to edit your profile details." />
+          <AuthRequiredCard title="Sign in required" body="Sign in to edit your profile details." />
         </View>
-      </View>
+      </PageLayout>
     )
   }
 
   if (profileQuery.isLoading && !user) {
     return (
-      <View style={styles.screen}>
-        <SubpageHeader title="Edit Profile" right={<HeaderSaveButton loading colors={colors} styles={styles} />} />
+      <PageLayout scroll={false} topBarTitle="Edit Profile" topBarRightSlot={editTopBarRight} contentStyle={styles.pageRoot}>
         <View style={styles.bodyPad}>
           <LoadingBlock label="Loading profile…" />
         </View>
-      </View>
+      </PageLayout>
     )
   }
 
   if (!profile) {
     return (
-      <View style={styles.screen}>
-        <SubpageHeader title="Edit Profile" />
+      <PageLayout scroll={false} topBarTitle="Edit Profile" contentStyle={styles.pageRoot}>
         <View style={styles.bodyPad}>
           <EmptyState title="Profile unavailable" body="We could not load your profile editor right now." />
         </View>
-      </View>
+      </PageLayout>
     )
   }
 
   return (
-    <View style={styles.screen}>
-      <SubpageHeader
-        title="Edit Profile"
-        right={<HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />}
-      />
-
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <PageLayout
+      scroll={false}
+      topBarTitle="Edit Profile"
+      topBarRightSlot={editTopBarRight}
+      contentStyle={styles.pageRoot}
+    >
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={styles.scrollFill}>
         <SurfaceCard style={styles.card}>
           <Text style={styles.cardTitle}>Profile Photo</Text>
           <View style={styles.photoRow}>
@@ -273,15 +278,17 @@ export default function ProfileEditScreen() {
           </View>
         </SurfaceCard>
       </ScrollView>
-    </View>
+    </PageLayout>
   )
 }
 
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
-  screen: {
+  pageRoot: {
     flex: 1,
-    backgroundColor: colors.background,
+  },
+  scrollFill: {
+    flex: 1,
   },
   bodyPad: {
     padding: spacing.md,

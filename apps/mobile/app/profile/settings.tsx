@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native'
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
-import { SubpageHeader } from '../../src/components/navigation/SubpageHeader'
+import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ActionButton, SurfaceCard } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
 import { getPalette, spacing, type AppTheme, type ThemePalette } from '../../src/lib/theme'
@@ -214,31 +215,22 @@ export default function ProfileSettingsScreen() {
 
   if (!isAuthenticated) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <SubpageHeader title="Settings" themeMode={theme} />
-        <View style={styles.bodyPad}>
-          <SurfaceCard style={themedPlaceholderCardStyle}>
-            <Text style={[styles.placeholderTitle, { color: colors.text }]}>Sign in required</Text>
-            <Text style={[styles.placeholderBody, { color: colors.textMuted }]}>Sign in to manage your account settings.</Text>
-          </SurfaceCard>
-        </View>
-      </View>
+      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+        <AuthRequiredCard title="Sign in required" body="Sign in to manage your account settings." />
+      </PageLayout>
     )
   }
 
   if (profileQuery.isLoading && !user) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <SubpageHeader title="Settings" themeMode={theme} />
-        <View style={styles.bodyPad}>
-          <SurfaceCard style={themedPlaceholderCardStyle}>
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={[styles.loadingLabel, { color: colors.textMuted }]}>Loading settings…</Text>
-            </View>
-          </SurfaceCard>
-        </View>
-      </View>
+      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+        <SurfaceCard style={themedPlaceholderCardStyle}>
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.loadingLabel, { color: colors.textMuted }]}>Loading settings…</Text>
+          </View>
+        </SurfaceCard>
+      </PageLayout>
     )
   }
 
@@ -254,25 +246,19 @@ export default function ProfileSettingsScreen() {
 
   if (!profile) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <SubpageHeader title="Settings" themeMode={theme} />
-        <View style={styles.bodyPad}>
-          <SurfaceCard style={themedPlaceholderCardStyle}>
-            <Text style={[styles.placeholderTitle, { color: colors.text }]}>Settings unavailable</Text>
-            <Text style={[styles.placeholderBody, { color: colors.textMuted }]}>
-              We could not load your account settings right now.
-            </Text>
-          </SurfaceCard>
-        </View>
-      </View>
+      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+        <SurfaceCard style={themedPlaceholderCardStyle}>
+          <Text style={[styles.placeholderTitle, { color: colors.text }]}>Settings unavailable</Text>
+          <Text style={[styles.placeholderBody, { color: colors.textMuted }]}>
+            We could not load your account settings right now.
+          </Text>
+        </SurfaceCard>
+      </PageLayout>
     )
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <SubpageHeader title="Settings" themeMode={theme} />
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <PageLayout topBarTitle="Settings" contentStyle={styles.content}>
         {notice ? (
           <SurfaceCard tone="hero" style={themedNoticeCardStyle}>
             <Text style={[styles.noticeText, { color: colors.text }]}>{notice}</Text>
@@ -479,15 +465,11 @@ export default function ProfileSettingsScreen() {
             />
           </View>
         </SurfaceCard>
-      </ScrollView>
-    </View>
+    </PageLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
   bodyPad: {
     padding: spacing.md,
   },

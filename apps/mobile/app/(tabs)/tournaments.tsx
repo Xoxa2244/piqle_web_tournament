@@ -4,6 +4,7 @@ import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react
 import { router } from 'expo-router'
 
 import { AppBottomSheet } from '../../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
@@ -88,6 +89,7 @@ const getCardStatus = (
 /**
  * Без отдельного getTournamentById на каждую строку — иначе при смене вкладки (Upcoming / My events / Past)
  * десятки запросов + reflow накладываются на анимацию SegmentedContentFade и дают «передёргивание».
+ * Контент сегментов: `opacityOnly` у SegmentedContentFade — без translateX, иначе на Android заметен горизонтальный сдвиг списка.
  * Данных из listBoards достаточно для карточки в списке (как ClubCard без лишних query на табе клубов).
  */
 const TournamentListCard = memo(function TournamentListCard({
@@ -538,6 +540,7 @@ export default function TournamentsTab() {
             activeKey={mode}
             segmentOrder={['upcoming', 'registered', 'past']}
             style={styles.listScroll}
+            opacityOnly
           >
             <View style={styles.tabMain}>
           {tournamentsQuery.isError ? (
@@ -549,7 +552,24 @@ export default function TournamentsTab() {
             <LoadingBlock label="Loading tournaments..." />
           ) : null}
 
-          {!tournamentsQuery.isError && !tournamentsInitialLoading && !isStatusContextLoading && filtered.length === 0 ? (
+          {!tournamentsQuery.isError &&
+          !tournamentsInitialLoading &&
+          !isStatusContextLoading &&
+          filtered.length === 0 &&
+          mode === 'registered' &&
+          !isAuthenticated &&
+          !hasNarrowing ? (
+            <AuthRequiredCard
+              title="Sign in required"
+              body="Sign in to see tournaments where you are registered or admin."
+            />
+          ) : null}
+
+          {!tournamentsQuery.isError &&
+          !tournamentsInitialLoading &&
+          !isStatusContextLoading &&
+          filtered.length === 0 &&
+          !(mode === 'registered' && !isAuthenticated && !hasNarrowing) ? (
             <EmptyState title={tournamentsEmptyState.title} body={tournamentsEmptyState.body} />
           ) : null}
 

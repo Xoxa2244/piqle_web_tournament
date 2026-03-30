@@ -31,13 +31,17 @@ let googleSignInModulePromise: Promise<GoogleSignInModule> | null = null
 let googleSignInConfigPromise: Promise<GoogleSignInRuntimeConfig> | null = null
 let isGoogleSigninConfigured = false
 
-const loadGoogleSignInModule = () => {
+const loadGoogleSignInModule = (): Promise<GoogleSignInModule> => {
   if (!googleSignInModulePromise) {
-    googleSignInModulePromise = Promise.resolve(
-      require('@react-native-google-signin/google-signin') as GoogleSignInModule
-    )
+    googleSignInModulePromise = new Promise((resolve, reject) => {
+      try {
+        const mod = require('@react-native-google-signin/google-signin') as GoogleSignInModule
+        resolve(mod)
+      } catch (e) {
+        reject(e)
+      }
+    })
   }
-
   return googleSignInModulePromise
 }
 

@@ -15,6 +15,7 @@ import { router } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 
 import { ActionButton, EmptyState, LoadingBlock, Pill, Screen, SectionTitle, SurfaceCard } from '../../../src/components/ui'
+import { AuthRequiredCard } from '../../../src/components/AuthRequiredCard'
 import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
 import { EntityImage } from '../../../src/components/EntityImage'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
@@ -260,8 +261,10 @@ export default function TournamentRegistrationScreen() {
   if (!isAuthenticated) {
     return (
       <Screen title="Register" subtitle="Sign in to claim a slot or join a waitlist.">
-        <EmptyState title="Authentication required" body="Tournament registration uses your existing player account from the web app." />
-        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+        <AuthRequiredCard
+          title="Authentication required"
+          body="Tournament registration uses your existing player account from the web app."
+        />
       </Screen>
     )
   }
@@ -318,7 +321,10 @@ export default function TournamentRegistrationScreen() {
           onPress={scrollToMyTeam}
           style={({ pressed }) => [pressed && showRegisteredHero && styles.heroRegisteredPressed]}
         >
-          <SurfaceCard tone="hero" style={showRegisteredHero ? styles.heroRegisteredCard : undefined}>
+          <SurfaceCard
+            tone={showRegisteredHero ? 'soft' : 'hero'}
+            style={showRegisteredHero ? styles.heroRegisteredCard : undefined}
+          >
             {showRegisteredHero ? (
               <Text style={styles.heroRegisteredTitle}>You're registered 🎉</Text>
             ) : (
@@ -339,8 +345,8 @@ export default function TournamentRegistrationScreen() {
                   <Text style={styles.priceChipText}>{feeLabel}</Text>
                 </OptionalLinearGradient>
                 {isPaidTournament ? (
-                  <View style={styles.paymentTimingChipLight}>
-                    <Text style={styles.paymentTimingChipLightText}>
+                  <View style={styles.paymentTimingChip}>
+                    <Text style={styles.paymentTimingChipText}>
                       {seatMap.paymentTiming === 'PAY_BY_DEADLINE' ? 'Pay by deadline' : 'Pay in 15 minutes'}
                     </Text>
                   </View>
@@ -510,7 +516,8 @@ const createStyles = (colors: ThemePalette) =>
     gap: 0,
   },
   heroRegisteredCard: {
-    backgroundColor: colors.primary,
+    /** Без `tone="hero"`: иначе градиент hero + сплошной зелёный дают лишнюю яркость. Фон как у хиро турнира (`eventHeroBackground` в dark — приглушённый зелёный). */
+    backgroundColor: colors.eventHeroBackground,
     borderWidth: 0,
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -590,17 +597,17 @@ const createStyles = (colors: ThemePalette) =>
     lineHeight: 20,
     fontWeight: '600',
   },
-  paymentTimingChipLight: {
+  paymentTimingChip: {
     minHeight: 30,
     borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
     justifyContent: 'center',
-    backgroundColor: '#F1F3F5',
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: '#E3E7EB',
+    borderColor: colors.border,
   },
-  paymentTimingChipLightText: {
+  paymentTimingChipText: {
     color: colors.text,
     fontSize: 13,
     lineHeight: 20,

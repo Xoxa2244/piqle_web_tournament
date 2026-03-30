@@ -4,6 +4,7 @@ import { router } from 'expo-router'
 
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ClubCard } from '../../src/components/ClubCard'
 import {
   ActionButton,
@@ -316,7 +317,16 @@ export default function ClubsTab() {
             </View>
           ) : null}
 
-          {!modeInitialLoading && !clubsQuery.isError && (nearbyBlockedByAuth || nearbyBlockedByProfile || decoratedActiveClubs.length === 0) ? (
+          {!modeInitialLoading && !clubsQuery.isError && nearbyBlockedByAuth ? (
+            <View style={styles.emptyStateWrap}>
+              <AuthRequiredCard
+                title="Sign in required"
+                body="Sign in and add your city to your profile to discover nearby clubs."
+              />
+            </View>
+          ) : null}
+
+          {!modeInitialLoading && !clubsQuery.isError && !nearbyBlockedByAuth && (nearbyBlockedByProfile || decoratedActiveClubs.length === 0) ? (
             <View style={styles.emptyStateWrap}>
               <EmptyState title={emptyStateCopy.title} body={emptyStateCopy.body} />
               {nearbyBlockedByProfile ? (

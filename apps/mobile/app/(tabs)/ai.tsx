@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../src/components/ChatComposer'
 import { ChatThreadRoot } from '../../src/components/ChatThreadRoot'
 import { useChatKeyboardVerticalOffset } from '../../src/hooks/useChatKeyboardVerticalOffset'
@@ -267,15 +268,7 @@ export default function AITab() {
   if (!isAuthenticated) {
     return (
       <PageLayout chatAmbient>
-        <View style={styles.unauthWrap}>
-          <Text style={styles.unauthBody}>Sign in to chat with your pickleball AI coach.</Text>
-          <Pressable
-            onPress={() => router.push('/sign-in')}
-            style={({ pressed }) => [styles.signInBtn, pressed && { opacity: 0.9 }]}
-          >
-            <Text style={styles.signInText}>Sign in</Text>
-          </Pressable>
-        </View>
+        <AuthRequiredCard body="Sign in to chat with your pickleball AI coach." />
       </PageLayout>
     )
   }
@@ -573,24 +566,5 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.text,
     fontSize: 14,
     fontWeight: '600',
-  },
-  unauthWrap: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  unauthBody: {
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
-  signInBtn: {
-    minHeight: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  signInText: {
-    color: colors.white,
-    fontWeight: '800',
   },
   })

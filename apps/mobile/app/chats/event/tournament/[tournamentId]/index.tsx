@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 
 import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../../src/components/AppBottomSheet'
+import { AuthRequiredCard } from '../../../../../src/components/AuthRequiredCard'
 import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoading'
 import { ChatComposer } from '../../../../../src/components/ChatComposer'
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
@@ -186,8 +187,10 @@ export default function TournamentChatScreen() {
   if (!isAuthenticated) {
     return (
       <Screen title={title} subtitle="Sign in to access tournament chat.">
-        <EmptyState title="Authentication required" body="Tournament chat is restricted to participants and admins." />
-        <ActionButton label="Sign in" onPress={() => router.push('/sign-in')} />
+        <AuthRequiredCard
+          title="Authentication required"
+          body="Tournament chat is restricted to participants and admins."
+        />
       </Screen>
     )
   }

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { OptionalLinearGradient } from '../src/components/OptionalLinearGradient'
@@ -10,7 +10,6 @@ import { radius, spacing, type ThemePalette } from '../src/lib/theme'
 import { useAuth } from '../src/providers/AuthProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
 
-const mutedBrandGradient = ['#A7D7AF', '#A7D7AF'] as const
 const googleMarkStyle = { width: 20, height: 20 } as const
 
 const GoogleMark = () => (
@@ -18,9 +17,18 @@ const GoogleMark = () => (
 )
 
 export default function SignInScreen() {
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { colors, theme } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors, theme === 'dark'), [colors, theme])
+  const iconColor = colors.textMuted
   const brandGradient = useMemo(() => [colors.primary, colors.purple] as const, [colors])
+  /** Неактивное состояние основных CTA (Sign In и др.): в dark — нейтральный surface, не светло-зелёная «плашка». */
+  const mutedBrandGradient = useMemo(
+    () =>
+      theme === 'dark'
+        ? ([colors.surfaceMuted, colors.surfaceMuted] as const)
+        : (['#A7D7AF', '#A7D7AF'] as const),
+    [theme, colors.surfaceMuted]
+  )
   const {
     user,
     signIn,
@@ -199,15 +207,25 @@ export default function SignInScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.background}>
-        <Image source={require('../assets/auth-bg.png')} style={styles.backgroundImage} resizeMode="stretch" />
+        <Image
+          source={require('../assets/auth-bg.png')}
+          style={[styles.backgroundImage, theme === 'dark' && styles.backgroundImageDark]}
+          resizeMode="stretch"
+        />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'position' : undefined}
+        keyboardVerticalOffset={0}
       >
-        <View style={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        >
+          <View style={styles.content}>
           <View style={styles.hero}>
             <View style={styles.logoWrap}>
               <Image
@@ -262,7 +280,7 @@ export default function SignInScreen() {
                   placeholder="your@email.com"
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  left={<Feather name="mail" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                  left={<Feather name="mail" size={20} color={iconColor} />}
                   containerStyle={styles.textField}
                 />
               </View>
@@ -277,13 +295,13 @@ export default function SignInScreen() {
                         onChangeText={setPassword}
                         placeholder="••••••••"
                         secureTextEntry={!showPassword}
-                        left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        left={<Feather name="lock" size={20} color={iconColor} />}
                         right={
                           <Pressable onPress={() => setShowPassword((value) => !value)}>
                             <Feather
                               name={showPassword ? 'eye-off' : 'eye'}
                               size={20}
-                              color="rgba(10, 10, 10, 0.4)"
+                              color={iconColor}
                             />
                           </Pressable>
                         }
@@ -333,7 +351,14 @@ export default function SignInScreen() {
                         end={{ x: 1, y: 0 }}
                         style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
                       >
-                        <Text style={styles.primaryButtonText}>{loading ? 'Signing In...' : 'Sign In'}</Text>
+                        <Text
+                          style={[
+                            styles.primaryButtonText,
+                            !canSubmitSignIn && styles.primaryButtonTextMuted,
+                          ]}
+                        >
+                          {loading ? 'Signing In...' : 'Sign In'}
+                        </Text>
                       </OptionalLinearGradient>
                     </Pressable>
                   </>
@@ -370,7 +395,12 @@ export default function SignInScreen() {
                         end={{ x: 1, y: 0 }}
                         style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
                       >
-                        <Text style={styles.primaryButtonText}>
+                        <Text
+                          style={[
+                            styles.primaryButtonText,
+                            !canRequestCode && styles.primaryButtonTextMuted,
+                          ]}
+                        >
                           {loading ? 'Sending Code...' : 'Send Reset Code'}
                         </Text>
                       </OptionalLinearGradient>
@@ -412,7 +442,7 @@ export default function SignInScreen() {
                         value={resetCode}
                         onChangeText={setResetCode}
                         placeholder="Enter 6-digit code"
-                        left={<Feather name="hash" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        left={<Feather name="hash" size={20} color={iconColor} />}
                         containerStyle={styles.textField}
                       />
                     </View>
@@ -424,13 +454,13 @@ export default function SignInScreen() {
                         onChangeText={setResetNewPassword}
                         placeholder="At least 8 characters"
                         secureTextEntry={!showPassword}
-                        left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        left={<Feather name="lock" size={20} color={iconColor} />}
                         right={
                           <Pressable onPress={() => setShowPassword((value) => !value)}>
                             <Feather
                               name={showPassword ? 'eye-off' : 'eye'}
                               size={20}
-                              color="rgba(10, 10, 10, 0.4)"
+                              color={iconColor}
                             />
                           </Pressable>
                         }
@@ -445,7 +475,7 @@ export default function SignInScreen() {
                         onChangeText={setResetConfirmPassword}
                         placeholder="Repeat new password"
                         secureTextEntry={!showPassword}
-                        left={<Feather name="check-circle" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                        left={<Feather name="check-circle" size={20} color={iconColor} />}
                         containerStyle={styles.textField}
                       />
                     </View>
@@ -477,7 +507,12 @@ export default function SignInScreen() {
                         end={{ x: 1, y: 0 }}
                         style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
                       >
-                        <Text style={styles.primaryButtonText}>
+                        <Text
+                          style={[
+                            styles.primaryButtonText,
+                            !canSubmitPasswordReset && styles.primaryButtonTextMuted,
+                          ]}
+                        >
                           {loading ? 'Updating Password...' : 'Update Password'}
                         </Text>
                       </OptionalLinearGradient>
@@ -530,7 +565,12 @@ export default function SignInScreen() {
                       end={{ x: 1, y: 0 }}
                       style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
                     >
-                      <Text style={styles.primaryButtonText}>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          !canRequestCode && styles.primaryButtonTextMuted,
+                        ]}
+                      >
                         {loading ? 'Sending Code...' : 'Send Verification Code'}
                       </Text>
                     </OptionalLinearGradient>
@@ -561,7 +601,7 @@ export default function SignInScreen() {
                       value={code}
                       onChangeText={setCode}
                       placeholder="Enter 6-digit code"
-                      left={<Feather name="hash" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      left={<Feather name="hash" size={20} color={iconColor} />}
                       containerStyle={styles.textField}
                     />
                   </View>
@@ -594,13 +634,13 @@ export default function SignInScreen() {
                       onChangeText={setPassword}
                       placeholder="At least 8 characters"
                       secureTextEntry={!showPassword}
-                      left={<Feather name="lock" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      left={<Feather name="lock" size={20} color={iconColor} />}
                       right={
                         <Pressable onPress={() => setShowPassword((value) => !value)}>
                           <Feather
                             name={showPassword ? 'eye-off' : 'eye'}
                             size={20}
-                            color="rgba(10, 10, 10, 0.4)"
+                            color={iconColor}
                           />
                         </Pressable>
                       }
@@ -615,7 +655,7 @@ export default function SignInScreen() {
                       onChangeText={setConfirmPassword}
                       placeholder="Repeat password"
                       secureTextEntry={!showPassword}
-                      left={<Feather name="check-circle" size={20} color="rgba(10, 10, 10, 0.4)" />}
+                      left={<Feather name="check-circle" size={20} color={iconColor} />}
                       containerStyle={styles.textField}
                     />
                   </View>
@@ -641,7 +681,12 @@ export default function SignInScreen() {
                       end={{ x: 1, y: 0 }}
                       style={[styles.primaryButtonGradient, loading && styles.disabledButton]}
                     >
-                      <Text style={styles.primaryButtonText}>
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          !canSubmitSignUp && styles.primaryButtonTextMuted,
+                        ]}
+                      >
                         {loading ? 'Creating Account...' : 'Create Account'}
                       </Text>
                     </OptionalLinearGradient>
@@ -679,13 +724,14 @@ export default function SignInScreen() {
               ) : null}
             </View>
           </View>
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, isDark: boolean) =>
   StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -697,6 +743,12 @@ const createStyles = (colors: ThemePalette) =>
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,
+  },
+  backgroundImageDark: {
+    opacity: 0.34,
+  },
+  keyboardAvoid: {
+    flex: 1,
   },
   container: {
     flexGrow: 1,
@@ -739,7 +791,7 @@ const createStyles = (colors: ThemePalette) =>
   subtitle: {
     marginTop: 12,
     maxWidth: 280,
-    color: 'rgba(10, 10, 10, 0.60)',
+    color: colors.textMuted,
     fontSize: 18,
     lineHeight: 26,
     textAlign: 'center',
@@ -754,10 +806,10 @@ const createStyles = (colors: ThemePalette) =>
     padding: 4,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.10)',
-    backgroundColor: 'rgba(255, 255, 255, 0.48)',
-    shadowColor: colors.white,
-    shadowOpacity: 0.18,
+    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surface : 'rgba(255, 255, 255, 0.48)',
+    shadowColor: isDark ? colors.black : colors.white,
+    shadowOpacity: isDark ? 0.45 : 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
@@ -784,7 +836,7 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.85,
   },
   modeLabel: {
-    color: 'rgba(10, 10, 10, 0.60)',
+    color: colors.textMuted,
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
@@ -810,7 +862,7 @@ const createStyles = (colors: ThemePalette) =>
   },
   label: {
     marginLeft: 4,
-    color: 'rgba(10, 10, 10, 0.80)',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -818,8 +870,8 @@ const createStyles = (colors: ThemePalette) =>
     minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.10)',
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.82)',
     paddingHorizontal: 16,
   },
   forgotPasswordWrap: {
@@ -832,7 +884,7 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '600',
   },
   help: {
-    color: 'rgba(10, 10, 10, 0.60)',
+    color: colors.textMuted,
     fontSize: 14,
     lineHeight: 21,
   },
@@ -859,7 +911,7 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '500',
   },
   noticeText: {
-    color: '#166534',
+    color: isDark ? '#b7f5c2' : '#166534',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '500',
@@ -883,15 +935,15 @@ const createStyles = (colors: ThemePalette) =>
   },
   secondaryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 255, 255, 0.80)',
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.80)',
     borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.08)',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   secondaryBadgeText: {
-    color: 'rgba(10, 10, 10, 0.60)',
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -923,18 +975,22 @@ const createStyles = (colors: ThemePalette) =>
     fontSize: 16,
     fontWeight: '700',
   },
+  /** Текст на приглушённом градиенте (форма не заполнена): в dark фон тёмный — белый режет глаз. */
+  primaryButtonTextMuted: {
+    color: isDark ? colors.textMuted : colors.white,
+  },
   secondaryButton: {
     minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.10)',
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.82)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   secondaryButtonPressed: {
-    backgroundColor: colors.white,
+    backgroundColor: isDark ? colors.secondaryPressed : colors.white,
   },
   secondaryButtonText: {
     color: colors.text,
@@ -945,8 +1001,8 @@ const createStyles = (colors: ThemePalette) =>
     minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(10, 10, 10, 0.10)',
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    borderColor: colors.border,
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.82)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -954,7 +1010,7 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: 24,
   },
   googleButtonPressed: {
-    backgroundColor: colors.white,
+    backgroundColor: isDark ? colors.secondaryPressed : colors.white,
   },
   googleButtonText: {
     color: colors.text,
@@ -965,7 +1021,7 @@ const createStyles = (colors: ThemePalette) =>
     opacity: 0.65,
   },
   termsText: {
-    color: 'rgba(10, 10, 10, 0.40)',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
