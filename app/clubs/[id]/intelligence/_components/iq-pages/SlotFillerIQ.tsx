@@ -134,7 +134,7 @@ function MatchScoreBadge({ score }: { score: number }) {
 /* ============================================= */
 /*            SLOT FILLER PAGE                    */
 /* ============================================= */
-export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId, aiProfiles }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null; aiProfiles?: Record<string, any> } = {}) {
+export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId, aiProfiles, heatmapData }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null; aiProfiles?: Record<string, any>; heatmapData?: any } = {}) {
   const { isDark } = useTheme();
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
@@ -237,7 +237,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Smart Slot Filler</h1>
+            <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Court Optimizer</h1>
             <span className="px-2 py-0.5 text-[9px] tracking-wider uppercase rounded-lg" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15))", color: "#A78BFA", fontWeight: 700, border: "1px solid rgba(139,92,246,0.2)" }}>
               AI Powered
             </span>
@@ -246,9 +246,9 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <div className="text-xs" style={{ color: "var(--t3)" }}>Potential Recovery</div>
+            <div className="text-xs" style={{ color: "var(--t3)" }}>Total Spots Available</div>
             <div className="text-emerald-400" style={{ fontSize: "20px", fontWeight: 800 }}>
-              {displaySlots.length > 0 ? `$${displaySlots.reduce((sum, s) => sum + s.spotsNeeded * s.pricePerPlayer, 0)}` : "--"}
+              {displaySlots.length > 0 ? displaySlots.reduce((sum, s) => sum + s.spotsNeeded, 0) : "--"}
             </div>
           </div>
         </div>
@@ -281,6 +281,48 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           );
         })}
       </div>
+
+      {/* Occupancy Heatmap */}
+      {heatmapData?.heatmap && (
+        <Card>
+          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Court Occupancy Heatmap</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 60, textAlign: 'left', fontSize: 11, color: 'var(--t4)', fontWeight: 600 }}></th>
+                  {heatmapData.timeSlots.map((t: string) => (
+                    <th key={t} style={{ textAlign: 'center', fontSize: 11, color: 'var(--t4)', fontWeight: 600, padding: '4px 2px' }}>{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heatmapData.heatmap.map((row: any) => (
+                  <tr key={row.day}>
+                    <td style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', padding: '4px 0' }}>{row.day}</td>
+                    {row.slots.map((slot: any) => {
+                      const v = slot.value;
+                      const bg = v >= 70 ? 'rgba(239,68,68,0.4)' : v >= 50 ? 'rgba(139,92,246,0.4)' : v >= 30 ? 'rgba(6,182,212,0.3)' : v > 0 ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.03)';
+                      const color = v >= 50 ? '#fff' : v > 0 ? 'var(--t2)' : 'var(--t5)';
+                      return (
+                        <td key={slot.time} style={{ textAlign: 'center', padding: 6, borderRadius: 6, background: bg, fontSize: 11, fontWeight: 600, color, minWidth: 48 }}>
+                          {v}%
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-4 mt-3 text-[10px]" style={{ color: 'var(--t4)' }}>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--card-border)' }} /> Low</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(6,182,212,0.3)' }} /> Med</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(139,92,246,0.4)' }} /> High</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(239,68,68,0.4)' }} /> Peak</span>
+          </div>
+        </Card>
+      )}
 
       {/* Main Content */}
       <div className="grid lg:grid-cols-3 gap-6">
@@ -365,17 +407,42 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
             </div>
             <button
               onClick={() => {
-                const newInvites = { ...sentInvites };
-                activeSlot.matches.forEach((p) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
-                setSentInvites(newInvites);
-                setShowSuccess(true);
-                setTimeout(() => setShowSuccess(false), 3000);
+                // Real invite sending via sendInvites mutation
+                if (sendInvites && activeSlot.matches.length > 0 && selectedSessionId) {
+                  sendInvites.mutate({
+                    sessionId: selectedSessionId,
+                    clubId,
+                    candidates: activeSlot.matches
+                      .filter((p: any) => !sentInvites[p.id])
+                      .map((p: any) => ({
+                        memberId: p.id,
+                        channel: 'email' as const,
+                        customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}. ${activeSlot.spotsNeeded} spots left!`,
+                      })),
+                  }, {
+                    onSuccess: () => {
+                      const newInvites = { ...sentInvites };
+                      activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
+                      setSentInvites(newInvites);
+                      setShowSuccess(true);
+                      setTimeout(() => setShowSuccess(false), 3000);
+                    },
+                  });
+                } else {
+                  // Fallback: just update UI (no mutation available)
+                  const newInvites = { ...sentInvites };
+                  activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
+                  setSentInvites(newInvites);
+                  setShowSuccess(true);
+                  setTimeout(() => setShowSuccess(false), 3000);
+                }
               }}
+              disabled={activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length === 0}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-all"
-              style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+              style={{ background: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)", opacity: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 1 : 0.5 }}
             >
               <Send className="w-3.5 h-3.5" />
-              Invite All via Email
+              {activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 'Invite All via Email' : 'All Invited ✓'}
             </button>
           </div>
 
@@ -461,7 +528,16 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                     ) : (
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => setSentInvites((prev) => ({ ...prev, [player.id]: "email" }))}
+                          onClick={() => {
+                            if (sendInvites && selectedSessionId) {
+                              sendInvites.mutate({
+                                sessionId: selectedSessionId, clubId,
+                                candidates: [{ memberId: player.id, channel: 'email' as const, customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}.` }],
+                              }, { onSuccess: () => setSentInvites((prev) => ({ ...prev, [player.id]: "email" })) });
+                            } else {
+                              setSentInvites((prev) => ({ ...prev, [player.id]: "email" }));
+                            }
+                          }}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                           style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                         >
@@ -469,7 +545,16 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                           Email
                         </button>
                         <button
-                          onClick={() => setSentInvites((prev) => ({ ...prev, [player.id]: "sms" }))}
+                          onClick={() => {
+                            if (sendInvites && selectedSessionId) {
+                              sendInvites.mutate({
+                                sessionId: selectedSessionId, clubId,
+                                candidates: [{ memberId: player.id, channel: 'sms' as const, customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court}, ${activeSlot.date} ${activeSlot.time}.` }],
+                              }, { onSuccess: () => setSentInvites((prev) => ({ ...prev, [player.id]: "sms" })) });
+                            } else {
+                              setSentInvites((prev) => ({ ...prev, [player.id]: "sms" }));
+                            }
+                          }}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                           style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
                         >
