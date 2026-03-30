@@ -430,6 +430,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { clubId, dateFrom: calAFrom, dateTo: calATo },
     { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId },
   );
+  const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
+    { clubId: clubId! },
+    { enabled: !!clubId },
+  );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -916,11 +920,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </div>
 
             {(() => {
-              const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
-                { clubId: clubId! },
-                { enabled: !!clubId },
-              );
-
               const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
                 court_optimization: MapPin,
                 member_retention: Users,
