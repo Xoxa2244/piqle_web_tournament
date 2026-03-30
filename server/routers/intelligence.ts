@@ -727,10 +727,11 @@ export const intelligenceRouter = createTRPCRouter({
           maxPlayers: s.maxPlayers,
         }))
         const sortedByOcc = [...allSessionsWithOcc].sort((a, b) => b.occupancyPercent - a.occupancyPercent)
-        const topSessions = sortedByOcc.slice(0, 5)
+        const topSessions = sortedByOcc.slice(0, 10)
         const problematicSessions = [...allSessionsWithOcc]
+          .filter(s => s.occupancyPercent < 80)
           .sort((a, b) => a.occupancyPercent - b.occupancyPercent)
-          .slice(0, 5)
+          .slice(0, 20)
 
         // Player activity — use CSV player count if available for better inactive estimate
         const activeUserIds = new Set(recentBookers.map(b => b.userId))
@@ -991,8 +992,8 @@ export const intelligenceRouter = createTRPCRouter({
           confirmedCount: s.registered,
           maxPlayers: s.capacity,
         }))
-        const topSessions = [...allMapped].sort((a, b) => b.occupancyPercent - a.occupancyPercent).slice(0, 5)
-        const problematicSessions = [...allMapped].sort((a, b) => a.occupancyPercent - b.occupancyPercent).slice(0, 5)
+        const topSessions = [...allMapped].sort((a, b) => b.occupancyPercent - a.occupancyPercent).slice(0, 10)
+        const problematicSessions = [...allMapped].filter(s => s.occupancyPercent < 80).sort((a, b) => a.occupancyPercent - b.occupancyPercent).slice(0, 20)
 
         // ── Player activity from CSV player names ──
         // "Active" = played in the current period
