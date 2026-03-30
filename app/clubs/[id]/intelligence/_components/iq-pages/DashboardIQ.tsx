@@ -348,6 +348,124 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
   };
 }
 
+// ── AI Insights Panel with collapse/expand + accept/dismiss ──
+const INSIGHTS_COLLAPSED_COUNT = 3;
+const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  court_optimization: MapPin,
+  member_retention: Users,
+  growth: TrendingUp,
+  alert: AlertTriangle,
+  schedule: Calendar,
+};
+const priorityColor: Record<string, string> = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
+
+function InsightsPanel({ insights, isLoading, router }: { insights: any[]; isLoading: boolean; router: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem('iq_dismissed_insights') || '[]')); } catch { return new Set(); }
+  });
+  const [accepted, setAccepted] = useState<Set<string>>(new Set());
+
+  const dismiss = (id: string) => {
+    const next = new Set(dismissed); next.add(id); setDismissed(next);
+    try { localStorage.setItem('iq_dismissed_insights', JSON.stringify(Array.from(next))); } catch {}
+  };
+  const accept = (insight: any) => {
+    setAccepted(prev => { const n = new Set(prev); n.add(insight.id); return n; });
+    if (insight.actionLink) router.push(insight.actionLink);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="flex items-start gap-3 animate-pulse">
+            <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: 'var(--card-border)' }} />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3 rounded" style={{ background: 'var(--card-border)', width: '60%' }} />
+              <div className="h-2.5 rounded" style={{ background: 'var(--card-border)', width: '90%' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const visible = insights.filter(i => !dismissed.has(i.id));
+  if (visible.length === 0) {
+    return (
+      <div className="flex items-center gap-2 py-4">
+        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <p className="text-sm" style={{ color: 'var(--t3)' }}>All good! No actionable insights right now.</p>
+        {dismissed.size > 0 && (
+          <button onClick={() => { setDismissed(new Set()); localStorage.removeItem('iq_dismissed_insights'); }}
+            className="text-[11px] ml-auto" style={{ color: '#8B5CF6' }}>Reset dismissed</button>
+        )}
+      </div>
+    );
+  }
+
+  const shown = expanded ? visible : visible.slice(0, INSIGHTS_COLLAPSED_COUNT);
+  const remaining = visible.length - INSIGHTS_COLLAPSED_COUNT;
+
+  return (
+    <div className="space-y-0">
+      {shown.map((insight, idx) => {
+        const Icon = insightTypeIcon[insight.type] || Zap;
+        const dotColor = priorityColor[insight.priority] || '#10B981';
+        const isAccepted = accepted.has(insight.id);
+        return (
+          <div key={insight.id}>
+            {idx > 0 && <div style={{ height: 1, background: 'var(--divider)' }} />}
+            <div className="flex items-start gap-2.5 py-3 group">
+              <span className="mt-1.5 shrink-0 rounded-full" style={{ width: 8, height: 8, background: dotColor }} />
+              <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--t3)' }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] leading-tight" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+                  {insight.title}
+                </p>
+                <p className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--t3)' }}>
+                  {insight.description}
+                </p>
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 mt-2">
+                  {insight.actionLink && !isAccepted && (
+                    <button onClick={() => accept(insight)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] transition-all hover:scale-105"
+                      style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6', fontWeight: 600, border: '1px solid rgba(139,92,246,0.25)' }}>
+                      <CheckCircle2 className="w-3 h-3" /> Accept
+                    </button>
+                  )}
+                  {isAccepted && (
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px]"
+                      style={{ background: 'rgba(16,185,129,0.15)', color: '#10B981', fontWeight: 600 }}>
+                      <CheckCircle2 className="w-3 h-3" /> Accepted
+                    </span>
+                  )}
+                  <button onClick={() => dismiss(insight.id)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] transition-all opacity-40 group-hover:opacity-100 hover:scale-105"
+                    style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
+                    <X className="w-3 h-3" /> Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {remaining > 0 && (
+        <button onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 pt-2 text-[12px] transition-all hover:opacity-80"
+          style={{ color: '#8B5CF6', fontWeight: 600 }}>
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+          {expanded ? 'Show less' : `Show ${remaining} more insight${remaining > 1 ? 's' : ''}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, settingsData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
   const { isDark } = useTheme();
   const { data: session } = useSession();
@@ -919,86 +1037,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             </div>
 
-            {(() => {
-              const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-                court_optimization: MapPin,
-                member_retention: Users,
-                growth: TrendingUp,
-                alert: AlertTriangle,
-                schedule: Calendar,
-              };
-
-              const priorityColor: Record<string, string> = {
-                high: "#EF4444",
-                medium: "#F59E0B",
-                low: "#10B981",
-              };
-
-              if (insightsQuery.isLoading) {
-                return (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="flex items-start gap-3 animate-pulse">
-                        <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: "var(--card-border)" }} />
-                        <div className="flex-1 space-y-1.5">
-                          <div className="h-3 rounded" style={{ background: "var(--card-border)", width: "60%" }} />
-                          <div className="h-2.5 rounded" style={{ background: "var(--card-border)", width: "90%" }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
-
-              const insights = insightsQuery.data?.slice(0, 5) ?? [];
-
-              if (insights.length === 0) {
-                return (
-                  <div className="flex items-center gap-2 py-4">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <p className="text-sm" style={{ color: "var(--t3)" }}>All good! No actionable insights right now.</p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-0">
-                  {insights.map((insight, idx) => {
-                    const Icon = insightTypeIcon[insight.type] || Zap;
-                    const dotColor = priorityColor[insight.priority] || "#10B981";
-                    return (
-                      <div key={insight.id}>
-                        {idx > 0 && <div style={{ height: 1, background: "var(--divider)", margin: "0" }} />}
-                        <div className="flex items-start gap-2.5 py-2.5">
-                          <span
-                            className="mt-1.5 shrink-0 rounded-full"
-                            style={{ width: 8, height: 8, background: dotColor }}
-                          />
-                          <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: "var(--t3)" }} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] leading-tight" style={{ fontWeight: 600, color: "var(--heading)" }}>
-                              {insight.title}
-                            </p>
-                            <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--t3)" }}>
-                              {insight.description}
-                            </p>
-                          </div>
-                          {insight.actionLink && (
-                            <button
-                              onClick={() => router.push(insight.actionLink!)}
-                              className="text-[11px] shrink-0 mt-0.5 transition-opacity hover:opacity-80"
-                              style={{ color: "#8B5CF6", fontWeight: 600, whiteSpace: "nowrap" }}
-                            >
-                              {insight.action || "View"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+            <InsightsPanel insights={insightsQuery.data ?? []} isLoading={insightsQuery.isLoading} router={router} />
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
               {displayInsights.length > 0 ? displayInsights.map((insight) => (
