@@ -257,10 +257,10 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Empty Slots", value: displaySlots.length > 0 ? displaySlots.length.toString() : "--", icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Next 48 hours" },
-          { label: "Spots to Fill", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString() : "--", icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all slots" },
-          { label: "AI Matches Found", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.matches.length, 0).toString() : "--", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: "High confidence" },
-          { label: "Fill Rate (7d)", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / slot.spotsTotal) * 100, 0) / displaySlots.length)}%` : "--", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Current period" },
+          { label: "Underfilled Sessions", value: displaySlots.length > 0 ? displaySlots.length.toString() : "--", icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Below 80% capacity" },
+          { label: "Spots to Fill", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString() : "--", icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all sessions" },
+          { label: "AI Matches", value: activeSlot?.matches?.length ? activeSlot.matches.length.toString() : recsMatchSelectedSlot ? "0" : "—", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: activeSlot?.matches?.length ? `For ${activeSlot.court}` : "Select a session" },
+          { label: "Avg Fill Rate", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / Math.max(slot.spotsTotal, 1)) * 100, 0) / displaySlots.length)}%` : "--", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Underfilled sessions only" },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
