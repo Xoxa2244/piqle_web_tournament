@@ -446,32 +446,32 @@ export function EventsIQ({ embedded = false, eventsListData }: { embedded?: bool
         {' '}
         {[
           {
-            label: 'Upcoming Events',
-            value: upcomingCount.toString(),
+            label: 'Total Sessions',
+            value: displayEvents.length.toLocaleString(),
             icon: CalendarDays,
             gradient: 'from-cyan-500 to-teal-500',
-            sub: 'Next 2 weeks',
+            sub: 'In selected period',
           },
           {
             label: 'Total Registrations',
-            value: totalRegistered.toString(),
+            value: totalRegistered.toLocaleString(),
             icon: Users,
             gradient: 'from-violet-500 to-purple-600',
-            sub: 'All events',
+            sub: 'Player-session slots',
           },
           {
-            label: 'Event Revenue',
-            value: `$${(totalRevenue / 1000).toFixed(1)}K`,
-            icon: DollarSign,
+            label: 'Upcoming',
+            value: upcomingCount.toLocaleString(),
+            icon: Clock,
             gradient: 'from-emerald-500 to-green-500',
-            sub: '+28% vs last quarter',
+            sub: 'Scheduled sessions',
           },
           {
-            label: 'Avg Fill Rate',
-            value: '86%',
+            label: 'Avg Players/Session',
+            value: displayEvents.length > 0 ? (totalRegistered / displayEvents.length).toFixed(1) : '0',
             icon: Target,
             gradient: 'from-amber-500 to-orange-500',
-            sub: 'Across all events',
+            sub: 'Per session average',
           },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
@@ -520,7 +520,7 @@ export function EventsIQ({ embedded = false, eventsListData }: { embedded?: bool
             className="mb-4"
             style={{ fontSize: '14px', fontWeight: 700, color: 'var(--heading)' }}
           >
-            Event Revenue Trend
+            Sessions by Month
           </h3>{' '}
           <ResponsiveContainer width="100%" height={240}>
             {' '}
@@ -535,17 +535,9 @@ export function EventsIQ({ embedded = false, eventsListData }: { embedded?: bool
               <YAxis
                 stroke="var(--chart-axis)"
                 tick={{ fill: 'var(--chart-tick)', fontSize: 11 }}
-                tickFormatter={(v) => `$${v / 1000}k`}
               />{' '}
               <Tooltip content={<CustomTooltip />} />{' '}
-              <Bar dataKey="revenue" name="Revenue" fill="#8B5CF6" radius={[6, 6, 0, 0]} />{' '}
-              <Line
-                type="monotone"
-                dataKey="events"
-                name="Events"
-                stroke="#06B6D4"
-                strokeWidth={2}
-              />{' '}
+              <Bar dataKey="events" name="Sessions" fill="#8B5CF6" radius={[6, 6, 0, 0]} />{' '}
             </BarChart>{' '}
           </ResponsiveContainer>{' '}
         </Card>{' '}

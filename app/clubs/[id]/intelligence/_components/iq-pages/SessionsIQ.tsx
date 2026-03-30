@@ -410,10 +410,10 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
 
       {view === "analytics" ? (
         <>
-          {/* Format Filter Tabs */}
+          {/* Format Filter Tabs — right aligned */}
           {displayFormats.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Filter:</span>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Format:</span>
               {[{ format: "", label: "All" }, ...displayFormats.map(f => ({ format: f.format, label: f.format.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) }))].map(f => (
                 <button
                   key={f.format}
