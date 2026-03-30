@@ -13,11 +13,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useSessionsCalendar } from '../_hooks/use-intelligence'
+import { useSessionsCalendar, useDashboardV2 } from '../_hooks/use-intelligence'
 import type { SessionCalendarItem, SessionRecommendation } from '@/types/intelligence'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { SessionsIQ } from '../_components/iq-pages/SessionsIQ'
+import { ScheduleIQ } from '../_components/iq-pages/ScheduleIQ'
 
 type ViewMode = 'list' | 'week' | 'month'
 
@@ -478,7 +479,8 @@ export default function SessionsCalendarPage() {
   const monthStart = getMonthStart(navDate)
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <SessionsIQ calendarData={calendarData} isLoading={isLoading} clubId={clubId} />
+  const { data: dashboardData } = useDashboardV2(clubId)
+  if (brand.key === 'iqsport') return <ScheduleIQ calendarData={calendarData} dashboardData={dashboardData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading || (!calendarData && isFetching)) return <DashboardSkeleton />
 

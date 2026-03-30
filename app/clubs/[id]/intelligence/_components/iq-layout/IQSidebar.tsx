@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  LayoutDashboard, CalendarDays, Brain, Puzzle, UserPlus, DollarSign,
+  LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity,
@@ -39,7 +39,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: BarChart3,
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
-      { icon: CalendarDays, label: "Sessions", path: "/sessions" },
+      { icon: CalendarDays, label: "Schedule", path: "/sessions" },
     ],
   },
   {
@@ -48,7 +48,6 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: Cpu,
     items: [
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-      { icon: Puzzle, label: "Court Optimizer", path: "/slot-filler", isAI: true },
     ],
   },
   {
