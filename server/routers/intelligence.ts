@@ -2340,39 +2340,54 @@ export const intelligenceRouter = createTRPCRouter({
       since.setDate(since.getDate() - input.days)
 
       const sessions = await ctx.prisma.playSession.findMany({
-        where: { clubId: input.clubId, date: { gte: since } },
-        select: { date: true, startTime: true, registeredCount: true, maxPlayers: true },
+        where: { clubId: input.clubId, date: { gte: since }, startTime: { not: '00:00' } },
+        select: { date: true, startTime: true, endTime: true, courtId: true },
       })
 
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-      const timeSlots = ['6AM', '8AM', '10AM', '12PM', '2PM', '4PM', '6PM', '8PM']
+      const totalCourts = Math.max(await ctx.prisma.clubCourt.count({ where: { clubId: input.clubId } }), 1)
 
-      // Build heatmap: day × timeSlot → avg occupancy
-      const buckets: Record<string, { sum: number; count: number }> = {}
-      days.forEach(d => timeSlots.forEach(t => { buckets[`${d}-${t}`] = { sum: 0, count: 0 } }))
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const timeSlots = ['6AM', '9AM', '12PM', '3PM', '6PM', '8PM', '10PM']
+      const slotStartHours = [6, 9, 12, 15, 18, 20, 22]
+
+      // Real occupancy: unique court-hours booked / available court-hours per slot
+      const courtHourSets: Record<string, Set<string>> = {}
+      const dayDates: Record<string, Set<string>> = {}
+      days.forEach(d => {
+        timeSlots.forEach(t => { courtHourSets[`${d}-${t}`] = new Set() })
+        dayDates[d] = new Set()
+      })
 
       sessions.forEach((s: any) => {
-        const dayIdx = s.date.getDay() // 0=Sun, 1=Mon...
-        const dayName = days[(dayIdx + 6) % 7] // shift so Mon=0
-        const hour = parseInt(s.startTime?.split(':')[0] || '0')
-        const slotIdx = Math.max(0, Math.min(timeSlots.length - 1, Math.floor((hour - 6) / 2)))
-        const slot = timeSlots[slotIdx]
-        const key = `${dayName}-${slot}`
-        if (buckets[key]) {
-          const occ = s.maxPlayers > 0 ? ((s.registeredCount ?? 0) / s.maxPlayers) * 100 : 0
-          buckets[key].sum += occ
-          buckets[key].count++
+        const dayName = days[(s.date.getDay() + 6) % 7]
+        const dateStr = s.date.toISOString().slice(0, 10)
+        dayDates[dayName].add(dateStr)
+
+        const startH = parseInt(s.startTime?.split(':')[0] || '0')
+        const endH = parseInt(s.endTime?.split(':')[0] || '0') || startH + 1
+
+        for (let h = startH; h < endH && h < 23; h++) {
+          // Find slot for this hour
+          let si = 0
+          for (let i = slotStartHours.length - 1; i >= 0; i--) {
+            if (h >= slotStartHours[i]) { si = i; break }
+          }
+          const key = `${dayName}-${timeSlots[si]}`
+          if (courtHourSets[key]) {
+            courtHourSets[key].add(`${s.courtId || 'x'}|${dateStr}|${h}`)
+          }
         }
       })
 
       const heatmap = days.map(day => ({
         day,
-        slots: timeSlots.map(time => ({
-          time,
-          value: buckets[`${day}-${time}`]?.count > 0
-            ? Math.round(buckets[`${day}-${time}`].sum / buckets[`${day}-${time}`].count)
-            : 0,
-        })),
+        slots: timeSlots.map((time, ti) => {
+          const booked = courtHourSets[`${day}-${time}`].size
+          const numDays = dayDates[day].size || 1
+          const slotSpan = ti < slotStartHours.length - 1 ? slotStartHours[ti + 1] - slotStartHours[ti] : 1
+          const available = numDays * totalCourts * slotSpan
+          return { time, value: available > 0 ? Math.round((booked / available) * 100) : 0 }
+        }),
       }))
 
       return { heatmap, timeSlots, days }
