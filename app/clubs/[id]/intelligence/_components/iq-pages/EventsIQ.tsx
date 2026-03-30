@@ -867,7 +867,7 @@ export function EventsIQ({ embedded = false, eventsListData, clubId }: { embedde
                         {/* Tags */}{' '}
                         <div className="flex items-center gap-2 flex-wrap">
                           {' '}
-                          {event.tags.map((tag) => (
+                          {(event.tags || []).map((tag) => (
                             <span
                               key={tag}
                               className="px-2.5 py-1 rounded-lg text-[10px]"
