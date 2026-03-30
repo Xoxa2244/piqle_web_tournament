@@ -154,8 +154,8 @@ async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | 
       WHERE de.club_id = $1::uuid
         AND de.content_type = 'member'
         AND de.source_table = 'csv_import'
-        AND de.metadata->>'membershipStatus' = 'Active'
-        AND de.metadata->>'membership' IN ('VIP', 'Premium', 'Platinum', 'Gold', 'Elite', 'Unlimited')
+        AND de.metadata->>'membershipStatus' = 'Currently Active'
+        AND (de.metadata->>'membership' ILIKE '%VIP%' OR de.metadata->>'membership' ILIKE '%Premium%' OR de.metadata->>'membership' ILIKE '%Unlimited%')
     ),
     last_play AS (
       SELECT
@@ -211,10 +211,10 @@ async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | n
       WHERE de.club_id = $1::uuid
         AND de.content_type = 'member'
         AND de.source_table = 'csv_import'
-        AND de.metadata->>'membershipStatus' = 'Active'
+        AND de.metadata->>'membershipStatus' = 'Currently Active'
         AND (
           de.metadata->>'membership' ILIKE '%guest%'
-          OR de.metadata->>'membership' ILIKE '%pass%'
+          OR de.metadata->>'membership' ILIKE '%pay per%'
           OR de.metadata->>'membership' ILIKE '%drop%in%'
           OR de.metadata->>'membership' ILIKE '%trial%'
         )
@@ -403,13 +403,14 @@ async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight
     WITH new_members AS (
       SELECT
         de.source_id AS "userId",
-        (de.metadata->>'joinDate')::date AS "joinDate"
+        (de.metadata->>'firstMembershipStartDate')::date AS "joinDate"
       FROM document_embeddings de
       WHERE de.club_id = $1::uuid
         AND de.content_type = 'member'
         AND de.source_table = 'csv_import'
-        AND de.metadata->>'membershipStatus' = 'Active'
-        AND (de.metadata->>'joinDate')::date >= NOW() - INTERVAL '30 days'
+        AND de.metadata->>'membershipStatus' = 'Currently Active'
+        AND de.metadata->>'firstMembershipStartDate' IS NOT NULL
+        AND (de.metadata->>'firstMembershipStartDate')::date >= NOW() - INTERVAL '90 days'
     ),
     booking_counts AS (
       SELECT
