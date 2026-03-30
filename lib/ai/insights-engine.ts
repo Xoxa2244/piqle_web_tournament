@@ -48,7 +48,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
       FROM play_sessions ps
       JOIN club_courts cc ON cc.id = ps."courtId"
       JOIN play_session_bookings b ON b."sessionId" = ps.id
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
         AND b.status::text = 'CONFIRMED'
       GROUP BY cc.id, cc.name
@@ -57,11 +57,11 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
       SELECT
         COUNT(DISTINCT id) AS courts,
         GREATEST(
-          (SELECT COUNT(DISTINCT ps.date::date) FROM play_sessions ps WHERE ps."clubId" = $1 AND ps.date >= NOW() - INTERVAL '30 days'),
+          (SELECT COUNT(DISTINCT ps.date::date) FROM play_sessions ps WHERE ps."clubId" = $1::uuid AND ps.date >= NOW() - INTERVAL '30 days'),
           1
         ) AS days
       FROM club_courts
-      WHERE "clubId" = $1 AND "isActive" = true
+      WHERE "clubId" = $1::uuid AND "isActive" = true
     )
     SELECT
       cu."courtId",
@@ -108,7 +108,7 @@ async function peakHourOverflow(prisma: any, clubId: string): Promise<Insight | 
       SUM(ps."maxPlayers") AS "totalCapacity",
       ROUND(SUM(COALESCE(ps."registered_count", 0))::numeric / NULLIF(SUM(ps."maxPlayers"), 0) * 100, 1) AS "occupancyPct"
     FROM play_sessions ps
-    WHERE ps."clubId" = $1
+    WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND ps.status::text != 'CANCELLED'
     GROUP BY EXTRACT(HOUR FROM ps.date)
@@ -163,7 +163,7 @@ async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | 
         MAX(ps.date) AS "lastPlayed"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
     )
@@ -225,7 +225,7 @@ async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | n
         COUNT(*) AS "bookingCount"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
@@ -278,7 +278,7 @@ async function suspendedWinback(prisma: any, clubId: string): Promise<Insight | 
         MAX(ps.date) AS "lastPlayed"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
     )
@@ -319,7 +319,7 @@ async function formatMismatch(prisma: any, clubId: string): Promise<Insight | nu
       COUNT(*) AS "sessionCount",
       AVG(COALESCE(ps."registered_count", 0)::numeric / NULLIF(ps."maxPlayers", 0) * 100) AS "avgOccupancy"
     FROM play_sessions ps
-    WHERE ps."clubId" = $1
+    WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND ps.status::text != 'CANCELLED'
     GROUP BY ps."skillLevel"::text, ps.format::text
@@ -365,7 +365,7 @@ async function dayOfWeekGap(prisma: any, clubId: string): Promise<Insight | null
       SUM(ps."maxPlayers") AS "totalCapacity",
       ROUND(SUM(COALESCE(ps."registered_count", 0))::numeric / NULLIF(SUM(ps."maxPlayers"), 0) * 100, 1) AS "occupancyPct"
     FROM play_sessions ps
-    WHERE ps."clubId" = $1
+    WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND ps.status::text != 'CANCELLED'
     GROUP BY TO_CHAR(ps.date, 'Day'), EXTRACT(DOW FROM ps.date)
@@ -417,7 +417,7 @@ async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight
         COUNT(*) AS "bookingCount"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
     )
@@ -461,7 +461,7 @@ async function skillProgression(prisma: any, clubId: string): Promise<Insight | 
         ROW_NUMBER() OVER (PARTITION BY b."userId" ORDER BY ps.date DESC) AS rn_last
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
+      WHERE ps."clubId" = $1::uuid
         AND b.status::text = 'CONFIRMED'
         AND ps."skillLevel"::text IN ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')
     ),
@@ -507,7 +507,7 @@ async function emptyEveningSlots(prisma: any, clubId: string): Promise<Insight |
       AVG(COALESCE(ps."registered_count", 0)::numeric / NULLIF(ps."maxPlayers", 0) * 100) AS "avgOccupancy",
       SUM(ps."maxPlayers" - COALESCE(ps."registered_count", 0)) AS "emptySlots"
     FROM play_sessions ps
-    WHERE ps."clubId" = $1
+    WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND EXTRACT(HOUR FROM ps.date) >= 19
       AND ps.status::text != 'CANCELLED'
