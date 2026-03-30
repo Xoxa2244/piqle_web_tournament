@@ -112,15 +112,15 @@ const emptyHealthMetrics = { improved: 0, improvedPct: 0, declined: 0, declinedP
 const emptyComparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[] = [];
 
 const occupancyHeatmap = [
-  { day: "Mon", slots: [30, 45, 72, 85, 60, 40, 25] },
-  { day: "Tue", slots: [25, 38, 65, 78, 55, 35, 20] },
-  { day: "Wed", slots: [35, 50, 80, 90, 68, 45, 30] },
-  { day: "Thu", slots: [28, 42, 70, 82, 58, 38, 22] },
-  { day: "Fri", slots: [40, 55, 88, 95, 75, 55, 40] },
-  { day: "Sat", slots: [60, 75, 92, 98, 85, 70, 55] },
-  { day: "Sun", slots: [55, 68, 88, 92, 80, 62, 48] },
+  { day: "Mon", slots: [10, 20, 30, 45, 60, 72, 85, 80, 70, 60, 55, 50, 45, 50, 55, 40, 25] },
+  { day: "Tue", slots: [8, 15, 25, 38, 55, 65, 78, 72, 65, 55, 50, 45, 40, 45, 50, 35, 20] },
+  { day: "Wed", slots: [12, 25, 35, 50, 68, 80, 90, 85, 75, 68, 60, 55, 50, 55, 60, 45, 30] },
+  { day: "Thu", slots: [8, 18, 28, 42, 58, 70, 82, 78, 68, 58, 52, 48, 42, 48, 55, 38, 22] },
+  { day: "Fri", slots: [15, 28, 40, 55, 70, 88, 95, 90, 82, 75, 68, 62, 55, 60, 68, 55, 40] },
+  { day: "Sat", slots: [25, 42, 60, 75, 85, 92, 98, 95, 88, 85, 78, 72, 65, 70, 78, 70, 55] },
+  { day: "Sun", slots: [20, 38, 55, 68, 78, 88, 92, 90, 82, 80, 72, 65, 58, 62, 72, 62, 48] },
 ];
-const heatmapTimes = ["6AM", "9AM", "12PM", "3PM", "6PM", "8PM", "10PM"];
+const heatmapTimes = ["6", "7", "8", "9", "10", "11", "12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
 
 
 
@@ -540,8 +540,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const isEmptyClub = !data;
   const labels = getPeriodLabel(period);
 
-  // Map real heatmap data
+  // Map real heatmap data — use real timeSlots when available (hourly), fallback to mock
   const displayHeatmap = heatmapData?.heatmap || occupancyHeatmap;
+  const displayHeatmapTimes: string[] = heatmapData?.timeSlots || heatmapTimes;
   // Sessions by Format — real data from occupancy breakdown
   const formatColors: Record<string, string> = {
     OPEN_PLAY: "#10B981", CLINIC: "#06B6D4", DRILL: "#8B5CF6",
@@ -1063,7 +1064,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Occupancy Heatmap</h3>
           <div className="space-y-1.5">
             <div className="flex gap-1.5 pl-10">
-              {heatmapTimes.map((t) => (
+              {displayHeatmapTimes.map((t) => (
                 <div key={t} className="flex-1 text-center text-[9px]" style={{ color: "var(--t4)" }}>{t}</div>
               ))}
             </div>

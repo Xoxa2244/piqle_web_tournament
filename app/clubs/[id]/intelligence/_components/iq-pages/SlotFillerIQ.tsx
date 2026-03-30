@@ -135,6 +135,7 @@ function MatchScoreBadge({ score }: { score: number }) {
 /*            SLOT FILLER PAGE                    */
 /* ============================================= */
 export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId, aiProfiles, heatmapData }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null; aiProfiles?: Record<string, any>; heatmapData?: any } = {}) {
+  const isFrequentPlayersFallback = recommendations?.source === 'frequent_players';
   const { isDark } = useTheme();
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
@@ -254,7 +255,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
         {[
           { label: "Underfilled Sessions", value: displaySlots.length > 0 ? displaySlots.length.toString() : "--", icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Below 80% capacity" },
           { label: "Spots to Fill", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString() : "--", icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all sessions" },
-          { label: "AI Matches", value: activeSlot?.matches?.length ? activeSlot.matches.length.toString() : recsMatchSelectedSlot ? "0" : "—", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: activeSlot?.matches?.length ? `For ${activeSlot.court}` : "Select a session" },
+          { label: isFrequentPlayersFallback ? "Suggested" : "AI Matches", value: activeSlot?.matches?.length ? activeSlot.matches.length.toString() : recsMatchSelectedSlot ? "0" : "—", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: activeSlot?.matches?.length ? `For ${activeSlot.court}` : "Select a session" },
           { label: "Avg Fill Rate", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / Math.max(slot.spotsTotal, 1)) * 100, 0) / displaySlots.length)}%` : "--", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Underfilled sessions only" },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
@@ -408,10 +409,12 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
           <div className="flex items-center justify-between">
             <div>
               <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>
-                AI-Matched Players for {activeSlot.court}
+                {isFrequentPlayersFallback ? 'Suggested Players' : 'AI-Matched Players'} for {activeSlot.court}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: "var(--t4)" }}>
-                Ranked by compatibility score • {activeSlot.time}, {activeSlot.date}
+                {isFrequentPlayersFallback
+                  ? `Players who frequently play this format/time • ${activeSlot.time}, ${activeSlot.date}`
+                  : `Ranked by compatibility score • ${activeSlot.time}, ${activeSlot.date}`}
               </p>
             </div>
             <button
@@ -471,7 +474,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
             )}
             {!isLoadingNewSlot && activeSlot.matches.length === 0 && (
               <div className="text-center py-8 text-sm" style={{ color: "var(--t3)" }}>
-                Click a slot to load AI player recommendations
+                {selectedSessionId ? 'No matching players found. Add more members or booking data to improve recommendations.' : 'Click a slot to load player recommendations'}
               </div>
             )}
             {!isLoadingNewSlot && activeSlot.matches.map((player, i) => {

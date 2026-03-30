@@ -338,11 +338,43 @@ export function SessionsIQ({ initialTab, calendarData, isLoading: externalLoadin
     });
   }, [displaySessions, searchQuery, filterFormat, filterCourt, filterStatus]);
 
+  // Loading state: calendarData not yet available
+  if (externalLoading && !calendarData) {
+    return (
+      <div className="space-y-6 max-w-[1400px] mx-auto animate-pulse">
+        <div className="h-8 rounded-lg w-48" style={{ background: "var(--subtle)" }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="rounded-2xl p-5 space-y-3" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl" style={{ background: "var(--subtle)" }} />
+                <div className="space-y-2 flex-1">
+                  <div className="h-5 rounded w-12" style={{ background: "var(--subtle)" }} />
+                  <div className="h-3 rounded w-20" style={{ background: "var(--subtle)" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1,2,3].map(i => (
+            <div key={i} className="rounded-2xl p-4 h-28" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // Only show empty state if we have a definitive "no data" signal:
   // calendarData must have been loaded (not undefined) and contain no sessions,
   // AND we're not currently loading.
   const definitelyEmpty = calendarData !== undefined && !hasData;
   if (definitelyEmpty && !externalLoading) {
+    return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
+  }
+
+  // Guard: if calendarData is null/undefined (not loading, not empty), show empty state
+  if (!calendarData && !externalLoading) {
     return <EmptyStateIQ icon={CalendarDays} title="No sessions yet" description="Import your session history to see analytics, fill rates, and AI recommendations for optimizing your schedule." ctaLabel="Import Data" ctaHref={`/clubs/${clubId || ''}/intelligence`} />;
   }
 

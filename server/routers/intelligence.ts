@@ -124,6 +124,108 @@ export const intelligenceRouter = createTRPCRouter({
       clubId: z.string().uuid().optional(), // Required for CSV session IDs
     }))
     .query(async ({ ctx, input }) => {
+      // Helper: find frequent players from booking history as fallback
+      async function getFrequentPlayersFallback(
+        prisma: any,
+        clubId: string,
+        sessionInfo: { format?: string; startTime?: string; courtId?: string | null },
+        alreadyBookedUserIds: Set<string>,
+        limit: number,
+      ) {
+        try {
+          // Query bookings from last 90 days for this club, grouped by user
+          const since = new Date()
+          since.setDate(since.getDate() - 90)
+
+          const bookings = await prisma.playSessionBooking.findMany({
+            where: {
+              status: 'CONFIRMED',
+              playSession: {
+                clubId,
+                date: { gte: since },
+              },
+            },
+            select: {
+              userId: true,
+              playSession: { select: { format: true, startTime: true, courtId: true } },
+            },
+          })
+
+          // Score each player: +3 for same format, +2 for similar time (same hour), +1 for same court, +1 per booking
+          const scores = new Map<string, { total: number; formatMatch: number; timeMatch: number; bookingCount: number }>()
+          const sessionHour = sessionInfo.startTime ? parseInt(sessionInfo.startTime.split(':')[0] || '0') : -1
+
+          for (const b of bookings) {
+            if (alreadyBookedUserIds.has(b.userId)) continue
+            const existing = scores.get(b.userId) || { total: 0, formatMatch: 0, timeMatch: 0, bookingCount: 0 }
+            existing.bookingCount++
+            existing.total += 1 // base point per booking
+            if (sessionInfo.format && b.playSession?.format === sessionInfo.format) {
+              existing.formatMatch++
+              existing.total += 3
+            }
+            if (sessionHour >= 0 && b.playSession?.startTime) {
+              const bookingHour = parseInt(b.playSession.startTime.split(':')[0] || '0')
+              if (Math.abs(bookingHour - sessionHour) <= 1) {
+                existing.timeMatch++
+                existing.total += 2
+              }
+            }
+            if (sessionInfo.courtId && b.playSession?.courtId === sessionInfo.courtId) {
+              existing.total += 1
+            }
+            scores.set(b.userId, existing)
+          }
+
+          // Sort by score descending, take top N
+          const topUserIds = Array.from(scores.entries())
+            .sort(([, a], [, b]) => b.total - a.total)
+            .slice(0, limit)
+            .map(([userId]) => userId)
+
+          if (topUserIds.length === 0) return []
+
+          // Load user info
+          const users = await prisma.user.findMany({
+            where: { id: { in: topUserIds } },
+            select: { id: true, name: true, email: true, image: true, duprRatingDoubles: true },
+          })
+          const userMap = new Map<string, any>(users.map((u: any) => [u.id, u]))
+
+          return topUserIds.map(userId => {
+            const user = userMap.get(userId)
+            const s = scores.get(userId)!
+            if (!user) return null
+            return {
+              member: {
+                id: user.id,
+                name: user.name || 'Unknown',
+                email: user.email || '',
+                image: user.image,
+                duprRating: user.duprRatingDoubles,
+                duprRatingDoubles: user.duprRatingDoubles,
+                lastPlayedDaysAgo: null,
+              },
+              score: Math.min(Math.round((s.total / Math.max(s.bookingCount, 1)) * 20), 99),
+              estimatedLikelihood: 'medium' as const,
+              reasoning: {
+                summary: `Frequently plays ${s.formatMatch > 0 ? 'this format' : 'at this club'}${s.timeMatch > 0 ? ' at similar times' : ''} (${s.bookingCount} sessions in 90d)`,
+                components: {} as Record<string, any>,
+              },
+              factors: {
+                preferredTimeMatch: s.timeMatch > 0,
+                formatMatch: s.formatMatch > 0,
+                frequentPlayer: s.bookingCount >= 3,
+              },
+              source: 'frequent_player' as const,
+            }
+          }).filter(Boolean)
+        } catch (err) {
+          console.warn('[SlotFiller] Frequent players fallback failed:', err)
+          return []
+        }
+      }
+
       // CSV fallback path: session IDs like "csv-0", "csv-1"
       if (input.sessionId.startsWith('csv-')) {
         if (!input.clubId) {
@@ -137,13 +239,26 @@ export const intelligenceRouter = createTRPCRouter({
           clubId: input.clubId,
           limit: input.limit,
         })
+
+        // Fallback: if no AI recommendations, show frequent players from booking data
+        if (result.recommendations.length === 0) {
+          const fallbackPlayers = await getFrequentPlayersFallback(
+            ctx.prisma, input.clubId,
+            { format: result.session.format, startTime: result.session.startTime },
+            new Set(), input.limit,
+          )
+          if (fallbackPlayers.length > 0) {
+            return { ...result, recommendations: fallbackPlayers, aiEnhancements: [], source: 'frequent_players' }
+          }
+        }
+
         return { ...result, aiEnhancements: [] }
       }
 
       // Standard PlaySession UUID path
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
-        select: { clubId: true },
+        select: { clubId: true, format: true, startTime: true, courtId: true },
       })
       if (!session) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
@@ -151,6 +266,27 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
       await checkFeatureAccess(session.clubId, 'slot-filler')
       const result = await getSlotFillerRecommendations(ctx.prisma, input)
+
+      // Fallback: if no AI recommendations, show frequent players from booking data
+      if (result.recommendations.length === 0) {
+        const alreadyBooked = new Set<string>()
+        try {
+          const bookings = await ctx.prisma.playSessionBooking.findMany({
+            where: { sessionId: input.sessionId, status: 'CONFIRMED' },
+            select: { userId: true },
+          })
+          bookings.forEach((b: any) => alreadyBooked.add(b.userId))
+        } catch { /* non-critical */ }
+
+        const fallbackPlayers = await getFrequentPlayersFallback(
+          ctx.prisma, session.clubId,
+          { format: session.format, startTime: session.startTime, courtId: session.courtId },
+          alreadyBooked, input.limit,
+        )
+        if (fallbackPlayers.length > 0) {
+          return { ...result, recommendations: fallbackPlayers, aiEnhancements: [], source: 'frequent_players' }
+        }
+      }
 
       // Optional: enhance with LLM
       if (input.enhance && result.recommendations.length > 0) {

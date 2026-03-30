@@ -117,10 +117,22 @@ export function UtilizationIQ({ dashboardData, heatmapData, memberHealthData, is
     };
   }, [memberHealthData]);
 
-  /* Heatmap grid */
-  const heatmapGrid = heatmapData?.heatmap;
+  /* Heatmap grid — transpose backend data: rows become time slots, columns become days.
+     Backend returns: [{day:'Mon', slots:[{time:'6AM', value:30}, ...]}, ...]
+     We need: rows[timeIdx] = [dayMon_value, dayTue_value, ...] */
+  const rawHeatmap = heatmapData?.heatmap;
   const heatmapTimeSlots = heatmapData?.timeSlots ?? [];
   const heatmapDays = heatmapData?.days ?? DAY_LABELS;
+  const heatmapGrid = useMemo(() => {
+    if (!rawHeatmap?.length || !heatmapTimeSlots.length) return null;
+    // Transpose: for each time slot index, collect value from each day
+    return heatmapTimeSlots.map((_: string, ti: number) =>
+      rawHeatmap.map((dayRow: any) => {
+        const slot = dayRow.slots?.[ti];
+        return typeof slot === 'number' ? slot : (slot?.value ?? 0);
+      })
+    );
+  }, [rawHeatmap, heatmapTimeSlots]);
 
   const hasData = !!dashboardData;
 
