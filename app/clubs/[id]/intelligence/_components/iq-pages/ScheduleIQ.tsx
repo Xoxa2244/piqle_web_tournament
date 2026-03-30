@@ -1,12 +1,10 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
-import { motion, AnimatePresence } from "motion/react"
+import { motion } from "motion/react"
 import {
-  ChevronLeft, ChevronRight, Users, MapPin, Clock, X,
-  Zap, ArrowRight, Target, CalendarDays,
+  ChevronLeft, ChevronRight, CalendarDays,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
-import { useRouter } from "next/navigation"
 import type { SessionCalendarItem } from "@/types/intelligence"
 import { SessionDetailIQ } from "./SessionDetailIQ"
 
@@ -44,7 +42,6 @@ function classifySkill(format: string, skillLevel: string, title?: string): { ti
   const fmt = (format || '').toUpperCase()
   const t = (title || '').toUpperCase()
 
-  // Determine format prefix
   const fmtPrefix = fmt.includes('LEAGUE') ? 'League'
     : fmt.includes('DRILL') ? 'Drill'
     : fmt.includes('CLINIC') ? 'Clinic'
@@ -52,7 +49,6 @@ function classifySkill(format: string, skillLevel: string, title?: string): { ti
     : fmt.includes('OPEN') ? 'Open Play'
     : ''
 
-  // Determine skill tier from skillLevel, title, or format
   const combined = sl + ' ' + t
   let tier: SkillTier = 'other', skillLabel = '', range = ''
 
@@ -62,7 +58,6 @@ function classifySkill(format: string, skillLevel: string, title?: string): { ti
   else if (combined.includes('CASUAL') || combined.includes('2.5'))      { tier = 'casual'; skillLabel = 'Casual'; range = '2.5 - 2.99' }
   else if (combined.includes('BEGINNER') || combined.includes('2.0'))    { tier = 'beginner'; skillLabel = 'Beginner'; range = '2.0 - 2.49' }
 
-  // Build label: "Open Play · Advanced" or "League · Competitive" or just "Drill"
   const label = fmtPrefix && skillLabel
     ? `${fmtPrefix} · ${skillLabel}`
     : fmtPrefix || skillLabel || 'All Levels'
@@ -75,12 +70,6 @@ function shortenCourt(court: string): string {
   return m ? `Ct #${m[1]}` : court.replace(/\(.+\)/, '').trim()
 }
 
-function fillColor(occ: number): string {
-  if (occ >= 80) return '#10B981'
-  if (occ >= 40) return '#F59E0B'
-  return '#EF4444'
-}
-
 // ── Props ──
 
 interface ScheduleIQProps {
@@ -88,87 +77,6 @@ interface ScheduleIQProps {
   dashboardData: any
   isLoading: boolean
   clubId: string
-}
-
-// ── Session Detail Panel ──
-
-function SessionDetail({ session, onClose, clubId, isDark }: {
-  session: SessionCalendarItem; onClose: () => void; clubId: string; isDark: boolean
-}) {
-  const router = useRouter()
-  const sk = classifySkill(session.format, session.skillLevel)
-  const colors = SKILL_COLORS[sk.tier]
-  const occPct = Math.round((session.registered / (session.capacity || 1)) * 100)
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', boxShadow: isDark ? '0 20px 60px rgba(0,0,0,0.5)' : '0 20px 60px rgba(0,0,0,0.1)' }}
-    >
-      <div className="flex items-center justify-between px-5 py-3" style={{ background: colors.bg, borderBottom: `1px solid ${colors.border}` }}>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: colors.border, color: colors.text }}>{sk.label}</span>
-          {sk.range && <span className="text-xs" style={{ color: 'var(--t3)' }}>{sk.range}</span>}
-        </div>
-        <button onClick={onClose} className="p-1 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><X className="w-4 h-4" /></button>
-      </div>
-      <div className="p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { icon: Clock, label: 'Time', value: `${session.startTime} - ${session.endTime}` },
-            { icon: MapPin, label: 'Court', value: session.court || 'N/A' },
-            { icon: CalendarDays, label: 'Date', value: new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) },
-            { icon: Target, label: 'Level', value: session.skillLevel || 'All Levels' },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-center gap-2">
-              <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--t4)' }} />
-              <div>
-                <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)' }}>{label}</div>
-                <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>{value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Fill bar */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium" style={{ color: 'var(--t2)' }}>Fill Rate</span>
-            <span className="text-xs font-semibold" style={{ color: fillColor(session.occupancy) }}>{session.registered}/{session.capacity}</span>
-          </div>
-          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle)' }}>
-            <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(occPct, 100)}%` }} transition={{ duration: 0.6 }} className="h-full rounded-full" style={{ background: fillColor(session.occupancy) }} />
-          </div>
-        </div>
-        {/* Players */}
-        {session.playerNames && session.playerNames.length > 0 && (
-          <div>
-            <div className="text-xs font-medium mb-2" style={{ color: 'var(--t3)' }}><Users className="w-3 h-3 inline mr-1" />Registered ({session.playerNames.length})</div>
-            <div className="flex flex-wrap gap-1.5">
-              {session.playerNames.slice(0, 12).map((name, i) => (
-                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'var(--subtle)', color: 'var(--t2)' }}>{name}</span>
-              ))}
-              {session.playerNames.length > 12 && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ color: 'var(--t4)' }}>+{session.playerNames.length - 12} more</span>}
-            </div>
-          </div>
-        )}
-        {session.peerAvgOccupancy != null && (
-          <div className="rounded-xl p-3 text-xs" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-            <Zap className="w-3 h-3 inline mr-1" style={{ color: '#8B5CF6' }} />
-            This slot fills {session.peerAvgOccupancy}% on average.
-            {occPct < session.peerAvgOccupancy ? ` Today only ${occPct}%.` : ` Today ${occPct}% — above avg.`}
-          </div>
-        )}
-        {occPct < 80 && session.status !== 'past' && (
-          <button
-            onClick={() => router.push(`/clubs/${clubId}/intelligence/slot-filler`)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white hover:brightness-110"
-            style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
-          >Fill this session <ArrowRight className="w-4 h-4" /></button>
-        )}
-      </div>
-    </motion.div>
-  )
 }
 
 // ── Main Component ──
@@ -180,29 +88,25 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
-  // All unique dates in data
   const allDates = useMemo(() => {
     const s = new Set(allSessions.map((s) => s.date))
     return Array.from(s).sort()
   }, [allSessions])
 
-  // Courts sorted
   const courts = useMemo(() => {
     const s = new Set<string>()
     allSessions.forEach((x) => { if (x.court) s.add(x.court) })
     return Array.from(s).sort()
   }, [allSessions])
 
-  // Sessions for selected date
   const daySessions = useMemo(
     () => allSessions.filter((s) => s.date === selectedDate),
     [allSessions, selectedDate]
   )
 
-  // Map: `court|hour` -> sessions, also compute rowSpan
   const sessionGrid = useMemo(() => {
     const map: Record<string, (SessionCalendarItem & { rowSpan: number })[]> = {}
-    const occupied: Set<string> = new Set() // track cells occupied by multi-hour spans
+    const occupied: Set<string> = new Set()
     for (const s of daySessions) {
       const startH = parseInt(s.startTime.split(':')[0], 10)
       const endH = parseInt(s.endTime.split(':')[0], 10)
@@ -210,7 +114,6 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
       const key = `${s.court}|${startH}`
       if (!map[key]) map[key] = []
       map[key].push({ ...s, rowSpan: span })
-      // Mark cells as occupied for multi-hour
       for (let h = startH + 1; h < startH + span; h++) {
         occupied.add(`${s.court}|${h}`)
       }
@@ -218,7 +121,6 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
     return { map, occupied }
   }, [daySessions])
 
-  // Week pills (Mon-Sun around selected date)
   const weekPills = useMemo(() => {
     const sel = new Date(selectedDate + 'T12:00:00')
     const day = sel.getDay()
@@ -247,7 +149,6 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
   }, [allDates])
   const handleToday = useCallback(() => setSelectedDate(toDateStr(new Date())), [])
 
-  // Loading
   if (isLoading) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -270,14 +171,14 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
 
   const currentHour = new Date().getHours()
 
-  // Session detail view
+  // Session detail view — replaces calendar when a session is selected
   if (selectedSession) {
     return <SessionDetailIQ session={selectedSession} clubId={clubId} onBack={() => setSelectedSession(null)} />
   }
 
   return (
     <div className="space-y-4">
-      {/* ── Day navigation ── */}
+      {/* Day navigation */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
         <div className="flex items-center gap-2">
@@ -294,7 +195,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
         </div>
       </div>
 
-      {/* ── Week overview bar ── */}
+      {/* Week overview bar */}
       <div className="flex items-center gap-1.5">
         {weekPills.map((p) => {
           const isSelected = p.dateStr === selectedDate
@@ -319,97 +220,92 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
         })}
       </div>
 
-      {/* ── Grid + Detail ── */}
-      <div className="flex gap-4">
-        <div className="flex-1 min-w-0">
-          {daySessions.length === 0 ? (
-            <div className="text-center py-16 rounded-2xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-              <CalendarDays className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--t4)' }} />
-              <p className="text-sm" style={{ color: 'var(--t3)' }}>No sessions scheduled for this day</p>
-            </div>
-          ) : (
-            <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-              <div className="overflow-x-auto">
-                <div style={{ minWidth: Math.max(600, courts.length * 140 + 70) }}>
-                  {/* Court header */}
-                  <div className="flex sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)' }}>
-                    <div className="w-[70px] shrink-0 p-2" />
-                    {courts.map((c) => (
-                      <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
-                        <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>{shortenCourt(c)}</div>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Hour rows */}
-                  {HOURS.map((hour) => (
-                    <div
-                      key={hour}
-                      className="flex"
-                      style={{
-                        minHeight: 56,
-                        background: hour === currentHour && selectedDate === todayStr ? 'rgba(139,92,246,0.04)' : 'transparent',
-                      }}
-                    >
-                      {/* Time label */}
-                      <div className="w-[70px] shrink-0 p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]" style={{ borderTop: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
-                        <span className="text-[10px] font-medium" style={{ color: hour === currentHour && selectedDate === todayStr ? '#8B5CF6' : 'var(--t4)' }}>{formatHour(hour)}</span>
-                      </div>
-
-                      {/* Court cells */}
-                      {courts.map((court) => {
-                        const key = `${court}|${hour}`
-                        const isOccupied = sessionGrid.occupied.has(key)
-                        const cellSessions = sessionGrid.map[key]
-
-                        if (isOccupied) return null // spanned by a previous row
-
-                        return (
-                          <div
-                            key={court}
-                            className="flex-1 min-w-[120px] relative p-0.5"
-                            style={{
-                              borderTop: '1px solid var(--card-border)',
-                              borderLeft: '1px solid var(--card-border)',
-                              ...(cellSessions && cellSessions[0]?.rowSpan > 1 ? { minHeight: cellSessions[0].rowSpan * 56 } : {}),
-                            }}
-                          >
-                            {!cellSessions ? (
-                              <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.2 }} />
-                            ) : (
-                              cellSessions.map((s) => {
-                                const sk = classifySkill(s.format, s.skillLevel)
-                                const colors = SKILL_COLORS[sk.tier]
-                                const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
-                                return (
-                                  <button
-                                    key={s.id}
-                                    onClick={() => setSelectedSession(s)}
-                                    className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full"
-                                    style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
-                                  >
-                                    <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
-                                    {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
-                                    <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
-                                    <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                                      <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
-                                    </div>
-                                  </button>
-                                )
-                              })
-                            )}
-                          </div>
-                        )
-                      })}
+      {/* Court Grid */}
+      <div>
+        {daySessions.length === 0 ? (
+          <div className="text-center py-16 rounded-2xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <CalendarDays className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--t4)' }} />
+            <p className="text-sm" style={{ color: 'var(--t3)' }}>No sessions scheduled for this day</p>
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: Math.max(600, courts.length * 140 + 70) }}>
+                {/* Court header */}
+                <div className="flex sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)' }}>
+                  <div className="w-[70px] shrink-0 p-2" />
+                  {courts.map((c) => (
+                    <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
+                      <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>{shortenCourt(c)}</div>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
                     </div>
                   ))}
                 </div>
+
+                {/* Hour rows */}
+                {HOURS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="flex"
+                    style={{
+                      minHeight: 56,
+                      background: hour === currentHour && selectedDate === todayStr ? 'rgba(139,92,246,0.04)' : 'transparent',
+                    }}
+                  >
+                    <div className="w-[70px] shrink-0 p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]" style={{ borderTop: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
+                      <span className="text-[10px] font-medium" style={{ color: hour === currentHour && selectedDate === todayStr ? '#8B5CF6' : 'var(--t4)' }}>{formatHour(hour)}</span>
+                    </div>
+
+                    {courts.map((court) => {
+                      const key = `${court}|${hour}`
+                      const isOccupied = sessionGrid.occupied.has(key)
+                      const cellSessions = sessionGrid.map[key]
+
+                      if (isOccupied) return null
+
+                      return (
+                        <div
+                          key={court}
+                          className="flex-1 min-w-[120px] relative p-0.5"
+                          style={{
+                            borderTop: '1px solid var(--card-border)',
+                            borderLeft: '1px solid var(--card-border)',
+                            ...(cellSessions && cellSessions[0]?.rowSpan > 1 ? { minHeight: cellSessions[0].rowSpan * 56 } : {}),
+                          }}
+                        >
+                          {!cellSessions ? (
+                            <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.2 }} />
+                          ) : (
+                            cellSessions.map((s) => {
+                              const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
+                              const colors = SKILL_COLORS[sk.tier]
+                              const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
+                              return (
+                                <button
+                                  key={s.id}
+                                  onClick={() => setSelectedSession(s)}
+                                  className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full"
+                                  style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+                                >
+                                  <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
+                                  {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
+                                  <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
+                                  <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                    <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
+                                  </div>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
             </div>
-          )}
-        </div>
-
+          </div>
+        )}
       </div>
     </div>
   )
