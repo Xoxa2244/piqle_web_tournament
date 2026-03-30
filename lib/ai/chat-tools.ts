@@ -345,8 +345,8 @@ export function createChatTools(clubId: string) {
           const OPEN = 6, CLOSE = 23
           const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-          // Build occupancy by day × 2-hour slot
-          const slots: Record<string, { courtHours: Set<string>; daysSet: Set<string>; totalPlayers: number }> = {}
+          // Build occupancy by day × hour slot with format tracking
+          const slots: Record<string, { courtHours: Set<string>; daysSet: Set<string>; totalPlayers: number; formats: Record<string, number> }> = {}
           const dayDatesAll = new Map<string, Set<string>>()
 
           sessions.forEach((s: any) => {
@@ -357,13 +357,15 @@ export function createChatTools(clubId: string) {
 
             const startH = parseInt(s.startTime?.split(':')[0] || '0')
             const endH = parseInt(s.endTime?.split(':')[0] || '0') || startH + 1
+            const fmt = (s.format || 'OTHER').replace(/_/g, ' ')
 
             for (let h = Math.max(startH, OPEN); h < Math.min(endH, CLOSE); h++) {
               const slotLabel = `${dayName} ${h}:00-${h + 1}:00`
-              if (!slots[slotLabel]) slots[slotLabel] = { courtHours: new Set(), daysSet: new Set(), totalPlayers: 0 }
+              if (!slots[slotLabel]) slots[slotLabel] = { courtHours: new Set(), daysSet: new Set(), totalPlayers: 0, formats: {} }
               slots[slotLabel].courtHours.add(`${s.courtId}|${dateStr}|${h}`)
               slots[slotLabel].daysSet.add(dateStr)
               slots[slotLabel].totalPlayers += s.registeredCount || 0
+              slots[slotLabel].formats[fmt] = (slots[slotLabel].formats[fmt] || 0) + 1
             }
           })
 
@@ -373,7 +375,9 @@ export function createChatTools(clubId: string) {
               const numDays = data.daysSet.size || 1
               const available = numDays * totalCourts
               const occupancy = Math.round((data.courtHours.size / available) * 100)
-              return { slot: label, occupancy: `${occupancy}%`, courtsUsed: data.courtHours.size, available, totalPlayers: data.totalPlayers }
+              // Top formats for this slot
+              const topFormats = Object.entries(data.formats).sort(([,a],[,b]) => b - a).slice(0, 3).map(([f, c]) => `${f} (${c})`).join(', ')
+              return { slot: label, occupancy: `${occupancy}%`, courtsUsed: data.courtHours.size, available, totalPlayers: data.totalPlayers, formats: topFormats }
             })
             .sort((a, b) => parseInt(b.occupancy) - parseInt(a.occupancy))
 
