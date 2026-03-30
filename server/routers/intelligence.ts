@@ -17,6 +17,7 @@ import {
 } from '@/lib/ai/intelligence-service'
 import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
+import { generateClubInsights } from '@/lib/ai/insights-engine'
 
 // ── In-memory caches (per serverless instance, 5 min TTL) ──
 const calendarCache = new Map<string, { data: any; ts: number }>()
@@ -3197,5 +3198,14 @@ export const intelligenceRouter = createTRPCRouter({
       const token = generateInterestToken(input.userId, input.clubId)
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://iqsport.ai'
       return { url: `${baseUrl}/notify-me?t=${token}` }
+    }),
+
+  // ── AI Insights: SQL-based club insights ──
+  getClubInsights: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const insights = await generateClubInsights(ctx.prisma, input.clubId)
+      return insights
     }),
 })
