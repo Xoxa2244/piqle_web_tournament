@@ -359,7 +359,7 @@ const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; 
 };
 const priorityColor: Record<string, string> = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
 
-function InsightsPanel({ insights, isLoading, router }: { insights: any[]; isLoading: boolean; router: any }) {
+function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[]; isLoading: boolean; router: any; clubId: string }) {
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
@@ -373,7 +373,11 @@ function InsightsPanel({ insights, isLoading, router }: { insights: any[]; isLoa
   };
   const accept = (insight: any) => {
     setAccepted(prev => { const n = new Set(prev); n.add(insight.id); return n; });
-    if (insight.actionLink) router.push(insight.actionLink);
+    if (insight.actionLink) {
+      const base = `/clubs/${clubId}/intelligence`;
+      const link = insight.actionLink.startsWith('/') ? base + insight.actionLink : insight.actionLink;
+      router.push(link);
+    }
   };
 
   if (isLoading) {
@@ -1037,7 +1041,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             </div>
 
-            <InsightsPanel insights={insightsQuery.data ?? []} isLoading={insightsQuery.isLoading} router={router} />
+            <InsightsPanel insights={insightsQuery.data ?? []} isLoading={insightsQuery.isLoading} router={router} clubId={clubId!} />
 
             <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
               {displayInsights.length > 0 ? displayInsights.map((insight) => (
