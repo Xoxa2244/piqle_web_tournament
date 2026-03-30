@@ -323,5 +323,114 @@ export function createChatTools(clubId: string) {
         }
       },
     }),
+
+    getCourtOccupancy: defineTool({
+      description:
+        'Get court occupancy breakdown by day of week and time slot. Shows which courts and time slots are busy vs empty. Use when the user asks about occupancy, court utilization, busy/quiet times, when courts are empty, Tuesday morning, peak hours, or anything about court usage patterns.',
+      parameters: z.object({
+        days: z.number().int().optional().describe('Look back period in days. Default: 30'),
+      }),
+      execute: async ({ days }: { days?: number }) => {
+        const lookback = days ?? 30
+        try {
+          const since = new Date()
+          since.setDate(since.getDate() - lookback)
+
+          const sessions = await prisma.playSession.findMany({
+            where: { clubId, date: { gte: since }, startTime: { not: '00:00' } },
+            select: { date: true, startTime: true, endTime: true, courtId: true, format: true, registeredCount: true },
+          })
+
+          const totalCourts = Math.max(await prisma.clubCourt.count({ where: { clubId } }), 1)
+          const OPEN = 6, CLOSE = 23
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+          // Build occupancy by day × 2-hour slot
+          const slots: Record<string, { courtHours: Set<string>; daysSet: Set<string>; totalPlayers: number }> = {}
+          const dayDatesAll = new Map<string, Set<string>>()
+
+          sessions.forEach((s: any) => {
+            const dayName = dayNames[s.date.getDay()]
+            const dateStr = s.date.toISOString().slice(0, 10)
+            if (!dayDatesAll.has(dayName)) dayDatesAll.set(dayName, new Set())
+            dayDatesAll.get(dayName)!.add(dateStr)
+
+            const startH = parseInt(s.startTime?.split(':')[0] || '0')
+            const endH = parseInt(s.endTime?.split(':')[0] || '0') || startH + 1
+
+            for (let h = Math.max(startH, OPEN); h < Math.min(endH, CLOSE); h++) {
+              const slotLabel = `${dayName} ${h}:00-${h + 1}:00`
+              if (!slots[slotLabel]) slots[slotLabel] = { courtHours: new Set(), daysSet: new Set(), totalPlayers: 0 }
+              slots[slotLabel].courtHours.add(`${s.courtId}|${dateStr}|${h}`)
+              slots[slotLabel].daysSet.add(dateStr)
+              slots[slotLabel].totalPlayers += s.registeredCount || 0
+            }
+          })
+
+          // Build summary
+          const slotSummary = Object.entries(slots)
+            .map(([label, data]) => {
+              const numDays = data.daysSet.size || 1
+              const available = numDays * totalCourts
+              const occupancy = Math.round((data.courtHours.size / available) * 100)
+              return { slot: label, occupancy: `${occupancy}%`, courtsUsed: data.courtHours.size, available, totalPlayers: data.totalPlayers }
+            })
+            .sort((a, b) => parseInt(b.occupancy) - parseInt(a.occupancy))
+
+          // Overall
+          let totalBooked = 0, totalAvailable = 0
+          dayDatesAll.forEach((dates) => { totalAvailable += dates.size * totalCourts * (CLOSE - OPEN) })
+          Object.values(slots).forEach(s => { totalBooked += s.courtHours.size })
+          const overallOccupancy = totalAvailable > 0 ? Math.round((totalBooked / totalAvailable) * 100) : 0
+
+          return {
+            period: `Last ${lookback} days`,
+            totalCourts,
+            overallOccupancy: `${overallOccupancy}%`,
+            busiestSlots: slotSummary.slice(0, 10),
+            quietestSlots: slotSummary.slice(-10).reverse(),
+            totalSessions: sessions.length,
+          }
+        } catch (err) {
+          console.error('[ChatTool] getCourtOccupancy failed:', err)
+          return { error: 'Failed to load court occupancy data.' }
+        }
+      },
+    }),
+
+    getMembershipBreakdown: defineTool({
+      description:
+        'Get membership status breakdown: how many active, suspended, expired, no membership. Use when the user asks about membership, churn, who left, subscription status, or member retention.',
+      parameters: z.object({}),
+      execute: async () => {
+        try {
+          const rows = await prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
+            SELECT metadata->>'membershipStatus' as status, count(*) as cnt
+            FROM document_embeddings
+            WHERE club_id = ${clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+            GROUP BY metadata->>'membershipStatus'
+          `
+          const breakdown: Record<string, number> = {}
+          rows.forEach(r => { breakdown[r.status || 'Unknown'] = Number(r.cnt) })
+
+          // Also get membership types for active members
+          const types = await prisma.$queryRaw<Array<{ membership: string; cnt: bigint }>>`
+            SELECT metadata->>'membership' as membership, count(*) as cnt
+            FROM document_embeddings
+            WHERE club_id = ${clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+            AND metadata->>'membershipStatus' = 'Currently Active'
+            GROUP BY metadata->>'membership'
+            ORDER BY cnt DESC
+            LIMIT 10
+          `
+          const membershipTypes = types.map(t => ({ type: t.membership, count: Number(t.cnt) }))
+
+          return { breakdown, membershipTypes }
+        } catch (err) {
+          console.error('[ChatTool] getMembershipBreakdown failed:', err)
+          return { error: 'Failed to load membership data.' }
+        }
+      },
+    }),
   }
 }
