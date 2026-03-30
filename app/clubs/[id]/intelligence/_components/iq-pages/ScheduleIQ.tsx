@@ -242,66 +242,91 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                   ))}
                 </div>
 
-                {/* Hour rows */}
-                {HOURS.map((hour) => (
-                  <div
-                    key={hour}
-                    className="flex"
-                    style={{
-                      minHeight: 56,
-                      background: hour === currentHour && selectedDate === todayStr ? 'rgba(139,92,246,0.04)' : 'transparent',
-                    }}
-                  >
-                    <div className="w-[70px] shrink-0 p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]" style={{ borderTop: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
-                      <span className="text-[10px] font-medium" style={{ color: hour === currentHour && selectedDate === todayStr ? '#8B5CF6' : 'var(--t4)' }}>{formatHour(hour)}</span>
-                    </div>
-
-                    {courts.map((court) => {
-                      const key = `${court}|${hour}`
-                      const isOccupied = sessionGrid.occupied.has(key)
-                      const cellSessions = sessionGrid.map[key]
-
-                      if (isOccupied) return null
-
-                      return (
+                {/* CSS Grid: courts as columns, hours as rows — supports multi-hour session spans */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `70px repeat(${courts.length}, minmax(120px, 1fr))`,
+                    gridTemplateRows: `repeat(${HOURS.length}, minmax(56px, auto))`,
+                  }}
+                >
+                  {HOURS.map((hour, rowIdx) => {
+                    const isNow = hour === currentHour && selectedDate === todayStr
+                    return (
+                      <React.Fragment key={hour}>
+                        {/* Time label */}
                         <div
-                          key={court}
-                          className="flex-1 min-w-[120px] relative p-0.5"
+                          className="p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]"
                           style={{
+                            gridColumn: 1,
+                            gridRow: rowIdx + 1,
                             borderTop: '1px solid var(--card-border)',
-                            borderLeft: '1px solid var(--card-border)',
-                            ...(cellSessions && cellSessions[0]?.rowSpan > 1 ? { minHeight: cellSessions[0].rowSpan * 56 } : {}),
+                            background: isNow ? 'rgba(139,92,246,0.06)' : 'var(--card-bg)',
                           }}
                         >
-                          {!cellSessions ? (
-                            <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.2 }} />
-                          ) : (
-                            cellSessions.map((s) => {
-                              const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
-                              const colors = SKILL_COLORS[sk.tier]
-                              const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
-                              return (
-                                <button
-                                  key={s.id}
-                                  onClick={() => setSelectedSession(s)}
-                                  className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full"
-                                  style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
-                                >
-                                  <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
-                                  {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
-                                  <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
-                                  <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                                    <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
-                                  </div>
-                                </button>
-                              )
-                            })
-                          )}
+                          <span className="text-[10px] font-medium" style={{ color: isNow ? '#8B5CF6' : 'var(--t4)' }}>{formatHour(hour)}</span>
                         </div>
-                      )
-                    })}
-                  </div>
-                ))}
+
+                        {/* Court cells */}
+                        {courts.map((court, colIdx) => {
+                          const key = `${court}|${hour}`
+                          const isOccupied = sessionGrid.occupied.has(key)
+                          const cellSessions = sessionGrid.map[key]
+
+                          // Skip cells that are covered by a multi-hour session above
+                          if (isOccupied) return null
+
+                          const span = cellSessions?.[0]?.rowSpan || 1
+
+                          return (
+                            <div
+                              key={key}
+                              className="relative p-0.5"
+                              style={{
+                                gridColumn: colIdx + 2,
+                                gridRow: span > 1 ? `${rowIdx + 1} / span ${span}` : rowIdx + 1,
+                                borderTop: '1px solid var(--card-border)',
+                                borderLeft: '1px solid var(--card-border)',
+                                background: isNow ? 'rgba(139,92,246,0.03)' : 'transparent',
+                              }}
+                            >
+                              {!cellSessions ? (
+                                <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.15 }} />
+                              ) : (
+                                cellSessions.map((s) => {
+                                  const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
+                                  const colors = SKILL_COLORS[sk.tier]
+                                  const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
+                                  const timeRange = `${s.startTime} - ${s.endTime}`
+                                  return (
+                                    <button
+                                      key={s.id}
+                                      onClick={() => setSelectedSession(s)}
+                                      className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
+                                      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+                                    >
+                                      <div>
+                                        <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
+                                        {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
+                                        {span > 1 && <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
+                                      </div>
+                                      <div>
+                                        <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
+                                        <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                          <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
+                                        </div>
+                                      </div>
+                                    </button>
+                                  )
+                                })
+                              )}
+                            </div>
+                          )
+                        })}
+                      </React.Fragment>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
