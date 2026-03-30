@@ -825,9 +825,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         })}
       </div>
 
-      {/* Player Health Overview + AI Summary */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
+      {/* Player Health Overview */}
+      <div className="space-y-4">
+        <Card>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Heart className="w-4 h-4 text-emerald-400" />
@@ -1024,9 +1024,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       </div>
 
       {/* Heatmap + Segments + Data Uploads */}
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="space-y-4">
         {/* Occupancy Heatmap */}
-        <Card className="lg:col-span-1">
+        <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Occupancy Heatmap</h3>
           <div className="space-y-1.5">
             <div className="flex gap-1.5 pl-10">
@@ -1074,6 +1074,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           </div>
         </Card>
 
+        <div className="grid lg:grid-cols-2 gap-4">
         {/* Sessions by Format */}
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Sessions by Format</h3>
@@ -1175,6 +1176,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             ))}
           </div>
         </Card>
+        </div>
       </div>
 
       {/* Period Comparison */}
