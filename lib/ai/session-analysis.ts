@@ -197,11 +197,13 @@ export function buildSessionCalendarData(
     const lostRevenue = s.lostRevenue ?? (s.pricePerPlayer ?? 0) * (s.capacity - s.registered)
 
     return {
-      id: `csv-${i}`,
+      id: (s as any).id || `csv-${i}`,
       date: s.date,
       startTime: s.startTime,
       endTime: s.endTime,
       court: s.court,
+      courtId: (s as any).courtId || null,
+      title: (s as any).title || null,
       format: s.format,
       skillLevel: s.skillLevel,
       registered: s.registered,

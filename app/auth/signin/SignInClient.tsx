@@ -132,6 +132,7 @@ export default function SignInClient() {
           firstName,
           lastName,
           password,
+          smsConsent,
         }),
       })
 

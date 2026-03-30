@@ -193,7 +193,7 @@ async function executeSequenceStep(
   // Load user data
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, duprRatingDoubles: true, phone: true },
+    select: { id: true, email: true, name: true, duprRatingDoubles: true, phone: true, smsOptIn: true },
   })
   if (!user) return false
 

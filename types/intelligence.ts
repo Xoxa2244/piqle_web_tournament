@@ -313,6 +313,8 @@ export interface SessionCalendarItem {
   startTime: string
   endTime: string
   court: string
+  courtId?: string
+  title?: string
   format: string
   skillLevel: string
   registered: number

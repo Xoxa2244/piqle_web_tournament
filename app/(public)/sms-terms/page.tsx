@@ -144,6 +144,22 @@ export default function SmsTermsPage() {
             </p>
           </section>
 
+          {/* Opt-In CTA */}
+          <section className="rounded-lg border border-blue-200 bg-blue-50 p-6 text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Ready to Opt In?
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              If your club uses IQSport.ai, you can opt in to receive SMS notifications below.
+            </p>
+            <a
+              href="/sms-opt-in"
+              className="inline-block rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            >
+              Opt In to SMS Notifications
+            </a>
+          </section>
+
           {/* Contact */}
           <section className="rounded-lg border border-gray-200 bg-gray-50 p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">
