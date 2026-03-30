@@ -96,7 +96,7 @@ function SessionDetail({ session, onClose, clubId, isDark }: {
   session: SessionCalendarItem; onClose: () => void; clubId: string; isDark: boolean
 }) {
   const router = useRouter()
-  const sk = classifySkill(session.format, session.skillLevel, session.title)
+  const sk = classifySkill(session.format, session.skillLevel)
   const colors = SKILL_COLORS[sk.tier]
   const occPct = Math.round((session.registered / (session.capacity || 1)) * 100)
 
@@ -379,7 +379,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                               <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.2 }} />
                             ) : (
                               cellSessions.map((s) => {
-                                const sk = classifySkill(s.format, s.skillLevel, s.title)
+                                const sk = classifySkill(s.format, s.skillLevel)
                                 const colors = SKILL_COLORS[sk.tier]
                                 const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
                                 return (
