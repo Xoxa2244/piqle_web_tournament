@@ -128,17 +128,19 @@ export const intelligenceRouter = createTRPCRouter({
       async function getFrequentPlayersFallback(
         prisma: any,
         clubId: string,
-        sessionInfo: { format?: string; startTime?: string; courtId?: string | null },
+        sessionInfo: { format?: string; startTime?: string; courtId?: string | null; skillLevel?: string; date?: Date },
         alreadyBookedUserIds: Set<string>,
         limit: number,
       ) {
         try {
-          // Raw SQL aggregation — scores 21K+ bookings in DB, returns only top N
+          // Full SQL scoring: format + skill + time + day-of-week + court + recency + membership
           const since = new Date()
           since.setDate(since.getDate() - 90)
           const sessionHour = sessionInfo.startTime ? parseInt(sessionInfo.startTime.split(':')[0] || '0') : -1
           const fmt = sessionInfo.format || ''
           const crtId = sessionInfo.courtId || ''
+          const skill = sessionInfo.skillLevel || 'ALL_LEVELS'
+          const sessionDow = sessionInfo.date ? sessionInfo.date.getDay() : -1 // 0=Sun, 6=Sat
 
           const rows: any[] = await prisma.$queryRawUnsafe(`
             SELECT
@@ -147,11 +149,37 @@ export const intelligenceRouter = createTRPCRouter({
               u.email,
               u.image,
               COUNT(*)::int as booking_count,
+              MAX(ps.date)::text as last_played,
+              (CURRENT_DATE - MAX(ps.date)::date)::int as days_since_last,
+              -- Format match: +3 per session in same format
               COUNT(*) FILTER (WHERE ps.format::text = $2)::int as format_match,
-              COUNT(*) FILTER (WHERE ps."courtId"::text = $4)::int as court_match,
+              -- Skill level match: +4 exact, +2 adjacent
+              COUNT(*) FILTER (WHERE ps."skillLevel"::text = $7)::int as skill_exact,
+              COUNT(*) FILTER (WHERE
+                ($7 = 'BEGINNER' AND ps."skillLevel"::text IN ('BEGINNER', 'ALL_LEVELS'))
+                OR ($7 = 'INTERMEDIATE' AND ps."skillLevel"::text IN ('INTERMEDIATE', 'ALL_LEVELS'))
+                OR ($7 = 'ADVANCED' AND ps."skillLevel"::text IN ('ADVANCED', 'INTERMEDIATE'))
+                OR ($7 = 'ALL_LEVELS')
+              )::int as skill_compatible,
+              -- Time match: +2 per session within ±1 hour
               CASE WHEN $3 >= 0 THEN
                 COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps."startTime"::time) - $3) <= 1)::int
-              ELSE 0 END as time_match
+              ELSE 0 END as time_match,
+              -- Day-of-week match: +2 per session on same weekday
+              CASE WHEN $8 >= 0 THEN
+                COUNT(*) FILTER (WHERE EXTRACT(DOW FROM ps.date) = $8)::int
+              ELSE 0 END as dow_match,
+              -- Court match: +1 per session on same court
+              COUNT(*) FILTER (WHERE ps."courtId"::text = $4)::int as court_match,
+              -- Membership info from embeddings
+              (SELECT de.metadata->>'membership' FROM document_embeddings de
+               WHERE de.source_id = b."userId" AND de.content_type = 'member'
+               AND de.source_table = 'csv_import' AND de.club_id = $1::uuid LIMIT 1
+              ) as membership_type,
+              (SELECT de.metadata->>'membershipStatus' FROM document_embeddings de
+               WHERE de.source_id = b."userId" AND de.content_type = 'member'
+               AND de.source_table = 'csv_import' AND de.club_id = $1::uuid LIMIT 1
+              ) as membership_status
             FROM play_session_bookings b
             JOIN play_sessions ps ON ps.id = b."sessionId"
             JOIN users u ON u.id = b."userId"
@@ -159,18 +187,38 @@ export const intelligenceRouter = createTRPCRouter({
               AND ps.date >= $5
               AND b.status::text = 'CONFIRMED'
             GROUP BY b."userId", u.name, u.email, u.image
+            HAVING (CURRENT_DATE - MAX(ps.date)::date) <= 60
             ORDER BY (
               COUNT(*)
               + COUNT(*) FILTER (WHERE ps.format::text = $2) * 3
+              + COUNT(*) FILTER (WHERE ps."skillLevel"::text = $7) * 4
               + CASE WHEN $3 >= 0 THEN COUNT(*) FILTER (WHERE ABS(EXTRACT(HOUR FROM ps."startTime"::time) - $3) <= 1) * 2 ELSE 0 END
+              + CASE WHEN $8 >= 0 THEN COUNT(*) FILTER (WHERE EXTRACT(DOW FROM ps.date) = $8) * 2 ELSE 0 END
               + COUNT(*) FILTER (WHERE ps."courtId"::text = $4)
+              - (CURRENT_DATE - MAX(ps.date)::date)
             ) DESC
             LIMIT $6
-          `, clubId, fmt, sessionHour, crtId, since, limit)
+          `, clubId, fmt, sessionHour, crtId, since, limit, skill, sessionDow)
 
           return rows.map((r: any) => {
             if (alreadyBookedUserIds.has(r.user_id)) return null
-            const totalScore = r.booking_count + r.format_match * 3 + r.time_match * 2 + r.court_match
+            if (r.membership_status === 'Suspended' || r.membership_status === 'Expired') return null
+
+            const totalScore = r.booking_count + r.format_match * 3 + r.skill_exact * 4 + r.time_match * 2 + r.dow_match * 2 + r.court_match
+            const maxPossible = Math.max(totalScore, 1)
+
+            // Build reasoning
+            const reasons: string[] = []
+            if (r.format_match > 0) reasons.push(`plays this format (${r.format_match}x)`)
+            if (r.skill_exact > 0) reasons.push(`matches skill level (${r.skill_exact}x)`)
+            if (r.time_match > 0) reasons.push(`plays at this time (${r.time_match}x)`)
+            if (r.dow_match > 0) reasons.push(`plays on this day (${r.dow_match}x)`)
+            if (r.court_match > 0) reasons.push(`uses this court (${r.court_match}x)`)
+
+            const memLabel = r.membership_type
+              ? r.membership_type.split(' - ')[0].replace(/ \(Network\)$/, '')
+              : null
+
             return {
               member: {
                 id: r.user_id,
@@ -179,18 +227,34 @@ export const intelligenceRouter = createTRPCRouter({
                 image: r.image,
                 duprRating: null,
                 duprRatingDoubles: null,
-                lastPlayedDaysAgo: null,
+                lastPlayedDaysAgo: r.days_since_last,
+                membershipType: memLabel,
               },
-              score: Math.min(Math.round((totalScore / Math.max(r.booking_count, 1)) * 20), 99),
-              estimatedLikelihood: r.booking_count >= 10 ? 'high' as const : r.booking_count >= 3 ? 'medium' as const : 'low' as const,
+              score: Math.min(Math.round((totalScore / Math.max(r.booking_count, 1)) * 15), 99),
+              estimatedLikelihood: (r.days_since_last <= 7 && r.format_match > 3) ? 'high' as const
+                : (r.days_since_last <= 21 && r.format_match > 0) ? 'medium' as const
+                : 'low' as const,
               reasoning: {
-                summary: `Plays ${r.format_match > 0 ? 'this format' : 'at this club'}${r.time_match > 0 ? ' at similar times' : ''} (${r.booking_count} sessions in 90d)`,
-                components: {} as Record<string, any>,
+                summary: reasons.length > 0
+                  ? `${reasons.slice(0, 3).join(', ')} — ${r.booking_count} sessions in 90d, last played ${r.days_since_last}d ago`
+                  : `${r.booking_count} sessions in 90d`,
+                components: {
+                  formatMatch: r.format_match,
+                  skillMatch: r.skill_exact,
+                  timeMatch: r.time_match,
+                  dowMatch: r.dow_match,
+                  courtMatch: r.court_match,
+                  recencyDays: r.days_since_last,
+                  membership: memLabel,
+                },
               },
               factors: {
                 preferredTimeMatch: r.time_match > 0,
                 formatMatch: r.format_match > 0,
+                skillMatch: r.skill_exact > 0 || r.skill_compatible > r.booking_count * 0.5,
+                dayOfWeekMatch: r.dow_match > 0,
                 frequentPlayer: r.booking_count >= 3,
+                recentlyActive: r.days_since_last <= 14,
               },
               source: 'frequent_player' as const,
             }
@@ -233,7 +297,7 @@ export const intelligenceRouter = createTRPCRouter({
       // Standard PlaySession UUID path
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
-        select: { clubId: true, format: true, startTime: true, courtId: true },
+        select: { clubId: true, format: true, startTime: true, courtId: true, skillLevel: true, date: true },
       })
       if (!session) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
@@ -254,7 +318,7 @@ export const intelligenceRouter = createTRPCRouter({
       // Fast SQL-based recommendations from booking history
       const players = await getFrequentPlayersFallback(
         ctx.prisma, session.clubId,
-        { format: session.format, startTime: session.startTime, courtId: session.courtId },
+        { format: session.format, startTime: session.startTime, courtId: session.courtId, skillLevel: session.skillLevel, date: session.date },
         alreadyBooked, input.limit,
       )
 

@@ -126,7 +126,7 @@ export default function SlotFillerPage() {
     const playerType = classifySlotFillerPlayerType({
       score: rec.score,
       likelihood: rec.estimatedLikelihood as 'high' | 'medium' | 'low',
-      scheduleFitScore: rec.reasoning?.components?.schedule_fit?.score || 0,
+      scheduleFitScore: (rec.reasoning?.components as any)?.timeMatch || (rec.reasoning?.components as any)?.schedule_fit?.score || 0,
     })
 
     return generateSlotFillerMessages({
@@ -140,7 +140,7 @@ export default function SlotFillerPage() {
       playerType,
       score: rec.score,
       duprRating: rec.member.duprRatingDoubles,
-      daysSinceLastPlay: rec.reasoning?.components?.recency?.score,
+      daysSinceLastPlay: (rec.reasoning?.components as any)?.recencyDays ?? (rec.reasoning?.components as any)?.recency?.score,
     })
   }, [selectedUserIds, recommendations, selectedSession])
 
@@ -178,7 +178,7 @@ export default function SlotFillerPage() {
         const playerType = classifySlotFillerPlayerType({
           score: rec?.score || 0,
           likelihood: (rec?.estimatedLikelihood || 'low') as 'high' | 'medium' | 'low',
-          scheduleFitScore: rec?.reasoning?.components?.schedule_fit?.score || 0,
+          scheduleFitScore: (rec?.reasoning?.components as any)?.timeMatch || (rec?.reasoning?.components as any)?.schedule_fit?.score || 0,
         })
         const variants = generateSlotFillerMessages({
           playerName: rec?.member?.name || 'there',
@@ -191,7 +191,7 @@ export default function SlotFillerPage() {
           playerType,
           score: rec?.score || 0,
           duprRating: rec?.member?.duprRatingDoubles,
-          daysSinceLastPlay: rec?.reasoning?.components?.recency?.score,
+          daysSinceLastPlay: (rec?.reasoning?.components as any)?.recencyDays ?? (rec?.reasoning?.components as any)?.recency?.score,
         })
 
         // Use same variant style but personalized to this player
@@ -493,7 +493,7 @@ export default function SlotFillerPage() {
                             {playerTypeLabels[classifySlotFillerPlayerType({
                               score: rec.score,
                               likelihood: rec.estimatedLikelihood as 'high' | 'medium' | 'low',
-                              scheduleFitScore: rec.reasoning?.components?.schedule_fit?.score || 0,
+                              scheduleFitScore: (rec.reasoning?.components as any)?.timeMatch || (rec.reasoning?.components as any)?.schedule_fit?.score || 0,
                             })]}
                           </span>
                         </div>
