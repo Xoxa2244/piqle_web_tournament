@@ -609,9 +609,13 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                 const barColor = f.score <= 30 ? "#EF4444" : f.score <= 50 ? "#F59E0B" : "#10B981";
                                 return (
                                   <div key={f.name} className="p-2.5 rounded-xl" style={{ background: "var(--faint)", border: "1px solid var(--card-border)" }}>
-                                    <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center justify-between mb-1">
                                       <span className="text-[10px]" style={{ color: "var(--t3)", fontWeight: 600 }}>{f.name}</span>
-                                      <span className="text-[10px]" style={{ color: barColor, fontWeight: 700 }}>{f.score}</span>
+                                      <span className="text-[9px] px-1 py-0.5 rounded" style={{ background: "var(--subtle)", color: "var(--t4)", fontWeight: 600 }}>{f.weight}%</span>
+                                    </div>
+                                    <div className="flex items-baseline gap-0.5 mb-1.5">
+                                      <span className="text-sm" style={{ color: barColor, fontWeight: 700 }}>{f.score}</span>
+                                      <span className="text-[10px]" style={{ color: "var(--t4)" }}>/100</span>
                                     </div>
                                     <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
                                       <motion.div
@@ -623,7 +627,6 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                       />
                                     </div>
                                     <div className="text-[9px] mt-1.5" style={{ color: "var(--t4)", lineHeight: 1.3 }}>{f.label}</div>
-                                    <div className="text-[9px] mt-0.5" style={{ color: "var(--t5)" }}>Weight: {f.weight}%</div>
                                   </div>
                                 );
                               })}
