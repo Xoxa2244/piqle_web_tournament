@@ -97,7 +97,7 @@ export default function IntelligenceDashboardPage() {
         `Occupancy by day: ${occupancy.byDay.map((d: any) => d.day + ' ' + d.avgOccupancy + '%').join(', ')}`,
       ]
       if (healthData) {
-        ctx.push(`Member health: ${healthData.summary.healthy} healthy, ${healthData.summary.watch} watch, ${healthData.summary.atRisk} at-risk, ${healthData.summary.critical} critical`)
+        ctx.push(`Member health: ${healthData.summary.healthy} healthy, ${healthData.summary.watch} watch, ${healthData.summary.atRisk} at-risk, ${healthData.summary.critical} critical, ${healthData.summary.churned || 0} churned`)
       }
       setPageContext(ctx.join('\n'))
     } catch { /* ignore context errors for empty clubs */ }

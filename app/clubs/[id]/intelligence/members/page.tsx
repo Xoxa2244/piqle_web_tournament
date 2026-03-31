@@ -93,7 +93,7 @@ export default function MembersPage() {
     const parts = [
       'Page: Member Health',
       `Total members: ${data.summary.total}`,
-      `Healthy: ${data.summary.healthy}, Watch: ${data.summary.watch}, At Risk: ${data.summary.atRisk}, Critical: ${data.summary.critical}`,
+      `Healthy: ${data.summary.healthy}, Watch: ${data.summary.watch}, At Risk: ${data.summary.atRisk}, Critical: ${data.summary.critical}, Churned: ${data.summary.churned || 0}`,
       `Avg health score: ${data.summary.avgHealthScore}`,
       `Revenue at risk: $${data.summary.revenueAtRisk.toLocaleString()}`,
     ]
