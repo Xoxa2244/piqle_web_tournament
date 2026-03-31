@@ -188,6 +188,34 @@ async function calibrateWeights() {
         currentWeight: DEFAULT_WEIGHTS.noShowTrend,
         recommendedWeight: 0,
       },
+      // Level 2 components — use proxy scores for calibration
+      {
+        name: 'cancelAcceleration',
+        churnCorrelation: correlationWithChurn(
+          calibrationSet.map(m => m.frequencyScore < 50 && m.noShowScore < 70 ? 20 : 80), // proxy
+          churnedArr
+        ),
+        currentWeight: DEFAULT_WEIGHTS.cancelAcceleration,
+        recommendedWeight: 0,
+      },
+      {
+        name: 'sessionDiversity',
+        churnCorrelation: correlationWithChurn(
+          calibrationSet.map(m => m.consistencyScore), // diversity correlates with consistency
+          churnedArr
+        ),
+        currentWeight: DEFAULT_WEIGHTS.sessionDiversity,
+        recommendedWeight: 0,
+      },
+      {
+        name: 'coPlayerLoss',
+        churnCorrelation: correlationWithChurn(
+          calibrationSet.map(m => m.recencyScore), // social loss correlates with recency as proxy
+          churnedArr
+        ),
+        currentWeight: DEFAULT_WEIGHTS.coPlayerLoss,
+        recommendedWeight: 0,
+      },
     ]
 
     // Calculate recommended weights proportional to correlation
@@ -213,6 +241,9 @@ async function calibrateWeights() {
       consistency: correlations.find(c => c.name === 'consistency')!.recommendedWeight,
       patternBreak: correlations.find(c => c.name === 'patternBreak')!.recommendedWeight,
       noShowTrend: correlations.find(c => c.name === 'noShowTrend')!.recommendedWeight,
+      cancelAcceleration: correlations.find(c => c.name === 'cancelAcceleration')!.recommendedWeight,
+      sessionDiversity: correlations.find(c => c.name === 'sessionDiversity')!.recommendedWeight,
+      coPlayerLoss: correlations.find(c => c.name === 'coPlayerLoss')!.recommendedWeight,
     }
 
     // Save calibrated weights to IntelligenceSettings

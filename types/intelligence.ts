@@ -401,6 +401,10 @@ export interface MemberHealthResult {
     consistency: HealthScoreComponent
     patternBreak: HealthScoreComponent
     noShowTrend: HealthScoreComponent
+    // Level 2 behavioral components
+    cancelAcceleration?: HealthScoreComponent
+    sessionDiversity?: HealthScoreComponent
+    coPlayerLoss?: HealthScoreComponent
   }
   topRisks: string[]           // ["Missed usual Tuesday evening session", "Visit frequency down 35%"]
   suggestedAction: string      // "Send personalized invite for Thursday Open Play"

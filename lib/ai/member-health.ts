@@ -11,19 +11,25 @@ import { clamp, getDayName, getTimeSlot } from './scoring';
 // ── Configurable Weights ──
 
 export interface HealthWeights {
-  frequencyTrend: number  // default 35
-  recency: number         // default 25
-  consistency: number     // default 20
-  patternBreak: number    // default 15
-  noShowTrend: number     // default 5
+  frequencyTrend: number      // default 25 — relative to personal baseline
+  recency: number             // default 20
+  consistency: number         // default 10
+  patternBreak: number        // default 10
+  noShowTrend: number         // default 5
+  cancelAcceleration: number  // default 15 — strong churn predictor
+  sessionDiversity: number    // default 5  — format/time narrowing
+  coPlayerLoss: number        // default 10 — social signal
 }
 
 export const DEFAULT_WEIGHTS: HealthWeights = {
-  frequencyTrend: 35,
-  recency: 25,
-  consistency: 20,
-  patternBreak: 15,
+  frequencyTrend: 25,
+  recency: 20,
+  consistency: 10,
+  patternBreak: 10,
   noShowTrend: 5,
+  cancelAcceleration: 15,
+  sessionDiversity: 5,
+  coPlayerLoss: 10,
 }
 
 /** Get weights for a club — reads calibrated weights from settings, falls back to defaults */
@@ -42,6 +48,9 @@ export async function getWeights(prisma: any, clubId: string): Promise<HealthWei
         consistency: stored.consistency ?? DEFAULT_WEIGHTS.consistency,
         patternBreak: stored.patternBreak ?? DEFAULT_WEIGHTS.patternBreak,
         noShowTrend: stored.noShowTrend ?? DEFAULT_WEIGHTS.noShowTrend,
+        cancelAcceleration: stored.cancelAcceleration ?? DEFAULT_WEIGHTS.cancelAcceleration,
+        sessionDiversity: stored.sessionDiversity ?? DEFAULT_WEIGHTS.sessionDiversity,
+        coPlayerLoss: stored.coPlayerLoss ?? DEFAULT_WEIGHTS.coPlayerLoss,
       }
     }
   } catch {
@@ -78,6 +87,8 @@ interface MemberHealthInput {
   bookingsWithSessions?: BookingWithSession[];
   // Membership data from CourtReserve import
   membershipInfo?: MembershipInfo | null;
+  // Co-player social graph data (built by getMemberHealth SQL)
+  coPlayerActivity?: { activeCoPlayers: number; totalCoPlayers: number };
 }
 
 // ── Segmentation Classifiers ──
@@ -205,34 +216,38 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
   const now = new Date();
   const joinedDaysAgo = Math.floor((now.getTime() - joinedAt.getTime()) / 86400000);
 
-  // 1. Frequency Trend
-  const frequencyTrend = scoreFrequencyTrend(history.bookingsLastMonth, previousPeriodBookings);
+  // ── Core Components ──
+  const tenureWeeks = Math.max(1, joinedDaysAgo / 7);
+  const frequencyTrend = scoreFrequencyTrend(history.bookingsLastMonth, previousPeriodBookings, history.totalBookings, tenureWeeks);
   frequencyTrend.weight = weights.frequencyTrend;
 
-  // 2. Recency
   const recency = scoreRecency(history.daysSinceLastConfirmedBooking);
   recency.weight = weights.recency;
 
-  // 3. Consistency
   const consistency = scoreConsistency(bookingDates.filter(b => b.status === 'CONFIRMED'));
   consistency.weight = weights.consistency;
 
-  // 4. Pattern Break
   const patternBreak = scorePatternBreak(input.preference, bookingDates, now);
   patternBreak.weight = weights.patternBreak;
 
-  // 5. No-Show Trend
   const noShowTrend = scoreNoShowTrend(history);
   noShowTrend.weight = weights.noShowTrend;
 
-  // Weighted total (weights should sum to 100)
-  const totalWeight = weights.frequencyTrend + weights.recency + weights.consistency + weights.patternBreak + weights.noShowTrend;
+  // ── Level 2 Behavioral Components ──
+  const cancelAcceleration = scoreCancelAcceleration(bookingDates);
+  cancelAcceleration.weight = weights.cancelAcceleration;
+
+  const sessionDiversity = scoreSessionDiversity(input.bookingsWithSessions);
+  sessionDiversity.weight = weights.sessionDiversity;
+
+  const coPlayerLoss = scoreCoPlayerLoss(input.coPlayerActivity);
+  coPlayerLoss.weight = weights.coPlayerLoss;
+
+  // Weighted total (7 components, weights sum to 100)
+  const allComponents = [frequencyTrend, recency, consistency, patternBreak, noShowTrend, cancelAcceleration, sessionDiversity, coPlayerLoss];
+  const totalWeight = allComponents.reduce((s, c) => s + c.weight, 0);
   const healthScore = Math.round(clamp(
-    (frequencyTrend.score * frequencyTrend.weight +
-     recency.score * recency.weight +
-     consistency.score * consistency.weight +
-     patternBreak.score * patternBreak.weight +
-     noShowTrend.score * noShowTrend.weight) / totalWeight,
+    allComponents.reduce((s, c) => s + c.score * c.weight, 0) / totalWeight,
     0, 100
   ));
 
@@ -251,13 +266,12 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
       ? 'declining' as const
       : 'stable' as const;
 
-  // Top risks
+  // Top risks — sorted by severity (lowest score first)
   const topRisks: string[] = [];
-  if (frequencyTrend.score < 50) topRisks.push(frequencyTrend.label);
-  if (recency.score < 50) topRisks.push(recency.label);
-  if (patternBreak.score < 50) topRisks.push(patternBreak.label);
-  if (consistency.score < 40) topRisks.push(consistency.label);
-  if (noShowTrend.score < 50) topRisks.push(noShowTrend.label);
+  const riskComponents = allComponents
+    .filter(c => c.score < 50)
+    .sort((a, b) => a.score - b.score);
+  for (const c of riskComponents) topRisks.push(c.label);
 
   // Suggested action
   const suggestedAction = getSuggestedAction(riskLevel, lifecycleStage, topRisks);
@@ -293,7 +307,7 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
     rawHealthScore: healthScore,
     riskLevel,
     lifecycleStage,
-    components: { frequencyTrend, recency, consistency, patternBreak, noShowTrend },
+    components: { frequencyTrend, recency, consistency, patternBreak, noShowTrend, cancelAcceleration, sessionDiversity, coPlayerLoss },
     topRisks: topRisks.slice(0, 3),
     suggestedAction: membershipAction || suggestedAction,
     trend,
@@ -311,26 +325,52 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
 
 // ── Component Scorers ──
 
-function scoreFrequencyTrend(recentBookings: number, previousBookings: number): HealthScoreComponent {
+/**
+ * Relative frequency: compares recent activity to PERSONAL baseline,
+ * not just absolute last-30 vs prev-30. A player who normally plays 1x/month
+ * missing 3 weeks is fine; a 5x/week player missing 1 week is a red flag.
+ */
+function scoreFrequencyTrend(
+  recentBookings: number,
+  previousBookings: number,
+  totalBookings?: number,
+  tenureWeeks?: number,
+): HealthScoreComponent {
+  const w = DEFAULT_WEIGHTS.frequencyTrend; // will be overridden by caller
+
   if (previousBookings === 0 && recentBookings === 0) {
-    return { score: 20, weight: 35, label: 'No bookings in the last 60 days' };
+    return { score: 20, weight: w, label: 'Inactive — no bookings in the last 60 days' };
   }
-  if (previousBookings === 0) {
-    return { score: 90, weight: 35, label: `New activity: ${recentBookings} bookings this month` };
+  if (previousBookings === 0 && recentBookings > 0) {
+    return { score: 90, weight: w, label: `New activity: ${recentBookings} session${recentBookings > 1 ? 's' : ''} this month` };
   }
 
-  const changePercent = ((recentBookings - previousBookings) / previousBookings) * 100;
+  // Calculate personal baseline: avg sessions per week over tenure
+  const baseline = (totalBookings && tenureWeeks && tenureWeeks > 2)
+    ? totalBookings / tenureWeeks
+    : previousBookings / 4; // fallback: prev month as weekly proxy
 
-  if (changePercent >= 0) {
-    return { score: recentBookings >= previousBookings ? 100 : 75, weight: 35, label: `Visit frequency stable or growing (+${Math.round(changePercent)}%)` };
+  const recentWeekly = recentBookings / 4;
+  const ratio = baseline > 0 ? recentWeekly / baseline : 0;
+
+  // Also look at month-over-month change
+  const momChange = previousBookings > 0
+    ? ((recentBookings - previousBookings) / previousBookings) * 100
+    : 0;
+
+  if (ratio >= 0.9) {
+    return { score: 100, weight: w, label: `On track — playing at ${Math.round(ratio * 100)}% of usual rate` };
   }
-  if (changePercent > -25) {
-    return { score: 60, weight: 35, label: `Slight frequency decline (${Math.round(changePercent)}%)` };
+  if (ratio >= 0.7) {
+    return { score: 75, weight: w, label: `Slight dip — ${Math.round(ratio * 100)}% of usual rate (${Math.round(momChange)}% MoM)` };
   }
-  if (changePercent > -50) {
-    return { score: 40, weight: 35, label: `Visit frequency down ${Math.abs(Math.round(changePercent))}%` };
+  if (ratio >= 0.5) {
+    return { score: 50, weight: w, label: `Declining — ${Math.round(ratio * 100)}% of usual rate (${Math.round(momChange)}% MoM)` };
   }
-  return { score: 15, weight: 35, label: `Significant frequency drop (${Math.round(changePercent)}%)` };
+  if (ratio >= 0.25) {
+    return { score: 30, weight: w, label: `Significant drop — ${Math.round(ratio * 100)}% of usual rate` };
+  }
+  return { score: 10, weight: w, label: `Near inactive — playing at ${Math.round(ratio * 100)}% of usual rate` };
 }
 
 function scoreRecency(daysSinceLast: number | null): HealthScoreComponent {
@@ -453,6 +493,140 @@ function scoreNoShowTrend(history: BookingHistory): HealthScoreComponent {
     return { score: 60, weight: 5, label: `No-show rate ${Math.round(noShowRate * 100)}% — slightly elevated` };
   }
   return { score: 20, weight: 5, label: `High no-show rate (${Math.round(noShowRate * 100)}%) — disengagement signal` };
+}
+
+// ── Level 2 Behavioral Scorers ──
+
+/**
+ * Cancel Acceleration — detects escalating cancellation pattern.
+ * A member who goes from 0 cancels → 1 → 3 per month is a stronger
+ * churn signal than someone with steady 10% cancel rate.
+ */
+function scoreCancelAcceleration(
+  bookingDates: { date: Date; status: 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW' }[],
+): HealthScoreComponent {
+  const w = DEFAULT_WEIGHTS.cancelAcceleration;
+  if (bookingDates.length < 4) {
+    return { score: 75, weight: w, label: 'Not enough booking history to assess' };
+  }
+
+  const now = new Date();
+  const d14 = new Date(now.getTime() - 14 * 86400000);
+  const d28 = new Date(now.getTime() - 28 * 86400000);
+
+  const recent14 = bookingDates.filter(b => b.date >= d14);
+  const prev14 = bookingDates.filter(b => b.date >= d28 && b.date < d14);
+
+  const recentCancels = recent14.filter(b => b.status === 'CANCELLED' || b.status === 'NO_SHOW').length;
+  const prevCancels = prev14.filter(b => b.status === 'CANCELLED' || b.status === 'NO_SHOW').length;
+  const recentTotal = recent14.length;
+  const prevTotal = prev14.length;
+
+  const recentRate = recentTotal > 0 ? recentCancels / recentTotal : 0;
+  const prevRate = prevTotal > 0 ? prevCancels / prevTotal : 0;
+
+  // No cancels at all → great
+  if (recentCancels === 0 && prevCancels === 0) {
+    return { score: 100, weight: w, label: '100% reliable — rarely cancels or no-shows' };
+  }
+
+  // Cancel rate accelerating → bad sign
+  if (recentRate > prevRate && recentCancels >= 2) {
+    return { score: 15, weight: w, label: `Cancel rate accelerating — ${Math.round(recentRate * 100)}% (was ${Math.round(prevRate * 100)}%)` };
+  }
+  if (recentRate > 0.3) {
+    return { score: 25, weight: w, label: `High recent cancel rate: ${Math.round(recentRate * 100)}%` };
+  }
+  if (recentRate > 0.15) {
+    return { score: 50, weight: w, label: `Moderate cancel rate: ${Math.round(recentRate * 100)}%` };
+  }
+  if (recentCancels > 0) {
+    return { score: 70, weight: w, label: `Low cancel rate: ${recentCancels} cancel${recentCancels > 1 ? 's' : ''} in 2 weeks` };
+  }
+  return { score: 85, weight: w, label: 'Cancellation pattern stable' };
+}
+
+/**
+ * Session Diversity — detects format/time narrowing.
+ * A member who used to play Open Play + Drills + Clinics and now only does
+ * Open Play is showing reduced engagement breadth = pre-churn signal.
+ */
+function scoreSessionDiversity(
+  bookingsWithSessions?: BookingWithSession[],
+): HealthScoreComponent {
+  const w = DEFAULT_WEIGHTS.sessionDiversity;
+  if (!bookingsWithSessions || bookingsWithSessions.length < 5) {
+    return { score: 60, weight: w, label: 'Not enough sessions to assess diversity' };
+  }
+
+  const now = new Date();
+  const d30 = new Date(now.getTime() - 30 * 86400000);
+  const d60 = new Date(now.getTime() - 60 * 86400000);
+
+  const confirmed = bookingsWithSessions.filter(b => b.status === 'CONFIRMED');
+  const recent = confirmed.filter(b => b.date >= d30);
+  const prev = confirmed.filter(b => b.date >= d60 && b.date < d30);
+
+  // Count unique formats and time slots
+  const recentFormats = new Set(recent.map(b => b.format)).size;
+  const prevFormats = new Set(prev.map(b => b.format)).size;
+  const recentTimes = new Set(recent.map(b => getTimeSlot(b.startTime))).size;
+  const prevTimes = new Set(prev.map(b => getTimeSlot(b.startTime))).size;
+
+  // If no recent activity, can't assess diversity
+  if (recent.length === 0) {
+    return { score: 30, weight: w, label: 'No recent sessions — cannot assess diversity' };
+  }
+  if (prev.length === 0) {
+    // New member, can't compare
+    return { score: 70, weight: w, label: `Playing ${recentFormats} format${recentFormats > 1 ? 's' : ''} across ${recentTimes} time slot${recentTimes > 1 ? 's' : ''}` };
+  }
+
+  // Diversity narrowing check
+  const formatDrop = prevFormats > 0 && recentFormats < prevFormats;
+  const timeDrop = prevTimes > 0 && recentTimes < prevTimes;
+
+  if (formatDrop && timeDrop) {
+    return { score: 25, weight: w, label: `Narrowing — dropped from ${prevFormats} formats to ${recentFormats}, ${prevTimes} time slots to ${recentTimes}` };
+  }
+  if (formatDrop) {
+    return { score: 45, weight: w, label: `Format narrowing — ${prevFormats} formats → ${recentFormats}` };
+  }
+  if (timeDrop) {
+    return { score: 50, weight: w, label: `Time narrowing — ${prevTimes} time slots → ${recentTimes}` };
+  }
+  if (recentFormats >= prevFormats && recentTimes >= prevTimes) {
+    return { score: 100, weight: w, label: `Engaged across ${recentFormats} format${recentFormats > 1 ? 's' : ''} and ${recentTimes} time slot${recentTimes > 1 ? 's' : ''}` };
+  }
+  return { score: 75, weight: w, label: 'Session diversity stable' };
+}
+
+/**
+ * Co-Player Network Loss — social signal.
+ * If a member's regular playing partners stop showing up,
+ * the member is much more likely to churn too.
+ */
+function scoreCoPlayerLoss(
+  coPlayerActivity?: { activeCoPlayers: number; totalCoPlayers: number },
+): HealthScoreComponent {
+  const w = DEFAULT_WEIGHTS.coPlayerLoss;
+  if (!coPlayerActivity || coPlayerActivity.totalCoPlayers === 0) {
+    return { score: 50, weight: w, label: 'No co-player data available' };
+  }
+
+  const { activeCoPlayers, totalCoPlayers } = coPlayerActivity;
+  const activeRate = activeCoPlayers / totalCoPlayers;
+
+  if (activeRate >= 0.8) {
+    return { score: 100, weight: w, label: `${activeCoPlayers}/${totalCoPlayers} regular partners still active` };
+  }
+  if (activeRate >= 0.6) {
+    return { score: 70, weight: w, label: `${totalCoPlayers - activeCoPlayers} of ${totalCoPlayers} partners becoming inactive` };
+  }
+  if (activeRate >= 0.3) {
+    return { score: 40, weight: w, label: `Most partners inactive — only ${activeCoPlayers} of ${totalCoPlayers} still playing` };
+  }
+  return { score: 15, weight: w, label: `Social circle gone — ${totalCoPlayers - activeCoPlayers} of ${totalCoPlayers} partners churned` };
 }
 
 // ── Membership Tier Helpers ──

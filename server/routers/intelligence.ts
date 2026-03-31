@@ -1658,6 +1658,69 @@ export const intelligenceRouter = createTRPCRouter({
           }
         })
 
+        // ── Co-player social graph (Level 2) ──
+        // For each member: find their top co-players and check if those are still active
+        let coPlayerMap = new Map<string, { activeCoPlayers: number; totalCoPlayers: number }>()
+        try {
+          const coPlayerRows: any[] = await ctx.prisma.$queryRawUnsafe(`
+            WITH user_sessions AS (
+              SELECT b."userId", b."sessionId"
+              FROM play_session_bookings b
+              JOIN play_sessions ps ON ps.id = b."sessionId"
+              WHERE ps."clubId" = $1::uuid
+                AND b.status = 'CONFIRMED'
+                AND ps.date >= NOW() - INTERVAL '90 days'
+                AND ps.date <= NOW()
+            ),
+            co_players AS (
+              SELECT
+                us1."userId",
+                us2."userId" as co_player_id,
+                COUNT(*) as sessions_together
+              FROM user_sessions us1
+              JOIN user_sessions us2 ON us1."sessionId" = us2."sessionId"
+                AND us1."userId" != us2."userId"
+              GROUP BY us1."userId", us2."userId"
+              HAVING COUNT(*) >= 3
+            ),
+            co_player_activity AS (
+              SELECT
+                cp."userId",
+                cp.co_player_id,
+                cp.sessions_together,
+                CASE WHEN EXISTS (
+                  SELECT 1 FROM play_session_bookings b2
+                  JOIN play_sessions ps2 ON ps2.id = b2."sessionId"
+                  WHERE b2."userId" = cp.co_player_id
+                    AND ps2."clubId" = $1::uuid
+                    AND b2.status = 'CONFIRMED'
+                    AND ps2.date >= NOW() - INTERVAL '21 days'
+                ) THEN true ELSE false END as is_active
+              FROM co_players cp
+            )
+            SELECT
+              "userId",
+              COUNT(*) as total_co_players,
+              COUNT(*) FILTER (WHERE is_active) as active_co_players
+            FROM co_player_activity
+            GROUP BY "userId"
+          `, input.clubId)
+
+          for (const row of coPlayerRows) {
+            coPlayerMap.set(row.userId, {
+              totalCoPlayers: Number(row.total_co_players),
+              activeCoPlayers: Number(row.active_co_players),
+            })
+          }
+        } catch (err) {
+          console.warn('[Intelligence] Co-player query failed (non-critical):', (err as Error).message?.slice(0, 80))
+        }
+
+        // Attach co-player data to memberInputs
+        for (const m of memberInputs as any[]) {
+          m.coPlayerActivity = coPlayerMap.get(m.member.id) || undefined
+        }
+
         const { generateMemberHealth } = await import('@/lib/ai/member-health')
         return generateMemberHealth(memberInputs)
       } catch (err) {
@@ -1665,7 +1728,7 @@ export const intelligenceRouter = createTRPCRouter({
         // Return empty data rather than throwing
         return {
           members: [],
-          summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
+          summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, churned: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
         }
       }
     }),
