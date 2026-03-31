@@ -19,6 +19,7 @@ export const publicRouter = createTRPCRouter({
       title: true,
       description: true,
       format: true,
+      clubId: true,
       venueName: true,
       venueAddress: true,
       startDate: true,
@@ -32,6 +33,12 @@ export const publicRouter = createTRPCRouter({
           name: true,
           image: true,
           email: true,
+        },
+      },
+      club: {
+        select: {
+          id: true,
+          name: true,
         },
       },
       divisions: {
@@ -123,6 +130,7 @@ export const publicRouter = createTRPCRouter({
         title: true,
         description: true,
         format: true,
+        clubId: true,
         venueName: true,
         venueAddress: true,
         startDate: true,
@@ -136,6 +144,12 @@ export const publicRouter = createTRPCRouter({
             name: true,
             image: true,
             email: true,
+          },
+        },
+        club: {
+          select: {
+            id: true,
+            name: true,
           },
         },
         divisions: {
@@ -275,6 +289,12 @@ export const publicRouter = createTRPCRouter({
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.id },
         include: {
+          club: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           divisions: {
             include: {
               constraints: true,

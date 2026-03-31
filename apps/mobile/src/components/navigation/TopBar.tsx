@@ -46,11 +46,12 @@ const wantsTopBarBack = (pathname: string) =>
   pathname.startsWith('/chats/club/') ||
   pathname.startsWith('/chats/event/tournament/')
 
-const LOGO_OFF_X = -72
-const TEXT_HIDE_MS = 85
-const LOGO_IN_MS = 360
-const LOGO_OUT_MS = 300
-const TEXT_SHOW_MS = 180
+const LOGO_OFF_X = -40
+const LOGO_PULSE_X = -14
+const TEXT_HIDE_MS = 120
+const LOGO_IN_MS = 480
+const LOGO_OUT_MS = 340
+const TEXT_SHOW_MS = 220
 
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
@@ -225,70 +226,115 @@ function AnimatedHomeTitle({
   const styles = useMemo(() => createStyles(colors), [colors])
   const textOp = useRef(new Animated.Value(showLogo ? 0 : 1)).current
   const logoX = useRef(new Animated.Value(showLogo ? 0 : LOGO_OFF_X)).current
+  const logoOp = useRef(new Animated.Value(showLogo ? 1 : 0)).current
   const didMount = useRef(false)
+  const prevPulseKeyRef = useRef<number | undefined>(undefined)
+  const pulseAnimRef = useRef<Animated.CompositeAnimation | null>(null)
 
   useEffect(() => {
     if (!didMount.current) {
       didMount.current = true
       textOp.setValue(showLogo ? 0 : 1)
       logoX.setValue(showLogo ? 0 : LOGO_OFF_X)
+      logoOp.setValue(showLogo ? 1 : 0)
       return
     }
 
     if (showLogo) {
-      textOp.setValue(1)
+      textOp.stopAnimation()
+      logoX.stopAnimation()
+      logoOp.stopAnimation()
+      textOp.setValue(0)
       logoX.setValue(LOGO_OFF_X)
-      Animated.sequence([
-        Animated.timing(textOp, {
-          toValue: 0,
-          duration: TEXT_HIDE_MS,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
+      logoOp.setValue(0.2)
+      Animated.parallel([
         Animated.timing(logoX, {
           toValue: 0,
           duration: LOGO_IN_MS,
-          easing: Easing.out(Easing.cubic),
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOp, {
+          toValue: 1,
+          duration: LOGO_IN_MS,
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
       ]).start()
     } else {
-      Animated.sequence([
+      logoX.stopAnimation()
+      logoOp.stopAnimation()
+      textOp.stopAnimation()
+      Animated.parallel([
         Animated.timing(logoX, {
           toValue: LOGO_OFF_X,
           duration: LOGO_OUT_MS,
-          easing: Easing.in(Easing.cubic),
+          easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }),
+        Animated.timing(logoOp, {
+          toValue: 0,
+          duration: LOGO_OUT_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
         Animated.timing(textOp, {
           toValue: 1,
           duration: TEXT_SHOW_MS,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
-        }),
-      ]).start()
+        }).start()
+      })
     }
-  }, [showLogo, textOp, logoX])
+  }, [showLogo, textOp, logoOp, logoX])
 
   useEffect(() => {
-    if (!showLogo || !refreshPulseKey) return
+    if (!showLogo || refreshPulseKey == null) return
+    if (prevPulseKeyRef.current === undefined) {
+      prevPulseKeyRef.current = refreshPulseKey
+      return
+    }
+    if (prevPulseKeyRef.current === refreshPulseKey) return
+    prevPulseKeyRef.current = refreshPulseKey
+
+    pulseAnimRef.current?.stop()
     logoX.stopAnimation()
+    logoOp.stopAnimation()
     logoX.setValue(0)
-    Animated.sequence([
+    logoOp.setValue(1)
+
+    const pulse = Animated.sequence([
       Animated.timing(logoX, {
-        toValue: LOGO_OFF_X,
-        duration: LOGO_OUT_MS,
-        easing: Easing.in(Easing.cubic),
+        toValue: LOGO_PULSE_X,
+        duration: 220,
+        easing: Easing.inOut(Easing.quad),
         useNativeDriver: true,
       }),
-      Animated.timing(logoX, {
+      Animated.parallel([
+        Animated.timing(logoX, {
         toValue: 0,
-        duration: LOGO_IN_MS,
-        easing: Easing.out(Easing.cubic),
+        duration: 420,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
         useNativeDriver: true,
       }),
-    ]).start()
-  }, [showLogo, refreshPulseKey, logoX])
+      Animated.timing(logoOp, {
+        toValue: 1,
+        duration: 420,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      ]),
+    ])
+    pulseAnimRef.current = pulse
+    pulse.start(({ finished }) => {
+      if (finished) {
+        logoX.setValue(0)
+        logoOp.setValue(1)
+      }
+      pulseAnimRef.current = null
+    })
+  }, [showLogo, refreshPulseKey, logoOp, logoX])
 
   return (
     <View style={[styles.titleAnimContainer, showBack && styles.titleWithBack]}>
@@ -301,7 +347,11 @@ function AnimatedHomeTitle({
         </BrandGradientText>
       </Animated.View>
       <Animated.View
-        style={[styles.titleLayerAbs, styles.logoSlideWrap, { transform: [{ translateX: logoX }] }]}
+        style={[
+          styles.titleLayerAbs,
+          styles.logoSlideWrap,
+          { opacity: logoOp, transform: [{ translateX: logoX }] },
+        ]}
         pointerEvents={showLogo ? 'auto' : 'none'}
       >
         <PiqleLogo height={28} />

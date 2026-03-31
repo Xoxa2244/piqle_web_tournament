@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 
 import { Feather } from '@expo/vector-icons'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
@@ -8,6 +9,7 @@ import { ChatPreviewCard } from '../../src/components/ChatPreviewCard'
 import { EventChatListItemActive, EventChatListItemArchived, type EventChatListEvent } from '../../src/components/EventChatListItem'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
+import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { SegmentedControl } from '../../src/components/SegmentedControl'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
@@ -28,6 +30,7 @@ export default function ChatsTab() {
   const [segment, setSegment] = useState<Segment>('clubs')
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
+  const [revealEpoch, setRevealEpoch] = useState(0)
 
   const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -120,6 +123,12 @@ export default function ChatsTab() {
 
   const pullToRefresh = usePullToRefresh(onRefreshChats)
 
+  useFocusEffect(
+    useCallback(() => {
+      setRevealEpoch((v) => v + 1)
+    }, [])
+  )
+
   const showFullChatLoading =
     isAuthenticated &&
     clubChatsQuery.data === undefined &&
@@ -172,7 +181,7 @@ export default function ChatsTab() {
           trackStyle={styles.segmentTrack}
         />
 
-        <SegmentedContentFade activeKey={segment} segmentOrder={['clubs', 'events']} style={styles.listScroll}>
+        <SegmentedContentFade activeKey={segment} segmentOrder={['clubs', 'events']} opacityOnly style={styles.listScroll}>
           <PickleRefreshScrollView
             style={styles.listScroll}
             contentContainerStyle={styles.listScrollContent}
@@ -218,22 +227,23 @@ export default function ChatsTab() {
           ) : (
             <>
               <Text style={styles.sectionLabel}>Your club chats</Text>
-              {filteredClubChats.map((club) => (
-                <ChatPreviewCard
-                  key={`club-${club.id}`}
-                  title={club.name}
-                  imageUri={club.logoUrl}
-                  subtitle={
-                    [club.city, club.state].filter(Boolean).join(', ') || 'Club chat'
-                  }
-                  unreadCount={club.unreadCount}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/chats/club/[clubId]',
-                      params: { clubId: club.id, name: club.name },
-                    })
-                  }
-                />
+              {filteredClubChats.map((club, index) => (
+                <StaggeredReveal key={`club-${club.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
+                  <ChatPreviewCard
+                    title={club.name}
+                    imageUri={club.logoUrl}
+                    subtitle={
+                      [club.city, club.state].filter(Boolean).join(', ') || 'Club chat'
+                    }
+                    unreadCount={club.unreadCount}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/chats/club/[clubId]',
+                        params: { clubId: club.id, name: club.name },
+                      })
+                    }
+                  />
+                </StaggeredReveal>
               ))}
             </>
           )}
@@ -254,13 +264,14 @@ export default function ChatsTab() {
               <Text style={styles.sectionLabel}>Active</Text>
               <View style={styles.eventStack}>
                 {activeEventChats.length > 0 ? (
-                  activeEventChats.map((event) => (
-                    <EventChatListItemActive
-                      key={`event-active-${event.id}`}
-                      event={event as EventChatListEvent}
-                      onOpenGeneral={() => openEventGeneral(event)}
-                      onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
-                    />
+                  activeEventChats.map((event, index) => (
+                    <StaggeredReveal key={`event-active-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
+                      <EventChatListItemActive
+                        event={event as EventChatListEvent}
+                        onOpenGeneral={() => openEventGeneral(event)}
+                        onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
+                      />
+                    </StaggeredReveal>
                   ))
                 ) : (
                   <View style={styles.dashedBox}>
@@ -286,15 +297,16 @@ export default function ChatsTab() {
 
                   {archiveOpen ? (
                     <View style={styles.eventStack}>
-                      {archivedEventChats.map((event) => (
-                        <EventChatListItemArchived
-                          key={`event-arch-${event.id}`}
-                          event={event as EventChatListEvent}
-                          expanded={expandedArchiveEventIds.has(event.id)}
-                          onToggleExpand={() => toggleArchiveEventExpanded(event.id)}
-                          onOpenGeneral={() => openEventGeneral(event)}
-                          onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
-                        />
+                      {archivedEventChats.map((event, index) => (
+                        <StaggeredReveal key={`event-arch-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}-archive-${archiveOpen ? 1 : 0}`}>
+                          <EventChatListItemArchived
+                            event={event as EventChatListEvent}
+                            expanded={expandedArchiveEventIds.has(event.id)}
+                            onToggleExpand={() => toggleArchiveEventExpanded(event.id)}
+                            onOpenGeneral={() => openEventGeneral(event)}
+                            onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
+                          />
+                        </StaggeredReveal>
                       ))}
                     </View>
                   ) : null}

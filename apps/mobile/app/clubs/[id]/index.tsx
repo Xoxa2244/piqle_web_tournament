@@ -31,6 +31,13 @@ import { BackCircleButton } from '../../../src/components/navigation/BackCircleB
 import { TopBar } from '../../../src/components/navigation/TopBar'
 import { OptionalLinearGradient } from '../../../src/components/OptionalLinearGradient'
 import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../../src/lib/config'
+import {
+  formatEventTimeRange,
+  getUpcomingEventDays,
+  mapClubTournamentsToCalendarEvents,
+  parseYmd,
+  buildEventsByDay,
+} from '../../../src/lib/clubCalendar'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
@@ -821,6 +828,13 @@ export default function ClubDetailScreen() {
     rejectJoinRequest,
   ])
 
+  const calendarEvents = useMemo(
+    () => mapClubTournamentsToCalendarEvents(club?.tournaments ?? []),
+    [club?.tournaments],
+  )
+  const eventsByDay = useMemo(() => buildEventsByDay(calendarEvents), [calendarEvents])
+  const previewDayKeys = useMemo(() => getUpcomingEventDays(eventsByDay, 3), [eventsByDay])
+
 
   if (clubQuery.isLoading) {
     return (
@@ -1458,14 +1472,65 @@ export default function ClubDetailScreen() {
 
         {tab === 'events' ? (
           <View style={styles.tabContent}>
-            <SurfaceCard tone="soft" style={styles.card}>
-              <Text style={styles.clubSectionTitle}>Calendar</Text>
-              <Text style={styles.clubSectionSubtitle}>Upcoming club events</Text>
-              <View style={styles.calendarStub}>
-                <Feather name="calendar" size={20} color={colors.primary} />
-                <Text style={styles.calendarStubText}>Calendar view coming next.</Text>
-              </View>
-            </SurfaceCard>
+            <Pressable
+              onPress={() => router.push(`/clubs/${club.id}/calendar`)}
+              style={({ pressed }) => [styles.card, pressed && styles.calendarCardPressed]}
+            >
+              <SurfaceCard tone="soft" style={styles.cardInner}>
+                <View style={styles.calendarHeaderRow}>
+                  <View style={styles.calendarHeaderLeft}>
+                    <View style={styles.calendarHeaderTextWrap}>
+                      <Feather name="calendar" size={16} color={colors.primary} />
+                      <View style={styles.calendarHeaderTextColumn}>
+                        <Text style={styles.clubSectionTitle}>Calendar</Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.clubSectionSubtitle, styles.calendarHeaderSubtitle]}
+                        >
+                          Upcoming club events
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={colors.textMuted} />
+                </View>
+                <View style={styles.calendarDivider} />
+                <View style={styles.calendarPreviewWrap}>
+                  {previewDayKeys.length === 0 ? (
+                    <Text style={styles.calendarEmptyText}>No upcoming dates yet.</Text>
+                  ) : (
+                    previewDayKeys.map((dayKey) => {
+                      const dayEvents = eventsByDay.get(dayKey) ?? []
+                      const date = parseYmd(dayKey)
+                      return (
+                        <View key={dayKey} style={styles.calendarPreviewDay}>
+                          <Text style={styles.calendarPreviewDayTitle}>
+                            {date.toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </Text>
+                          {dayEvents.slice(0, 2).map((event) => (
+                            <View key={event.id} style={styles.calendarPreviewEvent}>
+                              <Text style={styles.calendarPreviewEventTitle} numberOfLines={1}>
+                                {event.title}
+                              </Text>
+                              <Text style={styles.calendarPreviewEventMeta} numberOfLines={1}>
+                                {formatEventTimeRange(event.startDate, event.endDate, event.timezone)}
+                              </Text>
+                            </View>
+                          ))}
+                          {dayEvents.length > 2 ? (
+                            <Text style={styles.calendarPreviewMore}>+{dayEvents.length - 2} more</Text>
+                          ) : null}
+                        </View>
+                      )
+                    })
+                  )}
+                </View>
+              </SurfaceCard>
+            </Pressable>
 
             <View style={styles.upcomingSection}>
               <View style={styles.sectionHeaderRow}>
@@ -2219,6 +2284,9 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   card: {
     borderRadius: 16,
+  },
+  cardInner: {
+    borderRadius: 16,
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -2367,19 +2435,81 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  calendarStub: {
-    marginTop: spacing.md,
+  calendarHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 10,
-    padding: spacing.md,
-    borderRadius: 14,
+  },
+  calendarCardPressed: {
+    opacity: 0.86,
+  },
+  calendarHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  calendarHeaderTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  calendarHeaderTextColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  calendarHeaderSubtitle: {
+    marginTop: 4,
+    marginBottom: 0,
+  },
+  calendarDivider: {
+    marginTop: spacing.sm,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    opacity: 1,
+  },
+  calendarPreviewWrap: {
+    marginTop: spacing.md,
+    gap: 10,
+  },
+  calendarEmptyText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  calendarPreviewDay: {
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 12,
     backgroundColor: colors.surface,
+    padding: spacing.sm,
+    gap: 6,
   },
-  calendarStubText: {
+  calendarPreviewDayTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  calendarPreviewEvent: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.brandPrimaryBorder,
+    backgroundColor: colors.brandPrimaryTint,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  calendarPreviewEventTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  calendarPreviewEventMeta: {
+    marginTop: 2,
     color: colors.textMuted,
+    fontSize: 12,
+  },
+  calendarPreviewMore: {
+    color: colors.textMuted,
+    fontSize: 12,
     fontWeight: '600',
   },
   upcomingSection: {

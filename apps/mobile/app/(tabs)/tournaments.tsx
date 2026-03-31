@@ -1,13 +1,16 @@
 import { Feather } from '@expo/vector-icons'
-import { memo, useCallback, useMemo, useState } from 'react'
-import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import * as Haptics from 'expo-haptics'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Dimensions, Easing, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 
 import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { TournamentCard } from '../../src/components/TournamentCard'
+import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import {
   ActionButton,
   EmptyState,
@@ -19,7 +22,7 @@ import {
   SurfaceCard,
 } from '../../src/components/ui'
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
-import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
+import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
@@ -89,7 +92,7 @@ const getCardStatus = (
 /**
  * Без отдельного getTournamentById на каждую строку — иначе при смене вкладки (Upcoming / My events / Past)
  * десятки запросов + reflow накладываются на анимацию SegmentedContentFade и дают «передёргивание».
- * Контент сегментов: `opacityOnly` у SegmentedContentFade — без translateX, иначе на Android заметен горизонтальный сдвиг списка.
+ * Анимация переключения сегментов должна совпадать с вкладкой Clubs (fade + лёгкий slide).
  * Данных из listBoards достаточно для карточки в списке (как ClubCard без лишних query на табе клубов).
  */
 const TournamentListCard = memo(function TournamentListCard({
@@ -180,10 +183,15 @@ export default function TournamentsTab() {
   const [mode, setMode] = useState<'upcoming' | 'registered' | 'past'>('upcoming')
   const [search, setSearch] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [showCreateInfo, setShowCreateInfo] = useState(false)
+  const createPlusSpin = useRef(new Animated.Value(0)).current
+  const createSpinLoopRef = useRef<Animated.CompositeAnimation | null>(null)
+  const createLongPressTriggeredRef = useRef(false)
   const [thisMonthOnly, setThisMonthOnly] = useState(false)
   const [selectedFormats, setSelectedFormats] = useState<string[]>([])
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([])
   const [maxFee, setMaxFee] = useState<number | null>(null)
+  const [revealEpoch, setRevealEpoch] = useState(0)
   const api = trpc as any
   const utils = (trpc as any).useUtils()
 
@@ -451,12 +459,92 @@ export default function TournamentsTab() {
   }, [accessibleTournamentsQuery, eventChatsQuery, isAuthenticated, notificationsQuery, tournamentsQuery, utils])
 
   const pullToRefresh = usePullToRefresh(onRefreshTournaments)
+  const triggerCreateHaptic = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {})
+  }, [])
+  const createPlusRotate = createPlusSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
+  const startCreateHoldAnimation = useCallback(() => {
+    if (!createSpinLoopRef.current) {
+      createPlusSpin.setValue(0)
+      createSpinLoopRef.current = Animated.loop(
+        Animated.timing(createPlusSpin, {
+          toValue: 1,
+          duration: 680,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      )
+      createSpinLoopRef.current.start()
+    }
+  }, [createPlusSpin])
+
+  const stopCreateHoldAnimation = useCallback(() => {
+    createSpinLoopRef.current?.stop()
+    createSpinLoopRef.current = null
+    Animated.timing(createPlusSpin, { toValue: 0, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [createPlusSpin])
+  const openCreateInfoModal = useCallback(() => {
+    setShowCreateInfo(true)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      createSpinLoopRef.current?.stop()
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      setRevealEpoch((v) => v + 1)
+    }, [])
+  )
 
   return (
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
       <View style={styles.page}>
         <View style={styles.headerPanel}>
-          <SearchField value={search} onChangeText={setSearch} placeholder="Search tournaments..." />
+          <View style={styles.searchRow}>
+            <View style={styles.searchFieldWrap}>
+              <SearchField value={search} onChangeText={setSearch} placeholder="Search tournaments..." />
+            </View>
+            <Pressable
+              onPress={() => {
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  return
+                }
+                openCreateInfoModal()
+              }}
+              onPressOut={() => {
+                stopCreateHoldAnimation()
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  openCreateInfoModal()
+                }
+              }}
+              onPressIn={() => {
+                triggerCreateHaptic()
+                startCreateHoldAnimation()
+              }}
+              onLongPress={() => {
+                createLongPressTriggeredRef.current = true
+                startCreateHoldAnimation()
+              }}
+              style={({ pressed, hovered }) => [
+                styles.createButton,
+                hovered && styles.createButtonHovered,
+                pressed && styles.createButtonPressed,
+              ]}
+            >
+              <Animated.View style={[styles.createIconCircle, { transform: [{ rotate: createPlusRotate }] }]}>
+                <Feather name="plus" size={14} color={colors.primary} />
+              </Animated.View>
+              <Text style={styles.createButtonText}>Create</Text>
+            </Pressable>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -539,8 +627,8 @@ export default function TournamentsTab() {
           <SegmentedContentFade
             activeKey={mode}
             segmentOrder={['upcoming', 'registered', 'past']}
-            style={styles.listScroll}
             opacityOnly
+            style={styles.listScroll}
           >
             <View style={styles.tabMain}>
           {tournamentsQuery.isError ? (
@@ -574,7 +662,7 @@ export default function TournamentsTab() {
           ) : null}
 
           {!tournamentsQuery.isError &&
-            filtered.map((tournament) => {
+            filtered.map((tournament, index) => {
             const myStatusInfo = registrationStatusesQuery.data?.[tournament.id]
             const myStatus = myStatusInfo?.status
             const permission = eventPermissions[tournament.id]
@@ -596,20 +684,46 @@ export default function TournamentsTab() {
               Number(feeCents ?? 0) > 0
 
             return (
-              <TournamentListCard
-                key={tournament.id}
-                tournament={tournament}
-                myStatus={myStatus}
-                hasPrivilegedAccess={hasPrivilegedAccess}
-                feeCents={feeCents}
-                isUnpaid={isUnpaid}
-                feedbackSummary={feedbackByTournamentWithDevFallback[tournament.id] ?? null}
-              />
+              <StaggeredReveal key={tournament.id} index={index} triggerKey={`${revealEpoch}-${mode}-${search.trim()}`}>
+                <TournamentListCard
+                  tournament={tournament}
+                  myStatus={myStatus}
+                  hasPrivilegedAccess={hasPrivilegedAccess}
+                  feeCents={feeCents}
+                  isUnpaid={isUnpaid}
+                  feedbackSummary={feedbackByTournamentWithDevFallback[tournament.id] ?? null}
+                />
+              </StaggeredReveal>
             )
           })}
             </View>
           </SegmentedContentFade>
         </PickleRefreshScrollView>
+
+        <AppBottomSheet
+          open={showCreateInfo}
+          onClose={() => setShowCreateInfo(false)}
+          title="Create Tournament"
+          titleBelow={
+            <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: '600' }}>
+              Tournament creation is currently available only in the web version of Piqle.
+            </Text>
+          }
+          footer={
+            <ActionButton
+              label="Open Piqle Web"
+              onPress={async () => {
+                const url = buildWebUrl('/admin/new')
+                await Linking.openURL(url)
+                setShowCreateInfo(false)
+              }}
+            />
+          }
+        >
+          <Text style={{ color: colors.textMuted, lineHeight: 20 }}>
+            Open web to create a new tournament, configure divisions, pricing, and registration settings.
+          </Text>
+        </AppBottomSheet>
 
         <AppBottomSheet
           open={showFilters}
@@ -722,6 +836,52 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     padding: 0,
     paddingHorizontal: spacing.lg,
     gap: spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchFieldWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createButton: {
+    minHeight: 44,
+    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.brandPrimaryBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  createIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brandPrimaryTint,
+  },
+  createButtonPressed: {
+    opacity: 0.9,
+  },
+  createButtonHovered: {
+    backgroundColor: colors.brandPrimaryTint,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  createButtonText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   /** Как на вкладках clubs / chats: flex:1 на обёртке анимации контента. */
   listScroll: {

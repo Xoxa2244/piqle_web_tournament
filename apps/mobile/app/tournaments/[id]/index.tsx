@@ -1026,27 +1026,15 @@ export default function TournamentDetailScreen() {
     { id: linkedClubId },
     { enabled: Boolean(linkedClubId), retry: false }
   )
-  const clubsLookupQuery = api.club.list.useQuery(undefined, {
-    enabled: !linkedClubId && Boolean(venueNameLabel),
-    retry: false,
-  })
-  const matchedClubByVenue = useMemo(() => {
-    if (linkedClubId || !venueNameLabel) return null
-    const clubs = (clubsLookupQuery.data ?? []) as Array<{ id?: string; name?: string }>
-    const needle = venueNameLabel.trim().toLowerCase()
-    return clubs.find((club) => String(club?.name ?? '').trim().toLowerCase() === needle) ?? null
-  }, [clubsLookupQuery.data, linkedClubId, venueNameLabel])
-  const resolvedClubId = linkedClubId || String(matchedClubByVenue?.id ?? '').trim()
+  const resolvedClubId = linkedClubId
   const linkedClubName = String(
     linkedClubQuery.data?.name ??
-    matchedClubByVenue?.name ??
     tournamentForClubMeta.club?.name ??
       tournamentForClubMeta.hostClub?.name ??
       ''
   ).trim()
   const clubLabel =
     linkedClubName ||
-    venueNameLabel ||
     (linkedClubQuery.isLoading && resolvedClubId ? 'Loading club...' : '')
   const hasLinkedClubLabel = Boolean(clubLabel)
   const canOpenLinkedClub = Boolean(resolvedClubId)
@@ -1217,20 +1205,6 @@ export default function TournamentDetailScreen() {
           <View style={styles.eventMiniBar}>
             <BackCircleButton onPress={() => router.back()} iconSize={18} style={styles.eventMiniBarButton} />
             <View style={styles.eventMiniBarActions}>
-              <Pressable
-                onPress={scrollToCommentsEnd}
-                style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
-                accessibilityLabel="Comments"
-              >
-                <Feather name="message-circle" size={18} color={colors.text} />
-                {Number(commentCountQuery.data ?? 0) > 0 ? (
-                  <View style={styles.commentBadge}>
-                    <Text style={styles.commentBadgeText}>
-                      {Number(commentCountQuery.data ?? 0) > 99 ? '99+' : String(commentCountQuery.data)}
-                    </Text>
-                  </View>
-                ) : null}
-              </Pressable>
                 <Pressable
                 onPress={handleShare}
                 style={({ pressed }) => [styles.eventMiniBarButton, pressed && styles.eventMiniBarButtonPressed]}
@@ -1636,97 +1610,6 @@ export default function TournamentDetailScreen() {
                   </Pressable>
                   </View>
               </SurfaceCard>
-
-              <View
-                onLayout={(e) => {
-                  setCommentsAnchorY(e.nativeEvent.layout.y)
-                }}
-              >
-                <SurfaceCard style={styles.detailCard}>
-                  <View style={styles.commentsHeaderRow}>
-                    <Text style={[styles.cardTitle, styles.cardTitleLoose]}>Comments</Text>
-                    <Text style={styles.commentsCount}>{String(commentCountQuery.data ?? 0)}</Text>
-                </View>
-
-                  {commentsQuery.isLoading ? (
-                    <LoadingBlock label="Loading comments..." />
-                  ) : (commentsQuery.data ?? []).length === 0 ? (
-                    <Text style={styles.mutedBodyText}>No comments yet.</Text>
-                  ) : (
-                    <View style={styles.commentsBlock}>
-                      <RNScrollView
-                        ref={commentsThreadRef}
-                        style={[
-                          styles.commentsThreadScroll,
-                          {
-                            maxHeight: Math.max(
-                              Math.round(windowHeight * 0.5) - COMMENTS_COMPOSER_ESTIMATED_H,
-                              120
-                            ),
-                          },
-                        ]}
-                        contentContainerStyle={styles.commentsThreadContent}
-                        nestedScrollEnabled
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        <ChatThreadMessageList
-                          messages={((commentsQuery.data ?? []) as any[])
-                            .slice()
-                            .reverse()
-                            .map((c: any) => ({
-                              id: c.id,
-                              userId: c.userId,
-                              text: c.text,
-                              createdAt: c.createdAt,
-                              user: {
-                                id: c.user?.id,
-                                name: c.user?.name ?? c.user?.email ?? 'User',
-                                image: c.user?.image ?? null,
-                              },
-                              isDeleted: false,
-                            }))}
-                          currentUserId={user?.id}
-                          onPressAvatar={(m) => {
-                            if (!m.userId) return
-                            router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
-                          }}
-                          canDelete={(m) => Boolean(user?.id && m.userId === user.id && !m.isDeleted)}
-                          onRequestDelete={(m) => setCommentsDeleteTargetId(m.id)}
-                          deleteDisabled={deleteComment.isPending}
-                        />
-                      </RNScrollView>
-
-                      <ChatComposer
-                        value={commentDraft}
-                        onChangeText={setCommentDraft}
-                        placeholder={isAuthenticated ? 'Write a comment…' : 'Sign in to comment…'}
-                        onSend={() => {
-                          if (!isAuthenticated) {
-                            router.push('/sign-in')
-                            return
-                          }
-                          const text = commentDraft.trim()
-                          if (!text) return
-                          createComment.mutate({ tournamentId, text })
-                        }}
-                        onFocus={() => {
-                          scrollToCommentsEnd()
-                          setTimeout(() => {
-                            commentsThreadRef.current?.scrollToEnd({ animated: true })
-                            scrollRef.current?.scrollToEnd({ animated: true })
-                          }, 60)
-                        }}
-                        sendDisabled={!commentDraft.trim() || createComment.isPending}
-                        paddingHorizontal={0}
-                        paddingBottom={0}
-                        safeAreaBottom={false}
-                        multiline={false}
-                      />
-                </View>
-                  )}
-              </SurfaceCard>
-              </View>
 
             </View>
           ) : null}
@@ -2886,26 +2769,6 @@ export default function TournamentDetailScreen() {
         )}
       </AppBottomSheet>
 
-      <AppBottomSheet
-        open={Boolean(commentsDeleteTargetId)}
-        onClose={() => setCommentsDeleteTargetId(null)}
-        title="Delete this comment?"
-        subtitle="This comment will be permanently removed."
-        footer={
-          <AppConfirmActions
-            intent="destructive"
-            cancelLabel="Cancel"
-            confirmLabel={deleteComment.isPending ? 'Deleting…' : 'Delete'}
-            onCancel={() => setCommentsDeleteTargetId(null)}
-            onConfirm={() => {
-              if (!commentsDeleteTargetId) return
-              const run = deleteComment.mutateAsync({ commentId: commentsDeleteTargetId })
-              void run.then(() => setCommentsDeleteTargetId(null)).catch(() => setCommentsDeleteTargetId(null))
-            }}
-            confirmLoading={deleteComment.isPending}
-          />
-        }
-      />
     </SafeAreaView>
   )
 }

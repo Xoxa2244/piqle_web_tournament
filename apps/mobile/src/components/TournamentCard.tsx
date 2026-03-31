@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 
 import { formatLocation, formatMoney } from '../lib/formatters'
+import { trpc } from '../lib/trpc'
 import { getTournamentSlotMetrics } from '../lib/tournamentSlots'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
@@ -337,6 +338,11 @@ type TournamentSummary = {
     name?: string | null
     email?: string | null
   } | null
+  clubId?: string | null
+  club?: {
+    id: string
+    name?: string | null
+  } | null
   feedbackSummary?: {
     averageRating: number | null
     total: number
@@ -399,8 +405,33 @@ export const TournamentCard = ({
   const venueName = String(tournament.venueName ?? '').trim()
   const venueAddress = String(tournament.venueAddress ?? '').trim()
   const locationLabel = venueAddress || venueName || 'Location not set'
-  /** Если venueName выглядит как имя клуба, а адрес есть — показываем клуб отдельным чипом. */
-  const clubLabel = venueAddress && venueName ? venueName : null
+  /** Показываем флаг клуба только при реальной привязке турнира к клубу. */
+  const linkedClubIdFromCard = String(tournament.clubId ?? tournament.club?.id ?? '').trim()
+  const explicitClubName = String(tournament.club?.name ?? '').trim()
+  const tournamentMetaQuery = trpc.public.getTournamentById.useQuery(
+    { id: tournament.id },
+    {
+      enabled: !explicitClubName && !linkedClubIdFromCard,
+      retry: false,
+      staleTime: 60_000,
+    },
+  )
+  const linkedClubId = String(
+    linkedClubIdFromCard ||
+      tournamentMetaQuery.data?.clubId ||
+      tournamentMetaQuery.data?.club?.id ||
+      '',
+  ).trim()
+  const linkedClubQuery = trpc.club.get.useQuery(
+    { id: linkedClubId },
+    {
+      enabled: Boolean(linkedClubId) && !explicitClubName,
+      retry: false,
+      staleTime: 60_000,
+    }
+  )
+  const resolvedClubName = String(linkedClubQuery.data?.name ?? '').trim()
+  const clubLabel = explicitClubName || resolvedClubName || null
   const statusLabelText = String(statusLabel ?? '').trim()
   const compactTopStatusLabel =
     statusLabelText && isCompactTopStatus(statusLabelText) ? statusLabelText : null

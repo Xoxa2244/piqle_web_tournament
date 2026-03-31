@@ -1,13 +1,15 @@
 import { Feather } from '@expo/vector-icons'
+import { Ionicons } from '@expo/vector-icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 
-import { AiAssistantIconAnimated } from '../../src/components/icons/AiAssistantIcon'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { TournamentCard } from '../../src/components/TournamentCard'
+import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { ActionButton, EmptyState, LoadingBlock, SectionTitle, SurfaceCard } from '../../src/components/ui'
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { trpc } from '../../src/lib/trpc'
@@ -18,6 +20,117 @@ import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 type CardTone = 'muted' | 'primary' | 'danger' | 'success' | 'warning'
+
+const aiPulseStyles = StyleSheet.create({
+  wrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  echo: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})
+
+function AiTabbarPulseIcon() {
+  const scale = useRef(new Animated.Value(1)).current
+  const alpha = useRef(new Animated.Value(1)).current
+  const echoScale = useRef(new Animated.Value(0.92)).current
+  const echoAlpha = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scale, {
+            toValue: 1.08,
+            duration: 820,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scale, {
+            toValue: 1,
+            duration: 820,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(alpha, {
+            toValue: 0.82,
+            duration: 820,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(alpha, {
+            toValue: 1,
+            duration: 820,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    )
+    const echoLoop = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(echoScale, {
+            toValue: 1.5,
+            duration: 980,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(echoAlpha, {
+            toValue: 0.34,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(echoAlpha, {
+          toValue: 0,
+          duration: 760,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(echoScale, {
+          toValue: 0.92,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ])
+    )
+    loop.start()
+    echoLoop.start()
+    return () => {
+      loop.stop()
+      echoLoop.stop()
+    }
+  }, [alpha, echoAlpha, echoScale, scale])
+
+  return (
+    <View style={aiPulseStyles.wrap}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          aiPulseStyles.echo,
+          {
+            opacity: echoAlpha,
+            transform: [{ scale: echoScale }],
+          },
+        ]}
+      >
+        <Ionicons name="flash" size={22} color="#FFFFFF" />
+      </Animated.View>
+      <Animated.View style={{ transform: [{ scale }], opacity: alpha }}>
+        <Ionicons name="flash" size={22} color="#FFFFFF" />
+      </Animated.View>
+    </View>
+  )
+}
 
 const getEntryFeeCents = (tournament: { entryFee?: string | number | null; entryFeeCents?: number | null }) => {
   if (typeof tournament.entryFeeCents === 'number') return tournament.entryFeeCents
@@ -185,6 +298,13 @@ export default function HomeTab() {
   const prevRefreshingRef = useRef(false)
   const { homeReselectSignal } = useTabRepeat()
   const prevHomeReselectRef = useRef(0)
+  const [revealEpoch, setRevealEpoch] = useState(0)
+
+  useFocusEffect(
+    useCallback(() => {
+      setRevealEpoch((v) => v + 1)
+    }, [])
+  )
 
   useEffect(() => {
     if (pullToRefresh.refreshing && !prevRefreshingRef.current) {
@@ -300,7 +420,7 @@ export default function HomeTab() {
             />
             <View style={styles.aiRow}>
               <View style={styles.aiIcon}>
-                <AiAssistantIconAnimated size={22} color={colors.white} />
+                <AiTabbarPulseIcon />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.aiTitle}>AI Assistant</Text>
@@ -352,7 +472,7 @@ export default function HomeTab() {
       ) : null}
 
       {!tournamentsQuery.isError &&
-        myEvents.map((event) => {
+        myEvents.map((event, index) => {
         const status = myEventStatusFor(event.id)
         const isOwner = Boolean(user?.id && event.user?.id === user.id)
         const hasPrivilegedAccess = Boolean(isOwner || accessibleTournamentIds.has(event.id))
@@ -362,14 +482,15 @@ export default function HomeTab() {
           statuses[event.id]?.isPaid === false &&
           getEntryFeeCents(event) > 0
         return (
-          <HomeTournamentCard
-            key={event.id}
-            tournament={event}
-            myStatus={status}
-            hasPrivilegedAccess={hasPrivilegedAccess}
-            feeCents={getEntryFeeCents(event)}
-            isUnpaid={isUnpaid}
-          />
+          <StaggeredReveal key={event.id} index={index} triggerKey={`home-events-${revealEpoch}`}>
+            <HomeTournamentCard
+              tournament={event}
+              myStatus={status}
+              hasPrivilegedAccess={hasPrivilegedAccess}
+              feeCents={getEntryFeeCents(event)}
+              isUnpaid={isUnpaid}
+            />
+          </StaggeredReveal>
         )
       })}
 
@@ -457,6 +578,17 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.brandAccent,
+  },
+  aiPulseIconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiPulseEcho: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   aiTitle: {
     color: colors.text,

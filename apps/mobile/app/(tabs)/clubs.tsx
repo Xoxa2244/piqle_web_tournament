@@ -1,11 +1,16 @@
-import { memo, useCallback, useMemo, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Feather } from '@expo/vector-icons'
+import * as Haptics from 'expo-haptics'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Easing, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
+import { useFocusEffect } from '@react-navigation/native'
 
+import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ClubCard } from '../../src/components/ClubCard'
+import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import {
   ActionButton,
   EmptyState,
@@ -15,8 +20,8 @@ import {
   SegmentedControl,
 } from '../../src/components/ui'
 import { trpc } from '../../src/lib/trpc'
-import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
-import { spacing, type ThemePalette } from '../../src/lib/theme'
+import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../src/lib/config'
+import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { useToast } from '../../src/providers/ToastProvider'
@@ -69,6 +74,11 @@ export default function ClubsTab() {
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
   const [mode, setMode] = useState<'discover' | 'my-clubs' | 'nearby'>('discover')
+  const [showCreateInfo, setShowCreateInfo] = useState(false)
+  const [revealEpoch, setRevealEpoch] = useState(0)
+  const createPlusSpin = useRef(new Animated.Value(0)).current
+  const createSpinLoopRef = useRef<Animated.CompositeAnimation | null>(null)
+  const createLongPressTriggeredRef = useRef(false)
   const api = trpc as any
   const utils = (trpc as any).useUtils()
 
@@ -206,6 +216,46 @@ export default function ClubsTab() {
   }, [clubsQuery])
 
   const pullToRefresh = usePullToRefresh(onRefreshClubs)
+  const triggerCreateHaptic = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {})
+  }, [])
+  const createPlusRotate = createPlusSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
+  const startCreateHoldAnimation = useCallback(() => {
+    if (!createSpinLoopRef.current) {
+      createPlusSpin.setValue(0)
+      createSpinLoopRef.current = Animated.loop(
+        Animated.timing(createPlusSpin, {
+          toValue: 1,
+          duration: 680,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      )
+      createSpinLoopRef.current.start()
+    }
+  }, [createPlusSpin])
+  const stopCreateHoldAnimation = useCallback(() => {
+    createSpinLoopRef.current?.stop()
+    createSpinLoopRef.current = null
+    Animated.timing(createPlusSpin, { toValue: 0, duration: 150, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start()
+  }, [createPlusSpin])
+  const openCreateInfoModal = useCallback(() => {
+    setShowCreateInfo(true)
+  }, [])
+  useEffect(() => {
+    return () => {
+      createSpinLoopRef.current?.stop()
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      setRevealEpoch((v) => v + 1)
+    }, [])
+  )
 
   const clubsInitialLoading = clubsQuery.isLoading && clubsQuery.data === undefined
   const profileInitialLoading =
@@ -269,7 +319,45 @@ export default function ClubsTab() {
     <PageLayout scroll={false} contentStyle={styles.layoutContent}>
       <View style={styles.page}>
         <View style={styles.headerCard}>
-          <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
+          <View style={styles.searchRow}>
+            <View style={styles.searchFieldWrap}>
+              <SearchField value={search} onChangeText={setSearch} placeholder="Search clubs..." />
+            </View>
+            <Pressable
+              onPress={() => {
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  return
+                }
+                openCreateInfoModal()
+              }}
+              onPressIn={() => {
+                triggerCreateHaptic()
+                startCreateHoldAnimation()
+              }}
+              onPressOut={() => {
+                stopCreateHoldAnimation()
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  openCreateInfoModal()
+                }
+              }}
+              onLongPress={() => {
+                createLongPressTriggeredRef.current = true
+                startCreateHoldAnimation()
+              }}
+              style={({ pressed, hovered }) => [
+                styles.createButton,
+                hovered && styles.createButtonHovered,
+                pressed && styles.createButtonPressed,
+              ]}
+            >
+              <Animated.View style={[styles.createIconCircle, { transform: [{ rotate: createPlusRotate }] }]}>
+                <Feather name="plus" size={14} color={colors.primary} />
+              </Animated.View>
+              <Text style={styles.createButtonText}>Create</Text>
+            </Pressable>
+          </View>
 
           <SegmentedControl
             value={mode}
@@ -282,7 +370,7 @@ export default function ClubsTab() {
           />
         </View>
 
-        <SegmentedContentFade activeKey={mode} segmentOrder={['discover', 'my-clubs', 'nearby']} style={styles.listScroll}>
+        <SegmentedContentFade activeKey={mode} segmentOrder={['discover', 'my-clubs', 'nearby']} opacityOnly style={styles.listScroll}>
           <PickleRefreshScrollView
             style={styles.listScroll}
             contentContainerStyle={styles.listScrollContent}
@@ -305,14 +393,15 @@ export default function ClubsTab() {
           {!modeInitialLoading && !clubsQuery.isError && !nearbyBlockedByAuth && !nearbyBlockedByProfile && decoratedActiveClubs.length > 0 ? (
             <View style={{ gap: 12 }}>
               <Text style={styles.sectionTitle}>{listHeading}</Text>
-              {decoratedActiveClubs.map((club) => (
-                <ClubListItem
-                  key={club.id}
-                  club={club}
-                  mode={mode}
-                  isAuthenticated={isAuthenticated}
-                  toggleFollow={toggleFollow}
-                />
+              {decoratedActiveClubs.map((club, index) => (
+                <StaggeredReveal key={club.id} index={index} triggerKey={`${revealEpoch}-${mode}-${search.trim()}`}>
+                  <ClubListItem
+                    club={club}
+                    mode={mode}
+                    isAuthenticated={isAuthenticated}
+                    toggleFollow={toggleFollow}
+                  />
+                </StaggeredReveal>
               ))}
             </View>
           ) : null}
@@ -340,6 +429,31 @@ export default function ClubsTab() {
           ) : null}
           </PickleRefreshScrollView>
         </SegmentedContentFade>
+
+        <AppBottomSheet
+          open={showCreateInfo}
+          onClose={() => setShowCreateInfo(false)}
+          title="Create Club"
+          titleBelow={
+            <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: '600' }}>
+              Club creation is currently available only in the web version of Piqle.
+            </Text>
+          }
+          footer={
+            <ActionButton
+              label="Open Piqle Web"
+              onPress={async () => {
+                const url = buildWebUrl('/clubs/new')
+                await Linking.openURL(url)
+                setShowCreateInfo(false)
+              }}
+            />
+          }
+        >
+          <Text style={{ color: colors.textMuted, lineHeight: 20 }}>
+            Open web to create a new club, configure details, and manage membership settings.
+          </Text>
+        </AppBottomSheet>
       </View>
     </PageLayout>
   )
@@ -362,6 +476,52 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   headerCard: {
     gap: spacing.md,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchFieldWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createButton: {
+    minHeight: 44,
+    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.brandPrimaryBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  createIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brandPrimaryTint,
+  },
+  createButtonPressed: {
+    opacity: 0.9,
+  },
+  createButtonHovered: {
+    backgroundColor: colors.brandPrimaryTint,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  createButtonText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   sectionTitle: {
     color: colors.text,

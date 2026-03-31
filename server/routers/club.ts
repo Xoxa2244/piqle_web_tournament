@@ -250,6 +250,9 @@ export const clubRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const now = new Date()
       const userId = ctx.session?.user?.id ?? DUMMY_USER_ID
+      const upcomingWindow = {
+        OR: [{ endDate: { gte: now } }, { startDate: { gte: now } }],
+      } as const
 
       let bannedClubIds = new Set<string>()
       if (userId !== DUMMY_USER_ID) {
@@ -286,7 +289,12 @@ export const clubRouter = createTRPCRouter({
       }
       if (input?.hasUpcomingEvents) {
         // Only count public/published events as "upcoming" for discovery.
-        where.tournaments = { some: { endDate: { gte: now }, isPublicBoardEnabled: true } }
+        where.tournaments = {
+          some: {
+            isPublicBoardEnabled: true,
+            ...upcomingWindow,
+          },
+        }
       }
 
       const clubs = await ctx.prisma.club.findMany({
@@ -326,11 +334,12 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Include both upcoming and currently running tournaments.
-            where: { endDate: { gte: now }, isPublicBoardEnabled: true },
+            where: { isPublicBoardEnabled: true, ...upcomingWindow },
             orderBy: { startDate: 'asc' },
             take: 1,
             select: {
               id: true,
+              clubId: true,
               title: true,
               startDate: true,
               endDate: true,
@@ -496,6 +505,9 @@ export const clubRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const now = new Date()
       const userId = ctx.session?.user?.id ?? DUMMY_USER_ID
+      const upcomingWindow = {
+        OR: [{ endDate: { gte: now } }, { startDate: { gte: now } }],
+      } as const
 
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.id },
@@ -527,7 +539,7 @@ export const clubRouter = createTRPCRouter({
           },
           tournaments: {
             // Club page should show all upcoming/running club tournaments, including private ones.
-            where: { endDate: { gte: now } },
+            where: upcomingWindow,
             orderBy: { startDate: 'asc' },
             take: 20,
             select: {

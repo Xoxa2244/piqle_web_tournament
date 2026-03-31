@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons'
+import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -53,6 +54,7 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | undefined>()
   const [showPassword, setShowPassword] = useState(false)
@@ -201,6 +203,18 @@ export default function SignInScreen() {
       setError(nextError?.message || 'Failed to continue with Google')
     } finally {
       setGoogleLoading(false)
+    }
+  }
+
+  const submitAppleSignIn = async () => {
+    if (Platform.OS !== 'ios') return
+    setAppleLoading(true)
+    setError(null)
+    setNotice(null)
+    try {
+      setError('Apple ID sign-in is not configured in this build yet.')
+    } finally {
+      setAppleLoading(false)
     }
   }
 
@@ -702,20 +716,45 @@ export default function SignInScreen() {
                 </>
               )}
 
-              <Pressable
-                onPress={submitGoogleSignIn}
-                disabled={loading || googleLoading}
-                style={({ pressed }) => [
-                  styles.googleButton,
-                  pressed && !(loading || googleLoading) && styles.googleButtonPressed,
-                  googleLoading && styles.disabledButton,
-                ]}
-              >
-                <GoogleMark />
-                <Text style={styles.googleButtonText}>
-                  {googleLoading ? 'Opening Google...' : 'Continue with Google'}
-                </Text>
-              </Pressable>
+              <View style={styles.socialRow}>
+                {Platform.OS === 'ios' ? (
+                  <View style={styles.socialCell}>
+                    <Pressable
+                      onPress={submitAppleSignIn}
+                      disabled={loading || googleLoading || appleLoading}
+                      style={({ pressed }) => [
+                        styles.socialButton,
+                        styles.appleButton,
+                        pressed && !(loading || googleLoading || appleLoading) && styles.appleButtonPressed,
+                        appleLoading && styles.disabledButton,
+                      ]}
+                    >
+                      <Ionicons name="logo-apple" size={20} color={theme === 'dark' ? '#111111' : colors.white} />
+                      <Text style={styles.appleButtonText}>
+                        {appleLoading ? 'Opening Apple...' : 'Apple'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                <View style={styles.socialCell}>
+                  <Pressable
+                    onPress={submitGoogleSignIn}
+                    disabled={loading || googleLoading || appleLoading}
+                    style={({ pressed }) => [
+                      styles.socialButton,
+                      styles.googleButton,
+                      pressed && !(loading || googleLoading || appleLoading) && styles.googleButtonPressed,
+                      googleLoading && styles.disabledButton,
+                    ]}
+                  >
+                    <GoogleMark />
+                    <Text style={styles.googleButtonText}>
+                      {googleLoading ? 'Opening Google...' : 'Google'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
 
               {mode === 'signup' ? (
                 <Text style={styles.termsText}>
@@ -1002,6 +1041,18 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     fontSize: 16,
     fontWeight: '600',
   },
+  socialRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  socialCell: {
+    flex: 1,
+    minWidth: 0,
+  },
+  socialButton: {
+    width: '100%',
+  },
   googleButton: {
     minHeight: 56,
     borderRadius: radius.md,
@@ -1013,6 +1064,26 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 24,
+  },
+  appleButton: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: isDark ? '#FFFFFF' : '#111111',
+    backgroundColor: isDark ? '#FFFFFF' : '#111111',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+  },
+  appleButtonPressed: {
+    opacity: 0.92,
+  },
+  appleButtonText: {
+    color: isDark ? '#111111' : '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   googleButtonPressed: {
     backgroundColor: isDark ? colors.secondaryPressed : colors.white,

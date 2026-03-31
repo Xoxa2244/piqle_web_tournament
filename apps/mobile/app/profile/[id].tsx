@@ -7,7 +7,7 @@ import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { FeedbackEntityContextCard } from '../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../src/components/FeedbackRatingModal'
 import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
-import { TournamentThumbnail } from '../../src/components/TournamentThumbnail'
+import { TournamentCard } from '../../src/components/TournamentCard'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ProfileHeroCard, ProfileStatsDuprSection } from '../../src/components/profile/ProfileIdentityBlock'
 import { EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
@@ -92,13 +92,56 @@ export default function PublicProfileScreen() {
           { id: 'dev-td-3', title: 'Conflict Solver' },
         ]
   const profile = profileQuery.data as any
-  const createdTournaments = useMemo(() => {
+  const isUserParticipant = (tournament: any) => {
+    const targetEmail = String(profile?.email ?? '').trim().toLowerCase()
+    const players = Array.isArray(tournament?.players) ? tournament.players : []
+    const playerMatch = players.some((player: any) => {
+      const directUserId = String(player?.userId ?? player?.user?.id ?? '').trim()
+      if (directUserId && directUserId === profileId) return true
+      const playerEmail = String(player?.email ?? player?.user?.email ?? '').trim().toLowerCase()
+      return Boolean(targetEmail && playerEmail && playerEmail === targetEmail)
+    })
+    if (playerMatch) return true
+
+    const divisions = Array.isArray(tournament?.divisions) ? tournament.divisions : []
+    return divisions.some((division: any) =>
+      (division?.teams ?? []).some((team: any) =>
+        (team?.teamPlayers ?? []).some((tp: any) => {
+          const directUserId = String(tp?.player?.userId ?? tp?.player?.user?.id ?? '').trim()
+          if (directUserId && directUserId === profileId) return true
+          const playerEmail = String(tp?.player?.email ?? tp?.player?.user?.email ?? '').trim().toLowerCase()
+          return Boolean(targetEmail && playerEmail && playerEmail === targetEmail)
+        })
+      )
+    )
+  }
+
+  const hostedPastTournaments = useMemo(() => {
     const rows = ((tournamentsQuery.data ?? []) as any[]).filter((t) => t.user?.id === profileId)
     return rows
+      .filter((t) => new Date(t.endDate ?? t.startDate).getTime() < Date.now())
       .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
-      .slice(0, 6)
   }, [profileId, tournamentsQuery.data])
-  const isTd = Number(profile?.tournamentsCreatedCount ?? 0) > 0 || createdTournaments.length > 0
+  const playedPastTournaments = useMemo(() => {
+    const rows = (tournamentsQuery.data ?? []) as any[]
+    return rows
+      .filter((t) => new Date(t.endDate ?? t.startDate).getTime() < Date.now())
+      .filter((t) => isUserParticipant(t))
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+  }, [tournamentsQuery.data, profile?.email, profileId])
+  const allPastTournaments = useMemo(() => {
+    const byId = new Map<string, any>()
+    for (const tournament of [...hostedPastTournaments, ...playedPastTournaments]) {
+      if (!byId.has(tournament.id)) {
+        byId.set(tournament.id, tournament)
+      }
+    }
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+    )
+  }, [hostedPastTournaments, playedPastTournaments])
+  const previewPastTournaments = useMemo(() => allPastTournaments.slice(0, 3), [allPastTournaments])
+  const isTd = Number(profile?.tournamentsCreatedCount ?? 0) > 0 || hostedPastTournaments.length > 0
   const singlesNum = parseNumberish(profile?.duprRatingSingles)
   const doublesNum = parseNumberish(profile?.duprRatingDoubles)
   const singlesRatingLabel = singlesNum !== null ? singlesNum.toFixed(2) : '—'
@@ -219,35 +262,46 @@ export default function PublicProfileScreen() {
       </View>
 
         <View style={styles.sectionBlock}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Hosted tournaments</Text>
-          {createdTournaments.length === 0 ? (
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Past tournaments</Text>
+            {allPastTournaments.length > 0 ? (
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/profile/tournaments',
+                    params: { profileId },
+                  })
+                }
+                style={({ pressed }) => [styles.sectionActionBtn, pressed && styles.sectionActionBtnPressed]}
+              >
+                <Text style={[styles.sectionActionText, { color: colors.primary }]}>View all</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {previewPastTournaments.length === 0 ? (
             <SurfaceCard>
-              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No hosted tournaments yet.</Text>
+              <Text style={[styles.emptyText, { color: colors.textMuted }]}>No past tournaments yet.</Text>
             </SurfaceCard>
           ) : (
-            createdTournaments.map((tournament) => (
-              <Pressable
-                key={tournament.id}
-                onPress={() => router.push(`/tournaments/${tournament.id}`)}
-                style={({ pressed }) => [pressed && styles.cardPressed]}
-              >
-                <SurfaceCard style={styles.tournamentCard}>
-                  <View style={styles.tournamentCardRow}>
-                    <TournamentThumbnail imageUri={(tournament as any).image ?? null} size={48} />
-                    <View style={styles.tournamentCardMain}>
-                      <Text style={[styles.tournamentTitle, { color: colors.text }]} numberOfLines={1}>
-                        {tournament.title}
-                      </Text>
-                      <View style={styles.tournamentMetaRow}>
-                        <Feather name="calendar" size={14} color={colors.textMuted} />
-                        <Text style={[styles.tournamentMetaText, { color: colors.textMuted }]}>
-                          {formatDate(tournament.startDate)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </SurfaceCard>
-              </Pressable>
+            previewPastTournaments.map((tournament) => (
+              <View key={tournament.id}>
+                <TournamentCard
+                  tournament={{
+                    ...tournament,
+                    image: (tournament as any).image ?? null,
+                    startDate: tournament.startDate ?? new Date().toISOString(),
+                    endDate: tournament.endDate ?? tournament.startDate ?? new Date().toISOString(),
+                    venueName: tournament.venueName ?? null,
+                    venueAddress: tournament.venueAddress ?? null,
+                    divisions: tournament.divisions ?? [],
+                    _count: tournament._count ?? { players: 0 },
+                    feedbackSummary: tournament.feedbackSummary ?? null,
+                  }}
+                  statusLabel={tournament.user?.id === profileId ? 'Hosted' : 'Played'}
+                  statusTone={tournament.user?.id === profileId ? 'primary' : 'success'}
+                  onPress={() => router.push(`/tournaments/${tournament.id}`)}
+                />
+              </View>
             ))
           )}
         </View>
@@ -265,8 +319,8 @@ export default function PublicProfileScreen() {
             name={profile?.name ?? 'Tournament director'}
             avatarUrl={profile?.image ?? null}
             tournamentLabel={
-              createdTournaments[0]
-                ? `${createdTournaments[0].title}${createdTournaments[0].startDate ? ` (${formatDate(createdTournaments[0].startDate)})` : ''}`
+              hostedPastTournaments[0]
+                ? `${hostedPastTournaments[0].title}${hostedPastTournaments[0].startDate ? ` (${formatDate(hostedPastTournaments[0].startDate)})` : ''}`
                 : null
             }
           />
@@ -384,23 +438,26 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
   },
-  sectionBlock: { gap: spacing.sm },
-  sectionTitle: { fontSize: 16, fontWeight: '600' },
-  emptyText: { fontSize: 13 },
-  tournamentCard: { gap: 8 },
-  tournamentCardRow: {
+  sectionBlock: { gap: spacing.md },
+  sectionTitle: { fontSize: 18, fontWeight: '700' },
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  tournamentCardMain: {
-    flex: 1,
-    minWidth: 0,
+  sectionActionBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
-  tournamentTitle: { fontSize: 15, fontWeight: '700' },
-  tournamentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tournamentMetaText: { fontSize: 13 },
-  cardPressed: { opacity: 0.9 },
+  sectionActionBtnPressed: {
+    opacity: 0.8,
+  },
+  sectionActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyText: { fontSize: 13 },
   feedbackChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: spacing.xs },
   feedbackChip: {
     borderRadius: 999,
