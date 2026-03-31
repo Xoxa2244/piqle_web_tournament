@@ -56,6 +56,7 @@ export default function ClubCalendarScreen() {
   const [selectedKey, setSelectedKey] = useState<string | null>(
     calendarEvents[0]?.startDate ? toLocalYmd(new Date(calendarEvents[0].startDate)) : null,
   )
+  const [monthGridWidth, setMonthGridWidth] = useState(0)
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => {
@@ -64,6 +65,11 @@ export default function ClubCalendarScreen() {
     return d
   }), [weekStart])
   const todayKey = toLocalYmd(new Date())
+  const monthCellGap = 6
+  const monthCellWidth = useMemo(() => {
+    if (monthGridWidth <= 0) return 0
+    return (monthGridWidth - monthCellGap * 6) / 7
+  }, [monthGridWidth])
   const selectedEvents = selectedKey ? (eventsByDay.get(selectedKey) ?? []) : []
 
   if (clubQuery.isLoading) {
@@ -143,10 +149,18 @@ export default function ClubCalendarScreen() {
 
       <ScrollView style={styles.scrollBody} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {mode === 'month' ? (
-          <View style={styles.monthWrap}>
+          <View
+            style={styles.monthWrap}
+            onLayout={(event) => {
+              const nextWidth = event.nativeEvent.layout.width
+              if (nextWidth > 0 && Math.abs(nextWidth - monthGridWidth) > 0.5) {
+                setMonthGridWidth(nextWidth)
+              }
+            }}
+          >
             <View style={styles.weekHeaderRow}>
               {CLUB_CALENDAR_DAY_LABELS.map((label) => (
-                <Text key={label} style={styles.weekHeaderCell}>
+                <Text key={label} style={[styles.weekHeaderCell, monthCellWidth > 0 ? { width: monthCellWidth } : null]}>
                   {label}
                 </Text>
               ))}
@@ -164,6 +178,7 @@ export default function ClubCalendarScreen() {
                     onPress={() => setSelectedKey(key)}
                     style={({ pressed }) => [
                       styles.dayCell,
+                      monthCellWidth > 0 ? { width: monthCellWidth } : null,
                       !inMonth && styles.dayCellMuted,
                       isSelected && styles.dayCellSelected,
                       isToday && !isSelected && styles.dayCellToday,
@@ -290,7 +305,6 @@ const createStyles = (colors: ThemePalette) =>
     weekHeaderCell: { flex: 1, textAlign: 'center', color: colors.textMuted, fontSize: 12, fontWeight: '600' },
     gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     dayCell: {
-      width: '13.5%',
       minHeight: 52,
       borderRadius: 10,
       borderWidth: 1,

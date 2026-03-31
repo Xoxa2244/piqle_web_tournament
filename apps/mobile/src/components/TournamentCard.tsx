@@ -329,6 +329,8 @@ type TournamentSummary = {
     teams?: Array<{
       teamPlayers?: Array<{
         slotIndex?: number | null
+        playerId?: string | null
+        player?: { id?: string | null } | null
       } | null> | null
     } | null> | null
   }>
@@ -382,21 +384,37 @@ export const TournamentCard = ({
   const slotMetrics = getTournamentSlotMetrics(tournament)
   const teamCount = tournament.divisions.reduce((sum, division) => sum + Number(division._count?.teams ?? 0), 0)
   const teamCapacity = tournament.divisions.reduce((sum, division) => sum + Number(division.maxTeams ?? 0), 0)
+  const hasDetailedTeamsData = tournament.divisions.some((division) => Array.isArray(division.teams))
+  const filledTeamCount = tournament.divisions.reduce((sum, division) => {
+    const teams = Array.isArray(division.teams) ? division.teams : []
+    const filledTeamsInDivision = teams.reduce((divisionSum, team) => {
+      const players = Array.isArray(team?.teamPlayers) ? team.teamPlayers : []
+      const hasAssignedPlayer = players.some((teamPlayer) => Boolean(teamPlayer?.playerId || teamPlayer?.player?.id))
+      return divisionSum + (hasAssignedPlayer ? 1 : 0)
+    }, 0)
+    return sum + filledTeamsInDivision
+  }, 0)
   const playerCount = Number(tournament._count?.players ?? 0)
+  const occupancyTeamCountRaw = hasDetailedTeamsData ? filledTeamCount : teamCount
+  const occupancyTeamCount = playerCount === 0 ? 0 : occupancyTeamCountRaw
   const hasSlotMetrics =
     slotMetrics.createdSlots !== null &&
     slotMetrics.filledSlots !== null &&
     slotMetrics.createdSlots > 0
+  const effectiveFilledSlots =
+    hasSlotMetrics && slotMetrics.filledSlots !== null
+      ? (playerCount === 0 ? 0 : slotMetrics.filledSlots)
+      : null
   const progress = hasSlotMetrics
-    ? Math.min(100, (slotMetrics.filledSlots! / slotMetrics.createdSlots!) * 100)
+    ? Math.min(100, ((effectiveFilledSlots ?? 0) / slotMetrics.createdSlots!) * 100)
     : teamCapacity > 0
-      ? Math.min(100, (teamCount / teamCapacity) * 100)
+      ? Math.min(100, (occupancyTeamCount / teamCapacity) * 100)
       : 0
   const spotsLeft = hasSlotMetrics ? slotMetrics.openSlots : null
-  const occupancyLabel = hasSlotMetrics
-    ? `${slotMetrics.filledSlots} / ${slotMetrics.createdSlots} spots`
-    : teamCapacity > 0
-      ? `${teamCount} / ${teamCapacity} teams`
+  const occupancyLabel = teamCapacity > 0
+    ? `${occupancyTeamCount} / ${teamCapacity} teams`
+    : hasSlotMetrics
+      ? `${effectiveFilledSlots ?? 0} / ${slotMetrics.createdSlots} spots`
       : playerCount > 0
         ? `${playerCount} players registered`
         : 'Open registration'

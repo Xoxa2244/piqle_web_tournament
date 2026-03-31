@@ -133,6 +133,7 @@ export default function TournamentRegistrationScreen() {
 
   const claimSlot = trpc.registration.claimSlot.useMutation({
     onSuccess: async () => {
+      await utils.registration.getMyStatuses.invalidate()
       await Promise.all([
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
@@ -142,6 +143,7 @@ export default function TournamentRegistrationScreen() {
   })
   const joinWaitlist = trpc.registration.joinWaitlist.useMutation({
     onSuccess: async () => {
+      await utils.registration.getMyStatuses.invalidate()
       await Promise.all([
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
@@ -152,6 +154,7 @@ export default function TournamentRegistrationScreen() {
   })
   const leaveWaitlist = trpc.registration.leaveWaitlist.useMutation({
     onSuccess: async () => {
+      await utils.registration.getMyStatuses.invalidate()
       await Promise.all([
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),

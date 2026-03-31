@@ -98,7 +98,6 @@ export default function ProfileSettingsScreen() {
   const { theme, themeMode, setThemeMode } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
-  const utils = trpc.useUtils() as any
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
   const [notificationApiMissing, setNotificationApiMissing] = useState(false)
   const notificationSettingsQuery = api.user.getNotificationSettings.useQuery(undefined, {
@@ -213,11 +212,6 @@ export default function ProfileSettingsScreen() {
     try {
       await Linking.openURL(path ?? buildWebUrl('/'))
     } catch {}
-  }
-
-  const clearCache = async () => {
-    await utils.invalidate()
-    setNotice('Cached app data has been refreshed.')
   }
 
   const requestDeleteAccount = async () => {
@@ -426,56 +420,8 @@ export default function ProfileSettingsScreen() {
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Security</Text>
-          <View>
-            <SettingItem
-              colors={colors}
-              icon="eye"
-              title="Public Profile"
-              description="Allow others to view your profile"
-              value={settings.privacy.publicProfile}
-              onChange={() => toggleSetting('privacy', 'publicProfile')}
-            />
-            <SettingItem
-              colors={colors}
-              icon="bar-chart-2"
-              title="Show Stats"
-              description="Display your stats publicly"
-              value={settings.privacy.showStats}
-              onChange={() => toggleSetting('privacy', 'showStats')}
-            />
-            <SettingItem
-              colors={colors}
-              icon="map-pin"
-              title="Show Location"
-              description="Display your location on profile"
-              value={settings.privacy.showLocation}
-              onChange={() => toggleSetting('privacy', 'showLocation')}
-            />
-            <SettingItem
-              colors={colors}
-              icon="mail"
-              title="Allow Messages"
-              description="Let other users message you"
-              value={settings.privacy.allowMessages}
-              onChange={() => toggleSetting('privacy', 'allowMessages')}
-            />
-            <SettingItem
-              colors={colors}
-              icon="activity"
-              title="Show Activity"
-              description="Let others see your recent activity"
-              value={settings.privacy.showActivity}
-              onChange={() => toggleSetting('privacy', 'showActivity')}
-            />
-            <SettingItem colors={colors} icon="user-x" title="Blocked Users" type="link" showBottomDivider={false} />
-          </View>
-        </SurfaceCard>
-
-        <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>About & Support</Text>
           <View>
-            <SettingItem colors={colors} icon="help-circle" title="Help Center" type="link" onPress={() => void openExternal()} />
             <SettingItem colors={colors} icon="external-link" title="Terms of Service" type="link" onPress={() => void openExternal()} />
             <SettingItem colors={colors} icon="external-link" title="Privacy Policy" type="link" onPress={() => void openExternal()} />
             <SettingItem
@@ -484,30 +430,6 @@ export default function ProfileSettingsScreen() {
               title="Contact Support"
               type="link"
               onPress={() => void Linking.openURL('mailto:info@piqle.io')}
-              showBottomDivider={false}
-            />
-          </View>
-          <Text style={[styles.versionText, { color: colors.textMuted }]}>Piqle v1.0.0</Text>
-        </SurfaceCard>
-
-        <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Data & Storage</Text>
-          <View>
-            <SettingItem
-              colors={colors}
-              icon="download"
-              title="Download My Data"
-              description="Get a copy of your account data"
-              type="link"
-              onPress={() => void Linking.openURL('mailto:info@piqle.io?subject=Download%20My%20Data')}
-            />
-            <SettingItem
-              colors={colors}
-              icon="trash-2"
-              title="Clear Cache"
-              description="Refresh locally cached app data"
-              type="link"
-              onPress={() => void clearCache()}
               showBottomDivider={false}
             />
           </View>
@@ -533,6 +455,8 @@ export default function ProfileSettingsScreen() {
             />
           </View>
         </SurfaceCard>
+
+        <Text style={[styles.versionText, { color: colors.textMuted }]}>Piqle v1.0.0</Text>
 
         <AppBottomSheet
           open={passwordSheetOpen}
@@ -638,8 +562,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   versionText: {
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: spacing.xs,
     fontSize: 13,
     textAlign: 'center',
   },

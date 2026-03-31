@@ -6,6 +6,8 @@ type TeamLike = {
   } | null
   teamPlayers?: Array<{
     slotIndex?: number | null
+    playerId?: string | null
+    player?: { id?: string | null } | null
   } | null> | null
 } | null
 
@@ -99,19 +101,22 @@ export const getDivisionSlotMetrics = (division: DivisionLike, tournamentFormat?
   const createdSlots = createdTeams * slotsPerTeam
   const filledSlots = division.teams.reduce((sum, team) => {
     const teamPlayers = Array.isArray(team?.teamPlayers) ? team.teamPlayers.filter(Boolean) : []
-    if (teamPlayers.length === 0) return sum
+    const assignedPlayers = teamPlayers.filter(
+      (teamPlayer) => Boolean(teamPlayer?.playerId || teamPlayer?.player?.id)
+    )
+    if (assignedPlayers.length === 0) return sum
 
     const occupiedBySlotIndex = new Set<number>()
-    for (const teamPlayer of teamPlayers) {
+    for (const teamPlayer of assignedPlayers) {
       if (typeof teamPlayer?.slotIndex === 'number' && teamPlayer.slotIndex >= 0 && teamPlayer.slotIndex < slotsPerTeam) {
         occupiedBySlotIndex.add(teamPlayer.slotIndex)
       }
     }
 
-    // Mirror the register screen fallback: entries without slotIndex still occupy the next rendered slot.
+    // Mirror the register screen fallback: assigned entries without slotIndex still occupy the next rendered slot.
     const occupiedSlots = occupiedBySlotIndex.size > 0
-      ? Math.max(occupiedBySlotIndex.size, Math.min(teamPlayers.length, slotsPerTeam))
-      : Math.min(teamPlayers.length, slotsPerTeam)
+      ? Math.max(occupiedBySlotIndex.size, Math.min(assignedPlayers.length, slotsPerTeam))
+      : Math.min(assignedPlayers.length, slotsPerTeam)
 
     return sum + Math.min(occupiedSlots, slotsPerTeam)
   }, 0)

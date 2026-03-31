@@ -543,6 +543,11 @@ export default function TournamentDetailScreen() {
     { enabled: protectedQueriesEnabled }
   )
   const accessQuery = useTournamentAccessInfo(tournamentId, protectedQueriesEnabled)
+  const canLoadAdminTournament = Boolean(protectedQueriesEnabled && accessQuery.data?.userAccessInfo)
+  const adminTournamentQuery = api.tournament.get.useQuery(
+    { id: tournamentId },
+    { enabled: canLoadAdminTournament, retry: false }
+  )
   const myInvitationQuery = api.tournamentInvitation.getMineByTournament.useQuery(
     { tournamentId },
     { enabled: protectedQueriesEnabled }
@@ -640,7 +645,10 @@ export default function TournamentDetailScreen() {
   const [dashboardLeagueDayId, setDashboardLeagueDayId] = useState<string | null>(null)
   const [expandedDashboardIndyMatchupId, setExpandedDashboardIndyMatchupId] = useState<string | null>(null)
   const dashboardDivisionsForQueries = (
-    ((dashboardBoardQuery.data as any)?.divisions ?? (fullTournamentQuery.data as any)?.divisions ?? []) as any[]
+    ((dashboardBoardQuery.data as any)?.divisions ??
+      (adminTournamentQuery.data as any)?.divisions ??
+      (fullTournamentQuery.data as any)?.divisions ??
+      []) as any[]
   )
   const selectedDivisionForQueries =
     dashboardDivisionsForQueries.find((d: any) => d.id === dashboardDivisionId) ?? dashboardDivisionsForQueries[0]
@@ -1004,8 +1012,10 @@ export default function TournamentDetailScreen() {
       ? `${myStatusQuery.data.divisionName} · ${myStatusQuery.data.teamName}`
       : null
   const myTeamId = myStatusQuery.data?.status === 'active' ? myStatusQuery.data?.teamId : null
-  const dashboardTournamentData = (dashboardBoardQuery.data as any) ?? null
+  const dashboardTournamentData =
+    (dashboardBoardQuery.data as any) ?? (adminTournamentQuery.data as any) ?? null
   const dashboardDivisionsData = ((dashboardTournamentData?.divisions ??
+    (adminTournamentQuery.data as any)?.divisions ??
     (fullTournamentQuery.data as any)?.divisions ??
     tournament.divisions ??
     []) as any[])
@@ -1047,7 +1057,9 @@ export default function TournamentDetailScreen() {
       : tournamentStartTs != null && nowTs < tournamentStartTs
       ? 'Upcoming'
       : 'Ongoing'
-  const divisionsForDisplay = Array.isArray((fullTournamentQuery.data as any)?.divisions)
+  const divisionsForDisplay = Array.isArray((adminTournamentQuery.data as any)?.divisions)
+    ? (((adminTournamentQuery.data as any)?.divisions ?? []) as any[])
+    : Array.isArray((fullTournamentQuery.data as any)?.divisions)
     ? (((fullTournamentQuery.data as any)?.divisions ?? []) as any[])
     : ((tournament.divisions ?? []) as any[])
   const tournamentDateTimeRangeLabel = formatDateRange(tournament.startDate, tournament.endDate)
@@ -1186,13 +1198,13 @@ export default function TournamentDetailScreen() {
 
   useEffect(() => {
     if (activeTab !== 'dashboard') return
-    const divisions = ((dashboardBoardQuery.data?.divisions ?? []) as any[])
+    const divisions = dashboardDivisionsData
     if (!divisions.length) return
     if (dashboardDivisionId && divisions.some((d: any) => d.id === dashboardDivisionId)) return
     const myDivision = myStatusQuery.data?.divisionId
     const preferred = (myDivision && divisions.find((d: any) => d.id === myDivision)) || divisions[0]
     setDashboardDivisionId(preferred?.id ?? null)
-  }, [activeTab, dashboardBoardQuery.data?.divisions, dashboardDivisionId, myStatusQuery.data?.divisionId])
+  }, [activeTab, dashboardDivisionsData, dashboardDivisionId, myStatusQuery.data?.divisionId])
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
