@@ -48,6 +48,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
       JOIN club_courts cc ON cc.id = ps."courtId"
       WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
+        AND ps.date <= NOW()
       GROUP BY cc.id, cc.name
     ),
     booked_slots AS (
@@ -58,6 +59,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
       JOIN play_session_bookings b ON b."sessionId" = ps.id
       WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
+        AND ps.date <= NOW()
         AND b.status::text = 'CONFIRMED'
       GROUP BY ps."courtId"
     )
@@ -70,7 +72,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
     FROM scheduled_slots ss
     LEFT JOIN booked_slots bs ON bs."courtId" = ss."courtId"
     WHERE ss."totalSlots" > 0
-    ORDER BY "occupancyPct" ASC
+    ORDER BY ss."courtName" ASC
   `, clubId)
 
   if (!rows || rows.length < 2) return null
@@ -109,6 +111,7 @@ async function peakHourOverflow(prisma: any, clubId: string): Promise<Insight | 
     FROM play_sessions ps
     WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
+      AND ps.date <= NOW()
       AND ps.status::text != 'CANCELLED'
     GROUP BY EXTRACT(HOUR FROM ps.date)
     HAVING SUM(ps."maxPlayers") > 0
@@ -226,6 +229,7 @@ async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | n
       JOIN play_sessions ps ON ps.id = b."sessionId"
       WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
+        AND ps.date <= NOW()
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
     )
@@ -320,6 +324,7 @@ async function formatMismatch(prisma: any, clubId: string): Promise<Insight | nu
     FROM play_sessions ps
     WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
+      AND ps.date <= NOW()
       AND ps.status::text != 'CANCELLED'
     GROUP BY ps."skillLevel"::text, ps.format::text
     HAVING COUNT(*) >= 3
@@ -366,6 +371,7 @@ async function dayOfWeekGap(prisma: any, clubId: string): Promise<Insight | null
     FROM play_sessions ps
     WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
+      AND ps.date <= NOW()
       AND ps.status::text != 'CANCELLED'
     GROUP BY TO_CHAR(ps.date, 'Day'), EXTRACT(DOW FROM ps.date)
     HAVING SUM(ps."maxPlayers") > 0
@@ -510,6 +516,7 @@ async function emptyEveningSlots(prisma: any, clubId: string): Promise<Insight |
     FROM play_sessions ps
     WHERE ps."clubId" = $1::uuid
       AND ps.date >= NOW() - INTERVAL '30 days'
+      AND ps.date <= NOW()
       AND EXTRACT(HOUR FROM ps.date) >= 19
       AND ps.status::text != 'CANCELLED'
   `, clubId)
