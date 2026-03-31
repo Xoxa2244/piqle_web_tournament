@@ -3637,6 +3637,62 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // ── Usage limit checks ──
+      const { checkUsageLimit } = await import('@/lib/subscription')
+
+      const campaignCheck = await checkUsageLimit(input.clubId, 'campaigns')
+      if (!campaignCheck.allowed) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: JSON.stringify({
+            type: 'USAGE_LIMIT_REACHED',
+            resource: 'campaigns',
+            used: campaignCheck.used,
+            limit: campaignCheck.limit,
+            plan: campaignCheck.plan,
+            message: `Campaign limit reached (${campaignCheck.used}/${campaignCheck.limit} this month). Upgrade your plan for more campaigns.`,
+          }),
+        })
+      }
+
+      const emailCount = (input.channel === 'email' || input.channel === 'both') ? input.memberIds.length : 0
+      if (emailCount > 0) {
+        const emailCheck = await checkUsageLimit(input.clubId, 'emails', emailCount)
+        if (!emailCheck.allowed) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: JSON.stringify({
+              type: 'USAGE_LIMIT_REACHED',
+              resource: 'emails',
+              used: emailCheck.used,
+              limit: emailCheck.limit,
+              remaining: emailCheck.remaining,
+              plan: emailCheck.plan,
+              message: `Email limit reached (${emailCheck.used}/${emailCheck.limit} this month). ${emailCheck.remaining} remaining, trying to send ${emailCount}.`,
+            }),
+          })
+        }
+      }
+
+      const smsCount = (input.channel === 'sms' || input.channel === 'both') ? input.memberIds.length : 0
+      if (smsCount > 0) {
+        const smsCheck = await checkUsageLimit(input.clubId, 'sms', smsCount)
+        if (!smsCheck.allowed) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: JSON.stringify({
+              type: 'USAGE_LIMIT_REACHED',
+              resource: 'sms',
+              used: smsCheck.used,
+              limit: smsCheck.limit,
+              remaining: smsCheck.remaining,
+              plan: smsCheck.plan,
+              message: `SMS limit reached (${smsCheck.used}/${smsCheck.limit} this month). Upgrade for more SMS.`,
+            }),
+          })
+        }
+      }
+
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.clubId },
         select: { id: true, name: true },

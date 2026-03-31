@@ -3,20 +3,41 @@ import { prisma } from './prisma'
 type PlanLimits = {
   maxMembers: number
   features: string[]
+  // Monthly usage limits
+  campaignsPerMonth: number       // manual campaign sends
+  emailsPerMonth: number          // total emails
+  smsPerMonth: number             // total SMS
+  aiAdvisorChatsPerDay: number    // AI Advisor conversations
+  abTesting: boolean              // champion/challenger A/B
 }
 
 const PLAN_LIMITS: Record<string, PlanLimits> = {
   free: {
     maxMembers: 200,
     features: ['dashboard', 'analytics', 'revenue', 'slot-filler', 'reactivation', 'ai-advisor', 'csv-import'],
+    campaignsPerMonth: 5,
+    emailsPerMonth: 500,
+    smsPerMonth: 0,
+    aiAdvisorChatsPerDay: 10,
+    abTesting: false,
   },
   trialing: {
     maxMembers: Infinity,
     features: ['dashboard', 'analytics', 'revenue', 'slot-filler', 'reactivation', 'ai-advisor', 'csv-import'],
+    campaignsPerMonth: 15,
+    emailsPerMonth: 2000,
+    smsPerMonth: 100,
+    aiAdvisorChatsPerDay: 50,
+    abTesting: true,
   },
   starter: {
     maxMembers: 200,
-    features: ['dashboard', 'analytics', 'revenue'],
+    features: ['dashboard', 'analytics', 'revenue', 'slot-filler', 'reactivation', 'campaigns'],
+    campaignsPerMonth: 15,
+    emailsPerMonth: 2000,
+    smsPerMonth: 100,
+    aiAdvisorChatsPerDay: 20,
+    abTesting: false,
   },
   pro: {
     maxMembers: Infinity,
@@ -28,7 +49,13 @@ const PLAN_LIMITS: Record<string, PlanLimits> = {
       'reactivation',
       'ai-advisor',
       'csv-import',
+      'campaigns',
     ],
+    campaignsPerMonth: Infinity,
+    emailsPerMonth: 10000,
+    smsPerMonth: 500,
+    aiAdvisorChatsPerDay: 50,
+    abTesting: true,
   },
   enterprise: {
     maxMembers: Infinity,
@@ -40,9 +67,15 @@ const PLAN_LIMITS: Record<string, PlanLimits> = {
       'reactivation',
       'ai-advisor',
       'csv-import',
+      'campaigns',
       'custom-branding',
       'api-access',
     ],
+    campaignsPerMonth: Infinity,
+    emailsPerMonth: Infinity,
+    smsPerMonth: 2000,
+    aiAdvisorChatsPerDay: Infinity,
+    abTesting: true,
   },
 }
 
@@ -130,6 +163,97 @@ export async function checkFeatureAccess(
   }
 
   return { allowed: true, plan: currentPlan, status: currentStatus }
+}
+
+// ── Usage Tracking ──
+
+type UsageType = 'campaigns' | 'emails' | 'sms' | 'ai_advisor'
+
+/**
+ * Check if a club has remaining usage for a specific resource this month.
+ * Returns { allowed, used, limit, remaining } or throws TRPCError if exceeded.
+ */
+export async function checkUsageLimit(
+  clubId: string,
+  usageType: UsageType,
+  countToSend: number = 1,
+): Promise<{ allowed: boolean; used: number; limit: number; remaining: number; plan: string }> {
+  const sub = await prisma.subscription.findUnique({
+    where: { clubId },
+    select: { plan: true, status: true },
+  })
+
+  const plan = sub?.plan ?? 'free'
+  const limits = getPlanLimits(plan)
+
+  // Determine the limit for this usage type
+  let limit: number
+  switch (usageType) {
+    case 'campaigns': limit = limits.campaignsPerMonth; break
+    case 'emails': limit = limits.emailsPerMonth; break
+    case 'sms': limit = limits.smsPerMonth; break
+    case 'ai_advisor': limit = limits.aiAdvisorChatsPerDay; break
+    default: limit = 0
+  }
+
+  if (limit === Infinity) {
+    return { allowed: true, used: 0, limit, remaining: Infinity, plan }
+  }
+
+  // Count usage this period
+  const periodStart = usageType === 'ai_advisor'
+    ? new Date(new Date().setHours(0, 0, 0, 0)) // today
+    : new Date(new Date().getFullYear(), new Date().getMonth(), 1) // first of month
+
+  let used = 0
+
+  if (usageType === 'campaigns') {
+    // Count distinct campaigns (grouped sends) this month
+    used = await prisma.aIRecommendationLog.groupBy({
+      by: ['type', 'createdAt'],
+      where: {
+        clubId,
+        createdAt: { gte: periodStart },
+        OR: [{ sequenceStep: 0 }, { sequenceStep: null }],
+      },
+    }).then(groups => {
+      // Group by date (day granularity) + type = 1 campaign
+      const seen = new Set<string>()
+      for (const g of groups) {
+        const day = new Date(g.createdAt).toISOString().slice(0, 10)
+        seen.add(`${g.type}-${day}`)
+      }
+      return seen.size
+    })
+  } else if (usageType === 'emails') {
+    used = await prisma.aIRecommendationLog.count({
+      where: {
+        clubId,
+        channel: { in: ['email', 'both'] },
+        createdAt: { gte: periodStart },
+      },
+    })
+  } else if (usageType === 'sms') {
+    used = await prisma.aIRecommendationLog.count({
+      where: {
+        clubId,
+        channel: { in: ['sms', 'both'] },
+        createdAt: { gte: periodStart },
+      },
+    })
+  } else if (usageType === 'ai_advisor') {
+    used = await prisma.aIConversation.count({
+      where: {
+        clubId,
+        createdAt: { gte: periodStart },
+      },
+    }).catch(() => 0) // table may not exist
+  }
+
+  const remaining = Math.max(0, limit - used)
+  const allowed = used + countToSend <= limit
+
+  return { allowed, used, limit, remaining, plan }
 }
 
 /** Find the minimum plan that includes a given feature */
