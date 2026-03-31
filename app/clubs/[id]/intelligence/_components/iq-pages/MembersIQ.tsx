@@ -14,6 +14,7 @@ import {
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
+import { PlayerProfileIQ } from "./PlayerProfileIQ";
 
 
 type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "critical";
@@ -196,6 +197,7 @@ function mapRealMembers(data: any): Member[] {
 
 export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: externalLoading, sendOutreach, clubId, reactivationCandidates, aiProfiles, onRegenerateProfiles, sendReactivation }: MembersIQProps = {}) {
   const { isDark } = useTheme();
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [view, setView] = useState<"all" | "at-risk" | "reactivation">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActivity, setFilterActivity] = useState<string>("all");
@@ -281,6 +283,10 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
   const hasData = allMembers.length > 0;
   if (!hasData && !externalLoading) {
     return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
+
+  if (selectedPlayerId && clubId) {
+    return <PlayerProfileIQ userId={selectedPlayerId} clubId={clubId} onBack={() => setSelectedPlayerId(null)} />;
   }
 
   return (
@@ -603,7 +609,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
               transition={{ delay: i * 0.04 }}
             >
               <Card className="cursor-pointer transition-all hover:scale-[1.02]">
-                <div className="flex items-start gap-3 mb-4">
+                <div onClick={() => setSelectedPlayerId(member.id)} className="flex items-start gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-sm text-white shrink-0"
                     style={{ background: `linear-gradient(135deg, ${segmentConfig[member.segment].color}, ${segmentConfig[member.segment].color}99)`, fontWeight: 700 }}
@@ -612,7 +618,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm truncate" style={{ fontWeight: 700, color: "var(--heading)" }}>{member.name}</span>
+                      <span className="text-sm truncate hover:underline" style={{ fontWeight: 700, color: "var(--heading)" }}>{member.name}</span>
                       {member.trend === "up" && <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />}
                       {member.trend === "down" && <ArrowDownRight className="w-3.5 h-3.5 text-red-400" />}
                     </div>
@@ -741,6 +747,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                   gap: "0 12px",
                   borderBottom: "1px solid var(--divider)",
                 }}
+                onClick={() => setSelectedPlayerId(member.id)}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >

@@ -1480,7 +1480,7 @@ export async function sendEventInviteMessages(
     where: { id: { in: memberIds } },
     select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
-  const usersById = new Map(users.map((u: { id: string; email: string; name: string | null }) => [u.id, u]))
+  const usersById = new Map(users.map(u => [u.id, u]))
 
   const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
 

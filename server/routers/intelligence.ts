@@ -3224,4 +3224,179 @@ export const intelligenceRouter = createTRPCRouter({
       })
       return { players: bookings.map((b: any) => ({ id: b.userId, name: b.user?.name || 'Unknown', image: b.user?.image })) }
     }),
+
+  // ── Player Profile: full player analytics ──
+  getPlayerProfile: protectedProcedure
+    .input(z.object({ userId: z.string(), clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { userId, clubId } = input
+      const db = ctx.prisma
+
+      const [
+        playerRows,
+        weeklyRows,
+        formatRows,
+        timeRows,
+        dayRows,
+        courtRows,
+        recentRows,
+        gapRows,
+      ] = await Promise.all([
+        // 1. Player info
+        db.$queryRawUnsafe<any[]>(`
+          SELECT u.id, u.name, u.email, u.image,
+            cf."joinedAt" as "memberSince",
+            de."membershipType"::text as "membershipType",
+            de."membershipStatus"::text as "membershipStatus",
+            (SELECT MAX(ps.date) FROM play_session_bookings b2
+              JOIN play_sessions ps ON ps.id = b2."sessionId"
+              WHERE b2."userId" = $1 AND ps."clubId" = $2::uuid
+              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
+            (SELECT COUNT(*)::int FROM play_session_bookings b3
+              JOIN play_sessions ps2 ON ps2.id = b3."sessionId"
+              WHERE b3."userId" = $1 AND ps2."clubId" = $2::uuid
+              AND b3.status::text = 'CONFIRMED') as "totalSessions",
+            (SELECT mhs."healthScore" FROM member_health_snapshots mhs
+              WHERE mhs."memberId" = $1 AND mhs."clubId" = $2::uuid
+              ORDER BY mhs."calculatedAt" DESC LIMIT 1) as "healthScore"
+          FROM users u
+          LEFT JOIN club_followers cf ON cf."userId" = u.id AND cf."clubId" = $2::uuid
+          LEFT JOIN document_embeddings de ON de."userId" = u.id AND de."clubId" = $2::uuid AND de.type::text = 'MEMBERSHIP'
+          WHERE u.id = $1
+          LIMIT 1
+        `, userId, clubId),
+
+        // 2. Sessions per week (last 12 weeks / 90 days)
+        db.$queryRawUnsafe<any[]>(`
+          SELECT DATE_TRUNC('week', ps.date)::date as week, COUNT(*)::int as count
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+            AND ps.date >= NOW() - INTERVAL '90 days'
+          GROUP BY week ORDER BY week
+        `, userId, clubId),
+
+        // 3. Top formats
+        db.$queryRawUnsafe<any[]>(`
+          SELECT ps.format::text as format, COUNT(*)::int as count
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+          GROUP BY ps.format ORDER BY count DESC LIMIT 3
+        `, userId, clubId),
+
+        // 4. Top times
+        db.$queryRawUnsafe<any[]>(`
+          SELECT EXTRACT(HOUR FROM ps."startTime")::int as hour, COUNT(*)::int as count
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+          GROUP BY hour ORDER BY count DESC LIMIT 3
+        `, userId, clubId),
+
+        // 5. Top days of week
+        db.$queryRawUnsafe<any[]>(`
+          SELECT TRIM(TO_CHAR(ps.date, 'Day')) as day, COUNT(*)::int as count
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+          GROUP BY day ORDER BY count DESC LIMIT 3
+        `, userId, clubId),
+
+        // 6. Top courts
+        db.$queryRawUnsafe<any[]>(`
+          SELECT cc.name as court, COUNT(*)::int as count
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+            AND cc.name IS NOT NULL
+          GROUP BY cc.name ORDER BY count DESC LIMIT 3
+        `, userId, clubId),
+
+        // 7. Recent sessions (last 10)
+        db.$queryRawUnsafe<any[]>(`
+          SELECT ps.date::text, ps.format::text as format,
+            COALESCE(cc.name, 'N/A') as court,
+            TO_CHAR(ps."startTime", 'HH24:MI') as "startTime",
+            TO_CHAR(ps."endTime", 'HH24:MI') as "endTime",
+            COALESCE(ps."skillLevel"::text, '') as "skillLevel"
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+          ORDER BY ps.date DESC, ps."startTime" DESC
+          LIMIT 10
+        `, userId, clubId),
+
+        // 8. Session dates for gap calculation
+        db.$queryRawUnsafe<any[]>(`
+          SELECT ps.date::date as d
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
+            AND b.status::text = 'CONFIRMED'
+          ORDER BY ps.date DESC
+        `, userId, clubId),
+      ])
+
+      const player = playerRows[0] || { id: userId, name: 'Unknown', email: '', image: null, memberSince: null, lastPlayed: null, totalSessions: 0, healthScore: null, membershipType: null, membershipStatus: null }
+
+      // Activity trend: compare last 4 weeks vs prior 4
+      const now = new Date()
+      const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000)
+      const eightWeeksAgo = new Date(now.getTime() - 56 * 86400000)
+      const recent4 = weeklyRows.filter((w: any) => new Date(w.week) >= fourWeeksAgo).reduce((s: number, w: any) => s + w.count, 0)
+      const prior4 = weeklyRows.filter((w: any) => new Date(w.week) >= eightWeeksAgo && new Date(w.week) < fourWeeksAgo).reduce((s: number, w: any) => s + w.count, 0)
+      const trend = prior4 === 0 ? 'stable' as const : recent4 > prior4 * 1.2 ? 'increasing' as const : recent4 < prior4 * 0.8 ? 'declining' as const : 'stable' as const
+
+      // Risk calculation
+      const dates = gapRows.map((r: any) => new Date(r.d).getTime())
+      let avgGapDays = 0
+      if (dates.length > 1) {
+        const gaps: number[] = []
+        for (let i = 0; i < dates.length - 1; i++) gaps.push((dates[i] - dates[i + 1]) / 86400000)
+        avgGapDays = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)
+      }
+      const currentGapDays = dates.length > 0 ? Math.round((Date.now() - dates[0]) / 86400000) : 0
+      const frequencyChange = prior4 === 0 ? 0 : Math.round(((recent4 - prior4) / prior4) * 100)
+      const riskLevel = currentGapDays > avgGapDays * 2.5 || frequencyChange < -50 ? 'high' as const : currentGapDays > avgGapDays * 1.5 || frequencyChange < -25 ? 'medium' as const : 'low' as const
+
+      return {
+        player: {
+          id: player.id,
+          name: player.name,
+          email: player.email,
+          image: player.image,
+          membershipType: player.membershipType,
+          membershipStatus: player.membershipStatus,
+          memberSince: player.memberSince ? new Date(player.memberSince).toISOString() : null,
+          lastPlayed: player.lastPlayed ? new Date(player.lastPlayed).toISOString() : null,
+          totalSessions: player.totalSessions || 0,
+          healthScore: player.healthScore ?? null,
+        },
+        activity: {
+          sessionsPerWeek: weeklyRows.map((w: any) => ({ week: new Date(w.week).toISOString().slice(0, 10), count: w.count })),
+          trend,
+        },
+        patterns: {
+          topFormats: formatRows.map((r: any) => ({ format: r.format || 'Unknown', count: r.count })),
+          topTimes: timeRows.map((r: any) => ({ hour: r.hour, count: r.count })),
+          topDays: dayRows.map((r: any) => ({ day: r.day, count: r.count })),
+          topCourts: courtRows.map((r: any) => ({ court: r.court, count: r.count })),
+        },
+        risk: { level: riskLevel, avgGapDays, currentGapDays, frequencyChange },
+        recentSessions: recentRows.map((r: any) => ({
+          date: r.date, format: r.format, court: r.court,
+          startTime: r.startTime, endTime: r.endTime, skillLevel: r.skillLevel,
+        })),
+      }
+    }),
 })
