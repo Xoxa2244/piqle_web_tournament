@@ -4,8 +4,6 @@ import { getSessionFromMobileToken } from '@/lib/mobileAuth'
 import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
 const getBearerToken = (req: NextRequest) => {
   const header = req.headers.get('authorization') || req.headers.get('Authorization')
   if (!header) return null
@@ -32,8 +30,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const refreshUrl = body?.refreshUrl ?? `${APP_URL}/stripe/mobile-return?status=refresh`
-  const returnUrl = body?.returnUrl ?? `${APP_URL}/stripe/mobile-return?status=return`
+  const origin = req.nextUrl.origin
+  const defaultRefreshUrl = `${origin}/stripe/mobile-return?status=refresh`
+  const defaultReturnUrl = `${origin}/stripe/mobile-return?status=return`
+  // Mobile Stripe flow должен возвращать на этот же deployment host.
+  const refreshUrl =
+    typeof body?.refreshUrl === 'string' && body.refreshUrl.startsWith(origin)
+      ? body.refreshUrl
+      : defaultRefreshUrl
+  const returnUrl =
+    typeof body?.returnUrl === 'string' && body.returnUrl.startsWith(origin)
+      ? body.returnUrl
+      : defaultReturnUrl
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
