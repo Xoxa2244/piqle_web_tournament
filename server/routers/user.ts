@@ -1,6 +1,15 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
+const notificationSettingsInput = z.object({
+  tournamentUpdates: z.boolean().optional(),
+  matchReminders: z.boolean().optional(),
+  chatMessages: z.boolean().optional(),
+  clubAnnouncements: z.boolean().optional(),
+  emailNotifications: z.boolean().optional(),
+  pushNotifications: z.boolean().optional(),
+})
+
 const maskEmail = (email: string) => {
   try {
     const [localRaw, domainRaw] = email.split('@')
@@ -412,5 +421,73 @@ export const userRouter = createTRPCRouter({
       })
 
       return updatedUser
+    }),
+
+  getNotificationSettings: protectedProcedure
+    .query(async ({ ctx }) => {
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: {
+          notifyTournamentUpdates: true,
+          notifyMatchReminders: true,
+          notifyChatMessages: true,
+          notifyClubAnnouncements: true,
+          notifyEmailNotifications: true,
+          notifyPushNotifications: true,
+        },
+      })
+      if (!user) throw new Error('User not found')
+      return {
+        tournamentUpdates: user.notifyTournamentUpdates,
+        matchReminders: user.notifyMatchReminders,
+        chatMessages: user.notifyChatMessages,
+        clubAnnouncements: user.notifyClubAnnouncements,
+        emailNotifications: user.notifyEmailNotifications,
+        pushNotifications: user.notifyPushNotifications,
+      }
+    }),
+
+  updateNotificationSettings: protectedProcedure
+    .input(notificationSettingsInput)
+    .mutation(async ({ ctx, input }) => {
+      const updated = await ctx.prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: {
+          ...(input.tournamentUpdates !== undefined
+            ? { notifyTournamentUpdates: input.tournamentUpdates }
+            : {}),
+          ...(input.matchReminders !== undefined
+            ? { notifyMatchReminders: input.matchReminders }
+            : {}),
+          ...(input.chatMessages !== undefined
+            ? { notifyChatMessages: input.chatMessages }
+            : {}),
+          ...(input.clubAnnouncements !== undefined
+            ? { notifyClubAnnouncements: input.clubAnnouncements }
+            : {}),
+          ...(input.emailNotifications !== undefined
+            ? { notifyEmailNotifications: input.emailNotifications }
+            : {}),
+          ...(input.pushNotifications !== undefined
+            ? { notifyPushNotifications: input.pushNotifications }
+            : {}),
+        },
+        select: {
+          notifyTournamentUpdates: true,
+          notifyMatchReminders: true,
+          notifyChatMessages: true,
+          notifyClubAnnouncements: true,
+          notifyEmailNotifications: true,
+          notifyPushNotifications: true,
+        },
+      })
+      return {
+        tournamentUpdates: updated.notifyTournamentUpdates,
+        matchReminders: updated.notifyMatchReminders,
+        chatMessages: updated.notifyChatMessages,
+        clubAnnouncements: updated.notifyClubAnnouncements,
+        emailNotifications: updated.notifyEmailNotifications,
+        pushNotifications: updated.notifyPushNotifications,
+      }
     }),
 })

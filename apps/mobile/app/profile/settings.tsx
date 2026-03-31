@@ -1,13 +1,14 @@
 import { Feather } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
+import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
-import { ActionButton, SurfaceCard } from '../../src/components/ui'
+import { ActionButton, InputField, SurfaceCard } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
-import { getPalette, spacing, type AppTheme, type ThemePalette } from '../../src/lib/theme'
+import { getPalette, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
@@ -92,59 +93,30 @@ const SettingItem = ({
   </Pressable>
 )
 
-const AppearanceThemeRow = ({
-  theme,
-  colors,
-  setTheme,
-  showBottomDivider = true,
-}: {
-  theme: AppTheme
-  colors: ThemePalette
-  setTheme: (next: AppTheme) => void
-  showBottomDivider?: boolean
-}) => {
-  const isDark = theme === 'dark'
-  return (
-    <Pressable
-      onPress={() => setTheme(isDark ? 'light' : 'dark')}
-      style={({ pressed }) => [
-        styles.settingRow,
-        {
-          borderBottomColor: colors.border,
-          borderBottomWidth: showBottomDivider ? 1 : 0,
-        },
-        pressed && styles.settingRowPressed,
-      ]}
-    >
-      <View style={styles.settingRowLeft}>
-        <View style={[styles.settingIconWrap, { backgroundColor: colors.brandPrimaryTint }]}>
-          <Feather name={isDark ? 'moon' : 'sun'} size={18} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.settingTitle, { color: colors.text }]}>Dark mode</Text>
-          <Text style={[styles.settingDescription, { color: colors.textMuted }]}>
-            {isDark ? 'Dark appearance' : 'Light appearance'}
-          </Text>
-        </View>
-      </View>
-      <Switch
-        value={isDark}
-        onValueChange={(v) => setTheme(v ? 'dark' : 'light')}
-        trackColor={{ false: colors.switchBackground, true: colors.primary }}
-        thumbColor={colors.white}
-        ios_backgroundColor={colors.switchBackground}
-      />
-    </Pressable>
-  )
-}
-
 export default function ProfileSettingsScreen() {
-  const { token, user, signOut } = useAuth()
-  const { theme, setTheme } = useAppTheme()
+  const { token, user, signOut, requestPasswordReset } = useAuth()
+  const { theme, themeMode, setThemeMode } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
   const utils = trpc.useUtils() as any
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: isAuthenticated })
+  const [notificationApiMissing, setNotificationApiMissing] = useState(false)
+  const notificationSettingsQuery = api.user.getNotificationSettings.useQuery(undefined, {
+    enabled: isAuthenticated && !notificationApiMissing,
+    retry: false,
+    onError: (err: any) => {
+      const message = String(err?.message ?? '')
+      if (message.includes('No "query"-procedure on path "user.getNotificationSettings"')) {
+        setNotificationApiMissing(true)
+      }
+    },
+  })
+  const updateNotificationSettings = api.user.updateNotificationSettings.useMutation({
+    onError: () => {
+      setNotice('Failed to save notification settings.')
+      void notificationSettingsQuery.refetch()
+    },
+  })
   const colors = getPalette(theme)
   const themedCardStyle = {
     backgroundColor: colors.surface,
@@ -163,6 +135,9 @@ export default function ProfileSettingsScreen() {
   } as const
 
   const [notice, setNotice] = useState<string | null>(null)
+  const [passwordSheetOpen, setPasswordSheetOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
   const [settings, setSettings] = useState<ToggleGroups>({
     notifications: {
       tournamentUpdates: true,
@@ -186,6 +161,21 @@ export default function ProfileSettingsScreen() {
     },
   })
 
+  useEffect(() => {
+    if (!notificationSettingsQuery.data) return
+    setSettings((current) => ({
+      ...current,
+      notifications: {
+        tournamentUpdates: Boolean(notificationSettingsQuery.data.tournamentUpdates),
+        matchReminders: Boolean(notificationSettingsQuery.data.matchReminders),
+        chatMessages: Boolean(notificationSettingsQuery.data.chatMessages),
+        clubAnnouncements: Boolean(notificationSettingsQuery.data.clubAnnouncements),
+        emailNotifications: Boolean(notificationSettingsQuery.data.emailNotifications),
+        pushNotifications: Boolean(notificationSettingsQuery.data.pushNotifications),
+      },
+    }))
+  }, [notificationSettingsQuery.data])
+
   const toggleSetting = <T extends keyof ToggleGroups>(group: T, key: keyof ToggleGroups[T]) => {
     setSettings((current) => ({
       ...current,
@@ -194,6 +184,29 @@ export default function ProfileSettingsScreen() {
         [key]: !current[group][key],
       },
     }))
+  }
+
+  const toggleNotificationSetting = (key: keyof ToggleGroups['notifications']) => {
+    const nextValue = !settings.notifications[key]
+    setSettings((current) => ({
+      ...current,
+      notifications: {
+        ...current.notifications,
+        [key]: nextValue,
+      },
+    }))
+    if (notificationApiMissing) return
+    void updateNotificationSettings
+      .mutateAsync({ [key]: nextValue })
+      .catch((err: any) => {
+        const message = String(err?.message ?? '')
+        if (message.includes('No "mutation"-procedure on path "user.updateNotificationSettings"')) {
+          setNotificationApiMissing(true)
+          setNotice('Backend update required for notification sync. Local toggles remain active.')
+          return
+        }
+        setNotice('Failed to save notification settings.')
+      })
   }
 
   const openExternal = async (path?: string) => {
@@ -244,6 +257,30 @@ export default function ProfileSettingsScreen() {
         }
       : null)
 
+  const openPasswordSheet = () => {
+    setResetEmail(String(profile?.email ?? ''))
+    setNotice(null)
+    setPasswordSheetOpen(true)
+  }
+
+  const sendPasswordResetRequest = async () => {
+    const email = resetEmail.trim()
+    if (!email) {
+      setNotice('Please enter your email first.')
+      return
+    }
+    try {
+      setResetLoading(true)
+      await requestPasswordReset(email)
+      setNotice('Password reset request sent. Check your email for the code.')
+      setPasswordSheetOpen(false)
+    } catch (err: any) {
+      setNotice(err?.message || 'Failed to send password reset request.')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
   if (!profile) {
     return (
       <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
@@ -271,35 +308,66 @@ export default function ProfileSettingsScreen() {
             <SettingItem colors={colors} icon="mail" title="Email" description={profile.email} type="link" />
             <SettingItem
               colors={colors}
-              icon="lock"
-              title="Change Password"
-              description="Manage password reset from the auth screen"
+              icon="mail"
+              title="Change Email"
+              description="Request email change via support"
               type="link"
-              onPress={() => router.push('/sign-in')}
+              onPress={() => void Linking.openURL('mailto:info@piqle.io?subject=Change%20Email%20Request')}
             />
             <SettingItem
               colors={colors}
-              icon="smartphone"
-              title="Two-Factor Authentication"
-              description="Add extra security to your account"
+              icon="lock"
+              title="Change Password"
+              description="Open password reset flow"
               type="link"
               showBottomDivider={false}
+              onPress={openPasswordSheet}
             />
           </View>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Appearance</Text>
-          <AppearanceThemeRow theme={theme} colors={colors} setTheme={setTheme} />
-
-          <SettingItem
-            colors={colors}
-            icon="globe"
-            title="Language"
-            description="English (US)"
-            type="link"
-            showBottomDivider={false}
-          />
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Theme</Text>
+          <Text style={[styles.cardDescription, { color: colors.textMuted }]}>
+            Choose how the app looks on your device.
+          </Text>
+          <View style={styles.themeIconRow}>
+            {([
+              { mode: 'light', label: 'Light', icon: 'sun' },
+              { mode: 'dark', label: 'Dark', icon: 'moon' },
+              { mode: 'system', label: 'System', icon: 'monitor' },
+            ] as const).map((item) => {
+              const active = themeMode === item.mode
+              return (
+                <Pressable
+                  key={item.mode}
+                  onPress={() => setThemeMode(item.mode)}
+                  style={({ pressed }) => [
+                    styles.themeIconButton,
+                    {
+                      borderColor: active ? colors.primary : colors.border,
+                      backgroundColor: active ? colors.brandPrimaryTint : colors.surface,
+                    },
+                    pressed && styles.settingRowPressed,
+                  ]}
+                >
+                  <Feather
+                    name={item.icon}
+                    size={18}
+                    color={active ? colors.primary : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.themeIconLabel,
+                      { color: active ? colors.primary : colors.textMuted },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
@@ -311,7 +379,7 @@ export default function ProfileSettingsScreen() {
               title="Push Notifications"
               description="Receive notifications on your device"
               value={settings.notifications.pushNotifications}
-              onChange={() => toggleSetting('notifications', 'pushNotifications')}
+              onChange={() => toggleNotificationSetting('pushNotifications')}
             />
             <SettingItem
               colors={colors}
@@ -319,7 +387,7 @@ export default function ProfileSettingsScreen() {
               title="Email Notifications"
               description="Get updates via email"
               value={settings.notifications.emailNotifications}
-              onChange={() => toggleSetting('notifications', 'emailNotifications')}
+              onChange={() => toggleNotificationSetting('emailNotifications')}
             />
             <SettingItem
               colors={colors}
@@ -327,7 +395,7 @@ export default function ProfileSettingsScreen() {
               title="Tournament Updates"
               description="Schedule changes and announcements"
               value={settings.notifications.tournamentUpdates}
-              onChange={() => toggleSetting('notifications', 'tournamentUpdates')}
+              onChange={() => toggleNotificationSetting('tournamentUpdates')}
             />
             <SettingItem
               colors={colors}
@@ -335,7 +403,7 @@ export default function ProfileSettingsScreen() {
               title="Match Reminders"
               description="Remind me before scheduled matches"
               value={settings.notifications.matchReminders}
-              onChange={() => toggleSetting('notifications', 'matchReminders')}
+              onChange={() => toggleNotificationSetting('matchReminders')}
             />
             <SettingItem
               colors={colors}
@@ -343,7 +411,7 @@ export default function ProfileSettingsScreen() {
               title="Chat Messages"
               description="New messages from chats"
               value={settings.notifications.chatMessages}
-              onChange={() => toggleSetting('notifications', 'chatMessages')}
+              onChange={() => toggleNotificationSetting('chatMessages')}
             />
             <SettingItem
               colors={colors}
@@ -351,7 +419,7 @@ export default function ProfileSettingsScreen() {
               title="Club Announcements"
               description="Updates from your clubs"
               value={settings.notifications.clubAnnouncements}
-              onChange={() => toggleSetting('notifications', 'clubAnnouncements')}
+              onChange={() => toggleNotificationSetting('clubAnnouncements')}
               showBottomDivider={false}
             />
           </View>
@@ -465,6 +533,35 @@ export default function ProfileSettingsScreen() {
             />
           </View>
         </SurfaceCard>
+
+        <AppBottomSheet
+          open={passwordSheetOpen}
+          onClose={() => setPasswordSheetOpen(false)}
+          title="Password reset"
+          subtitle="Enter your email and we will send a password reset request."
+          footer={
+            <ActionButton
+              label="Send request"
+              onPress={() => void sendPasswordResetRequest()}
+              loading={resetLoading}
+            />
+          }
+        >
+          <View style={styles.sheetContent}>
+            <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>Email</Text>
+            <InputField
+              value={resetEmail}
+              onChangeText={setResetEmail}
+              placeholder="your@email.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              left={<Feather name="mail" size={18} color={colors.textMuted} />}
+            />
+            <Text style={[styles.sheetHint, { color: colors.textMuted }]}>
+              We will send a verification code to this email so you can set a new password.
+            </Text>
+          </View>
+        </AppBottomSheet>
     </PageLayout>
   )
 }
@@ -549,5 +646,55 @@ const styles = StyleSheet.create({
   actionButtons: {
     gap: spacing.sm,
     alignSelf: 'stretch',
+  },
+  sheetContent: {
+    gap: spacing.sm,
+  },
+  sheetLabel: {
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  sheetHint: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  themeModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cardDescription: {
+    marginTop: -6,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  themeIconRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  themeIconButton: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  themeIconLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  themeModeChip: {
+    minHeight: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeModeChipText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 })

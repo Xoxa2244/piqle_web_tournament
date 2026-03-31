@@ -2,7 +2,7 @@ import { BlurView } from 'expo-blur'
 import * as Haptics from 'expo-haptics'
 import type { PropsWithChildren, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Easing, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { radius, spacing, type ThemePalette } from '../lib/theme'
@@ -57,9 +57,45 @@ export function AppBottomSheet({
   const [mounted, setMounted] = useState(false)
   const backdropOp = useRef(new Animated.Value(0)).current
   const sheetY = useRef(new Animated.Value(SHEET_OFF_Y)).current
+  const keyboardOffset = useRef(new Animated.Value(0)).current
   const wasOpen = useRef(false)
   const onDismissedRef = useRef(onDismissed)
   onDismissedRef.current = onDismissed
+
+  useEffect(() => {
+    const animateKeyboardOffset = (toValue: number, duration = 260) => {
+      Animated.timing(keyboardOffset, {
+        toValue: Math.max(0, toValue),
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start()
+    }
+
+    const onKeyboardFrame = (event: any) => {
+      const keyboardHeight = Number(event?.endCoordinates?.height ?? 0)
+      const nextOffset = Math.max(0, keyboardHeight - insets.bottom)
+      animateKeyboardOffset(nextOffset, Number(event?.duration ?? 260))
+    }
+
+    const onKeyboardHidden = (event?: any) => {
+      animateKeyboardOffset(0, Number(event?.duration ?? 220))
+    }
+
+    const showSub =
+      Platform.OS === 'ios'
+        ? Keyboard.addListener('keyboardWillChangeFrame', onKeyboardFrame)
+        : Keyboard.addListener('keyboardDidShow', onKeyboardFrame)
+    const hideSub =
+      Platform.OS === 'ios'
+        ? Keyboard.addListener('keyboardWillHide', onKeyboardHidden)
+        : Keyboard.addListener('keyboardDidHide', onKeyboardHidden)
+
+    return () => {
+      showSub.remove()
+      hideSub.remove()
+    }
+  }, [insets.bottom, keyboardOffset])
 
   useEffect(() => {
     if (open) {
@@ -79,7 +115,7 @@ export function AppBottomSheet({
             toValue: 0,
             friction: 9,
             tension: 70,
-            useNativeDriver: true,
+            useNativeDriver: false,
           }),
         ]).start()
       })
@@ -93,7 +129,7 @@ export function AppBottomSheet({
         Animated.timing(sheetY, {
           toValue: SHEET_OFF_Y,
           duration: 240,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start(() => {
         setMounted(false)
@@ -121,6 +157,7 @@ export function AppBottomSheet({
           style={[
             styles.sheet,
             {
+              marginBottom: keyboardOffset,
               paddingBottom: padBottom,
               transform: [{ translateY: sheetY }],
             },

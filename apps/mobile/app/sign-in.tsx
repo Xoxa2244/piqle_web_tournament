@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons'
 import { Ionicons } from '@expo/vector-icons'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -18,6 +18,7 @@ const GoogleMark = () => (
 )
 
 export default function SignInScreen() {
+  const params = useLocalSearchParams<{ mode?: string; email?: string }>()
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors, theme === 'dark'), [colors, theme])
   const iconColor = colors.textMuted
@@ -71,12 +72,25 @@ export default function SignInScreen() {
     lastName.trim().length > 0 &&
     password.length > 0 &&
     confirmPassword.length > 0
+  const forcedResetFlow = params.mode === 'reset-password'
 
   useEffect(() => {
-    if (user) {
+    if (user && !forcedResetFlow) {
       router.replace('/(tabs)')
     }
-  }, [user])
+  }, [forcedResetFlow, user])
+
+  useEffect(() => {
+    if (params.email && typeof params.email === 'string') {
+      setEmail(params.email)
+    }
+    if (forcedResetFlow) {
+      setMode('signin')
+      setSignInStep('resetEmail')
+      setError(null)
+      setNotice(null)
+    }
+  }, [forcedResetFlow, params.email])
 
   const resetForMode = (value: 'signin' | 'signup') => {
     setMode(value)

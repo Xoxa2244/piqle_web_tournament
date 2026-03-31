@@ -1,24 +1,31 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
+import { useColorScheme } from 'react-native'
 
 import { applyThemePalette, getPalette, type AppTheme } from '../lib/theme'
 
 const THEME_STORAGE_KEY = 'piqle.mobile.theme'
+type AppThemeMode = AppTheme | 'system'
 
 type ThemeContextValue = {
+  themeMode: AppThemeMode
   theme: AppTheme
   colors: ReturnType<typeof getPalette>
   isReady: boolean
   setTheme: (theme: AppTheme) => void
+  setThemeMode: (theme: AppThemeMode) => void
   toggleTheme: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
-  const [theme, setThemeState] = useState<AppTheme>('light')
+  const [themeMode, setThemeModeState] = useState<AppThemeMode>('light')
   const [isReady, setIsReady] = useState(false)
+  const systemColorScheme = useColorScheme()
+  const resolvedTheme: AppTheme =
+    themeMode === 'system' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : themeMode
 
   useEffect(() => {
     let cancelled = false
@@ -28,9 +35,11 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
         const raw = await AsyncStorage.getItem(THEME_STORAGE_KEY)
         if (cancelled) return
 
-        if (raw === 'light' || raw === 'dark') {
-          applyThemePalette(raw)
-          setThemeState(raw)
+        if (raw === 'light' || raw === 'dark' || raw === 'system') {
+          const nextResolvedTheme: AppTheme =
+            raw === 'system' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : raw
+          applyThemePalette(nextResolvedTheme)
+          setThemeModeState(raw)
         }
       } finally {
         if (!cancelled) {
@@ -44,25 +53,31 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [systemColorScheme])
 
   useEffect(() => {
     if (!isReady) return
-    applyThemePalette(theme)
-    void AsyncStorage.setItem(THEME_STORAGE_KEY, theme).catch(() => undefined)
-  }, [isReady, theme])
+    applyThemePalette(resolvedTheme)
+    void AsyncStorage.setItem(THEME_STORAGE_KEY, themeMode).catch(() => undefined)
+  }, [isReady, resolvedTheme, themeMode])
 
   const value = useMemo<ThemeContextValue>(
     () => ({
-      theme,
-      colors: getPalette(theme),
+      themeMode,
+      theme: resolvedTheme,
+      colors: getPalette(resolvedTheme),
       isReady,
-      setTheme: setThemeState,
+      setTheme: (nextTheme) => setThemeModeState(nextTheme),
+      setThemeMode: setThemeModeState,
       toggleTheme: () => {
-        setThemeState((current) => (current === 'dark' ? 'light' : 'dark'))
+        setThemeModeState((current) => {
+          const currentResolved =
+            current === 'system' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : current
+          return currentResolved === 'dark' ? 'light' : 'dark'
+        })
       },
     }),
-    [isReady, theme]
+    [isReady, resolvedTheme, systemColorScheme, themeMode]
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

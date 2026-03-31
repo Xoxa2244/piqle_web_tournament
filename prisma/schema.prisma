@@ -76,6 +76,13 @@ model User {
   bellNotificationsClearedBefore   DateTime?                  @map("bell_notifications_cleared_before")
   /// ID строк колокольника, скрытых свайпом (JSON-массив строк), см. `notification.dismiss`.
   bellDismissedNotificationIds      Json?                     @map("bell_dismissed_notification_ids")
+  /// User settings: notifications toggles (mobile/web settings screen)
+  notifyTournamentUpdates           Boolean                   @default(true) @map("notify_tournament_updates")
+  notifyMatchReminders              Boolean                   @default(false) @map("notify_match_reminders")
+  notifyChatMessages                Boolean                   @default(true) @map("notify_chat_messages")
+  notifyClubAnnouncements           Boolean                   @default(true) @map("notify_club_announcements")
+  notifyEmailNotifications          Boolean                   @default(false) @map("notify_email_notifications")
+  notifyPushNotifications           Boolean                   @default(true) @map("notify_push_notifications")
 
   @@map("users")
 }
