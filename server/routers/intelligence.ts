@@ -3485,17 +3485,27 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
-  // ── New Members (joined within N days) ──
+  // ── New Members (first booking within N days) ──
+  // "New" = first confirmed booking at this club happened recently,
+  // NOT when club_followers record was created (which is import date for CSV members)
   getNewMembers: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), joinedWithinDays: z.number().default(14) }))
     .query(async ({ ctx, input }) => {
       const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
-        SELECT u.id, u.name, u.email, u.image, cf.created_at as "joinedAt"
+        SELECT u.id, u.name, u.email, u.image, first_booking."firstPlayedAt" as "joinedAt"
         FROM club_followers cf
         JOIN users u ON u.id = cf.user_id
+        JOIN LATERAL (
+          SELECT MIN(b."bookedAt") as "firstPlayedAt"
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b."userId" = cf.user_id
+            AND ps."clubId" = $1::uuid
+            AND b.status = 'CONFIRMED'
+        ) first_booking ON true
         WHERE cf.club_id = $1::uuid
-          AND cf.created_at >= NOW() - ($2 || ' days')::interval
-        ORDER BY cf.created_at DESC
+          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
+        ORDER BY first_booking."firstPlayedAt" DESC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }
     }),
