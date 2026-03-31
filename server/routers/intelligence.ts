@@ -3255,9 +3255,9 @@ export const intelligenceRouter = createTRPCRouter({
               JOIN play_sessions ps2 ON ps2.id = b3."sessionId"
               WHERE b3."userId" = $1 AND ps2."clubId" = $2::uuid
               AND b3.status::text = 'CONFIRMED') as "totalSessions",
-            (SELECT mhs."healthScore" FROM member_health_snapshots mhs
-              WHERE mhs."memberId" = $1 AND mhs."clubId" = $2::uuid
-              ORDER BY mhs."calculatedAt" DESC LIMIT 1) as "healthScore"
+            (SELECT mhs.health_score FROM member_health_snapshots mhs
+              WHERE mhs.user_id = $1 AND mhs.club_id = $2::uuid
+              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
           FROM users u
           LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2::uuid
           WHERE u.id = $1
@@ -3285,9 +3285,9 @@ export const intelligenceRouter = createTRPCRouter({
           GROUP BY ps.format ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
-        // 4. Top times
+        // 4. Top times (startTime is a text column like "08:00")
         db.$queryRawUnsafe<any[]>(`
-          SELECT EXTRACT(HOUR FROM ps."startTime")::int as hour, COUNT(*)::int as count
+          SELECT SPLIT_PART(ps."startTime", ':', 1)::int as hour, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
@@ -3321,8 +3321,8 @@ export const intelligenceRouter = createTRPCRouter({
         db.$queryRawUnsafe<any[]>(`
           SELECT ps.date::text, ps.format::text as format,
             COALESCE(cc.name, 'N/A') as court,
-            TO_CHAR(ps."startTime", 'HH24:MI') as "startTime",
-            TO_CHAR(ps."endTime", 'HH24:MI') as "endTime",
+            ps."startTime",
+            ps."endTime",
             COALESCE(ps."skillLevel"::text, '') as "skillLevel"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
