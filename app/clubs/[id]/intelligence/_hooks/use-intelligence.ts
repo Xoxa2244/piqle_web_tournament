@@ -511,3 +511,29 @@ export function useMemberAiProfiles(clubId: string, userIds?: string[], refetchI
   if (isDemo) return { data: undefined as any, isLoading: false, error: null }
   return query
 }
+
+// ── Generate Campaign Message (LLM) ──
+export function useGenerateCampaignMessage() {
+  return trpc.intelligence.generateCampaignMessage.useMutation()
+}
+
+// ── Create Campaign (send to members) ──
+export function useCreateCampaign() {
+  return trpc.intelligence.createCampaign.useMutation()
+}
+
+// ── Underfilled Sessions ──
+export function useUnderfilledSessions(clubId: string) {
+  return trpc.intelligence.getUnderfilledSessions.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 2 * 60 * 1000 }
+  )
+}
+
+// ── New Members ──
+export function useNewMembers(clubId: string, days: number = 14) {
+  return trpc.intelligence.getNewMembers.useQuery(
+    { clubId, joinedWithinDays: days },
+    { enabled: !!clubId, staleTime: 5 * 60 * 1000 }
+  )
+}

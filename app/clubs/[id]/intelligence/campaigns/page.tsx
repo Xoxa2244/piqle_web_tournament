@@ -233,7 +233,7 @@ export default function CampaignsPage() {
   }, [data, days, variantData, sequenceData, setPageContext])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <CampaignsIQ campaignData={data} campaignListData={campaignListData} isLoading={isLoading} clubId={clubId} />
+  if (brand.key === 'iqsport') return <CampaignsIQ campaignData={data} campaignListData={campaignListData} variantData={variantData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading) return <ListSkeleton />
 

@@ -3394,4 +3394,260 @@ export const intelligenceRouter = createTRPCRouter({
         })),
       }
     }),
+
+  // ── Underfilled Sessions (next N days, <80% occupancy) ──
+  getUnderfilledSessions: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), days: z.number().default(14) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const sessions = await ctx.prisma.$queryRawUnsafe<any[]>(`
+        SELECT ps.id, ps.title, ps.date::text, ps."startTime", ps."endTime",
+          ps."maxPlayers", ps.format::text as format,
+          COALESCE(ps."skillLevel"::text, 'ALL_LEVELS') as "skillLevel",
+          COALESCE(cc.name, '') as court,
+          (SELECT COUNT(*)::int FROM play_session_bookings b
+            WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
+        FROM play_sessions ps
+        LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+        WHERE ps."clubId" = $1::uuid
+          AND ps.date >= CURRENT_DATE
+          AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
+          AND ps.status::text = 'SCHEDULED'
+        ORDER BY ps.date, ps."startTime"
+      `, input.clubId, String(input.days))
+      return {
+        sessions: sessions
+          .map((s: any) => ({ ...s, occupancy: Math.round((s.registered / (s.maxPlayers || 1)) * 100) }))
+          .filter((s: any) => s.occupancy < 80)
+      }
+    }),
+
+  // ── New Members (joined within N days) ──
+  getNewMembers: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), joinedWithinDays: z.number().default(14) }))
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
+        SELECT u.id, u.name, u.email, u.image, cf.created_at as "joinedAt"
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        WHERE cf.club_id = $1::uuid
+          AND cf.created_at >= NOW() - ($2 || ' days')::interval
+        ORDER BY cf.created_at DESC
+      `, input.clubId, String(input.joinedWithinDays))
+      return { members: rows, count: rows.length }
+    }),
+
+  // ── Generate Campaign Message (LLM-powered) ──
+  generateCampaignMessage: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignType: z.enum(['CHECK_IN', 'RETENTION_BOOST', 'REACTIVATION', 'SLOT_FILLER', 'EVENT_INVITE', 'NEW_MEMBER_WELCOME']),
+      channel: z.enum(['email', 'sms', 'both']),
+      audienceCount: z.number(),
+      context: z.object({
+        sessionTitle: z.string().optional(),
+        riskSegment: z.string().optional(),
+        inactivityDays: z.number().optional(),
+      }).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+      const clubName = club?.name || 'Your Club'
+
+      // Build prompt
+      const campaignDescriptions: Record<string, string> = {
+        CHECK_IN: 'Light check-in for members whose activity has slightly declined. Friendly, not pushy.',
+        RETENTION_BOOST: 'Stronger outreach for at-risk members. Show they are valued, create motivation to return.',
+        REACTIVATION: 'Win-back message for inactive members who haven\'t played in a while.',
+        SLOT_FILLER: 'Fill empty spots in upcoming sessions. Create urgency around limited availability.',
+        EVENT_INVITE: 'Invite members to a specific event or session.',
+        NEW_MEMBER_WELCOME: 'Welcome message for new club members. Warm, inviting, help them get started.',
+      }
+
+      const contextLines: string[] = []
+      if (input.context?.sessionTitle) contextLines.push(`Session: "${input.context.sessionTitle}"`)
+      if (input.context?.riskSegment) contextLines.push(`Risk segment: ${input.context.riskSegment}`)
+      if (input.context?.inactivityDays) contextLines.push(`Average inactivity: ${input.context.inactivityDays} days`)
+      contextLines.push(`Audience size: ${input.audienceCount} members`)
+
+      const systemPrompt = `You are a messaging specialist for racquet sports clubs (pickleball, padel, tennis).
+You generate outreach messages for club campaigns.
+
+RULES:
+- Use template variables: {{name}} = member's first name, {{club}} = club name
+- emailSubject: max 60 characters, compelling, personal
+- emailBody: max 600 characters, warm and conversational, end with clear CTA. Sign off as "{{club}} Team"
+- smsBody: max 155 characters, concise with clear action
+- Never use ALL CAPS for emphasis
+- Return ONLY valid JSON, no markdown
+
+OUTPUT FORMAT:
+{"subject": "...", "body": "...", "smsBody": "..."}`
+
+      const userPrompt = `Generate a ${input.campaignType} campaign message.
+Club: "${clubName}". Channel: ${input.channel}.
+Purpose: ${campaignDescriptions[input.campaignType] || input.campaignType}
+${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
+
+      try {
+        const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+        const result = await generateWithFallback({
+          system: systemPrompt,
+          prompt: userPrompt,
+          tier: 'fast',
+          maxTokens: 500,
+        })
+
+        // Parse JSON from response
+        let jsonStr = result.text.trim()
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (jsonMatch) jsonStr = jsonMatch[1].trim()
+        const objStart = jsonStr.indexOf('{')
+        const objEnd = jsonStr.lastIndexOf('}')
+        if (objStart !== -1 && objEnd !== -1) jsonStr = jsonStr.slice(objStart, objEnd + 1)
+
+        const parsed = JSON.parse(jsonStr)
+        return {
+          subject: (parsed.subject || parsed.emailSubject || '').slice(0, 60),
+          body: (parsed.body || parsed.emailBody || '').slice(0, 600),
+          smsBody: (parsed.smsBody || '').slice(0, 160),
+        }
+      } catch (err) {
+        console.warn('[generateCampaignMessage] LLM failed, using fallback templates:', (err as Error).message?.slice(0, 100))
+        // Hardcoded fallback templates
+        const fallbacks: Record<string, { subject: string; body: string; smsBody: string }> = {
+          CHECK_IN: {
+            subject: `{{name}}, we miss you at {{club}}!`,
+            body: `Hi {{name}},\n\nWe noticed you haven't been around lately and wanted to check in. There are some great sessions coming up that we think you'd enjoy.\n\nHope to see you soon!\n\n— {{club}} Team`,
+            smsBody: `Hey {{name}}! We miss you at {{club}}. Check out our upcoming sessions!`,
+          },
+          RETENTION_BOOST: {
+            subject: `{{name}}, your spot is waiting at {{club}}`,
+            body: `Hi {{name}},\n\nWe value you as part of our community and wanted to reach out. There are exciting sessions and events happening — we'd love to see you back on the court.\n\n— {{club}} Team`,
+            smsBody: `{{name}}, your {{club}} community misses you! Come back and play — great sessions this week.`,
+          },
+          REACTIVATION: {
+            subject: `It's been a while, {{name}} — come back to {{club}}!`,
+            body: `Hi {{name}},\n\nIt's been a while since your last visit, and we'd love to have you back. A lot has been happening at {{club}} — new sessions, new players, and plenty of fun.\n\n— {{club}} Team`,
+            smsBody: `{{name}}, it's been too long! Come back to {{club}} — lots of new sessions waiting for you.`,
+          },
+          SLOT_FILLER: {
+            subject: `Spots open this week at {{club}}, {{name}}!`,
+            body: `Hi {{name}},\n\nWe have some open spots in upcoming sessions and thought you might be interested. Don't miss out — they tend to fill up fast!\n\n— {{club}} Team`,
+            smsBody: `{{name}}, spots available at {{club}} this week! Book now before they fill up.`,
+          },
+          EVENT_INVITE: {
+            subject: `You're invited, {{name}}!`,
+            body: `Hi {{name}},\n\nWe have an exciting event coming up at {{club}} and we'd love for you to join. Save your spot now!\n\n— {{club}} Team`,
+            smsBody: `{{name}}, you're invited to a special event at {{club}}! RSVP now.`,
+          },
+          NEW_MEMBER_WELCOME: {
+            subject: `Welcome to {{club}}, {{name}}! 🎉`,
+            body: `Hi {{name}},\n\nWelcome to {{club}}! We're thrilled to have you as part of our community. Check out our upcoming sessions and find the perfect one for your schedule and skill level.\n\nSee you on the court!\n\n— {{club}} Team`,
+            smsBody: `Welcome to {{club}}, {{name}}! Check out our upcoming sessions and book your first game.`,
+          },
+        }
+        return fallbacks[input.campaignType] || fallbacks.CHECK_IN
+      }
+    }),
+
+  // ── Create Campaign (send messages to selected members) ──
+  createCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      type: z.enum(['CHECK_IN', 'RETENTION_BOOST', 'REACTIVATION', 'SLOT_FILLER', 'EVENT_INVITE', 'NEW_MEMBER_WELCOME']),
+      channel: z.enum(['email', 'sms', 'both']),
+      memberIds: z.array(z.string()),
+      subject: z.string().optional(),
+      body: z.string(),
+      smsBody: z.string().optional(),
+      sessionId: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { id: true, name: true },
+      })
+      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+      const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+      const bookingUrl = `${appUrl}/clubs/${club.id}/play`
+
+      // Load members
+      const users = await ctx.prisma.user.findMany({
+        where: { id: { in: input.memberIds } },
+        select: { id: true, email: true, name: true },
+      })
+
+      let sent = 0
+      let failed = 0
+      let skipped = 0
+
+      for (const user of users) {
+        // Interpolate template variables
+        const memberName = user.name?.split(' ')[0] || 'there'
+        const interpolate = (text: string) =>
+          text.replace(/\{\{name\}\}/g, memberName).replace(/\{\{club\}\}/g, club.name)
+
+        const emailSubject = input.subject ? interpolate(input.subject) : `Message from ${club.name}`
+        const emailBody = interpolate(input.body)
+        const smsText = input.smsBody ? interpolate(input.smsBody) : undefined
+
+        let channelSent = false
+
+        // Send email
+        if ((input.channel === 'email' || input.channel === 'both') && user.email) {
+          try {
+            const { sendOutreachEmail } = await import('@/lib/email')
+            await sendOutreachEmail({
+              to: user.email,
+              subject: emailSubject,
+              body: emailBody,
+              clubName: club.name,
+              bookingUrl,
+            })
+            channelSent = true
+          } catch (err) {
+            console.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
+          }
+        }
+
+        // SMS placeholder (phone not yet in User model)
+        if ((input.channel === 'sms' || input.channel === 'both') && smsText) {
+          // SMS not yet implemented — skip silently
+        }
+
+        // Log to DB
+        try {
+          await ctx.prisma.aIRecommendationLog.create({
+            data: {
+              clubId: input.clubId,
+              userId: user.id,
+              type: input.type,
+              channel: input.channel,
+              reasoning: {
+                source: 'manual_campaign',
+                subject: emailSubject,
+                bodyPreview: emailBody.slice(0, 100),
+                sessionId: input.sessionId || null,
+              },
+              status: channelSent ? 'sent' : 'failed',
+            },
+          })
+        } catch (logErr) {
+          console.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
+        }
+
+        if (channelSent) sent++
+        else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
+        else failed++
+      }
+
+      return { sent, failed, skipped }
+    }),
 })
