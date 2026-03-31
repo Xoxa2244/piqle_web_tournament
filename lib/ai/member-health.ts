@@ -8,6 +8,48 @@ import {
 } from '../../types/intelligence';
 import { clamp, getDayName, getTimeSlot } from './scoring';
 
+// ── Configurable Weights ──
+
+export interface HealthWeights {
+  frequencyTrend: number  // default 35
+  recency: number         // default 25
+  consistency: number     // default 20
+  patternBreak: number    // default 15
+  noShowTrend: number     // default 5
+}
+
+export const DEFAULT_WEIGHTS: HealthWeights = {
+  frequencyTrend: 35,
+  recency: 25,
+  consistency: 20,
+  patternBreak: 15,
+  noShowTrend: 5,
+}
+
+/** Get weights for a club — reads calibrated weights from settings, falls back to defaults */
+export async function getWeights(prisma: any, clubId: string): Promise<HealthWeights> {
+  try {
+    const settings = await prisma.intelligenceSetting.findFirst({
+      where: { clubId },
+      select: { goals: true },
+    })
+    // Calibrated weights stored in goals JSON (e.g. { ..., calibratedWeights: {...} })
+    const stored = (settings as any)?.calibratedWeights
+    if (stored && typeof stored === 'object') {
+      return {
+        frequencyTrend: stored.frequencyTrend ?? DEFAULT_WEIGHTS.frequencyTrend,
+        recency: stored.recency ?? DEFAULT_WEIGHTS.recency,
+        consistency: stored.consistency ?? DEFAULT_WEIGHTS.consistency,
+        patternBreak: stored.patternBreak ?? DEFAULT_WEIGHTS.patternBreak,
+        noShowTrend: stored.noShowTrend ?? DEFAULT_WEIGHTS.noShowTrend,
+      }
+    }
+  } catch {
+    // Settings table may not exist or no settings for this club
+  }
+  return { ...DEFAULT_WEIGHTS }
+}
+
 // ── Input Types ──
 
 export interface BookingWithSession {
@@ -135,9 +177,10 @@ function buildSegmentLabel(segment: MemberSegment): SegmentLabel {
 export function generateMemberHealth(
   members: MemberHealthInput[],
   avgSubscriptionPrice: number = 99, // default $99/month
+  weights: HealthWeights = DEFAULT_WEIGHTS,
 ): MemberHealthData {
   // Pass 1: compute health scores + segments (valueTier = placeholder)
-  const results = members.map(m => calculateHealthScore(m));
+  const results = members.map(m => calculateHealthScore(m, weights));
 
   // Pass 2: classify value tier based on revenue distribution
   const revenues = results.map(r => r.totalRevenue || 0)
@@ -157,33 +200,39 @@ export function generateMemberHealth(
 
 // ── Health Score Calculation ──
 
-function calculateHealthScore(input: MemberHealthInput): MemberHealthResult {
+function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights = DEFAULT_WEIGHTS): MemberHealthResult {
   const { member, history, joinedAt, bookingDates, previousPeriodBookings } = input;
   const now = new Date();
   const joinedDaysAgo = Math.floor((now.getTime() - joinedAt.getTime()) / 86400000);
 
-  // 1. Frequency Trend (35%)
+  // 1. Frequency Trend
   const frequencyTrend = scoreFrequencyTrend(history.bookingsLastMonth, previousPeriodBookings);
+  frequencyTrend.weight = weights.frequencyTrend;
 
-  // 2. Recency (25%)
+  // 2. Recency
   const recency = scoreRecency(history.daysSinceLastConfirmedBooking);
+  recency.weight = weights.recency;
 
-  // 3. Consistency (20%)
+  // 3. Consistency
   const consistency = scoreConsistency(bookingDates.filter(b => b.status === 'CONFIRMED'));
+  consistency.weight = weights.consistency;
 
-  // 4. Pattern Break (15%)
+  // 4. Pattern Break
   const patternBreak = scorePatternBreak(input.preference, bookingDates, now);
+  patternBreak.weight = weights.patternBreak;
 
-  // 5. No-Show Trend (5%)
+  // 5. No-Show Trend
   const noShowTrend = scoreNoShowTrend(history);
+  noShowTrend.weight = weights.noShowTrend;
 
-  // Weighted total
+  // Weighted total (weights should sum to 100)
+  const totalWeight = weights.frequencyTrend + weights.recency + weights.consistency + weights.patternBreak + weights.noShowTrend;
   const healthScore = Math.round(clamp(
     (frequencyTrend.score * frequencyTrend.weight +
      recency.score * recency.weight +
      consistency.score * consistency.weight +
      patternBreak.score * patternBreak.weight +
-     noShowTrend.score * noShowTrend.weight) / 100,
+     noShowTrend.score * noShowTrend.weight) / totalWeight,
     0, 100
   ));
 

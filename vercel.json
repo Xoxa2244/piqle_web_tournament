@@ -30,6 +30,10 @@
     {
       "path": "/api/campaigns/conversion-check",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/campaigns/calibrate-weights",
+      "schedule": "0 5 * * 0"
     }
   ]
 }
