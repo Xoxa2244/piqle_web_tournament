@@ -395,10 +395,6 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                 </span>
               ) : null
             })()}
-            <button className="relative p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
-              <Bell className="w-5 h-5" />
-              <div className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
-            </button>
             <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="hidden md:block p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
               <Settings className="w-5 h-5" />
             </button>

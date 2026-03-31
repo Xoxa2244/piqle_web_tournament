@@ -962,22 +962,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </div>
           </div>
 
-          {/* Mini metrics row */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
-            {[
-              { label: "Improved", value: data.healthMetrics.improved, sub: `+${data.healthMetrics.improvedPct}%`, color: "#10B981" },
-              { label: "Declined", value: data.healthMetrics.declined, sub: `${data.healthMetrics.declinedPct}%`, color: "#F97316" },
-              { label: "Churned", value: data.healthMetrics.churnedThisPeriod, sub: `${data.healthMetrics.churnChange}% vs prev`, color: "#EF4444" },
-            ].map((m) => (
-              <div key={m.label} className="p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
-                <div className="text-[10px] mb-1" style={{ color: "var(--t4)" }}>{m.label}</div>
-                <div className="flex items-baseline gap-1.5">
-                  <span style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>{m.value}</span>
-                  <span className="text-[10px]" style={{ color: m.color, fontWeight: 600 }}>{m.sub}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* Mini metrics row — hidden until health cron produces snapshots */}
 
           {/* Health distribution bars */}
           <div className="space-y-3">
