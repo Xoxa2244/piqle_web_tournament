@@ -893,11 +893,9 @@ export const intelligenceRouter = createTRPCRouter({
           .sort((a, b) => a.occupancyPercent - b.occupancyPercent)
           .slice(0, 20)
 
-        // Player activity — use CSV player count if available for better inactive estimate
+        // Player activity — count unique users with confirmed bookings in period
         const activeUserIds = new Set(recentBookers.map(b => b.userId))
-        const activeCount = csvPlayerCount > 0
-          ? Math.max(activeUserIds.size, Math.round(csvPlayerCount * 0.6)) // estimate ~60% active from CSV
-          : activeUserIds.size
+        const activeCount = activeUserIds.size
         const inactiveCount = Math.max(0, membersNow - activeCount)
 
         // Format preference — use registeredCount for accurate distribution
@@ -921,13 +919,11 @@ export const intelligenceRouter = createTRPCRouter({
         return {
           metrics: {
             members: {
-              label: 'Players',
-              value: membersNow,
-              trend: computeTrend(membersNow, membersBase, memberSparkline),
-              subtitle: csvPlayerCount > followersCount
-                ? `${csvPlayerCount} from imported data`
-                : `${newMembersThisMonth} new this month`,
-              description: 'Total unique players across all sessions',
+              label: 'Active Players',
+              value: activeCount,
+              trend: computeTrend(activeCount, membersBase > activeCount ? activeCount : membersBase, memberSparkline),
+              subtitle: `${membersNow} total members`,
+              description: `Players with confirmed bookings in the selected period`,
             },
             occupancy: {
               label: 'Avg Occupancy',
