@@ -1,5 +1,7 @@
+import { Feather } from '@expo/vector-icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Linking,
@@ -95,6 +97,13 @@ export default function TournamentRegistrationScreen() {
   const divisionsRef = useRef<RNScrollViewType>(null)
   const [heroRegisteredState, setHeroRegisteredState] = useState<boolean | null>(null)
   const [heroAnimating, setHeroAnimating] = useState(false)
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState(false)
+  const [paymentSyncing, setPaymentSyncing] = useState(false)
+  const registrationToastShownRef = useRef(false)
+  const paymentToastShownRef = useRef(false)
+  const paymentAttemptedRef = useRef(false)
+  const paymentSyncInFlightRef = useRef(false)
+  const handledPaymentStateRef = useRef<string | null>(null)
   const heroTranslateX = useRef(new Animated.Value(0)).current
   const heroOpacity = useRef(new Animated.Value(1)).current
 
@@ -118,6 +127,9 @@ export default function TournamentRegistrationScreen() {
     { enabled: protectedQueriesEnabled }
   )
   const accessQuery = useTournamentAccessInfo(String(tournamentId ?? ''), protectedQueriesEnabled)
+  const seatMapRefetch = seatMapQuery.refetch
+  const myStatusRefetch = myStatusQuery.refetch
+  const accessRefetch = accessQuery.refetch
 
   const claimSlot = trpc.registration.claimSlot.useMutation({
     onSuccess: async () => {
@@ -125,7 +137,6 @@ export default function TournamentRegistrationScreen() {
         seatMapQuery.refetch(),
         myStatusQuery.refetch(),
       ])
-      toast.success("You're registered!")
     },
     onError: (e) => toast.error(e.message || 'Failed to claim slot'),
   })
@@ -162,36 +173,99 @@ export default function TournamentRegistrationScreen() {
   }
   const pullToRefresh = usePullToRefresh(onRefreshRegistration)
 
+  const syncPaymentStatus = useCallback(async () => {
+    if (paymentSyncInFlightRef.current) return false
+    paymentSyncInFlightRef.current = true
+    setPaymentSyncing(true)
+    setPaymentSuccessNotice(false)
+
+    try {
+      const maxAttempts = 10
+      for (let i = 0; i < maxAttempts; i += 1) {
+        const statusResult = await myStatusRefetch()
+        void seatMapRefetch()
+        const paidNow = Boolean(
+          statusResult.data?.isPaid === true || statusResult.data?.paymentStatus === 'PAID'
+        )
+        if (paidNow) {
+          setPaymentSuccessNotice(true)
+          setPaymentSyncing(false)
+          paymentAttemptedRef.current = false
+          paymentSyncInFlightRef.current = false
+          return true
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      }
+      setPaymentSyncing(false)
+      paymentAttemptedRef.current = false
+      paymentSyncInFlightRef.current = false
+      return false
+    } catch {
+      setPaymentSyncing(false)
+      paymentAttemptedRef.current = false
+      paymentSyncInFlightRef.current = false
+      return false
+    }
+  }, [myStatusRefetch, seatMapRefetch])
+
   useFocusEffect(
     useCallback(() => {
       if (!tournamentId || !isAuthenticated) return
-      void Promise.all([seatMapQuery.refetch(), myStatusQuery.refetch(), accessQuery.refetch()])
-    }, [tournamentId, isAuthenticated, seatMapQuery, myStatusQuery, accessQuery])
+      void Promise.all([seatMapRefetch(), myStatusRefetch(), accessRefetch()])
+    }, [tournamentId, isAuthenticated, seatMapRefetch, myStatusRefetch, accessRefetch])
   )
 
   useEffect(() => {
     if (!tournamentId || !paymentState) return
+    const paymentMarker = `${tournamentId}:${paymentState}`
+    if (handledPaymentStateRef.current === paymentMarker) return
+    handledPaymentStateRef.current = paymentMarker
 
     router.replace(`/tournaments/${tournamentId}/register`)
     void utils.registration.getMyStatuses.invalidate()
     void Promise.all([
-      seatMapQuery.refetch(),
-      myStatusQuery.refetch(),
+      seatMapRefetch(),
+      myStatusRefetch(),
     ])
 
     if (paymentState === 'success') {
-      const timeoutId = setTimeout(() => {
-        void Promise.all([
-          seatMapQuery.refetch(),
-          myStatusQuery.refetch(),
-        ])
-      }, 1500)
-
-      return () => clearTimeout(timeoutId)
+      paymentAttemptedRef.current = true
+      void (async () => {
+        await syncPaymentStatus()
+      })()
     }
-  }, [myStatusQuery, paymentState, router, seatMapQuery, tournamentId, utils.registration.getMyStatuses])
+  }, [paymentState, router, syncPaymentStatus, tournamentId, utils.registration.getMyStatuses, seatMapRefetch, myStatusRefetch])
 
   const isRegisteredByStatus = myStatusQuery.data?.status === 'active'
+  const isPaidByStatus = Boolean(
+    myStatusQuery.data?.isPaid === true || myStatusQuery.data?.paymentStatus === 'PAID'
+  )
+  const shouldPollPaymentStatus = Boolean(
+    tournamentId &&
+      isAuthenticated &&
+      myStatusQuery.data?.status === 'active' &&
+      (seatMapQuery.data?.entryFeeCents ?? 0) > 0 &&
+      !isPaidByStatus
+  )
+
+  useEffect(() => {
+    if (!shouldPollPaymentStatus) return
+
+    const intervalId = setInterval(() => {
+      void Promise.all([myStatusRefetch(), seatMapRefetch()])
+    }, 5000)
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [shouldPollPaymentStatus, myStatusRefetch, seatMapRefetch])
+
+  useEffect(() => {
+    if (!paymentAttemptedRef.current) return
+    if (isPaidByStatus) return
+    void syncPaymentStatus()
+  }, [isPaidByStatus, syncPaymentStatus])
+
   const isRegisteredReflectedInSeatMap =
     isRegisteredByStatus &&
     Boolean(
@@ -203,6 +277,24 @@ export default function TournamentRegistrationScreen() {
         )
       )
     )
+
+  useEffect(() => {
+    if (!isPaidByStatus) return
+    setPaymentSyncing(false)
+    setPaymentSuccessNotice(true)
+    paymentAttemptedRef.current = false
+    if (!paymentToastShownRef.current) {
+      paymentToastShownRef.current = true
+      toast.success('Payment successful.')
+    }
+  }, [isPaidByStatus])
+
+  useEffect(() => {
+    if (!isRegisteredByStatus) return
+    if (registrationToastShownRef.current) return
+    registrationToastShownRef.current = true
+    toast.success("You're registered!")
+  }, [isRegisteredByStatus, toast])
   const registeredNow = Boolean(isRegisteredReflectedInSeatMap)
   const myTeamId = registeredNow ? myStatusQuery.data?.teamId : null
   const showRegisteredHero = heroRegisteredState ?? registeredNow
@@ -284,7 +376,6 @@ export default function TournamentRegistrationScreen() {
   const myStatus = myStatusQuery.data
   const accessInfo = accessQuery.data?.userAccessInfo
   const hasPrivilegedAccess = Boolean(accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
-  const canLeaveTournament = myStatus?.status === 'active'
   const registrationOpen = isRegistrationOpen(seatMap)
   const isPaidTournament = (seatMap.entryFeeCents ?? 0) > 0
   const feeLabel = isPaidTournament ? formatMoney(seatMap.entryFeeCents) : '$ Free'
@@ -380,18 +471,33 @@ export default function TournamentRegistrationScreen() {
                 {hasPrivilegedAccess ? (
                   <Text style={styles.statusBody}>You also have admin access.</Text>
                 ) : null}
-                {isPaidTournament && !myStatus.isPaid ? (
+                {isPaidTournament && !isPaidByStatus && !paymentSyncing ? (
                   <ActionButton
                     label={`Pay now ${formatMoney(seatMap.entryFeeCents)}`}
-                  variant="secondary"
+                    variant="secondary"
                     loading={createCheckout.isPending}
                     onPress={async () => {
-                      const result = await createCheckout.mutateAsync({
-                        tournamentId,
-                        returnPath: `/tournaments/${tournamentId}/register`,
-                      })
-                      if (result.url) {
-                        await Linking.openURL(result.url)
+                      paymentAttemptedRef.current = true
+                      setPaymentSyncing(true)
+                      setPaymentSuccessNotice(false)
+                      try {
+                        const result = await createCheckout.mutateAsync({
+                          tournamentId,
+                          returnPath: `/tournaments/${tournamentId}/register`,
+                        })
+                        if (result.url) {
+                          await Linking.openURL(result.url)
+                        }
+                      } catch (error: any) {
+                        const msg = String(error?.message ?? '').toLowerCase()
+                        if (msg.includes('entry fee already paid') || msg.includes('already paid')) {
+                          await syncPaymentStatus()
+                          toast.success('Payment already confirmed.')
+                          return
+                        }
+                        setPaymentSyncing(false)
+                        paymentAttemptedRef.current = false
+                        toast.error(error?.message || 'Failed to start payment')
                       }
                     }}
                   />
@@ -414,6 +520,18 @@ export default function TournamentRegistrationScreen() {
           </SurfaceCard>
         </Pressable>
         </Animated.View>
+        {showRegisteredHero && paymentSyncing ? (
+          <View style={styles.paymentSyncBanner}>
+            <ActivityIndicator size="small" color={colors.text} />
+            <Text style={styles.paymentSyncBannerText}>Confirming payment...</Text>
+          </View>
+        ) : null}
+        {showRegisteredHero && paymentSuccessNotice ? (
+          <View style={styles.paymentSuccessBanner}>
+            <Feather name="check-circle" size={16} color={colors.white} />
+            <Text style={styles.paymentSuccessBannerText}>Payment successful</Text>
+          </View>
+        ) : null}
       </View>
 
       <PickleRefreshScrollView
@@ -657,6 +775,44 @@ const createStyles = (colors: ThemePalette) =>
     lineHeight: 18,
     fontWeight: '700',
     flexShrink: 1,
+  },
+  paymentSuccessBanner: {
+    marginTop: spacing.sm,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(21,90,40,0.60)',
+    backgroundColor: colors.eventHeroBackground,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  paymentSuccessBannerText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  paymentSyncBanner: {
+    marginTop: spacing.sm,
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  paymentSyncBannerText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
   },
   statusTitle: {
     color: colors.text,

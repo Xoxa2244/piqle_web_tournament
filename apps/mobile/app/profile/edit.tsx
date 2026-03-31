@@ -1,9 +1,8 @@
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
-import { useFocusEffect } from '@react-navigation/native'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
@@ -12,18 +11,11 @@ import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { ActionButton, EmptyState, InputField, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { authApi } from '../../src/lib/authApi'
-import { buildWebUrl } from '../../src/lib/config'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { useToast } from '../../src/providers/ToastProvider'
-
-const formatRating = (value?: string | number | null) => {
-  if (value === null || value === undefined || value === '') return '—'
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed.toFixed(2) : '—'
-}
 
 const isInvalidImageUrlValidationError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error ?? '')
@@ -82,13 +74,9 @@ export default function ProfileEditScreen() {
   const [name, setName] = useState('')
   const [city, setCity] = useState('')
   const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
-  const [duprLink, setDuprLink] = useState('')
   const [avatarUri, setAvatarUri] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [removeAvatarOpen, setRemoveAvatarOpen] = useState(false)
-  const [stripeStatus, setStripeStatus] = useState<{ hasAccount: boolean; payoutsActive: boolean } | null>(null)
-  const [stripeLoading, setStripeLoading] = useState(false)
-  const [stripeConnecting, setStripeConnecting] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const contactCardY = useRef<number | null>(null)
   const cityFieldOffsetY = useRef<number | null>(null)
@@ -99,50 +87,8 @@ export default function ProfileEditScreen() {
     setName(profileQuery.data.name || '')
     setCity(profileQuery.data.city || '')
     setGender((profileQuery.data.gender as 'M' | 'F' | 'X' | null) || '')
-    setDuprLink(profileQuery.data.duprLink || '')
     setAvatarUri(profileQuery.data.image || null)
   }, [profileQuery.data])
-
-  const refreshStripeStatus = useCallback(async () => {
-    if (!token) return
-    setStripeLoading(true)
-    try {
-      const status = await authApi.getStripeConnectStatus(token)
-      setStripeStatus(status)
-    } catch {
-      setStripeStatus(null)
-    } finally {
-      setStripeLoading(false)
-    }
-  }, [token])
-
-  useEffect(() => {
-    if (!token) return
-    let mounted = true
-    setStripeLoading(true)
-    authApi
-      .getStripeConnectStatus(token)
-      .then((status) => {
-        if (!mounted) return
-        setStripeStatus(status)
-      })
-      .catch(() => {
-        if (!mounted) return
-        setStripeStatus(null)
-      })
-      .finally(() => {
-        if (mounted) setStripeLoading(false)
-      })
-    return () => {
-      mounted = false
-    }
-  }, [token])
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshStripeStatus()
-    }, [refreshStripeStatus])
-  )
 
   const anchorTarget = Array.isArray(params.anchor) ? params.anchor[0] : params.anchor
 
@@ -185,7 +131,6 @@ export default function ProfileEditScreen() {
       name: name.trim() || undefined,
       city: city.trim() || undefined,
       gender: gender || undefined,
-      duprLink: duprLink.trim(),
     })
     toast.success('Profile saved.')
     router.back()
@@ -254,25 +199,6 @@ export default function ProfileEditScreen() {
       }
     } finally {
       setAvatarUploading(false)
-    }
-  }
-
-  const handleConnectStripe = async () => {
-    if (!token || stripeConnecting) return
-    try {
-      setStripeConnecting(true)
-      const payload = await authApi.createStripeAccountLink(token, {
-        returnUrl: buildWebUrl('/stripe/mobile-return?status=return'),
-        refreshUrl: buildWebUrl('/stripe/mobile-return?status=refresh'),
-      })
-      if (!payload?.url) {
-        throw new Error('Failed to start Stripe onboarding.')
-      }
-      await Linking.openURL(payload.url)
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to start Stripe onboarding.')
-    } finally {
-      setStripeConnecting(false)
     }
   }
 
@@ -409,54 +335,6 @@ export default function ProfileEditScreen() {
           </SurfaceCard>
         </View>
 
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>DUPR</Text>
-          <View style={styles.fieldStack}>
-            <View>
-              <Text style={styles.fieldLabel}>DUPR rating</Text>
-              <InputField
-                value={formatRating(profile.duprRatingSingles || profile.duprRatingDoubles)}
-                onChangeText={() => {}}
-                editable={false}
-              />
-              <Text style={styles.helperText}>Synced from your linked DUPR account</Text>
-            </View>
-
-            <View>
-              <Text style={styles.fieldLabel}>DUPR link</Text>
-              <InputField
-                value={duprLink}
-                onChangeText={setDuprLink}
-                placeholder="https://..."
-                autoCapitalize="none"
-                keyboardType="url"
-                editable={false}
-              />
-              <Text style={styles.helperText}>Connect or manage DUPR from your profile on the web or in the app.</Text>
-            </View>
-          </View>
-        </SurfaceCard>
-
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>Payouts with Stripe</Text>
-          {stripeLoading ? (
-            <Text style={styles.photoSubhelper}>Checking payout status...</Text>
-          ) : stripeStatus?.payoutsActive ? (
-            <Text style={styles.stripeActiveText}>Payouts: Active</Text>
-          ) : (
-            <View style={styles.fieldStack}>
-              <Text style={styles.photoHelper}>
-                To accept paid registrations, connect your bank details via Stripe.
-              </Text>
-              <ActionButton
-                label={stripeStatus?.hasAccount ? 'Continue Stripe setup' : 'Connect Stripe'}
-                variant="secondary"
-                loading={stripeConnecting}
-                onPress={() => void handleConnectStripe()}
-              />
-            </View>
-          )}
-        </SurfaceCard>
       </ScrollView>
 
       <AppBottomSheet
@@ -587,15 +465,5 @@ const createStyles = (colors: ThemePalette) =>
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  helperText: {
-    marginTop: 8,
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  stripeActiveText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
   },
   })

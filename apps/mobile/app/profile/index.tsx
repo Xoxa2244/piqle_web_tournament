@@ -147,7 +147,7 @@ export default function ProfileTab() {
   const duprLoginUrl = useMemo(() => {
     if (!DUPR_CLIENT_KEY) return null
     const base64 = toBase64(DUPR_CLIENT_KEY)
-    return `https://dashboard.dupr.com/login-external-app/${base64}`
+    return `https://dashboard.dupr.com/login-external-app/${encodeURIComponent(base64)}`
   }, [DUPR_CLIENT_KEY])
 
   /** Регистрируем до контента — postMessage от DUPR не должен теряться. */
@@ -695,9 +695,6 @@ const styles = StyleSheet.create({
   activityMetaText: {
     color: palette.textMuted,
     fontSize: 13,
-  },
-  cardPressed: {
-    opacity: 0.92,
   },
   duprWebWrap: {
     height: 420,

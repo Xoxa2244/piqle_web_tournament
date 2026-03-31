@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Feather } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import { StatusBar } from 'expo-status-bar'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -55,6 +56,7 @@ const COMMENTS_COMPOSER_ESTIMATED_H = 84
 
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { useAppTheme } from '../../../src/providers/ThemeProvider'
+import { useToast } from '../../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 import { useTournamentAccessInfo } from '../../../src/hooks/useTournamentAccessInfo'
@@ -427,6 +429,7 @@ export default function TournamentDetailScreen() {
   const tournamentId = String(params.id ?? '')
   const paymentState = typeof params.payment === 'string' ? params.payment : null
   const { token, user } = useAuth()
+  const toast = useToast()
   const { height: windowHeight } = useWindowDimensions()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -436,7 +439,15 @@ export default function TournamentDetailScreen() {
 
   const [activeTab, setActiveTab] = useState<DetailTab>('info')
   const [leaveTournamentSheetOpen, setLeaveTournamentSheetOpen] = useState(false)
+  const [leaveTournamentPaidConfirmOpen, setLeaveTournamentPaidConfirmOpen] = useState(false)
+  const [openPaidConfirmAfterDismiss, setOpenPaidConfirmAfterDismiss] = useState(false)
   const [paymentErrorMessage, setPaymentErrorMessage] = useState<string | null>(null)
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState(false)
+  const [paymentSyncing, setPaymentSyncing] = useState(false)
+  const paymentToastShownRef = useRef(false)
+  const paymentAttemptedRef = useRef(false)
+  const paymentSyncInFlightRef = useRef(false)
+  const handledPaymentStateRef = useRef<string | null>(null)
   const [tournamentFeedbackOpen, setTournamentFeedbackOpen] = useState(false)
   const [tournamentFeedbackInfoOpen, setTournamentFeedbackInfoOpen] = useState(false)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
@@ -556,8 +567,51 @@ export default function TournamentDetailScreen() {
     },
   })
   const createCheckout = api.payment.createCheckoutSession.useMutation()
+  const myStatusRefetch = myStatusQuery.refetch
+  const tournamentRefetch = tournamentQuery.refetch
+  const fullTournamentRefetch = fullTournamentQuery.refetch
+  const accessRefetch = accessQuery.refetch
+
+  const syncPaymentStatus = useCallback(async () => {
+    if (paymentSyncInFlightRef.current) return false
+    paymentSyncInFlightRef.current = true
+    setPaymentSyncing(true)
+    setPaymentSuccessNotice(false)
+
+    try {
+      const maxAttempts = 10
+      for (let i = 0; i < maxAttempts; i += 1) {
+        const statusResult = await myStatusRefetch()
+        void Promise.all([tournamentRefetch(), fullTournamentRefetch()])
+        const paidNow = Boolean(
+          statusResult.data?.isPaid === true || statusResult.data?.paymentStatus === 'PAID'
+        )
+        if (paidNow) {
+          setPaymentSuccessNotice(true)
+          setPaymentSyncing(false)
+          paymentAttemptedRef.current = false
+          paymentSyncInFlightRef.current = false
+          return true
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      }
+      setPaymentSyncing(false)
+      paymentAttemptedRef.current = false
+      paymentSyncInFlightRef.current = false
+      return false
+    } catch {
+      setPaymentSyncing(false)
+      paymentAttemptedRef.current = false
+      paymentSyncInFlightRef.current = false
+      return false
+    }
+  }, [myStatusRefetch, tournamentRefetch, fullTournamentRefetch])
+
   const cancelRegistration = api.registration.cancelRegistration.useMutation({
     onSuccess: async () => {
+      setLeaveTournamentSheetOpen(false)
+      setLeaveTournamentPaidConfirmOpen(false)
+      setOpenPaidConfirmAfterDismiss(false)
       await Promise.all([
         utils.registration.getMyStatus.invalidate({ tournamentId }),
         utils.registration.getMyStatuses.invalidate(),
@@ -565,6 +619,13 @@ export default function TournamentDetailScreen() {
         tournamentQuery.refetch(),
         fullTournamentQuery.refetch(),
       ])
+      toast.success('You left the tournament.')
+    },
+    onError: (e: any) => {
+      setLeaveTournamentSheetOpen(false)
+      setLeaveTournamentPaidConfirmOpen(false)
+      setOpenPaidConfirmAfterDismiss(false)
+      toast.error(e?.message || 'Failed to leave tournament.')
     },
   })
 
@@ -680,36 +741,28 @@ export default function TournamentDetailScreen() {
     setExpandedDashboardIndyMatchupId(null)
   }, [dashboardLeagueDayId])
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!tournamentId || !isAuthenticated) return
+      void Promise.all([myStatusRefetch(), tournamentRefetch(), fullTournamentRefetch(), accessRefetch()])
+    }, [tournamentId, isAuthenticated, myStatusRefetch, tournamentRefetch, fullTournamentRefetch, accessRefetch])
+  )
+
   useEffect(() => {
     if (!tournamentId || !paymentState) return
+    const paymentMarker = `${tournamentId}:${paymentState}`
+    if (handledPaymentStateRef.current === paymentMarker) return
+    handledPaymentStateRef.current = paymentMarker
 
     router.replace(`/tournaments/${tournamentId}`)
     void utils.registration.getMyStatuses.invalidate()
-    void Promise.all([
-      myStatusQuery.refetch(),
-      tournamentQuery.refetch(),
-      fullTournamentQuery.refetch(),
-    ])
+    void Promise.all([myStatusRefetch(), tournamentRefetch(), fullTournamentRefetch()])
 
     if (paymentState === 'success') {
-      const timeoutId = setTimeout(() => {
-        void Promise.all([
-          myStatusQuery.refetch(),
-          tournamentQuery.refetch(),
-          fullTournamentQuery.refetch(),
-        ])
-      }, 1500)
-
-      return () => clearTimeout(timeoutId)
+      paymentAttemptedRef.current = true
+      void syncPaymentStatus()
     }
-  }, [
-    fullTournamentQuery,
-    myStatusQuery,
-    paymentState,
-    tournamentId,
-    tournamentQuery,
-    utils.registration.getMyStatuses,
-  ])
+  }, [paymentState, tournamentId, utils.registration.getMyStatuses, myStatusRefetch, tournamentRefetch, fullTournamentRefetch, syncPaymentStatus])
 
   const tournamentMissingStateHeader = (
     <View
@@ -873,7 +926,25 @@ export default function TournamentDetailScreen() {
   const isClosedAccessTournament = isPublicBoardEnabled === false
   const organizerLabel = tournament.user?.name || tournament.user?.email || 'Piqle'
   const canLeaveTournament = myStatus === 'active'
-  const canPayNow = myStatus === 'active' && entryFeeCents > 0 && myStatusQuery.data?.isPaid === false
+  const requiresPaidLeaveConfirm = entryFeeCents > 0
+  const isPaidByStatus = Boolean(
+    myStatusQuery.data?.isPaid === true || myStatusQuery.data?.paymentStatus === 'PAID'
+  )
+  useEffect(() => {
+    if (!paymentAttemptedRef.current) return
+    if (isPaidByStatus) return
+    void syncPaymentStatus()
+  }, [isPaidByStatus, syncPaymentStatus])
+
+  const canPayNow = !paymentSyncing && myStatus === 'active' && entryFeeCents > 0 && !isPaidByStatus
+
+  useEffect(() => {
+    if (!(myStatus === 'active' && isPaidByStatus)) return
+    if (!paymentSuccessNotice) return
+    if (paymentToastShownRef.current) return
+    paymentToastShownRef.current = true
+    toast.success('Payment successful.')
+  }, [myStatus, isPaidByStatus, paymentSuccessNotice, toast])
   const shouldShowRegisterCta =
     registrationOpen &&
     !pendingInvitation &&
@@ -998,6 +1069,9 @@ export default function TournamentDetailScreen() {
       : null
 
   const handlePayNow = async () => {
+    paymentAttemptedRef.current = true
+    setPaymentSyncing(true)
+    setPaymentSuccessNotice(false)
     try {
       const result = await createCheckout.mutateAsync({
         tournamentId,
@@ -1007,6 +1081,8 @@ export default function TournamentDetailScreen() {
         await Linking.openURL(result.url)
       }
     } catch (error: any) {
+      setPaymentSyncing(false)
+      paymentAttemptedRef.current = false
       setPaymentErrorMessage(error?.message || 'Unable to open checkout right now.')
     }
   }
@@ -1273,6 +1349,12 @@ export default function TournamentDetailScreen() {
                   </OptionalLinearGradient>
                 </Pressable>
               ) : null}
+              {paymentSyncing ? (
+                <View style={styles.paymentSyncChip}>
+                  <ActivityIndicator size="small" color={colors.white} />
+                  <Text style={styles.paymentSyncChipText}>Confirming payment...</Text>
+                </View>
+              ) : null}
 
               {!canLeaveTournament ? (
                 <Pressable
@@ -1332,6 +1414,12 @@ export default function TournamentDetailScreen() {
                 </Text>
               </View>
             </Pressable>
+          ) : null}
+          {paymentSuccessNotice && myStatus === 'active' ? (
+            <View style={styles.paymentSuccessNotice}>
+              <Feather name="check-circle" size={14} color={colors.white} />
+              <Text style={styles.paymentSuccessNoticeText}>Payment successful</Text>
+            </View>
           ) : null}
 
           <SegmentedContentFade activeKey={activeTab} segmentOrder={['info', 'divisions', 'dashboard']}>
@@ -2593,7 +2681,15 @@ export default function TournamentDetailScreen() {
 
       <AppBottomSheet
         open={leaveTournamentSheetOpen}
-        onClose={() => setLeaveTournamentSheetOpen(false)}
+        onClose={() => {
+          setLeaveTournamentSheetOpen(false)
+          setOpenPaidConfirmAfterDismiss(false)
+        }}
+        onDismissed={() => {
+          if (!openPaidConfirmAfterDismiss) return
+          setOpenPaidConfirmAfterDismiss(false)
+          setLeaveTournamentPaidConfirmOpen(true)
+        }}
         title="Leave tournament?"
         subtitle="Your registration will be cancelled and your slot will be released."
         footer={
@@ -2603,7 +2699,33 @@ export default function TournamentDetailScreen() {
             confirmLabel="Leave Tournament"
             onCancel={() => setLeaveTournamentSheetOpen(false)}
             onConfirm={() => {
+              if (requiresPaidLeaveConfirm) {
+                // Вторая шторка должна открываться только после полного закрытия первой,
+                // иначе iOS/Android могут «залипнуть» из-за одновременных Modal.
+                setOpenPaidConfirmAfterDismiss(true)
+                setLeaveTournamentSheetOpen(false)
+                return
+              }
               setLeaveTournamentSheetOpen(false)
+              cancelRegistration.mutate({ tournamentId })
+            }}
+            confirmLoading={cancelRegistration.isPending}
+          />
+        }
+      />
+      <AppBottomSheet
+        open={leaveTournamentPaidConfirmOpen}
+        onClose={() => setLeaveTournamentPaidConfirmOpen(false)}
+        title="Paid registration refund"
+        subtitle="This is a paid tournament. After cancellation, the refund is initiated automatically. Final posting time depends on your bank and Stripe processing policies and may take several business days."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Back"
+            confirmLabel="Confirm leave"
+            onCancel={() => setLeaveTournamentPaidConfirmOpen(false)}
+            onConfirm={() => {
+              setLeaveTournamentPaidConfirmOpen(false)
               cancelRegistration.mutate({ tournamentId })
             }}
             confirmLoading={cancelRegistration.isPending}
@@ -3684,6 +3806,41 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.text,
     fontSize: 13,
     lineHeight: 18,
+    fontWeight: '700',
+  },
+  paymentSuccessNotice: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    backgroundColor: colors.eventHeroBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  paymentSuccessNoticeText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  paymentSyncChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: colors.eventHeroBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  paymentSyncChipText: {
+    color: colors.white,
+    fontSize: 13,
     fontWeight: '700',
   },
   dashboardCard: {
