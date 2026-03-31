@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
@@ -71,8 +71,6 @@ export default function ProfileEditScreen() {
   const updateProfile = api.user.updateProfile.useMutation({
     onSuccess: async () => {
       await utils.user.getProfile.invalidate()
-      toast.success('Profile saved.')
-      router.back()
     },
     onError: (err: { message?: string }) => {
       toast.error(err?.message || 'Could not save profile.')
@@ -86,6 +84,9 @@ export default function ProfileEditScreen() {
   const [avatarUri, setAvatarUri] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [removeAvatarOpen, setRemoveAvatarOpen] = useState(false)
+  const [stripeStatus, setStripeStatus] = useState<{ hasAccount: boolean; payoutsActive: boolean } | null>(null)
+  const [stripeLoading, setStripeLoading] = useState(false)
+  const [stripeConnecting, setStripeConnecting] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const contactCardY = useRef<number | null>(null)
   const cityFieldOffsetY = useRef<number | null>(null)
@@ -99,6 +100,28 @@ export default function ProfileEditScreen() {
     setDuprLink(profileQuery.data.duprLink || '')
     setAvatarUri(profileQuery.data.image || null)
   }, [profileQuery.data])
+
+  useEffect(() => {
+    if (!token) return
+    let mounted = true
+    setStripeLoading(true)
+    authApi
+      .getStripeConnectStatus(token)
+      .then((status) => {
+        if (!mounted) return
+        setStripeStatus(status)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setStripeStatus(null)
+      })
+      .finally(() => {
+        if (mounted) setStripeLoading(false)
+      })
+    return () => {
+      mounted = false
+    }
+  }, [token])
 
   const anchorTarget = Array.isArray(params.anchor) ? params.anchor[0] : params.anchor
 
@@ -136,20 +159,22 @@ export default function ProfileEditScreen() {
           duprRatingDoubles: null,
         }
       : null)
-  const handleSave = () => {
-    updateProfile.mutate({
+  const handleSave = async () => {
+    await updateProfile.mutateAsync({
       name: name.trim() || undefined,
       city: city.trim() || undefined,
       gender: gender || undefined,
       duprLink: duprLink.trim(),
     })
+    toast.success('Profile saved.')
+    router.back()
   }
 
   const editTopBarRight =
     profileQuery.isLoading && !user ? (
       <HeaderSaveButton loading colors={colors} styles={styles} />
     ) : profile ? (
-      <HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />
+      <HeaderSaveButton onPress={() => void handleSave()} loading={updateProfile.isPending} colors={colors} styles={styles} />
     ) : undefined
 
   const handleAvatarPick = async () => {
@@ -211,6 +236,29 @@ export default function ProfileEditScreen() {
     }
   }
 
+  const handleConnectStripe = async () => {
+    if (!token || stripeConnecting) return
+    try {
+      setStripeConnecting(true)
+      const payload = await authApi.createStripeAccountLink(token)
+      if (!payload?.url) {
+        throw new Error('Failed to start Stripe onboarding.')
+      }
+      await Linking.openURL(payload.url)
+      setTimeout(() => {
+        if (!token) return
+        void authApi
+          .getStripeConnectStatus(token)
+          .then((status) => setStripeStatus(status))
+          .catch(() => undefined)
+      }, 1200)
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to start Stripe onboarding.')
+    } finally {
+      setStripeConnecting(false)
+    }
+  }
+
   if (!isAuthenticated) {
     return (
       <PageLayout scroll={false} topBarTitle="Edit Profile" contentStyle={styles.pageRoot}>
@@ -250,9 +298,12 @@ export default function ProfileEditScreen() {
     >
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={styles.scrollFill}>
         <Pressable
-          onPress={() => void handleAvatarPick()}
-          disabled={avatarUploading}
-          style={({ pressed }) => [styles.photoCardPressable, pressed && !avatarUploading && styles.photoCardPressablePressed]}
+          onPress={!hasUploadedAvatar ? () => void handleAvatarPick() : undefined}
+          disabled={avatarUploading || hasUploadedAvatar}
+          style={({ pressed }) => [
+            styles.photoCardPressable,
+            pressed && !avatarUploading && !hasUploadedAvatar && styles.photoCardPressablePressed,
+          ]}
         >
           <SurfaceCard style={styles.card}>
             <Text style={styles.cardTitle}>Profile Photo</Text>
@@ -287,8 +338,14 @@ export default function ProfileEditScreen() {
               </View>
 
               <View style={styles.photoTextBlock}>
-                <Text style={styles.photoHelper}>Upload a new profile photo</Text>
-                <Text style={styles.photoSubhelper}>Tap anywhere on this card to choose an image.</Text>
+                <Text style={styles.photoHelper}>
+                  {hasUploadedAvatar ? 'Use the trash icon to remove your profile photo.' : 'Upload a new profile photo'}
+                </Text>
+                <Text style={styles.photoSubhelper}>
+                  {hasUploadedAvatar
+                    ? 'To replace it, remove current photo first, then upload a new one.'
+                    : 'Tap anywhere on this card to choose an image.'}
+                </Text>
               </View>
             </View>
           </SurfaceCard>
@@ -361,6 +418,27 @@ export default function ProfileEditScreen() {
               <Text style={styles.helperText}>Connect or manage DUPR from your profile on the web or in the app.</Text>
             </View>
           </View>
+        </SurfaceCard>
+
+        <SurfaceCard style={styles.card}>
+          <Text style={styles.cardTitle}>Payouts with Stripe</Text>
+          {stripeLoading ? (
+            <Text style={styles.photoSubhelper}>Checking payout status...</Text>
+          ) : stripeStatus?.payoutsActive ? (
+            <Text style={styles.stripeActiveText}>Payouts: Active</Text>
+          ) : (
+            <View style={styles.fieldStack}>
+              <Text style={styles.photoHelper}>
+                To accept paid registrations, connect your bank details via Stripe.
+              </Text>
+              <ActionButton
+                label={stripeStatus?.hasAccount ? 'Continue Stripe setup' : 'Connect Stripe'}
+                variant="secondary"
+                loading={stripeConnecting}
+                onPress={() => void handleConnectStripe()}
+              />
+            </View>
+          )}
         </SurfaceCard>
       </ScrollView>
 
@@ -497,5 +575,10 @@ const createStyles = (colors: ThemePalette) =>
     marginTop: 8,
     color: colors.textMuted,
     fontSize: 12,
+  },
+  stripeActiveText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
   })

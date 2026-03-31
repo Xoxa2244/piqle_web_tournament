@@ -1,10 +1,12 @@
 import { Feather } from '@expo/vector-icons'
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useState } from 'react'
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { OptionalLinearGradient } from '../OptionalLinearGradient'
 import { RemoteUserAvatar } from '../RemoteUserAvatar'
 import { SurfaceCard } from '../ui'
 import { duprLogoWebUrl } from '../../lib/config'
+import { resolveRemoteImageUriForApp } from '../../lib/imageUri'
 import { radius, spacing } from '../../lib/theme'
 import { useAppTheme } from '../../providers/ThemeProvider'
 
@@ -42,8 +44,11 @@ export function ProfileHeroCard({
   locationLabel,
 }: ProfileHeroCardProps) {
   const { colors } = useAppTheme()
+  const [avatarPreviewOpen, setAvatarPreviewOpen] = useState(false)
   const locationLine = locationLabel || 'Location not set'
   const canOpenMaps = Boolean(locationLine && locationLine !== 'Location not set')
+  const avatarPreviewUri = resolveRemoteImageUriForApp(imageUri)
+  const canPreviewAvatar = Boolean(avatarPreviewUri)
 
   const handleOpenMaps = () => {
     if (!canOpenMaps) return
@@ -64,7 +69,13 @@ export function ProfileHeroCard({
             style={styles.profileHeroGradient}
           />
           <View style={styles.profileHeroRow}>
-            <RemoteUserAvatar uri={imageUri} size={72} fallback="initials" initialsLabel={initialsLabel} />
+            <Pressable
+              onPress={canPreviewAvatar ? () => setAvatarPreviewOpen(true) : undefined}
+              disabled={!canPreviewAvatar}
+              style={({ pressed }) => [pressed && canPreviewAvatar && styles.avatarPressed]}
+            >
+              <RemoteUserAvatar uri={imageUri} size={72} fallback="initials" initialsLabel={initialsLabel} />
+            </Pressable>
             <View style={styles.profileHeroTextCol}>
               <Text style={[styles.userName, { color: colors.text }]} numberOfLines={2}>
                 {displayName}
@@ -96,6 +107,19 @@ export function ProfileHeroCard({
           </View>
         </View>
       </SurfaceCard>
+
+      <Modal
+        visible={avatarPreviewOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarPreviewOpen(false)}
+      >
+        <Pressable style={styles.avatarModalBackdrop} onPress={() => setAvatarPreviewOpen(false)}>
+          {avatarPreviewUri ? (
+            <Image source={{ uri: avatarPreviewUri }} style={styles.avatarModalImage} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
     </View>
   )
 }
@@ -196,6 +220,9 @@ const styles = StyleSheet.create({
   },
   profileHeroCard: {
     overflow: 'hidden',
+  },
+  avatarPressed: {
+    opacity: 0.9,
   },
   profileHeroCardHeader: {
     position: 'relative',
@@ -321,5 +348,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  avatarModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xxl,
+  },
+  avatarModalImage: {
+    width: '100%',
+    height: '100%',
   },
 })

@@ -27,6 +27,15 @@ type AvatarUploadResponse = {
   url: string
 }
 
+type StripeConnectStatusResponse = {
+  hasAccount: boolean
+  payoutsActive: boolean
+}
+
+type StripeAccountLinkResponse = {
+  url: string
+}
+
 const looksLikeHtml = (value: string) => /^\s*</.test(value)
 
 const parseJson = async <T>(response: Response, path: string): Promise<T> => {
@@ -150,6 +159,25 @@ export const authApi = {
       throw new Error(payload?.message || payload?.error || 'Failed to upload avatar')
     }
     return payload
+  },
+
+  async getStripeConnectStatus(token: string) {
+    return requestJson<StripeConnectStatusResponse>('/api/mobile/stripe/connect-status', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  },
+
+  async createStripeAccountLink(token: string, input?: { returnUrl?: string; refreshUrl?: string }) {
+    return requestJson<StripeAccountLinkResponse>('/api/mobile/stripe/create-account-link', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(input ?? {}),
+    })
   },
 
   resetPassword(input: ResetPasswordInput) {
