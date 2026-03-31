@@ -53,28 +53,34 @@ export interface VariantPerformance {
   totalOpened: number
   totalClicked: number
   totalBounced: number
+  totalConverted: number  // Booked a session after receiving campaign
   openRate: number      // 0-1
   clickRate: number     // 0-1
   bounceRate: number    // 0-1
-  /** Composite score: open_rate * 0.4 + click_rate * 0.6 (clicks are more valuable) */
+  conversionRate: number // 0-1 — the metric that actually matters
+  /** Composite score: conversion * 0.5 + click * 0.3 + open * 0.2 */
   engagementScore: number
+  /** Whether this variant is the current champion */
+  isChampion?: boolean
 }
 
 export interface OptimizationResult {
   /** Which variant to use */
   recommendedVariantId: string
   /** Why this variant was selected */
-  reason: 'best_performer' | 'exploration' | 'cold_start' | 'default'
+  reason: 'best_performer' | 'challenger' | 'exploration' | 'cold_start' | 'default'
   /** Performance data for all variants */
   performances: VariantPerformance[]
+  /** Current champion variant (best performer) */
+  championId?: string
 }
 
 // ── Configuration ──
 
 /** Minimum sends per variant before we start optimizing */
 const MIN_SAMPLES = 10
-/** Exploration rate (try non-optimal variants this % of the time) */
-const EXPLORATION_RATE = 0.1
+/** Champion gets this % of traffic, challengers split the rest */
+const CHAMPION_RATE = 0.80
 /** How many days of history to consider */
 const LOOKBACK_DAYS = 30
 
@@ -149,9 +155,11 @@ export async function selectBestVariant(
         totalOpened: 0,
         totalClicked: 0,
         totalBounced: 0,
+        totalConverted: 0,
         openRate: 0,
         clickRate: 0,
         bounceRate: 0,
+        conversionRate: 0,
         engagementScore: 0,
       })
       continue
@@ -159,8 +167,8 @@ export async function selectBestVariant(
 
     const totalSent = counts._count.id
 
-    // Count opens, clicks, bounces
-    const [openCount, clickCount, bounceCount] = await Promise.all([
+    // Count opens, clicks, bounces, conversions
+    const [openCount, clickCount, bounceCount, convertedCount] = await Promise.all([
       prisma.aIRecommendationLog.count({
         where: { clubId, type, variantId, openedAt: { not: null }, createdAt: { gte: lookbackDate } },
       }),
@@ -170,14 +178,18 @@ export async function selectBestVariant(
       prisma.aIRecommendationLog.count({
         where: { clubId, type, variantId, bouncedAt: { not: null }, createdAt: { gte: lookbackDate } },
       }),
+      prisma.aIRecommendationLog.count({
+        where: { clubId, type, variantId, status: 'converted', createdAt: { gte: lookbackDate } },
+      }),
     ])
 
     const openRate = totalSent > 0 ? openCount / totalSent : 0
     const clickRate = totalSent > 0 ? clickCount / totalSent : 0
     const bounceRate = totalSent > 0 ? bounceCount / totalSent : 0
+    const conversionRate = totalSent > 0 ? convertedCount / totalSent : 0
 
-    // Composite engagement score (clicks are 1.5x more valuable than opens)
-    const engagementScore = openRate * 0.4 + clickRate * 0.6
+    // Composite score: conversion is king (50%), then clicks (30%), then opens (20%)
+    const engagementScore = conversionRate * 0.5 + clickRate * 0.3 + openRate * 0.2
 
     performances.push({
       variantId,
@@ -185,9 +197,11 @@ export async function selectBestVariant(
       totalOpened: openCount,
       totalClicked: clickCount,
       totalBounced: bounceCount,
+      totalConverted: convertedCount,
       openRate,
       clickRate,
       bounceRate,
+      conversionRate,
       engagementScore,
     })
   }
@@ -207,26 +221,40 @@ export async function selectBestVariant(
 
   // Sort by engagement score (best first)
   const sorted = [...performances].sort((a, b) => b.engagementScore - a.engagementScore)
-  const bestVariant = sorted[0]
+  const champion = sorted[0]
+  champion.isChampion = true
 
-  // Exploration: occasionally try a non-optimal variant
-  if (Math.random() < EXPLORATION_RATE) {
-    // Pick a random variant that isn't the best
-    const others = sorted.filter(p => p.variantId !== bestVariant.variantId && p.totalSent > 0)
-    if (others.length > 0) {
-      const randomOther = others[Math.floor(Math.random() * others.length)]
+  // Champion/Challenger distribution:
+  // 80% of the time → send champion (proven best)
+  // 20% of the time → send a challenger (to keep testing)
+  // If challenger eventually beats champion over MIN_SAMPLES, it gets promoted
+  const roll = Math.random()
+
+  if (roll >= CHAMPION_RATE) {
+    // Challenger slot — pick a non-champion variant
+    // Prefer variants with fewer sends (underexplored) or newer ones
+    const challengers = sorted
+      .filter(p => p.variantId !== champion.variantId)
+      .sort((a, b) => a.totalSent - b.totalSent) // prefer least-tested
+
+    if (challengers.length > 0) {
+      // Pick randomly from bottom half (least tested)
+      const pool = challengers.slice(0, Math.max(1, Math.ceil(challengers.length / 2)))
+      const picked = pool[Math.floor(Math.random() * pool.length)]
       return {
-        recommendedVariantId: randomOther.variantId,
-        reason: 'exploration',
+        recommendedVariantId: picked.variantId,
+        reason: 'challenger',
         performances,
+        championId: champion.variantId,
       }
     }
   }
 
   return {
-    recommendedVariantId: bestVariant.variantId,
+    recommendedVariantId: champion.variantId,
     reason: 'best_performer',
     performances,
+    championId: champion.variantId,
   }
 }
 
@@ -264,38 +292,45 @@ export async function getVariantAnalytics(
       openedAt: true,
       clickedAt: true,
       bouncedAt: true,
+      status: true,
       type: true,
     },
   })
 
   // Group by variant
-  const byVariant = new Map<string, { sent: number; opened: number; clicked: number; bounced: number }>()
+  const byVariant = new Map<string, { sent: number; opened: number; clicked: number; bounced: number; converted: number }>()
 
   for (const log of logs) {
     const vid = log.variantId || 'unknown'
     if (!byVariant.has(vid)) {
-      byVariant.set(vid, { sent: 0, opened: 0, clicked: 0, bounced: 0 })
+      byVariant.set(vid, { sent: 0, opened: 0, clicked: 0, bounced: 0, converted: 0 })
     }
     const v = byVariant.get(vid)!
     v.sent++
     if (log.openedAt) v.opened++
     if (log.clickedAt) v.clicked++
     if (log.bouncedAt) v.bounced++
+    if ((log as any).status === 'converted') v.converted++
   }
 
-  const variants: VariantPerformance[] = Array.from(byVariant.entries()).map(([variantId, data]) => ({
-    variantId,
-    totalSent: data.sent,
-    totalOpened: data.opened,
-    totalClicked: data.clicked,
-    totalBounced: data.bounced,
-    openRate: data.sent > 0 ? data.opened / data.sent : 0,
-    clickRate: data.sent > 0 ? data.clicked / data.sent : 0,
-    bounceRate: data.sent > 0 ? data.bounced / data.sent : 0,
-    engagementScore: data.sent > 0
-      ? (data.opened / data.sent) * 0.4 + (data.clicked / data.sent) * 0.6
-      : 0,
-  }))
+  const variants: VariantPerformance[] = Array.from(byVariant.entries()).map(([variantId, data]) => {
+    const openRate = data.sent > 0 ? data.opened / data.sent : 0
+    const clickRate = data.sent > 0 ? data.clicked / data.sent : 0
+    const conversionRate = data.sent > 0 ? data.converted / data.sent : 0
+    return {
+      variantId,
+      totalSent: data.sent,
+      totalOpened: data.opened,
+      totalClicked: data.clicked,
+      totalBounced: data.bounced,
+      totalConverted: data.converted,
+      openRate,
+      clickRate,
+      bounceRate: data.sent > 0 ? data.bounced / data.sent : 0,
+      conversionRate,
+      engagementScore: conversionRate * 0.5 + clickRate * 0.3 + openRate * 0.2,
+    }
+  })
 
   const totalMessages = logs.length
   const totalOpened = logs.filter((l: any) => l.openedAt).length

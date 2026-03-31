@@ -72,7 +72,8 @@ function buildPrompt(params: {
 
   return `Generate a member engagement profile. Respond with ONLY valid JSON, no markdown:
 {
-  "reactivationMessage": "<2-3 sentence personalized email body>",
+  "reactivationMessage": "<2-3 sentence personalized email body — warm, personal tone>",
+  "alternativeMessage": "<2-3 sentence personalized email body — different approach/tone than reactivationMessage>",
   "slotFillerProfile": "<1-2 sentence summary of ideal session parameters for club staff>"
 }
 
@@ -93,6 +94,7 @@ Member data:
 
 Rules:
 - reactivationMessage: address by first name, reference their favorite session type or last activity, warm not pushy, 2-3 sentences max
+- alternativeMessage: MUST use a DIFFERENT tone and approach than reactivationMessage (e.g. if reactivation is warm/friendly, alternative should be direct/value-focused; if reactivation references sessions, alternative should reference community/social)
 - slotFillerProfile: describe ideal session (day, time, format, skill level) for club staff to use when inviting, 1-2 sentences
 - If totalBookings = 0: write a welcome/onboarding message instead
 - NEVER mention specific days of the week (no "Friday", "Saturday", "this weekend", "tomorrow" etc.) — you don't know the schedule
@@ -102,19 +104,22 @@ Rules:
 }
 
 // Parse AI JSON response safely
-function parseAiResponse(text: string): { reactivationMessage: string | null; slotFillerProfile: string | null } {
+function parseAiResponse(text: string): { reactivationMessage: string | null; alternativeMessage: string | null; slotFillerProfile: string | null } {
   try {
     const parsed = JSON.parse(text.trim())
     return {
       reactivationMessage: typeof parsed.reactivationMessage === 'string' ? parsed.reactivationMessage : null,
+      alternativeMessage: typeof parsed.alternativeMessage === 'string' ? parsed.alternativeMessage : null,
       slotFillerProfile: typeof parsed.slotFillerProfile === 'string' ? parsed.slotFillerProfile : null,
     }
   } catch {
     // Fallback: regex extraction
     const rmMatch = text.match(/"reactivationMessage"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+    const amMatch = text.match(/"alternativeMessage"\s*:\s*"((?:[^"\\]|\\.)*)"/)
     const sfMatch = text.match(/"slotFillerProfile"\s*:\s*"((?:[^"\\]|\\.)*)"/)
     return {
       reactivationMessage: rmMatch ? rmMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : null,
+      alternativeMessage: amMatch ? amMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : null,
       slotFillerProfile: sfMatch ? sfMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"') : null,
     }
   }
@@ -281,7 +286,7 @@ export async function generateSingleMemberProfile(
     })
     const generationMs = Date.now() - startMs
 
-    const { reactivationMessage, slotFillerProfile } = parseAiResponse(aiResult.text)
+    const { reactivationMessage, alternativeMessage, slotFillerProfile } = parseAiResponse(aiResult.text)
 
     // 9. Upsert profile (use raw SQL ON CONFLICT to avoid Prisma unique-index mismatch)
     const profileData = {
@@ -289,6 +294,7 @@ export async function generateSingleMemberProfile(
       riskScore,
       preferredCategories: inferred.preferredCategories,
       reactivationMessage,
+      alternativeMessage,
       slotFillerProfile,
       generatedAt: new Date(),
       modelUsed: aiResult.model,
