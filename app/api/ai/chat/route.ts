@@ -97,6 +97,26 @@ export async function POST(req: Request) {
       return new Response('Forbidden: not a member of this club', { status: 403 });
     }
 
+    // 3.5 Check AI Advisor daily usage limit
+    step = 'usage_limit';
+    try {
+      const { checkUsageLimit } = await import('@/lib/subscription');
+      const advisorCheck = await checkUsageLimit(clubId, 'ai_advisor');
+      if (!advisorCheck.allowed) {
+        return new Response(JSON.stringify({
+          type: 'USAGE_LIMIT_REACHED',
+          resource: 'ai_advisor',
+          used: advisorCheck.used,
+          limit: advisorCheck.limit,
+          plan: advisorCheck.plan,
+          message: `AI Advisor daily limit reached (${advisorCheck.used}/${advisorCheck.limit}). Upgrade your plan for more conversations.`,
+        }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+      }
+    } catch (e) {
+      // Non-critical — allow chat if usage check fails
+      console.warn('[AI Chat] Usage limit check failed:', (e as Error).message?.slice(0, 80));
+    }
+
     // 4. Get or create conversation + detect language per message
     step = 'conversation';
     let convId = conversationId;

@@ -475,6 +475,23 @@ export async function runHealthCampaign(
     }
   }
 
+  // Check email/campaign usage limits before proceeding
+  try {
+    const { checkUsageLimit } = await import('@/lib/subscription')
+    const emailCheck = await checkUsageLimit(clubId, 'emails', 10) // estimate ~10 emails per cron run
+    if (!emailCheck.allowed) {
+      console.warn(`[Campaign] Club ${clubId} email limit reached (${emailCheck.used}/${emailCheck.limit}), skipping auto campaign`)
+      return {
+        clubId, clubName: club.name,
+        membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
+        transitions: [],
+        sequenceFollowUps: 0, sequenceExits: 0, sequenceWaits: 0,
+      }
+    }
+  } catch {
+    // Non-critical — proceed if limit check fails (subscription table may not exist)
+  }
+
   // Load members + bookings (same query as getMemberHealth tRPC)
   const followers = await prisma.clubFollower.findMany({
     where: { clubId },

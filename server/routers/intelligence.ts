@@ -427,6 +427,28 @@ export const intelligenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       await checkFeatureAccess(input.clubId, 'reactivation')
+
+      // Usage limit checks
+      const { checkUsageLimit } = await import('@/lib/subscription')
+      const campaignCheck = await checkUsageLimit(input.clubId, 'campaigns')
+      if (!campaignCheck.allowed) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: JSON.stringify({ type: 'USAGE_LIMIT_REACHED', resource: 'campaigns', used: campaignCheck.used, limit: campaignCheck.limit, plan: campaignCheck.plan, message: `Campaign limit reached (${campaignCheck.used}/${campaignCheck.limit} this month). Upgrade for more.` }) })
+      }
+      const emailCount = input.candidates.filter(c => c.channel === 'email' || c.channel === 'both').length
+      if (emailCount > 0) {
+        const emailCheck = await checkUsageLimit(input.clubId, 'emails', emailCount)
+        if (!emailCheck.allowed) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: JSON.stringify({ type: 'USAGE_LIMIT_REACHED', resource: 'emails', used: emailCheck.used, limit: emailCheck.limit, remaining: emailCheck.remaining, plan: emailCheck.plan, message: `Email limit reached (${emailCheck.used}/${emailCheck.limit}). ${emailCheck.remaining} remaining.` }) })
+        }
+      }
+      const smsCount = input.candidates.filter(c => c.channel === 'sms' || c.channel === 'both').length
+      if (smsCount > 0) {
+        const smsCheck = await checkUsageLimit(input.clubId, 'sms', smsCount)
+        if (!smsCheck.allowed) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: JSON.stringify({ type: 'USAGE_LIMIT_REACHED', resource: 'sms', used: smsCheck.used, limit: smsCheck.limit, remaining: smsCheck.remaining, plan: smsCheck.plan, message: `SMS limit reached (${smsCheck.used}/${smsCheck.limit}). Upgrade for more.` }) })
+        }
+      }
+
       return sendReactivationMessages(ctx.prisma, input)
     }),
 
