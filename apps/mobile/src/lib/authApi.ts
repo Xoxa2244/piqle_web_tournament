@@ -17,6 +17,16 @@ type GoogleSignInConfigResponse = {
   iosClientId: string | null
 }
 
+type AvatarUploadInput = {
+  uri: string
+  fileName?: string | null
+  mimeType?: string | null
+}
+
+type AvatarUploadResponse = {
+  url: string
+}
+
 const looksLikeHtml = (value: string) => /^\s*</.test(value)
 
 const parseJson = async <T>(response: Response, path: string): Promise<T> => {
@@ -29,10 +39,13 @@ const parseJson = async <T>(response: Response, path: string): Promise<T> => {
     return JSON.parse(text) as T
   } catch {
     const isGoogleMobileAuthPath = path.includes('/api/mobile/auth/google/native')
+    const isMobileAvatarUploadPath = path.includes('/api/mobile/upload-avatar')
     if (looksLikeHtml(text)) {
       throw new Error(
         isGoogleMobileAuthPath
           ? 'Google sign-in endpoint is not available on the current backend. The mobile app is likely pointing to an outdated deployment.'
+          : isMobileAvatarUploadPath
+          ? 'Avatar upload endpoint is not available on the current backend. Update/restart backend or point mobile app to the correct API deployment.'
           : 'The server returned HTML instead of JSON. The mobile app may be pointing to the wrong backend.'
       )
     }
@@ -114,6 +127,29 @@ export const authApi = {
         Authorization: `Bearer ${token}`,
       },
     })
+  },
+
+  async uploadAvatar(token: string, input: AvatarUploadInput) {
+    const formData = new FormData()
+    formData.append('file', {
+      uri: input.uri,
+      type: input.mimeType || 'image/jpeg',
+      name: input.fileName || `avatar-${Date.now()}.jpg`,
+    } as any)
+
+    const path = '/api/mobile/upload-avatar'
+    const response = await fetch(buildApiUrl(path), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    const payload = await parseJson<AvatarUploadResponse & { message?: string; error?: string }>(response, path)
+    if (!response.ok) {
+      throw new Error(payload?.message || payload?.error || 'Failed to upload avatar')
+    }
+    return payload
   },
 
   resetPassword(input: ResetPasswordInput) {

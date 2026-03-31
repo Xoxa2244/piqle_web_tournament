@@ -2,11 +2,14 @@ import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
+import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { ActionButton, EmptyState, InputField, LoadingBlock, SurfaceCard } from '../../src/components/ui'
+import { authApi } from '../../src/lib/authApi'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -74,6 +77,8 @@ export default function ProfileEditScreen() {
   const [city, setCity] = useState('')
   const [gender, setGender] = useState<'M' | 'F' | 'X' | ''>('')
   const [duprLink, setDuprLink] = useState('')
+  const [avatarUri, setAvatarUri] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const contactCardY = useRef<number | null>(null)
   const cityFieldOffsetY = useRef<number | null>(null)
@@ -85,6 +90,7 @@ export default function ProfileEditScreen() {
     setCity(profileQuery.data.city || '')
     setGender((profileQuery.data.gender as 'M' | 'F' | 'X' | null) || '')
     setDuprLink(profileQuery.data.duprLink || '')
+    setAvatarUri(profileQuery.data.image || null)
   }, [profileQuery.data])
 
   const anchorTarget = Array.isArray(params.anchor) ? params.anchor[0] : params.anchor
@@ -139,6 +145,43 @@ export default function ProfileEditScreen() {
       <HeaderSaveButton onPress={handleSave} loading={updateProfile.isPending} colors={colors} styles={styles} />
     ) : undefined
 
+  const handleAvatarPick = async () => {
+    if (!token || avatarUploading) return
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) {
+      toast.error('Please allow photo access to update your avatar.')
+      return
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.9,
+      aspect: [1, 1],
+    })
+    if (picked.canceled || !picked.assets?.length) return
+    const asset = picked.assets[0]
+    if (!asset.uri) return
+
+    try {
+      setAvatarUploading(true)
+      setAvatarUri(asset.uri)
+      const upload = await authApi.uploadAvatar(token, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      })
+      await updateProfile.mutateAsync({ image: upload.url })
+      setAvatarUri(upload.url)
+      await utils.user.getProfile.invalidate()
+      toast.success('Avatar updated.')
+    } catch (err: any) {
+      setAvatarUri(profile?.image || null)
+      toast.error(err?.message || 'Could not update avatar.')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   if (!isAuthenticated) {
     return (
       <PageLayout scroll={false} topBarTitle="Edit Profile" contentStyle={styles.pageRoot}>
@@ -177,37 +220,38 @@ export default function ProfileEditScreen() {
       contentStyle={styles.pageRoot}
     >
       <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={styles.scrollFill}>
-        <SurfaceCard style={styles.card}>
-          <Text style={styles.cardTitle}>Profile Photo</Text>
-          <View style={styles.photoRow}>
-            <View style={styles.photoAvatar}>
-              <OptionalLinearGradient
-                colors={[colors.purple, colors.primary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.photoAvatarGradient}
-              >
-                <Text style={styles.photoAvatarText}>
-                  {String(profile.name || profile.email || 'P')
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((part) => part[0]?.toUpperCase())
-                    .join('') || 'P'}
-                </Text>
-              </OptionalLinearGradient>
+        <Pressable
+          onPress={() => void handleAvatarPick()}
+          disabled={avatarUploading}
+          style={({ pressed }) => [styles.photoCardPressable, pressed && !avatarUploading && styles.photoCardPressablePressed]}
+        >
+          <SurfaceCard style={styles.card}>
+            <Text style={styles.cardTitle}>Profile Photo</Text>
+            <View style={styles.photoRow}>
+              <View style={styles.photoAvatar}>
+                <RemoteUserAvatar
+                  uri={avatarUri}
+                  size={96}
+                  fallback="initials"
+                  initialsLabel={profile.name || profile.email || 'Player'}
+                />
 
-              <View style={styles.photoCameraButton}>
-                <Feather name="camera" size={16} color={colors.white} />
+                <View style={styles.photoCameraButton}>
+                  {avatarUploading ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Feather name="camera" size={16} color={colors.white} />
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.photoTextBlock}>
+                <Text style={styles.photoHelper}>Upload a new profile photo</Text>
+                <Text style={styles.photoSubhelper}>Tap anywhere on this card to choose an image.</Text>
               </View>
             </View>
-
-            <View style={styles.photoTextBlock}>
-              <Text style={styles.photoHelper}>Avatar uploads will be shared with the web profile editor soon.</Text>
-              <Text style={styles.photoSubhelper}>Recommended: square image, at least 400x400 px</Text>
-            </View>
-          </View>
-        </SurfaceCard>
+          </SurfaceCard>
+        </Pressable>
 
         <View
           onLayout={(event) => {
@@ -286,6 +330,10 @@ const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
   pageRoot: {
     flex: 1,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 0,
   },
   scrollFill: {
     flex: 1,
@@ -322,6 +370,12 @@ const createStyles = (colors: ThemePalette) =>
   card: {
     gap: spacing.md,
   },
+  photoCardPressable: {
+    borderRadius: radius.lg,
+  },
+  photoCardPressablePressed: {
+    opacity: 0.94,
+  },
   cardTitle: {
     color: colors.text,
     fontSize: 18,
@@ -337,17 +391,6 @@ const createStyles = (colors: ThemePalette) =>
     width: 96,
     height: 96,
   },
-  photoAvatarGradient: {
-    flex: 1,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoAvatarText: {
-    color: colors.white,
-    fontSize: 28,
-    fontWeight: '700',
-  },
   photoCameraButton: {
     position: 'absolute',
     right: 0,
@@ -360,6 +403,9 @@ const createStyles = (colors: ThemePalette) =>
     backgroundColor: colors.primary,
     borderWidth: 4,
     borderColor: colors.surface,
+  },
+  photoCameraButtonPressed: {
+    opacity: 0.88,
   },
   photoTextBlock: {
     flex: 1,
