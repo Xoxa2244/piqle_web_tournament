@@ -222,7 +222,7 @@ export default function ProfileSettingsScreen() {
 
   if (!isAuthenticated) {
     return (
-      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+      <PageLayout topBarTitle="Settings" topBarRightSlot={null} contentStyle={styles.bodyPad}>
         <AuthRequiredCard title="Sign in required" body="Sign in to manage your account settings." />
       </PageLayout>
     )
@@ -230,7 +230,7 @@ export default function ProfileSettingsScreen() {
 
   if (profileQuery.isLoading && !user) {
     return (
-      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+      <PageLayout topBarTitle="Settings" topBarRightSlot={null} contentStyle={styles.bodyPad}>
         <SurfaceCard style={themedPlaceholderCardStyle}>
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
@@ -277,7 +277,7 @@ export default function ProfileSettingsScreen() {
 
   if (!profile) {
     return (
-      <PageLayout topBarTitle="Settings" contentStyle={styles.bodyPad}>
+      <PageLayout topBarTitle="Settings" topBarRightSlot={null} contentStyle={styles.bodyPad}>
         <SurfaceCard style={themedPlaceholderCardStyle}>
           <Text style={[styles.placeholderTitle, { color: colors.text }]}>Settings unavailable</Text>
           <Text style={[styles.placeholderBody, { color: colors.textMuted }]}>
@@ -289,7 +289,7 @@ export default function ProfileSettingsScreen() {
   }
 
   return (
-    <PageLayout topBarTitle="Settings" contentStyle={styles.content}>
+    <PageLayout topBarTitle="Settings" topBarRightSlot={null} contentStyle={styles.content}>
         {notice ? (
           <SurfaceCard tone="hero" style={themedNoticeCardStyle}>
             <Text style={[styles.noticeText, { color: colors.text }]}>{notice}</Text>
