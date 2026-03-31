@@ -8,6 +8,7 @@ import {
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
 import type { SessionCalendarItem } from "@/types/intelligence"
+import { PlayerProfileIQ } from "./PlayerProfileIQ"
 
 // ── Skill classification (shared with ScheduleIQ) ──
 
@@ -56,6 +57,7 @@ interface SessionDetailIQProps {
 export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProps) {
   const { isDark } = useTheme()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
   const sk = classifySkill(session.format, session.skillLevel)
   const colors = SKILL_COLORS[sk.tier]
@@ -109,6 +111,10 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
     backdropFilter: 'blur(12px)',
   }
 
+  if (selectedPlayerId) {
+    return <PlayerProfileIQ userId={selectedPlayerId} clubId={clubId} onBack={() => setSelectedPlayerId(null)} />
+  }
+
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
       {/* Section 1: Header */}
@@ -156,7 +162,7 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
           {players.length > 0 ? (
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {players.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 py-1.5">
+                <div key={p.id} className="flex items-center gap-3 py-1.5 rounded-lg px-2 cursor-pointer transition-colors hover:bg-[rgba(139,92,246,0.08)]" onClick={() => p.id && setSelectedPlayerId(p.id)}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
                     {initials(p.name)}
                   </div>
@@ -177,7 +183,9 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
           </div>
           <p className="text-xs mb-4" style={{ color: 'var(--t4)' }}>Matched by format, skill level, time, and play history</p>
 
-          {recsLoading ? (
+          {spotsLeft === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--t4)' }}>Session is full — no suggestions needed</p>
+          ) : recsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
                 <div key={i} className="animate-pulse flex items-center gap-3">
