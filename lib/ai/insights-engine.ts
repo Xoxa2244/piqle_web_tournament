@@ -20,7 +20,6 @@ export interface Insight {
 
 // ── Constants ──
 
-const OPERATING_HOURS = 17 // 6 AM – 11 PM
 const DAYS_LOOKBACK = 30
 
 // ── Helper: generate deterministic insight ID ──
@@ -40,37 +39,37 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
     totalSlots: bigint
     occupancyPct: number
   }>[] = await prisma.$queryRawUnsafe(`
-    WITH court_usage AS (
+    WITH scheduled_slots AS (
       SELECT
         cc.id AS "courtId",
         cc.name AS "courtName",
-        COUNT(DISTINCT (ps.date::date || '-' || EXTRACT(HOUR FROM ps.date)::text)) AS "bookedSlots"
+        COUNT(DISTINCT (ps.date::date || '-' || ps."startTime"::text)) AS "totalSlots"
       FROM play_sessions ps
       JOIN club_courts cc ON cc.id = ps."courtId"
+      WHERE ps."clubId" = $1::uuid
+        AND ps.date >= NOW() - INTERVAL '30 days'
+      GROUP BY cc.id, cc.name
+    ),
+    booked_slots AS (
+      SELECT
+        ps."courtId",
+        COUNT(DISTINCT (ps.date::date || '-' || ps."startTime"::text)) AS "bookedSlots"
+      FROM play_sessions ps
       JOIN play_session_bookings b ON b."sessionId" = ps.id
       WHERE ps."clubId" = $1::uuid
         AND ps.date >= NOW() - INTERVAL '30 days'
         AND b.status::text = 'CONFIRMED'
-      GROUP BY cc.id, cc.name
-    ),
-    total AS (
-      SELECT
-        COUNT(DISTINCT id) AS courts,
-        GREATEST(
-          (SELECT COUNT(DISTINCT ps.date::date) FROM play_sessions ps WHERE ps."clubId" = $1::uuid AND ps.date >= NOW() - INTERVAL '30 days'),
-          1
-        ) AS days
-      FROM club_courts
-      WHERE "clubId" = $1::uuid AND "isActive" = true
+      GROUP BY ps."courtId"
     )
     SELECT
-      cu."courtId",
-      cu."courtName",
-      cu."bookedSlots",
-      (t.days * ${OPERATING_HOURS}) AS "totalSlots",
-      ROUND(cu."bookedSlots"::numeric / NULLIF(t.days * ${OPERATING_HOURS}, 0) * 100, 1) AS "occupancyPct"
-    FROM court_usage cu
-    CROSS JOIN total t
+      ss."courtId",
+      ss."courtName",
+      COALESCE(bs."bookedSlots", 0) AS "bookedSlots",
+      ss."totalSlots",
+      ROUND(COALESCE(bs."bookedSlots", 0)::numeric / ss."totalSlots" * 100, 1) AS "occupancyPct"
+    FROM scheduled_slots ss
+    LEFT JOIN booked_slots bs ON bs."courtId" = ss."courtId"
+    WHERE ss."totalSlots" > 0
     ORDER BY "occupancyPct" ASC
   `, clubId)
 

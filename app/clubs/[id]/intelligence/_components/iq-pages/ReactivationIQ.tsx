@@ -15,22 +15,6 @@ import {
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 
-/* --- Mock Data --- */
-const churnTrend = [
-  { month: "Oct", atRisk: 8, churned: 3, reactivated: 2 },
-  { month: "Nov", atRisk: 10, churned: 4, reactivated: 3 },
-  { month: "Dec", atRisk: 14, churned: 6, reactivated: 4 },
-  { month: "Jan", atRisk: 11, churned: 3, reactivated: 5 },
-  { month: "Feb", atRisk: 13, churned: 5, reactivated: 6 },
-  { month: "Mar", atRisk: 12, churned: 2, reactivated: 5 },
-];
-
-const riskSegments = [
-  { name: "High Risk", value: 12, color: "#EF4444" },
-  { name: "Medium Risk", value: 18, color: "#F59E0B" },
-  { name: "Low Risk", value: 25, color: "#10B981" },
-  { name: "Healthy", value: 72, color: "#8B5CF6" },
-];
 
 type RiskLevel = "high" | "medium" | "low";
 
@@ -66,70 +50,6 @@ interface AtRiskMember {
   hasAiProfile?: boolean;
 }
 
-const atRiskMembers: AtRiskMember[] = [
-  { id: "r1", name: "Maria Santos", avatar: "MS", rating: 3.2, risk: "high", healthScore: 18, daysSincePlay: 42, totalSessions: 86, memberSince: "Jan 2024", revenue: 1240, churnReason: "Schedule conflict — moved to evening availability but no evening sessions booked", suggestedAction: "Offer a free evening open play session + personal invite from coach", email: "maria.s@email.com", phone: "+1 (555) 111-2233", contacted: false, responded: false, healthFactors: [
-    { name: "Frequency", score: 15, weight: 35, label: "Significant drop — 80% decline" },
-    { name: "Recency", score: 0, weight: 25, label: "Inactive for 42+ days" },
-    { name: "Consistency", score: 40, weight: 20, label: "Irregular visit pattern" },
-    { name: "Pattern Break", score: 15, weight: 15, label: "Missed most expected sessions" },
-    { name: "No-Show", score: 60, weight: 5, label: "No-show rate 12% — slightly elevated" },
-  ]},
-  { id: "r2", name: "Tom Chen", avatar: "TC", rating: 2.8, risk: "high", healthScore: 22, daysSincePlay: 35, totalSessions: 54, memberSince: "Mar 2024", revenue: 820, churnReason: "Cancelled 3 consecutive sessions — frustration with skill level mismatch", suggestedAction: "Invite to skill-appropriate clinic + pair with similar-rated players", email: "tom.c@email.com", phone: "+1 (555) 222-3344", contacted: true, responded: false, healthFactors: [
-    { name: "Frequency", score: 15, weight: 35, label: "Significant drop — stopped booking" },
-    { name: "Recency", score: 0, weight: 25, label: "Inactive for 35+ days" },
-    { name: "Consistency", score: 20, weight: 20, label: "Highly irregular — no clear pattern" },
-    { name: "Pattern Break", score: 45, weight: 15, label: "Missed usual Tuesday/Thursday" },
-    { name: "No-Show", score: 100, weight: 5, label: "Excellent reliability — rarely misses" },
-  ]},
-  { id: "r3", name: "David Park", avatar: "DP", rating: 3.5, risk: "high", healthScore: 25, daysSincePlay: 28, totalSessions: 112, memberSince: "Sep 2023", revenue: 2180, churnReason: "Membership renewal in 14 days — activity dropped 80% this month", suggestedAction: "Personal call from manager + loyalty discount offer for renewal", email: "david.p@email.com", phone: "+1 (555) 333-4455", contacted: false, responded: false, healthFactors: [
-    { name: "Frequency", score: 15, weight: 35, label: "Significant drop — 80% decline this month" },
-    { name: "Recency", score: 25, weight: 25, label: "28 days inactive — approaching churn" },
-    { name: "Consistency", score: 70, weight: 20, label: "Moderately consistent visits" },
-    { name: "Pattern Break", score: 15, weight: 15, label: "Missed most expected sessions" },
-    { name: "No-Show", score: 60, weight: 5, label: "No-show rate 8% — slightly elevated" },
-  ]},
-  { id: "r4", name: "Jennifer Liu", avatar: "JL", rating: 3.0, risk: "medium", healthScore: 38, daysSincePlay: 21, totalSessions: 45, memberSince: "Jun 2024", revenue: 680, churnReason: "Frequency dropped from 3x/week to 1x/week", suggestedAction: "Send personalized 'We miss you' email with upcoming events matching interests", email: "jennifer.l@email.com", phone: "+1 (555) 444-5566", contacted: true, responded: true, healthFactors: [
-    { name: "Frequency", score: 40, weight: 35, label: "Moderate decline — 3x to 1x/week" },
-    { name: "Recency", score: 25, weight: 25, label: "21 days inactive — approaching churn" },
-    { name: "Consistency", score: 70, weight: 20, label: "Moderately consistent visits" },
-    { name: "Pattern Break", score: 45, weight: 15, label: "Missed usual Monday/Wednesday" },
-    { name: "No-Show", score: 100, weight: 5, label: "Excellent reliability" },
-  ]},
-  { id: "r5", name: "Alex Rivera", avatar: "AR", rating: 2.5, risk: "medium", healthScore: 42, daysSincePlay: 18, totalSessions: 28, memberSince: "Aug 2024", revenue: 420, churnReason: "Beginner feeling intimidated by advanced players in open play", suggestedAction: "Invite to beginner-only sessions + assign buddy from similar skill level", email: "alex.r@email.com", phone: "+1 (555) 555-6677", contacted: false, responded: false, healthFactors: [
-    { name: "Frequency", score: 40, weight: 35, label: "Moderate decline — booking less" },
-    { name: "Recency", score: 50, weight: 25, label: "18 days since last session" },
-    { name: "Consistency", score: 40, weight: 20, label: "Irregular visit pattern" },
-    { name: "Pattern Break", score: 70, weight: 15, label: "Cannot detect pattern breaks" },
-    { name: "No-Show", score: 60, weight: 5, label: "No-show rate 10% — slightly elevated" },
-  ]},
-  { id: "r6", name: "Priya Sharma", avatar: "PS", rating: 3.8, risk: "medium", healthScore: 45, daysSincePlay: 16, totalSessions: 92, memberSince: "Nov 2023", revenue: 1560, churnReason: "Looking for more competitive play — mentioned considering another club", suggestedAction: "Invite to competitive league + offer tournament registration", email: "priya.s@email.com", phone: "+1 (555) 666-7788", contacted: false, responded: false, healthFactors: [
-    { name: "Frequency", score: 60, weight: 35, label: "Slight decline — was 4x now 2x/week" },
-    { name: "Recency", score: 50, weight: 25, label: "16 days since last session" },
-    { name: "Consistency", score: 70, weight: 20, label: "Moderately consistent visits" },
-    { name: "Pattern Break", score: 15, weight: 15, label: "Missed most expected sessions" },
-    { name: "No-Show", score: 100, weight: 5, label: "Excellent reliability" },
-  ]},
-  { id: "r7", name: "Mark Johnson", avatar: "MJ", rating: 2.9, risk: "low", healthScore: 58, daysSincePlay: 12, totalSessions: 34, memberSince: "May 2024", revenue: 510, churnReason: "Slight decrease in frequency — likely seasonal", suggestedAction: "Include in next community event invite + social mixer", email: "mark.j@email.com", phone: "+1 (555) 777-8899", contacted: false, responded: false, healthFactors: [
-    { name: "Frequency", score: 60, weight: 35, label: "Slight decline — seasonal pattern" },
-    { name: "Recency", score: 50, weight: 25, label: "12 days since last session" },
-    { name: "Consistency", score: 70, weight: 20, label: "Moderately consistent visits" },
-    { name: "Pattern Break", score: 75, weight: 15, label: "Missed 1 usual session (Saturday)" },
-    { name: "No-Show", score: 100, weight: 5, label: "Excellent reliability" },
-  ]},
-  { id: "r8", name: "Sophie Taylor", avatar: "ST", rating: 3.1, risk: "low", healthScore: 62, daysSincePlay: 10, totalSessions: 67, memberSince: "Feb 2024", revenue: 980, churnReason: "Booking less frequently but still engaged on social", suggestedAction: "Nudge with new program announcement matching skill level", email: "sophie.t@email.com", phone: "+1 (555) 888-9900", contacted: true, responded: true, healthFactors: [
-    { name: "Frequency", score: 75, weight: 35, label: "Stable — minor dip" },
-    { name: "Recency", score: 50, weight: 25, label: "10 days since last session" },
-    { name: "Consistency", score: 70, weight: 20, label: "Moderately consistent visits" },
-    { name: "Pattern Break", score: 75, weight: 15, label: "Missed 1 usual session (Wednesday)" },
-    { name: "No-Show", score: 100, weight: 5, label: "Excellent reliability" },
-  ]},
-];
-
-const campaignHistory = [
-  { name: "Win-Back: High Risk", sent: 8, opened: 6, responded: 4, returned: 3, revenue: 1840, date: "Mar 10" },
-  { name: "We Miss You: Medium", sent: 15, opened: 11, responded: 7, returned: 5, revenue: 2200, date: "Mar 3" },
-  { name: "Loyalty Renewal Offer", sent: 12, opened: 10, responded: 8, returned: 6, revenue: 3600, date: "Feb 24" },
-];
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
@@ -265,7 +185,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
 
   const realCandidates = mapRealCandidates(reactivationData, aiProfiles);
-  const allMembers = realCandidates.length > 0 ? realCandidates : (isDemo ? atRiskMembers : []);
+  const allMembers = realCandidates.length > 0 ? realCandidates : [];
 
   const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
     if (sendReactivation && clubId) {
@@ -286,16 +206,14 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         month: new Date(t.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
         atRisk: t.atRisk, churned: t.churned, reactivated: t.reactivated,
       }))
-    : (isDemo ? churnTrend : []);
+    : [];
 
   // Risk segments from real reactivation data
-  const displayRiskSegments = reactivationData?.candidates
+  const displayRiskSegments: { name: string; value: number; color: string }[] = reactivationData?.candidates
     ? (() => {
-        // Inactive members max out at ~50 (Trend always=5 for inactive).
-        // Thresholds calibrated to the real achievable range for at-risk candidates.
         const high = reactivationData.candidates.filter((c: any) => c.score < 20).length;
         const medium = reactivationData.candidates.filter((c: any) => c.score >= 20 && c.score < 35).length;
-        const low = reactivationData.candidates.filter((c: any) => c.score >= 35).length; // all remaining candidates
+        const low = reactivationData.candidates.filter((c: any) => c.score >= 35).length;
         const healthy = (reactivationData.totalClubMembers || 0) - high - medium - low;
         return [
           { name: "High Risk", value: high, color: "#EF4444" },
@@ -304,7 +222,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
           { name: "Healthy", value: Math.max(0, healthy), color: "#10B981" },
         ];
       })()
-    : (isDemo ? riskSegments : []);
+    : [];
 
   // Campaign history from real data
   const displayCampaignHistory = campaignListData?.campaigns?.length
@@ -312,7 +230,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         name: c.name, date: c.date, sent: c.sent, opened: c.opened,
         responded: c.converted, returned: c.clicked, revenue: 0,
       }))
-    : (isDemo ? campaignHistory : []);
+    : [];
 
   const filtered = allMembers.filter((m) => {
     if (riskFilter !== "all" && m.risk !== riskFilter) return false;

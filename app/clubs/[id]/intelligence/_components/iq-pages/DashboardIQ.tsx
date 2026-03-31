@@ -111,16 +111,6 @@ const emptyHealth = [
 const emptyHealthMetrics = { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: 0, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 };
 const emptyComparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[] = [];
 
-const occupancyHeatmap = [
-  { day: "Mon", slots: [10, 20, 30, 45, 60, 72, 85, 80, 70, 60, 55, 50, 45, 50, 55, 40, 25] },
-  { day: "Tue", slots: [8, 15, 25, 38, 55, 65, 78, 72, 65, 55, 50, 45, 40, 45, 50, 35, 20] },
-  { day: "Wed", slots: [12, 25, 35, 50, 68, 80, 90, 85, 75, 68, 60, 55, 50, 55, 60, 45, 30] },
-  { day: "Thu", slots: [8, 18, 28, 42, 58, 70, 82, 78, 68, 58, 52, 48, 42, 48, 55, 38, 22] },
-  { day: "Fri", slots: [15, 28, 40, 55, 70, 88, 95, 90, 82, 75, 68, 62, 55, 60, 68, 55, 40] },
-  { day: "Sat", slots: [25, 42, 60, 75, 85, 92, 98, 95, 88, 85, 78, 72, 65, 70, 78, 70, 55] },
-  { day: "Sun", slots: [20, 38, 55, 68, 78, 88, 92, 90, 82, 80, 72, 65, 58, 62, 72, 62, 48] },
-];
-const heatmapTimes = ["6", "7", "8", "9", "10", "11", "12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
 
 
 
@@ -666,9 +656,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const isEmptyClub = !data;
   const labels = getPeriodLabel(period);
 
-  // Map real heatmap data — use real timeSlots when available (hourly), fallback to mock
-  const displayHeatmap = heatmapData?.heatmap || occupancyHeatmap;
-  const displayHeatmapTimes: string[] = heatmapData?.timeSlots || heatmapTimes;
+  // Map real heatmap data — use real timeSlots when available (hourly)
+  const displayHeatmap: { day: string; slots: (number | { value: number; time?: string })[] }[] = heatmapData?.heatmap || [];
+  const displayHeatmapTimes: string[] = heatmapData?.timeSlots || [];
   // Sessions by Format — real data from occupancy breakdown
   const formatColors: Record<string, string> = {
     OPEN_PLAY: "#10B981", CLINIC: "#06B6D4", DRILL: "#8B5CF6",
@@ -1056,50 +1046,70 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         {/* Occupancy Heatmap */}
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Occupancy Heatmap</h3>
-          <div className="space-y-1.5">
-            <div className="flex gap-1.5 pl-10">
-              {displayHeatmapTimes.map((t) => (
-                <div key={t} className="flex-1 text-center text-[9px]" style={{ color: "var(--t4)" }}>{t}</div>
+          {externalLoading && !heatmapData ? (
+            <div className="space-y-2">
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="flex gap-1.5">
+                  <div className="w-8 h-7 rounded animate-pulse" style={{ background: "var(--subtle)" }} />
+                  {[...Array(17)].map((__, j) => (
+                    <div key={j} className="flex-1 h-7 rounded-md animate-pulse" style={{ background: "var(--subtle)" }} />
+                  ))}
+                </div>
               ))}
             </div>
-            {displayHeatmap.map((row: any) => (
-              <div key={row.day} className="flex items-center gap-1.5">
-                <div className="w-8 text-right text-[10px] shrink-0" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.day}</div>
-                {row.slots.map((slot: any, i: number) => {
-                  const val = typeof slot === 'number' ? slot : (slot?.value ?? 0);
-                  return (
-                  <motion.div
-                    key={i}
-                    className="flex-1 rounded-md flex items-center justify-center text-[9px] cursor-pointer"
-                    style={{
-                      height: 28,
-                      background: heatColor(val, isDark),
-                      color: val >= 75 ? "rgba(255,255,255,0.8)" : "var(--t4)",
-                      fontWeight: val >= 75 ? 600 : 400,
-                    }}
-                    whileHover={{ scale: 1.15, zIndex: 10 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  >
-                    {val}%
-                  </motion.div>
-                  );
-                })}
+          ) : displayHeatmap.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2" style={{ color: "var(--t4)" }}>
+              <BarChart3 className="w-8 h-8 opacity-30" />
+              <p className="text-sm">No occupancy data yet — import sessions to see heatmap</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5 pl-10">
+                  {displayHeatmapTimes.map((t, i) => (
+                    <div key={`${t}-${i}`} className="flex-1 text-center text-[9px]" style={{ color: "var(--t4)" }}>{t}</div>
+                  ))}
+                </div>
+                {displayHeatmap.map((row) => (
+                  <div key={row.day} className="flex items-center gap-1.5">
+                    <div className="w-8 text-right text-[10px] shrink-0" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.day}</div>
+                    {row.slots.map((slot, i: number) => {
+                      const val = typeof slot === 'number' ? slot : (slot?.value ?? 0);
+                      return (
+                        <motion.div
+                          key={i}
+                          className="flex-1 rounded-md flex items-center justify-center text-[9px] cursor-pointer"
+                          style={{
+                            height: 28,
+                            background: heatColor(val, isDark),
+                            color: val >= 75 ? "rgba(255,255,255,0.8)" : "var(--t4)",
+                            fontWeight: val >= 75 ? 600 : 400,
+                          }}
+                          whileHover={{ scale: 1.15, zIndex: 10 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                        >
+                          {val}%
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-3 mt-4 text-[9px]" style={{ color: "var(--t4)" }}>
-            {[
-              { label: "Low", bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" },
-              { label: "Med", bg: isDark ? "rgba(6,182,212,0.3)" : "rgba(6,182,212,0.25)" },
-              { label: "High", bg: isDark ? "rgba(139,92,246,0.4)" : "rgba(139,92,246,0.3)" },
-              { label: "Peak", bg: isDark ? "rgba(239,68,68,0.6)" : "rgba(239,68,68,0.5)" },
-            ].map((l) => (
-              <div key={l.label} className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded" style={{ background: l.bg }} />
-                {l.label}
+              <div className="flex items-center justify-center gap-3 mt-4 text-[9px]" style={{ color: "var(--t4)" }}>
+                {[
+                  { label: "Low", bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" },
+                  { label: "Med", bg: isDark ? "rgba(6,182,212,0.3)" : "rgba(6,182,212,0.25)" },
+                  { label: "High", bg: isDark ? "rgba(139,92,246,0.4)" : "rgba(139,92,246,0.3)" },
+                  { label: "Peak", bg: isDark ? "rgba(239,68,68,0.6)" : "rgba(239,68,68,0.5)" },
+                ].map((l) => (
+                  <div key={l.label} className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded" style={{ background: l.bg }} />
+                    {l.label}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </Card>
 
         <div className="grid lg:grid-cols-2 gap-4">
