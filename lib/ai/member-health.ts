@@ -496,15 +496,22 @@ function buildSummary(
   avgSubscriptionPrice: number,
 ): MemberHealthSummary {
   const total = members.length;
-  const healthy = members.filter(m => m.riskLevel === 'healthy').length;
-  const watch = members.filter(m => m.riskLevel === 'watch').length;
-  const atRisk = members.filter(m => m.riskLevel === 'at_risk').length;
-  const critical = members.filter(m => m.riskLevel === 'critical').length;
+
+  // Separate churned (45+ days inactive) from at-risk/critical
+  // These are members who already left — not "at risk of leaving"
+  const churned = members.filter(m => m.lifecycleStage === 'churned').length;
+  const activeMembers = members.filter(m => m.lifecycleStage !== 'churned');
+
+  const healthy = activeMembers.filter(m => m.riskLevel === 'healthy').length;
+  const watch = activeMembers.filter(m => m.riskLevel === 'watch').length;
+  const atRisk = activeMembers.filter(m => m.riskLevel === 'at_risk').length;
+  const critical = activeMembers.filter(m => m.riskLevel === 'critical').length;
 
   const avgHealthScore = total > 0
     ? Math.round(members.reduce((s, m) => s + m.healthScore, 0) / total)
     : 0;
 
+  // Revenue at risk = only active members who might churn, not already churned
   const revenueAtRisk = (atRisk + critical) * avgSubscriptionPrice;
 
   // Segment distribution counts
@@ -525,6 +532,7 @@ function buildSummary(
     watch,
     atRisk,
     critical,
+    churned,
     avgHealthScore,
     revenueAtRisk,
     trendVsPrevWeek: 0,

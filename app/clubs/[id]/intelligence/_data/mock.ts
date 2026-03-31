@@ -1073,6 +1073,7 @@ export function mockMemberHealth(): MemberHealthData {
       watch,
       atRisk,
       critical,
+      churned: 0,
       avgHealthScore,
       revenueAtRisk: (atRisk + critical) * 99,
       trendVsPrevWeek: 3,

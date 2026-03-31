@@ -425,6 +425,7 @@ export interface MemberHealthSummary {
   watch: number
   atRisk: number
   critical: number
+  churned: number               // 45+ days inactive — already gone, separate from at-risk
   avgHealthScore: number
   revenueAtRisk: number         // at-risk + critical members × avg subscription
   trendVsPrevWeek: number       // change in at-risk count vs last week

@@ -63,6 +63,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
     })
   }
 
+  // at_risk + critical (excluding churned — those are already gone)
   const atRiskCount = healthData?.summary?.atRisk ?? 0
   const criticalCount = healthData?.summary?.critical ?? 0
   const totalAtRisk = atRiskCount + criticalCount
@@ -73,7 +74,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       gradient: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(245,158,11,0.08))',
       accentColor: '#F97316',
       title: 'Boost Retention',
-      description: `${totalAtRisk} member${totalAtRisk !== 1 ? 's are' : ' is'} at risk of churning. Reach out before they leave.`,
+      description: `${totalAtRisk} member${totalAtRisk !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
       count: totalAtRisk,
     })
   }
