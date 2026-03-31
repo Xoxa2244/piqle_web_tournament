@@ -623,7 +623,7 @@ export default function ClubDetailPage() {
                         No upcoming events for this club yet.
                       </div>
                     ) : (
-                      tournaments.map((tournament) => (
+                      tournaments.map((tournament: (typeof tournaments)[number]) => (
                         <div
                           key={tournament.id}
                           role="button"
@@ -714,7 +714,7 @@ export default function ClubDetailPage() {
                 {club.announcements.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No announcements yet.</div>
                 ) : (
-                  club.announcements.map((a) => (
+                  club.announcements.map((a: (typeof club.announcements)[number]) => (
                     <div key={a.id} className="rounded-md border p-3 space-y-1">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">

@@ -252,7 +252,7 @@ export const clubRouter = createTRPCRouter({
       const userId = ctx.session?.user?.id ?? DUMMY_USER_ID
       const upcomingWindow = {
         OR: [{ endDate: { gte: now } }, { startDate: { gte: now } }],
-      } as const
+      }
 
       let bannedClubIds = new Set<string>()
       if (userId !== DUMMY_USER_ID) {
@@ -507,7 +507,7 @@ export const clubRouter = createTRPCRouter({
       const userId = ctx.session?.user?.id ?? DUMMY_USER_ID
       const upcomingWindow = {
         OR: [{ endDate: { gte: now } }, { startDate: { gte: now } }],
-      } as const
+      }
 
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.id },
