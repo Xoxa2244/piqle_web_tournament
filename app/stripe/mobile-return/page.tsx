@@ -1,21 +1,12 @@
-'use client'
-
-import { useEffect, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
-
 const APP_SCHEME = 'piqle://profile/edit'
 
-export default function StripeMobileReturnPage() {
-  const params = useSearchParams()
-  const status = (params.get('status') || 'return').trim().toLowerCase()
-  const target = useMemo(() => `${APP_SCHEME}?stripe=${encodeURIComponent(status)}`, [status])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      window.location.href = target
-    }, 120)
-    return () => clearTimeout(timer)
-  }, [target])
+export default function StripeMobileReturnPage({
+  searchParams,
+}: {
+  searchParams?: { status?: string }
+}) {
+  const status = String(searchParams?.status || 'return').trim().toLowerCase()
+  const target = `${APP_SCHEME}?stripe=${encodeURIComponent(status)}`
 
   return (
     <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0b0b0b', color: '#fff' }}>
@@ -40,6 +31,11 @@ export default function StripeMobileReturnPage() {
           Open Piqle app
         </a>
       </div>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `setTimeout(function(){ window.location.href = ${JSON.stringify(target)}; }, 120);`,
+        }}
+      />
     </main>
   )
 }
