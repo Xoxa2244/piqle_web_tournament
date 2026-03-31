@@ -381,7 +381,7 @@ export const userRouter = createTRPCRouter({
       gender: z.enum(['M', 'F', 'X']).optional(),
       city: z.string().optional(),
       duprLink: z.string().url().optional().or(z.literal('')),
-      image: z.string().url().optional(),
+      image: z.string().url().optional().or(z.literal('')),
     }))
     .mutation(async ({ ctx, input }) => {
       const updatedUser = await ctx.prisma.user.update({
@@ -395,7 +395,9 @@ export const userRouter = createTRPCRouter({
           ...(input.duprLink !== undefined && { 
             duprLink: input.duprLink === '' ? null : input.duprLink 
           }),
-          ...(input.image !== undefined && { image: input.image }),
+          ...(input.image !== undefined && {
+            image: input.image === '' ? null : input.image,
+          }),
         },
         select: {
           id: true,

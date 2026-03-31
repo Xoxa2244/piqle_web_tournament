@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import * as ImagePicker from 'expo-image-picker'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
+import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
@@ -20,6 +21,11 @@ const formatRating = (value?: string | number | null) => {
   if (value === null || value === undefined || value === '') return '—'
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed.toFixed(2) : '—'
+}
+
+const isInvalidImageUrlValidationError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return message.includes('"path":["image"]') && message.includes('"validation":"url"')
 }
 
 const HeaderSaveButton = ({
@@ -79,6 +85,7 @@ export default function ProfileEditScreen() {
   const [duprLink, setDuprLink] = useState('')
   const [avatarUri, setAvatarUri] = useState<string | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [removeAvatarOpen, setRemoveAvatarOpen] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const contactCardY = useRef<number | null>(null)
   const cityFieldOffsetY = useRef<number | null>(null)
@@ -182,6 +189,28 @@ export default function ProfileEditScreen() {
     }
   }
 
+  const hasUploadedAvatar = Boolean((avatarUri || profile?.image || '').trim())
+
+  const handleAvatarDelete = async () => {
+    if (avatarUploading) return
+    try {
+      setAvatarUploading(true)
+      await updateProfile.mutateAsync({ image: '' })
+      setAvatarUri(null)
+      await utils.user.getProfile.invalidate()
+      setRemoveAvatarOpen(false)
+      toast.success('Avatar removed.')
+    } catch (err: any) {
+      if (isInvalidImageUrlValidationError(err)) {
+        toast.error('Avatar removal requires backend update. Please use the latest API deployment.')
+      } else {
+        toast.error(err?.message || 'Could not remove avatar.')
+      }
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
   if (!isAuthenticated) {
     return (
       <PageLayout scroll={false} topBarTitle="Edit Profile" contentStyle={styles.pageRoot}>
@@ -240,7 +269,19 @@ export default function ProfileEditScreen() {
                   {avatarUploading ? (
                     <ActivityIndicator size="small" color={colors.white} />
                   ) : (
-                    <Feather name="camera" size={16} color={colors.white} />
+                    <Pressable
+                      hitSlop={8}
+                      onPress={(e: any) => {
+                        e?.stopPropagation?.()
+                        if (hasUploadedAvatar) {
+                          setRemoveAvatarOpen(true)
+                        } else {
+                          void handleAvatarPick()
+                        }
+                      }}
+                    >
+                      <Feather name={hasUploadedAvatar ? 'trash-2' : 'camera'} size={16} color={colors.white} />
+                    </Pressable>
                   )}
                 </View>
               </View>
@@ -322,6 +363,23 @@ export default function ProfileEditScreen() {
           </View>
         </SurfaceCard>
       </ScrollView>
+
+      <AppBottomSheet
+        open={removeAvatarOpen}
+        onClose={() => setRemoveAvatarOpen(false)}
+        title="Remove profile photo?"
+        subtitle="Your avatar will be cleared and replaced with initials."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel="Remove"
+            confirmLoading={avatarUploading}
+            onCancel={() => setRemoveAvatarOpen(false)}
+            onConfirm={() => void handleAvatarDelete()}
+          />
+        }
+      />
     </PageLayout>
   )
 }
