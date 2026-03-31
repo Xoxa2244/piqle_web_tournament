@@ -202,6 +202,7 @@ export default function ClubDetailScreen() {
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [clubFeedbackInfoOpen, setClubFeedbackInfoOpen] = useState(false)
+  const [openClubFeedbackAfterInfoClose, setOpenClubFeedbackAfterInfoClose] = useState(false)
   const [memberMenuTarget, setMemberMenuTarget] = useState<{ userId: string; name: string } | null>(null)
   const [bannedMenuTarget, setBannedMenuTarget] = useState<{ userId: string; name: string } | null>(null)
   const [kickTarget, setKickTarget] = useState<{ userId: string; name: string } | null>(null)
@@ -960,13 +961,21 @@ export default function ClubDetailScreen() {
             </View>
             <Pressable
               onPress={() => setClubFeedbackInfoOpen(true)}
-              style={({ pressed }) => [styles.clubHeroRatingPill, pressed && styles.clubHeroRatingPillPressed]}
+              style={({ pressed }) => [
+                styles.clubHeroRatingPill,
+                theme === 'light' && styles.clubHeroRatingPillLight,
+                pressed && styles.clubHeroRatingPillPressed,
+              ]}
             >
               <RatingStarIcon size={16} filled color="#F4B000" />
               {feedbackCanPublishEffective && feedbackAverageEffective ? (
-                <Text style={styles.clubHeroRatingText}>{feedbackAverageEffective.toFixed(1)}</Text>
+                <Text style={[styles.clubHeroRatingText, theme === 'light' && styles.clubHeroRatingTextLight]}>
+                  {feedbackAverageEffective.toFixed(1)}
+                </Text>
               ) : (
-                <Text style={styles.clubHeroRatingMuted}>New</Text>
+                <Text style={[styles.clubHeroRatingMuted, theme === 'light' && styles.clubHeroRatingMutedLight]}>
+                  New
+                </Text>
               )}
             </Pressable>
           </View>
@@ -1591,6 +1600,11 @@ export default function ClubDetailScreen() {
       <AppBottomSheet
         open={clubFeedbackInfoOpen}
         onClose={() => setClubFeedbackInfoOpen(false)}
+        onDismissed={() => {
+          if (!openClubFeedbackAfterInfoClose) return
+          setOpenClubFeedbackAfterInfoClose(false)
+          setClubFeedbackOpen(true)
+        }}
         title="Club rating"
         subtitle={
           feedbackCanPublishEffective && feedbackAverageEffective ? '' : `No public rating yet. Need at least 5 ratings.`
@@ -1601,7 +1615,7 @@ export default function ClubDetailScreen() {
               label="Rate this club"
               onPress={() => {
                 setClubFeedbackInfoOpen(false)
-                setTimeout(() => setClubFeedbackOpen(true), 280)
+                setOpenClubFeedbackAfterInfoClose(true)
               }}
             />
           ) : undefined
@@ -1742,18 +1756,18 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     gap: 6,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: '#9CD9A3',
-    backgroundColor: '#E8F7EB',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   feedbackChipText: {
-    color: '#1E7A32',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },
   feedbackChipCount: {
-    color: '#2E8B42',
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1875,26 +1889,36 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     gap: 8,
     alignSelf: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(10,10,10,0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.28)',
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(10,10,10,0.03)',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    marginLeft: 8,
+    marginLeft: 'auto',
     maxWidth: 120,
   },
   clubHeroRatingPillPressed: {
     opacity: 0.85,
   },
+  clubHeroRatingPillLight: {
+    borderColor: 'rgba(10,10,10,0.08)',
+    backgroundColor: 'rgba(10,10,10,0.03)',
+  },
   clubHeroRatingText: {
-    color: colors.text,
+    color: colors.white,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  clubHeroRatingTextLight: {
+    color: colors.text,
   },
   clubHeroRatingMuted: {
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.82)',
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  clubHeroRatingMutedLight: {
+    color: colors.textMuted,
   },
   shareSheetBlock: {
     gap: spacing.md,

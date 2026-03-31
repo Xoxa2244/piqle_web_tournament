@@ -450,6 +450,7 @@ export default function TournamentDetailScreen() {
   const handledPaymentStateRef = useRef<string | null>(null)
   const [tournamentFeedbackOpen, setTournamentFeedbackOpen] = useState(false)
   const [tournamentFeedbackInfoOpen, setTournamentFeedbackInfoOpen] = useState(false)
+  const [openTournamentFeedbackAfterInfoClose, setOpenTournamentFeedbackAfterInfoClose] = useState(false)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const [tournamentDescriptionExpanded, setTournamentDescriptionExpanded] = useState(false)
@@ -2658,6 +2659,11 @@ export default function TournamentDetailScreen() {
       <AppBottomSheet
         open={tournamentFeedbackInfoOpen}
         onClose={() => setTournamentFeedbackInfoOpen(false)}
+        onDismissed={() => {
+          if (!openTournamentFeedbackAfterInfoClose) return
+          setOpenTournamentFeedbackAfterInfoClose(false)
+          setTournamentFeedbackOpen(true)
+        }}
         title="Tournament rating"
         subtitle={
           feedbackCanPublishEffective && feedbackAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
@@ -2668,7 +2674,7 @@ export default function TournamentDetailScreen() {
               label="Rate this tournament"
               onPress={() => {
                 setTournamentFeedbackInfoOpen(false)
-                setTimeout(() => setTournamentFeedbackOpen(true), 280)
+                setOpenTournamentFeedbackAfterInfoClose(true)
               }}
             />
           ) : undefined
@@ -3574,8 +3580,8 @@ const createStyles = (colors: ThemePalette) =>
   feedbackChip: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#9CD9A3',
-    backgroundColor: '#E8F7EB',
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 12,
     paddingVertical: 8,
     flexDirection: 'row',
@@ -3583,12 +3589,12 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
   },
   feedbackChipText: {
-    color: '#1E7A32',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },
   feedbackChipCount: {
-    color: '#2E8B42',
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
