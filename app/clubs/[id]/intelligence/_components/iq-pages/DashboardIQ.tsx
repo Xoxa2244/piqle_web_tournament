@@ -980,15 +980,14 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             ))}
           </div>
-          {/* Inactive members note — links Health to Reactivation */}
+          {/* Churned members banner — links Health to Reactivation */}
           {(() => {
-            const mb = activeDashboardData?.players?.membershipBreakdown;
-            const inactiveCount = mb ? (mb.suspended || 0) + (mb.expired || 0) + (mb.noMembership || 0) : activeDashboardData?.players?.inactiveCount;
-            if (!inactiveCount) return null;
+            const churnedCount = healthData?.summary?.churned || 0;
+            if (!churnedCount) return null;
             return (
               <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
                 <span className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  <span style={{ color: "#F97316", fontWeight: 700 }}>{inactiveCount}</span> {mb ? 'suspended / no membership / expired' : 'inactive members'}
+                  <span style={{ color: "#F97316", fontWeight: 700 }}>{churnedCount}</span> churned (45+ days inactive)
                 </span>
                 <button
                   onClick={() => router.push(`/clubs/${clubId}/intelligence/reactivation`)}
