@@ -13,15 +13,16 @@ import { CampaignCreatorStep4Confirm } from './CampaignCreatorStep4Confirm'
 
 interface CampaignCreatorProps {
   clubId: string
+  initialType?: string | null
   onClose: () => void
   onSuccess: () => void
 }
 
 const STEP_LABELS = ['Type', 'Audience', 'Message', 'Confirm']
 
-export function CampaignCreator({ clubId, onClose, onSuccess }: CampaignCreatorProps) {
+export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: CampaignCreatorProps) {
   const { isDark } = useTheme()
-  const creator = useCampaignCreator()
+  const creator = useCampaignCreator(initialType ?? undefined)
   const { state } = creator
   const campaign = useCreateCampaign()
 

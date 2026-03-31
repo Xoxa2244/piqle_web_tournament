@@ -1,14 +1,14 @@
 'use client'
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { Plus, Megaphone } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
-import { EmptyStateIQ } from './EmptyStateIQ'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
 import { CampaignChart } from './campaigns/CampaignChart'
 import { CampaignList } from './campaigns/CampaignList'
 import { AutomationBanner } from './campaigns/AutomationBanner'
 import { CampaignCreator } from './campaigns/CampaignCreator'
+import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 
 interface CampaignsIQProps {
   campaignData: any
@@ -21,6 +21,7 @@ interface CampaignsIQProps {
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, clubId }: CampaignsIQProps) {
   const { isDark } = useTheme()
   const [showCreator, setShowCreator] = useState(false)
+  const [initialType, setInitialType] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -34,13 +35,23 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
   if (!campaignData?.summary) {
     return (
-      <EmptyStateIQ
-        icon={Megaphone}
-        title="No campaigns yet"
-        description="Create your first campaign to engage members with personalized outreach via email and SMS."
-        ctaLabel="Create Campaign"
-        onCtaClick={() => setShowCreator(true)}
-      />
+      <>
+        <CampaignSuggestions
+          clubId={clubId}
+          onSelectType={(type) => {
+            setInitialType(type)
+            setShowCreator(true)
+          }}
+        />
+        {showCreator && (
+          <CampaignCreator
+            clubId={clubId}
+            initialType={initialType}
+            onClose={() => { setShowCreator(false); setInitialType(null) }}
+            onSuccess={() => { setShowCreator(false); setInitialType(null) }}
+          />
+        )}
+      </>
     )
   }
 
@@ -77,8 +88,9 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       {showCreator && (
         <CampaignCreator
           clubId={clubId}
-          onClose={() => setShowCreator(false)}
-          onSuccess={() => setShowCreator(false)}
+          initialType={initialType}
+          onClose={() => { setShowCreator(false); setInitialType(null) }}
+          onSuccess={() => { setShowCreator(false); setInitialType(null) }}
         />
       )}
     </motion.div>

@@ -24,8 +24,16 @@ const INITIAL_STATE: CampaignCreatorState = {
   riskSegment: 'watch',
 }
 
-export function useCampaignCreator() {
-  const [state, setState] = useState<CampaignCreatorState>(INITIAL_STATE)
+export function useCampaignCreator(initialType?: string) {
+  const [state, setState] = useState<CampaignCreatorState>(() => {
+    if (!initialType) return INITIAL_STATE
+    return {
+      ...INITIAL_STATE,
+      type: initialType,
+      step: 1 as const,
+      riskSegment: initialType === 'CHECK_IN' ? 'watch' : initialType === 'RETENTION_BOOST' ? 'at_risk' : INITIAL_STATE.riskSegment,
+    }
+  })
 
   const setType = useCallback((type: string) => {
     setState(s => ({
