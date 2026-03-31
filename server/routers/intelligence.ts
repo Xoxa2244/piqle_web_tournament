@@ -3246,9 +3246,7 @@ export const intelligenceRouter = createTRPCRouter({
         // 1. Player info
         db.$queryRawUnsafe<any[]>(`
           SELECT u.id, u.name, u.email, u.image,
-            cf."joinedAt" as "memberSince",
-            de."membershipType"::text as "membershipType",
-            de."membershipStatus"::text as "membershipStatus",
+            cf.created_at as "memberSince",
             (SELECT MAX(ps.date) FROM play_session_bookings b2
               JOIN play_sessions ps ON ps.id = b2."sessionId"
               WHERE b2."userId" = $1 AND ps."clubId" = $2::uuid
@@ -3261,8 +3259,7 @@ export const intelligenceRouter = createTRPCRouter({
               WHERE mhs."memberId" = $1 AND mhs."clubId" = $2::uuid
               ORDER BY mhs."calculatedAt" DESC LIMIT 1) as "healthScore"
           FROM users u
-          LEFT JOIN club_followers cf ON cf."userId" = u.id AND cf."clubId" = $2::uuid
-          LEFT JOIN document_embeddings de ON de."userId" = u.id AND de."clubId" = $2::uuid AND de.type::text = 'MEMBERSHIP'
+          LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2::uuid
           WHERE u.id = $1
           LIMIT 1
         `, userId, clubId),
@@ -3347,7 +3344,7 @@ export const intelligenceRouter = createTRPCRouter({
         `, userId, clubId),
       ])
 
-      const player = playerRows[0] || { id: userId, name: 'Unknown', email: '', image: null, memberSince: null, lastPlayed: null, totalSessions: 0, healthScore: null, membershipType: null, membershipStatus: null }
+      const player = playerRows[0] || { id: userId, name: 'Unknown', email: '', image: null, memberSince: null, lastPlayed: null, totalSessions: 0, healthScore: null }
 
       // Activity trend: compare last 4 weeks vs prior 4
       const now = new Date()
@@ -3375,8 +3372,6 @@ export const intelligenceRouter = createTRPCRouter({
           name: player.name,
           email: player.email,
           image: player.image,
-          membershipType: player.membershipType,
-          membershipStatus: player.membershipStatus,
           memberSince: player.memberSince ? new Date(player.memberSince).toISOString() : null,
           lastPlayed: player.lastPlayed ? new Date(player.lastPlayed).toISOString() : null,
           totalSessions: player.totalSessions || 0,

@@ -136,7 +136,7 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
   const lastPlayedDays = daysSince(player.lastPlayed)
   const memberSinceDate = formatDate(player.memberSince)
   const riskCfg = RISK_COLORS[risk.level]
-  const memColor = MEMBERSHIP_COLORS[player.membershipStatus || ""] || MEMBERSHIP_COLORS["No Membership"]
+  const memColor = MEMBERSHIP_COLORS["No Membership"]
 
   // Chart data — highlight last 4 weeks
   const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10)
@@ -165,18 +165,10 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{player.name}</h1>
-                {player.membershipStatus && (
-                  <span className="px-2.5 py-1 rounded-lg text-[11px]" style={{ background: memColor.bg, color: memColor.text, fontWeight: 600 }}>
-                    {player.membershipStatus}
-                  </span>
-                )}
               </div>
               <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>
                 Active since {memberSinceDate} &middot; Last played {lastPlayedDays === 0 ? "today" : `${lastPlayedDays} days ago`} &middot; {player.totalSessions} sessions
               </p>
-              {player.membershipType && (
-                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>{player.membershipType}</p>
-              )}
             </div>
             {player.healthScore != null && (
               <div className="flex flex-col items-center gap-1">
