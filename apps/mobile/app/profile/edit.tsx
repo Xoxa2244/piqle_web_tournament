@@ -12,6 +12,7 @@ import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { RemoteUserAvatar } from '../../src/components/RemoteUserAvatar'
 import { ActionButton, EmptyState, InputField, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { authApi } from '../../src/lib/authApi'
+import { buildWebUrl } from '../../src/lib/config'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -261,8 +262,8 @@ export default function ProfileEditScreen() {
     try {
       setStripeConnecting(true)
       const payload = await authApi.createStripeAccountLink(token, {
-        returnUrl: 'piqle://profile/edit?stripe=return',
-        refreshUrl: 'piqle://profile/edit?stripe=refresh',
+        returnUrl: buildWebUrl('/stripe/mobile-return?status=return'),
+        refreshUrl: buildWebUrl('/stripe/mobile-return?status=refresh'),
       })
       if (!payload?.url) {
         throw new Error('Failed to start Stripe onboarding.')

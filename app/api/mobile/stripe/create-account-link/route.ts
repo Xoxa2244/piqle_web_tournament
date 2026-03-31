@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const refreshUrl = body?.refreshUrl ?? `${APP_URL}/profile?stripe=refresh`
-  const returnUrl = body?.returnUrl ?? `${APP_URL}/profile?stripe=return`
+  const refreshUrl = body?.refreshUrl ?? `${APP_URL}/stripe/mobile-return?status=refresh`
+  const returnUrl = body?.returnUrl ?? `${APP_URL}/stripe/mobile-return?status=return`
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
