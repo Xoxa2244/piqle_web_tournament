@@ -3587,6 +3587,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       let sent = 0
       let failed = 0
       let skipped = 0
+      const results: { userId: string; status: string; channel: string; messageId?: string }[] = []
 
       for (const user of users) {
         // Interpolate template variables
@@ -3599,12 +3600,13 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         const smsText = input.smsBody ? interpolate(input.smsBody) : undefined
 
         let channelSent = false
+        let externalMessageId: string | null = null
 
         // Send email
         if ((input.channel === 'email' || input.channel === 'both') && user.email) {
           try {
             const { sendOutreachEmail } = await import('@/lib/email')
-            await sendOutreachEmail({
+            const result = await sendOutreachEmail({
               to: user.email,
               subject: emailSubject,
               body: emailBody,
@@ -3612,6 +3614,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
               bookingUrl,
             })
             channelSent = true
+            externalMessageId = result.messageId || null
           } catch (err) {
             console.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
           }
@@ -3622,7 +3625,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           // SMS not yet implemented — skip silently
         }
 
-        // Log to DB
+        const status = channelSent ? 'sent' : (!user.email ? 'skipped' : 'failed')
+
+        // Log to ai_recommendation_logs for tracking
         try {
           await ctx.prisma.aIRecommendationLog.create({
             data: {
@@ -3630,24 +3635,28 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
               userId: user.id,
               type: input.type,
               channel: input.channel,
+              sessionId: input.sessionId || null,
+              externalMessageId,
+              variantId: input.type,
               reasoning: {
                 source: 'manual_campaign',
                 subject: emailSubject,
-                bodyPreview: emailBody.slice(0, 100),
-                sessionId: input.sessionId || null,
+                bodyPreview: emailBody.slice(0, 200),
               },
-              status: channelSent ? 'sent' : 'failed',
+              status,
             },
           })
         } catch (logErr) {
           console.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
         }
 
+        results.push({ userId: user.id, status, channel: input.channel, messageId: externalMessageId || undefined })
+
         if (channelSent) sent++
         else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
         else failed++
       }
 
-      return { sent, failed, skipped }
+      return { sent, failed, skipped, results }
     }),
 })

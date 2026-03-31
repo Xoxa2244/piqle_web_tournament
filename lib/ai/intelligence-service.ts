@@ -1394,10 +1394,11 @@ export async function sendReactivationMessages(
     }
 
     // ── Send Email ──
+    let externalMessageId: string | null = null
     if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
       try {
         if (!user.email) throw new Error('No email address')
-        await sendReactivationEmail({
+        const emailResult = await sendReactivationEmail({
           to: user.email,
           memberName: user.name || 'there',
           clubName: club.name,
@@ -1407,6 +1408,7 @@ export async function sendReactivationMessages(
           customMessage,
           notifyMeUrl,
         })
+        externalMessageId = (emailResult as any)?.messageId || null
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {
         results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
@@ -1424,7 +1426,8 @@ export async function sendReactivationMessages(
       })
     }
 
-    // Log to DB
+    // Log to ai_recommendation_logs for campaign tracking
+    const wasSent = results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0
     try {
       await prisma.aIRecommendationLog.create({
         data: {
@@ -1432,12 +1435,15 @@ export async function sendReactivationMessages(
           userId: user.id,
           type: 'REACTIVATION',
           channel: candidateInput.channel,
+          sessionId: suggestedSessions[0]?.deepLinkUrl ? undefined : undefined,
+          externalMessageId,
+          variantId: 'REACTIVATION',
           reasoning: {
             daysSinceLastActivity: daysSince,
             suggestedSessionCount: suggestedSessions.length,
             customMessage: customMessage || null,
           },
-          status: results.filter(r => r.memberId === user.id && r.status === 'sent').length > 0 ? 'sent' : 'failed',
+          status: wasSent ? 'sent' : 'failed',
         },
       })
     } catch (logErr) {
