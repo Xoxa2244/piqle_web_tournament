@@ -1,11 +1,12 @@
 const APP_SCHEME = 'piqle://profile/edit'
 
-export default function StripeMobileReturnPage({
+export default async function StripeMobileReturnPage({
   searchParams,
 }: {
-  searchParams?: { status?: string }
+  searchParams?: Promise<{ status?: string }>
 }) {
-  const status = String(searchParams?.status || 'return').trim().toLowerCase()
+  const resolvedParams = await searchParams
+  const status = String(resolvedParams?.status || 'return').trim().toLowerCase()
   const target = `${APP_SCHEME}?stripe=${encodeURIComponent(status)}`
 
   return (
