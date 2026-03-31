@@ -218,7 +218,7 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate" style={{ color: 'var(--heading)' }}>{name}</span>
+                          <span className="text-sm font-medium truncate cursor-pointer hover:underline" style={{ color: 'var(--heading)' }} onClick={() => id && setSelectedPlayerId(id)}>{name}</span>
                           {rec.member?.membershipType && <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>{rec.member.membershipType}</span>}
                         </div>
                         {/* Score bar */}
