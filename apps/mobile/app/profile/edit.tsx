@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import { useFocusEffect } from '@react-navigation/native'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
 import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
@@ -101,6 +102,19 @@ export default function ProfileEditScreen() {
     setAvatarUri(profileQuery.data.image || null)
   }, [profileQuery.data])
 
+  const refreshStripeStatus = useCallback(async () => {
+    if (!token) return
+    setStripeLoading(true)
+    try {
+      const status = await authApi.getStripeConnectStatus(token)
+      setStripeStatus(status)
+    } catch {
+      setStripeStatus(null)
+    } finally {
+      setStripeLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
     if (!token) return
     let mounted = true
@@ -122,6 +136,12 @@ export default function ProfileEditScreen() {
       mounted = false
     }
   }, [token])
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshStripeStatus()
+    }, [refreshStripeStatus])
+  )
 
   const anchorTarget = Array.isArray(params.anchor) ? params.anchor[0] : params.anchor
 
@@ -240,18 +260,14 @@ export default function ProfileEditScreen() {
     if (!token || stripeConnecting) return
     try {
       setStripeConnecting(true)
-      const payload = await authApi.createStripeAccountLink(token)
+      const payload = await authApi.createStripeAccountLink(token, {
+        returnUrl: 'piqle://profile/edit?stripe=return',
+        refreshUrl: 'piqle://profile/edit?stripe=refresh',
+      })
       if (!payload?.url) {
         throw new Error('Failed to start Stripe onboarding.')
       }
       await Linking.openURL(payload.url)
-      setTimeout(() => {
-        if (!token) return
-        void authApi
-          .getStripeConnectStatus(token)
-          .then((status) => setStripeStatus(status))
-          .catch(() => undefined)
-      }, 1200)
     } catch (err: any) {
       toast.error(err?.message || 'Failed to start Stripe onboarding.')
     } finally {
