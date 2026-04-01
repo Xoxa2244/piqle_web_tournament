@@ -19,16 +19,21 @@ import { prisma } from './prisma'
 
 type UsageResource = 'email' | 'sms' | 'ai'
 
-const METERED_PRICE_IDS: Record<UsageResource, string | undefined> = {
-  email: process.env.STRIPE_METERED_EMAIL_PRICE_ID,
-  sms: process.env.STRIPE_METERED_SMS_PRICE_ID,
-  ai: process.env.STRIPE_METERED_AI_PRICE_ID,
+/** Meter event names — must match what was created in Stripe */
+const METER_EVENT_NAMES: Record<UsageResource, string> = {
+  email: 'email_send',
+  sms: 'sms_send',
+  ai: 'ai_credit',
 }
 
 /**
- * Report usage to Stripe for metered billing.
+ * Report usage to Stripe via Billing Meters.
  * Call this AFTER successfully sending an email/SMS or using AI.
  * Non-blocking — failures are logged but don't break the flow.
+ *
+ * New Stripe API (2025+): uses billing.meterEvents.create() instead of
+ * subscriptionItems.createUsageRecord(). Meters aggregate usage and
+ * Stripe bills automatically at end of period.
  */
 export async function reportUsage(
   clubId: string,
@@ -36,57 +41,33 @@ export async function reportUsage(
   quantity: number = 1,
 ): Promise<void> {
   try {
-    const meteredPriceId = METERED_PRICE_IDS[resource]
-    if (!meteredPriceId) return // Metered billing not configured for this resource
-
     // Get subscription for this club
     const sub = await prisma.subscription.findUnique({
       where: { clubId },
-      select: { stripeSubscriptionId: true, plan: true },
+      select: { stripeCustomerId: true, stripeSubscriptionId: true, plan: true },
     })
 
-    if (!sub?.stripeSubscriptionId) return // No active subscription
+    if (!sub?.stripeCustomerId || !sub?.stripeSubscriptionId) return
 
     // Check if usage is within plan limits (don't charge for included usage)
     const included = getIncludedUsage(sub.plan, resource)
     const currentUsage = await getCurrentPeriodUsage(clubId, resource)
 
-    // Only report overage to Stripe (usage beyond plan included amount)
+    // Only report overage to Stripe
     const overageQuantity = Math.max(0, (currentUsage + quantity) - included) - Math.max(0, currentUsage - included)
     if (overageQuantity <= 0) return // Still within plan limits
 
     const { getStripe } = await import('./stripe')
     const stripe = getStripe()
 
-    // Find the subscription item for this metered price
-    const subscription = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId, {
-      expand: ['items.data'],
-    })
-
-    const meteredItem = subscription.items.data.find(
-      (item) => item.price.id === meteredPriceId
-    )
-
-    if (!meteredItem) {
-      // Metered item not on subscription — add it
-      const newItem = await stripe.subscriptionItems.create({
-        subscription: sub.stripeSubscriptionId,
-        price: meteredPriceId,
-      })
-      // Report usage on newly created item
-      await (stripe.subscriptionItems as any).createUsageRecord(newItem.id, {
-        quantity: overageQuantity,
-        timestamp: Math.floor(Date.now() / 1000),
-        action: 'increment',
-      })
-      return
-    }
-
-    // Report usage
-    await (stripe.subscriptionItems as any).createUsageRecord(meteredItem.id, {
-      quantity: overageQuantity,
+    // Report via Billing Meter Events (new Stripe API)
+    await (stripe.billing as any).meterEvents.create({
+      event_name: METER_EVENT_NAMES[resource],
+      payload: {
+        value: String(overageQuantity),
+        stripe_customer_id: sub.stripeCustomerId,
+      },
       timestamp: Math.floor(Date.now() / 1000),
-      action: 'increment',
     })
   } catch (err) {
     // Non-critical — don't break sending flow
