@@ -27,6 +27,24 @@ const transporter = nodemailer.createTransport({
 
 const fromHeader = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
 
+/** Block emails to placeholder/demo/test addresses — prevents Mandrill reputation damage */
+const BLOCKED_EMAIL_DOMAINS = ['placeholder.iqsport.ai', 'demo.iqsport.ai', 'test.iqsport.ai', 'example.com']
+
+function isBlockedEmail(to: string): boolean {
+  const domain = to.split('@')[1]?.toLowerCase()
+  return BLOCKED_EMAIL_DOMAINS.some(d => domain === d || domain?.endsWith('.' + d))
+}
+
+/** Wraps transporter.sendMail with blocked email guard */
+async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
+  const to = typeof opts.to === 'string' ? opts.to : String(opts.to)
+  if (isBlockedEmail(to)) {
+    console.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
+    return { messageId: `blocked-${Date.now()}` }
+  }
+  return safeSendMail(opts)
+}
+
 const getAppBaseUrl = () => {
   const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
   if (!env) return 'http://localhost:3000'
@@ -284,7 +302,7 @@ export async function sendReactivationEmail({
     notifyMeUrl,
   })
 
-  const info = await transporter.sendMail({
+  const info = await safeSendMail({
     to,
     from: clubFrom,
     subject,
@@ -422,7 +440,7 @@ export async function sendEventInviteEmail({
     customMessage,
   })
 
-  const info = await transporter.sendMail({
+  const info = await safeSendMail({
     to,
     from: fromHeader,
     subject,
@@ -571,7 +589,7 @@ export async function sendSlotFillerInviteEmail({
     customMessage,
   })
 
-  const info = await transporter.sendMail({
+  const info = await safeSendMail({
     to,
     from: fromHeader,
     subject,
@@ -600,7 +618,7 @@ This code expires in ${ttlMinutes} minutes.
 If you didn't request this, you can ignore this email.`
   const html = buildOtpEmailHtml(code, ttlMinutes)
 
-  await transporter.sendMail({
+  await safeSendMail({
     to,
     from: fromHeader,
     subject,
@@ -710,7 +728,7 @@ export async function sendOutreachEmail({
 </body>
 </html>`
 
-  const info = await transporter.sendMail({
+  const info = await safeSendMail({
     to,
     from: fromHeader,
     subject,
