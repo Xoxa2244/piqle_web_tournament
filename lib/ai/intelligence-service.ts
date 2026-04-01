@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { intelligenceLogger as log } from '@/lib/logger';
 import { generateSlotFillerRecommendations } from './slot-filler';
 import { generateWeeklyPlan } from './weekly-planner';
 import { generateReactivationCandidates } from './reactivation';
@@ -66,10 +67,10 @@ async function detectAndPersistPersonas(
     );
 
     if (updates.length > 0) {
-      console.log(`[Persona] Detected & persisted ${updates.length} personas for club ${clubId}`);
+      log.info(`[Persona] Detected & persisted ${updates.length} personas for club ${clubId}`);
     }
   } catch (err) {
-    console.error('[Persona] Failed to detect/persist personas:', err);
+    log.error('[Persona] Failed to detect/persist personas:', err);
   }
 }
 
@@ -359,7 +360,7 @@ export async function getSlotFillerRecommendationsCsv(
       .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
       .filter((m: CsvSessionMeta) => m && m.date && m.capacity > 0)
   } catch (err) {
-    console.warn('[SlotFiller CSV] query failed for club', clubId, err)
+    log.warn('[SlotFiller CSV] query failed for club', clubId, err)
     throw new Error('Failed to load CSV sessions')
   }
 
@@ -1050,10 +1051,10 @@ export async function getReactivationCandidates(
       }
     }
   } catch (err) {
-    console.warn('[Reactivation] Failed to load last contact data', err)
+    log.warn('[Reactivation] Failed to load last contact data', err)
   }
 
-  console.log(`[Reactivation] clubId=${clubId} members=${members.length} hasRealBookings=${hasRealBookings} candidates=${candidates.length} threshold=${inactivityDays}`)
+  log.info(`[Reactivation] clubId=${clubId} members=${members.length} hasRealBookings=${hasRealBookings} candidates=${candidates.length} threshold=${inactivityDays}`)
 
   return {
     candidates: candidates.slice(0, limit),
@@ -1252,7 +1253,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
         },
       })
     } catch (logErr) {
-      console.error('[SlotFiller] Failed to log recommendation:', logErr)
+      log.error('[SlotFiller] Failed to log recommendation:', logErr)
     }
   }
 
@@ -1447,7 +1448,7 @@ export async function sendReactivationMessages(
         },
       })
     } catch (logErr) {
-      console.error('[Reactivation] Failed to log recommendation:', logErr)
+      log.error('[Reactivation] Failed to log recommendation:', logErr)
     }
   }
 
@@ -1565,7 +1566,7 @@ export async function sendEventInviteMessages(
         },
       })
     } catch (logErr) {
-      console.error('[EventInvite] Failed to log recommendation:', logErr)
+      log.error('[EventInvite] Failed to log recommendation:', logErr)
     }
   }
 
@@ -1598,7 +1599,7 @@ async function buildCsvEventData(
       .map((r: any) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as EventCsvMeta)
       .filter((m: EventCsvMeta) => m && m.date && m.capacity > 0)
   } catch (err) {
-    console.warn('[Events] buildCsvEventData CSV query failed for club', clubId, err)
+    log.warn('[Events] buildCsvEventData CSV query failed for club', clubId, err)
     return null
   }
 
@@ -1627,7 +1628,7 @@ async function buildCsvEventData(
         }))
       }
     } catch (err) {
-      console.warn('[Events] buildCsvEventData play_sessions fallback failed for club', clubId, err)
+      log.warn('[Events] buildCsvEventData play_sessions fallback failed for club', clubId, err)
     }
   }
 
@@ -2043,7 +2044,7 @@ export async function sendOutreachMessage(
       },
     })
   } catch (logErr) {
-    console.error(`[Outreach:${type}] Failed to log:`, logErr)
+    log.error(`[Outreach:${type}] Failed to log:`, logErr)
   }
 
   const sent = results.filter(r => r.status === 'sent').length

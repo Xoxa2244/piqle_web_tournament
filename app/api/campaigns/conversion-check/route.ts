@@ -17,6 +17,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -131,7 +132,7 @@ async function run(request: Request) {
   try {
     const result = await checkConversions()
 
-    console.log(`[Conversion Check] Done: ${result.converted} converted, ${result.unconverted} unconverted, ${result.stillPending || 0} pending out of ${result.checked} checked`)
+    log.info(`[Conversion Check] Done: ${result.converted} converted, ${result.unconverted} unconverted, ${result.stillPending || 0} pending out of ${result.checked} checked`)
 
     return NextResponse.json({
       ok: true,
@@ -141,7 +142,7 @@ async function run(request: Request) {
       ...result,
     })
   } catch (err) {
-    console.error('[Conversion Check] Failed:', (err as Error).message)
+    log.error('[Conversion Check] Failed:', (err as Error).message)
     return NextResponse.json({
       ok: false,
       error: (err as Error).message?.slice(0, 200),

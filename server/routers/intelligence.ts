@@ -18,6 +18,7 @@ import {
 import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
+import { intelligenceLogger as log } from '@/lib/logger'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -73,7 +74,7 @@ export const intelligenceRouter = createTRPCRouter({
           WHERE club_id = ${input.clubId}::uuid
         `
       } catch (err) {
-        console.error('[Intelligence] getClubDataStatus failed:', err)
+        log.error('[Intelligence] getClubDataStatus failed:', err)
         return {
           hasData: false,
           totalEmbeddings: 0,
@@ -264,7 +265,7 @@ export const intelligenceRouter = createTRPCRouter({
             }
           }).filter(Boolean)
         } catch (err) {
-          console.warn('[SlotFiller] Frequent players fallback failed:', err)
+          log.warn('[SlotFiller] Frequent players fallback failed:', err)
           return []
         }
       }
@@ -354,7 +355,7 @@ export const intelligenceRouter = createTRPCRouter({
           const enhancement = await enhanceWeeklyPlanWithLLM(result.plan)
           return { ...result, aiEnhancement: enhancement }
         } catch (err) {
-          console.error('[Intelligence] Weekly plan LLM enhancement failed:', err)
+          log.error('[Intelligence] Weekly plan LLM enhancement failed:', err)
         }
       }
 
@@ -381,7 +382,7 @@ export const intelligenceRouter = createTRPCRouter({
           const enhancements = await enhanceReactivationWithLLM(result.candidates)
           return { ...result, aiEnhancements: enhancements }
         } catch (err) {
-          console.error('[Intelligence] Reactivation LLM enhancement failed:', err)
+          log.error('[Intelligence] Reactivation LLM enhancement failed:', err)
         }
       }
 
@@ -570,7 +571,7 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
       } catch (err) {
-        console.warn('[Intelligence] aIRecommendationLog query failed:', err)
+        log.warn('[Intelligence] aIRecommendationLog query failed:', err)
       }
 
       // Calculate occupancy stats
@@ -998,7 +999,7 @@ export const intelligenceRouter = createTRPCRouter({
         }
       } catch (err) {
         // ── Fallback: read from document_embeddings (CSV-imported data) ──
-        console.warn('[getDashboardV2] Fallback mode:', (err as Error).message?.slice(0, 120))
+        log.warn('[getDashboardV2] Fallback mode:', (err as Error).message?.slice(0, 120))
 
         interface CsvSessionMeta {
           date: string; startTime: string; endTime: string; court: string
@@ -1021,7 +1022,7 @@ export const intelligenceRouter = createTRPCRouter({
             .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
             .filter(m => m && m.date && m.capacity > 0)
         } catch (embErr) {
-          console.warn('[getDashboardV2] document_embeddings query failed:', (embErr as Error).message?.slice(0, 80))
+          log.warn('[getDashboardV2] document_embeddings query failed:', (embErr as Error).message?.slice(0, 80))
         }
 
         if (allCsvSessions.length === 0) {
@@ -1354,7 +1355,7 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
       } catch (err) {
-        console.warn('[Intelligence] listConversations failed:', err)
+        log.warn('[Intelligence] listConversations failed:', err)
         return []
       }
     }),
@@ -1382,7 +1383,7 @@ export const intelligenceRouter = createTRPCRouter({
         return conversation
       } catch (err) {
         if (err instanceof TRPCError) throw err
-        console.warn('[Intelligence] getConversation failed:', err)
+        log.warn('[Intelligence] getConversation failed:', err)
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to load conversation' })
       }
     }),
@@ -1402,7 +1403,7 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
       } catch (err) {
-        console.warn('[Intelligence] createConversation failed:', err)
+        log.warn('[Intelligence] createConversation failed:', err)
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create conversation' })
       }
     }),
@@ -1428,7 +1429,7 @@ export const intelligenceRouter = createTRPCRouter({
         return { success: true }
       } catch (err) {
         if (err instanceof TRPCError) throw err
-        console.warn('[Intelligence] deleteConversation failed:', err)
+        log.warn('[Intelligence] deleteConversation failed:', err)
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete conversation' })
       }
     }),
@@ -1448,7 +1449,7 @@ export const intelligenceRouter = createTRPCRouter({
         })
         return { success: true }
       } catch (err) {
-        console.warn('[Intelligence] deleteAllConversations failed:', err)
+        log.warn('[Intelligence] deleteAllConversations failed:', err)
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete conversations' })
       }
     }),
@@ -1504,7 +1505,7 @@ export const intelligenceRouter = createTRPCRouter({
           };
         })
       } catch (err) {
-        console.warn('[Intelligence] getSessionsCalendar play_sessions query failed:', (err as Error).message?.slice(0, 80))
+        log.warn('[Intelligence] getSessionsCalendar play_sessions query failed:', (err as Error).message?.slice(0, 80))
       }
 
       // Fallback: embeddings (only if no play_sessions found)
@@ -1520,7 +1521,7 @@ export const intelligenceRouter = createTRPCRouter({
             .map(r => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata))
             .filter((m: any) => m && m.date && m.capacity > 0)
         } catch (err) {
-          console.warn('[Intelligence] getSessionsCalendar embeddings fallback failed:', (err as Error).message?.slice(0, 80))
+          log.warn('[Intelligence] getSessionsCalendar embeddings fallback failed:', (err as Error).message?.slice(0, 80))
         }
       }
 
@@ -1735,7 +1736,7 @@ export const intelligenceRouter = createTRPCRouter({
             coPlayerCache.set(cacheKey, { ts: Date.now(), data: coPlayerMap })
           }
         } catch (err) {
-          console.warn('[Intelligence] Co-player query failed (non-critical):', (err as Error).message?.slice(0, 80))
+          log.warn('[Intelligence] Co-player query failed (non-critical):', (err as Error).message?.slice(0, 80))
         }
 
         // Attach co-player data to memberInputs
@@ -1746,7 +1747,7 @@ export const intelligenceRouter = createTRPCRouter({
         const { generateMemberHealth } = await import('@/lib/ai/member-health')
         return generateMemberHealth(memberInputs)
       } catch (err) {
-        console.warn('[Intelligence] getMemberHealth failed:', (err as Error).message?.slice(0, 120))
+        log.warn('[Intelligence] getMemberHealth failed:', (err as Error).message?.slice(0, 120))
         // Return empty data rather than throwing
         return {
           members: [],
@@ -1829,7 +1830,7 @@ export const intelligenceRouter = createTRPCRouter({
       // Clear in-memory caches
       calendarCache.delete(`calendar:${clubId}`)
 
-      console.log(`[deleteAllClubData] Club ${clubId} cleaned:`, deleted)
+      log.info(`[deleteAllClubData] Club ${clubId} cleaned:`, deleted)
       return { ok: true, deleted }
     }),
 
@@ -2874,7 +2875,7 @@ export const intelligenceRouter = createTRPCRouter({
         `
         aiRecsDeleted = typeof arResult === 'number' ? arResult : 0
       } catch (err) {
-        console.warn('[Delete Import] ai_recommendation_logs cleanup failed:', err)
+        log.warn('[Delete Import] ai_recommendation_logs cleanup failed:', err)
       }
 
       // 2. Delete health snapshots
@@ -2912,7 +2913,7 @@ export const intelligenceRouter = createTRPCRouter({
         `
         followersDeleted = typeof fResult === 'number' ? fResult : 0
       } catch (err) {
-        console.warn('[Delete Import] placeholder followers cleanup failed:', err)
+        log.warn('[Delete Import] placeholder followers cleanup failed:', err)
       }
 
       // 7. Delete AI conversations and messages (reset AI advisor history)
@@ -2926,10 +2927,10 @@ export const intelligenceRouter = createTRPCRouter({
           DELETE FROM ai_conversations WHERE club_id = ${input.clubId}::uuid
         `
       } catch (err) {
-        console.warn('[Delete Import] AI conversations cleanup failed:', err)
+        log.warn('[Delete Import] AI conversations cleanup failed:', err)
       }
 
-      console.log(`[Delete Import] Club ${input.clubId}: ${embeddingsDeleted} embeddings, ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${healthDeleted} health, ${followersDeleted} placeholder users, ${aiRecsDeleted} ai recs deleted`)
+      log.info(`[Delete Import] Club ${input.clubId}: ${embeddingsDeleted} embeddings, ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${healthDeleted} health, ${followersDeleted} placeholder users, ${aiRecsDeleted} ai recs deleted`)
 
       return { sessionsDeleted, bookingsDeleted, embeddingsDeleted, healthDeleted, followersDeleted, remainingEmbeddings: 0 }
     }),
@@ -3183,7 +3184,7 @@ export const intelligenceRouter = createTRPCRouter({
         forceRegenerate: input.forceRegenerate,
         batchSize: 10,
         delayMs: 300,
-      }).catch(err => console.error('[tRPC] regenerateMemberProfiles failed:', err))
+      }).catch(err => log.error('[tRPC] regenerateMemberProfiles failed:', err))
       return { status: 'started' }
     }),
 
@@ -3610,7 +3611,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           smsBody: (parsed.smsBody || '').slice(0, 160),
         }
       } catch (err) {
-        console.warn('[generateCampaignMessage] LLM failed, using fallback templates:', (err as Error).message?.slice(0, 100))
+        log.warn('[generateCampaignMessage] LLM failed, using fallback templates:', (err as Error).message?.slice(0, 100))
         // Hardcoded fallback templates
         const fallbacks: Record<string, { subject: string; body: string; smsBody: string }> = {
           CHECK_IN: {
@@ -3776,7 +3777,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             channelSent = true
             externalMessageId = result.messageId || null
           } catch (err) {
-            console.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
+            log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
           }
         }
 
@@ -3807,7 +3808,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             },
           })
         } catch (logErr) {
-          console.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
+          log.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
         }
 
         results.push({ userId: user.id, status, channel: input.channel, messageId: externalMessageId || undefined })

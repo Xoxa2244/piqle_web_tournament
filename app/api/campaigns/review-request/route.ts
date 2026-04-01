@@ -13,6 +13,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -81,7 +82,7 @@ async function sendReviewRequests() {
       const { checkUsageLimit } = await import('@/lib/subscription')
       const emailCheck = await checkUsageLimit(club.id, 'emails', recentPlayers.length)
       if (!emailCheck.allowed) {
-        console.warn(`[Review] Club ${club.id} email limit reached, skipping`)
+        log.warn(`[Review] Club ${club.id} email limit reached, skipping`)
         totalSkipped += recentPlayers.length
         continue
       }
@@ -123,7 +124,7 @@ async function sendReviewRequests() {
         }).catch(() => {})
 
       } catch (err) {
-        console.error(`[Review] Failed for ${player.userId}:`, (err as Error).message?.slice(0, 80))
+        log.error(`[Review] Failed for ${player.userId}:`, (err as Error).message?.slice(0, 80))
         totalSkipped++
       }
     }
@@ -141,10 +142,10 @@ async function run(request: Request) {
   const startedAt = new Date()
   try {
     const result = await sendReviewRequests()
-    console.log(`[Review] Done: ${result.totalSent} sent, ${result.totalSkipped} skipped`)
+    log.info(`[Review] Done: ${result.totalSent} sent, ${result.totalSkipped} skipped`)
     return NextResponse.json({ ok: true, ...result, durationMs: Date.now() - startedAt.getTime() })
   } catch (err) {
-    console.error('[Review] Failed:', (err as Error).message)
+    log.error('[Review] Failed:', (err as Error).message)
     return NextResponse.json({ ok: false, error: (err as Error).message?.slice(0, 200) }, { status: 500 })
   }
 }

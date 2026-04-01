@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -57,7 +58,7 @@ async function runCampaign(request: Request) {
       })),
     })
   } catch (error: any) {
-    console.error('[Campaign] Cron failed:', error)
+    log.error('[Campaign] Cron failed:', error)
     return NextResponse.json(
       { error: 'Campaign failed', message: error.message?.slice(0, 200) },
       { status: 500 },

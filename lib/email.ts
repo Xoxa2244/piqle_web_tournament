@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { emailLogger as log } from '@/lib/logger'
 
 const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
 const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || 587)
@@ -10,7 +11,7 @@ const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM
 const fromName = process.env.SMTP_FROM_NAME || 'IQSport'
 
 if (!smtpHost || !smtpPass || !fromEmail) {
-  console.error('[Email] Missing SMTP env vars')
+  log.error('[Email] Missing SMTP env vars')
 }
 
 const transporter = nodemailer.createTransport({
@@ -39,7 +40,7 @@ function isBlockedEmail(to: string): boolean {
 async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
   const to = typeof opts.to === 'string' ? opts.to : String(opts.to)
   if (isBlockedEmail(to)) {
-    console.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
+    log.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
     return { messageId: `blocked-${Date.now()}` }
   }
   return safeSendMail(opts)

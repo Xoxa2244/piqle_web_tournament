@@ -16,6 +16,7 @@
  */
 
 import { prisma } from './prisma'
+import { stripeLogger as log } from '@/lib/logger'
 
 type UsageResource = 'email' | 'sms' | 'ai'
 
@@ -71,7 +72,7 @@ export async function reportUsage(
     })
   } catch (err) {
     // Non-critical — don't break sending flow
-    console.warn(`[Stripe Usage] Failed to report ${resource} usage for club ${clubId}:`, (err as Error).message?.slice(0, 100))
+    log.warn(`[Stripe Usage] Failed to report ${resource} usage for club ${clubId}:`, (err as Error).message?.slice(0, 100))
   }
 }
 

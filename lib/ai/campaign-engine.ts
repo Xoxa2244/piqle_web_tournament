@@ -12,6 +12,7 @@
  */
 
 import { generateMemberHealth } from './member-health'
+import { campaignLogger as log } from '@/lib/logger'
 import { checkAntiSpam } from './anti-spam'
 import { generateOutreachMessages, generateOutreachMessagesWithLLM } from './outreach-messages'
 import type { OutreachMessageVariant, OutreachType } from './outreach-messages'
@@ -290,7 +291,7 @@ async function executeSequenceStep(
     }
   } catch (err) {
     // LLM/optimizer failed — using hardcoded fallback (already set above)
-    console.warn(`[Campaign] LLM sequence variant failed, using hardcoded:`, (err as Error).message?.slice(0, 80))
+    log.warn(`[Campaign] LLM sequence variant failed, using hardcoded:`, (err as Error).message?.slice(0, 80))
   }
 
   const memberBookingUrl = matched?.deepLinkUrl || defaultBookingUrl
@@ -367,7 +368,7 @@ async function executeSequenceStep(
         sent = true
       }
     } catch (err) {
-      console.error(`[Campaign] Sequence email failed:`, (err as Error).message?.slice(0, 100))
+      log.error(`[Campaign] Sequence email failed:`, (err as Error).message?.slice(0, 100))
     }
   } else if (action.action === 'send_sms') {
     try {
@@ -376,7 +377,7 @@ async function executeSequenceStep(
         prisma, userId, clubId, type: sequence.rootLog.type as any,
       })
       if (!smsSpamCheck.allowed) {
-        console.warn(`[Campaign] SMS blocked by anti-spam for user ${userId}`)
+        log.warn(`[Campaign] SMS blocked by anti-spam for user ${userId}`)
         return false
       }
 
@@ -393,7 +394,7 @@ async function executeSequenceStep(
         externalMessageId = result.sid
         sent = true
       } else if (!user.smsOptIn) {
-        console.warn(`[Campaign] SMS skipped — user ${userId} has not opted in, falling back to email`)
+        log.warn(`[Campaign] SMS skipped — user ${userId} has not opted in, falling back to email`)
       }
 
       if (!sent) {
@@ -425,7 +426,7 @@ async function executeSequenceStep(
         }
       }
     } catch (err) {
-      console.error(`[Campaign] Sequence SMS failed:`, (err as Error).message?.slice(0, 100))
+      log.error(`[Campaign] Sequence SMS failed:`, (err as Error).message?.slice(0, 100))
     }
   }
 
@@ -482,7 +483,7 @@ export async function runHealthCampaign(
     const { checkUsageLimit } = await import('@/lib/subscription')
     const emailCheck = await checkUsageLimit(clubId, 'emails', 10) // estimate ~10 emails per cron run
     if (!emailCheck.allowed) {
-      console.warn(`[Campaign] Club ${clubId} email limit reached (${emailCheck.used}/${emailCheck.limit}), skipping auto campaign`)
+      log.warn(`[Campaign] Club ${clubId} email limit reached (${emailCheck.used}/${emailCheck.limit}), skipping auto campaign`)
       return {
         clubId, clubName: club.name,
         membersProcessed: 0, messagesSent: 0, messagesSkipped: 0, snapshotsSaved: 0,
@@ -674,7 +675,7 @@ export async function runHealthCampaign(
         llmVariantCache.set(ot, llmVariants)
       }
     } catch (err) {
-      console.warn(`[Campaign] LLM pre-generation failed for ${ot}:`, (err as Error).message?.slice(0, 80))
+      log.warn(`[Campaign] LLM pre-generation failed for ${ot}:`, (err as Error).message?.slice(0, 80))
     }
   }
 
@@ -822,7 +823,7 @@ export async function runHealthCampaign(
       }
     } catch (err) {
       // Fallback to default variant if optimizer fails
-      console.warn(`[Campaign] Variant optimizer failed, using default:`, (err as Error).message?.slice(0, 80))
+      log.warn(`[Campaign] Variant optimizer failed, using default:`, (err as Error).message?.slice(0, 80))
     }
 
     const memberBookingUrl = matched?.deepLinkUrl || bookingUrl
@@ -853,7 +854,7 @@ export async function runHealthCampaign(
       })
       logId = logRecord.id
     } catch (logErr) {
-      console.error(`[Campaign] Log creation failed for ${member.memberId}:`, logErr)
+      log.error(`[Campaign] Log creation failed for ${member.memberId}:`, logErr)
     }
 
     // Send email via Mandrill (with tracking metadata) or SMTP fallback
@@ -929,7 +930,7 @@ export async function runHealthCampaign(
           }
         }
       } catch (err) {
-        console.error(`[Campaign] Email failed for ${member.memberId}:`, (err as Error).message?.slice(0, 100))
+        log.error(`[Campaign] Email failed for ${member.memberId}:`, (err as Error).message?.slice(0, 100))
       }
     }
 
@@ -944,7 +945,7 @@ export async function runHealthCampaign(
           },
         })
       } catch (updateErr) {
-        console.error(`[Campaign] Log update failed:`, updateErr)
+        log.error(`[Campaign] Log update failed:`, updateErr)
       }
     }
 
@@ -975,11 +976,11 @@ export async function runHealthCampaign(
         const sent = await executeSequenceStep(prisma, decision, club, settings, appUrl, upcomingSessions, resolvedPrefMap, bookingUrl)
         if (sent) sequenceFollowUps++
       } catch (err) {
-        console.error(`[Campaign] Sequence step failed for ${decision.sequence.rootLog.userId}:`, (err as Error).message?.slice(0, 100))
+        log.error(`[Campaign] Sequence step failed for ${decision.sequence.rootLog.userId}:`, (err as Error).message?.slice(0, 100))
       }
     }
   } catch (err) {
-    console.error(`[Campaign] Sequence processing failed for ${clubId}:`, (err as Error).message?.slice(0, 100))
+    log.error(`[Campaign] Sequence processing failed for ${clubId}:`, (err as Error).message?.slice(0, 100))
   }
 
   // Save new snapshots for ALL members
@@ -998,7 +999,7 @@ export async function runHealthCampaign(
       })
       snapshotsSaved++
     } catch (err) {
-      console.warn(`[Campaign] Snapshot failed for ${member.memberId}:`, (err as Error).message?.slice(0, 80))
+      log.warn(`[Campaign] Snapshot failed for ${member.memberId}:`, (err as Error).message?.slice(0, 80))
     }
   }
 
@@ -1044,7 +1045,7 @@ export async function runHealthCampaignForAllClubs(
     } catch (err) {
       const errMsg = (err as Error).message ?? String(err)
       const errStack = (err as Error).stack?.slice(0, 300) ?? ''
-      console.error(`[Campaign] Failed for club ${club.id}:`, errMsg, errStack)
+      log.error(`[Campaign] Failed for club ${club.id}:`, errMsg, errStack)
       results.push({
         clubId: club.id,
         clubName: 'Error',

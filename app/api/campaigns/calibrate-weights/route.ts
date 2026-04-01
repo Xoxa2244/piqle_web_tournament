@@ -13,6 +13,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_WEIGHTS, type HealthWeights } from '@/lib/ai/member-health'
 
@@ -258,12 +259,12 @@ async function calibrateWeights() {
         WHERE "clubId" = $1::uuid
       `, clubId, JSON.stringify(newWeights))
     } catch (err) {
-      console.warn(`[Calibrate] Failed to save weights for club ${clubId}:`, (err as Error).message?.slice(0, 80))
+      log.warn(`[Calibrate] Failed to save weights for club ${clubId}:`, (err as Error).message?.slice(0, 80))
     }
 
     results.push({ clubId, correlations, newWeights })
 
-    console.log(`[Calibrate] Club ${clubId}: ${calibrationSet.length} members, weights: freq=${newWeights.frequencyTrend} rec=${newWeights.recency} con=${newWeights.consistency} pat=${newWeights.patternBreak} ns=${newWeights.noShowTrend}`)
+    log.info(`[Calibrate] Club ${clubId}: ${calibrationSet.length} members, weights: freq=${newWeights.frequencyTrend} rec=${newWeights.recency} con=${newWeights.consistency} pat=${newWeights.patternBreak} ns=${newWeights.noShowTrend}`)
   }
 
   return { clubsProcessed: results.length, results }
@@ -288,7 +289,7 @@ async function run(request: Request) {
       ...result,
     })
   } catch (err) {
-    console.error('[Calibrate] Failed:', (err as Error).message)
+    log.error('[Calibrate] Failed:', (err as Error).message)
     return NextResponse.json({
       ok: false,
       error: (err as Error).message?.slice(0, 200),

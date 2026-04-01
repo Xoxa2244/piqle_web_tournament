@@ -19,6 +19,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { webhookLogger as wlog } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
       request.headers.get('x-mandrill-signature') ||
       request.headers.get('authorization')
     if (!authHeader) {
-      console.warn('[Mandrill Webhook] No auth header present — proceeding without verification')
+      wlog.warn('[Mandrill Webhook] No auth header present — proceeding without verification')
     }
 
     // Mandrill sends form-encoded body with a `mandrill_events` field containing a JSON array
@@ -102,17 +103,17 @@ export async function POST(request: Request) {
         await processMandrillEvent(event)
         processed++
       } catch (err) {
-        console.error(
+        wlog.error(
           '[Mandrill Webhook] Error processing event:',
           (err as Error).message?.slice(0, 120),
         )
       }
     }
 
-    console.log(`[Mandrill Webhook] Processed ${processed}/${events.length} events`)
+    wlog.info(`[Mandrill Webhook] Processed ${processed}/${events.length} events`)
     return NextResponse.json({ received: true, processed })
   } catch (err) {
-    console.error('[Mandrill Webhook] Fatal error:', (err as Error).message?.slice(0, 200))
+    wlog.error('[Mandrill Webhook] Fatal error:', (err as Error).message?.slice(0, 200))
     // Always return 200 — Mandrill retries on non-200 responses
     return NextResponse.json({ received: true, error: 'processing_error' })
   }
@@ -133,7 +134,7 @@ async function processMandrillEvent(event: MandrillEvent) {
     : await prisma.aIRecommendationLog.findFirst({ where: { externalMessageId: externalId } })
 
   if (!log) {
-    console.warn(
+    wlog.warn(
       `[Mandrill Webhook] Log not found — externalId=${externalId} logId=${logId}`,
     )
     return
