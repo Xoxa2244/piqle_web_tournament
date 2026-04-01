@@ -33,9 +33,30 @@ const getAppBaseUrl = () => {
   return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
 }
 
-const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
+type CodeEmailVariant = 'verification' | 'password-reset'
+
+const getCodeEmailCopy = (variant: CodeEmailVariant) => {
+  if (variant === 'password-reset') {
+    return {
+      subject: 'Your Piqle password reset code',
+      eyebrow: 'Use this code to reset your password',
+      title: 'Reset your password',
+      footer: 'If you did not request a password reset, you can safely ignore this email.',
+    }
+  }
+
+  return {
+    subject: 'Your Piqle verification code',
+    eyebrow: 'Use this code to complete your registration',
+    title: 'Verification code',
+    footer: 'If you did not request this code, you can safely ignore this email.',
+  }
+}
+
+const buildCodeEmailHtml = (code: string, ttlMinutes: number, variant: CodeEmailVariant) => {
   const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/Logo.png`
+  const copy = getCodeEmailCopy(variant)
 
   return `
 <!DOCTYPE html>
@@ -60,8 +81,8 @@ const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="padding: 28px 24px 20px; text-align: center;">
-                    <p style="margin: 0 0 12px; font-size: 15px; color: #6b7280;">Use this code to complete your registration</p>
-                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">Verification code</h1>
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #6b7280;">${copy.eyebrow}</p>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">${copy.title}</h1>
                   </td>
                 </tr>
                 <tr>
@@ -77,7 +98,7 @@ const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
                 <tr>
                   <td style="padding: 18px 24px 24px; text-align: center; border-top: 1px solid #e5e7eb;">
                     <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-                      If you did not request this code, you can safely ignore this email.
+                      ${copy.footer}
                     </p>
                   </td>
                 </tr>
@@ -93,6 +114,33 @@ const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
   `
 }
 
+async function sendCodeEmail({
+  to,
+  code,
+  ttlMinutes,
+  variant,
+}: {
+  to: string
+  code: string
+  ttlMinutes: number
+  variant: CodeEmailVariant
+}) {
+  const copy = getCodeEmailCopy(variant)
+  const text = `${copy.title}: ${code}
+
+This code expires in ${ttlMinutes} minutes.
+${copy.footer}`
+  const html = buildCodeEmailHtml(code, ttlMinutes, variant)
+
+  await transporter.sendMail({
+    to,
+    from: fromHeader,
+    subject: copy.subject,
+    text,
+    html,
+  })
+}
+
 export async function sendOtpEmail({
   to,
   code,
@@ -102,18 +150,17 @@ export async function sendOtpEmail({
   code: string
   ttlMinutes: number
 }) {
-  const subject = 'Your Piqle verification code'
-  const text = `Your Piqle verification code is: ${code}
+  await sendCodeEmail({ to, code, ttlMinutes, variant: 'verification' })
+}
 
-This code expires in ${ttlMinutes} minutes.
-If you didn't request this, you can ignore this email.`
-  const html = buildOtpEmailHtml(code, ttlMinutes)
-
-  await transporter.sendMail({
-    to,
-    from: fromHeader,
-    subject,
-    text,
-    html,
-  })
+export async function sendPasswordResetEmail({
+  to,
+  code,
+  ttlMinutes,
+}: {
+  to: string
+  code: string
+  ttlMinutes: number
+}) {
+  await sendCodeEmail({ to, code, ttlMinutes, variant: 'password-reset' })
 }

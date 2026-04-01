@@ -49,6 +49,8 @@ export default function AppHeader() {
             if (key === 'notification.list') utils.notification.list.invalidate({ limit: 20 })
             if (key === 'club.listMyChatClubs') utils.club.listMyChatClubs.invalidate()
             if (key === 'tournamentChat.listMyEventChats') utils.tournamentChat.listMyEventChats.invalidate()
+            if (key === 'registration.getMyStatus') utils.registration.getMyStatus.invalidate()
+            if (key === 'registration.getSeatMap') utils.registration.getSeatMap.invalidate()
           })
         }
       } catch (_) {

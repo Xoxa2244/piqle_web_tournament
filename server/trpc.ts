@@ -1,19 +1,43 @@
 import { initTRPC, TRPCError } from '@trpc/server'
 import { type FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import type { Session } from 'next-auth'
 import { parse as parseCookie } from 'cookie'
 
+import { authOptions } from '@/lib/auth'
+import { getSessionFromMobileToken } from '@/lib/mobileAuth'
+import { prisma } from '@/lib/prisma'
+
 interface CreateContextOptions {
   session: Session | null
+  requestOrigin: string | null
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     session: opts.session,
     prisma,
+    requestOrigin: opts.requestOrigin,
+  }
+}
+
+const getRequestOrigin = (req: Request) => {
+  const originHeader = req.headers.get('origin')?.trim()
+  if (originHeader) {
+    return originHeader.replace(/\/$/, '')
+  }
+
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  const forwardedProto = req.headers.get('x-forwarded-proto')
+  if (forwardedHost) {
+    const protocol = forwardedProto || (forwardedHost.startsWith('localhost') ? 'http' : 'https')
+    return `${protocol}://${forwardedHost}`
+  }
+
+  try {
+    return new URL(req.url).origin
+  } catch {
+    return null
   }
 }
 
@@ -28,6 +52,15 @@ const getSessionTokenFromRequest = (req: Request) => {
     cookies['_Secure-next-auth.session-token'] ||
     null
   )
+}
+
+const getBearerTokenFromRequest = (req: Request) => {
+  const header = req.headers.get('authorization')
+  if (!header) return null
+  const [scheme, token] = header.split(' ')
+  if (!scheme || !token) return null
+  if (scheme.toLowerCase() !== 'bearer') return null
+  return token.trim() || null
 }
 
 const getSessionFromDb = async (sessionToken: string): Promise<Session | null> => {
@@ -50,14 +83,11 @@ const getSessionFromDb = async (sessionToken: string): Promise<Session | null> =
 }
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
-  // In App Router, getServerSession uses cookies() internally.
-  // If NextAuth is misconfigured (e.g. missing NEXTAUTH_SECRET in an env),
-  // do not break all TRPC requests; gracefully continue as anonymous/fallback.
   let session: Session | null = null
   try {
     session = await getServerSession(authOptions)
   } catch (error) {
-    console.error('[TRPC] getServerSession failed, falling back to DB session lookup', error)
+    console.error('[TRPC] getServerSession failed, falling back to other auth modes', error)
   }
 
   if (!session) {
@@ -71,8 +101,20 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
     }
   }
 
+  if (!session) {
+    const bearerToken = getBearerTokenFromRequest(opts.req)
+    if (bearerToken) {
+      try {
+        session = await getSessionFromMobileToken(bearerToken)
+      } catch (error) {
+        console.error('[TRPC] getSessionFromMobileToken failed', error)
+      }
+    }
+  }
+
   return createInnerTRPCContext({
     session,
+    requestOrigin: getRequestOrigin(opts.req),
   })
 }
 
@@ -112,10 +154,6 @@ export const tdProcedure = t.procedure.use(async ({ ctx, next }) => {
   if (user && user.isActive === false) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'User account is blocked.' })
   }
-
-  // For now, tdProcedure just checks authentication
-  // Tournament ownership/access will be checked in individual endpoints
-  // This ensures user is logged in and has an ID
 
   return next({
     ctx: {

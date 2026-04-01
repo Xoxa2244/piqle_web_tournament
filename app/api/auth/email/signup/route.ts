@@ -38,17 +38,6 @@ export async function POST(req: NextRequest) {
       include: { accounts: true },
     })
 
-    if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
-      return NextResponse.json(
-        {
-          error: 'GOOGLE_ACCOUNT_EXISTS',
-          message:
-            'This email is already linked to a Google account. Please sign in with Google.',
-        },
-        { status: 409 }
-      )
-    }
-
     if (existingUser?.passwordHash) {
       return NextResponse.json(
         { error: 'USER_EXISTS', message: 'User already exists. Please sign in.' },

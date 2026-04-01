@@ -1,6 +1,15 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
+const notificationSettingsInput = z.object({
+  tournamentUpdates: z.boolean().optional(),
+  matchReminders: z.boolean().optional(),
+  chatMessages: z.boolean().optional(),
+  clubAnnouncements: z.boolean().optional(),
+  emailNotifications: z.boolean().optional(),
+  pushNotifications: z.boolean().optional(),
+})
+
 const maskEmail = (email: string) => {
   try {
     const [localRaw, domainRaw] = email.split('@')
@@ -32,6 +41,33 @@ const decimalToNumber = (value: any): number | null => {
   }
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+/** Public DUPR dashboard profile URL (numeric id from OAuth) or fallback search by DUPR code. */
+const buildDuprWebProfileUrl = (opts: {
+  duprLink: string | null | undefined
+  duprId: string | null | undefined
+  duprNumericId: bigint | null | undefined
+}): string | null => {
+  const manual = opts.duprLink?.trim()
+  if (manual && /^https?:\/\//i.test(manual)) return manual
+
+  const numeric =
+    opts.duprNumericId != null && opts.duprNumericId !== undefined
+      ? String(opts.duprNumericId)
+      : null
+  if (numeric && /^\d+$/.test(numeric)) {
+    return `https://dashboard.dupr.com/dashboard/player/${numeric}/profile`
+  }
+
+  const code = opts.duprId?.trim()
+  if (code && /^\d{6,}$/.test(code)) {
+    return `https://dashboard.dupr.com/dashboard/player/${code}/profile`
+  }
+  if (code) {
+    return `https://dashboard.dupr.com/dashboard/browse/players?search=${encodeURIComponent(code)}`
+  }
+  return null
 }
 
 export const userRouter = createTRPCRouter({
@@ -169,10 +205,12 @@ export const userRouter = createTRPCRouter({
           email: true,
           name: true,
           image: true,
+          createdAt: true,
           gender: true,
           city: true,
           duprLink: true,
           duprId: true,
+          duprNumericId: true,
           duprRatingSingles: true,
           duprRatingDoubles: true,
           role: true,
@@ -191,10 +229,16 @@ export const userRouter = createTRPCRouter({
         throw new Error('User not found')
       }
 
-      const { _count, ...rest } = user
+      const { _count, duprNumericId: _duprNum, ...rest } = user
+      const duprWebProfileUrl = buildDuprWebProfileUrl({
+        duprLink: user.duprLink,
+        duprId: user.duprId,
+        duprNumericId: user.duprNumericId,
+      })
       return {
         ...rest,
-        duprLinked: !!user.duprId,
+        duprLinked: !!user.duprId || user.duprNumericId != null,
+        duprWebProfileUrl,
         clubsJoinedCount: _count.clubFollows,
         tournamentsPlayedCount: _count.players,
         tournamentsCreatedCount: _count.tournaments,
@@ -213,6 +257,7 @@ export const userRouter = createTRPCRouter({
           email: true,
           name: true,
           image: true,
+          createdAt: true,
           gender: true,
           city: true,
           duprLink: true,
@@ -244,13 +289,108 @@ export const userRouter = createTRPCRouter({
       }
     }),
 
+  linkDupr: protectedProcedure
+    .input(
+      z.object({
+        duprId: z.string().optional(),
+        numericId: z.number().int().optional(),
+        accessToken: z.string().min(10),
+        refreshToken: z.string().min(10),
+        stats: z.any().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      // Parse ratings if included in DUPR postMessage payload.
+      const parseRating = (value: any): number | null => {
+        if (value === undefined || value === null) return null
+        const str = String(value).trim()
+        if (!str || str === 'NR' || str.toLowerCase() === 'not rated') return null
+        const parsed = parseFloat(str)
+        return Number.isFinite(parsed) ? parsed : null
+      }
+
+      let duprRatingSingles: number | null = null
+      let duprRatingDoubles: number | null = null
+      const stats = input.stats
+      if (stats && typeof stats === 'object') {
+        duprRatingSingles =
+          parseRating((stats as any).singlesRating) ??
+          parseRating((stats as any).singles) ??
+          parseRating((stats as any).ratings?.singles) ??
+          parseRating((stats as any).stats?.singlesRating) ??
+          parseRating((stats as any).stats?.singles) ??
+          null
+
+        duprRatingDoubles =
+          parseRating((stats as any).doublesRating) ??
+          parseRating((stats as any).doubles) ??
+          parseRating((stats as any).ratings?.doubles) ??
+          parseRating((stats as any).stats?.doublesRating) ??
+          parseRating((stats as any).stats?.doubles) ??
+          null
+      }
+
+      const updated = await ctx.prisma.user.update({
+        where: { id: userId },
+        data: {
+          duprId: input.duprId || undefined,
+          duprNumericId: input.numericId != null ? BigInt(input.numericId) : undefined,
+          duprAccessToken: input.accessToken,
+          duprRefreshToken: input.refreshToken,
+          duprRatingSingles,
+          duprRatingDoubles,
+        },
+        select: {
+          id: true,
+          duprId: true,
+          duprNumericId: true,
+          duprLink: true,
+          duprRatingSingles: true,
+          duprRatingDoubles: true,
+        },
+      })
+
+      return {
+        success: true,
+        duprId: updated.duprId,
+        duprLinked: Boolean(updated.duprId) || updated.duprNumericId != null,
+        duprWebProfileUrl: buildDuprWebProfileUrl({
+          duprLink: updated.duprLink,
+          duprId: updated.duprId,
+          duprNumericId: updated.duprNumericId,
+        }),
+        duprRatingSingles: decimalToNumber(updated.duprRatingSingles),
+        duprRatingDoubles: decimalToNumber(updated.duprRatingDoubles),
+      }
+    }),
+
+  unlinkDupr: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const userId = ctx.session.user.id
+      await ctx.prisma.user.update({
+        where: { id: userId },
+        data: {
+          duprId: null,
+          duprNumericId: null,
+          duprAccessToken: null,
+          duprRefreshToken: null,
+          duprRatingSingles: null,
+          duprRatingDoubles: null,
+        },
+        select: { id: true },
+      })
+      return { success: true }
+    }),
+
   updateProfile: protectedProcedure
     .input(z.object({
       name: z.string().min(1).optional(),
       gender: z.enum(['M', 'F', 'X']).optional(),
       city: z.string().optional(),
       duprLink: z.string().url().optional().or(z.literal('')),
-      image: z.string().url().optional(),
+      image: z.string().url().optional().or(z.literal('')),
     }))
     .mutation(async ({ ctx, input }) => {
       const updatedUser = await ctx.prisma.user.update({
@@ -264,7 +404,9 @@ export const userRouter = createTRPCRouter({
           ...(input.duprLink !== undefined && { 
             duprLink: input.duprLink === '' ? null : input.duprLink 
           }),
-          ...(input.image !== undefined && { image: input.image }),
+          ...(input.image !== undefined && {
+            image: input.image === '' ? null : input.image,
+          }),
         },
         select: {
           id: true,
@@ -279,5 +421,73 @@ export const userRouter = createTRPCRouter({
       })
 
       return updatedUser
+    }),
+
+  getNotificationSettings: protectedProcedure
+    .query(async ({ ctx }) => {
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: {
+          notifyTournamentUpdates: true,
+          notifyMatchReminders: true,
+          notifyChatMessages: true,
+          notifyClubAnnouncements: true,
+          notifyEmailNotifications: true,
+          notifyPushNotifications: true,
+        },
+      })
+      if (!user) throw new Error('User not found')
+      return {
+        tournamentUpdates: user.notifyTournamentUpdates,
+        matchReminders: user.notifyMatchReminders,
+        chatMessages: user.notifyChatMessages,
+        clubAnnouncements: user.notifyClubAnnouncements,
+        emailNotifications: user.notifyEmailNotifications,
+        pushNotifications: user.notifyPushNotifications,
+      }
+    }),
+
+  updateNotificationSettings: protectedProcedure
+    .input(notificationSettingsInput)
+    .mutation(async ({ ctx, input }) => {
+      const updated = await ctx.prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: {
+          ...(input.tournamentUpdates !== undefined
+            ? { notifyTournamentUpdates: input.tournamentUpdates }
+            : {}),
+          ...(input.matchReminders !== undefined
+            ? { notifyMatchReminders: input.matchReminders }
+            : {}),
+          ...(input.chatMessages !== undefined
+            ? { notifyChatMessages: input.chatMessages }
+            : {}),
+          ...(input.clubAnnouncements !== undefined
+            ? { notifyClubAnnouncements: input.clubAnnouncements }
+            : {}),
+          ...(input.emailNotifications !== undefined
+            ? { notifyEmailNotifications: input.emailNotifications }
+            : {}),
+          ...(input.pushNotifications !== undefined
+            ? { notifyPushNotifications: input.pushNotifications }
+            : {}),
+        },
+        select: {
+          notifyTournamentUpdates: true,
+          notifyMatchReminders: true,
+          notifyChatMessages: true,
+          notifyClubAnnouncements: true,
+          notifyEmailNotifications: true,
+          notifyPushNotifications: true,
+        },
+      })
+      return {
+        tournamentUpdates: updated.notifyTournamentUpdates,
+        matchReminders: updated.notifyMatchReminders,
+        chatMessages: updated.notifyChatMessages,
+        clubAnnouncements: updated.notifyClubAnnouncements,
+        emailNotifications: updated.notifyEmailNotifications,
+        pushNotifications: updated.notifyPushNotifications,
+      }
     }),
 })

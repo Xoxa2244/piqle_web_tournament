@@ -19,6 +19,7 @@ export const publicRouter = createTRPCRouter({
       title: true,
       description: true,
       format: true,
+      clubId: true,
       venueName: true,
       venueAddress: true,
       startDate: true,
@@ -34,10 +35,27 @@ export const publicRouter = createTRPCRouter({
           email: true,
         },
       },
+      club: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       divisions: {
         select: {
           id: true,
           name: true,
+          maxTeams: true,
+          _count: {
+            select: {
+              teams: true,
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          players: true,
         },
       },
       tournamentRatings: {
@@ -112,6 +130,7 @@ export const publicRouter = createTRPCRouter({
         title: true,
         description: true,
         format: true,
+        clubId: true,
         venueName: true,
         venueAddress: true,
         startDate: true,
@@ -127,10 +146,40 @@ export const publicRouter = createTRPCRouter({
             email: true,
           },
         },
+        club: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         divisions: {
           select: {
             id: true,
             name: true,
+            maxTeams: true,
+            teamKind: true,
+            _count: {
+              select: {
+                teams: true,
+              },
+            },
+          },
+        },
+        prizes: {
+          orderBy: {
+            place: 'asc',
+          },
+          select: {
+            id: true,
+            place: true,
+            label: true,
+            amount: true,
+            kind: true,
+          },
+        },
+        _count: {
+          select: {
+            players: true,
           },
         },
       } as const
@@ -240,6 +289,12 @@ export const publicRouter = createTRPCRouter({
       const tournament = await ctx.prisma.tournament.findUnique({
         where: { id: input.id },
         include: {
+          club: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
           divisions: {
             include: {
               constraints: true,
@@ -357,7 +412,13 @@ export const publicRouter = createTRPCRouter({
     }),
 
   getPublicStandings: publicProcedure
-    .input(z.object({ divisionId: z.string() }))
+    .input(
+      z.object({
+        divisionId: z.string(),
+        /** League Round Robin / Ladder League: restrict standings to one match day (public mobile & web). */
+        matchDayId: z.string().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       // Check that division belongs to a public tournament
       const division = await ctx.prisma.division.findUnique({
@@ -367,6 +428,7 @@ export const publicRouter = createTRPCRouter({
             select: {
               id: true,
               isPublicBoardEnabled: true,
+              format: true,
             },
           },
         },
@@ -379,6 +441,11 @@ export const publicRouter = createTRPCRouter({
       if (!division.tournament.isPublicBoardEnabled) {
         throw new Error('Public board is disabled for this tournament')
       }
+
+      const fmt = division.tournament.format
+      const useMatchDayFilter =
+        Boolean(input.matchDayId) &&
+        (fmt === 'LEAGUE_ROUND_ROBIN' || fmt === 'LADDER_LEAGUE')
 
       // Reuse the logic from standings router
       const divisionWithData = await ctx.prisma.division.findUnique({
@@ -394,7 +461,10 @@ export const publicRouter = createTRPCRouter({
             },
           },
           matches: {
-            where: { stage: 'ROUND_ROBIN' },
+            where: {
+              stage: 'ROUND_ROBIN',
+              ...(useMatchDayFilter ? { matchDayId: input.matchDayId } : {}),
+            },
             include: {
               teamA: {
                 include: {
@@ -537,7 +607,12 @@ export const publicRouter = createTRPCRouter({
     }),
 
   getPublicDivisionStage: publicProcedure
-    .input(z.object({ divisionId: z.string() }))
+    .input(
+      z.object({
+        divisionId: z.string(),
+        matchDayId: z.string().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       // Check that division belongs to a public tournament
       const division = await ctx.prisma.division.findUnique({
@@ -547,6 +622,7 @@ export const publicRouter = createTRPCRouter({
             select: {
               id: true,
               isPublicBoardEnabled: true,
+              format: true,
             },
           },
         },
@@ -559,6 +635,11 @@ export const publicRouter = createTRPCRouter({
       if (!division.tournament.isPublicBoardEnabled) {
         throw new Error('Public board is disabled for this tournament')
       }
+
+      const fmt = division.tournament.format
+      const useMatchDayFilter =
+        Boolean(input.matchDayId) &&
+        (fmt === 'LEAGUE_ROUND_ROBIN' || fmt === 'LADDER_LEAGUE')
 
       // Get division with all necessary data
       const divisionWithData = await ctx.prisma.division.findUnique({
@@ -590,6 +671,9 @@ export const publicRouter = createTRPCRouter({
             select: { id: true, name: true, order: true }
           },
           matches: {
+            ...(useMatchDayFilter && input.matchDayId
+              ? { where: { matchDayId: input.matchDayId } }
+              : {}),
             select: {
               id: true,
               teamAId: true,
@@ -599,6 +683,7 @@ export const publicRouter = createTRPCRouter({
               note: true,
               poolId: true,
               locked: true,
+              matchDayId: true,
               teamA: {
                 include: {
                   pool: true,
@@ -1013,7 +1098,13 @@ export const publicRouter = createTRPCRouter({
       if (!tournament || !tournament.isPublicBoardEnabled) {
         throw new Error('Tournament not found or public board disabled')
       }
-      if (tournament.format !== 'INDY_LEAGUE') return []
+      if (
+        tournament.format !== 'INDY_LEAGUE' &&
+        tournament.format !== 'LEAGUE_ROUND_ROBIN' &&
+        tournament.format !== 'LADDER_LEAGUE'
+      ) {
+        return []
+      }
 
       return ctx.prisma.matchDay.findMany({
         where: { tournamentId: input.tournamentId },

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { pushToUser } from '@/lib/realtime'
 import { createTRPCRouter, protectedProcedure, tdProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 
@@ -76,6 +77,79 @@ export const tournamentAccessRouter = createTRPCRouter({
       })
 
       return accesses
+    }),
+
+  getMyTournamentRoles: protectedProcedure
+    .input(z.object({
+      tournamentIds: z.array(z.string()),
+    }))
+    .query(async ({ ctx, input }) => {
+      const tournamentIds = Array.from(new Set(input.tournamentIds.filter(Boolean)))
+
+      if (tournamentIds.length === 0) {
+        return {}
+      }
+
+      const [ownedTournaments, accesses] = await Promise.all([
+        ctx.prisma.tournament.findMany({
+          where: {
+            id: { in: tournamentIds },
+            userId: ctx.session.user.id,
+          },
+          select: { id: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: {
+            userId: ctx.session.user.id,
+            tournamentId: { in: tournamentIds },
+          },
+          select: {
+            tournamentId: true,
+            accessLevel: true,
+          },
+        }),
+      ])
+
+      const result: Record<string, {
+        isOwner: boolean
+        isAdmin: boolean
+        accessLevel: 'ADMIN' | 'SCORE_ONLY' | null
+      }> = {}
+
+      tournamentIds.forEach((tournamentId) => {
+        result[tournamentId] = {
+          isOwner: false,
+          isAdmin: false,
+          accessLevel: null,
+        }
+      })
+
+      ownedTournaments.forEach((tournament) => {
+        result[tournament.id] = {
+          isOwner: true,
+          isAdmin: false,
+          accessLevel: 'ADMIN',
+        }
+      })
+
+      accesses.forEach((access) => {
+        const current = result[access.tournamentId] ?? {
+          isOwner: false,
+          isAdmin: false,
+          accessLevel: null,
+        }
+
+        result[access.tournamentId] = {
+          ...current,
+          isAdmin: current.isAdmin || access.accessLevel === 'ADMIN',
+          accessLevel:
+            current.accessLevel === 'ADMIN' || access.accessLevel === 'ADMIN'
+              ? 'ADMIN'
+              : 'SCORE_ONLY',
+        }
+      })
+
+      return result
     }),
 
   // Выдача доступа
@@ -607,6 +681,7 @@ export const tournamentAccessRouter = createTRPCRouter({
               updatedAt: new Date(),
             },
           })
+          pushToUser(tournament.userId, { type: 'invalidate', keys: ['notification.list'] })
           // Возвращаем обновленный запрос
           return await ctx.prisma.tournamentAccessRequest.findUnique({
             where: { id: existingRequest.id },
@@ -656,6 +731,8 @@ export const tournamentAccessRouter = createTRPCRouter({
           },
         },
       })
+
+      pushToUser(tournament.userId, { type: 'invalidate', keys: ['notification.list'] })
 
       return request
     }),
@@ -783,6 +860,8 @@ export const tournamentAccessRouter = createTRPCRouter({
         data: { status: 'APPROVED' },
       })
 
+      pushToUser(request.userId, { type: 'invalidate', keys: ['notification.list'] })
+
       // Audit log
       await ctx.prisma.auditLog.create({
         data: {
@@ -837,10 +916,14 @@ export const tournamentAccessRouter = createTRPCRouter({
         })
       }
 
+      const rejectedUserId = request.userId
+
       // Удаляем запрос (пользователь сможет подать заявку снова)
       await ctx.prisma.tournamentAccessRequest.delete({
         where: { id: input.requestId },
       })
+
+      pushToUser(rejectedUserId, { type: 'invalidate', keys: ['notification.list'] })
 
       // Audit log
       await ctx.prisma.auditLog.create({

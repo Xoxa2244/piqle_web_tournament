@@ -1420,7 +1420,11 @@ function DivisionStageManagementContent() {
           style={{ background: 'linear-gradient(to right, #3977DD, #061660)' }}
         >
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
-          <img src="/logodupr.png" alt="DUPR" className="h-8 object-contain" />
+          <img
+              src={`/logodupr.png?v=${encodeURIComponent(process.env.NEXT_PUBLIC_LOGO_VERSION ?? '1')}`}
+              alt="DUPR"
+              className="h-8 object-contain"
+            />
           <div className="flex items-center gap-3">
             <Button
               variant="outline"

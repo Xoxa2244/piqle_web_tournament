@@ -1,0 +1,34 @@
+---
+description: Keep native pull-to-refresh spinner hidden in mobile
+alwaysApply: true
+---
+
+# Mobile Pull To Refresh Without Native Spinner
+
+- In the mobile app, do not expose the platform `RefreshControl` spinner to the user.
+- Use `PickleRefreshScrollView` or `PageLayout` with `pullToRefresh` instead of adding ad-hoc `RefreshControl` UI.
+- Preserve the custom `PickleballRefreshIndicator` as the only visible refresh indicator.
+- If `RefreshControl` is required internally, keep its spinner fully transparent using the existing `PickleRefreshScrollView` pattern.
+- Do not add visible mask panels, white overlays, or extra placeholder blocks in the refresh zone.
+- Do not replace the custom pull-to-refresh experience with the default iOS or Android spinner.
+
+## Examples
+
+```tsx
+// Good
+<PageLayout
+  pullToRefresh={{ refreshing, onRefresh }}
+>
+  {children}
+</PageLayout>
+
+// Good
+<PickleRefreshScrollView refreshing={refreshing} onRefresh={onRefresh}>
+  {children}
+</PickleRefreshScrollView>
+
+// Bad
+<ScrollView
+  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+/>
+```

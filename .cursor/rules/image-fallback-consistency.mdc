@@ -1,0 +1,34 @@
+---
+description: Enforce consistent image and avatar fallbacks across the app
+alwaysApply: true
+---
+
+# Image Fallback Consistency
+
+- For non-user entities (`club`, `tournament`, `event`, entity preview cards, notifications, thumbnails, hero blocks), use `EntityImage` or `TournamentThumbnail`.
+- Non-user entities must fall back to the ball placeholder (`tournamentPlaceholder`) when the image is missing, invalid, or fails to load.
+- Do not use raw remote `<Image source={{ uri: ... }}>` for clubs/tournaments/events unless there is a very specific reason and the same ball-placeholder fallback is preserved.
+
+- For user entities (`profile`, `member`, `organizer`, `director`, `chat user`, `join request`, `notification user avatar`), use `RemoteUserAvatar`.
+- User avatars must default to initials, not the ball placeholder.
+- Always pass a meaningful `initialsLabel` when rendering a user avatar.
+
+- If a screen shows tournament/club/event data in more than one place, check all dependent renderers too:
+  lists, mini-cards, notifications, chat previews, modal context cards, hero/header blocks, and secondary tabs.
+- If a UI pattern intentionally has no image slot, keep it image-less; do not assume the placeholder is already covered elsewhere.
+
+## Examples
+
+```tsx
+// Non-user entity
+<TournamentThumbnail imageUri={event.image} size={48} />
+<EntityImage uri={club.logoUrl} style={styles.logo} resizeMode="cover" placeholderResizeMode="contain" />
+
+// User entity
+<RemoteUserAvatar
+  uri={member.user?.image}
+  size={56}
+  fallback="initials"
+  initialsLabel={member.user?.name ?? 'Member'}
+/>
+```

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "mobile:dev": "npm --prefix apps/mobile run dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -48,6 +49,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "elkjs": "^0.11.0",
+    "jose": "^6.2.1",
     "leo-profanity": "^1.9.0",
     "lucide-react": "^0.303.0",
     "next": "15.0.5",

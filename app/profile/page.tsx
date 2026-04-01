@@ -526,10 +526,15 @@ export default function ProfilePage() {
                 />
               ) : (
                 <div className="mt-1">
-                  {profile.duprLinked && profile.duprId ? (
+                  {profile.duprLinked ? (
                     <div className="flex items-center justify-between">
                       <div className="text-lg text-gray-900">
-                        Linked: <span className="font-medium">{profile.duprId}</span>
+                        Linked
+                        {profile.duprId ? (
+                          <>
+                            : <span className="font-medium">{profile.duprId}</span>
+                          </>
+                        ) : null}
                       </div>
                       <Button
                         onClick={handleUnlinkDUPRClick}

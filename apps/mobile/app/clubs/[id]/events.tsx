@@ -1,0 +1,114 @@
+import { router, useLocalSearchParams } from 'expo-router'
+import { Platform, ScrollView, StyleSheet, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+
+import { EmptyState, LoadingBlock } from '../../../src/components/ui'
+import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
+import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
+import { BrandGradientText } from '../../../src/components/navigation/BrandGradientText'
+import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
+import { trpc } from '../../../src/lib/trpc'
+import { spacing, type ThemePalette } from '../../../src/lib/theme'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
+
+export default function ClubEventsScreen() {
+  const params = useLocalSearchParams<{ id: string }>()
+  const clubId = String(params.id ?? '')
+  const { colors } = useAppTheme()
+  const styles = createStyles(colors)
+
+  const clubQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) })
+  useToastWhenEntityMissing({
+    enabled: Boolean(clubId),
+    entityKey: clubId,
+    toastMessage: 'This club no longer exists or the link is invalid.',
+    isLoading: clubQuery.isLoading,
+    hasData: Boolean(clubQuery.data),
+    isError: clubQuery.isError,
+    errorMessage: clubQuery.error?.message,
+  })
+
+  if (clubQuery.isLoading) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <LoadingBlock label="Loading events…" />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (!clubQuery.data) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.loadingWrap}>
+          <EmptyState title="Club not found" body="This club could not be loaded." />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  const club = clubQuery.data
+  const tournaments = Array.isArray(club.tournaments) ? club.tournaments : []
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.backRow}>
+          <BackCircleButton onPress={() => router.back()} style={styles.backButton} />
+          <BrandGradientText style={styles.title}>Upcoming tournaments</BrandGradientText>
+        </View>
+        {tournaments.length === 0 ? (
+          <EmptyState title="No upcoming events" body="This club has no published upcoming events yet." />
+        ) : (
+          <View style={{ gap: 12 }}>
+            {tournaments.map((tournament: any) => (
+              <ClubTournamentCard
+                key={tournament.id}
+                tournament={tournament}
+                onPress={() => router.push(`/tournaments/${tournament.id}`)}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  )
+}
+
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
+  },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 36,
+    gap: 16,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+  },
+  title: {
+    color: colors.primary,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    lineHeight: 36,
+    ...(Platform.OS === 'android' ? { textAlignVertical: 'center' as const, includeFontPadding: false } : {}),
+  },
+})
+

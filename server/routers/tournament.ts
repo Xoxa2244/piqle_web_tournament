@@ -860,6 +860,26 @@ export const tournamentRouter = createTRPCRouter({
       }))
     }),
 
+  /**
+   * Owner / admin flags without loading full tournament.
+   * Does not throw FORBIDDEN — returns userAccessInfo: null when the user has no privileged access
+   * (e.g. logged-in visitor browsing a public tournament listing).
+   */
+  getAccessInfo: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { isOwner, access } = await checkTournamentAccess(ctx.prisma, ctx.session.user.id, input.id)
+      if (!isOwner && !access) {
+        return { userAccessInfo: null }
+      }
+      return {
+        userAccessInfo: {
+          isOwner,
+          accessLevel: isOwner ? 'ADMIN' : (access?.accessLevel || null),
+        },
+      }
+    }),
+
   get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {

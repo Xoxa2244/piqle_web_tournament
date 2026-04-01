@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+import { pushToUser } from '@/lib/realtime'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,6 +66,16 @@ export async function POST(request: Request) {
           stripePaymentIntentId: paymentIntentId ?? payment.stripePaymentIntentId,
         },
       })
+      const payer = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: { player: { select: { userId: true } } },
+      })
+      if (payer?.player?.userId) {
+        pushToUser(payer.player.userId, {
+          type: 'invalidate',
+          keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+        })
+      }
       return
     }
 
@@ -86,6 +97,17 @@ export async function POST(request: Request) {
         data: { isPaid: true },
       })
     })
+
+    const payerPaid = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { player: { select: { userId: true } } },
+    })
+    if (payerPaid?.player?.userId) {
+      pushToUser(payerPaid.player.userId, {
+        type: 'invalidate',
+        keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+      })
+    }
   }
 
   const saveDefaultCardForUser = async (userId: string, card: CardDetails) => {

@@ -3,7 +3,7 @@
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export default function SignInClient() {
   const searchParams = useSearchParams()
@@ -15,22 +15,34 @@ export default function SignInClient() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const [signInStep, setSignInStep] = useState<'password' | 'resetEmail' | 'resetDetails'>('password')
   const [step, setStep] = useState<'email' | 'details'>('email')
+  const [resetCode, setResetCode] = useState('')
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+  const hasAutoStartedProvider = useRef(false)
 
   useEffect(() => {
     const modeParam = searchParams.get('mode')
     const emailParam = searchParams.get('email')
+    const providerParam = searchParams.get('provider')
     if (modeParam === 'signup') {
       setMode('signup')
       setStep('email')
+      setSignInStep('password')
     }
     if (emailParam && !email) {
       setEmail(emailParam)
     }
-  }, [searchParams, email])
+    if (providerParam === 'google' && !hasAutoStartedProvider.current) {
+      hasAutoStartedProvider.current = true
+      signIn('google', { callbackUrl })
+    }
+  }, [searchParams, email, callbackUrl])
 
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl })
@@ -39,6 +51,7 @@ export default function SignInClient() {
   const handleRequestCode = async (e: React.SyntheticEvent) => {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setIsSending(true)
     try {
       const response = await fetch('/api/auth/email/request-code', {
@@ -49,14 +62,8 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError(
-            'This email is already linked to a Google account. Please sign in with Google.'
-          )
-          return
-        }
         if (payload?.error === 'USER_EXISTS') {
-          setError('User already exists. Please sign in.')
+          setError('This email already has a password. Please sign in instead.')
           return
         }
         if (payload?.error === 'CODE_COOLDOWN') {
@@ -79,6 +86,7 @@ export default function SignInClient() {
   const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setIsVerifying(true)
     try {
       await signIn('email-password', {
@@ -98,6 +106,7 @@ export default function SignInClient() {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setNotice(null)
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters.')
@@ -125,14 +134,8 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError(
-            'This email is already linked to a Google account. Please sign in with Google.'
-          )
-          return
-        }
         if (payload?.error === 'USER_EXISTS') {
-          setError('User already exists. Please sign in.')
+          setError('This email already has a password. Please sign in instead.')
           return
         }
         if (payload?.error === 'CODE_EXPIRED') {
@@ -161,6 +164,106 @@ export default function SignInClient() {
     }
   }
 
+  const handleRequestPasswordResetCode = async (e: React.SyntheticEvent) => {
+    e.preventDefault()
+    setError(null)
+    setNotice(null)
+    setIsSending(true)
+
+    try {
+      const response = await fetch('/api/auth/email/password-reset/request-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        if (payload?.error === 'USER_NOT_FOUND') {
+          setError('No account exists for this email yet.')
+          return
+        }
+        if (payload?.error === 'CODE_COOLDOWN') {
+          setError('Please wait before requesting a new code.')
+          return
+        }
+        setError('Failed to send password reset code. Please try again.')
+        return
+      }
+
+      setSignInStep('resetDetails')
+      setNotice('We sent a password reset code to your email.')
+    } catch (err) {
+      console.error(err)
+      setError('Failed to send password reset code. Please try again.')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setNotice(null)
+
+    if (resetPassword.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+
+    if (resetPassword !== resetConfirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setIsVerifying(true)
+
+    try {
+      const response = await fetch('/api/auth/email/password-reset/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          code: resetCode,
+          password: resetPassword,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        if (payload?.error === 'USER_NOT_FOUND') {
+          setError('No account exists for this email yet.')
+          return
+        }
+        if (payload?.error === 'CODE_EXPIRED') {
+          setError('This code has expired. Please request a new one.')
+          return
+        }
+        if (payload?.error === 'CODE_ATTEMPTS_EXCEEDED') {
+          setError('Too many attempts. Please request a new code.')
+          return
+        }
+        if (payload?.error === 'CODE_INVALID') {
+          setError('The password reset code is invalid.')
+          return
+        }
+        setError('Failed to reset password. Please try again.')
+        return
+      }
+
+      await signIn('email-password', {
+        email,
+        password: resetPassword,
+        callbackUrl,
+      })
+    } catch (err) {
+      console.error(err)
+      setError('Failed to reset password. Please try again.')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
@@ -179,7 +282,9 @@ export default function SignInClient() {
               type="button"
               onClick={() => {
                 setMode('signin')
+                setSignInStep('password')
                 setError(null)
+                setNotice(null)
               }}
               className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
                 mode === 'signin'
@@ -193,7 +298,9 @@ export default function SignInClient() {
               type="button"
               onClick={() => {
                 setMode('signup')
+                setStep('email')
                 setError(null)
+                setNotice(null)
               }}
               className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
                 mode === 'signup'
@@ -233,7 +340,13 @@ export default function SignInClient() {
             </div>
           )}
 
-          {mode === 'signin' && (
+          {notice && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              {notice}
+            </div>
+          )}
+
+          {mode === 'signin' && signInStep === 'password' && (
             <form onSubmit={handlePasswordSignIn} className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -269,6 +382,23 @@ export default function SignInClient() {
                 />
               </div>
 
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignInStep('resetEmail')
+                    setError(null)
+                    setNotice(null)
+                    setResetCode('')
+                    setResetPassword('')
+                    setResetConfirmPassword('')
+                  }}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                >
+                  Forgot password?
+                </button>
+              </div>
+
               <Button
                 type="submit"
                 disabled={!email || !password || isVerifying}
@@ -276,6 +406,137 @@ export default function SignInClient() {
               >
                 {isVerifying ? 'Signing in...' : 'Sign in'}
               </Button>
+            </form>
+          )}
+
+          {mode === 'signin' && signInStep === 'resetEmail' && (
+            <form onSubmit={handleRequestPasswordResetCode} className="space-y-4">
+              <div>
+                <label htmlFor="email-reset" className="block text-sm font-medium text-gray-700">
+                  Email address
+                </label>
+                <input
+                  id="email-reset"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="you@example.com"
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  We&apos;ll send a 6-digit code to this email so you can choose a new password.
+                  If this account was created with a social sign-in provider, this will add
+                  password sign-in to the same account.
+                </p>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!email || isSending}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isSending ? 'Sending reset code...' : 'Send reset code'}
+              </Button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSignInStep('password')
+                  setError(null)
+                  setNotice(null)
+                }}
+                className="w-full text-sm font-medium text-blue-600 hover:text-blue-500"
+              >
+                Back to sign in
+              </button>
+            </form>
+          )}
+
+          {mode === 'signin' && signInStep === 'resetDetails' && (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label htmlFor="reset-code" className="block text-sm font-medium text-gray-700">
+                  Reset code
+                </label>
+                <input
+                  id="reset-code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter 6-digit code"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reset-password" className="block text-sm font-medium text-gray-700">
+                  New password
+                </label>
+                <input
+                  id="reset-password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="At least 8 characters"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="reset-confirm-password" className="block text-sm font-medium text-gray-700">
+                  Confirm new password
+                </label>
+                <input
+                  id="reset-confirm-password"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={!resetCode || !resetPassword || !resetConfirmPassword || isVerifying}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {isVerifying ? 'Updating password...' : 'Update password'}
+              </Button>
+
+              <div className="flex justify-between text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignInStep('password')
+                    setError(null)
+                    setNotice(null)
+                  }}
+                  className="text-blue-600 hover:text-blue-500"
+                >
+                  Back to sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRequestPasswordResetCode}
+                  className="text-blue-600 hover:text-blue-500"
+                  disabled={isSending}
+                >
+                  Resend code
+                </button>
+              </div>
             </form>
           )}
 
@@ -426,8 +687,10 @@ export default function SignInClient() {
 
         <p className="mt-4 text-center text-sm text-gray-600">
           {mode === 'signin'
-            ? 'Use your email and password or Google to sign in.'
-            : 'Create an account with email verification.'}
+            ? signInStep === 'password'
+              ? 'Use your email and password or Google to sign in.'
+              : 'Reset your password with a code sent to your email. This can also add a password to an existing social-sign-in account with the same email.'
+            : 'Create an account with email verification. If this email already exists via social sign-in, we will add password sign-in to that same account.'}
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { pushToUser } from '@/lib/realtime'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, tdProcedure } from '../trpc'
 import { getTeamSlotCount, normalizeTeamSlots } from '../utils/teamSlots'
@@ -132,6 +133,10 @@ export const waitlistRouter = createTRPCRouter({
           divisionName: team.division.name,
           teamName: team.name,
         })
+
+        if (entry.player.userId) {
+          pushToUser(entry.player.userId, { type: 'invalidate', keys: ['notification.list'] })
+        }
 
         return { success: true, teamPlayerId: teamPlayer.id }
       })
