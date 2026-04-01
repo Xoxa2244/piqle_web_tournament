@@ -1555,8 +1555,8 @@ function ClubInviteCard({
             ? 'This user already joined the club.'
             : res.delivered
               ? 'Email invite delivered.'
-              : res.reason === 'email_missing'
-                ? 'Email is not configured.'
+              : res.reason === 'smtp_missing'
+                ? 'SMTP is not configured.'
                 : 'Invite queued.',
       })
       setUserQuery('')
@@ -1575,8 +1575,8 @@ function ClubInviteCard({
         title: 'Invite sent',
         description: res.delivered
           ? 'Email invite delivered.'
-          : res.reason === 'email_missing'
-            ? 'Email is not configured.'
+          : res.reason === 'smtp_missing'
+            ? 'SMTP is not configured.'
             : 'Invite queued.',
       })
       setEmail('')

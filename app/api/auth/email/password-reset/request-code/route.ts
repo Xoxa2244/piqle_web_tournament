@@ -81,12 +81,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    try {
-      await sendPasswordResetEmail({ to: email, code, ttlMinutes })
-    } catch (error) {
-      await prisma.emailOtp.delete({ where: { email } }).catch(() => null)
-      throw error
-    }
+    await sendPasswordResetEmail({ to: email, code, ttlMinutes })
 
     return NextResponse.json({ ok: true, expiresAt })
   } catch (error) {

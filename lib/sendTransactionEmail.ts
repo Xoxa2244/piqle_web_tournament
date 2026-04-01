@@ -1,30 +1,13 @@
-type SendEmailOptions = {
-  to: string
-  subject: string
-  html: string
-  text?: string
-}
-
 /**
- * Send a transactional email.
+ * Send a single transactional HTML email (e.g. tournament invitation).
  * Uses MAILCHIMP_TRANSACTIONAL_API_KEY if set, else SMTP env vars.
  */
-export async function sendEmail({
-  to,
-  subject,
-  html,
-  text,
-}: SendEmailOptions): Promise<void> {
+export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
+  const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@piqle.io'
+  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
+
   const mailchimpApiKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
   if (mailchimpApiKey) {
-    const fromEmail =
-      process.env.SMTP_FROM ||
-      process.env.EMAIL_FROM ||
-      process.env.SMTP_USER ||
-      process.env.EMAIL_SERVER_USER ||
-      'noreply@piqle.io'
-    const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
-
     const response = await fetch('https://mandrillapp.com/api/1.0/messages/send.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -32,7 +15,6 @@ export async function sendEmail({
         key: mailchimpApiKey,
         message: {
           html,
-          text,
           subject,
           from_email: fromEmail,
           from_name: fromName,
@@ -49,24 +31,8 @@ export async function sendEmail({
       if (rejected.length > 0) {
         throw new Error(`Mailchimp send failed: ${rejected.map((r: any) => r.reject_reason || r.email).join(', ')}`)
       }
-      console.log('[Email] Mailchimp send accepted', {
-        to,
-        subject,
-        result: result.map((r: any) => ({
-          email: r.email,
-          status: r.status,
-          id: r._id,
-          reject_reason: r.reject_reason ?? null,
-        })),
-      })
     } else if (result.status === 'error') {
       throw new Error(`Mailchimp API error: ${result.message || result.name || 'Unknown error'}`)
-    } else {
-      console.log('[Email] Mailchimp send response', {
-        to,
-        subject,
-        result,
-      })
     }
     return
   }
@@ -75,12 +41,6 @@ export async function sendEmail({
   const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER
   const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
   const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
-  const fromEmail =
-    process.env.SMTP_FROM ||
-    process.env.EMAIL_FROM ||
-    emailUser ||
-    'noreply@piqle.io'
-  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
 
   if (!emailHost || !emailUser || !emailPassword) {
     if (process.env.NODE_ENV === 'development') {
@@ -98,55 +58,5 @@ export async function sendEmail({
     auth: { user: emailUser, pass: emailPassword },
   })
   const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
-  try {
-    await transporter.verify()
-  } catch (error) {
-    console.error('[Email] SMTP verify failed', {
-      host: emailHost,
-      port: emailPort,
-      secure: emailPort === '465',
-      user: emailUser,
-      fromEmail,
-      fromMatchesUser: fromEmail === emailUser,
-      to,
-      subject,
-      error,
-    })
-    throw error
-  }
-
-  try {
-    const info = await transporter.sendMail({ from: fromAddress, to, subject, html, text })
-    console.log('[Email] SMTP send accepted', {
-      host: emailHost,
-      port: emailPort,
-      secure: emailPort === '465',
-      user: emailUser,
-      fromEmail,
-      fromMatchesUser: fromEmail === emailUser,
-      to,
-      subject,
-      messageId: info.messageId,
-      accepted: info.accepted,
-      rejected: info.rejected,
-      response: info.response,
-    })
-  } catch (error) {
-    console.error('[Email] SMTP send failed', {
-      host: emailHost,
-      port: emailPort,
-      secure: emailPort === '465',
-      user: emailUser,
-      fromEmail,
-      fromMatchesUser: fromEmail === emailUser,
-      to,
-      subject,
-      error,
-    })
-    throw error
-  }
-}
-
-export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
-  await sendEmail({ to, subject, html })
+  await transporter.sendMail({ from: fromAddress, to, subject, html })
 }

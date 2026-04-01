@@ -82,12 +82,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    try {
-      await sendOtpEmail({ to: email, code, ttlMinutes })
-    } catch (error) {
-      await prisma.emailOtp.delete({ where: { email } }).catch(() => null)
-      throw error
-    }
+    await sendOtpEmail({ to: email, code, ttlMinutes })
 
     return NextResponse.json({ ok: true, expiresAt })
   } catch (error) {
