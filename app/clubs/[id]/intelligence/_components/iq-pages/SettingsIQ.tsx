@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import {
   Settings, Globe, Dumbbell, Calendar, Clock, DollarSign,
   Target, Mail, Smartphone, Volume2, Zap, Check, Bell,
-  Shield, ChevronDown, Trash2, AlertTriangle,
+  Shield, ChevronDown, Trash2, AlertTriangle, Star,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { useRouter } from "next/navigation";
@@ -112,6 +112,9 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
   const [autoRiskCritical, setAutoRiskCritical] = useState(false);
   const [autoChurned, setAutoChurned] = useState(false);
 
+  // Google Reviews
+  const [googleReviewUrl, setGoogleReviewUrl] = useState("");
+
   // Goals
   const [goals, setGoals] = useState(["fill_sessions", "improve_retention"]);
 
@@ -139,6 +142,7 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
     if (realAutomation.watchToAtRisk !== undefined) setAutoWatchRisk(realAutomation.watchToAtRisk);
     if (realAutomation.atRiskToCritical !== undefined) setAutoRiskCritical(realAutomation.atRiskToCritical);
     if (realAutomation.churned !== undefined) setAutoChurned(realAutomation.churned);
+    if (realAutomation.googleReviewUrl) setGoogleReviewUrl(realAutomation.googleReviewUrl);
   }
 
   const handleSave = () => {
@@ -169,6 +173,7 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
           atRiskToCritical: autoRiskCritical,
           churned: autoChurned,
           channel,
+          googleReviewUrl: googleReviewUrl.trim() || undefined,
         },
       });
     }
@@ -335,6 +340,32 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
           <Toggle checked={autoWatchRisk} onChange={setAutoWatchRisk} label="Watch → At Risk" description="Send retention boost when engagement drops significantly" />
           <Toggle checked={autoRiskCritical} onChange={setAutoRiskCritical} label="At Risk → Critical" description="Urgent win-back with personal offer" />
           <Toggle checked={autoChurned} onChange={setAutoChurned} label="Churned 21+ days" description="Reactivation campaign with special incentive" />
+        </div>
+      </Card>
+
+      {/* Google Reviews */}
+      <Card>
+        <SectionHeader icon={Star} title="Google Reviews" subtitle="Automatically request reviews after sessions" />
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs mb-1.5" style={{ color: "var(--t3)", fontWeight: 600 }}>Google Review URL</label>
+            <input
+              value={googleReviewUrl}
+              onChange={(e) => setGoogleReviewUrl(e.target.value)}
+              placeholder="https://g.page/r/your-club/review"
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t1)" }}
+            />
+            <p className="text-[10px] mt-1.5" style={{ color: "var(--t4)" }}>
+              Find your link: Google Maps → Your business → Share → "Ask for reviews". After saving, members will receive a review request email after playing a session (max 1 per 30 days).
+            </p>
+          </div>
+          {googleReviewUrl && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}>
+              <Check className="w-3.5 h-3.5" style={{ color: "#10B981" }} />
+              <span className="text-xs" style={{ color: "#10B981", fontWeight: 600 }}>Review requests enabled — sent daily after sessions</span>
+            </div>
+          )}
         </div>
       </Card>
 
