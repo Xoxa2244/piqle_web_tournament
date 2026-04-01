@@ -144,12 +144,12 @@ describe('RFM+ Health Score > Recency', () => {
 
   it('player who has not played in 60+ days gets very low recency score', () => {
     const candidate = scoreSingleMember({ daysSinceLastConfirmedBooking: 90 })
-    expect(candidate.reasoning.components.recency.score).toBe(5)
+    expect(candidate.reasoning.components.recency.score).toBe(10)
   })
 
-  it('player who never booked (null) defaults to 365 days -> minimal score', () => {
+  it('player who never booked (null) defaults to 999 days -> minimal score', () => {
     const candidate = scoreSingleMember({ daysSinceLastConfirmedBooking: null })
-    expect(candidate.reasoning.components.recency.score).toBe(5)
+    expect(candidate.reasoning.components.recency.score).toBe(1)
   })
 })
 
@@ -174,9 +174,10 @@ describe('RFM+ Health Score > Frequency', () => {
     expect(candidate.reasoning.components.frequency.score).toBeLessThanOrEqual(35)
   })
 
-  it('player with 0 sessions/month gets minimal frequency score', () => {
+  it('player with 0 sessions/month but high historical avg gets 25 frequency score', () => {
+    // With totalBookings=20 and daysSince=25, historicalMonthlyAvg is high → score 25
     const candidate = scoreSingleMember({ bookingsLastMonth: 0 })
-    expect(candidate.reasoning.components.frequency.score).toBe(5)
+    expect(candidate.reasoning.components.frequency.score).toBe(25)
   })
 })
 
@@ -334,7 +335,7 @@ describe('Churn Reason Detection', () => {
     expect(reasons.some(r => r.pattern === 'frequency_decline')).toBe(true)
   })
 
-  it('detects "new_member_dropout" for player who played 1-2 times and stopped', () => {
+  it('filters out low-engagement members (totalBookings < 5) from reactivation', () => {
     const now = new Date()
     const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000)
     const bookings: BookingWithSession[] = [
@@ -344,8 +345,10 @@ describe('Churn Reason Detection', () => {
         '10:00', 'OPEN_PLAY', 'CONFIRMED'
       ),
     ]
+    // Members with < 5 total bookings are excluded from reactivation —
+    // they're "tried & didn't stick", not "at-risk regulars worth fighting for"
     const reasons = getChurnReasons(bookings, { totalBookings: 2 })
-    expect(reasons.some(r => r.pattern === 'new_member_dropout')).toBe(true)
+    expect(reasons).toEqual([])
   })
 
   it('detects "seasonal_gap" for player who had a previous inactive gap and returned', () => {
@@ -641,7 +644,7 @@ describe('generateReactivationCandidates > Integration', () => {
     expect(result[0].member.id).toBe('inactive')
   })
 
-  it('sorts candidates by score descending', () => {
+  it('sorts candidates by risk tier (highest risk first)', () => {
     const result = generateReactivationCandidates({
       members: [
         {
@@ -659,7 +662,8 @@ describe('generateReactivationCandidates > Integration', () => {
       inactivityThresholdDays: 21,
     })
     expect(result.length).toBe(2)
-    expect(result[0].score).toBeGreaterThanOrEqual(result[1].score)
+    // Sorted by risk tier: lowest score (highest risk) first
+    expect(result[0].score).toBeLessThanOrEqual(result[1].score)
   })
 
   it('includes at most 3 suggested sessions', () => {
