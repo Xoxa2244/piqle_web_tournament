@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { accounts: true },
     })
 
     if (!user) {
@@ -29,19 +28,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (user.accounts?.some((account) => account.provider === 'google')) {
-      return NextResponse.json(
-        {
-          error: 'EMAIL_GOOGLE_ACCOUNT',
-          message: 'This email is linked to Google sign-in. Please continue with Google.',
-        },
-        { status: 409 }
-      )
-    }
-
     if (!user.passwordHash) {
       return NextResponse.json(
-        { error: 'EMAIL_PASSWORD_NOT_SET', message: 'Password sign-in is not set for this user.' },
+        {
+          error: 'EMAIL_PASSWORD_NOT_SET',
+          message: 'This account does not have a password yet. Use password reset to add one.',
+        },
         { status: 409 }
       )
     }

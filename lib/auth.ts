@@ -108,10 +108,6 @@ export const authOptions: NextAuthOptions = {
           include: { accounts: true },
         })
 
-        if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
-          throw new Error('EMAIL_GOOGLE_ACCOUNT')
-        }
-
         const user =
           existingUser ??
           (await prisma.user.create({
@@ -153,10 +149,6 @@ export const authOptions: NextAuthOptions = {
 
         if (!user) {
           throw new Error('EMAIL_PASSWORD_INVALID')
-        }
-
-        if (user.accounts?.some((account) => account.provider === 'google')) {
-          throw new Error('EMAIL_GOOGLE_ACCOUNT')
         }
 
         if (!user.passwordHash) {

@@ -19,23 +19,12 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { accounts: true },
     })
 
     if (!user) {
       return NextResponse.json(
         { error: 'USER_NOT_FOUND', message: 'No account exists for this email.' },
         { status: 404 }
-      )
-    }
-
-    if (user.accounts?.some((account) => account.provider === 'google')) {
-      return NextResponse.json(
-        {
-          error: 'GOOGLE_ACCOUNT_EXISTS',
-          message: 'This email is linked to Google sign-in. Please continue with Google.',
-        },
-        { status: 409 }
       )
     }
 

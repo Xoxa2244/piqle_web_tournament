@@ -8,8 +8,9 @@ import { Suspense } from 'react'
 const errorMessages: Record<string, string> = {
   CredentialsSignin: 'Invalid email or password.',
   EMAIL_GOOGLE_ACCOUNT:
-    'This email is already linked to a Google account. Please sign in with Google.',
-  EMAIL_PASSWORD_NOT_SET: 'This account does not have a password. Please sign up.',
+    'This email is linked to a social sign-in provider. You can continue with Google or reset your password to add email sign-in.',
+  EMAIL_PASSWORD_NOT_SET:
+    'This account does not have a password yet. Use Forgot password to add one and then sign in with email.',
   EMAIL_PASSWORD_INVALID: 'Invalid email or password.',
   AccessDenied: 'Access denied. Please try again.',
   Configuration: 'Authentication is not configured correctly.',

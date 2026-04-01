@@ -102,7 +102,16 @@ const normalizeResetError = (error: unknown) => {
     return { code: 'USER_NOT_FOUND', message: 'No account exists for this email.' }
   }
   if (lower.includes('linked to google sign-in') || lower.includes('linked to a google account')) {
-    return { code: 'GOOGLE_ACCOUNT_EXISTS', message: 'This email is linked to Google sign-in.' }
+    return {
+      code: 'SOCIAL_ACCOUNT_EXISTS',
+      message: 'This email is linked to social sign-in. Use password reset to add a password.',
+    }
+  }
+  if (lower.includes('does not have a password yet')) {
+    return {
+      code: 'EMAIL_PASSWORD_NOT_SET',
+      message: 'This account does not have a password yet. Use password reset to add one.',
+    }
   }
   if (lower.includes('please wait before requesting a new code')) {
     return { code: 'CODE_COOLDOWN', message: 'Please wait before requesting a new code.' }
@@ -612,7 +621,7 @@ export default function ProfileSettingsScreen() {
             ) : null}
             <Text style={[styles.sheetHint, { color: colors.textMuted }]}>
               {resetStep === 'email'
-                ? 'We will send a verification code to this email so you can set a new password.'
+                ? 'We will send a verification code to this email so you can set a new password. This also works if the account was first created with Google.'
                 : 'Use the code from your email and choose a strong new password.'}
             </Text>
           </View>

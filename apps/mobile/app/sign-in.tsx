@@ -395,6 +395,8 @@ export default function SignInScreen() {
                   <>
                     <Text style={styles.help}>
                       We'll send a verification code to your email so you can choose a new password.
+                      If this account already exists through Google, this will add password sign-in
+                      to that same account.
                     </Text>
 
                     {error ? (
@@ -570,7 +572,9 @@ export default function SignInScreen() {
               ) : step === 'email' ? (
                 <>
                   <Text style={styles.help}>
-                    We will send a verification code to your email before creating your account.
+                    We will send a verification code to your email before creating your account. If
+                    this email already exists through Google, we'll attach a password to that same
+                    account.
                   </Text>
 
                   {error ? (

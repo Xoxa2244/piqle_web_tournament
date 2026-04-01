@@ -62,14 +62,8 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError(
-            'This email is already linked to a Google account. Please sign in with Google.'
-          )
-          return
-        }
         if (payload?.error === 'USER_EXISTS') {
-          setError('User already exists. Please sign in.')
+          setError('This email already has a password. Please sign in instead.')
           return
         }
         if (payload?.error === 'CODE_COOLDOWN') {
@@ -140,14 +134,8 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError(
-            'This email is already linked to a Google account. Please sign in with Google.'
-          )
-          return
-        }
         if (payload?.error === 'USER_EXISTS') {
-          setError('User already exists. Please sign in.')
+          setError('This email already has a password. Please sign in instead.')
           return
         }
         if (payload?.error === 'CODE_EXPIRED') {
@@ -191,10 +179,6 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError('This email is linked to a Google account. Please sign in with Google.')
-          return
-        }
         if (payload?.error === 'USER_NOT_FOUND') {
           setError('No account exists for this email yet.')
           return
@@ -247,10 +231,6 @@ export default function SignInClient() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        if (payload?.error === 'GOOGLE_ACCOUNT_EXISTS') {
-          setError('This email is linked to a Google account. Please sign in with Google.')
-          return
-        }
         if (payload?.error === 'USER_NOT_FOUND') {
           setError('No account exists for this email yet.')
           return
@@ -448,6 +428,8 @@ export default function SignInClient() {
                 />
                 <p className="mt-2 text-sm text-gray-500">
                   We&apos;ll send a 6-digit code to this email so you can choose a new password.
+                  If this account was created with Google, this will add password sign-in to the
+                  same account.
                 </p>
               </div>
 
@@ -707,8 +689,8 @@ export default function SignInClient() {
           {mode === 'signin'
             ? signInStep === 'password'
               ? 'Use your email and password or Google to sign in.'
-              : 'Reset your password with a code sent to your email.'
-            : 'Create an account with email verification.'}
+              : 'Reset your password with a code sent to your email. This can also add a password to an existing Google account with the same email.'
+            : 'Create an account with email verification. If this email already exists via Google, we will add password sign-in to that same account.'}
         </p>
       </div>
     </div>
