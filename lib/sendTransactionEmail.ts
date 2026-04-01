@@ -49,8 +49,24 @@ export async function sendEmail({
       if (rejected.length > 0) {
         throw new Error(`Mailchimp send failed: ${rejected.map((r: any) => r.reject_reason || r.email).join(', ')}`)
       }
+      console.log('[Email] Mailchimp send accepted', {
+        to,
+        subject,
+        result: result.map((r: any) => ({
+          email: r.email,
+          status: r.status,
+          id: r._id,
+          reject_reason: r.reject_reason ?? null,
+        })),
+      })
     } else if (result.status === 'error') {
       throw new Error(`Mailchimp API error: ${result.message || result.name || 'Unknown error'}`)
+    } else {
+      console.log('[Email] Mailchimp send response', {
+        to,
+        subject,
+        result,
+      })
     }
     return
   }
@@ -100,7 +116,21 @@ export async function sendEmail({
   }
 
   try {
-    await transporter.sendMail({ from: fromAddress, to, subject, html, text })
+    const info = await transporter.sendMail({ from: fromAddress, to, subject, html, text })
+    console.log('[Email] SMTP send accepted', {
+      host: emailHost,
+      port: emailPort,
+      secure: emailPort === '465',
+      user: emailUser,
+      fromEmail,
+      fromMatchesUser: fromEmail === emailUser,
+      to,
+      subject,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    })
   } catch (error) {
     console.error('[Email] SMTP send failed', {
       host: emailHost,
