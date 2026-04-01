@@ -19,6 +19,9 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 
+// In-memory cache for expensive co-player social graph query (30 min TTL)
+const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
+
 // ── In-memory caches (per serverless instance, 5 min TTL) ──
 const calendarCache = new Map<string, { data: any; ts: number }>()
 
@@ -1677,58 +1680,59 @@ export const intelligenceRouter = createTRPCRouter({
         })
 
         // ── Co-player social graph (Level 2) ──
-        // For each member: find their top co-players and check if those are still active
+        // Expensive self-join query (~700ms for 21K bookings) — cached for 30 minutes
         let coPlayerMap = new Map<string, { activeCoPlayers: number; totalCoPlayers: number }>()
         try {
-          const coPlayerRows: any[] = await ctx.prisma.$queryRawUnsafe(`
-            WITH user_sessions AS (
-              SELECT b."userId", b."sessionId"
-              FROM play_session_bookings b
-              JOIN play_sessions ps ON ps.id = b."sessionId"
-              WHERE ps."clubId" = $1::uuid
-                AND b.status = 'CONFIRMED'
-                AND ps.date >= NOW() - INTERVAL '90 days'
-                AND ps.date <= NOW()
-            ),
-            co_players AS (
-              SELECT
-                us1."userId",
-                us2."userId" as co_player_id,
-                COUNT(*) as sessions_together
-              FROM user_sessions us1
-              JOIN user_sessions us2 ON us1."sessionId" = us2."sessionId"
-                AND us1."userId" != us2."userId"
-              GROUP BY us1."userId", us2."userId"
-              HAVING COUNT(*) >= 3
-            ),
-            co_player_activity AS (
-              SELECT
-                cp."userId",
-                cp.co_player_id,
-                cp.sessions_together,
-                CASE WHEN EXISTS (
-                  SELECT 1 FROM play_session_bookings b2
-                  JOIN play_sessions ps2 ON ps2.id = b2."sessionId"
-                  WHERE b2."userId" = cp.co_player_id
-                    AND ps2."clubId" = $1::uuid
-                    AND b2.status = 'CONFIRMED'
-                    AND ps2.date >= NOW() - INTERVAL '21 days'
-                ) THEN true ELSE false END as is_active
-              FROM co_players cp
-            )
-            SELECT
-              "userId",
-              COUNT(*) as total_co_players,
-              COUNT(*) FILTER (WHERE is_active) as active_co_players
-            FROM co_player_activity
-            GROUP BY "userId"
-          `, input.clubId)
+          const cacheKey = `co_players_${input.clubId}`
+          const cached = coPlayerCache.get(cacheKey)
+          if (cached && Date.now() - cached.ts < 30 * 60 * 1000) {
+            coPlayerMap = cached.data
+          } else {
+            const coPlayerRows: any[] = await ctx.prisma.$queryRawUnsafe(`
+              WITH user_sessions AS (
+                SELECT b."userId", b."sessionId"
+                FROM play_session_bookings b
+                WHERE b.status = 'CONFIRMED'
+                  AND b."sessionId" IN (
+                    SELECT id FROM play_sessions
+                    WHERE "clubId" = $1::uuid
+                      AND date >= NOW() - INTERVAL '90 days'
+                      AND date <= NOW()
+                  )
+              ),
+              co_player_counts AS (
+                SELECT us1."userId", us2."userId" as co_player_id, COUNT(*) as n
+                FROM user_sessions us1
+                JOIN user_sessions us2 ON us1."sessionId" = us2."sessionId"
+                  AND us1."userId" != us2."userId"
+                GROUP BY us1."userId", us2."userId"
+                HAVING COUNT(*) >= 3
+              ),
+              top_co AS (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY "userId" ORDER BY n DESC) as rn
+                FROM co_player_counts
+              ),
+              limited AS (SELECT "userId", co_player_id FROM top_co WHERE rn <= 10),
+              result AS (
+                SELECT l."userId", COUNT(*) as total_co_players,
+                  COUNT(*) FILTER (WHERE EXISTS (
+                    SELECT 1 FROM play_session_bookings b2
+                    JOIN play_sessions ps2 ON ps2.id = b2."sessionId"
+                    WHERE b2."userId" = l.co_player_id AND ps2."clubId" = $1::uuid
+                      AND b2.status = 'CONFIRMED' AND ps2.date >= NOW() - INTERVAL '21 days'
+                  )) as active_co_players
+                FROM limited l GROUP BY l."userId"
+              )
+              SELECT * FROM result
+            `, input.clubId)
 
-          for (const row of coPlayerRows) {
-            coPlayerMap.set(row.userId, {
-              totalCoPlayers: Number(row.total_co_players),
-              activeCoPlayers: Number(row.active_co_players),
-            })
+            for (const row of coPlayerRows) {
+              coPlayerMap.set(row.userId, {
+                totalCoPlayers: Number(row.total_co_players),
+                activeCoPlayers: Number(row.active_co_players),
+              })
+            }
+            coPlayerCache.set(cacheKey, { ts: Date.now(), data: coPlayerMap })
           }
         } catch (err) {
           console.warn('[Intelligence] Co-player query failed (non-critical):', (err as Error).message?.slice(0, 80))
