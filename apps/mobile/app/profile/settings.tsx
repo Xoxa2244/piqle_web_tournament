@@ -94,8 +94,40 @@ const SettingItem = ({
   </Pressable>
 )
 
+const normalizeResetError = (error: unknown) => {
+  const message = String((error as any)?.message ?? '').trim()
+  const lower = message.toLowerCase()
+
+  if (lower.includes('no account exists for this email')) {
+    return { code: 'USER_NOT_FOUND', message: 'No account exists for this email.' }
+  }
+  if (lower.includes('linked to google sign-in') || lower.includes('linked to a google account')) {
+    return { code: 'GOOGLE_ACCOUNT_EXISTS', message: 'This email is linked to Google sign-in.' }
+  }
+  if (lower.includes('please wait before requesting a new code')) {
+    return { code: 'CODE_COOLDOWN', message: 'Please wait before requesting a new code.' }
+  }
+  if (lower.includes('invalid code')) {
+    return { code: 'CODE_INVALID', message: 'Invalid reset code.' }
+  }
+  if (lower.includes('code expired')) {
+    return { code: 'CODE_EXPIRED', message: 'Reset code expired. Request a new code.' }
+  }
+  if (lower.includes('too many attempts')) {
+    return { code: 'CODE_ATTEMPTS_EXCEEDED', message: 'Too many attempts. Request a new code.' }
+  }
+  if (lower.includes('failed to send password reset code')) {
+    return { code: 'INTERNAL_ERROR', message: 'Failed to send password reset code.' }
+  }
+  if (lower.includes('failed to reset password')) {
+    return { code: 'INTERNAL_ERROR', message: 'Failed to reset password.' }
+  }
+
+  return { code: 'UNKNOWN', message: message || 'Request failed.' }
+}
+
 export default function ProfileSettingsScreen() {
-  const { token, user, signOut, requestPasswordReset } = useAuth()
+  const { token, user, signOut, requestPasswordReset, resetPassword } = useAuth()
   const toast = useToast()
   const { theme, themeMode, setThemeMode } = useAppTheme()
   const isAuthenticated = Boolean(token)
@@ -138,6 +170,11 @@ export default function ProfileSettingsScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   const [passwordSheetOpen, setPasswordSheetOpen] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
+  const [resetStep, setResetStep] = useState<'email' | 'details'>('email')
+  const [resetError, setResetError] = useState<string | null>(null)
   const [resetLoading, setResetLoading] = useState(false)
   const [settings, setSettings] = useState<ToggleGroups>({
     notifications: {
@@ -255,6 +292,11 @@ export default function ProfileSettingsScreen() {
 
   const openPasswordSheet = () => {
     setResetEmail(String(profile?.email ?? ''))
+    setResetCode('')
+    setResetNewPassword('')
+    setResetConfirmPassword('')
+    setResetStep('email')
+    setResetError(null)
     setNotice(null)
     setPasswordSheetOpen(true)
   }
@@ -262,19 +304,63 @@ export default function ProfileSettingsScreen() {
   const sendPasswordResetRequest = async () => {
     const email = resetEmail.trim()
     if (!email) {
+      setResetError('Please enter your email first.')
       setNotice('Please enter your email first.')
-      toast.error('Please enter your email first.')
       return
     }
     try {
       setResetLoading(true)
+      setResetError(null)
       await requestPasswordReset(email)
       setNotice('Password reset request sent. Check your email for the code.')
-      toast.success('Password reset email sent.')
-      setPasswordSheetOpen(false)
+      setResetStep('details')
     } catch (err: any) {
-      setNotice(err?.message || 'Failed to send password reset request.')
-      toast.error(err?.message || 'Failed to send password reset request.')
+      const normalized = normalizeResetError(err)
+      const next = `${normalized.message} (${normalized.code})`
+      setResetError(next)
+      setNotice(next)
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  const submitPasswordReset = async () => {
+    const email = resetEmail.trim()
+    if (!email) {
+      setResetError('Please enter your email first.')
+      setNotice('Please enter your email first.')
+      return
+    }
+    if (!resetCode.trim()) {
+      setResetError('Enter the reset code from email.')
+      setNotice('Enter the reset code from email.')
+      return
+    }
+    if (resetNewPassword.length < 8) {
+      setResetError('Password must be at least 8 characters.')
+      setNotice('Password must be at least 8 characters.')
+      return
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError('Passwords do not match.')
+      setNotice('Passwords do not match.')
+      return
+    }
+    try {
+      setResetLoading(true)
+      setResetError(null)
+      await resetPassword(email, resetCode.trim(), resetNewPassword)
+      setNotice('Password updated successfully.')
+      setPasswordSheetOpen(false)
+      setResetStep('email')
+      setResetCode('')
+      setResetNewPassword('')
+      setResetConfirmPassword('')
+    } catch (err: any) {
+      const normalized = normalizeResetError(err)
+      const next = `${normalized.message} (${normalized.code})`
+      setResetError(next)
+      setNotice(next)
     } finally {
       setResetLoading(false)
     }
@@ -465,13 +551,21 @@ export default function ProfileSettingsScreen() {
 
         <AppBottomSheet
           open={passwordSheetOpen}
-          onClose={() => setPasswordSheetOpen(false)}
+          onClose={() => {
+            setPasswordSheetOpen(false)
+            setResetStep('email')
+            setResetError(null)
+          }}
           title="Password reset"
-          subtitle="Enter your email and we will send a password reset request."
+          subtitle={
+            resetStep === 'email'
+              ? 'Enter your email and we will send a password reset request.'
+              : 'Enter code from email and set a new password.'
+          }
           footer={
             <ActionButton
-              label="Send request"
-              onPress={() => void sendPasswordResetRequest()}
+              label={resetStep === 'email' ? 'Send request' : 'Update password'}
+              onPress={() => void (resetStep === 'email' ? sendPasswordResetRequest() : submitPasswordReset())}
               loading={resetLoading}
             />
           }
@@ -486,8 +580,40 @@ export default function ProfileSettingsScreen() {
               keyboardType="email-address"
               left={<Feather name="mail" size={18} color={colors.textMuted} />}
             />
+            {resetStep === 'details' ? (
+              <>
+                <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>Reset code</Text>
+                <InputField
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  placeholder="Enter code from email"
+                  left={<Feather name="hash" size={18} color={colors.textMuted} />}
+                />
+                <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>New password</Text>
+                <InputField
+                  value={resetNewPassword}
+                  onChangeText={setResetNewPassword}
+                  placeholder="At least 8 characters"
+                  secureTextEntry
+                  left={<Feather name="lock" size={18} color={colors.textMuted} />}
+                />
+                <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>Confirm password</Text>
+                <InputField
+                  value={resetConfirmPassword}
+                  onChangeText={setResetConfirmPassword}
+                  placeholder="Repeat new password"
+                  secureTextEntry
+                  left={<Feather name="check-circle" size={18} color={colors.textMuted} />}
+                />
+              </>
+            ) : null}
+            {resetError ? (
+              <Text style={[styles.sheetErrorText, { color: colors.danger }]}>{resetError}</Text>
+            ) : null}
             <Text style={[styles.sheetHint, { color: colors.textMuted }]}>
-              We will send a verification code to this email so you can set a new password.
+              {resetStep === 'email'
+                ? 'We will send a verification code to this email so you can set a new password.'
+                : 'Use the code from your email and choose a strong new password.'}
             </Text>
           </View>
         </AppBottomSheet>
@@ -586,6 +712,11 @@ const styles = StyleSheet.create({
   sheetHint: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  sheetErrorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   themeModeRow: {
     flexDirection: 'row',
