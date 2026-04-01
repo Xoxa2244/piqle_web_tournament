@@ -428,8 +428,8 @@ export default function SignInClient() {
                 />
                 <p className="mt-2 text-sm text-gray-500">
                   We&apos;ll send a 6-digit code to this email so you can choose a new password.
-                  If this account was created with Google, this will add password sign-in to the
-                  same account.
+                  If this account was created with a social sign-in provider, this will add
+                  password sign-in to the same account.
                 </p>
               </div>
 
@@ -689,8 +689,8 @@ export default function SignInClient() {
           {mode === 'signin'
             ? signInStep === 'password'
               ? 'Use your email and password or Google to sign in.'
-              : 'Reset your password with a code sent to your email. This can also add a password to an existing Google account with the same email.'
-            : 'Create an account with email verification. If this email already exists via Google, we will add password sign-in to that same account.'}
+              : 'Reset your password with a code sent to your email. This can also add a password to an existing social-sign-in account with the same email.'
+            : 'Create an account with email verification. If this email already exists via social sign-in, we will add password sign-in to that same account.'}
         </p>
       </div>
     </div>

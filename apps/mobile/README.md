@@ -7,6 +7,7 @@ Tournament director workflows stay in the Next.js web app.
 
 - Email/password sign-in for mobile via `/api/mobile/auth/login`
 - Native Google sign-in for mobile via `/api/mobile/auth/google/native`
+- Native Apple sign-in for iOS via `/api/mobile/auth/apple/native`
 - Email verification sign-up via the existing web endpoints
 - Public tournament browsing
 - Registration, waitlist, and Stripe checkout handoff
@@ -39,4 +40,5 @@ You can also start from the repo root with:
 - The mobile client uses bearer auth for `tRPC`, but the data still comes from the same Next.js server and PostgreSQL database as the web app.
 - Native Google sign-in reads `GOOGLE_CLIENT_ID` from the backend automatically, so `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is only needed if you want to override it locally.
 - iOS still needs `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` or `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` so the Expo config plugin can register the callback scheme in the native build.
-- After adding the native Google package or changing the Google client IDs, rebuild the dev client. A plain Metro reload is not enough.
+- Apple sign-in requires `ios.usesAppleSignIn = true`, the Apple capability enabled for the App ID, and a rebuilt iOS dev client.
+- After adding a native auth package or changing native auth capabilities/client IDs, rebuild the dev client. A plain Metro reload is not enough.

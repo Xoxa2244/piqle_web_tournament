@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons'
-import { Ionicons } from '@expo/vector-icons'
+import * as AppleAuthentication from 'expo-apple-authentication'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -38,6 +38,7 @@ export default function SignInScreen() {
     requestCode,
     requestPasswordReset,
     resetPassword: resetPasswordWithCode,
+    signInWithApple,
     signInWithGoogle,
   } = useAuth()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -226,7 +227,14 @@ export default function SignInScreen() {
     setError(null)
     setNotice(null)
     try {
-      setError('Apple ID sign-in is not configured in this build yet.')
+      await signInWithApple()
+      router.replace('/(tabs)')
+    } catch (nextError: any) {
+      if (nextError?.message === 'Apple sign-in was cancelled.') {
+        setAppleLoading(false)
+        return
+      }
+      setError(nextError?.message || 'Failed to continue with Apple')
     } finally {
       setAppleLoading(false)
     }
@@ -394,9 +402,9 @@ export default function SignInScreen() {
                 ) : signInStep === 'resetEmail' ? (
                   <>
                     <Text style={styles.help}>
-                      We'll send a verification code to your email so you can choose a new password.
-                      If this account already exists through Google, this will add password sign-in
-                      to that same account.
+                      We will send a verification code to your email so you can choose a new password.
+                      If this account already exists through social sign-in, this will add password
+                      sign-in to that same account.
                     </Text>
 
                     {error ? (
@@ -573,8 +581,8 @@ export default function SignInScreen() {
                 <>
                   <Text style={styles.help}>
                     We will send a verification code to your email before creating your account. If
-                    this email already exists through Google, we'll attach a password to that same
-                    account.
+                    this email already exists through social sign-in, we will attach a password to
+                    that same account.
                   </Text>
 
                   {error ? (
@@ -737,21 +745,21 @@ export default function SignInScreen() {
               <View style={styles.socialRow}>
                 {Platform.OS === 'ios' ? (
                   <View style={styles.socialCell}>
-                    <Pressable
+                    <AppleAuthentication.AppleAuthenticationButton
                       onPress={submitAppleSignIn}
-                      disabled={loading || googleLoading || appleLoading}
-                      style={({ pressed }) => [
+                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                      buttonStyle={
+                        theme === 'dark'
+                          ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                          : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                      }
+                      cornerRadius={16}
+                      style={[
                         styles.socialButton,
-                        styles.appleButton,
-                        pressed && !(loading || googleLoading || appleLoading) && styles.appleButtonPressed,
-                        appleLoading && styles.disabledButton,
+                        styles.appleNativeButton,
+                        (loading || googleLoading || appleLoading) && styles.disabledButton,
                       ]}
-                    >
-                      <Ionicons name="logo-apple" size={20} color={theme === 'dark' ? '#111111' : colors.white} />
-                      <Text style={styles.appleButtonText}>
-                        {appleLoading ? 'Opening Apple...' : 'Apple'}
-                      </Text>
-                    </Pressable>
+                    />
                   </View>
                 ) : null}
 
@@ -1102,6 +1110,10 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     color: isDark ? '#111111' : '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  appleNativeButton: {
+    minHeight: 56,
+    width: '100%',
   },
   googleButtonPressed: {
     backgroundColor: isDark ? colors.secondaryPressed : colors.white,

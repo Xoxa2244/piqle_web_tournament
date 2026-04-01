@@ -621,7 +621,7 @@ export default function ProfileSettingsScreen() {
             ) : null}
             <Text style={[styles.sheetHint, { color: colors.textMuted }]}>
               {resetStep === 'email'
-                ? 'We will send a verification code to this email so you can set a new password. This also works if the account was first created with Google.'
+                ? 'We will send a verification code to this email so you can set a new password. This also works if the account was first created with social sign-in.'
                 : 'Use the code from your email and choose a strong new password.'}
             </Text>
           </View>

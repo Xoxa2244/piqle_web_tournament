@@ -12,6 +12,14 @@ type NativeGoogleSignInInput = {
   idToken: string
 }
 
+type NativeAppleSignInInput = {
+  identityToken: string
+  user: string
+  email?: string | null
+  firstName?: string | null
+  lastName?: string | null
+}
+
 type GoogleSignInConfigResponse = {
   webClientId: string
   iosClientId: string | null
@@ -124,6 +132,13 @@ export const authApi = {
 
   signInWithGoogle(input: NativeGoogleSignInInput) {
     return requestJson<LoginResponse>('/api/mobile/auth/google/native', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  signInWithApple(input: NativeAppleSignInInput) {
+    return requestJson<LoginResponse>('/api/mobile/auth/apple/native', {
       method: 'POST',
       body: JSON.stringify(input),
     })

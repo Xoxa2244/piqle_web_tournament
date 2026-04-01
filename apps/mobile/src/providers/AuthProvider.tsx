@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
-import { TurboModuleRegistry } from 'react-native'
+import * as AppleAuthentication from 'expo-apple-authentication'
+import { Platform, TurboModuleRegistry } from 'react-native'
 
 import { authApi, type SignUpInput } from '../lib/authApi'
 import { authStorage, type MobileUser, type StoredAuthSession } from '../lib/authStorage'
@@ -15,6 +16,8 @@ const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim(
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? ''
 const GOOGLE_REBUILD_MESSAGE =
   'Google sign-in requires a rebuilt native app. Reinstall the dev build and try again.'
+const APPLE_REBUILD_MESSAGE =
+  'Apple sign-in requires a rebuilt iOS app with the Apple capability enabled.'
 
 const summarizeGoogleClientId = (clientId?: string | null) => {
   const value = clientId?.trim() ?? ''
@@ -23,6 +26,12 @@ const summarizeGoogleClientId = (clientId?: string | null) => {
 }
 
 const getGoogleErrorCode = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('code' in error)) return null
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : code != null ? String(code) : null
+}
+
+const getNativeErrorCode = (error: unknown) => {
   if (!error || typeof error !== 'object' || !('code' in error)) return null
   const code = (error as { code?: unknown }).code
   return typeof code === 'string' ? code : code != null ? String(code) : null
@@ -133,6 +142,23 @@ const normalizeGoogleSignInError = (error: unknown) => {
   return error
 }
 
+const normalizeAppleSignInError = (error: unknown) => {
+  const code = getNativeErrorCode(error)
+  if (code === 'ERR_REQUEST_CANCELED') {
+    return new Error('Apple sign-in was cancelled.')
+  }
+
+  if (!(error instanceof Error)) {
+    return new Error('Failed to continue with Apple.')
+  }
+
+  if (/native module|entitlement|capability|apple authentication/i.test(error.message)) {
+    return new Error(APPLE_REBUILD_MESSAGE)
+  }
+
+  return error
+}
+
 type AuthContextValue = {
   isReady: boolean
   token: string | null
@@ -143,6 +169,7 @@ type AuthContextValue = {
   requestPasswordReset: (email: string) => Promise<string | undefined>
   resetPassword: (email: string, code: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
+  signInWithApple: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -255,6 +282,43 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         }
 
         throw normalizeGoogleSignInError(error)
+      }
+    },
+    async signInWithApple() {
+      if (Platform.OS !== 'ios') {
+        throw new Error('Apple sign-in is only available on iOS.')
+      }
+
+      try {
+        const isAvailable = await AppleAuthentication.isAvailableAsync()
+        if (!isAvailable) {
+          throw new Error(APPLE_REBUILD_MESSAGE)
+        }
+
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+        })
+
+        const identityToken = credential.identityToken?.trim()
+        if (!identityToken) {
+          throw new Error('Apple sign-in did not return an identity token.')
+        }
+
+        const nextSession = await authApi.signInWithApple({
+          identityToken,
+          user: credential.user,
+          email: credential.email,
+          firstName: credential.fullName?.givenName ?? null,
+          lastName: credential.fullName?.familyName ?? null,
+        })
+
+        await authStorage.save(nextSession)
+        setSession(nextSession)
+      } catch (error) {
+        throw normalizeAppleSignInError(error)
       }
     },
     async signOut() {

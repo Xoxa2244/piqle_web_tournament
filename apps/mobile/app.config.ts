@@ -39,6 +39,7 @@ const config: ExpoConfig = {
   },
   ios: {
     bundleIdentifier: 'com.piqle.player',
+    usesAppleSignIn: true,
   },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
