@@ -57,6 +57,83 @@ interface ClubAutomationSettings {
     churned: boolean
   }
   channel: 'email' | 'sms' | 'both'
+  /** Confidence threshold: auto-execute if >= this, queue if below. Default: 70 */
+  autoApproveThreshold?: number
+}
+
+// ── Confidence Scoring ──
+
+interface ActionConfidence {
+  score: number         // 0-100
+  autoApproved: boolean // score >= threshold
+  reasons: string[]     // why this score
+}
+
+/**
+ * Calculate confidence for sending an outreach message.
+ * High confidence = safe to auto-send.
+ * Low confidence = needs human approval (goes to morning digest).
+ */
+function calculateConfidence(
+  transition: { from: string; to: string },
+  member: { healthScore: number; totalBookings: number; daysSinceLastBooking: number | null },
+  outreachType: 'CHECK_IN' | 'RETENTION_BOOST',
+  threshold: number = 70,
+): ActionConfidence {
+  let score = 50 // baseline
+  const reasons: string[] = []
+
+  // 1. Transition severity — low risk transitions = higher confidence
+  if (transition.from === 'healthy' && transition.to === 'watch') {
+    score += 30 // Very safe — just a friendly check-in
+    reasons.push('Low-risk transition (Healthy→Watch)')
+  } else if (transition.from === 'watch' && transition.to === 'at_risk') {
+    score += 10 // Medium — worth doing but maybe review
+    reasons.push('Medium transition (Watch→At-Risk)')
+  } else if (transition.to === 'critical') {
+    score -= 10 // High-value member leaving — human should review
+    reasons.push('Critical transition — human review recommended')
+  }
+
+  // 2. Outreach type — check-in is safer than retention boost
+  if (outreachType === 'CHECK_IN') {
+    score += 15
+    reasons.push('Check-in (low-impact action)')
+  } else {
+    score += 5
+    reasons.push('Retention boost (medium-impact)')
+  }
+
+  // 3. Member value — high-value members need more care
+  if (member.totalBookings > 50) {
+    score -= 15 // Loyal member — let human craft the approach
+    reasons.push(`High-value member (${member.totalBookings} bookings) — needs personal touch`)
+  } else if (member.totalBookings < 5) {
+    score += 10 // New member — standard message is fine
+    reasons.push('New member — standard outreach OK')
+  }
+
+  // 4. Health score — very low = urgent, higher confidence to act fast
+  if (member.healthScore < 20) {
+    score += 5
+    reasons.push('Urgent: health score < 20')
+  }
+
+  // 5. Days since last activity — longer absence = more confidence to reach out
+  const days = member.daysSinceLastBooking ?? 999
+  if (days > 30) {
+    score += 5
+    reasons.push(`${days} days inactive — outreach warranted`)
+  }
+
+  // Clamp 0-100
+  score = Math.max(0, Math.min(100, score))
+
+  return {
+    score,
+    autoApproved: score >= threshold,
+    reasons,
+  }
 }
 
 const DEFAULT_SETTINGS: ClubAutomationSettings = {
@@ -740,6 +817,40 @@ export async function runHealthCampaign(
       continue
     }
 
+    // ── Confidence scoring — auto-approve or queue for digest ──
+    const autoApproveThreshold = settings.autoApproveThreshold ?? 70
+    const confidence = calculateConfidence(
+      { from: prevRisk, to: newRisk },
+      { healthScore: member.healthScore, totalBookings: member.totalBookings, daysSinceLastBooking: member.daysSinceLastBooking },
+      outreachType,
+      autoApproveThreshold,
+    )
+
+    if (!confidence.autoApproved && !dryRun) {
+      // Queue for morning digest — don't send, just log as pending
+      try {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId,
+            userId: member.memberId,
+            type: outreachType,
+            channel: settings.channel,
+            status: 'pending',
+            reasoning: {
+              confidence: confidence.score,
+              autoApproved: false,
+              reasons: confidence.reasons,
+              transition: `${prevRisk} → ${newRisk}`,
+              healthScore: member.healthScore,
+            },
+          },
+        })
+      } catch { /* non-critical */ }
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (confidence ${confidence.score}%)`, status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
+
     // Find best session for this member (uses resolved preferences: DB or inferred from history)
     const memberSkillLevel = inferSkillLevel(
       member.member.duprRatingDoubles ? Number(member.member.duprRatingDoubles) : null
@@ -844,6 +955,9 @@ export async function runHealthCampaign(
             transition: `${prevRisk} → ${newRisk}`,
             variantId: variant.id,
             healthScore: member.healthScore,
+            confidence: confidence.score,
+            autoApproved: confidence.autoApproved,
+            confidenceReasons: confidence.reasons,
             optimizerReason,
             sequenceType: getSequenceType(newRisk),
             originalSubject: variant.emailSubject,
