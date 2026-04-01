@@ -446,7 +446,9 @@ async function executeSequenceStep(
 export async function runHealthCampaign(
   prisma: any,
   clubId: string,
+  options?: { dryRun?: boolean },
 ): Promise<CampaignResult> {
+  const dryRun = options?.dryRun ?? false
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
@@ -858,7 +860,7 @@ export async function runHealthCampaign(
     let sent = false
     let externalMessageId: string | null = null
 
-    if (settings.channel === 'email' || settings.channel === 'both') {
+    if ((settings.channel === 'email' || settings.channel === 'both') && !dryRun) {
       try {
         const userEmail = member.member.email
         if (userEmail) {
@@ -1018,6 +1020,7 @@ export async function runHealthCampaign(
 
 export async function runHealthCampaignForAllClubs(
   prisma: any,
+  options?: { dryRun?: boolean },
 ): Promise<{ results: CampaignResult[]; totalSent: number; totalSkipped: number }> {
   // Get clubs that have at least one follower (active clubs)
   const clubs = await prisma.club.findMany({
@@ -1034,7 +1037,7 @@ export async function runHealthCampaignForAllClubs(
 
   for (const club of clubs) {
     try {
-      const result = await runHealthCampaign(prisma, club.id)
+      const result = await runHealthCampaign(prisma, club.id, options)
       results.push(result)
       totalSent += result.messagesSent
       totalSkipped += result.messagesSkipped

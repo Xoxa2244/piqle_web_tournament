@@ -25,14 +25,19 @@ async function runCampaign(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  // Dry run mode: ?dryRun=true — calculates everything but does NOT send emails
+  const url = new URL(request.url)
+  const dryRun = url.searchParams.get('dryRun') === 'true'
+
   const startedAt = new Date()
 
   try {
     const { runHealthCampaignForAllClubs } = await import('@/lib/ai/campaign-engine')
-    const { results, totalSent, totalSkipped } = await runHealthCampaignForAllClubs(prisma)
+    const { results, totalSent, totalSkipped } = await runHealthCampaignForAllClubs(prisma, { dryRun })
 
     return NextResponse.json({
       ok: true,
+      dryRun,
       startedAt: startedAt.toISOString(),
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
