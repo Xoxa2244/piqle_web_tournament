@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { getTeamSlotCount } from '../utils/teamSlots'
 import { pushToUsers } from '@/lib/realtime'
+import { sendEmail } from '@/lib/sendTransactionEmail'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
 
@@ -1327,11 +1328,6 @@ export const clubRouter = createTRPCRouter({
         }
       }
 
-      const emailHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
-      const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER || 'Piqle'
-      const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
-      const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
-
       // Persist invite attempt (best effort; safe to skip if migration isn't applied yet).
       let inviteId: string | null = null
       try {
@@ -1353,38 +1349,28 @@ export const clubRouter = createTRPCRouter({
         }
       }
 
-      if (!emailHost || !emailPassword) {
+      const hasMailchimp = Boolean(process.env.MAILCHIMP_TRANSACTIONAL_API_KEY)
+      const hasSmtp =
+        Boolean(process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST) &&
+        Boolean(process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD)
+
+      if (!hasMailchimp && !hasSmtp) {
         // In development, don't block flows if SMTP isn't configured yet.
         if (process.env.NODE_ENV === 'development') {
-          console.log('[club.sendInvite] SMTP not configured. Would send invite:', {
+          console.log('[club.sendInvite] Email not configured. Would send invite:', {
             toEmail,
             clubId: club.id,
             clubName: club.name,
             inviteUrl,
           })
-          return { success: true, delivered: false, reason: 'smtp_missing' as const }
+          return { success: true, delivered: false, reason: 'email_missing' as const }
         }
 
         throw new TRPCError({
           code: 'PRECONDITION_FAILED',
-          message: 'Email is not configured (SMTP_HOST/SMTP_PASS).',
+          message: 'Email is not configured (MAILCHIMP_TRANSACTIONAL_API_KEY or SMTP credentials).',
         })
       }
-
-      const nodemailer = await import('nodemailer')
-      const transporter = nodemailer.default.createTransport({
-        host: emailHost,
-        port: parseInt(emailPort),
-        secure: String(emailPort) === '465',
-        auth: {
-          user: emailUser,
-          pass: emailPassword,
-        },
-      })
-
-      const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || emailUser
-      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
-      const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
 
       const inviterName = ctx.session.user.name || 'Someone'
       const subject = `${inviterName} invited you to join ${club.name} on Piqle`
@@ -1408,8 +1394,7 @@ If you weren’t expecting this, you can ignore this email.`
         state: club.state,
       })
 
-      await transporter.sendMail({
-        from: fromAddress,
+      await sendEmail({
         to: toEmail,
         subject,
         text,

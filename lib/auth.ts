@@ -5,6 +5,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
+import { sendEmail } from "./sendTransactionEmail"
 import bcrypt from 'bcryptjs'
 
 async function linkPlayersToUserByEmail(userId: string, email?: string | null) {
@@ -27,6 +28,67 @@ async function linkPlayersToUserByEmail(userId: string, email?: string | null) {
 // Ensure NEXTAUTH_SECRET is set
 if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
+}
+
+const getAppBaseUrl = () => {
+  const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+  if (!env) return 'http://localhost:3000'
+  return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
+}
+
+const buildMagicLinkEmailHtml = (url: string) => {
+  const baseUrl = getAppBaseUrl()
+  const logoUrl = `${baseUrl}/Logo.png`
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in to Piqle</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="Logo" width="120" height="40" style="display: block; max-width: 120px; height: auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #ffffff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 28px 24px 20px; text-align: center;">
+                    <p style="margin: 0 0 12px; font-size: 15px; color: #6b7280;">Use the button below to sign in</p>
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">Sign in to Piqle</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 24px 24px; text-align: center;">
+                    <a href="${url}" style="display: inline-block; padding: 12px 24px; background: #22c55e; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Sign in</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 18px 24px 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+                      If you did not request this email, you can safely ignore it.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
 }
 
 export const authOptions: NextAuthOptions = {
@@ -54,14 +116,27 @@ export const authOptions: NextAuthOptions = {
     }),
     EmailProvider({
       server: {
-        host: process.env.EMAIL_SERVER_HOST || process.env.SMTP_HOST,
+        host: process.env.EMAIL_SERVER_HOST || process.env.SMTP_HOST || 'localhost',
         port: parseInt(process.env.EMAIL_SERVER_PORT || process.env.SMTP_PORT || "587"),
         auth: {
-          user: process.env.EMAIL_SERVER_USER || process.env.SMTP_USER,
-          pass: process.env.EMAIL_SERVER_PASSWORD || process.env.SMTP_PASS,
+          user: process.env.EMAIL_SERVER_USER || process.env.SMTP_USER || '',
+          pass: process.env.EMAIL_SERVER_PASSWORD || process.env.SMTP_PASS || '',
         },
       },
-      from: process.env.EMAIL_FROM || process.env.SMTP_FROM,
+      from: process.env.EMAIL_FROM || process.env.SMTP_FROM || 'noreply@piqle.io',
+      async sendVerificationRequest({ identifier, url }) {
+        const html = buildMagicLinkEmailHtml(url)
+        const text = `Sign in to Piqle: ${url}
+
+If you did not request this email, you can safely ignore it.`
+
+        await sendEmail({
+          to: identifier,
+          subject: 'Sign in to Piqle',
+          html,
+          text,
+        })
+      },
     }),
     CredentialsProvider({
       id: 'email-otp',

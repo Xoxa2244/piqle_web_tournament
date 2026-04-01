@@ -1,8 +1,20 @@
+type SendEmailOptions = {
+  to: string
+  subject: string
+  html: string
+  text?: string
+}
+
 /**
- * Send a single transactional HTML email (e.g. tournament invitation).
+ * Send a transactional email.
  * Uses MAILCHIMP_TRANSACTIONAL_API_KEY if set, else SMTP env vars.
  */
-export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  text,
+}: SendEmailOptions): Promise<void> {
   const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@piqle.io'
   const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
 
@@ -15,6 +27,7 @@ export async function sendHtmlEmail(to: string, subject: string, html: string): 
         key: mailchimpApiKey,
         message: {
           html,
+          text,
           subject,
           from_email: fromEmail,
           from_name: fromName,
@@ -58,5 +71,21 @@ export async function sendHtmlEmail(to: string, subject: string, html: string): 
     auth: { user: emailUser, pass: emailPassword },
   })
   const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
-  await transporter.sendMail({ from: fromAddress, to, subject, html })
+  try {
+    await transporter.sendMail({ from: fromAddress, to, subject, html, text })
+  } catch (error) {
+    console.error('[Email] SMTP send failed', {
+      host: emailHost,
+      port: emailPort,
+      secure: emailPort === '465',
+      to,
+      subject,
+      error,
+    })
+    throw error
+  }
+}
+
+export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
+  await sendEmail({ to, subject, html })
 }
