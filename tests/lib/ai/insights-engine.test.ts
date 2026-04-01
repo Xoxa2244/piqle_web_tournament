@@ -23,8 +23,8 @@ describe('InsightsEngine > Недоиспользованные корты', () 
   it('возвращает insight когда корт < 25% заполнения', async () => {
     // First query = underutilizedCourts
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { courtId: 'c1', courtName: 'Court A', bookedSlots: 2n, totalSlots: 20n, occupancyPct: 10 },
-      { courtId: 'c2', courtName: 'Court B', bookedSlots: 15n, totalSlots: 20n, occupancyPct: 75 },
+      { courtId: 'c1', courtName: 'Court A', bookedSlots: BigInt(2), totalSlots: BigInt(20), occupancyPct: 10 },
+      { courtId: 'c2', courtName: 'Court B', bookedSlots: BigInt(15), totalSlots: BigInt(20), occupancyPct: 75 },
     ])
 
     const insights = await generateClubInsights(mockPrisma, CLUB_ID)
@@ -38,8 +38,8 @@ describe('InsightsEngine > Недоиспользованные корты', () 
 
   it('возвращает null когда все корты > 25%', async () => {
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { courtId: 'c1', courtName: 'Court A', bookedSlots: 8n, totalSlots: 20n, occupancyPct: 40 },
-      { courtId: 'c2', courtName: 'Court B', bookedSlots: 15n, totalSlots: 20n, occupancyPct: 75 },
+      { courtId: 'c1', courtName: 'Court A', bookedSlots: BigInt(8), totalSlots: BigInt(20), occupancyPct: 40 },
+      { courtId: 'c2', courtName: 'Court B', bookedSlots: BigInt(15), totalSlots: BigInt(20), occupancyPct: 75 },
     ])
 
     const insights = await generateClubInsights(mockPrisma, CLUB_ID)
@@ -50,9 +50,9 @@ describe('InsightsEngine > Недоиспользованные корты', () 
 
   it('корты отсортированы по имени (не по заполнению)', async () => {
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { courtId: 'c1', courtName: 'Alpha Court', bookedSlots: 1n, totalSlots: 20n, occupancyPct: 5 },
-      { courtId: 'c2', courtName: 'Beta Court', bookedSlots: 3n, totalSlots: 20n, occupancyPct: 15 },
-      { courtId: 'c3', courtName: 'Gamma Court', bookedSlots: 18n, totalSlots: 20n, occupancyPct: 90 },
+      { courtId: 'c1', courtName: 'Alpha Court', bookedSlots: BigInt(1), totalSlots: BigInt(20), occupancyPct: 5 },
+      { courtId: 'c2', courtName: 'Beta Court', bookedSlots: BigInt(3), totalSlots: BigInt(20), occupancyPct: 15 },
+      { courtId: 'c3', courtName: 'Gamma Court', bookedSlots: BigInt(18), totalSlots: BigInt(20), occupancyPct: 90 },
     ])
 
     const insights = await generateClubInsights(mockPrisma, CLUB_ID)
@@ -73,8 +73,8 @@ describe('InsightsEngine > Пиковые часы', () => {
     mockPrisma.$queryRawUnsafe
       .mockResolvedValueOnce([]) // underutilizedCourts → no data
       .mockResolvedValueOnce([   // peakHourOverflow
-        { hour: 18, sessionCount: 10n, totalBooked: 85n, totalCapacity: 100n, occupancyPct: 85 },
-        { hour: 10, sessionCount: 8n, totalBooked: 40n, totalCapacity: 100n, occupancyPct: 40 },
+        { hour: 18, sessionCount: BigInt(10), totalBooked: BigInt(85), totalCapacity: BigInt(100), occupancyPct: 85 },
+        { hour: 10, sessionCount: BigInt(8), totalBooked: BigInt(40), totalCapacity: BigInt(100), occupancyPct: 40 },
       ])
 
     const insights = await generateClubInsights(mockPrisma, CLUB_ID)
@@ -117,12 +117,12 @@ describe('InsightsEngine > Ограничение на количество', ()
 
     // 1. underutilizedCourts
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { courtId: 'c1', courtName: 'A', bookedSlots: 1n, totalSlots: 20n, occupancyPct: 5 },
-      { courtId: 'c2', courtName: 'B', bookedSlots: 18n, totalSlots: 20n, occupancyPct: 90 },
+      { courtId: 'c1', courtName: 'A', bookedSlots: BigInt(1), totalSlots: BigInt(20), occupancyPct: 5 },
+      { courtId: 'c2', courtName: 'B', bookedSlots: BigInt(18), totalSlots: BigInt(20), occupancyPct: 90 },
     ])
     // 2. peakHourOverflow
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { hour: 18, sessionCount: 10n, totalBooked: 90n, totalCapacity: 100n, occupancyPct: 90 },
+      { hour: 18, sessionCount: BigInt(10), totalBooked: BigInt(90), totalCapacity: BigInt(100), occupancyPct: 90 },
     ])
     // 3. vipMembersAtRisk
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
@@ -130,7 +130,7 @@ describe('InsightsEngine > Ограничение на количество', ()
     ])
     // 4. guestPassUpsell
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { userId: 'u2', membership: 'Guest', bookingCount: 7n },
+      { userId: 'u2', membership: 'Guest', bookingCount: BigInt(7) },
     ])
     // 5. suspendedWinback
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
@@ -138,17 +138,17 @@ describe('InsightsEngine > Ограничение на количество', ()
     ])
     // 6. formatMismatch
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { skillLevel: 'BEGINNER', format: 'DOUBLES', sessionCount: 5n, avgOccupancy: 20 },
-      { skillLevel: 'ADVANCED', format: 'SINGLES', sessionCount: 5n, avgOccupancy: 80 },
+      { skillLevel: 'BEGINNER', format: 'DOUBLES', sessionCount: BigInt(5), avgOccupancy: 20 },
+      { skillLevel: 'ADVANCED', format: 'SINGLES', sessionCount: BigInt(5), avgOccupancy: 80 },
     ])
     // 7. dayOfWeekGap
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { dayName: 'Monday   ', dayNum: 1, sessionCount: 5n, totalBooked: 10n, totalCapacity: 50n, occupancyPct: 20 },
-      { dayName: 'Saturday ', dayNum: 6, sessionCount: 5n, totalBooked: 45n, totalCapacity: 50n, occupancyPct: 90 },
+      { dayName: 'Monday   ', dayNum: 1, sessionCount: BigInt(5), totalBooked: BigInt(10), totalCapacity: BigInt(50), occupancyPct: 20 },
+      { dayName: 'Saturday ', dayNum: 6, sessionCount: BigInt(5), totalBooked: BigInt(45), totalCapacity: BigInt(50), occupancyPct: 90 },
     ])
     // 8. newMemberOnboarding
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { userId: 'u4', joinDate: new Date(), bookingCount: 0n },
+      { userId: 'u4', joinDate: new Date(), bookingCount: BigInt(0) },
     ])
     // 9. skillProgression
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
@@ -156,7 +156,7 @@ describe('InsightsEngine > Ограничение на количество', ()
     ])
     // 10. emptyEveningSlots
     mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([
-      { totalEvening: 5n, avgOccupancy: 20, emptySlots: 40n },
+      { totalEvening: BigInt(5), avgOccupancy: 20, emptySlots: BigInt(40) },
     ])
 
     const insights = await generateClubInsights(mockPrisma, CLUB_ID)
