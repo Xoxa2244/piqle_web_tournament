@@ -288,6 +288,7 @@ export const InputField = ({
   appearance = 'field',
   onFocus: onFocusProp,
   onBlur: onBlurProp,
+  inputRef,
 }: {
   value: string
   onChangeText: (value: string) => void
@@ -307,6 +308,7 @@ export const InputField = ({
   appearance?: 'field' | 'search'
   onFocus?: TextInputProps['onFocus']
   onBlur?: TextInputProps['onBlur']
+  inputRef?: React.RefObject<TextInput | null>
 }) => {
   const { colors, styles, theme } = useThemedUi()
   const [focused, setFocused] = useState(false)
@@ -329,6 +331,7 @@ export const InputField = ({
     >
       {left ? <View style={styles.inputAdornment}>{left}</View> : null}
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

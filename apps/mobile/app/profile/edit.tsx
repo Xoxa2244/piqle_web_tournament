@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 
 import { OptionalLinearGradient } from '../../src/components/OptionalLinearGradient'
@@ -79,7 +79,10 @@ export default function ProfileEditScreen() {
   const [removeAvatarOpen, setRemoveAvatarOpen] = useState(false)
   const scrollRef = useRef<ScrollView | null>(null)
   const contactCardY = useRef<number | null>(null)
+  const nameFieldOffsetY = useRef<number | null>(null)
   const cityFieldOffsetY = useRef<number | null>(null)
+  const nameFieldRef = useRef<TextInput | null>(null)
+  const cityFieldRef = useRef<TextInput | null>(null)
   const didScrollToAnchor = useRef(false)
 
   useEffect(() => {
@@ -111,6 +114,23 @@ export default function ProfileEditScreen() {
   useEffect(() => {
     tryScrollToCityAnchor()
   }, [anchorTarget])
+
+  const scrollToProfileField = (fieldOffsetY: number | null) => {
+    if (contactCardY.current == null || fieldOffsetY == null) return
+    const targetY = Math.max(contactCardY.current + fieldOffsetY - 28, 0)
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: targetY, animated: true })
+    })
+    setTimeout(() => scrollRef.current?.scrollTo({ y: targetY, animated: true }), 120)
+  }
+
+  const ensureFieldVisible = (fieldRef: React.RefObject<TextInput | null>, fallbackOffsetY: number | null) => {
+    if (!fieldRef.current) {
+      scrollToProfileField(fallbackOffsetY)
+      return
+    }
+    scrollToProfileField(fallbackOffsetY)
+  }
 
   const profile =
     (profileQuery.data as any) ??
@@ -239,7 +259,15 @@ export default function ProfileEditScreen() {
       topBarRightSlot={editTopBarRight}
       contentStyle={styles.pageRoot}
     >
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={styles.scrollFill}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        style={styles.scrollFill}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+      >
         <Pressable
           onPress={!hasUploadedAvatar ? () => void handleAvatarPick() : undefined}
           disabled={avatarUploading || hasUploadedAvatar}
@@ -305,7 +333,19 @@ export default function ProfileEditScreen() {
             <View style={styles.fieldStack}>
               <View>
                 <Text style={styles.fieldLabel}>Name</Text>
-                <InputField value={name} onChangeText={setName} placeholder="Your name" />
+                <View
+                  onLayout={(event) => {
+                    nameFieldOffsetY.current = event.nativeEvent.layout.y
+                  }}
+                >
+                  <InputField
+                    inputRef={nameFieldRef}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Your name"
+                    onFocus={() => ensureFieldVisible(nameFieldRef, nameFieldOffsetY.current)}
+                  />
+                </View>
               </View>
 
               <View>
@@ -329,12 +369,17 @@ export default function ProfileEditScreen() {
                 }}
               >
                 <Text style={styles.fieldLabel}>City</Text>
-                <InputField value={city} onChangeText={setCity} placeholder="Enter your city" />
+                <InputField
+                  inputRef={cityFieldRef}
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder="Enter your city"
+                  onFocus={() => ensureFieldVisible(cityFieldRef, cityFieldOffsetY.current)}
+                />
               </View>
             </View>
           </SurfaceCard>
         </View>
-
       </ScrollView>
 
       <AppBottomSheet

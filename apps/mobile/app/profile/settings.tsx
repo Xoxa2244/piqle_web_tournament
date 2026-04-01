@@ -12,6 +12,7 @@ import { getPalette, spacing, type ThemePalette } from '../../src/lib/theme'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 
 type ToggleGroups = {
   notifications: {
@@ -95,6 +96,7 @@ const SettingItem = ({
 
 export default function ProfileSettingsScreen() {
   const { token, user, signOut, requestPasswordReset } = useAuth()
+  const toast = useToast()
   const { theme, themeMode, setThemeMode } = useAppTheme()
   const isAuthenticated = Boolean(token)
   const api = trpc as any
@@ -261,15 +263,18 @@ export default function ProfileSettingsScreen() {
     const email = resetEmail.trim()
     if (!email) {
       setNotice('Please enter your email first.')
+      toast.error('Please enter your email first.')
       return
     }
     try {
       setResetLoading(true)
       await requestPasswordReset(email)
       setNotice('Password reset request sent. Check your email for the code.')
+      toast.success('Password reset email sent.')
       setPasswordSheetOpen(false)
     } catch (err: any) {
       setNotice(err?.message || 'Failed to send password reset request.')
+      toast.error(err?.message || 'Failed to send password reset request.')
     } finally {
       setResetLoading(false)
     }

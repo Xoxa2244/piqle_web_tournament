@@ -8,11 +8,14 @@ import { BackCircleButton } from '../../../src/components/navigation/BackCircleB
 import { BrandGradientText } from '../../../src/components/navigation/BrandGradientText'
 import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 import { trpc } from '../../../src/lib/trpc'
-import { palette, spacing } from '../../../src/lib/theme'
+import { spacing, type ThemePalette } from '../../../src/lib/theme'
+import { useAppTheme } from '../../../src/providers/ThemeProvider'
 
 export default function ClubEventsScreen() {
   const params = useLocalSearchParams<{ id: string }>()
   const clubId = String(params.id ?? '')
+  const { colors } = useAppTheme()
+  const styles = createStyles(colors)
 
   const clubQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) })
   useToastWhenEntityMissing({
@@ -73,10 +76,10 @@ export default function ClubEventsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemePalette) => StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: palette.background,
+    backgroundColor: colors.background,
   },
   loadingWrap: {
     flex: 1,
@@ -100,7 +103,7 @@ const styles = StyleSheet.create({
     height: 36,
   },
   title: {
-    color: palette.primary,
+    color: colors.primary,
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.4,
