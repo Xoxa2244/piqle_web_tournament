@@ -3645,6 +3645,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
     }),
 
   // ── Create Campaign (send messages to selected members) ──
+  // ── Usage Summary (for billing UI) ──
+  getUsageSummary: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getUsageSummary } = await import('@/lib/stripe-usage')
+      return getUsageSummary(input.clubId)
+    }),
+
   createCampaign: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -3802,6 +3811,14 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         if (channelSent) sent++
         else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
         else failed++
+      }
+
+      // Report usage to Stripe for metered billing (non-blocking)
+      if (sent > 0) {
+        import('@/lib/stripe-usage').then(({ reportUsage }) => {
+          if (input.channel === 'email' || input.channel === 'both') reportUsage(input.clubId, 'email', sent)
+          if (input.channel === 'sms' || input.channel === 'both') reportUsage(input.clubId, 'sms', sent)
+        }).catch(() => {})
       }
 
       return { sent, failed, skipped, results }

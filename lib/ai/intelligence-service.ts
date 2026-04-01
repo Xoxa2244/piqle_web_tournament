@@ -1454,6 +1454,13 @@ export async function sendReactivationMessages(
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
 
+  // Report usage to Stripe for metered billing (non-blocking)
+  if (sent > 0) {
+    import('@/lib/stripe-usage').then(({ reportUsage }) => {
+      reportUsage(clubId, 'email', sent)
+    }).catch(() => {})
+  }
+
   return { sent, failed, results }
 }
 
