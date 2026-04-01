@@ -15,11 +15,16 @@ export async function sendEmail({
   html,
   text,
 }: SendEmailOptions): Promise<void> {
-  const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@piqle.io'
-  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
-
   const mailchimpApiKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
   if (mailchimpApiKey) {
+    const fromEmail =
+      process.env.SMTP_FROM ||
+      process.env.EMAIL_FROM ||
+      process.env.SMTP_USER ||
+      process.env.EMAIL_SERVER_USER ||
+      'noreply@piqle.io'
+    const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
+
     const response = await fetch('https://mandrillapp.com/api/1.0/messages/send.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +59,12 @@ export async function sendEmail({
   const emailUser = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER
   const emailPassword = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD
   const emailPort = process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || '587'
+  const fromEmail =
+    process.env.SMTP_FROM ||
+    process.env.EMAIL_FROM ||
+    emailUser ||
+    'noreply@piqle.io'
+  const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'Piqle'
 
   if (!emailHost || !emailUser || !emailPassword) {
     if (process.env.NODE_ENV === 'development') {
@@ -72,12 +83,32 @@ export async function sendEmail({
   })
   const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
   try {
+    await transporter.verify()
+  } catch (error) {
+    console.error('[Email] SMTP verify failed', {
+      host: emailHost,
+      port: emailPort,
+      secure: emailPort === '465',
+      user: emailUser,
+      fromEmail,
+      fromMatchesUser: fromEmail === emailUser,
+      to,
+      subject,
+      error,
+    })
+    throw error
+  }
+
+  try {
     await transporter.sendMail({ from: fromAddress, to, subject, html, text })
   } catch (error) {
     console.error('[Email] SMTP send failed', {
       host: emailHost,
       port: emailPort,
       secure: emailPort === '465',
+      user: emailUser,
+      fromEmail,
+      fromMatchesUser: fromEmail === emailUser,
       to,
       subject,
       error,
