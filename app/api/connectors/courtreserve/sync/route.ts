@@ -1,10 +1,13 @@
 /**
  * CRON: Auto-sync all active CourtReserve connectors.
- * Runs every hour.
+ * Runs every hour. After each club sync, triggers event detection
+ * (cancellations, underfilled sessions, new members) immediately.
  */
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { runCourtReserveSync } from '@/lib/connectors/courtreserve-sync'
+import { detectEventsForClub } from '@/lib/ai/event-detection'
+import { cronLogger as log } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -43,22 +46,41 @@ async function handleSync(request: Request) {
       return NextResponse.json({ ok: true, message: 'No connectors to sync', synced: 0 })
     }
 
-    const results: { clubId: string; status: string; error?: string }[] = []
+    const results: { clubId: string; status: string; error?: string; events?: any }[] = []
 
     for (const connector of connectors) {
       try {
         await runCourtReserveSync(connector.id, { isInitial: false })
-        results.push({ clubId: connector.clubId, status: 'ok' })
+
+        // Immediately detect events after fresh data is synced
+        let events = null
+        try {
+          const club = await prisma.club.findUnique({
+            where: { id: connector.clubId },
+            select: { name: true },
+          })
+          events = await detectEventsForClub(prisma, connector.clubId, club?.name || 'Unknown', 75)
+          if (events.actionsTaken > 0) {
+            log.info(`Post-sync events for ${club?.name}: ${events.actionsTaken} actions`)
+          }
+        } catch (evtErr: any) {
+          log.error(`Event detection failed for ${connector.clubId}:`, evtErr.message?.slice(0, 80))
+        }
+
+        results.push({ clubId: connector.clubId, status: 'ok', events })
       } catch (err: any) {
-        console.error(`[CR Cron] Sync failed for club ${connector.clubId}:`, err.message)
+        log.error(`Sync failed for club ${connector.clubId}:`, err.message)
         results.push({ clubId: connector.clubId, status: 'error', error: err.message })
       }
     }
+
+    const totalActions = results.reduce((s, r) => s + (r.events?.actionsTaken || 0), 0)
 
     return NextResponse.json({
       ok: true,
       synced: results.filter(r => r.status === 'ok').length,
       failed: results.filter(r => r.status === 'error').length,
+      totalAgentActions: totalActions,
       results,
     })
   } catch (error: any) {
