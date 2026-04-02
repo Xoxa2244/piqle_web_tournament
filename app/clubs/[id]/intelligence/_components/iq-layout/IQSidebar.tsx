@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X, CreditCard, Plug, Activity,
+  Menu, X, CreditCard, Plug, Activity, Bot,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -48,6 +48,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: Cpu,
     items: [
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
+      { icon: Bot, label: "AI Agent", path: "/agent", isAI: true },
     ],
   },
   {

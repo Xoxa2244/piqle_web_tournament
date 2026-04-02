@@ -537,3 +537,31 @@ export function useNewMembers(clubId: string, days: number = 14) {
     { enabled: !!clubId, staleTime: 5 * 60 * 1000 }
   )
 }
+
+// ══════ AI Agent Dashboard ══════
+
+export function useAgentActivity(clubId: string, days = 7) {
+  return trpc.intelligence.getAgentActivity.useQuery(
+    { clubId, days },
+    { enabled: !!clubId, refetchInterval: 30000 }
+  )
+}
+
+export function usePendingActions(clubId: string) {
+  return trpc.intelligence.getPendingActions.useQuery(
+    { clubId },
+    { enabled: !!clubId, refetchInterval: 15000 }
+  )
+}
+
+export function useApproveAction() {
+  return trpc.intelligence.approveAction.useMutation()
+}
+
+export function useSkipAction() {
+  return trpc.intelligence.skipAction.useMutation()
+}
+
+export function useSnoozeAction() {
+  return trpc.intelligence.snoozeAction.useMutation()
+}

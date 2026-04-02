@@ -47,6 +47,18 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
   return { isAdmin: true, isMember: true }
 }
 
+// ── Helper: describe agent action for pending queue ──
+function describeAgentAction(type: string, reasoning: any): string {
+  switch (type) {
+    case 'CHECK_IN': return `Check-in for ${reasoning?.transition || 'watch member'}`
+    case 'RETENTION_BOOST': return `Win-back for ${reasoning?.transition || 'at-risk member'}`
+    case 'SLOT_FILLER': return `Fill session: ${reasoning?.sessionTitle || 'underfilled session'}`
+    case 'NEW_MEMBER_WELCOME': return 'Welcome new member'
+    case 'REACTIVATION': return 'Reactivation outreach'
+    default: return type
+  }
+}
+
 export const intelligenceRouter = createTRPCRouter({
   // ── Subscription: Get current club subscription ──
   getSubscription: protectedProcedure
@@ -3827,5 +3839,122 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       return { sent, failed, skipped, results }
+    }),
+
+  // ══════ AI Agent Dashboard ══════
+
+  getAgentActivity: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), days: z.number().default(7), limit: z.number().default(50) }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const since = new Date(Date.now() - input.days * 86400000)
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId, createdAt: { gte: since } },
+        include: { user: { select: { name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+      })
+      // Stats
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      const weekAgo = new Date(Date.now() - 7 * 86400000)
+      const actionsToday = logs.filter(l => l.createdAt >= today && l.status !== 'pending').length
+      const actionsWeek = logs.filter(l => l.createdAt >= weekAgo && l.status !== 'pending').length
+      const autoApproved = logs.filter(l => (l.reasoning as any)?.autoApproved === true).length
+      const totalWithConfidence = logs.filter(l => (l.reasoning as any)?.confidence != null).length
+      const converted = logs.filter(l => l.status === 'converted').length
+      const sent = logs.filter(l => ['sent', 'delivered', 'opened', 'clicked', 'converted'].includes(l.status)).length
+
+      return {
+        logs: logs.map(l => ({
+          id: l.id,
+          type: l.type,
+          status: l.status,
+          channel: l.channel,
+          createdAt: l.createdAt,
+          memberName: l.user?.name || l.user?.email || 'Unknown',
+          confidence: (l.reasoning as any)?.confidence ?? null,
+          autoApproved: (l.reasoning as any)?.autoApproved ?? null,
+          transition: (l.reasoning as any)?.transition ?? null,
+          sessionTitle: (l.reasoning as any)?.sessionTitle ?? null,
+        })),
+        stats: {
+          actionsToday,
+          actionsWeek,
+          autoApprovedPct: totalWithConfidence > 0 ? Math.round(autoApproved / totalWithConfidence * 100) : 0,
+          conversionRate: sent > 0 ? Math.round(converted / sent * 100) : 0,
+        },
+      }
+    }),
+
+  getPendingActions: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const pending = await ctx.prisma.aIRecommendationLog.findMany({
+        where: { clubId: input.clubId, status: 'pending' },
+        include: { user: { select: { name: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      })
+      return pending.map(p => ({
+        id: p.id,
+        type: p.type,
+        memberName: p.user?.name || p.user?.email || 'System',
+        confidence: (p.reasoning as any)?.confidence ?? null,
+        description: describeAgentAction(p.type, p.reasoning as any),
+        createdAt: p.createdAt,
+      }))
+    }),
+
+  approveAction: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const action = await ctx.prisma.aIRecommendationLog.findUnique({
+        where: { id: input.actionId },
+        include: { user: { select: { id: true, email: true, name: true } }, club: { select: { name: true } } },
+      })
+      if (!action || action.clubId !== input.clubId) throw new TRPCError({ code: 'NOT_FOUND' })
+      if (action.status !== 'pending') return { status: action.status, message: 'Already processed' }
+
+      // Send email
+      if (action.user?.email) {
+        const { sendOutreachEmail } = await import('@/lib/email')
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+        await sendOutreachEmail({
+          to: action.user.email,
+          subject: `${action.club.name} — We'd love to see you back!`,
+          body: `Hey ${action.user.name?.split(' ')[0] || 'there'}!\n\nWe noticed it's been a while. We'd love to have you back!`,
+          clubName: action.club.name,
+          bookingUrl: `${baseUrl}/clubs/${action.clubId}/play`,
+        })
+      }
+      await ctx.prisma.aIRecommendationLog.update({
+        where: { id: input.actionId },
+        data: { status: 'sent' },
+      })
+      return { status: 'sent', message: 'Approved and sent' }
+    }),
+
+  skipAction: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await ctx.prisma.aIRecommendationLog.update({
+        where: { id: input.actionId },
+        data: { status: 'skipped' },
+      })
+      return { status: 'skipped' }
+    }),
+
+  snoozeAction: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await ctx.prisma.aIRecommendationLog.update({
+        where: { id: input.actionId },
+        data: { createdAt: new Date() },
+      })
+      return { status: 'snoozed' }
     }),
 })
