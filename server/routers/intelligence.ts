@@ -130,6 +130,48 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
   `, clubId)
 }
 
+const COHORT_PARSE_SYSTEM = `You convert natural language cohort descriptions into JSON filter arrays.
+
+Available fields and operators:
+- age: gte, lte, gt, lt, eq (numeric, years old)
+- gender: eq (values: "M" or "F")
+- membershipType: contains, eq (text)
+- membershipStatus: contains, eq (text, e.g. "Active", "Expired")
+- skillLevel: contains, eq (text, e.g. "Beginner", "Advanced", "4.0+")
+- city: eq, contains (text)
+- zipCode: eq (text)
+- duprRating: gte, lte, gt, lt, eq (numeric, 0.0-6.0)
+
+Rules:
+- "55+" means age >= 55
+- "under 30" means age < 30
+- "DUPR 2-3" means duprRating >= 2 AND duprRating <= 3
+- "men" or "male" means gender = "M"
+- "women" or "female" means gender = "F"
+- "beginners" means skillLevel contains "Beginner"
+- "active members" means membershipStatus contains "Active"
+- Generate a cohort name too
+
+Return ONLY valid JSON: {"name": "...", "description": "...", "filters": [...]}
+Each filter: {"field": "...", "op": "...", "value": ...}
+Value must be number for age/duprRating, string for others.`
+
+async function parseCohortPrompt(prompt: string): Promise<{ name: string; description: string; filters: CohortFilter[] } | null> {
+  try {
+    const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+    const result = await generateWithFallback({
+      system: COHORT_PARSE_SYSTEM,
+      prompt,
+      tier: 'fast',
+      maxTokens: 500,
+    })
+    const text = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
 export const intelligenceRouter = createTRPCRouter({
   // ── Subscription: Get current club subscription ──
   getSubscription: protectedProcedure
@@ -4123,6 +4165,21 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       return { cohort, members }
+    }),
+
+  parseCohortFromText: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      text: z.string().min(3).max(500),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const parsed = await parseCohortPrompt(input.text)
+      if (!parsed || !parsed.filters?.length) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Could not parse cohort description. Try being more specific.' })
+      }
+      const count = await countCohortMembers(ctx.prisma, input.clubId, parsed.filters)
+      return { ...parsed, count }
     }),
 
   previewCohort: protectedProcedure

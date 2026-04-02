@@ -159,6 +159,24 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   const [description, setDescription] = useState('')
   const [filters, setFilters] = useState<CohortFilter[]>([])
   const [saving, setSaving] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiParsing, setAiParsing] = useState(false)
+
+  const parseMutation = trpc.intelligence.parseCohortFromText.useMutation({
+    onSuccess: (data) => {
+      if (data.name) setName(data.name)
+      if (data.description) setDescription(data.description)
+      if (data.filters?.length) setFilters(data.filters as CohortFilter[])
+      setAiPrompt('')
+    },
+    onSettled: () => setAiParsing(false),
+  })
+
+  const handleAiParse = () => {
+    if (!aiPrompt.trim()) return
+    setAiParsing(true)
+    parseMutation.mutate({ clubId, text: aiPrompt.trim() })
+  }
 
   const previewQuery = trpc.intelligence.previewCohort.useQuery(
     { clubId, filters },
@@ -220,6 +238,36 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
           Create Cohort
         </h2>
         <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
+      </div>
+
+      {/* AI Natural Language Input */}
+      <div className="flex gap-2">
+        <input
+          type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAiParse()}
+          placeholder="Describe your cohort: e.g. &quot;DUPR 2-3, men 55+&quot; or &quot;active beginner women&quot;"
+          className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+          style={{ background: 'rgba(139,92,246,0.06)', color: 'var(--t1)', border: '1px solid rgba(139,92,246,0.2)' }}
+        />
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleAiParse}
+          disabled={!aiPrompt.trim() || aiParsing}
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm text-white"
+          style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)', fontWeight: 600, opacity: (!aiPrompt.trim() || aiParsing) ? 0.5 : 1 }}
+        >
+          {aiParsing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '✨'} AI
+        </motion.button>
+      </div>
+      {parseMutation.error && (
+        <p className="text-xs" style={{ color: '#EF4444' }}>{parseMutation.error.message}</p>
+      )}
+
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px" style={{ background: 'var(--card-border)' }} />
+        <span className="text-[10px] uppercase" style={{ color: 'var(--t4)' }}>or build manually</span>
+        <div className="flex-1 h-px" style={{ background: 'var(--card-border)' }} />
       </div>
 
       {/* Name + description */}
