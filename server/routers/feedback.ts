@@ -136,6 +136,34 @@ export const feedbackRouter = createTRPCRouter({
           return { canRate: true as const, reason: 'OK' as const }
         }
 
+        if (input.entityType === 'CLUB') {
+          const clubCutoff = new Date(Date.now() - CLUB_PROMPT_DAYS * 24 * 60 * 60 * 1000)
+          const [club, membership, playedClubEvent] = await Promise.all([
+            ctx.prisma.club.findUnique({
+              where: { id: input.entityId },
+              select: { id: true },
+            }),
+            ctx.prisma.clubFollower.findFirst({
+              where: { userId, clubId: input.entityId },
+              orderBy: { createdAt: 'asc' },
+              select: { createdAt: true },
+            }),
+            ctx.prisma.player.findFirst({
+              where: {
+                userId,
+                tournament: { clubId: input.entityId },
+              },
+              select: { id: true },
+            }),
+          ])
+
+          if (!club) return { canRate: false as const, reason: 'NOT_FOUND' as const }
+          if (!membership) return { canRate: false as const, reason: 'NOT_MEMBER' as const }
+          if (membership.createdAt <= clubCutoff || playedClubEvent) return { canRate: true as const, reason: 'OK' as const }
+
+          return { canRate: false as const, reason: 'TOO_EARLY' as const }
+        }
+
         return { canRate: true as const, reason: 'OK' as const }
       } catch (err) {
         if (isMissingFeedbackTable(err)) return { canRate: false as const, reason: 'MIGRATION_PENDING' as const }
@@ -220,6 +248,49 @@ export const feedbackRouter = createTRPCRouter({
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: 'You can rate this organizer only after playing in one of their completed tournaments.',
+          })
+        }
+      }
+
+      if (input.entityType === 'CLUB') {
+        const clubCutoff = new Date(Date.now() - CLUB_PROMPT_DAYS * 24 * 60 * 60 * 1000)
+        const [club, membership, playedClubEvent] = await Promise.all([
+          ctx.prisma.club.findUnique({
+            where: { id: input.entityId },
+            select: { id: true },
+          }),
+          ctx.prisma.clubFollower.findFirst({
+            where: { userId, clubId: input.entityId },
+            orderBy: { createdAt: 'asc' },
+            select: { createdAt: true },
+          }),
+          ctx.prisma.player.findFirst({
+            where: {
+              userId,
+              tournament: { clubId: input.entityId },
+            },
+            select: { id: true },
+          }),
+        ])
+
+        if (!club) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Club not found.',
+          })
+        }
+
+        if (!membership) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Only club members can rate this club.',
+          })
+        }
+
+        if (membership.createdAt > clubCutoff && !playedClubEvent) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You can rate this club after 3 days of membership or after participating in a club event.',
           })
         }
       }

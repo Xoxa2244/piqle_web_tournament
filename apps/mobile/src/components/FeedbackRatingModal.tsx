@@ -42,6 +42,21 @@ const DEV_SURVEY_CHIPS: Record<EntityType, Record<number, string[]>> = {
   },
 }
 
+const getFriendlySubmitError = (entityType: EntityType, rawMessage?: string) => {
+  const message = (rawMessage ?? '').trim()
+  if (!message) return 'Could not submit feedback.'
+
+  if (entityType === 'CLUB') {
+    if (message === 'Club not found.') return 'Club not found.'
+    if (message === 'Only club members can rate this club.') return 'Join this club first to leave a rating.'
+    if (message === 'You can rate this club after 3 days of membership or after participating in a club event.') {
+      return 'You can rate this club after 3 days in the club or after playing a club event.'
+    }
+  }
+
+  return message
+}
+
 export function FeedbackRatingModal({
   open,
   onClose,
@@ -90,7 +105,7 @@ export function FeedbackRatingModal({
       onClose()
     },
     onError: (e) => {
-      toast.error(e.message || 'Could not submit feedback.')
+      toast.error(getFriendlySubmitError(entityType, e.message))
     },
   })
 
