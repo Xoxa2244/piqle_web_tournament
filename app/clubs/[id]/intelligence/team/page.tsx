@@ -207,7 +207,7 @@ export default function TeamPage() {
         )}
 
         <p className="mt-3 text-xs" style={{ color: 'var(--t4)' }}>
-          They'll receive an email with a link to accept the invite. Link expires in 7 days.
+          They&apos;ll receive an email with a link to accept the invite. Link expires in 7 days.
         </p>
       </div>
 

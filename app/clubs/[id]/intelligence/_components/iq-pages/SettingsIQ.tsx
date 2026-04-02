@@ -357,7 +357,7 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
               style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t1)" }}
             />
             <p className="text-[10px] mt-1.5" style={{ color: "var(--t4)" }}>
-              Find your link: Google Maps → Your business → Share → "Ask for reviews". After saving, members will receive a review request email after playing a session (max 1 per 30 days).
+              Find your link: Google Maps → Your business → Share → &quot;Ask for reviews&quot;. After saving, members will receive a review request email after playing a session (max 1 per 30 days).
             </p>
           </div>
           {googleReviewUrl && (

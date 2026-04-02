@@ -22,8 +22,7 @@ const OP_LABELS: Record<string, string> = {
   eq: '=', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=', contains: 'contains', in: 'in',
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseCohortFilters(raw: any): CohortFilter[] {
+function parseCohortFilters(raw: unknown): CohortFilter[] {
   if (!Array.isArray(raw)) return []
   return raw as CohortFilter[]
 }
