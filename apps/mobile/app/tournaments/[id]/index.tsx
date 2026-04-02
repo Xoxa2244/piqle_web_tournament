@@ -453,6 +453,7 @@ export default function TournamentDetailScreen() {
   const [openTournamentFeedbackAfterInfoClose, setOpenTournamentFeedbackAfterInfoClose] = useState(false)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
+  const [openTdFeedbackAfterInfoClose, setOpenTdFeedbackAfterInfoClose] = useState(false)
   const [tournamentDescriptionExpanded, setTournamentDescriptionExpanded] = useState(false)
   const [tournamentDescriptionExpandable, setTournamentDescriptionExpandable] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
@@ -790,50 +791,8 @@ export default function TournamentDetailScreen() {
     </View>
   )
 
-  if (tournamentQuery.isLoading) {
-    return (
-      <View style={styles.screen}>
-        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        {tournamentMissingStateHeader}
-        <View style={styles.loadingWrap}>
-          <LoadingBlock label="Loading tournament..." />
-        </View>
-      </View>
-    )
-  }
-
-  if (tournamentQuery.isError) {
-    return (
-      <View style={styles.screen}>
-        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        {tournamentMissingStateHeader}
-        <View style={[styles.loadingWrap, { gap: 16 }]}>
-          <EmptyState
-            title="Could not load tournament"
-            body="Check your network and EXPO_PUBLIC_API_URL, then try again."
-          />
-          <ActionButton label="Try again" onPress={() => tournamentQuery.refetch()} />
-        </View>
-      </View>
-    )
-  }
-
-  if (!tournamentQuery.data) {
-    return (
-      <View style={styles.screen}>
-        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        {tournamentMissingStateHeader}
-        <View style={styles.loadingWrap}>
-          <SurfaceCard>
-            <Text style={styles.muted}>Tournament not found.</Text>
-          </SurfaceCard>
-        </View>
-      </View>
-    )
-  }
-
-  const tournament = tournamentQuery.data as any
-  const tdUserId = typeof tournament?.user?.id === 'string' ? tournament.user.id : null
+  const tournamentData = tournamentQuery.data as any | null
+  const tdUserId = typeof tournamentData?.user?.id === 'string' ? tournamentData.user.id : null
 
   const commentCountQuery = api.comment.getTournamentCommentCount.useQuery(
     { tournamentId },
@@ -888,52 +847,47 @@ export default function TournamentDetailScreen() {
     { enabled: FEEDBACK_API_ENABLED && Boolean(tdUserId) && isAuthenticated, retry: false },
   )
   const hasRatedTd = Boolean(tdUserId && tdHasRatedQuery.data?.map?.[`TD:${tdUserId}`])
-  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
-  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
+  const tournamentFeedbackAvailableAtMs = new Date(tournamentData?.endDate ?? 0).getTime() + 2 * 60 * 60 * 1000
+  const tournamentRatingReady = Number.isFinite(tournamentFeedbackAvailableAtMs)
+    ? Date.now() >= tournamentFeedbackAvailableAtMs
+    : false
+  const feedbackAverageValue = feedbackSummaryQuery.data?.averageRating ?? null
   const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
-  const fallbackSeed = String(tournamentId).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const feedbackAverageEffective =
-    feedbackAverage ?? (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
-  const feedbackTotalEffective = feedbackTotal > 0 ? feedbackTotal : __DEV__ ? 5 + (fallbackSeed % 21) : 0
-  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
-  const tdAverage = tdSummaryQuery.data?.averageRating
-  const tdTotal = tdSummaryQuery.data?.total ?? 0
+  const tdAverageValue = tdSummaryQuery.data?.averageRating ?? null
   const tdCanPublish = Boolean(tdSummaryQuery.data?.canPublish)
-  const tdFallbackSeed = String(tdUserId ?? tournamentId)
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const tdAverageEffective = tdAverage ?? (__DEV__ ? Number((4 + (tdFallbackSeed % 9) / 20).toFixed(1)) : null)
-  const tdTotalEffective = tdTotal > 0 ? tdTotal : __DEV__ ? 5 + (tdFallbackSeed % 17) : 0
-  const tdCanPublishEffective = tdCanPublish || (__DEV__ && tdTotalEffective >= 5)
   const myStatus = myStatusQuery.data?.status
+  const isTournamentParticipant = myStatus === 'active' || myStatus === 'waitlisted'
+  const canRateTournament = tournamentRatingReady && isTournamentParticipant && !hasRatedTournament
+  const isSelfTd = Boolean(tdUserId && user?.id && tdUserId === user.id)
+  const canRateTd = !isSelfTd && !hasRatedTd
   const accessInfo = accessQuery.data?.userAccessInfo
-  const isOwner = Boolean(user?.id && tournament.user?.id === user.id)
+  const isOwner = Boolean(user?.id && tournamentData?.user?.id === user.id)
   const hasPrivilegedAccess = Boolean(isOwner || accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
   const pendingInvitation = myInvitationQuery.data?.status === 'PENDING' ? myInvitationQuery.data : null
   const entryFeeCents =
-    typeof tournament.entryFeeCents === 'number'
-      ? tournament.entryFeeCents
-      : Number(tournament.entryFee ?? 0) > 0
-      ? Math.round(Number(tournament.entryFee) * 100)
+    typeof tournamentData?.entryFeeCents === 'number'
+      ? tournamentData.entryFeeCents
+      : Number(tournamentData?.entryFee ?? 0) > 0
+      ? Math.round(Number(tournamentData?.entryFee) * 100)
       : 0
   const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : '$ Free'
   const quickFeeLabel = entryFeeCents > 0 ? `$${Math.round(entryFeeCents / 100)}+` : 'Free'
-  const venueNameLabel = String(tournament.venueName ?? '').trim()
-  const venueAddressLabel = String(tournament.venueAddress ?? '').trim()
+  const venueNameLabel = String(tournamentData?.venueName ?? '').trim()
+  const venueAddressLabel = String(tournamentData?.venueAddress ?? '').trim()
   const locationLabel = venueAddressLabel || 'Location not set'
-  const playerCount = Number(tournament._count?.players ?? 0)
-  const totalTeams = ((tournament.divisions ?? []) as any[]).reduce(
+  const playerCount = Number(tournamentData?._count?.players ?? 0)
+  const totalTeams = ((tournamentData?.divisions ?? []) as any[]).reduce(
     (sum, division) => sum + Number(division?._count?.teams ?? 0),
     0
   )
-  const tournamentAvailabilityData = ((fullTournamentQuery.data as any | null) ?? tournament) as any
+  const tournamentAvailabilityData = ((fullTournamentQuery.data as any | null) ?? tournamentData) as any
   const registrationOpen = isRegistrationOpen(tournamentAvailabilityData)
   const isPublicBoardEnabled =
     (fullTournamentQuery.data as any | null)?.isPublicBoardEnabled ??
-    (tournament as any)?.isPublicBoardEnabled ??
+    (tournamentData as any)?.isPublicBoardEnabled ??
     tournamentAvailabilityData?.isPublicBoardEnabled
   const isClosedAccessTournament = isPublicBoardEnabled === false
-  const organizerLabel = tournament.user?.name || tournament.user?.email || 'Piqle'
+  const organizerLabel = tournamentData?.user?.name || tournamentData?.user?.email || 'Piqle'
   const canLeaveTournament = myStatus === 'active'
   const requiresPaidLeaveConfirm = entryFeeCents > 0
   const isPaidByStatus = Boolean(
@@ -954,6 +908,50 @@ export default function TournamentDetailScreen() {
     paymentToastShownRef.current = true
     toast.success('Payment successful.')
   }, [myStatus, isPaidByStatus, paymentSuccessNotice, toast])
+
+  if (tournamentQuery.isLoading) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
+        <View style={styles.loadingWrap}>
+          <LoadingBlock label="Loading tournament..." />
+        </View>
+      </View>
+    )
+  }
+
+  if (tournamentQuery.isError) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
+        <View style={[styles.loadingWrap, { gap: 16 }]}>
+          <EmptyState
+            title="Could not load tournament"
+            body="Check your network and EXPO_PUBLIC_API_URL, then try again."
+          />
+          <ActionButton label="Try again" onPress={() => tournamentQuery.refetch()} />
+        </View>
+      </View>
+    )
+  }
+
+  if (!tournamentQuery.data) {
+    return (
+      <View style={styles.screen}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        {tournamentMissingStateHeader}
+        <View style={styles.loadingWrap}>
+          <SurfaceCard>
+            <Text style={styles.muted}>Tournament not found.</Text>
+          </SurfaceCard>
+        </View>
+      </View>
+    )
+  }
+
+  const tournament = tournamentData as any
   const shouldShowRegisterCta =
     registrationOpen &&
     !pendingInvitation &&
@@ -1269,12 +1267,22 @@ export default function TournamentDetailScreen() {
                       </Text>
         </View>
                     <Pressable
-                      onPress={() => setTournamentFeedbackInfoOpen(true)}
-                      style={({ pressed }) => [styles.eventHeroRatingPill, pressed && styles.eventHeroRatingPillPressed]}
+                      disabled={!tournamentRatingReady}
+                      onPress={() => {
+                        if (!tournamentRatingReady) return
+                        setTournamentFeedbackInfoOpen(true)
+                      }}
+                      style={({ pressed }) => [
+                        styles.eventHeroRatingPill,
+                        !tournamentRatingReady && styles.eventHeroRatingPillDisabled,
+                        pressed && tournamentRatingReady && styles.eventHeroRatingPillPressed,
+                      ]}
                     >
                       <RatingStarIcon size={16} filled color="#F4B000" />
-                      {feedbackCanPublishEffective && feedbackAverageEffective ? (
-                        <Text style={styles.eventHeroRatingText}>{feedbackAverageEffective.toFixed(1)}</Text>
+                      {!tournamentRatingReady ? (
+                        <Text style={styles.eventHeroRatingMuted}>Soon</Text>
+                      ) : feedbackCanPublish && feedbackAverageValue ? (
+                        <Text style={styles.eventHeroRatingText}>{feedbackAverageValue.toFixed(1)}</Text>
                       ) : (
                         <Text style={styles.eventHeroRatingMuted}>New</Text>
                       )}
@@ -1615,10 +1623,10 @@ export default function TournamentDetailScreen() {
                     style={({ pressed }) => [styles.ratingPillBtn, pressed && styles.ratingPillBtnPressed]}
                   >
                     <RatingStarIcon size={17} filled color="#F4B000" />
-                    {tdCanPublishEffective && tdAverageEffective ? (
-                      <Text style={styles.feedbackValue}>{tdAverageEffective.toFixed(1)}</Text>
+                    {tdCanPublish && tdAverageValue ? (
+                      <Text style={styles.feedbackValue}>{tdAverageValue.toFixed(1)}</Text>
                     ) : (
-                      <Text style={styles.feedbackValueMuted}>No rating yet</Text>
+                      <Text style={styles.feedbackValue}>New</Text>
                     )}
                   </Pressable>
                   </View>
@@ -2636,7 +2644,7 @@ export default function TournamentDetailScreen() {
         footer={<AppInfoFooter onPress={() => setPaymentErrorMessage(null)} />}
       />
       <FeedbackRatingModal
-        open={tournamentFeedbackOpen}
+        open={canRateTournament && tournamentFeedbackOpen}
         onClose={() => setTournamentFeedbackOpen(false)}
         entityType="TOURNAMENT"
         entityId={tournamentId}
@@ -2657,7 +2665,7 @@ export default function TournamentDetailScreen() {
         }}
       />
       <AppBottomSheet
-        open={tournamentFeedbackInfoOpen}
+        open={tournamentRatingReady && tournamentFeedbackInfoOpen}
         onClose={() => setTournamentFeedbackInfoOpen(false)}
         onDismissed={() => {
           if (!openTournamentFeedbackAfterInfoClose) return
@@ -2666,10 +2674,14 @@ export default function TournamentDetailScreen() {
         }}
         title="Tournament rating"
         subtitle={
-          feedbackCanPublishEffective && feedbackAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
+          !tournamentRatingReady
+            ? 'Rating becomes available 2 hours after the tournament ends.'
+            : feedbackCanPublish && feedbackAverageValue
+            ? ''
+            : 'No public rating yet. Need at least 5 ratings.'
         }
         footer={
-          !hasRatedTournament ? (
+          canRateTournament ? (
             <ActionButton
               label="Rate this tournament"
               onPress={() => {
@@ -2680,27 +2692,20 @@ export default function TournamentDetailScreen() {
           ) : undefined
         }
       >
-        {feedbackCanPublishEffective && feedbackAverageEffective ? (
+        {tournamentRatingReady && feedbackCanPublish && feedbackAverageValue ? (
           <View style={styles.modalStarsRow}>
             {[1, 2, 3, 4, 5].map((star) => {
-              const active = star <= Math.round(feedbackAverageEffective)
+              const active = star <= Math.round(feedbackAverageValue)
               return (
                 <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
               )
             })}
-            <Text style={styles.modalRatingValueInline}>{feedbackAverageEffective.toFixed(1)}</Text>
+            <Text style={styles.modalRatingValueInline}>{feedbackAverageValue.toFixed(1)}</Text>
           </View>
         ) : null}
         <View style={styles.feedbackChipsWrap}>
-          {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
-            (feedbackSummaryQuery.data?.topChips?.length
-              ? feedbackSummaryQuery.data.topChips
-              : [
-                  { label: 'Great organization', count: 9 },
-                  { label: 'Clear schedule', count: 8 },
-                  { label: 'Strong opponents', count: 6 },
-                ]
-            ).map((chip: { label: string; count: number }) => (
+          {tournamentRatingReady && (feedbackSummaryQuery.data?.topChips ?? []).length > 0 ? (
+            feedbackSummaryQuery.data!.topChips.map((chip: { label: string; count: number }) => (
               <View key={chip.label} style={styles.feedbackChip}>
                 <Text style={styles.feedbackChipText}>{chip.label}</Text>
               </View>
@@ -2732,32 +2737,30 @@ export default function TournamentDetailScreen() {
       <AppBottomSheet
         open={tdFeedbackInfoOpen}
         onClose={() => setTdFeedbackInfoOpen(false)}
+        onDismissed={() => {
+          if (!openTdFeedbackAfterInfoClose) return
+          setOpenTdFeedbackAfterInfoClose(false)
+          setTdFeedbackOpen(true)
+        }}
         title="Tournament director rating"
         subtitle={
-          tdCanPublishEffective && tdAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
+          tdCanPublish && tdAverageValue ? '' : 'No public rating yet. Need at least 5 ratings.'
         }
       >
-        {tdCanPublishEffective && tdAverageEffective ? (
+        {tdCanPublish && tdAverageValue ? (
           <View style={styles.modalStarsRow}>
             {[1, 2, 3, 4, 5].map((star) => {
-              const active = star <= Math.round(tdAverageEffective)
+              const active = star <= Math.round(tdAverageValue)
               return (
                 <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
               )
             })}
-            <Text style={styles.modalRatingValueInline}>{tdAverageEffective.toFixed(1)}</Text>
+            <Text style={styles.modalRatingValueInline}>{tdAverageValue.toFixed(1)}</Text>
           </View>
               ) : null}
         <View style={styles.feedbackChipsWrap}>
-          {(tdSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
-            (tdSummaryQuery.data?.topChips?.length
-              ? tdSummaryQuery.data.topChips
-              : [
-                  { label: 'Clear communication', count: 10 },
-                  { label: 'Fair decisions', count: 8 },
-                  { label: 'On-time schedule', count: 7 },
-                ]
-            ).map((chip: { label: string; count: number }) => (
+          {(tdSummaryQuery.data?.topChips ?? []).length > 0 ? (
+            tdSummaryQuery.data!.topChips.map((chip: { label: string; count: number }) => (
               <View key={chip.label} style={styles.feedbackChip}>
                 <Text style={styles.feedbackChipText}>{chip.label}</Text>
               </View>
@@ -2766,13 +2769,12 @@ export default function TournamentDetailScreen() {
             <Text style={styles.feedbackEmptyText}>Not enough public data yet.</Text>
           )}
         </View>
-        {!hasRatedTd ? (
+        {canRateTd ? (
               <Pressable
             disabled={!tdUserId}
             onPress={() => {
-              if (!tdUserId) return
               setTdFeedbackInfoOpen(false)
-              setTimeout(() => setTdFeedbackOpen(true), 260)
+              setOpenTdFeedbackAfterInfoClose(true)
             }}
                 style={({ pressed }) => [
               styles.primaryFeedbackCtaBtn,
@@ -2782,6 +2784,8 @@ export default function TournamentDetailScreen() {
           >
             <Text style={styles.primaryFeedbackCtaText}>Rate this organizer</Text>
               </Pressable>
+        ) : isSelfTd ? (
+          <Text style={styles.feedbackThanksText}>You cannot rate yourself.</Text>
         ) : (
           <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
         )}
@@ -2968,6 +2972,9 @@ const createStyles = (colors: ThemePalette) =>
   },
   eventHeroRatingPillPressed: {
     opacity: 0.85,
+  },
+  eventHeroRatingPillDisabled: {
+    opacity: 0.62,
   },
   eventHeroRatingText: {
     color: colors.white,
@@ -3483,9 +3490,9 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     gap: 5,
     borderWidth: 1,
-    borderColor: 'rgba(10,10,10,0.08)',
+    borderColor: colors.border,
     borderRadius: 9999,
-    backgroundColor: 'rgba(10,10,10,0.03)',
+    backgroundColor: colors.surfaceMuted,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },

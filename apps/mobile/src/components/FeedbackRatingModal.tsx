@@ -75,7 +75,16 @@ export function FeedbackRatingModal({
     { enabled: FEEDBACK_API_ENABLED && open && rating > 0 },
   )
   const submitMutation = trpc.feedback.submit.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
+      const payload = result as { ok?: boolean; pendingMigration?: boolean } | undefined
+      if (!payload?.ok) {
+        if (payload?.pendingMigration) {
+          toast.error('Feedback is temporarily unavailable. Please try again later.')
+          return
+        }
+        toast.error('Could not submit feedback.')
+        return
+      }
       toast.success('Thanks — your feedback was sent.')
       onSubmitted?.()
       onClose()

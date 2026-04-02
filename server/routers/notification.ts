@@ -348,7 +348,11 @@ export const notificationRouter = createTRPCRouter({
                 },
               })
             }
-            if (!rated.has(`TD:${tournament.userId}`) && !seenTournament.has(`TD:${tournament.userId}`)) {
+            if (
+              tournament.userId !== userId &&
+              !rated.has(`TD:${tournament.userId}`) &&
+              !seenTournament.has(`TD:${tournament.userId}`)
+            ) {
               seenTournament.add(`TD:${tournament.userId}`)
               feedbackPromptItems.push({
                 id: `feedback-prompt-td-${tournament.userId}-${tournament.id}`,
@@ -515,8 +519,6 @@ export const notificationRouter = createTRPCRouter({
           return !dismissedIds.has(id)
         })
       const unreadCount = visible.filter((i) => {
-        // Подсказки фидбека в списке остаются, но не раздувают бейдж колокольчика.
-        if ((i as { type?: string }).type === 'FEEDBACK_PROMPT') return false
         const t = (i as { type?: string }).type
         if (t === 'CLUB_JOIN_REQUEST') {
           const ra = (i as { readAt?: string | null }).readAt

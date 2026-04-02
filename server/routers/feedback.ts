@@ -85,6 +85,64 @@ export const feedbackRouter = createTRPCRouter({
       }
     }),
 
+  getEligibility: protectedProcedure
+    .input(
+      z.object({
+        entityType: entityTypeSchema,
+        entityId: z.string().min(1),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      try {
+        if (input.entityType === 'TOURNAMENT') {
+          const [tournament, participation] = await Promise.all([
+            ctx.prisma.tournament.findUnique({
+              where: { id: input.entityId },
+              select: { id: true, endDate: true },
+            }),
+            ctx.prisma.player.findFirst({
+              where: { userId, tournamentId: input.entityId },
+              select: { id: true },
+            }),
+          ])
+
+          if (!tournament) return { canRate: false as const, reason: 'NOT_FOUND' as const }
+          if (!participation) return { canRate: false as const, reason: 'NOT_PARTICIPANT' as const }
+
+          const tournamentCutoff = new Date(Date.now() - TOURNAMENT_PROMPT_MIN_HOURS * 60 * 60 * 1000)
+          if (tournament.endDate > tournamentCutoff) return { canRate: false as const, reason: 'TOO_EARLY' as const }
+
+          return { canRate: true as const, reason: 'OK' as const }
+        }
+
+        if (input.entityType === 'TD') {
+          if (input.entityId === userId) return { canRate: false as const, reason: 'SELF' as const }
+
+          const tournamentCutoff = new Date(Date.now() - TOURNAMENT_PROMPT_MIN_HOURS * 60 * 60 * 1000)
+          const playedWithTd = await ctx.prisma.player.findFirst({
+            where: {
+              userId,
+              tournament: {
+                userId: input.entityId,
+                endDate: { lte: tournamentCutoff },
+              },
+            },
+            select: { id: true },
+          })
+          if (!playedWithTd) return { canRate: false as const, reason: 'NO_ELIGIBLE_TOURNAMENT' as const }
+
+          return { canRate: true as const, reason: 'OK' as const }
+        }
+
+        return { canRate: true as const, reason: 'OK' as const }
+      } catch (err) {
+        if (isMissingFeedbackTable(err)) return { canRate: false as const, reason: 'MIGRATION_PENDING' as const }
+        throw err
+      }
+    }),
+
   submit: protectedProcedure
     .input(
       z.object({
@@ -102,6 +160,69 @@ export const feedbackRouter = createTRPCRouter({
       const chipsAllowed = new Set(surveyChips[input.entityType]?.[input.rating] ?? [])
       const normalizedChips = Array.from(new Set((input.chips ?? []).map((x) => x.trim()).filter(Boolean)))
       const chips = normalizedChips.filter((chip) => chipsAllowed.has(chip))
+
+      if (input.entityType === 'TOURNAMENT') {
+        const [tournament, participation] = await Promise.all([
+          ctx.prisma.tournament.findUnique({
+            where: { id: input.entityId },
+            select: { id: true, endDate: true },
+          }),
+          ctx.prisma.player.findFirst({
+            where: { userId, tournamentId: input.entityId },
+            select: { id: true },
+          }),
+        ])
+
+        if (!tournament) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Tournament not found.',
+          })
+        }
+
+        if (!participation) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Only tournament participants can rate this tournament.',
+          })
+        }
+
+        const tournamentCutoff = new Date(Date.now() - TOURNAMENT_PROMPT_MIN_HOURS * 60 * 60 * 1000)
+        if (tournament.endDate > tournamentCutoff) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Tournament rating is available after the tournament has ended.',
+          })
+        }
+      }
+
+      if (input.entityType === 'TD') {
+        if (input.entityId === userId) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You cannot rate yourself.',
+          })
+        }
+
+        const tournamentCutoff = new Date(Date.now() - TOURNAMENT_PROMPT_MIN_HOURS * 60 * 60 * 1000)
+        const playedWithTd = await ctx.prisma.player.findFirst({
+          where: {
+            userId,
+            tournament: {
+              userId: input.entityId,
+              endDate: { lte: tournamentCutoff },
+            },
+          },
+          select: { id: true },
+        })
+
+        if (!playedWithTd) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You can rate this organizer only after playing in one of their completed tournaments.',
+          })
+        }
+      }
 
       let tournamentId: string | null = null
       let clubId: string | null = null
@@ -326,7 +447,7 @@ export const feedbackRouter = createTRPCRouter({
             createdAt: tournament.endDate.toISOString(),
           })
         }
-        if (!rated.has(`TD:${tournament.userId}`)) {
+        if (tournament.userId !== userId && !rated.has(`TD:${tournament.userId}`)) {
           prompts.push({
             promptId: `prompt:td:${tournament.userId}:${tournament.id}`,
             entityType: 'TD',

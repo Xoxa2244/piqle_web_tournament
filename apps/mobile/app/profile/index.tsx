@@ -270,25 +270,9 @@ export default function ProfileTab() {
   const hostedCount = Number(profile?.tournamentsCreatedCount ?? 0)
   const hostedCountEffective = Math.max(hostedCount, hostedByMeCount)
   const isTd = hostedCountEffective > 0
-  const tdAverage = tdSummaryQuery.data?.averageRating
-  const tdTotal = tdSummaryQuery.data?.total ?? 0
+  const tdAverage = tdSummaryQuery.data?.averageRating ?? null
   const tdCanPublish = Boolean(tdSummaryQuery.data?.canPublish)
-  const tdFallbackSeed = String(user?.id ?? '')
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const tdAverageEffective = tdAverage ?? (__DEV__ && isTd ? Number((4 + (tdFallbackSeed % 9) / 20).toFixed(1)) : null)
-  const tdTotalEffective = tdTotal > 0 ? tdTotal : __DEV__ && isTd ? 5 + (tdFallbackSeed % 17) : 0
-  const tdCanPublishEffective = tdCanPublish || (__DEV__ && tdTotalEffective >= 5)
-  const tdAchievements =
-    tdSummaryQuery.data?.achievements?.length || !__DEV__
-      ? tdSummaryQuery.data?.achievements ?? []
-      : isTd
-      ? [
-          { id: 'dev-td-1', title: 'Fast Resolver' },
-          { id: 'dev-td-2', title: 'Clear Communicator' },
-          { id: 'dev-td-3', title: 'Conflict Solver' },
-        ]
-      : []
+  const tdAchievements = tdSummaryQuery.data?.achievements ?? []
   const locationLabel = formatLocation([profile.city])
   const genderLabel = formatGenderLabel(profile.gender)
 
@@ -329,14 +313,14 @@ export default function ProfileTab() {
                     {[1, 2, 3, 4, 5].map((star) => (
                       <MaterialIcons
                         key={star}
-                        name={tdCanPublishEffective && tdAverageEffective && star <= Math.round(tdAverageEffective) ? 'star' : 'star-border'}
+                        name={tdCanPublish && tdAverage && star <= Math.round(tdAverage) ? 'star' : 'star-border'}
                         size={19}
                         color="#F4B000"
                       />
                     ))}
                   </View>
-                  {tdCanPublishEffective && tdAverageEffective ? (
-                    <Text style={[styles.tdRatingValue, { color: colors.text }]}>{tdAverageEffective.toFixed(1)}</Text>
+                  {tdCanPublish && tdAverage ? (
+                    <Text style={[styles.tdRatingValue, { color: colors.text }]}>{tdAverage.toFixed(1)}</Text>
                   ) : (
                     <Text style={[styles.tdRatingMuted, { color: colors.textMuted }]}>No rating yet</Text>
                   )}
@@ -453,13 +437,13 @@ export default function ProfileTab() {
             onClose={() => setTdFeedbackInfoOpen(false)}
             title="Tournament director rating"
             subtitle={
-              tdCanPublishEffective && tdAverageEffective ? '' : 'No public rating yet. Need at least 5 ratings.'
+              tdCanPublish && tdAverage ? '' : 'No public rating yet. Need at least 5 ratings.'
             }
           >
-            {tdCanPublishEffective && tdAverageEffective ? (
+            {tdCanPublish && tdAverage ? (
               <View style={styles.modalStarsRow}>
                 {[1, 2, 3, 4, 5].map((star) => {
-                  const active = star <= Math.round(tdAverageEffective)
+                  const active = star <= Math.round(tdAverage)
                   return (
                     <RatingStarIcon
                       key={star}
@@ -470,19 +454,12 @@ export default function ProfileTab() {
                     />
                   )
                 })}
-                <Text style={[styles.modalRatingValueInline, { color: colors.text }]}>{tdAverageEffective.toFixed(1)}</Text>
+                <Text style={[styles.modalRatingValueInline, { color: colors.text }]}>{tdAverage.toFixed(1)}</Text>
               </View>
             ) : null}
             <View style={styles.feedbackChipsWrap}>
-              {(tdSummaryQuery.data?.topChips ?? []).length > 0 || (__DEV__ && isTd) ? (
-                (tdSummaryQuery.data?.topChips?.length
-                  ? tdSummaryQuery.data.topChips
-                  : [
-                      { label: 'Clear communication', count: 10 },
-                      { label: 'Fair decisions', count: 8 },
-                      { label: 'On-time schedule', count: 7 },
-                    ]
-                ).map((chip: { label: string; count: number }) => (
+              {(tdSummaryQuery.data?.topChips ?? []).length > 0 ? (
+                tdSummaryQuery.data!.topChips.map((chip: { label: string; count: number }) => (
                   <View
                     key={chip.label}
                     style={[

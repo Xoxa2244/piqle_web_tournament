@@ -255,22 +255,8 @@ export default function ClubDetailScreen() {
   )
   const hasRatedClub = Boolean(hasRatedQuery.data?.map?.[`CLUB:${clubId}`])
 
-  const feedbackAverage = feedbackSummaryQuery.data?.averageRating
-  const feedbackTotal = feedbackSummaryQuery.data?.total ?? 0
+  const feedbackAverage = feedbackSummaryQuery.data?.averageRating ?? null
   const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
-  const fallbackSeed = String(clubId)
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const feedbackAverageEffective =
-    feedbackAverage ??
-    (__DEV__ ? Number((3.8 + (fallbackSeed % 13) / 20).toFixed(1)) : null)
-  const feedbackTotalEffective =
-    feedbackTotal > 0
-      ? feedbackTotal
-      : __DEV__
-      ? 5 + (fallbackSeed % 21)
-      : 0
-  const feedbackCanPublishEffective = feedbackCanPublish || (__DEV__ && feedbackTotalEffective >= 5)
   const activeChatClub = myChatClubsQuery.data?.find((item: any) => item.id === club?.id) as any
   const unreadClubChatCount = Number(activeChatClub?.unreadCount ?? 0)
   const pendingJoinRequestCount = Number(membersQuery.data?.joinRequests?.length ?? 0)
@@ -968,9 +954,9 @@ export default function ClubDetailScreen() {
               ]}
             >
               <RatingStarIcon size={16} filled color="#F4B000" />
-              {feedbackCanPublishEffective && feedbackAverageEffective ? (
+              {feedbackCanPublish && feedbackAverage ? (
                 <Text style={[styles.clubHeroRatingText, theme === 'light' && styles.clubHeroRatingTextLight]}>
-                  {feedbackAverageEffective.toFixed(1)}
+                  {feedbackAverage.toFixed(1)}
                 </Text>
               ) : (
                 <Text style={[styles.clubHeroRatingMuted, theme === 'light' && styles.clubHeroRatingMutedLight]}>
@@ -1607,7 +1593,7 @@ export default function ClubDetailScreen() {
         }}
         title="Club rating"
         subtitle={
-          feedbackCanPublishEffective && feedbackAverageEffective ? '' : `No public rating yet. Need at least 5 ratings.`
+          feedbackCanPublish && feedbackAverage ? '' : `No public rating yet. Need at least 5 ratings.`
         }
         footer={
           !hasRatedClub ? (
@@ -1621,27 +1607,20 @@ export default function ClubDetailScreen() {
           ) : undefined
         }
       >
-        {feedbackCanPublishEffective && feedbackAverageEffective ? (
+        {feedbackCanPublish && feedbackAverage ? (
           <View style={styles.modalStarsRow}>
             {[1, 2, 3, 4, 5].map((star) => {
-              const active = star <= Math.round(feedbackAverageEffective)
+              const active = star <= Math.round(feedbackAverage)
               return (
                 <RatingStarIcon key={star} size={40} filled={active} color="#F2C94C" inactiveColor="#C7C7CC" />
               )
             })}
-            <Text style={styles.modalRatingValueInline}>{feedbackAverageEffective.toFixed(1)}</Text>
+            <Text style={styles.modalRatingValueInline}>{feedbackAverage.toFixed(1)}</Text>
           </View>
         ) : null}
         <View style={styles.feedbackChipsWrap}>
-          {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 || __DEV__ ? (
-            (feedbackSummaryQuery.data?.topChips?.length
-              ? feedbackSummaryQuery.data!.topChips
-              : [
-                  { label: 'Great atmosphere', count: 9 },
-                  { label: 'Regular events', count: 8 },
-                  { label: 'Helpful support', count: 6 },
-                ]
-            ).map((chip) => (
+          {(feedbackSummaryQuery.data?.topChips ?? []).length > 0 ? (
+            feedbackSummaryQuery.data!.topChips.map((chip) => (
               <View key={chip.label} style={styles.feedbackChip}>
                 <Text style={styles.feedbackChipText}>{chip.label}</Text>
               </View>

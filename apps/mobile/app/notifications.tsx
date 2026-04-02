@@ -8,7 +8,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   UIManager,
   View,
@@ -55,9 +54,6 @@ export default function NotificationsScreen() {
   const toast = useToast()
   const { colors } = useAppTheme()
   const isAuthenticated = Boolean(token)
-  const [devFeedbackPromptsEnabled, setDevFeedbackPromptsEnabled] = useState(false)
-  /** Моки доступа, вейтлиста, матчей, платежей — для проверки UI без бэкенда. */
-  const [devBellExtrasEnabled, setDevBellExtrasEnabled] = useState(false)
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null)
   const [clearAllSheetOpen, setClearAllSheetOpen] = useState(false)
   const navigationLock = useRef<{ id: string; at: number } | null>(null)
@@ -181,186 +177,12 @@ export default function NotificationsScreen() {
 
   const items = useMemo(() => {
     const serverItems = (notificationsQuery.data?.items ?? []) as any[]
-    const nowIso = new Date().toISOString()
-
-    const devBellItems = [
-      {
-        id: 'dev-bell-access-pending',
-        type: 'TOURNAMENT_ACCESS_PENDING' as const,
-        title: 'Tournament access request',
-        body: '"Jamie Lee" requested staff access for "Spring Open (Dev)".',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-        userAvatarUrl: null,
-        requesterName: 'Jamie Lee',
-        requestId: 'dev-request-id',
-      },
-      {
-        id: 'dev-bell-access-granted',
-        type: 'TOURNAMENT_ACCESS_GRANTED' as const,
-        title: 'Tournament access approved',
-        body: 'You can now help run "Pacific Classic (Dev)".',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-      },
-      {
-        id: 'dev-bell-access-denied',
-        type: 'TOURNAMENT_ACCESS_DENIED' as const,
-        title: 'Access request declined',
-        body: 'Your request to help run "Weekend Slam (Dev)" was declined.',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-      },
-      {
-        id: 'dev-bell-waitlist-promoted',
-        type: 'WAITLIST_PROMOTED' as const,
-        title: 'Moved off waitlist',
-        body: `You're in the draw for "Indy League Demo".`,
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-      },
-      {
-        id: 'dev-bell-reg-waitlist',
-        type: 'REGISTRATION_WAITLIST' as const,
-        title: 'Waitlist spot',
-        body: `You're on the waitlist for "Round Robin Test (Dev)".`,
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-      },
-      {
-        id: 'dev-bell-match-reminder',
-        type: 'MATCH_REMINDER' as const,
-        title: 'Upcoming match',
-        body: '"Spring Open (Dev)" · Team A vs Team B (Mar 28, 2026)',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-      },
-      {
-        id: 'dev-bell-payment-paid',
-        type: 'PAYMENT_STATUS' as const,
-        title: 'Payment received',
-        body: `Entry fee paid for "Spring Open (Dev)".`,
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-        paymentStatus: 'PAID',
-      },
-      {
-        id: 'dev-bell-payment-failed',
-        type: 'PAYMENT_STATUS' as const,
-        title: 'Payment failed',
-        body: `We couldn't process payment for "Pacific Classic (Dev)". Try again from registration.`,
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        tournamentId: 'dev-tournament-id',
-        tournamentImage: null,
-        paymentStatus: 'FAILED',
-      },
-    ]
-
-    let merged = serverItems
-    if (devBellExtrasEnabled) {
-      merged = [...devBellItems, ...merged]
-    }
+    const merged = serverItems
 
     const hideSwipe = (rows: any[]) =>
       rows.filter((x) => !swipeHiddenIds.has(String(x.id ?? '')))
-
-    if (!devFeedbackPromptsEnabled) return hideSwipe(merged)
-
-    const devItems = [
-      {
-        id: 'dev-feedback-prompt-tournament',
-        type: 'FEEDBACK_PROMPT' as const,
-        title: 'Rate tournament',
-        body: '"Spring Open" (Mar 24, 2026).\nHelp us improve tournament quality and player experience.',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        entityType: 'TOURNAMENT' as const,
-        entityId: 'dev-tournament-id',
-        avatarUrl: null,
-        context: {
-          title: 'Spring Open',
-          date: 'Mar 24, 2026',
-          format: 'Round Robin',
-          address: 'Seattle, WA',
-          imageUrl: null,
-        },
-      },
-      {
-        id: 'dev-feedback-prompt-td',
-        type: 'FEEDBACK_PROMPT' as const,
-        title: 'Rate tournament director',
-        body: '"Alex Carter" (Mar 24, 2026, "Spring Open").\nHelp us improve director quality, communication, and event experience.',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/tournaments/dev-tournament-id',
-        entityType: 'TD' as const,
-        entityId: 'dev-td-id',
-        avatarUrl: null,
-        context: {
-          name: 'Alex Carter',
-          city: 'Seattle',
-          avatarUrl: null,
-          tournamentTitle: 'Spring Open',
-          tournamentDate: 'Mar 24, 2026',
-        },
-      },
-      {
-        id: 'dev-feedback-prompt-club',
-        type: 'FEEDBACK_PROMPT' as const,
-        title: 'Rate club',
-        body: '"Downtown Pickle Club" (Mar 20, 2026).\nHelp us improve club quality, events, and member experience.',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/clubs/dev-club-id',
-        entityType: 'CLUB' as const,
-        entityId: 'dev-club-id',
-        avatarUrl: null,
-        context: {
-          title: 'Downtown Pickle Club',
-          address: 'Seattle, WA',
-          membersCount: 124,
-          imageUrl: null,
-        },
-      },
-      {
-        id: 'dev-feedback-prompt-app',
-        type: 'FEEDBACK_PROMPT' as const,
-        title: 'Rate app experience',
-        body: 'Your opinion is very important to us. We are working to improve usability, your overall experience, and the speed and quality of our service.',
-        createdAt: nowIso,
-        readAt: null,
-        targetUrl: '/profile',
-        entityType: 'APP' as const,
-        entityId: 'GLOBAL',
-        avatarUrl: null,
-      },
-    ]
-    return hideSwipe([...devItems, ...merged])
-  }, [notificationsQuery.data?.items, devFeedbackPromptsEnabled, devBellExtrasEnabled, swipeHiddenIds])
+    return hideSwipe(merged)
+  }, [notificationsQuery.data?.items, swipeHiddenIds])
 
   const notificationTextStyles = useMemo(
     () => ({
@@ -564,37 +386,6 @@ export default function NotificationsScreen() {
   return (
     <PageLayout topBarTitle="Notifications" topBarRightSlot={notificationsTopBarRight}>
       <View style={styles.page}>
-        <SurfaceCard style={styles.devCard}>
-          <View style={styles.devRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.devTitle}>Test: feedback prompts in bell</Text>
-              <Text style={styles.devBody}>Toggle test FEEDBACK_PROMPT notifications.</Text>
-            </View>
-            <Switch
-              value={devFeedbackPromptsEnabled}
-              onValueChange={setDevFeedbackPromptsEnabled}
-              trackColor={{ false: '#D8D8DC', true: '#9CD9A3' }}
-              thumbColor={devFeedbackPromptsEnabled ? '#1E7A32' : '#F4F4F5'}
-            />
-          </View>
-        </SurfaceCard>
-        <SurfaceCard style={styles.devCard}>
-          <View style={styles.devRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.devTitle}>Test: access, waitlist, matches, payments</Text>
-              <Text style={styles.devBody}>
-                Mock rows for new bell types (staff access, waitlist, match reminder, payment status). Tap opens a dev
-                tournament route.
-              </Text>
-            </View>
-            <Switch
-              value={devBellExtrasEnabled}
-              onValueChange={setDevBellExtrasEnabled}
-              trackColor={{ false: '#D8D8DC', true: '#9CD9A3' }}
-              thumbColor={devBellExtrasEnabled ? '#1E7A32' : '#F4F4F5'}
-            />
-          </View>
-        </SurfaceCard>
         {!isAuthenticated ? <AuthRequiredCard title="Sign in required" body="Sign in to view your notifications." /> : null}
         {isAuthenticated && notificationsQuery.isLoading ? <LoadingBlock label="Loading notifications..." /> : null}
         {isAuthenticated && !notificationsQuery.isLoading && items.length === 0 ? (
@@ -732,10 +523,6 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   page: { gap: spacing.md },
-  devCard: { padding: spacing.md },
-  devRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  devTitle: { color: palette.text, fontSize: 14, fontWeight: '700' },
-  devBody: { marginTop: 4, color: palette.textMuted, fontSize: 12 },
   itemCard: { padding: spacing.md },
   itemHead: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   itemTitle: { fontSize: 15, fontWeight: '700' },
