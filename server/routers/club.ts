@@ -151,6 +151,98 @@ const buildClubInviteEmailHtml = (args: {
   `
 }
 
+const buildAdminInviteEmailHtml = (args: {
+  baseUrl: string
+  inviteUrl: string
+  inviterName: string
+  clubName: string
+  clubLogoUrl?: string | null
+  inviteeEmail: string
+  role: string
+  city?: string | null
+  state?: string | null
+}) => {
+  const {
+    baseUrl,
+    inviteUrl,
+    inviterName,
+    clubName,
+    clubLogoUrl,
+    inviteeEmail,
+    role,
+    city,
+    state,
+  } = args
+  const safeClubName = escapeHtml(clubName)
+  const safeInviterName = escapeHtml(inviterName)
+  const safeInviteeEmail = escapeHtml(inviteeEmail)
+  const safeInviteUrl = escapeHtml(inviteUrl)
+  const safeRole = escapeHtml(role === 'MODERATOR' ? 'Moderator' : 'Admin')
+  const safeLocation = [city, state]
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean)
+    .join(', ')
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
+  const clubImageUrl = clubLogoUrl || `${baseUrl}/tournament-placeholder.png`
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeRole} Invitation: ${safeClubName}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
+          <tr>
+            <td align="center" style="padding-bottom: 24px;">
+              <img src="${logoUrl}" alt="Logo" width="120" height="40" style="display: block; max-width: 120px; height: auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background: #ffffff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 28px 24px 20px; text-align: center;">
+                    <p style="margin: 0 0 8px; font-size: 15px; color: #6b7280;">Hi,</p>
+                    <p style="margin: 0 0 20px; font-size: 15px; color: #6b7280;">${safeInviterName} invited you to manage this club as <strong>${safeRole}</strong></p>
+                    <img src="${clubImageUrl}" alt="" width="80" height="80" style="display: block; width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 0 auto 12px;" />
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #111827;">${safeClubName}</h1>
+                    ${safeLocation ? `<p style="margin: 8px 0 0; font-size: 13px; color: #6b7280;">${escapeHtml(safeLocation)}</p>` : ''}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 20px 24px 8px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0 0 16px; font-size: 13px; color: #6b7280;">As ${safeRole}, you'll be able to manage sessions, view analytics, and configure AI intelligence features.</p>
+                    <a href="${safeInviteUrl}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">Accept ${safeRole} Invite</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 24px 28px; text-align: center;">
+                    <p style="margin: 0; font-size: 12px; color: #9ca3af;">This invite expires in 7 days.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 0; text-align: center; font-size: 12px; color: #9ca3af;">
+              This invitation was sent to ${safeInviteeEmail}. If you were not expecting this email, you can ignore it.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `
+}
+
 const decimalToNumber = (val: any): number | null => {
   if (val === null || val === undefined) return null
   if (typeof val === 'number') return Number.isFinite(val) ? val : null
@@ -1838,6 +1930,183 @@ If you weren’t expecting this, you can ignore this email.`
         return invites
       } catch {
         return []
+      }
+    }),
+
+  sendAdminInvite: protectedProcedure
+    .input(z.object({
+      clubId: z.string(),
+      email: z.string().email(),
+      role: z.enum(['ADMIN', 'MODERATOR']).default('ADMIN'),
+      baseUrl: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const callerId = ctx.session.user.id
+
+      const [club, callerAdmin, inviterUser] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { id: true, name: true, logoUrl: true, city: true, state: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: callerId } },
+          select: { role: true },
+        }),
+        ctx.prisma.user.findUnique({
+          where: { id: callerId },
+          select: { name: true, email: true },
+        }),
+      ])
+
+      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      if (!callerAdmin || callerAdmin.role !== 'ADMIN') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can invite other admins' })
+      }
+
+      // Check if email is already an admin
+      const existingUser = await ctx.prisma.user.findFirst({
+        where: { email: input.email },
+        select: { id: true },
+      })
+      if (existingUser) {
+        const existingAdmin = await ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: existingUser.id } },
+        })
+        if (existingAdmin) {
+          return { success: true, delivered: false, reason: 'already_admin' as const }
+        }
+      }
+
+      // Check for duplicate invite in last 24h
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const recentInvite = await ctx.prisma.clubInvite.findFirst({
+        where: {
+          clubId: input.clubId,
+          inviteeEmail: input.email,
+          role: { not: null },
+          createdAt: { gte: dayAgo },
+        },
+      })
+      if (recentInvite) {
+        return { success: true, delivered: false, reason: 'already_invited' as const }
+      }
+
+      // Generate secure token
+      const { randomUUID } = await import('crypto')
+      const token = randomUUID()
+
+      // Create invite record
+      await ctx.prisma.clubInvite.create({
+        data: {
+          clubId: input.clubId,
+          inviterUserId: callerId,
+          inviteeEmail: input.email,
+          inviteeUserId: existingUser?.id ?? null,
+          role: input.role,
+          token,
+          delivered: false,
+        },
+      })
+
+      // Send email
+      const baseUrl = resolveAppBaseUrl(input.baseUrl)
+      const inviteUrl = `${baseUrl}/invite/admin?token=${token}`
+      const inviterName = inviterUser?.name || 'A club admin'
+
+      try {
+        const nodemailer = await import('nodemailer')
+        const transporter = nodemailer.default.createTransport({
+          host: process.env.EMAIL_SERVER_HOST,
+          port: Number(process.env.EMAIL_SERVER_PORT || 587),
+          auth: {
+            user: process.env.EMAIL_SERVER_USER,
+            pass: process.env.EMAIL_SERVER_PASSWORD,
+          },
+        })
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_FROM || 'IQSport <noreply@iqsport.ai>',
+          to: input.email,
+          subject: `${inviterName} invited you to manage ${club.name} on IQSport`,
+          html: buildAdminInviteEmailHtml({
+            baseUrl,
+            inviteUrl,
+            inviterName,
+            clubName: club.name,
+            clubLogoUrl: club.logoUrl,
+            inviteeEmail: input.email,
+            role: input.role,
+            city: club.city,
+            state: club.state,
+          }),
+        })
+
+        await ctx.prisma.clubInvite.updateMany({
+          where: { clubId: input.clubId, inviteeEmail: input.email, token },
+          data: { delivered: true },
+        })
+      } catch (err: any) {
+        console.error('[AdminInvite] Email failed:', err.message)
+      }
+
+      return { success: true, delivered: true, reason: null }
+    }),
+
+  acceptAdminInvite: protectedProcedure
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const invite = await ctx.prisma.clubInvite.findUnique({
+        where: { token: input.token },
+        include: {
+          club: { select: { id: true, name: true } },
+        },
+      })
+
+      if (!invite) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Invite not found or invalid token' })
+      }
+
+      if (invite.acceptedAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This invite has already been accepted' })
+      }
+
+      // Check expiration (7 days)
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+      if (Date.now() - invite.createdAt.getTime() > sevenDaysMs) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This invite has expired' })
+      }
+
+      if (!invite.role) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This is not an admin invite' })
+      }
+
+      // Create ClubAdmin (upsert)
+      await ctx.prisma.clubAdmin.upsert({
+        where: { clubId_userId: { clubId: invite.clubId, userId } },
+        update: { role: invite.role },
+        create: { clubId: invite.clubId, userId, role: invite.role },
+      })
+
+      // Also make them a club follower if not already
+      await ctx.prisma.clubFollower.upsert({
+        where: { clubId_userId: { clubId: invite.clubId, userId } },
+        update: {},
+        create: { clubId: invite.clubId, userId },
+      }).catch(() => {})
+
+      // Mark invite as accepted
+      await ctx.prisma.clubInvite.update({
+        where: { token: input.token },
+        data: { acceptedAt: new Date(), inviteeUserId: userId },
+      })
+
+      return {
+        success: true,
+        clubId: invite.clubId,
+        clubName: invite.club.name,
+        role: invite.role,
       }
     }),
 })
