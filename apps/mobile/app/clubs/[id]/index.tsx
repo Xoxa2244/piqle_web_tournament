@@ -254,6 +254,8 @@ export default function ClubDetailScreen() {
     { enabled: FEEDBACK_API_ENABLED && Boolean(clubId) && isAuthenticated, retry: false },
   )
   const hasRatedClub = Boolean(hasRatedQuery.data?.map?.[`CLUB:${clubId}`])
+  const canRateClub = Boolean(isAuthenticated && club && (club.isFollowing || club.isAdmin))
+  const showRateClubAction = Boolean(canRateClub && hasRatedQuery.isFetched && !hasRatedClub)
 
   const feedbackAverage = feedbackSummaryQuery.data?.averageRating ?? null
   const feedbackCanPublish = Boolean(feedbackSummaryQuery.data?.canPublish)
@@ -1589,6 +1591,7 @@ export default function ClubDetailScreen() {
         onDismissed={() => {
           if (!openClubFeedbackAfterInfoClose) return
           setOpenClubFeedbackAfterInfoClose(false)
+          if (!showRateClubAction) return
           setClubFeedbackOpen(true)
         }}
         title="Club rating"
@@ -1596,7 +1599,7 @@ export default function ClubDetailScreen() {
           feedbackCanPublish && feedbackAverage ? '' : `No public rating yet. Need at least 5 ratings.`
         }
         footer={
-          !hasRatedClub ? (
+          showRateClubAction ? (
             <ActionButton
               label="Rate this club"
               onPress={() => {

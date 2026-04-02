@@ -49,6 +49,7 @@ const getFriendlySubmitError = (entityType: EntityType, rawMessage?: string) => 
   if (entityType === 'CLUB') {
     if (message === 'Club not found.') return 'Club not found.'
     if (message === 'Only club members can rate this club.') return 'Join this club first to leave a rating.'
+    if (message === 'Only club members or admins can rate this club.') return 'Join this club first to leave a rating.'
     if (message === 'You can rate this club after 3 days of membership or after participating in a club event.') {
       return 'You can rate this club after 3 days in the club or after playing a club event.'
     }

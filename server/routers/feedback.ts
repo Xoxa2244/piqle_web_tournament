@@ -138,7 +138,7 @@ export const feedbackRouter = createTRPCRouter({
 
         if (input.entityType === 'CLUB') {
           const clubCutoff = new Date(Date.now() - CLUB_PROMPT_DAYS * 24 * 60 * 60 * 1000)
-          const [club, membership, playedClubEvent] = await Promise.all([
+          const [club, membership, adminRole, playedClubEvent] = await Promise.all([
             ctx.prisma.club.findUnique({
               where: { id: input.entityId },
               select: { id: true },
@@ -147,6 +147,10 @@ export const feedbackRouter = createTRPCRouter({
               where: { userId, clubId: input.entityId },
               orderBy: { createdAt: 'asc' },
               select: { createdAt: true },
+            }),
+            ctx.prisma.clubAdmin.findUnique({
+              where: { clubId_userId: { clubId: input.entityId, userId } },
+              select: { id: true },
             }),
             ctx.prisma.player.findFirst({
               where: {
@@ -158,6 +162,7 @@ export const feedbackRouter = createTRPCRouter({
           ])
 
           if (!club) return { canRate: false as const, reason: 'NOT_FOUND' as const }
+          if (adminRole) return { canRate: true as const, reason: 'OK' as const }
           if (!membership) return { canRate: false as const, reason: 'NOT_MEMBER' as const }
           if (membership.createdAt <= clubCutoff || playedClubEvent) return { canRate: true as const, reason: 'OK' as const }
 
@@ -254,7 +259,7 @@ export const feedbackRouter = createTRPCRouter({
 
       if (input.entityType === 'CLUB') {
         const clubCutoff = new Date(Date.now() - CLUB_PROMPT_DAYS * 24 * 60 * 60 * 1000)
-        const [club, membership, playedClubEvent] = await Promise.all([
+        const [club, membership, adminRole, playedClubEvent] = await Promise.all([
           ctx.prisma.club.findUnique({
             where: { id: input.entityId },
             select: { id: true },
@@ -263,6 +268,10 @@ export const feedbackRouter = createTRPCRouter({
             where: { userId, clubId: input.entityId },
             orderBy: { createdAt: 'asc' },
             select: { createdAt: true },
+          }),
+          ctx.prisma.clubAdmin.findUnique({
+            where: { clubId_userId: { clubId: input.entityId, userId } },
+            select: { id: true },
           }),
           ctx.prisma.player.findFirst({
             where: {
@@ -280,14 +289,14 @@ export const feedbackRouter = createTRPCRouter({
           })
         }
 
-        if (!membership) {
+        if (!membership && !adminRole) {
           throw new TRPCError({
             code: 'FORBIDDEN',
-            message: 'Only club members can rate this club.',
+            message: 'Only club members or admins can rate this club.',
           })
         }
 
-        if (membership.createdAt > clubCutoff && !playedClubEvent) {
+        if (!adminRole && membership && membership.createdAt > clubCutoff && !playedClubEvent) {
           throw new TRPCError({
             code: 'FORBIDDEN',
             message: 'You can rate this club after 3 days of membership or after participating in a club event.',
