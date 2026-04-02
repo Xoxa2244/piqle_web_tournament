@@ -42,6 +42,10 @@
     {
       "path": "/api/campaigns/morning-digest",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/agent/events",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
