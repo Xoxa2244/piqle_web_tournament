@@ -26,6 +26,9 @@ interface ParsedMember {
   phone?: string
   gender?: 'M' | 'F'
   city?: string
+  zipCode?: string
+  dateOfBirth?: string
+  age?: number
   duprSingles?: number
   duprDoubles?: number
   skillLevel?: string
@@ -220,6 +223,9 @@ export function mapMemberRows(rows: Record<string, any>[]): ParsedMember[] {
       city: safeStr(col(row, 'City', 'city')),
       duprSingles,
       duprDoubles,
+      dateOfBirth: safeStr(col(row, 'Date Of Birth', 'DateOfBirth', 'DOB', 'Birth Date')),
+      age: safeNum(col(row, 'Age')),
+      zipCode: safeStr(col(row, 'Zip Code', 'ZipCode', 'Zip')),
       skillLevel: safeStr(col(row, 'Skill Level', 'SkillLevel', 'IPC Verified Rating')),
       membership: safeStr(col(row, 'Current Membership', 'Membership', 'MembershipType')),
       membershipStatus: safeStr(col(row, 'Membership Status', 'MembershipStatus')),
@@ -447,6 +453,17 @@ async function _runImportPipeline(
         const email = member.email.toLowerCase().trim()
         let userId = memberIdMap.get(member.externalId) ?? emailToUserId.get(email) ?? null
 
+        // Parse date of birth
+        let dateOfBirth: Date | undefined
+        if (member.dateOfBirth) {
+          try {
+            const parsed = new Date(member.dateOfBirth)
+            if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+              dateOfBirth = parsed
+            }
+          } catch { /* ignore */ }
+        }
+
         const userData: any = {
           email,
           name: member.name || undefined,
@@ -456,6 +473,11 @@ async function _runImportPipeline(
         }
         if (member.duprSingles !== undefined) userData.duprRatingSingles = member.duprSingles
         if (member.duprDoubles !== undefined) userData.duprRatingDoubles = member.duprDoubles
+        if (dateOfBirth) userData.dateOfBirth = dateOfBirth
+        if (member.membership) userData.membershipType = member.membership
+        if (member.membershipStatus) userData.membershipStatus = member.membershipStatus
+        if (member.zipCode) userData.zipCode = member.zipCode
+        if (member.skillLevel) userData.skillLevel = member.skillLevel
 
         if (userId) {
           await prisma.user.update({ where: { id: userId }, data: userData })

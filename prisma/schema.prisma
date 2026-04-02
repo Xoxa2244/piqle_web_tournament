@@ -67,6 +67,11 @@ model User {
   stripeDefaultCardBrand   String?                   @map("stripe_default_card_brand")
   stripeDefaultCardLast4   String?                   @map("stripe_default_card_last4")
   smsOptIn                 Boolean                   @default(false) @map("sms_opt_in")
+  dateOfBirth              DateTime?                 @map("date_of_birth") @db.Date
+  membershipType           String?                   @map("membership_type")
+  membershipStatus         String?                   @map("membership_status")
+  zipCode                  String?                   @map("zip_code")
+  skillLevel               String?                   @map("skill_level")
 
   // Intelligence relations
   playSessionBookings      PlaySessionBooking[]      @relation("PlaySessionBookings")

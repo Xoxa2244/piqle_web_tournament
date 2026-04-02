@@ -151,6 +151,17 @@ async function syncMembers(
       const duprSingles = member.ratings?.find(r => r.ratingTypeName?.toLowerCase().includes('singles'))?.ratingValue
       const duprDoubles = member.ratings?.find(r => r.ratingTypeName?.toLowerCase().includes('doubles'))?.ratingValue
 
+      // Parse date of birth if available
+      let dateOfBirth: Date | undefined
+      if (member.dateOfBirth) {
+        try {
+          const parsed = new Date(member.dateOfBirth)
+          if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+            dateOfBirth = parsed
+          }
+        } catch { /* ignore invalid dates */ }
+      }
+
       const userData = {
         email,
         name: name || undefined,
@@ -159,6 +170,12 @@ async function syncMembers(
         city: member.city || undefined,
         ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
         ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
+        ...(dateOfBirth ? { dateOfBirth } : {}),
+        ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+        ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
+        ...(member.state ? { /* state not in users yet */ } : {}),
+        ...(member.zipCode ? { zipCode: member.zipCode } : {}),
+        ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
       }
 
       if (userId) {

@@ -14,7 +14,12 @@ export interface CRMember {
   gender?: string
   city?: string
   state?: string
+  zipCode?: string
+  dateOfBirth?: string
+  age?: number
   membershipTypeName?: string
+  membershipStatus?: string
+  skillLevel?: string
   ratings?: CRRating[]
   userDefinedFields?: Record<string, string>
   createdDateTime?: string
