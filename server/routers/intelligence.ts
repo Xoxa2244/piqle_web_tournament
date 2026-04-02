@@ -135,22 +135,25 @@ const COHORT_PARSE_SYSTEM = `You convert natural language cohort descriptions in
 Available fields and operators:
 - age: gte, lte, gt, lt, eq (numeric, years old)
 - gender: eq (values: "M" or "F")
-- membershipType: contains, eq (text)
-- membershipStatus: contains, eq (text, e.g. "Active", "Expired")
-- skillLevel: contains, eq (text, e.g. "Beginner", "Advanced", "4.0+")
+- membershipType: contains, eq (text, e.g. "Open Play Pass", "Guest Pass", "Gold")
+- membershipStatus: contains, eq (text, e.g. "Active", "Expired", "Cancelled")
+- skillLevel: contains, eq (text — stored as ranges like "2.0-2.49 (True Beginner)", "2.5-2.99 (Beginner)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Intermediate-Advanced)", "4.0+ (Advanced)")
 - city: eq, contains (text)
 - zipCode: eq (text)
-- duprRating: gte, lte, gt, lt, eq (numeric, 0.0-6.0)
+- duprRating: gte, lte, gt, lt, eq (numeric, 0.0-6.0 — NOTE: may be empty for many members, prefer skillLevel for rating-based filters)
 
-Rules:
+CRITICAL RULES:
 - "55+" means age >= 55
 - "under 30" means age < 30
-- "DUPR 2-3" means duprRating >= 2 AND duprRating <= 3
-- "men" or "male" means gender = "M"
-- "women" or "female" means gender = "F"
-- "beginners" means skillLevel contains "Beginner"
-- "active members" means membershipStatus contains "Active"
-- Generate a cohort name too
+- "DUPR 2.5-3" or "rating 2.5-3" → use skillLevel contains "2.5" AND skillLevel contains "2.5-2.99" (prefer skillLevel over duprRating as duprRating may be empty)
+- "beginners" → skillLevel contains "Beginner"
+- "intermediate" → skillLevel contains "Intermediate"
+- "advanced" → skillLevel contains "Advanced"
+- "men" or "male" → gender eq "M"
+- "women" or "female" → gender eq "F"
+- "active members" → membershipStatus contains "Active"
+- When user mentions a numeric skill range like "2.5-3", use skillLevel contains with the range text (e.g. "2.5-2.99")
+- Generate a cohort name and short description too
 
 Return ONLY valid JSON: {"name": "...", "description": "...", "filters": [...]}
 Each filter: {"field": "...", "op": "...", "value": ...}
