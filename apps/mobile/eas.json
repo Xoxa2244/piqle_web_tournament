@@ -6,15 +6,27 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://dev.piqle.io/",
+        "EXPO_PUBLIC_DUPR_CLIENT_KEY": "ck-afba1e8c-55e2-4fe8-fd9c-736dfb4650b3"
+      }
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://dev.piqle.io/",
+        "EXPO_PUBLIC_DUPR_CLIENT_KEY": "ck-afba1e8c-55e2-4fe8-fd9c-736dfb4650b3"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://dev.piqle.io/",
+        "EXPO_PUBLIC_DUPR_CLIENT_KEY": "ck-afba1e8c-55e2-4fe8-fd9c-736dfb4650b3"
+      },
       "android": {
         "buildType": "app-bundle"
       }
