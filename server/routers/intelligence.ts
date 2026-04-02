@@ -82,6 +82,10 @@ function buildCohortWhereClause(filters: CohortFilter[]): string {
       case 'membershipStatus':
         return f.op === 'contains' ? `u.membership_status ILIKE '%' || ${val} || '%'` : `u.membership_status = ${val}`
       case 'skillLevel':
+        if (f.op === 'in' && Array.isArray(f.value)) {
+          const orClauses = f.value.map(v => `u.skill_level ILIKE '%${String(v).replace(/'/g, "''")}%'`).join(' OR ')
+          return `(${orClauses})`
+        }
         return f.op === 'contains' ? `u.skill_level ILIKE '%' || ${val} || '%'` : `u.skill_level = ${val}`
       case 'zipCode':
         return `u.zip_code = ${val}`
@@ -135,29 +139,32 @@ const COHORT_PARSE_SYSTEM = `You convert natural language cohort descriptions in
 Available fields and operators:
 - age: gte, lte, gt, lt, eq (numeric, years old)
 - gender: eq (values: "M" or "F")
-- membershipType: contains, eq (text, e.g. "Open Play Pass", "Guest Pass", "Gold")
+- membershipType: contains, eq (text, e.g. "Open Play Pass", "Guest Pass")
 - membershipStatus: contains, eq (text, e.g. "Active", "Expired", "Cancelled")
-- skillLevel: contains, eq (text — stored as ranges like "2.0-2.49 (True Beginner)", "2.5-2.99 (Beginner)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Intermediate-Advanced)", "4.0+ (Advanced)")
+- skillLevel: contains, eq, or "in" with array (text values in DB: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)")
 - city: eq, contains (text)
 - zipCode: eq (text)
-- duprRating: gte, lte, gt, lt, eq (numeric, 0.0-6.0 — NOTE: may be empty for many members, prefer skillLevel for rating-based filters)
+- duprRating: gte, lte, gt, lt, eq (numeric — often empty, prefer skillLevel)
 
 CRITICAL RULES:
-- "55+" means age >= 55
-- "under 30" means age < 30
-- "DUPR 2.5-3" or "rating 2.5-3" → use skillLevel contains "2.5" AND skillLevel contains "2.5-2.99" (prefer skillLevel over duprRating as duprRating may be empty)
-- "beginners" → skillLevel contains "Beginner"
+- "55+" → age gte 55
+- "under 30" → age lt 30
+- For skill ranges spanning multiple levels, use ONE filter with op "in" and value as array:
+  "level 2.5-3.5" → {"field":"skillLevel","op":"in","value":["2.5-2.99","3.0-3.49"]}
+  "intermediate and above" → {"field":"skillLevel","op":"in","value":["3.0-3.49","3.5-3.99","4.0+"]}
+- "beginners" or "casual" → skillLevel contains "Casual"
 - "intermediate" → skillLevel contains "Intermediate"
+- "competitive" → skillLevel contains "Competitive"
 - "advanced" → skillLevel contains "Advanced"
 - "men" or "male" → gender eq "M"
 - "women" or "female" → gender eq "F"
 - "active members" → membershipStatus contains "Active"
-- When user mentions a numeric skill range like "2.5-3", use skillLevel contains with the range text (e.g. "2.5-2.99")
+- NEVER use multiple skillLevel "contains" filters (they AND together and match nothing). Use ONE "in" filter with array instead.
 - Generate a cohort name and short description too
 
 Return ONLY valid JSON: {"name": "...", "description": "...", "filters": [...]}
 Each filter: {"field": "...", "op": "...", "value": ...}
-Value must be number for age/duprRating, string for others.`
+Value must be number for age, string or string[] for others.`
 
 async function parseCohortPrompt(prompt: string): Promise<{ name: string; description: string; filters: CohortFilter[] } | null> {
   try {
