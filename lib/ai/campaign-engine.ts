@@ -63,7 +63,7 @@ interface ClubAutomationSettings {
 
 // ── Confidence Scoring ──
 
-interface ActionConfidence {
+export interface ActionConfidence {
   score: number         // 0-100
   autoApproved: boolean // score >= threshold
   reasons: string[]     // why this score
@@ -74,7 +74,7 @@ interface ActionConfidence {
  * High confidence = safe to auto-send.
  * Low confidence = needs human approval (goes to morning digest).
  */
-function calculateConfidence(
+export function calculateConfidence(
   transition: { from: string; to: string },
   member: { healthScore: number; totalBookings: number; daysSinceLastBooking: number | null },
   outreachType: 'CHECK_IN' | 'RETENTION_BOOST',

@@ -1,1 +1,1 @@
-npx tsc --noEmit
+PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" npx tsc --noEmit
