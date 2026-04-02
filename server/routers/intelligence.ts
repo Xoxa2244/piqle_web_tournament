@@ -801,8 +801,7 @@ export const intelligenceRouter = createTRPCRouter({
           ctx.prisma.playSessionBooking.findMany({
             where: {
               status: 'CONFIRMED',
-              playSession: { clubId: input.clubId },
-              bookedAt: { gte: d14 },
+              playSession: { clubId: input.clubId, date: { gte: d30, lte: currentEnd } },
             },
             select: { userId: true },
             distinct: ['userId'],
