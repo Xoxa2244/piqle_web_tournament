@@ -4223,24 +4223,77 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
       const filters = (cohort.filters as any[]) || []
       const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
+      const where = buildCohortWhereClause(filters)
+
+      // Fetch real behavioral data for this cohort
+      const behaviorData = await ctx.prisma.$queryRawUnsafe<any[]>(`
+        WITH cohort_users AS (
+          SELECT DISTINCT cf.user_id
+          FROM club_followers cf
+          JOIN users u ON u.id = cf.user_id
+          WHERE cf.club_id = $1::uuid AND ${where}
+        )
+        SELECT
+          to_char(ps.date, 'Day') as day_name,
+          EXTRACT(DOW FROM ps.date)::int as dow,
+          EXTRACT(HOUR FROM ps."startTime"::time)::int as hour,
+          ps.format,
+          COUNT(*) as bookings
+        FROM play_session_bookings b
+        JOIN play_sessions ps ON ps.id = b."sessionId"
+        WHERE b."userId" IN (SELECT user_id FROM cohort_users)
+          AND ps."clubId" = $1::uuid
+          AND b.status = 'CONFIRMED'
+          AND ps.date >= NOW() - INTERVAL '90 days'
+          AND ps.date <= NOW()
+        GROUP BY 1, 2, 3, 4
+        ORDER BY bookings DESC
+      `, input.clubId).catch(() => [])
+
+      // Aggregate: top days, top hours, top formats
+      const dayAgg: Record<string, number> = {}
+      const hourAgg: Record<number, number> = {}
+      const formatAgg: Record<string, number> = {}
+      for (const r of behaviorData) {
+        const day = (r.day_name || '').trim()
+        dayAgg[day] = (dayAgg[day] || 0) + Number(r.bookings)
+        hourAgg[r.hour] = (hourAgg[r.hour] || 0) + Number(r.bookings)
+        if (r.format) formatAgg[r.format] = (formatAgg[r.format] || 0) + Number(r.bookings)
+      }
+      const topDays = Object.entries(dayAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d, c]) => `${d} (${c} bookings)`)
+      const topHours = Object.entries(hourAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([h, c]) => `${h}:00 (${c} bookings)`)
+      const topFormats = Object.entries(formatAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f, c]) => `${f} (${c} bookings)`)
+
+      // Avg sessions per member
+      const totalBookings = Object.values(dayAgg).reduce((a, b) => a + b, 0)
+      const avgPerMember = cohort.memberCount > 0 ? (totalBookings / cohort.memberCount).toFixed(1) : '0'
 
       const { generateWithFallback } = await import('@/lib/ai/llm/provider')
       const result = await generateWithFallback({
-        system: `You are a marketing expert for sports/pickleball clubs. Generate a targeted campaign for a specific member cohort. Return ONLY valid JSON with these fields:
+        system: `You are a marketing expert for sports/pickleball clubs. Generate a targeted campaign for a specific member cohort. You have REAL behavioral data — use it to pick the best time/day to send.
+
+Return ONLY valid JSON:
 {
   "subjectLine": "email subject (max 60 chars)",
   "body": "email body text (2-3 paragraphs, personalized, engaging, with {{name}} placeholder)",
   "channel": "email" or "sms",
-  "bestTimeToSend": "e.g. Tuesday 10am",
+  "bestTimeToSend": "specific day and time based on their activity patterns",
   "tone": "e.g. friendly, urgent, celebratory",
-  "reasoning": "1 sentence why this campaign works for this cohort"
+  "reasoning": "1-2 sentences explaining why this campaign and timing works based on the data"
 }`,
         prompt: `Club: ${club?.name || 'Sports Club'}
 Cohort: "${cohort.name}" — ${cohort.description || 'No description'}
 Filters: ${filterDesc}
 Members: ${cohort.memberCount}
 
-Generate a targeted campaign for this cohort.`,
+REAL BEHAVIORAL DATA (last 90 days):
+- Most popular play days: ${topDays.join(', ') || 'No data'}
+- Most popular play hours: ${topHours.join(', ') || 'No data'}
+- Preferred formats: ${topFormats.join(', ') || 'No data'}
+- Avg sessions per member (90d): ${avgPerMember}
+- Total bookings: ${totalBookings}
+
+Generate a targeted campaign. Pick the best send time based on WHEN they actually play (send 1-2 days before their peak day, morning of that day).`,
         tier: 'fast',
         maxTokens: 800,
       })
