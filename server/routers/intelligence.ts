@@ -4192,6 +4192,46 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       return { ...parsed, count }
     }),
 
+  generateCohortCampaign: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), cohortId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const cohort = await ctx.prisma.clubCohort.findUnique({ where: { id: input.cohortId } })
+      if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
+
+      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+      const filters = (cohort.filters as any[]) || []
+      const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
+
+      const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+      const result = await generateWithFallback({
+        system: `You are a marketing expert for sports/pickleball clubs. Generate a targeted campaign for a specific member cohort. Return ONLY valid JSON with these fields:
+{
+  "subjectLine": "email subject (max 60 chars)",
+  "body": "email body text (2-3 paragraphs, personalized, engaging, with {{name}} placeholder)",
+  "channel": "email" or "sms",
+  "bestTimeToSend": "e.g. Tuesday 10am",
+  "tone": "e.g. friendly, urgent, celebratory",
+  "reasoning": "1 sentence why this campaign works for this cohort"
+}`,
+        prompt: `Club: ${club?.name || 'Sports Club'}
+Cohort: "${cohort.name}" — ${cohort.description || 'No description'}
+Filters: ${filterDesc}
+Members: ${cohort.memberCount}
+
+Generate a targeted campaign for this cohort.`,
+        tier: 'fast',
+        maxTokens: 800,
+      })
+
+      try {
+        const text = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+        return JSON.parse(text)
+      } catch {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to parse AI response' })
+      }
+    }),
+
   previewCohort: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),

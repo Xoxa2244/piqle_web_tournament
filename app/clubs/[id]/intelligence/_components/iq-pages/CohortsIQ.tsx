@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'motion/react'
-import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck } from 'lucide-react'
+import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 
 // ── Filter field definitions ──
@@ -103,7 +103,7 @@ export default function CohortsIQ() {
             <motion.div
               key={c.id}
               whileHover={{ scale: 1.02 }}
-              className="rounded-2xl p-5 cursor-pointer transition-all"
+              className="group rounded-2xl p-5 cursor-pointer transition-all"
               style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
               onClick={() => setSelectedCohortId(c.id)}
             >
@@ -112,11 +112,12 @@ export default function CohortsIQ() {
                   <Users className="w-5 h-5 text-white" />
                 </div>
                 <button
-                  onClick={(e) => { e.stopPropagation(); deleteMutation.mutate({ clubId, cohortId: c.id }) }}
-                  className="p-1.5 rounded-lg transition-opacity opacity-0 group-hover:opacity-100"
+                  onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
+                  className="p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500/10"
                   style={{ color: 'var(--t4)' }}
+                  title="Delete cohort"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4 hover:text-red-400" />
                 </button>
               </div>
               <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
@@ -475,6 +476,113 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
           )}
         </div>
       </div>
+
+      {/* AI Campaign Suggestion */}
+      <CohortCampaignSuggestion clubId={clubId} cohortId={cohortId} memberCount={members.length} />
     </motion.div>
+  )
+}
+
+// ── AI Campaign Suggestion ──
+function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: string; cohortId: string; memberCount: number }) {
+  const [campaign, setCampaign] = useState<any>(null)
+  const generateMutation = trpc.intelligence.generateCohortCampaign.useMutation({
+    onSuccess: (data) => setCampaign(data),
+  })
+
+  if (memberCount === 0) return null
+
+  return (
+    <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+          <Sparkles className="w-4 h-4 inline mr-1.5" style={{ color: '#F59E0B' }} />
+          AI Campaign Suggestion
+        </h3>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => generateMutation.mutate({ clubId, cohortId })}
+          disabled={generateMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-white"
+          style={{
+            background: 'linear-gradient(135deg, #F59E0B, #EF4444)',
+            fontWeight: 600,
+            opacity: generateMutation.isPending ? 0.5 : 1,
+          }}
+        >
+          {generateMutation.isPending ? (
+            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5" />
+          )}
+          {campaign ? 'Regenerate' : 'Generate Campaign'}
+        </motion.button>
+      </div>
+
+      {generateMutation.error && (
+        <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{generateMutation.error.message}</p>
+      )}
+
+      {!campaign && !generateMutation.isPending && (
+        <p className="text-xs text-center py-6" style={{ color: 'var(--t4)' }}>
+          Click &quot;Generate Campaign&quot; to get AI-powered campaign suggestions for this cohort
+        </p>
+      )}
+
+      {campaign && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          {/* Subject line */}
+          <div>
+            <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)' }}>Subject Line</label>
+            <p className="text-sm mt-1" style={{ fontWeight: 600, color: 'var(--heading)' }}>{campaign.subjectLine}</p>
+          </div>
+
+          {/* Message body */}
+          <div>
+            <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)' }}>Message</label>
+            <div className="mt-1 p-3 rounded-xl text-xs whitespace-pre-wrap" style={{ background: 'var(--subtle)', color: 'var(--t2)', lineHeight: 1.6 }}>
+              {campaign.body}
+            </div>
+          </div>
+
+          {/* Meta row */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
+              {campaign.channel === 'sms' ? <MessageSquare className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} /> : <Mail className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+              <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>{campaign.channel === 'sms' ? 'SMS' : 'Email'}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
+              <Clock className="w-3.5 h-3.5" style={{ color: '#06B6D4' }} />
+              <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>{campaign.bestTimeToSend}</span>
+            </div>
+            {campaign.tone && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
+                <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>Tone: {campaign.tone}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Reasoning */}
+          {campaign.reasoning && (
+            <p className="text-[11px] italic" style={{ color: 'var(--t4)' }}>{campaign.reasoning}</p>
+          )}
+
+          {/* Use This */}
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm text-white"
+            style={{ background: 'linear-gradient(135deg, #10B981, #059669)', fontWeight: 600 }}
+          >
+            <Send className="w-4 h-4" /> Use This Campaign
+          </motion.button>
+        </motion.div>
+      )}
+    </div>
   )
 }
