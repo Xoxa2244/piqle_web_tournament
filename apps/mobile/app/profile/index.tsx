@@ -140,6 +140,15 @@ export default function ProfileTab() {
       )
       return
     }
+    if (__DEV__) {
+      const safe = (DUPR_CLIENT_KEY ?? '').trim()
+      console.log('[DUPR] client key loaded', {
+        length: safe.length,
+        startsWithCk: safe.startsWith('ck-'),
+        endsWithChar: safe.slice(-1),
+        platform: Platform.OS,
+      })
+    }
     setDuprWebLoading(true)
     setShowDuprConnect(true)
   }

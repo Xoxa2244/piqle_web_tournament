@@ -1,5 +1,4 @@
-import { Feather } from '@expo/vector-icons'
-import * as AppleAuthentication from 'expo-apple-authentication'
+import { Feather, Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -745,21 +744,20 @@ export default function SignInScreen() {
               <View style={styles.socialRow}>
                 {Platform.OS === 'ios' ? (
                   <View style={styles.socialCell}>
-                    <AppleAuthentication.AppleAuthenticationButton
+                    <Pressable
                       onPress={submitAppleSignIn}
-                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                      buttonStyle={
-                        theme === 'dark'
-                          ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                          : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-                      }
-                      cornerRadius={16}
-                      style={[
+                      disabled={loading || googleLoading || appleLoading}
+                      accessibilityLabel="Continue with Apple"
+                      style={({ pressed }) => [
                         styles.socialButton,
-                        styles.appleNativeButton,
-                        (loading || googleLoading || appleLoading) && styles.disabledButton,
+                        styles.socialIconButton,
+                        styles.appleIconButton,
+                        pressed && !(loading || googleLoading || appleLoading) && styles.socialIconButtonPressed,
+                        appleLoading && styles.disabledButton,
                       ]}
-                    />
+                    >
+                      <Ionicons name="logo-apple" size={22} color={theme === 'dark' ? '#111111' : '#FFFFFF'} />
+                    </Pressable>
                   </View>
                 ) : null}
 
@@ -767,17 +765,16 @@ export default function SignInScreen() {
                   <Pressable
                     onPress={submitGoogleSignIn}
                     disabled={loading || googleLoading || appleLoading}
+                    accessibilityLabel="Continue with Google"
                     style={({ pressed }) => [
                       styles.socialButton,
-                      styles.googleButton,
+                      styles.socialIconButton,
+                      styles.googleIconButton,
                       pressed && !(loading || googleLoading || appleLoading) && styles.googleButtonPressed,
                       googleLoading && styles.disabledButton,
                     ]}
                   >
                     <GoogleMark />
-                    <Text style={styles.googleButtonText}>
-                      {googleLoading ? 'Opening Google...' : 'Google'}
-                    </Text>
                   </Pressable>
                 </View>
               </View>
@@ -1079,7 +1076,7 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
   socialButton: {
     width: '100%',
   },
-  googleButton: {
+  socialIconButton: {
     minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -1088,10 +1085,15 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
+    paddingHorizontal: 14,
   },
-  appleButton: {
+  socialIconButtonPressed: {
+    opacity: 0.92,
+  },
+  googleIconButton: {
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.82)',
+  },
+  appleIconButton: {
     minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -1100,28 +1102,9 @@ const createStyles = (colors: ThemePalette, isDark: boolean) =>
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-  },
-  appleButtonPressed: {
-    opacity: 0.92,
-  },
-  appleButtonText: {
-    color: isDark ? '#111111' : '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  appleNativeButton: {
-    minHeight: 56,
-    width: '100%',
   },
   googleButtonPressed: {
     backgroundColor: isDark ? colors.secondaryPressed : colors.white,
-  },
-  googleButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
   },
   disabledButton: {
     opacity: 0.65,

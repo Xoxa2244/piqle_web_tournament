@@ -339,7 +339,12 @@ function AnimatedHomeTitle({
   return (
     <View style={[styles.titleAnimContainer, showBack && styles.titleWithBack]}>
       <Animated.View
-        style={[styles.titleLayerAbs, showBack && styles.titleAlignedWithBack, { opacity: textOp }]}
+        style={[
+          styles.titleLayerAbs,
+          showBack && styles.titleAlignedWithBack,
+          // Important: avoid 1-frame overlap when switching to logo (useEffect runs after paint).
+          { opacity: showLogo ? 0 : textOp },
+        ]}
         pointerEvents={showLogo ? 'none' : 'auto'}
       >
         <BrandGradientText style={styles.title} numberOfLines={1}>

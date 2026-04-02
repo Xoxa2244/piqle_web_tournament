@@ -21,7 +21,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
-  const [themeMode, setThemeModeState] = useState<AppThemeMode>('light')
+  const [themeMode, setThemeModeState] = useState<AppThemeMode>('system')
   const [isReady, setIsReady] = useState(false)
   const systemColorScheme = useColorScheme()
   const resolvedTheme: AppTheme =
@@ -34,6 +34,13 @@ export const ThemeProvider = ({ children }: PropsWithChildren) => {
       try {
         const raw = await AsyncStorage.getItem(THEME_STORAGE_KEY)
         if (cancelled) return
+
+        if (!raw) {
+          // Default: follow system theme until user picks one explicitly.
+          setThemeModeState('system')
+          applyThemePalette(systemColorScheme === 'dark' ? 'dark' : 'light')
+          return
+        }
 
         if (raw === 'light' || raw === 'dark' || raw === 'system') {
           const nextResolvedTheme: AppTheme =
