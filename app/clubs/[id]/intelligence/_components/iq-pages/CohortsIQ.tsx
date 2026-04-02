@@ -483,11 +483,22 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
   )
 }
 
-// ── AI Campaign Suggestion ──
+// ── Strategy colors/icons ──
+const STRATEGY_STYLES: Record<string, { gradient: string; icon: string; label: string }> = {
+  before_peak: { gradient: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', icon: '🎯', label: 'Peak Day Boost' },
+  re_engage: { gradient: 'linear-gradient(135deg, #F59E0B, #EF4444)', icon: '💌', label: 'Re-engage' },
+  slot_filler: { gradient: 'linear-gradient(135deg, #10B981, #059669)', icon: '⚡', label: 'Last-Minute Fill' },
+}
+
+// ── AI Campaign Suggestions ──
 function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: string; cohortId: string; memberCount: number }) {
-  const [campaign, setCampaign] = useState<any>(null)
+  const [campaigns, setCampaigns] = useState<any[] | null>(null)
+  const [expanded, setExpanded] = useState<number | null>(null)
   const generateMutation = trpc.intelligence.generateCohortCampaign.useMutation({
-    onSuccess: (data) => setCampaign(data),
+    onSuccess: (data) => {
+      setCampaigns(data.campaigns || [])
+      setExpanded(null)
+    },
   })
 
   if (memberCount === 0) return null
@@ -497,7 +508,7 @@ function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: s
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
           <Sparkles className="w-4 h-4 inline mr-1.5" style={{ color: '#F59E0B' }} />
-          AI Campaign Suggestion
+          AI Campaign Strategies
         </h3>
         <motion.button
           whileHover={{ scale: 1.05 }}
@@ -516,7 +527,7 @@ function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: s
           ) : (
             <Sparkles className="w-3.5 h-3.5" />
           )}
-          {campaign ? 'Regenerate' : 'Generate Campaign'}
+          {campaigns ? 'Regenerate' : 'Generate Strategies'}
         </motion.button>
       </div>
 
@@ -524,63 +535,94 @@ function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: s
         <p className="text-xs mb-3" style={{ color: '#EF4444' }}>{generateMutation.error.message}</p>
       )}
 
-      {!campaign && !generateMutation.isPending && (
+      {!campaigns && !generateMutation.isPending && (
         <p className="text-xs text-center py-6" style={{ color: 'var(--t4)' }}>
-          Click &quot;Generate Campaign&quot; to get AI-powered campaign suggestions for this cohort
+          Click &quot;Generate Strategies&quot; to get 3 AI-powered campaign strategies for this cohort
         </p>
       )}
 
-      {campaign && (
+      {campaigns && campaigns.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
+          className="space-y-3"
         >
-          {/* Subject line */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)' }}>Subject Line</label>
-            <p className="text-sm mt-1" style={{ fontWeight: 600, color: 'var(--heading)' }}>{campaign.subjectLine}</p>
-          </div>
+          {campaigns.map((c, i) => {
+            const style = STRATEGY_STYLES[c.strategy] || STRATEGY_STYLES.before_peak
+            const isOpen = expanded === i
 
-          {/* Message body */}
-          <div>
-            <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)' }}>Message</label>
-            <div className="mt-1 p-3 rounded-xl text-xs whitespace-pre-wrap" style={{ background: 'var(--subtle)', color: 'var(--t2)', lineHeight: 1.6 }}>
-              {campaign.body}
-            </div>
-          </div>
+            return (
+              <motion.div
+                key={i}
+                layout
+                className="rounded-xl overflow-hidden"
+                style={{ border: isOpen ? '1px solid rgba(139,92,246,0.3)' : '1px solid var(--card-border)' }}
+              >
+                {/* Header — always visible */}
+                <div
+                  className="flex items-center gap-3 p-4 cursor-pointer"
+                  style={{ background: isOpen ? 'rgba(139,92,246,0.05)' : 'var(--subtle)' }}
+                  onClick={() => setExpanded(isOpen ? null : i)}
+                >
+                  <span className="text-lg">{style.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {c.strategyLabel || style.label}
+                    </div>
+                    <div className="text-xs truncate" style={{ color: 'var(--t3)' }}>{c.subjectLine}</div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-md" style={{ background: 'var(--card-bg)' }}>
+                      {c.channel === 'sms' ? <MessageSquare className="w-3 h-3" style={{ color: '#8B5CF6' }} /> : <Mail className="w-3 h-3" style={{ color: '#8B5CF6' }} />}
+                      <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{c.channel === 'sms' ? 'SMS' : 'Email'}</span>
+                    </div>
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-md" style={{ background: 'var(--card-bg)' }}>
+                      <Clock className="w-3 h-3" style={{ color: '#06B6D4' }} />
+                      <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{c.bestTimeToSend}</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 transition-transform" style={{ color: 'var(--t4)', transform: isOpen ? 'rotate(90deg)' : 'none' }} />
+                  </div>
+                </div>
 
-          {/* Meta row */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
-              {campaign.channel === 'sms' ? <MessageSquare className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} /> : <Mail className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
-              <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>{campaign.channel === 'sms' ? 'SMS' : 'Email'}</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
-              <Clock className="w-3.5 h-3.5" style={{ color: '#06B6D4' }} />
-              <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>{campaign.bestTimeToSend}</span>
-            </div>
-            {campaign.tone && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg" style={{ background: 'var(--subtle)' }}>
-                <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 500 }}>Tone: {campaign.tone}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Reasoning */}
-          {campaign.reasoning && (
-            <p className="text-[11px] italic" style={{ color: 'var(--t4)' }}>{campaign.reasoning}</p>
-          )}
-
-          {/* Use This */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm text-white"
-            style={{ background: 'linear-gradient(135deg, #10B981, #059669)', fontWeight: 600 }}
-          >
-            <Send className="w-4 h-4" /> Use This Campaign
-          </motion.button>
+                {/* Expanded content */}
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-4 pb-4 space-y-3">
+                        <div className="p-3 rounded-xl text-xs whitespace-pre-wrap" style={{ background: 'var(--card-bg)', color: 'var(--t2)', lineHeight: 1.6 }}>
+                          {c.body}
+                        </div>
+                        {c.tone && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
+                              Tone: {c.tone}
+                            </span>
+                          </div>
+                        )}
+                        {c.reasoning && (
+                          <p className="text-[11px] italic" style={{ color: 'var(--t4)' }}>{c.reasoning}</p>
+                        )}
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
+                          style={{ background: style.gradient, fontWeight: 600 }}
+                        >
+                          <Send className="w-3.5 h-3.5" /> Use This Strategy
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )
+          })}
         </motion.div>
       )}
     </div>

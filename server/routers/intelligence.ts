@@ -4270,17 +4270,41 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
 
       const { generateWithFallback } = await import('@/lib/ai/llm/provider')
       const result = await generateWithFallback({
-        system: `You are a marketing expert for sports/pickleball clubs. Generate a targeted campaign for a specific member cohort. You have REAL behavioral data — use it to pick the best time/day to send.
+        system: `You are a marketing expert for sports/pickleball clubs. Generate 3 DIFFERENT campaign strategies for a member cohort. Each strategy has a different goal and timing. You have REAL behavioral data — use it.
 
-Return ONLY valid JSON:
-{
-  "subjectLine": "email subject (max 60 chars)",
-  "body": "email body text (2-3 paragraphs, personalized, engaging, with {{name}} placeholder)",
-  "channel": "email" or "sms",
-  "bestTimeToSend": "specific day and time based on their activity patterns",
-  "tone": "e.g. friendly, urgent, celebratory",
-  "reasoning": "1-2 sentences explaining why this campaign and timing works based on the data"
-}`,
+Return ONLY valid JSON — an array of 3 objects:
+[
+  {
+    "strategy": "before_peak",
+    "strategyLabel": "Peak Day Boost",
+    "subjectLine": "email subject (max 60 chars)",
+    "body": "email body (2-3 paragraphs, with {{name}} placeholder)",
+    "channel": "email",
+    "bestTimeToSend": "day and time (1-2 days before their peak play day)",
+    "tone": "friendly/exciting",
+    "reasoning": "1 sentence based on data"
+  },
+  {
+    "strategy": "re_engage",
+    "strategyLabel": "Re-engage Inactive",
+    "subjectLine": "...",
+    "body": "... (win-back message for less active members in this cohort)",
+    "channel": "email",
+    "bestTimeToSend": "Monday or Tuesday morning (fresh start of week)",
+    "tone": "warm/personal",
+    "reasoning": "..."
+  },
+  {
+    "strategy": "slot_filler",
+    "strategyLabel": "Last-Minute Fill",
+    "subjectLine": "...",
+    "body": "... (urgency-driven, limited spots, tomorrow/today)",
+    "channel": "sms",
+    "bestTimeToSend": "day before their peak play day, evening",
+    "tone": "urgent/fomo",
+    "reasoning": "..."
+  }
+]`,
         prompt: `Club: ${club?.name || 'Sports Club'}
 Cohort: "${cohort.name}" — ${cohort.description || 'No description'}
 Filters: ${filterDesc}
@@ -4293,14 +4317,15 @@ REAL BEHAVIORAL DATA (last 90 days):
 - Avg sessions per member (90d): ${avgPerMember}
 - Total bookings: ${totalBookings}
 
-Generate a targeted campaign. Pick the best send time based on WHEN they actually play (send 1-2 days before their peak day, morning of that day).`,
+Generate 3 campaign strategies with different goals and timings based on the data above.`,
         tier: 'fast',
-        maxTokens: 800,
+        maxTokens: 1500,
       })
 
       try {
         const text = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        return JSON.parse(text)
+        const campaigns = JSON.parse(text)
+        return { campaigns: Array.isArray(campaigns) ? campaigns : [campaigns] }
       } catch {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to parse AI response' })
       }
