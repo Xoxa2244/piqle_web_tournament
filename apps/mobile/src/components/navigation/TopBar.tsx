@@ -369,6 +369,7 @@ export const TopBar = ({
   titleAccessory,
   titleAccessoryLeading = false,
   titleOverride,
+  onTitlePress,
   ambient = false,
   refreshPulseKey,
   /** Если задано — вместо поиска, колокольчика и аватара показывается этот слот (например экран уведомлений). */
@@ -377,6 +378,7 @@ export const TopBar = ({
   titleAccessory?: ReactNode
   titleAccessoryLeading?: boolean
   titleOverride?: string
+  onTitlePress?: () => void
   ambient?: boolean
   refreshPulseKey?: number
   rightSlot?: ReactNode
@@ -427,18 +429,20 @@ export const TopBar = ({
           {hasTitleAccessory && titleBesideAccessory ? (
             <View style={styles.titleWithAccessoryRow}>
               {titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
-              <View style={styles.titleTextWrap}>
-                <BrandGradientText
-                  style={[
-                    styles.title,
-                    styles.titleNextToAccessory,
-                    showBack && styles.titleAlignedWithBack,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {resolvedTitle}
-                </BrandGradientText>
-              </View>
+              <Pressable disabled={!onTitlePress} onPress={onTitlePress}>
+                <View style={styles.titleTextWrap}>
+                  <BrandGradientText
+                    style={[
+                      styles.title,
+                      styles.titleNextToAccessory,
+                      showBack && styles.titleAlignedWithBack,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {resolvedTitle}
+                  </BrandGradientText>
+                </View>
+              </Pressable>
               {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : hasTitleAccessory && showHomeLogo ? (
@@ -455,19 +459,21 @@ export const TopBar = ({
               {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : titleOverride != null && titleOverride !== '' ? (
-            <View style={styles.titleTextWrap}>
-              <BrandGradientText
-                style={[
-                  styles.title,
-                  styles.titleInCluster,
-                  showBack && styles.titleWithBack,
-                  showBack && styles.titleAlignedWithBack,
-                ]}
-                numberOfLines={1}
-              >
-                {resolvedTitle}
-              </BrandGradientText>
-            </View>
+            <Pressable disabled={!onTitlePress} onPress={onTitlePress}>
+              <View style={styles.titleTextWrap}>
+                <BrandGradientText
+                  style={[
+                    styles.title,
+                    styles.titleInCluster,
+                    showBack && styles.titleWithBack,
+                    showBack && styles.titleAlignedWithBack,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {resolvedTitle}
+                </BrandGradientText>
+              </View>
+            </Pressable>
           ) : (
             <AnimatedHomeTitle
               showLogo={showHomeLogo}

@@ -280,6 +280,10 @@ export default function TournamentChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={title}
+      onTopBarTitlePress={() => {
+        if (!tournamentId) return
+        router.push(`/tournaments/${tournamentId}`)
+      }}
     >
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: 'transparent' }}

@@ -22,6 +22,7 @@ export const PageLayout = ({
   topBarTitleAccessory,
   topBarTitleAccessoryLeading = false,
   topBarTitle,
+  onTopBarTitlePress,
   topBarRightSlot,
   pullToRefresh,
   chatAmbient = false,
@@ -35,6 +36,8 @@ export const PageLayout = ({
   topBarTitleAccessoryLeading?: boolean
   /** Переопределение заголовка TopBar (иначе из pathname) */
   topBarTitle?: string
+  /** Обработчик тапа по заголовку TopBar. */
+  onTopBarTitlePress?: () => void
   /** Заменяет правый блок TopBar (поиск / колокольчик / аватар), например на экране уведомлений */
   topBarRightSlot?: React.ReactNode
   pullToRefresh?: PageLayoutPullToRefresh
@@ -59,6 +62,7 @@ export const PageLayout = ({
           titleAccessory={topBarTitleAccessory}
           titleAccessoryLeading={topBarTitleAccessoryLeading}
           titleOverride={topBarTitle}
+          onTitlePress={onTopBarTitlePress}
           rightSlot={topBarRightSlot}
           ambient={chatAmbient}
           refreshPulseKey={topBarRefreshPulseKey}

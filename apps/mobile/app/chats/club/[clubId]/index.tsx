@@ -144,6 +144,10 @@ export default function ClubChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={clubName}
+      onTopBarTitlePress={() => {
+        if (!clubId) return
+        router.push(`/clubs/${clubId}`)
+      }}
       topBarTitleAccessoryLeading
       topBarTitleAccessory={
         <EntityImage
