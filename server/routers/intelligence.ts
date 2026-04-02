@@ -92,8 +92,29 @@ function buildCohortWhereClause(filters: CohortFilter[]): string {
       case 'city':
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
       case 'duprRating': {
+        // Fallback: match against skill_level text when numeric DUPR is empty
+        // skill_level values: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)"
+        const numVal = Number(f.value)
         const op = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0) ${op} ${f.value}`
+        const numericCheck = `COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0) ${op} ${numVal}`
+        // Build skill level text matches for the same range
+        const skillRanges = ['2.5-2.99', '3.0-3.49', '3.5-3.99', '4.0+']
+        const rangeMins = [2.5, 3.0, 3.5, 4.0]
+        const rangeMaxs = [2.99, 3.49, 3.99, 6.0]
+        const matchingRanges: string[] = []
+        for (let i = 0; i < skillRanges.length; i++) {
+          const mid = (rangeMins[i] + rangeMaxs[i]) / 2
+          if (f.op === 'gte' && mid >= numVal) matchingRanges.push(skillRanges[i])
+          else if (f.op === 'lte' && mid <= numVal) matchingRanges.push(skillRanges[i])
+          else if (f.op === 'gt' && mid > numVal) matchingRanges.push(skillRanges[i])
+          else if (f.op === 'lt' && mid < numVal) matchingRanges.push(skillRanges[i])
+          else if (f.op === 'eq' && numVal >= rangeMins[i] && numVal <= rangeMaxs[i]) matchingRanges.push(skillRanges[i])
+        }
+        if (matchingRanges.length > 0) {
+          const skillOr = matchingRanges.map(r => `u.skill_level ILIKE '%${r}%'`).join(' OR ')
+          return `(${numericCheck} OR (${skillOr}))`
+        }
+        return numericCheck
       }
       default:
         return 'TRUE'
