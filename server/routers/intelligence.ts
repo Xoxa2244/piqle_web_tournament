@@ -59,6 +59,77 @@ function describeAgentAction(type: string, reasoning: any): string {
   }
 }
 
+// ── Cohort filter helpers ──
+interface CohortFilter {
+  field: string
+  op: string
+  value: string | number | string[]
+}
+
+function buildCohortWhereClause(filters: CohortFilter[]): string {
+  if (filters.length === 0) return 'TRUE'
+  return filters.map(f => {
+    const val = typeof f.value === 'string' ? `'${f.value.replace(/'/g, "''")}'` : f.value
+    switch (f.field) {
+      case 'age':
+        // age = years since date_of_birth
+        const ageOp = f.op === 'gte' ? '<=' : f.op === 'lte' ? '>=' : f.op === 'gt' ? '<' : f.op === 'lt' ? '>' : '='
+        return `u.date_of_birth IS NOT NULL AND u.date_of_birth ${ageOp} (CURRENT_DATE - INTERVAL '${f.value} years')`
+      case 'gender':
+        return f.op === 'eq' ? `u.gender = ${val}` : `u.gender != ${val}`
+      case 'membershipType':
+        return f.op === 'contains' ? `u.membership_type ILIKE '%' || ${val} || '%'` : `u.membership_type = ${val}`
+      case 'membershipStatus':
+        return f.op === 'contains' ? `u.membership_status ILIKE '%' || ${val} || '%'` : `u.membership_status = ${val}`
+      case 'skillLevel':
+        return f.op === 'contains' ? `u.skill_level ILIKE '%' || ${val} || '%'` : `u.skill_level = ${val}`
+      case 'zipCode':
+        return `u.zip_code = ${val}`
+      case 'city':
+        return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
+      case 'duprRating': {
+        const op = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
+        return `COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0) ${op} ${f.value}`
+      }
+      default:
+        return 'TRUE'
+    }
+  }).join(' AND ')
+}
+
+async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
+  const where = buildCohortWhereClause(filters)
+  const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(DISTINCT cf.user_id) as count
+    FROM club_followers cf
+    JOIN users u ON u.id = cf.user_id
+    WHERE cf.club_id = $1::uuid AND ${where}
+  `, clubId)
+  return Number(result[0]?.count ?? 0)
+}
+
+async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<any[]> {
+  const where = buildCohortWhereClause(filters)
+  return prisma.$queryRawUnsafe(`
+    SELECT u.id, u.name, u.email, u.gender, u.city, u.phone,
+           u.date_of_birth as "dateOfBirth",
+           CASE WHEN u.date_of_birth IS NOT NULL
+             THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
+             ELSE NULL END as age,
+           u.membership_type as "membershipType",
+           u.membership_status as "membershipStatus",
+           u.skill_level as "skillLevel",
+           u.zip_code as "zipCode",
+           COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
+           u.image
+    FROM club_followers cf
+    JOIN users u ON u.id = cf.user_id
+    WHERE cf.club_id = $1::uuid AND ${where}
+    ORDER BY u.name ASC
+    LIMIT 500
+  `, clubId)
+}
+
 export const intelligenceRouter = createTRPCRouter({
   // ── Subscription: Get current club subscription ──
   getSubscription: protectedProcedure
@@ -3955,5 +4026,117 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         data: { createdAt: new Date() },
       })
       return { status: 'snoozed' }
+    }),
+
+  // ══════════════════════════════════════════════════
+  // ══════ COHORTS ═══════════════════════════════════
+  // ══════════════════════════════════════════════════
+
+  listCohorts: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      return ctx.prisma.clubCohort.findMany({
+        where: { clubId: input.clubId },
+        orderBy: { createdAt: 'desc' },
+        include: { creator: { select: { name: true, email: true } } },
+      })
+    }),
+
+  createCohort: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      name: z.string().min(1).max(100),
+      description: z.string().max(500).optional(),
+      filters: z.array(z.object({
+        field: z.string(),
+        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
+        value: z.union([z.string(), z.number(), z.array(z.string())]),
+      })),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Count matching members
+      const count = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
+
+      return ctx.prisma.clubCohort.create({
+        data: {
+          clubId: input.clubId,
+          name: input.name,
+          description: input.description,
+          filters: input.filters as any,
+          memberCount: count,
+          createdBy: ctx.session.user.id,
+        },
+      })
+    }),
+
+  updateCohort: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      cohortId: z.string().uuid(),
+      name: z.string().min(1).max(100).optional(),
+      description: z.string().max(500).optional(),
+      filters: z.array(z.object({
+        field: z.string(),
+        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
+        value: z.union([z.string(), z.number(), z.array(z.string())]),
+      })).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const data: any = { updatedAt: new Date() }
+      if (input.name) data.name = input.name
+      if (input.description !== undefined) data.description = input.description
+      if (input.filters) {
+        data.filters = input.filters
+        data.memberCount = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
+      }
+      return ctx.prisma.clubCohort.update({ where: { id: input.cohortId }, data })
+    }),
+
+  deleteCohort: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), cohortId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await ctx.prisma.clubCohort.delete({ where: { id: input.cohortId } })
+      return { success: true }
+    }),
+
+  getCohortMembers: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), cohortId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const cohort = await ctx.prisma.clubCohort.findUnique({ where: { id: input.cohortId } })
+      if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
+
+      const filters = (cohort.filters as any[]) || []
+      const members = await queryCohortMembers(ctx.prisma, input.clubId, filters)
+
+      // Refresh count
+      if (members.length !== cohort.memberCount) {
+        await ctx.prisma.clubCohort.update({
+          where: { id: input.cohortId },
+          data: { memberCount: members.length, updatedAt: new Date() },
+        }).catch(() => {})
+      }
+
+      return { cohort, members }
+    }),
+
+  previewCohort: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      filters: z.array(z.object({
+        field: z.string(),
+        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
+        value: z.union([z.string(), z.number(), z.array(z.string())]),
+      })),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const count = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
+      return { count }
     }),
 })

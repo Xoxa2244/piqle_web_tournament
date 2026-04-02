@@ -49,6 +49,7 @@ model User {
   clubJoinRequestSeen      ClubJoinRequestSeen[]
   clubBans                 ClubBan[]
   clubBansIssued           ClubBan[]                 @relation("ClubBanBannedBy")
+  clubCohortsCreated       ClubCohort[]              @relation("ClubCohortCreator")
   clubTournamentTemplatesCreated ClubTournamentTemplate[] @relation("ClubTournamentTemplateCreatedBy")
   clubTournamentTemplatesUpdated ClubTournamentTemplate[] @relation("ClubTournamentTemplateUpdatedBy")
   players                  Player[]
@@ -239,6 +240,7 @@ model Club {
   chatReadStates     ClubChatReadState[]
   invites            ClubInvite[]
   bans               ClubBan[]
+  cohorts            ClubCohort[]
 
   // Partner bindings
   partnerBindings         PartnerClubBinding[]
@@ -533,6 +535,24 @@ model ClubInvite {
   @@index([inviterUserId, createdAt])
   @@index([inviteeEmail])
   @@map("club_invites")
+}
+
+model ClubCohort {
+  id          String   @id @default(uuid())
+  clubId      String   @map("club_id")
+  name        String
+  description String?
+  filters     Json     @default("[]")
+  memberCount Int      @default(0) @map("member_count")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator User @relation("ClubCohortCreator", fields: [createdBy], references: [id])
+
+  @@index([clubId])
+  @@map("club_cohorts")
 }
 
 model ClubBan {
