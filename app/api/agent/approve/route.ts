@@ -23,18 +23,6 @@ function generateToken(actionId: string, clubId: string): string {
   return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex').slice(0, 32)
 }
 
-export function makeApproveUrl(actionId: string, clubId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-  const token = generateToken(actionId, clubId)
-  return `${baseUrl}/api/agent/approve?id=${actionId}&token=${token}`
-}
-
-export function makeSkipUrl(actionId: string, clubId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-  const token = generateToken(actionId, clubId)
-  return `${baseUrl}/api/agent/skip?id=${actionId}&token=${token}`
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const actionId = url.searchParams.get('id')
