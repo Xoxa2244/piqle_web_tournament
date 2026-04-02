@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useSession, signIn } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 
 export default function AcceptAdminInvitePage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}><p>Loading...</p></div>}>
+      <AcceptAdminInviteContent />
+    </Suspense>
+  )
+}
+
+function AcceptAdminInviteContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { data: session, status: sessionStatus } = useSession()
