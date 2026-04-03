@@ -1424,6 +1424,64 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     onExcelImport={handleExcelImport}
                     isDark={isDark}
                     clubId={clubId}
+                    onPpImportStart={async (ppFiles) => {
+                      const fileCount = [ppFiles.customers, ppFiles.settlements].filter(Boolean).length
+                      setImportFileName(`${fileCount} PodPlay file${fileCount > 1 ? 's' : ''}`)
+                      setImportModal("processing")
+                      setImportProgress(5)
+                      setImportStatus("Importing PodPlay data...")
+                      setImportError(null)
+
+                      const totals = { members: 0, sessions: 0, bookings: 0, errors: 0 }
+                      const types = ['customers', 'settlements'] as const
+                      for (let i = 0; i < types.length; i++) {
+                        const t = types[i]
+                        const f = ppFiles[t]
+                        if (!f) continue
+                        setImportStatus(`Importing ${t}...`)
+                        setImportProgress(10 + Math.round(((i + 1) / types.length) * 70))
+                        try {
+                          const CHUNK_SIZE = 500
+                          const totalChunks = Math.max(1, Math.ceil(f.rows.length / CHUNK_SIZE))
+                          for (let c = 0; c < totalChunks; c++) {
+                            const chunk = f.rows.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE)
+                            const chunkLabel = totalChunks > 1 ? ` (chunk ${c + 1}/${totalChunks})` : ''
+                            setImportStatus(`Importing ${t}${chunkLabel}...`)
+                            const res = await fetch('/api/connectors/podplay/import', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ clubId, fileType: t, rows: chunk }),
+                            })
+                            const data = await res.json()
+                            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+                            totals.members += (data.members?.created || 0) + (data.members?.updated || 0)
+                            totals.sessions += data.sessions?.created || 0
+                            totals.bookings += data.bookings?.created || 0
+                          }
+                        } catch (err: any) {
+                          totals.errors++
+                          setImportError(err.message)
+                        }
+                      }
+
+                      setImportProgress(90)
+                      setImportStatus("Training AI on your data...")
+                      // Brief pause for AI training animation
+                      await new Promise(r => setTimeout(r, 2000))
+                      setImportResult({
+                        totalParsed: totals.members + totals.sessions + totals.bookings,
+                        totalErrors: totals.errors,
+                        found: [
+                          totals.members > 0 ? `${totals.members} members` : '',
+                          totals.sessions > 0 ? `${totals.sessions} sessions` : '',
+                          totals.bookings > 0 ? `${totals.bookings} bookings` : '',
+                        ].filter(Boolean),
+                        missing: [],
+                        notes: 'PodPlay import complete',
+                      })
+                      setImportProgress(100)
+                      setImportStatus("Complete!")
+                    }}
                   />
                 )}
 
@@ -1656,12 +1714,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 }
 
 // ── Import Provider Tabs (CourtReserve + PodPlay) ──
-function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark, clubId }: {
+function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark, clubId, onPpImportStart }: {
   excelFiles: (ExcelFileSlot | null)[]
   onExcelFileSet: (idx: number, f: ExcelFileSlot | null) => void
   onExcelImport: () => void
   isDark: boolean
   clubId: string
+  onPpImportStart: (ppFiles: { customers: { name: string; rows: any[] } | null; settlements: { name: string; rows: any[] } | null }) => void
 }) {
   const [provider, setProvider] = useState<'courtreserve' | 'podplay'>('courtreserve')
   const [ppFiles, setPpFiles] = useState<{ customers: { name: string; rows: any[] } | null; settlements: { name: string; rows: any[] } | null }>({ customers: null, settlements: null })
@@ -1720,21 +1779,8 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
     input.click()
   }
 
-  const handlePpImport = async () => {
-    setPpImporting(true)
-    const merged: any = { courts: { created: 0, updated: 0, errors: 0 }, members: { created: 0, updated: 0, matched: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
-    for (const type of ['customers', 'settlements'] as const) {
-      const f = ppFiles[type]
-      if (!f) continue
-      try {
-        const res = await fetch('/api/connectors/podplay/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubId, fileType: type, rows: f.rows }) })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error)
-        for (const key of Object.keys(merged)) { for (const stat of Object.keys(merged[key])) { merged[key][stat] += data[key]?.[stat] || 0 } }
-      } catch {}
-    }
-    setPpResult(merged)
-    setPpImporting(false)
+  const handlePpImport = () => {
+    onPpImportStart(ppFiles)
   }
 
   return (
