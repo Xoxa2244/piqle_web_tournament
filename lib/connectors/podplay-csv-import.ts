@@ -28,15 +28,27 @@ function safeNum(val: any): number | undefined {
   return isNaN(n) ? undefined : n
 }
 
+/** Parse date from string or Excel serial number */
+function parseAnyDate(val: any): Date | null {
+  if (val === null || val === undefined || val === '') return null
+  // Excel serial number (e.g. 46056.927)
+  if (typeof val === 'number' && val > 30000 && val < 60000) {
+    // Excel epoch: Jan 0, 1900 (with the Lotus 123 bug: day 60 = Feb 29, 1900 which doesn't exist)
+    const excelEpoch = new Date(1899, 11, 30) // Dec 30, 1899
+    const d = new Date(excelEpoch.getTime() + val * 86400000)
+    if (!isNaN(d.getTime())) return d
+  }
+  const s = String(val).trim()
+  if (!s) return null
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return d
+  return null
+}
+
 function parseDateStr(val: any): string | undefined {
-  const s = safeStr(val)
-  if (!s) return undefined
-  try {
-    const d = new Date(s)
-    if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2020) {
-      return d.toISOString().slice(0, 10)
-    }
-  } catch {}
+  const d = parseAnyDate(val)
+  if (!d) return undefined
+  if (d.getFullYear() > 1900 && d.getFullYear() < 2020) return d.toISOString().slice(0, 10)
   return undefined
 }
 
@@ -82,7 +94,7 @@ export function mapPodPlayCustomers(rows: Record<string, any>[]): ParsedMember[]
       city,
       membership,
       membershipStatus,
-      dateOfBirth: parseDateStr(row['Birthday']),
+      dateOfBirth: parseDateStr(row['Birthday'] ?? row['Date Of Birth']),
       age: safeNum(row['Age']),
       duprSingles,
       duprDoubles,
@@ -122,11 +134,11 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
 
     const eventType = safeStr(row['Event Type'])
     const eventName = safeStr(row['Event Name'] || row['Description'])
-    const eventDateStr = safeStr(row['Event Date'] || row['Date (UTC)'])
-    if (!eventDateStr) continue
+    const eventDateRaw = row['Event Date'] ?? row['Date (UTC)']
+    if (!eventDateRaw && eventDateRaw !== 0) continue
 
-    const eventDate = new Date(eventDateStr)
-    if (isNaN(eventDate.getTime())) continue
+    const eventDate = parseAnyDate(eventDateRaw)
+    if (!eventDate) continue
 
     const price = safeNum(row['Subtotal'] || row['Gross'] || row['Unit Price']) || 0
     const title = eventName.replace(/^Event signup - /, '') || eventType || 'Session'
