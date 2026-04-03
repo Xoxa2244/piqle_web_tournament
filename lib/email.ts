@@ -36,14 +36,51 @@ function isBlockedEmail(to: string): boolean {
   return BLOCKED_EMAIL_DOMAINS.some(d => domain === d || domain?.endsWith('.' + d))
 }
 
-/** Wraps transporter.sendMail with blocked email guard */
+/** Wraps email sending with blocked email guard + Mandrill fallback */
 async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
   const to = typeof opts.to === 'string' ? opts.to : String(opts.to)
   if (isBlockedEmail(to)) {
     log.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
     return { messageId: `blocked-${Date.now()}` }
   }
-  return safeSendMail(opts)
+
+  // Primary: Mandrill API (if configured)
+  const mandrillKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
+  if (mandrillKey) {
+    try {
+      const res = await fetch('https://mandrillapp.com/api/1.0/messages/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: mandrillKey,
+          message: {
+            from_email: fromEmail || 'noreply@iqsport.ai',
+            from_name: fromName || 'IQSport',
+            to: [{ email: to, type: 'to' }],
+            subject: opts.subject as string,
+            html: opts.html as string || undefined,
+            text: opts.text as string || undefined,
+          },
+        }),
+      })
+      const data = await res.json()
+      if (data[0]?.status === 'rejected') {
+        log.error(`[Email] Mandrill rejected: ${to} — ${data[0].reject_reason}`)
+      }
+      return { messageId: data[0]?._id || `mandrill-${Date.now()}` }
+    } catch (err) {
+      log.error(`[Email] Mandrill failed for ${to}:`, (err as Error).message)
+      // Fall through to SMTP
+    }
+  }
+
+  // Fallback: SMTP (nodemailer)
+  if (smtpHost && smtpPass) {
+    return transporter.sendMail(opts)
+  }
+
+  log.error(`[Email] No email provider configured — cannot send to ${to}`)
+  return { messageId: `no-provider-${Date.now()}` }
 }
 
 const getAppBaseUrl = () => {
