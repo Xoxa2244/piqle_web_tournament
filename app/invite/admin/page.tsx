@@ -99,7 +99,7 @@ function AcceptAdminInviteContent() {
               onClick={async () => {
                 const { signOut, signIn: doSignIn } = await import('next-auth/react')
                 await signOut({ redirect: false })
-                doSignIn('google', { callbackUrl: `/invite/admin?token=${token}` }, { prompt: 'select_account' })
+                doSignIn(undefined, { callbackUrl: `/invite/admin?token=${token}` })
               }}
               style={{ padding: '12px 32px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
             >
@@ -125,7 +125,7 @@ function AcceptAdminInviteContent() {
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Admin Invite</h1>
           <p style={{ color: '#6b7280', marginBottom: 24 }}>Sign in to accept your admin invitation</p>
           <button
-            onClick={() => signIn('google', { callbackUrl: `/invite/admin?token=${token}` }, { prompt: 'select_account' } as any)}
+            onClick={() => signIn(undefined, { callbackUrl: `/invite/admin?token=${token}` })}
             style={{
               padding: '12px 32px',
               background: '#6366f1',
