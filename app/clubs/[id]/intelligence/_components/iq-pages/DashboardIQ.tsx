@@ -1668,19 +1668,54 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
   const [ppImporting, setPpImporting] = useState(false)
   const [ppResult, setPpResult] = useState<any>(null)
 
-  const handlePpFileSelect = (type: 'customers' | 'settlements') => {
+  const extractRowsFromZip = async (file: File): Promise<{ name: string; rows: any[] }[]> => {
+    const XLSX = await import('xlsx')
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(await file.arrayBuffer())
+    const results: { name: string; rows: any[] }[] = []
+    const settlementFile = Object.keys(zip.files).find(
+      n => n.startsWith('Settlements ') && !n.includes('Line Items') && !n.includes('Summary') && n.endsWith('.csv')
+    )
+    const target = settlementFile || Object.keys(zip.files).find(n => n.includes('Line Items') && n.endsWith('.csv'))
+    if (target) {
+      const csv = await zip.files[target].async('uint8array')
+      const wb = XLSX.read(csv)
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+      results.push({ name: target, rows })
+    }
+    return results
+  }
+
+  const parsePpFiles = async (fileList: File[], type: 'customers' | 'settlements') => {
+    const XLSX = await import('xlsx')
+    let allRows: any[] = []
+    const names: string[] = []
+    for (const file of fileList) {
+      if (file.name.endsWith('.zip')) {
+        const extracted = await extractRowsFromZip(file)
+        for (const e of extracted) { allRows = allRows.concat(e.rows); names.push(e.name) }
+      } else {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const wb = XLSX.read(bytes)
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+        allRows = allRows.concat(rows)
+        names.push(file.name)
+      }
+    }
+    if (allRows.length > 0) {
+      const label = names.length > 1 ? `${names.length} files (${allRows.length} rows)` : names[0]
+      setPpFiles(prev => ({ ...prev, [type]: { name: label, rows: allRows } }))
+    }
+  }
+
+  const handlePpFileSelect = (type: 'customers' | 'settlements', multiple?: boolean) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.csv,.xlsx'
+    input.accept = '.csv,.xlsx,.zip'
+    if (multiple) input.multiple = true
     input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (!file) return
-      const XLSX = await import('xlsx')
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const wb = XLSX.read(bytes)
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws)
-      setPpFiles(prev => ({ ...prev, [type]: { name: file.name, rows } }))
+      const selected = Array.from((e.target as HTMLInputElement).files || [])
+      if (selected.length > 0) await parsePpFiles(selected, type)
     }
     input.click()
   }
@@ -1753,21 +1788,26 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
       {/* PodPlay */}
       {provider === 'podplay' && (
         <div className="space-y-3">
-          <p className="text-xs" style={{ color: 'var(--t4)' }}>Export from PodPlay dashboard and upload .csv files</p>
-          {(['customers', 'settlements'] as const).map(type => {
-            const f = ppFiles[type]
-            return (
-              <div key={type} className="flex items-center gap-3 p-3 rounded-xl cursor-pointer" style={{ background: 'var(--subtle)' }} onClick={() => handlePpFileSelect(type)}>
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: f ? 'rgba(16,185,129,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }}>
-                  {f ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} /> : <Upload className="w-4 h-4" style={{ color: 'var(--t4)' }} />}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm" style={{ fontWeight: 600, color: f ? '#10B981' : 'var(--t2)' }}>{type === 'customers' ? 'Customers' : 'Settlement Line Items'}</div>
-                  <div className="text-xs" style={{ color: 'var(--t4)' }}>{f ? `${f.name} (${f.rows.length} rows)` : type === 'customers' ? 'Customers_YYYY-MM-DD.csv' : 'Settlement Line Items *.csv'}</div>
-                </div>
-              </div>
-            )
-          })}
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>Export from PodPlay dashboard and upload .csv or .zip files</p>
+
+          {/* Customers slot */}
+          <div className="flex items-center gap-3 p-3 rounded-xl cursor-pointer" style={{ background: 'var(--subtle)' }} onClick={() => handlePpFileSelect('customers')}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: ppFiles.customers ? 'rgba(16,185,129,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }}>
+              {ppFiles.customers ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} /> : <Upload className="w-4 h-4" style={{ color: 'var(--t4)' }} />}
+            </div>
+            <div className="flex-1">
+              <div className="text-sm" style={{ fontWeight: 600, color: ppFiles.customers ? '#10B981' : 'var(--t2)' }}>Customers</div>
+              <div className="text-xs" style={{ color: 'var(--t4)' }}>{ppFiles.customers ? `${ppFiles.customers.name} (${ppFiles.customers.rows.length} rows)` : 'Customers_YYYY-MM-DD.csv'}</div>
+            </div>
+          </div>
+
+          {/* Settlements drop zone */}
+          <DashboardPpDropZone
+            file={ppFiles.settlements}
+            onDrop={(fileList) => parsePpFiles(Array.from(fileList), 'settlements')}
+            onClickSelect={() => handlePpFileSelect('settlements', true)}
+            isDark={isDark}
+          />
           {ppResult ? (
             <div className="text-center text-xs py-2" style={{ color: '#10B981', fontWeight: 600 }}>
               Imported {ppResult.members.created + ppResult.members.updated} members, {ppResult.sessions.created} sessions, {ppResult.bookings.created} bookings
@@ -1783,6 +1823,44 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function DashboardPpDropZone({ file, onDrop, onClickSelect, isDark }: {
+  file: { name: string; rows: any[] } | null
+  onDrop: (files: FileList) => void
+  onClickSelect: () => void
+  isDark: boolean
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  if (file) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
+        <div className="flex-1 min-w-0">
+          <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>Settlements loaded</div>
+          <div className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>{file.name}</div>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>{file.rows.length} rows</span>
+        <button onClick={onClickSelect} className="text-[10px] underline" style={{ color: 'var(--t4)' }}>Replace</button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length > 0) onDrop(e.dataTransfer.files) }}
+      onClick={onClickSelect}
+      className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all"
+      style={{ border: `2px dashed ${dragOver ? '#10B981' : 'var(--card-border)'}`, background: dragOver ? 'rgba(16,185,129,0.06)' : 'var(--subtle)' }}
+    >
+      <Upload className="w-5 h-5" style={{ color: dragOver ? '#10B981' : 'var(--t4)' }} />
+      <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop Settlement ZIPs here</p>
+      <p className="text-[10px]" style={{ color: 'var(--t4)' }}>or click to select — multiple files supported</p>
     </div>
   )
 }
