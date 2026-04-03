@@ -170,9 +170,20 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
   sessionGroups.forEach((group, key) => {
     if (group.emails.length === 0) return
 
-    const startTime = `${group.date.getUTCHours().toString().padStart(2, '0')}:${group.date.getUTCMinutes().toString().padStart(2, '0')}`
-    const endHour = Math.min(group.date.getUTCHours() + 1, 23)
-    const endTime = `${endHour.toString().padStart(2, '0')}:${group.date.getUTCMinutes().toString().padStart(2, '0')}`
+    const startHour = group.date.getUTCHours()
+    const startMin = group.date.getUTCMinutes()
+    const startTime = `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`
+    // Duration: Open Play/League = 2h, Private/Clinic = 1h
+    const durationHours = (group.format === 'OPEN_PLAY' || group.format === 'LEAGUE_PLAY') ? 2 : 1
+    const endHour = Math.min(startHour + durationHours, 23)
+    const endTime = `${endHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`
+
+    // Default maxPlayers by format (PodPlay doesn't provide capacity)
+    const defaultCapacity: Record<string, number> = {
+      'OPEN_PLAY': 16, 'LEAGUE_PLAY': 16, 'SOCIAL': 24,
+      'CLINIC': 8, 'DRILL': 4,
+    }
+    const maxPlayers = defaultCapacity[group.format] || 12
 
     sessions.push({
       externalId: key.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100),
@@ -183,7 +194,7 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
       skillLevel: 'ALL_LEVELS',
       memberNames: group.emails,
       memberExternalIds: group.emails,
-      memberCount: group.emails.length,
+      memberCount: Math.min(group.emails.length, maxPlayers),
       price: group.price,
       isCancelled: group.isCancelled,
       title: group.title,

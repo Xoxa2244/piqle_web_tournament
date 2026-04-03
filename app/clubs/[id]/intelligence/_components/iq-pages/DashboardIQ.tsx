@@ -1000,6 +1000,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             );
           })()}
+          {/* Dormant members banner — never played */}
+          {(() => {
+            const dormantCount = (healthData?.summary as any)?.dormant || 0;
+            if (!dormantCount) return null;
+            return (
+              <div className="mt-2 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(107,114,128,0.08)", border: "1px solid rgba(107,114,128,0.15)" }}>
+                <span className="text-[11px]" style={{ color: "var(--t3)" }}>
+                  <span style={{ color: "#6B7280", fontWeight: 700 }}>{dormantCount}</span> dormant (never played)
+                </span>
+                <button
+                  onClick={() => router.push(`/clubs/${clubId}/intelligence/cohorts`)}
+                  className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-80"
+                  style={{ color: "#6B7280", fontWeight: 600 }}
+                >
+                  Create Activation Cohort <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })()}
         </Card>
 
         {/* AI Insights — powered by getClubInsights endpoint */}

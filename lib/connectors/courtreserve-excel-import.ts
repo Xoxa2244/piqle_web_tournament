@@ -90,6 +90,8 @@ export function mapFormat(type?: string): string {
   if (lower.includes('league')) return 'LEAGUE_PLAY'
   if (lower.includes('social') || lower.includes('mixer')) return 'SOCIAL'
   if (lower.includes('tournament')) return 'LEAGUE_PLAY'
+  if (lower.includes('private event')) return 'SOCIAL'
+  if (lower === 'private' || lower.includes('private booking') || lower.includes('private court')) return 'DRILL'
   if (lower.includes('private lesson') || lower.includes('lesson')) return 'CLINIC'
   if (lower.includes('class') || lower.includes('instructional')) return 'CLINIC'
   if (lower.includes('doubles')) return 'OPEN_PLAY'

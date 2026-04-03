@@ -1899,8 +1899,18 @@ export const intelligenceRouter = createTRPCRouter({
           m.coPlayerActivity = coPlayerMap.get(m.member.id) || undefined
         }
 
+        // Separate dormant members (0 bookings ever) — they're not at-risk, just never played
+        const activeMemberInputs = memberInputs.filter(m => m.history.totalBookings > 0)
+        const dormantCount = memberInputs.length - activeMemberInputs.length
+
         const { generateMemberHealth } = await import('@/lib/ai/member-health')
-        return generateMemberHealth(memberInputs)
+        const result = generateMemberHealth(activeMemberInputs)
+
+        // Add dormant to summary (separate from health categories)
+        result.summary.dormant = dormantCount
+        result.summary.total = memberInputs.length // total includes dormant
+
+        return result
       } catch (err) {
         log.warn('[Intelligence] getMemberHealth failed:', (err as Error).message?.slice(0, 120))
         // Return empty data rather than throwing
