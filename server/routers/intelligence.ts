@@ -1969,10 +1969,21 @@ export const intelligenceRouter = createTRPCRouter({
       const d6 = await ctx.prisma.aIRecommendationLog.deleteMany({ where: { clubId } })
       deleted.recommendationLogs = d6.count
 
-      // 7. External ID mappings
+      // 7. External ID mappings (all providers: crx_, pp_, cr_)
       deleted.externalMappings = Number(await ctx.prisma.$executeRaw`
-        DELETE FROM external_id_mappings WHERE partner_id LIKE ${'courtreserve-excel-' + clubId + '%'}
+        DELETE FROM external_id_mappings WHERE partner_id IN (
+          SELECT id FROM partners WHERE code LIKE ${'%' + clubId + '%'}
+        )
       `)
+      // Also clean up partner records
+      await ctx.prisma.$executeRaw`
+        DELETE FROM partner_apps WHERE partner_id IN (
+          SELECT id FROM partners WHERE code LIKE ${'%' + clubId + '%'}
+        )
+      `
+      await ctx.prisma.$executeRaw`
+        DELETE FROM partners WHERE code LIKE ${'%' + clubId + '%'}
+      `
 
       // 8. Club followers (member associations)
       const d8 = await ctx.prisma.clubFollower.deleteMany({ where: { clubId } })
@@ -1981,6 +1992,10 @@ export const intelligenceRouter = createTRPCRouter({
       // 9. Weekly summaries
       const d9 = await ctx.prisma.weeklySummary.deleteMany({ where: { clubId } })
       deleted.weeklySummaries = d9.count
+
+      // 10. Cohorts
+      const d10 = await ctx.prisma.clubCohort.deleteMany({ where: { clubId } })
+      deleted.cohorts = d10.count
 
       // Clear in-memory caches
       calendarCache.delete(`calendar:${clubId}`)
