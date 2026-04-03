@@ -419,16 +419,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
             <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>{cohort?.name}</h2>
             {cohort?.description && <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{cohort.description}</p>}
           </div>
-          <div className="flex items-center gap-2">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-white"
-              style={{ background: 'linear-gradient(135deg, #10B981, #059669)', fontWeight: 600 }}
-            >
-              <Send className="w-3.5 h-3.5" /> Send Campaign
-            </motion.button>
-            <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
-          </div>
+          <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
         </div>
 
         {/* Filter tags */}
@@ -443,6 +434,9 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
           </span>
         </div>
       </div>
+
+      {/* AI Campaign Strategies — primary action */}
+      <CohortCampaignSuggestion clubId={clubId} cohortId={cohortId} memberCount={members.length} />
 
       {/* Members list */}
       <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
@@ -474,8 +468,6 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
         </div>
       </div>
 
-      {/* AI Campaign Suggestion */}
-      <CohortCampaignSuggestion clubId={clubId} cohortId={cohortId} memberCount={members.length} />
     </motion.div>
   )
 }
