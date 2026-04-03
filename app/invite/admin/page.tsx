@@ -97,13 +97,13 @@ function AcceptAdminInviteContent() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <button
               onClick={async () => {
-                const { signOut } = await import('next-auth/react')
+                const { signOut, signIn: doSignIn } = await import('next-auth/react')
                 await signOut({ redirect: false })
-                setState('signing_in')
+                doSignIn('google', { callbackUrl: `/invite/admin?token=${token}` }, { prompt: 'select_account' })
               }}
               style={{ padding: '12px 32px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: 'pointer' }}
             >
-              Sign in as {inviteEmail}
+              Switch Account
             </button>
             <button
               onClick={() => { setState('accepting'); acceptMutation.mutate({ token: token! }) }}
@@ -125,7 +125,7 @@ function AcceptAdminInviteContent() {
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Admin Invite</h1>
           <p style={{ color: '#6b7280', marginBottom: 24 }}>Sign in to accept your admin invitation</p>
           <button
-            onClick={() => signIn(undefined, { callbackUrl: `/invite/admin?token=${token}` })}
+            onClick={() => signIn('google', { callbackUrl: `/invite/admin?token=${token}` }, { prompt: 'select_account' } as any)}
             style={{
               padding: '12px 32px',
               background: '#6366f1',
