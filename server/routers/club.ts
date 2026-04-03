@@ -2055,6 +2055,17 @@ export const clubRouter = createTRPCRouter({
       return { success: true, delivered: true, reason: null }
     }),
 
+  getInviteInfo: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const invite = await ctx.prisma.clubInvite.findUnique({
+        where: { token: input.token },
+        select: { inviteeEmail: true, role: true, acceptedAt: true, club: { select: { name: true } } },
+      })
+      if (!invite) return null
+      return { inviteeEmail: invite.inviteeEmail, role: invite.role, clubName: invite.club.name, accepted: !!invite.acceptedAt }
+    }),
+
   acceptAdminInvite: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ ctx, input }) => {
