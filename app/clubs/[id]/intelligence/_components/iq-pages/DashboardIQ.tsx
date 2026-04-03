@@ -1788,24 +1788,19 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
       {/* PodPlay */}
       {provider === 'podplay' && (
         <div className="space-y-3">
-          <p className="text-xs" style={{ color: 'var(--t4)' }}>Export from PodPlay dashboard and upload .csv or .zip files</p>
-
-          {/* Customers slot */}
-          <div className="flex items-center gap-3 p-3 rounded-xl cursor-pointer" style={{ background: 'var(--subtle)' }} onClick={() => handlePpFileSelect('customers')}>
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: ppFiles.customers ? 'rgba(16,185,129,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }}>
-              {ppFiles.customers ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} /> : <Upload className="w-4 h-4" style={{ color: 'var(--t4)' }} />}
-            </div>
-            <div className="flex-1">
-              <div className="text-sm" style={{ fontWeight: 600, color: ppFiles.customers ? '#10B981' : 'var(--t2)' }}>Customers</div>
-              <div className="text-xs" style={{ color: 'var(--t4)' }}>{ppFiles.customers ? `${ppFiles.customers.name} (${ppFiles.customers.rows.length} rows)` : 'Customers_YYYY-MM-DD.csv'}</div>
-            </div>
-          </div>
-
-          {/* Settlements drop zone */}
+          {/* Universal drop zone — auto-detects file type */}
           <DashboardPpDropZone
-            file={ppFiles.settlements}
-            onDrop={(fileList) => parsePpFiles(Array.from(fileList), 'settlements')}
-            onClickSelect={() => handlePpFileSelect('settlements', true)}
+            ppFiles={ppFiles}
+            onDrop={(fileList) => {
+              const arr = Array.from(fileList)
+              const csvs = arr.filter(f => f.name.toLowerCase().includes('customer'))
+              const rest = arr.filter(f => !f.name.toLowerCase().includes('customer'))
+              if (csvs.length > 0) parsePpFiles(csvs, 'customers')
+              if (rest.length > 0) parsePpFiles(rest, 'settlements')
+              // If single file and not customer-named, try both
+              if (csvs.length === 0 && rest.length === 0) parsePpFiles(arr, 'settlements')
+            }}
+            onClickSelect={(type) => handlePpFileSelect(type, type === 'settlements')}
             isDark={isDark}
           />
           {ppResult ? (
@@ -1827,40 +1822,52 @@ function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark,
   )
 }
 
-function DashboardPpDropZone({ file, onDrop, onClickSelect, isDark }: {
-  file: { name: string; rows: any[] } | null
+function DashboardPpDropZone({ ppFiles, onDrop, onClickSelect, isDark }: {
+  ppFiles: { customers: { name: string; rows: any[] } | null; settlements: { name: string; rows: any[] } | null }
   onDrop: (files: FileList) => void
-  onClickSelect: () => void
+  onClickSelect: (type: 'customers' | 'settlements') => void
   isDark: boolean
 }) {
   const [dragOver, setDragOver] = useState(false)
-
-  if (file) {
-    return (
-      <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
-        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
-        <div className="flex-1 min-w-0">
-          <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>Settlements loaded</div>
-          <div className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>{file.name}</div>
-        </div>
-        <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>{file.rows.length} rows</span>
-        <button onClick={onClickSelect} className="text-[10px] underline" style={{ color: 'var(--t4)' }}>Replace</button>
-      </div>
-    )
-  }
+  const hasAny = ppFiles.customers || ppFiles.settlements
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length > 0) onDrop(e.dataTransfer.files) }}
-      onClick={onClickSelect}
-      className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all"
-      style={{ border: `2px dashed ${dragOver ? '#10B981' : 'var(--card-border)'}`, background: dragOver ? 'rgba(16,185,129,0.06)' : 'var(--subtle)' }}
-    >
-      <Upload className="w-5 h-5" style={{ color: dragOver ? '#10B981' : 'var(--t4)' }} />
-      <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop Settlement ZIPs here</p>
-      <p className="text-[10px]" style={{ color: 'var(--t4)' }}>or click to select — multiple files supported</p>
+    <div className="space-y-3">
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length > 0) onDrop(e.dataTransfer.files) }}
+        className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl cursor-pointer transition-all"
+        style={{ border: `2px dashed ${dragOver ? '#10B981' : 'var(--card-border)'}`, background: dragOver ? 'rgba(16,185,129,0.06)' : 'var(--subtle)' }}
+        onClick={() => onClickSelect('settlements')}
+      >
+        <Upload className="w-5 h-5" style={{ color: dragOver ? '#10B981' : 'var(--t4)' }} />
+        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop all PodPlay files here</p>
+        <p className="text-[10px]" style={{ color: 'var(--t4)' }}>Customers CSV + Settlement ZIPs — auto-detected</p>
+      </div>
+
+      {/* Loaded files status */}
+      {ppFiles.customers && (
+        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>Customers loaded</div>
+            <div className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>{ppFiles.customers.name}</div>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>{ppFiles.customers.rows.length} rows</span>
+        </div>
+      )}
+      {ppFiles.settlements && (
+        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>Settlements loaded</div>
+            <div className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>{ppFiles.settlements.name}</div>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>{ppFiles.settlements.rows.length} rows</span>
+        </div>
+      )}
     </div>
   )
 }

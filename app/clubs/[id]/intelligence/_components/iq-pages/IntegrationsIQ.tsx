@@ -516,25 +516,6 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     { type: 'events', label: 'Events', icon: LayoutGrid, description: 'EventRegistrantsReport.xlsx' },
   ]
 
-  const handleFileSelect = (type: ExcelFile['type']) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.xlsx,.xls,.csv'
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1]
-        setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, data: base64 }])
-        setResult(null)
-        setError(null)
-      }
-      reader.readAsDataURL(file)
-    }
-    input.click()
-  }
-
   const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
 
   const handleDeleteAll = async () => {
@@ -614,100 +595,122 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     setImporting(false)
   }
 
+  const [dragOver, setDragOver] = useState(false)
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const dropped = Array.from(e.dataTransfer.files)
+    for (const file of dropped) {
+      // Auto-detect type from filename
+      const name = file.name.toLowerCase()
+      const type: ExcelFile['type'] = name.includes('member') ? 'members'
+        : name.includes('reservation') ? 'reservations'
+        : 'events'
+      handleFileSelect(type, file)
+    }
+  }
+
+  const handleFileSelectWithPicker = (type: ExcelFile['type']) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls,.csv'
+    input.multiple = true
+    input.onchange = async (e) => {
+      const selected = Array.from((e.target as HTMLInputElement).files || [])
+      for (const file of selected) {
+        handleFileSelect(type, file)
+      }
+    }
+    input.click()
+  }
+
+  const handleFileSelect = (type: ExcelFile['type'], file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(',')[1]
+      setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, data: base64 }])
+      setResult(null)
+      setError(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
   return (
     <Card>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{
-          width: 48, height: 48, borderRadius: 12,
-          background: 'linear-gradient(135deg, #10b981, #059669)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <FileSpreadsheet size={24} color="white" />
-        </div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Data Import</p>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Upload CourtReserve Excel exports</p>
-        </div>
-        {/* Delete All Button */}
+      {/* Delete button */}
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload .xlsx exports from CourtReserve Reports</p>
         {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none',
-            background: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.08)',
-            color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}>
-            <Unplug size={14} />
-            Delete All Data
+          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px]" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+            <Unplug className="w-3 h-3" /> Delete All
           </button>
         ) : (
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={handleDeleteAll} disabled={deleting} style={{
-              padding: '8px 14px', borderRadius: 8, border: 'none',
-              background: '#ef4444', color: 'white', fontSize: 12, fontWeight: 600,
-              cursor: deleting ? 'not-allowed' : 'pointer',
-            }}>
-              {deleting ? <Loader2 size={14} className="animate-spin" /> : 'Yes, Delete Everything'}
+          <div className="flex gap-2">
+            <button onClick={handleDeleteAll} disabled={deleting} className="px-3 py-1.5 rounded-lg text-[10px] text-white" style={{ background: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+              {deleting ? 'Deleting...' : 'Yes, Delete'}
             </button>
-            <button onClick={() => setConfirmDelete(false)} style={{
-              padding: '8px 14px', borderRadius: 8, border: '1px solid var(--card-border)',
-              background: 'transparent', color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer',
-            }}>
+            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-[10px]" style={{ border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--t4)', cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
         )}
       </div>
 
-      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
-        Export your data from CourtReserve (Reports → Members, Reservations, Event Registrants) and upload the .xlsx files below.
-        Files are processed one at a time to handle large datasets.
-      </p>
+      {/* Drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl mb-4 transition-all"
+        style={{
+          border: `2px dashed ${dragOver ? '#3b82f6' : 'var(--card-border)'}`,
+          background: dragOver ? 'rgba(59,130,246,0.06)' : 'var(--subtle)',
+        }}
+      >
+        <Upload className="w-5 h-5" style={{ color: dragOver ? '#3b82f6' : 'var(--t4)' }} />
+        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop CourtReserve .xlsx files here</p>
+        <p className="text-[10px]" style={{ color: 'var(--t4)' }}>Members, Reservations, Events — auto-detected by filename</p>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+      {/* File slots — click to select individually */}
+      <div className="space-y-2 mb-4">
         {fileSlots.map(slot => {
           const file = files.find(f => f.type === slot.type)
-          const isDone = progress.done.some(d => d === file?.name)
-          const isActive = progress.current === file?.name
-          const hasError = progress.errors.some(e => e.startsWith(file?.name || '---'))
-          const Icon = slot.icon
           return (
-            <div key={slot.type} onClick={() => !file && !importing && handleFileSelect(slot.type)} style={{
-              padding: 14, borderRadius: 10, textAlign: 'center', position: 'relative',
-              border: isDone ? '1px solid rgba(16,185,129,0.4)' : isActive ? '1px solid rgba(139,92,246,0.4)' : hasError ? '1px solid rgba(239,68,68,0.4)' : file ? '1px solid rgba(16,185,129,0.4)' : '1px dashed var(--card-border)',
-              background: isDone ? 'rgba(16,185,129,0.08)' : isActive ? 'rgba(139,92,246,0.08)' : file ? (isDark ? 'rgba(16,185,129,0.05)' : 'rgba(16,185,129,0.03)') : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
-              cursor: file || importing ? 'default' : 'pointer', transition: 'all 0.2s',
-            }}>
+            <div key={slot.type} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
+              <button
+                onClick={() => handleFileSelectWithPicker(slot.type)}
+                disabled={importing}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
+                style={{ background: file ? 'rgba(59,130,246,0.1)' : 'var(--card-bg)', border: '1px solid var(--card-border)', color: file ? '#3b82f6' : 'var(--t2)', fontWeight: 600 }}
+              >
+                {file ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+                {slot.label}
+              </button>
+              <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
+                {file ? file.name : slot.description}
+              </span>
               {file && !importing && (
-                <button onClick={(e) => { e.stopPropagation(); removeFile(slot.type) }} style={{
-                  position: 'absolute', top: 6, right: 6, background: 'rgba(239,68,68,0.2)', border: 'none',
-                  borderRadius: 6, width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', color: '#ef4444',
-                }}>
-                  <X size={12} />
+                <button onClick={() => removeFile(slot.type)} className="p-1" style={{ color: 'var(--t4)' }}>
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
-              {isActive ? (
-                <Loader2 size={20} className="animate-spin" style={{ color: '#8B5CF6', marginBottom: 6, display: 'inline-block' }} />
-              ) : (
-                <Icon size={20} style={{ color: isDone ? '#10b981' : file ? '#10b981' : 'var(--text-secondary)', marginBottom: 6 }} />
-              )}
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{slot.label}</div>
-              <div style={{ fontSize: 11, color: isActive ? '#8B5CF6' : 'var(--text-secondary)', marginTop: 2 }}>
-                {isActive ? 'Importing...' : file ? file.name.substring(0, 20) + (file.name.length > 20 ? '...' : '') : slot.description}
-              </div>
-              {isDone && <CheckCircle2 size={14} style={{ color: '#10b981', marginTop: 6 }} />}
-              {hasError && <AlertCircle size={14} style={{ color: '#ef4444', marginTop: 6 }} />}
             </div>
           )
         })}
       </div>
 
-      <button onClick={handleImport} disabled={files.length === 0 || importing} style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 10, border: 'none',
-        background: files.length > 0 && !importing ? 'linear-gradient(135deg, #10b981, #059669)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
-        color: files.length > 0 && !importing ? 'white' : 'var(--text-secondary)',
-        fontSize: 14, fontWeight: 600, cursor: files.length > 0 && !importing ? 'pointer' : 'not-allowed',
-      }}>
-        {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+      {/* Import button */}
+      <button onClick={handleImport} disabled={files.length === 0 || importing}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm transition-all"
+        style={{
+          background: files.length > 0 && !importing ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+          color: files.length > 0 && !importing ? '#fff' : 'var(--t4)',
+          fontWeight: 600, border: 'none', cursor: files.length > 0 && !importing ? 'pointer' : 'not-allowed',
+        }}
+      >
+        {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
         {importing ? `Importing (${progress.done.length}/${files.length})...` : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
       </button>
 
