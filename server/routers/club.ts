@@ -1962,19 +1962,7 @@ export const clubRouter = createTRPCRouter({
         }
       }
 
-      // Check for duplicate invite in last 24h
-      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      const recentInvite = await ctx.prisma.clubInvite.findFirst({
-        where: {
-          clubId: input.clubId,
-          inviteeEmail: input.email,
-          role: { not: null },
-          createdAt: { gte: dayAgo },
-        },
-      })
-      if (recentInvite) {
-        return { success: true, delivered: false, reason: 'already_invited' as const }
-      }
+      // No rate limiting for admin invites — owner invites specific people
 
       // Generate secure token
       const { randomUUID } = await import('crypto')
