@@ -2085,24 +2085,28 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'This is not an admin invite' })
       }
 
-      // Create ClubAdmin (upsert)
-      await ctx.prisma.clubAdmin.upsert({
-        where: { clubId_userId: { clubId: invite.clubId, userId } },
-        update: { role: invite.role },
-        create: { clubId: invite.clubId, userId, role: invite.role },
-      })
+      // All-or-nothing: create admin + follower + mark accepted in transaction
+      const role = invite.role!
+      await ctx.prisma.$transaction(async (tx) => {
+        // Create ClubAdmin
+        await tx.clubAdmin.upsert({
+          where: { clubId_userId: { clubId: invite.clubId, userId } },
+          update: { role },
+          create: { clubId: invite.clubId, userId, role },
+        })
 
-      // Also make them a club follower if not already
-      await ctx.prisma.clubFollower.upsert({
-        where: { clubId_userId: { clubId: invite.clubId, userId } },
-        update: {},
-        create: { clubId: invite.clubId, userId },
-      }).catch(() => {})
+        // Also make them a club follower
+        await tx.clubFollower.upsert({
+          where: { clubId_userId: { clubId: invite.clubId, userId } },
+          update: {},
+          create: { clubId: invite.clubId, userId },
+        })
 
-      // Mark invite as accepted
-      await ctx.prisma.clubInvite.update({
-        where: { token: input.token },
-        data: { acceptedAt: new Date(), inviteeUserId: userId },
+        // Mark invite as accepted LAST (so retry works if above fails)
+        await tx.clubInvite.update({
+          where: { token: input.token },
+          data: { acceptedAt: new Date(), inviteeUserId: userId },
+        })
       })
 
       return {
