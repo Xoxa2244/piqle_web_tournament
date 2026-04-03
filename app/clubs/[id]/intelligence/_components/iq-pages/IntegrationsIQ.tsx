@@ -72,14 +72,38 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
         </Card>
       </motion.div>
 
-      {/* Excel Import (CourtReserve) */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ marginTop: 24 }}>
-        <ExcelImportSection clubId={clubId} />
-      </motion.div>
+      {/* Data Import Providers */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ marginTop: 32 }}>
+        <h2 className="text-lg mb-4" style={{ fontWeight: 700, color: 'var(--heading)' }}>Import Data</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* CourtReserve */}
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+            <div className="flex items-center gap-3 px-5 py-3" style={{ background: 'linear-gradient(135deg, #1e40af, #3b82f6)' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <span className="text-white text-xs" style={{ fontWeight: 800 }}>CR</span>
+              </div>
+              <div>
+                <span className="text-sm text-white" style={{ fontWeight: 700 }}>CourtReserve</span>
+                <p className="text-[10px] text-white/60">Excel exports (.xlsx)</p>
+              </div>
+            </div>
+            <ExcelImportSection clubId={clubId} />
+          </div>
 
-      {/* PodPlay Import */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} style={{ marginTop: 24 }}>
-        <PodPlayImportSection clubId={clubId} />
+          {/* PodPlay */}
+          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+            <div className="flex items-center gap-3 px-5 py-3" style={{ background: 'linear-gradient(135deg, #059669, #10B981)' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <span className="text-white text-xs" style={{ fontWeight: 800 }}>PP</span>
+              </div>
+              <div>
+                <span className="text-sm text-white" style={{ fontWeight: 700 }}>PodPlay</span>
+                <p className="text-[10px] text-white/60">CSV exports (.csv)</p>
+              </div>
+            </div>
+            <PodPlayImportSection clubId={clubId} />
+          </div>
+        </div>
       </motion.div>
     </div>
   )
