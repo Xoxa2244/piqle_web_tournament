@@ -5,6 +5,7 @@ import {
   AlertTriangle, Clock, Mail, Smartphone, ChevronRight,
   Heart, Sparkles, Search,
 } from "lucide-react";
+import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
 
 /* ── Types ── */
 interface MembersReactivationSectionProps {
@@ -202,7 +203,7 @@ export function MembersReactivationSection({
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 text-[11px]" style={{ color: "var(--t3)" }}>
                       <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{member.daysSincePlay}d since last play</span>
-                      {member.rating > 0 && <span>DUPR {member.rating}</span>}
+                      {member.rating > 0 && <DuprBadge rating={member.rating} />}
                       <span>{member.totalSessions} sessions</span>
                     </div>
                   </div>
@@ -261,13 +262,7 @@ export function MembersReactivationSection({
                               >
                                 <Mail className="w-3 h-3" /> Email
                               </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleSend(member.id, "sms"); }}
-                                className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
-                                style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}
-                              >
-                                <Smartphone className="w-3 h-3" /> SMS
-                              </button>
+                              <SmsComingSoon />
                             </>
                           )}
                         </div>

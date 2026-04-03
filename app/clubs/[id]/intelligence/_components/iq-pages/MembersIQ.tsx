@@ -7,6 +7,7 @@ import {
   Smartphone, ArrowUpRight, ArrowDownRight, UserPlus,
   Target, LayoutGrid, List,
 } from "lucide-react";
+import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
@@ -699,9 +700,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
                         <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "email", member); }} className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}>
                           <Mail className="w-3 h-3" /> Email
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleOutreach(member.id, "sms", member); }} className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
-                          <Smartphone className="w-3 h-3" /> SMS
-                        </button>
+                        <SmsComingSoon />
                       </>
                     )}
                   </div>

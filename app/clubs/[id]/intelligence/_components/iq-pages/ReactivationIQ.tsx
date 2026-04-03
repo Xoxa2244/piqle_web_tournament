@@ -8,6 +8,7 @@ import {
   Filter, Search, Sparkles, DollarSign, BarChart3,
   Smartphone, Bell, Check,
 } from "lucide-react";
+import { SmsComingSoon } from './shared/SmsBadge'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -760,13 +761,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                   >
                                     <Mail className="w-3 h-3" /> Email
                                   </button>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "sms"); }}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
-                                    style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
-                                  >
-                                    <Smartphone className="w-3 h-3" /> SMS
-                                  </button>
+                                  <SmsComingSoon />
                                   <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]" style={{ color: "var(--t4)", fontWeight: 500 }}>
                                     <Bell className="w-3 h-3" /> Push
                                     <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>

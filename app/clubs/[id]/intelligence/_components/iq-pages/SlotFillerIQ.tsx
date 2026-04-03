@@ -6,6 +6,7 @@ import {
   ChevronDown, Filter, ArrowUpRight, CalendarDays, Target,
   Sparkles, AlertCircle, CheckCircle2, X, Mail, Smartphone, Bell,
 } from "lucide-react";
+import { SmsComingSoon } from './shared/SmsBadge'
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 
@@ -557,22 +558,10 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                           Email
                         </button>
                         <button
-                          onClick={() => {
-                            if (sendInvites && selectedSessionId) {
-                              sendInvites.mutate({
-                                sessionId: selectedSessionId, clubId,
-                                candidates: [{ memberId: player.id, channel: 'sms' as const, customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court}, ${activeSlot.date} ${activeSlot.time}.` }],
-                              }, { onSuccess: () => setSentInvites((prev) => ({ ...prev, [player.id]: "sms" })) });
-                            } else {
-                              setSentInvites((prev) => ({ ...prev, [player.id]: "sms" }));
-                            }
-                          }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
-                          style={{ background: "rgba(6,182,212,0.15)", color: "#22D3EE", fontWeight: 600, border: "1px solid rgba(6,182,212,0.2)" }}
-                        >
-                          <Smartphone className="w-3 h-3" />
-                          SMS
-                        </button>
+                          className="dummy-unused"
+                          style={{ display: 'none' }}
+                        >SMS</button>
+                        <SmsComingSoon />
                         <span
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
                           style={{ color: "var(--t4)", fontWeight: 500 }}

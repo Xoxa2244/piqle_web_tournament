@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'motion/react'
 import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare } from 'lucide-react'
+import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 
 // ── Filter field definitions ──
@@ -463,11 +464,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
                   ].filter(Boolean).join(' · ') || m.email}
                 </div>
               </div>
-              {m.duprRating > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-lg" style={{ background: 'rgba(6,182,212,0.1)', color: '#06B6D4', fontWeight: 600 }}>
-                  {Number(m.duprRating).toFixed(1)}
-                </span>
-              )}
+              {m.duprRating > 0 && <DuprBadge rating={Number(m.duprRating)} />}
             </div>
           ))}
 
