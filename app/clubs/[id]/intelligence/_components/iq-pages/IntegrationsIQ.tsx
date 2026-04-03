@@ -8,7 +8,7 @@ import {
   Plug, CheckCircle2, AlertCircle, Loader2, RefreshCw,
   Unplug, ArrowRight, Clock, Database, Users, LayoutGrid,
   Wifi, WifiOff, Zap, Settings, Upload, FileSpreadsheet,
-  CalendarDays, X,
+  CalendarDays, X, FileText,
 } from 'lucide-react'
 
 // ── Shared Card (same as BillingIQ) ──
@@ -72,9 +72,14 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
         </Card>
       </motion.div>
 
-      {/* Excel Import */}
+      {/* Excel Import (CourtReserve) */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ marginTop: 24 }}>
         <ExcelImportSection clubId={clubId} />
+      </motion.div>
+
+      {/* PodPlay Import */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} style={{ marginTop: 24 }}>
+        <PodPlayImportSection clubId={clubId} />
       </motion.div>
     </div>
   )
@@ -703,6 +708,176 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
             <StatCard icon={Users} label="Members" color="#6366f1" data={result.members} isDark={isDark} />
             <StatCard icon={LayoutGrid} label="Sessions" color="#f59e0b" data={result.sessions} isDark={isDark} />
             <StatCard icon={Database} label="Bookings" color="#10b981" data={result.bookings} isDark={isDark} />
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ── PodPlay CSV Import ──
+
+type PodPlayFileType = 'customers' | 'settlements'
+
+function PodPlayImportSection({ clubId }: { clubId: string }) {
+  const { isDark } = useTheme()
+  const [files, setFiles] = useState<Record<PodPlayFileType, { name: string; rows: any[] } | null>>({
+    customers: null,
+    settlements: null,
+  })
+  const [importing, setImporting] = useState(false)
+  const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
+  const [result, setResult] = useState<any>(null)
+
+  const fileSlots: { key: PodPlayFileType; label: string; hint: string }[] = [
+    { key: 'customers', label: 'Customers CSV', hint: 'Customers_YYYY-MM-DD.csv' },
+    { key: 'settlements', label: 'Settlement Line Items CSV', hint: 'Settlement Line Items *.csv (from ZIP)' },
+  ]
+
+  const handleFileSelect = (type: PodPlayFileType) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,.xlsx'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(bytes)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws)
+      setFiles(prev => ({ ...prev, [type]: { name: file.name, rows } }))
+    }
+    input.click()
+  }
+
+  const handleImport = async () => {
+    setImporting(true)
+    setResult(null)
+    setProgress({ current: '', done: [], errors: [] })
+
+    const merged: any = {
+      courts: { created: 0, updated: 0, errors: 0 },
+      members: { created: 0, updated: 0, matched: 0, errors: 0 },
+      sessions: { created: 0, updated: 0, errors: 0 },
+      bookings: { created: 0, updated: 0, errors: 0 },
+    }
+
+    // Import customers first, then settlements
+    const order: PodPlayFileType[] = ['customers', 'settlements']
+    for (const type of order) {
+      const f = files[type]
+      if (!f) continue
+      setProgress(p => ({ ...p, current: type }))
+      try {
+        const res = await fetch('/api/connectors/podplay/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clubId, fileType: type, rows: f.rows }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Import failed')
+        // Merge results
+        for (const key of Object.keys(merged)) {
+          for (const stat of Object.keys(merged[key])) {
+            merged[key][stat] += data[key]?.[stat] || 0
+          }
+        }
+        setProgress(p => ({ ...p, done: [...p.done, type] }))
+      } catch (err: any) {
+        setProgress(p => ({ ...p, errors: [...p.errors, `${type}: ${err.message}`] }))
+      }
+    }
+
+    setResult(merged)
+    setImporting(false)
+  }
+
+  const hasFiles = Object.values(files).some(Boolean)
+
+  return (
+    <Card>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10B981, #059669)' }}>
+          <FileText className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>PodPlay Import</h3>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>Import customers and session data from PodPlay CSV exports</p>
+        </div>
+      </div>
+
+      {/* File slots */}
+      <div className="space-y-2 mb-4">
+        {fileSlots.map(slot => {
+          const f = files[slot.key]
+          return (
+            <div key={slot.key} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
+              <button
+                onClick={() => handleFileSelect(slot.key)}
+                disabled={importing}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
+                style={{ background: f ? 'rgba(16,185,129,0.1)' : 'var(--card-bg)', border: '1px solid var(--card-border)', color: f ? '#10B981' : 'var(--t2)', fontWeight: 600 }}
+              >
+                {f ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+                {slot.label}
+              </button>
+              <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
+                {f ? f.name : slot.hint}
+              </span>
+              {f && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
+                  {f.rows.length} rows
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Import button */}
+      {hasFiles && !result && (
+        <button
+          onClick={handleImport}
+          disabled={importing}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm text-white transition-all"
+          style={{ background: importing ? '#6b7280' : 'linear-gradient(135deg, #10B981, #059669)', fontWeight: 600 }}
+        >
+          {importing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Importing {progress.current}...
+            </>
+          ) : (
+            <>
+              <Zap className="w-4 h-4" /> Import PodPlay Data
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Progress */}
+      {progress.errors.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {progress.errors.map((err, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs" style={{ color: '#EF4444' }}>
+              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {err}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2 text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
+            <CheckCircle2 className="w-4 h-4" /> Import complete!
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <StatCard icon={Users} label="Members" color="#8b5cf6" data={result.members} isDark={isDark} />
+            <StatCard icon={CalendarDays} label="Sessions" color="#06b6d4" data={result.sessions} isDark={isDark} />
+            <StatCard icon={Database} label="Bookings" color="#10b981" data={result.bookings} isDark={isDark} />
+            <StatCard icon={LayoutGrid} label="Courts" color="#f59e0b" data={result.courts} isDark={isDark} />
           </div>
         </div>
       )}

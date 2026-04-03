@@ -17,7 +17,7 @@ export interface ExcelImportResult {
   bookings: { created: number; updated: number; errors: number }
 }
 
-interface ParsedMember {
+export interface ParsedMember {
   externalId: string
   email: string
   name: string
@@ -42,7 +42,7 @@ interface ParsedMember {
   reservationCount?: number
 }
 
-interface ParsedSession {
+export interface ParsedSession {
   externalId: string
   date: Date
   startTime: string
@@ -82,7 +82,7 @@ async function setMapping(partnerId: string, entityType: ExternalEntityType, ext
   })
 }
 
-function mapFormat(type?: string): string {
+export function mapFormat(type?: string): string {
   if (!type) return 'OPEN_PLAY'
   const lower = type.toLowerCase()
   if (lower.includes('clinic')) return 'CLINIC'
@@ -104,7 +104,7 @@ function mapFormat(type?: string): string {
   return 'OPEN_PLAY'
 }
 
-function mapSkillLevel(skill?: string): string {
+export function mapSkillLevel(skill?: string): string {
   if (!skill) return 'ALL_LEVELS'
   const lower = skill.toLowerCase()
   if (lower.includes('beginner') || lower.includes('casual') || lower.includes('2.0') || lower.includes('2.5')) return 'BEGINNER'
@@ -394,7 +394,7 @@ export function parseEventsExcel(base64Data: string): ParsedSession[] {
 /** Shared pipeline: courts → members → sessions + bookings → upload marker.
  *  Optimised: bulk pre-fetch mappings, parallel batches, createMany for bookings.
  *  ~10-15s for 1500 members + 1800 sessions instead of sequential 33k queries. */
-async function _runImportPipeline(
+export async function _runImportPipeline(
   clubId: string,
   partnerId: string,
   parsedMembers: ParsedMember[],
@@ -742,15 +742,15 @@ export async function runCourtReserveExcelImport(
 
 // ── Partner Setup ──
 
-async function ensurePartner(clubId: string): Promise<string> {
-  const partnerCode = getPartnerId(clubId)
+export async function ensurePartner(clubId: string, prefix = PARTNER_PREFIX, label = 'CourtReserve Excel Import'): Promise<string> {
+  const partnerCode = `${prefix}_${clubId}`
   let partner = await prisma.partner.findUnique({ where: { code: partnerCode } })
 
   if (!partner) {
     const crypto = await import('crypto')
     partner = await prisma.partner.create({
       data: {
-        name: `CourtReserve Excel Import (${clubId.substring(0, 8)})`,
+        name: `${label} (${clubId.substring(0, 8)})`,
         code: partnerCode,
         status: 'ACTIVE',
       },
@@ -759,8 +759,8 @@ async function ensurePartner(clubId: string): Promise<string> {
       data: {
         partnerId: partner.id,
         environment: 'PRODUCTION',
-        keyId: `crx_${clubId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`,
-        secretHash: 'excel-import-internal',
+        keyId: `${prefix}_${clubId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`,
+        secretHash: `${prefix}-import-internal`,
         status: 'ACTIVE',
         scopes: ['connector:import'],
       },
