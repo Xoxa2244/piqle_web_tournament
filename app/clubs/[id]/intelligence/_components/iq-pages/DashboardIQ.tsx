@@ -1418,26 +1418,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               {/* Modal Body */}
               <div className="p-6">
                 {importModal === "upload" && (
-                  <div className="space-y-3">
-                    <p className="text-sm" style={{ color: 'var(--t3)' }}>
-                      Export from CourtReserve → Reports and upload the files below. At least one file is required.
-                    </p>
-                    <ExcelSlot label="Members" description="MembersReport.xlsx" file={excelFiles[0]} onFile={f => handleExcelFileSet(0, f)} isDark={isDark} />
-                    <ExcelSlot label="Reservations" description="ReservationReport.xlsx" file={excelFiles[1]} onFile={f => handleExcelFileSet(1, f)} isDark={isDark} />
-                    <ExcelSlot label="Events" description="EventRegistrantsReport.xlsx" file={excelFiles[2]} onFile={f => handleExcelFileSet(2, f)} isDark={isDark} />
-                    <button
-                      onClick={handleExcelImport}
-                      disabled={!excelFiles.some(Boolean)}
-                      className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
-                      style={{
-                        background: excelFiles.some(Boolean) ? 'linear-gradient(135deg, #8B5CF6, #06B6D4)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
-                        color: excelFiles.some(Boolean) ? '#fff' : 'var(--t4)',
-                      }}
-                    >
-                      <Upload className="w-4 h-4" />
-                      Import {excelFiles.filter(Boolean).length} file{excelFiles.filter(Boolean).length !== 1 ? 's' : ''}
-                    </button>
-                  </div>
+                  <ImportProviderTabs
+                    excelFiles={excelFiles}
+                    onExcelFileSet={handleExcelFileSet}
+                    onExcelImport={handleExcelImport}
+                    isDark={isDark}
+                    clubId={clubId}
+                  />
                 )}
 
                 {importModal === "processing" && (
@@ -1666,4 +1653,136 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       </AnimatePresence>
     </motion.div>
   );
+}
+
+// ── Import Provider Tabs (CourtReserve + PodPlay) ──
+function ImportProviderTabs({ excelFiles, onExcelFileSet, onExcelImport, isDark, clubId }: {
+  excelFiles: (ExcelFileSlot | null)[]
+  onExcelFileSet: (idx: number, f: ExcelFileSlot | null) => void
+  onExcelImport: () => void
+  isDark: boolean
+  clubId: string
+}) {
+  const [provider, setProvider] = useState<'courtreserve' | 'podplay'>('courtreserve')
+  const [ppFiles, setPpFiles] = useState<{ customers: { name: string; rows: any[] } | null; settlements: { name: string; rows: any[] } | null }>({ customers: null, settlements: null })
+  const [ppImporting, setPpImporting] = useState(false)
+  const [ppResult, setPpResult] = useState<any>(null)
+
+  const handlePpFileSelect = (type: 'customers' | 'settlements') => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,.xlsx'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      const XLSX = await import('xlsx')
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const wb = XLSX.read(bytes)
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(ws)
+      setPpFiles(prev => ({ ...prev, [type]: { name: file.name, rows } }))
+    }
+    input.click()
+  }
+
+  const handlePpImport = async () => {
+    setPpImporting(true)
+    const merged: any = { courts: { created: 0, updated: 0, errors: 0 }, members: { created: 0, updated: 0, matched: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
+    for (const type of ['customers', 'settlements'] as const) {
+      const f = ppFiles[type]
+      if (!f) continue
+      try {
+        const res = await fetch('/api/connectors/podplay/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clubId, fileType: type, rows: f.rows }) })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error)
+        for (const key of Object.keys(merged)) { for (const stat of Object.keys(merged[key])) { merged[key][stat] += data[key]?.[stat] || 0 } }
+      } catch {}
+    }
+    setPpResult(merged)
+    setPpImporting(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Provider tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setProvider('courtreserve')}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
+          style={{
+            background: provider === 'courtreserve' ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'var(--subtle)',
+            color: provider === 'courtreserve' ? '#fff' : 'var(--t3)',
+            fontWeight: 700,
+            border: provider === 'courtreserve' ? 'none' : '1px solid var(--card-border)',
+          }}
+        >
+          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: provider === 'courtreserve' ? 'rgba(255,255,255,0.2)' : 'var(--card-bg)', fontWeight: 800 }}>CR</span>
+          CourtReserve
+        </button>
+        <button
+          onClick={() => setProvider('podplay')}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
+          style={{
+            background: provider === 'podplay' ? 'linear-gradient(135deg, #059669, #10B981)' : 'var(--subtle)',
+            color: provider === 'podplay' ? '#fff' : 'var(--t3)',
+            fontWeight: 700,
+            border: provider === 'podplay' ? 'none' : '1px solid var(--card-border)',
+          }}
+        >
+          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: provider === 'podplay' ? 'rgba(255,255,255,0.2)' : 'var(--card-bg)', fontWeight: 800 }}>PP</span>
+          PodPlay
+        </button>
+      </div>
+
+      {/* CourtReserve */}
+      {provider === 'courtreserve' && (
+        <div className="space-y-3">
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>Export from CourtReserve → Reports and upload .xlsx files</p>
+          <ExcelSlot label="Members" description="MembersReport.xlsx" file={excelFiles[0]} onFile={f => onExcelFileSet(0, f)} isDark={isDark} />
+          <ExcelSlot label="Reservations" description="ReservationReport.xlsx" file={excelFiles[1]} onFile={f => onExcelFileSet(1, f)} isDark={isDark} />
+          <ExcelSlot label="Events" description="EventRegistrantsReport.xlsx" file={excelFiles[2]} onFile={f => onExcelFileSet(2, f)} isDark={isDark} />
+          <button onClick={onExcelImport} disabled={!excelFiles.some(Boolean)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+            style={{ background: excelFiles.some(Boolean) ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'), color: excelFiles.some(Boolean) ? '#fff' : 'var(--t4)' }}
+          >
+            <Upload className="w-4 h-4" /> Import {excelFiles.filter(Boolean).length} CourtReserve file{excelFiles.filter(Boolean).length !== 1 ? 's' : ''}
+          </button>
+        </div>
+      )}
+
+      {/* PodPlay */}
+      {provider === 'podplay' && (
+        <div className="space-y-3">
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>Export from PodPlay dashboard and upload .csv files</p>
+          {(['customers', 'settlements'] as const).map(type => {
+            const f = ppFiles[type]
+            return (
+              <div key={type} className="flex items-center gap-3 p-3 rounded-xl cursor-pointer" style={{ background: 'var(--subtle)' }} onClick={() => handlePpFileSelect(type)}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: f ? 'rgba(16,185,129,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }}>
+                  {f ? <CheckCircle2 className="w-4 h-4" style={{ color: '#10B981' }} /> : <Upload className="w-4 h-4" style={{ color: 'var(--t4)' }} />}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm" style={{ fontWeight: 600, color: f ? '#10B981' : 'var(--t2)' }}>{type === 'customers' ? 'Customers' : 'Settlement Line Items'}</div>
+                  <div className="text-xs" style={{ color: 'var(--t4)' }}>{f ? `${f.name} (${f.rows.length} rows)` : type === 'customers' ? 'Customers_YYYY-MM-DD.csv' : 'Settlement Line Items *.csv'}</div>
+                </div>
+              </div>
+            )
+          })}
+          {ppResult ? (
+            <div className="text-center text-xs py-2" style={{ color: '#10B981', fontWeight: 600 }}>
+              Imported {ppResult.members.created + ppResult.members.updated} members, {ppResult.sessions.created} sessions, {ppResult.bookings.created} bookings
+            </div>
+          ) : (
+            <button onClick={handlePpImport} disabled={!ppFiles.customers && !ppFiles.settlements || ppImporting}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: (ppFiles.customers || ppFiles.settlements) ? 'linear-gradient(135deg, #059669, #10B981)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'), color: (ppFiles.customers || ppFiles.settlements) ? '#fff' : 'var(--t4)' }}
+            >
+              {ppImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {ppImporting ? 'Importing...' : 'Import PodPlay Data'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
