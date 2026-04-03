@@ -1137,14 +1137,20 @@ export async function runHealthCampaignForAllClubs(
   prisma: any,
   options?: { dryRun?: boolean },
 ): Promise<{ results: CampaignResult[]; totalSent: number; totalSkipped: number }> {
-  // Get clubs that have at least one follower (active clubs)
-  const clubs = await prisma.club.findMany({
+  // Get clubs that have at least one follower AND agent is live (opt-in)
+  // Without agentLive=true, club only gets dryRun regardless of param
+  const allClubs = await prisma.club.findMany({
     where: {
       followers: { some: {} },
     },
-    select: { id: true },
+    select: { id: true, automationSettings: true },
     take: 100, // safety limit
   })
+  // Filter: only clubs with agentLive=true get real emails; others forced dryRun
+  const clubs = allClubs.map((c: any) => ({
+    id: c.id,
+    forceDryRun: !(c.automationSettings as any)?.intelligence?.agentLive,
+  }))
 
   const results: CampaignResult[] = []
   let totalSent = 0
@@ -1152,7 +1158,8 @@ export async function runHealthCampaignForAllClubs(
 
   for (const club of clubs) {
     try {
-      const result = await runHealthCampaign(prisma, club.id, options)
+      const effectiveOptions = club.forceDryRun ? { ...options, dryRun: true } : options
+      const result = await runHealthCampaign(prisma, club.id, effectiveOptions)
       results.push(result)
       totalSent += result.messagesSent
       totalSkipped += result.messagesSkipped
