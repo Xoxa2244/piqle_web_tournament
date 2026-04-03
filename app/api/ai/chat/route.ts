@@ -243,12 +243,13 @@ export async function POST(req: Request) {
     try {
       const tools = createChatTools(clubId)
       const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-      const [metrics, memberHealth, courtOcc, reactivation, membershipData] = await Promise.all([
+      const [metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions] = await Promise.all([
         exec(tools.getClubMetrics, {}),
-        exec(tools.getMemberHealth, { filter: 'all', limit: 15 }),
+        exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
         exec(tools.getCourtOccupancy, { days: 30 }),
         exec(tools.getReactivationCandidates, { limit: 10 }),
         exec(tools.getMembershipBreakdown, {}),
+        exec(tools.getUpcomingSessions, { limit: 10 }),
       ])
 
       const parts: string[] = []
@@ -279,19 +280,32 @@ ${(courtOcc.quietestSlots as any[]).slice(0, 5).map((s: any) => `- ${s.slot}: ${
 
       if (memberHealth && !('error' in memberHealth)) {
         const s = memberHealth.summary
+        const allMembers = memberHealth.members as any[]
+        // Most active = highest bookings
+        const mostActive = [...allMembers].sort((a, b) => (b.totalBookings || 0) - (a.totalBookings || 0)).slice(0, 10)
+        // Most at risk = lowest health score
+        const mostAtRisk = [...allMembers].filter((m: any) => m.riskLevel === 'at_risk' || m.riskLevel === 'critical').slice(0, 10)
+
         parts.push(`## Member Health Summary
 Healthy: ${s.healthy} | Watch: ${s.watch} | At-Risk: ${s.atRisk} | Critical: ${s.critical} | Churned: ${s.churned}
 Average health score: ${s.avgHealthScore}
-Revenue at risk: $${s.revenueAtRisk}
 
-Top members by risk (lowest health first):
-${(memberHealth.members as any[]).slice(0, 15).map((m: any) => `- ${m.name}: score ${m.healthScore}, ${m.riskLevel}, ${m.totalBookings} bookings, last visit ${m.daysSinceLastVisit ?? 'never'} days ago, trend: ${m.trend}`).join('\n')}`)
+Most active members (by total bookings):
+${mostActive.map((m: any) => `- ${m.name}: ${m.totalBookings} bookings, score ${m.healthScore}, ${m.riskLevel}, trend: ${m.trend}`).join('\n')}
+
+Most at-risk members (lowest health scores):
+${mostAtRisk.map((m: any) => `- ${m.name}: score ${m.healthScore}, ${m.totalBookings} bookings, last visit ${m.daysSinceLastVisit ?? 'never'} days ago, trend: ${m.trend}`).join('\n')}`)
       }
 
       if (reactivation && !('error' in reactivation)) {
         parts.push(`## Reactivation Candidates (inactive 14+ days)
 Total inactive: ${reactivation.totalInactive}
 ${(reactivation.candidates as any[]).map((c: any) => `- ${c.name}: ${c.daysSinceLastVisit} days since last visit (${c.lastVisitDate})`).join('\n')}`)
+      }
+
+      if (upcomingSessions && !('error' in upcomingSessions)) {
+        parts.push(`## Upcoming Sessions
+${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left`).join('\n')}`)
       }
 
       if (membershipData && !('error' in membershipData)) {
