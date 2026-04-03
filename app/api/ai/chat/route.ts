@@ -237,7 +237,76 @@ export async function POST(req: Request) {
       console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError instanceof Error ? ragError.message : ragError);
     }
 
-    // 6. Build system prompt with RAG context + language + cross-session memory
+    // 6. Pre-fetch real-time club data (replaces disabled tools)
+    step = 'prefetch';
+    let liveDataBlock = ''
+    try {
+      const tools = createChatTools(clubId)
+      const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
+      const [metrics, memberHealth, courtOcc, reactivation, membershipData] = await Promise.all([
+        exec(tools.getClubMetrics, {}),
+        exec(tools.getMemberHealth, { filter: 'all', limit: 15 }),
+        exec(tools.getCourtOccupancy, { days: 30 }),
+        exec(tools.getReactivationCandidates, { limit: 10 }),
+        exec(tools.getMembershipBreakdown, {}),
+      ])
+
+      const parts: string[] = []
+
+      if (metrics && !('error' in metrics)) {
+        parts.push(`## Club Metrics (real-time)
+Total members: ${metrics.totalMembers}
+Active members (last 30d): ${metrics.activeMembers}
+Inactive members: ${metrics.inactiveMembers}
+Bookings last 7 days: ${metrics.bookingsLast7Days}
+Bookings last 30 days: ${metrics.bookingsLast30Days}
+Sessions last 30 days: ${metrics.sessionsLast30Days}
+Average occupancy: ${metrics.averageOccupancy}`)
+      }
+
+      if (courtOcc && !('error' in courtOcc)) {
+        parts.push(`## Court Occupancy (${courtOcc.period})
+Overall occupancy: ${courtOcc.overallOccupancy}
+Total courts: ${courtOcc.totalCourts}
+Total sessions: ${courtOcc.totalSessions}
+
+Busiest time slots:
+${(courtOcc.busiestSlots as any[]).slice(0, 8).map((s: any) => `- ${s.slot}: ${s.occupancy} (${s.totalPlayers} players, formats: ${s.formats})`).join('\n')}
+
+Quietest time slots:
+${(courtOcc.quietestSlots as any[]).slice(0, 5).map((s: any) => `- ${s.slot}: ${s.occupancy}`).join('\n')}`)
+      }
+
+      if (memberHealth && !('error' in memberHealth)) {
+        const s = memberHealth.summary
+        parts.push(`## Member Health Summary
+Healthy: ${s.healthy} | Watch: ${s.watch} | At-Risk: ${s.atRisk} | Critical: ${s.critical} | Churned: ${s.churned}
+Average health score: ${s.avgHealthScore}
+Revenue at risk: $${s.revenueAtRisk}
+
+Top members by risk (lowest health first):
+${(memberHealth.members as any[]).slice(0, 15).map((m: any) => `- ${m.name}: score ${m.healthScore}, ${m.riskLevel}, ${m.totalBookings} bookings, last visit ${m.daysSinceLastVisit ?? 'never'} days ago, trend: ${m.trend}`).join('\n')}`)
+      }
+
+      if (reactivation && !('error' in reactivation)) {
+        parts.push(`## Reactivation Candidates (inactive 14+ days)
+Total inactive: ${reactivation.totalInactive}
+${(reactivation.candidates as any[]).map((c: any) => `- ${c.name}: ${c.daysSinceLastVisit} days since last visit (${c.lastVisitDate})`).join('\n')}`)
+      }
+
+      if (membershipData && !('error' in membershipData)) {
+        parts.push(`## Membership Breakdown
+${Object.entries(membershipData.breakdown as Record<string, number>).map(([status, count]) => `- ${status}: ${count}`).join('\n')}
+${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types:\n${(membershipData.membershipTypes as any[]).map((t: any) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+      }
+
+      liveDataBlock = parts.join('\n\n')
+      console.log(`[AI Chat] Pre-fetched ${parts.length} live data blocks (${liveDataBlock.length} chars)`)
+    } catch (err) {
+      console.error('[AI Chat] Pre-fetch failed (continuing with RAG only):', (err as Error).message)
+    }
+
+    // 7. Build system prompt with RAG context + live data + language + cross-session memory
     step = 'prompt';
     let ragContext: string;
     try {
@@ -266,12 +335,16 @@ export async function POST(req: Request) {
 
     const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${pageContextBlock}
 
---- Club Data (retrieved from knowledge base) ---
+--- Real-Time Club Data (live from database) ---
+${liveDataBlock || 'No live data available.'}
+--- End of Real-Time Data ---
+
+--- Historical Context (from knowledge base) ---
 ${ragContext}
---- End of Club Data ---
+--- End of Historical Context ---
 ${crossSessionContext}
 
-Use the data above to answer the user's question. If the data doesn't contain relevant information, say so honestly.`;
+IMPORTANT: Use the Real-Time Club Data above to answer questions about current metrics, members, occupancy, and bookings. Use Historical Context for trends and patterns. Always cite specific numbers from the data. Never say "I don't have access to data" — the data is provided above.`;
 
     // 7. Verify API key is available
     step = 'apikey';
