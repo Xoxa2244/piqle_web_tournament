@@ -755,22 +755,53 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
 
   const fileSlots: { key: PodPlayFileType; label: string; hint: string }[] = [
     { key: 'customers', label: 'Customers CSV', hint: 'Customers_YYYY-MM-DD.csv' },
-    { key: 'settlements', label: 'Settlement Line Items CSV', hint: 'Settlement Line Items *.csv (from ZIP)' },
+    { key: 'settlements', label: 'Settlements CSV or ZIP', hint: 'Settlements *.zip or Settlements *.csv' },
   ]
+
+  const parseFile = async (file: File, type: PodPlayFileType) => {
+    const XLSX = await import('xlsx')
+
+    // Handle ZIP files — extract Settlements CSV (not Line Items)
+    if (file.name.endsWith('.zip')) {
+      const JSZip = (await import('jszip')).default
+      const zip = await JSZip.loadAsync(await file.arrayBuffer())
+      // Find Settlements CSV (not Line Items, not Summary)
+      const settlementFile = Object.keys(zip.files).find(
+        n => n.startsWith('Settlements ') && !n.includes('Line Items') && !n.includes('Summary') && n.endsWith('.csv')
+      )
+      if (!settlementFile) {
+        // Fallback to Line Items
+        const lineItemsFile = Object.keys(zip.files).find(n => n.includes('Line Items') && n.endsWith('.csv'))
+        if (!lineItemsFile) return
+        const csv = await zip.files[lineItemsFile].async('uint8array')
+        const wb = XLSX.read(csv)
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+        setFiles(prev => ({ ...prev, [type]: { name: lineItemsFile, rows } }))
+        return
+      }
+      const csv = await zip.files[settlementFile].async('uint8array')
+      const wb = XLSX.read(csv)
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+      setFiles(prev => ({ ...prev, [type]: { name: settlementFile, rows } }))
+      return
+    }
+
+    // Regular CSV/XLSX
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const wb = XLSX.read(bytes)
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(ws)
+    setFiles(prev => ({ ...prev, [type]: { name: file.name, rows } }))
+  }
 
   const handleFileSelect = (type: PodPlayFileType) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.csv,.xlsx'
+    input.accept = '.csv,.xlsx,.zip'
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const XLSX = await import('xlsx')
-      const wb = XLSX.read(bytes)
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json(ws)
-      setFiles(prev => ({ ...prev, [type]: { name: file.name, rows } }))
+      await parseFile(file, type)
     }
     input.click()
   }

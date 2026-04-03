@@ -92,11 +92,12 @@ export function mapPodPlayCustomers(rows: Record<string, any>[]): ParsedMember[]
   return members
 }
 
-// ── Settlement Line Items CSV → ParsedSession[] ──
+// ── Settlements CSV → ParsedSession[] ──
+// Uses the full Settlements.csv (not Line Items) which has Event Name, Event Date, Customer Name
 
 export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSession[] {
-  // Group by: Description + Date (truncated to hour) = one session
-  // Each row with same group = one participant
+  // Group by: Event Name + Event Date = one session
+  // Each row = one participant
   const sessionGroups = new Map<string, {
     date: Date
     title: string
@@ -108,33 +109,38 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
   }>()
 
   for (const row of rows) {
-    const dateStr = safeStr(row['Date (UTC)'])
-    if (!dateStr) continue
+    // Settlements.csv has: Source, Event Type, Event Name, Event Date, Email, Customer Name, etc.
+    const source = safeStr(row['Source'] || row['Revenue Category'] || row['Category'])
+    const reportingCategory = safeStr(row['Reporting Category'] || row['Type'])
 
-    const date = new Date(dateStr)
-    if (isNaN(date.getTime())) continue
+    // Skip memberships and refunds — not play sessions
+    if (source === 'MEMBERSHIP' || source === 'Membership') continue
+    if (reportingCategory === 'refund') continue
 
-    const description = safeStr(row['Description'])
     const email = safeStr(row['Email']).toLowerCase()
-    const category = safeStr(row['Category'])
+    if (!email || !email.includes('@')) continue
+
     const eventType = safeStr(row['Event Type'])
-    const price = safeNum(row['Unit Price']) || 0
+    const eventName = safeStr(row['Event Name'] || row['Description'])
+    const eventDateStr = safeStr(row['Event Date'] || row['Date (UTC)'])
+    if (!eventDateStr) continue
 
-    // Skip membership charges — they're not sessions
-    if (category === 'Membership' || description.toLowerCase().startsWith('membership')) continue
-    // Skip refunds
-    if (safeStr(row['Type']) === 'refund') continue
+    const eventDate = new Date(eventDateStr)
+    if (isNaN(eventDate.getTime())) continue
 
-    // Group key: description + date truncated to hour
-    const hourKey = `${date.toISOString().slice(0, 13)}`
-    const groupKey = `${description}__${hourKey}`
+    const price = safeNum(row['Subtotal'] || row['Gross'] || row['Unit Price']) || 0
+    const title = eventName.replace(/^Event signup - /, '') || eventType || 'Session'
+
+    // Group key: event name + event date (truncated to hour)
+    const hourKey = eventDate.toISOString().slice(0, 13)
+    const groupKey = `${title}__${hourKey}`
 
     if (!sessionGroups.has(groupKey)) {
       sessionGroups.set(groupKey, {
-        date,
-        title: description.replace(/^Event signup - /, ''),
-        format: mapFormat(eventType || description),
-        category: category || eventType || '',
+        date: eventDate,
+        title,
+        format: mapFormat(eventType || eventName),
+        category: eventType || source || '',
         price,
         emails: [],
         isCancelled: false,
@@ -142,7 +148,7 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
     }
 
     const group = sessionGroups.get(groupKey)!
-    if (email && email.includes('@') && !group.emails.includes(email)) {
+    if (!group.emails.includes(email)) {
       group.emails.push(email)
     }
   }
@@ -153,7 +159,7 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
     if (group.emails.length === 0) return
 
     const startTime = `${group.date.getUTCHours().toString().padStart(2, '0')}:${group.date.getUTCMinutes().toString().padStart(2, '0')}`
-    const endHour = group.date.getUTCHours() + 1
+    const endHour = Math.min(group.date.getUTCHours() + 1, 23)
     const endTime = `${endHour.toString().padStart(2, '0')}:${group.date.getUTCMinutes().toString().padStart(2, '0')}`
 
     sessions.push({
@@ -163,8 +169,8 @@ export function mapPodPlaySettlements(rows: Record<string, any>[]): ParsedSessio
       endTime,
       format: group.format,
       skillLevel: 'ALL_LEVELS',
-      memberNames: group.emails, // We'll resolve by email in pipeline
-      memberExternalIds: group.emails, // Use email as external ID (matches member externalId)
+      memberNames: group.emails,
+      memberExternalIds: group.emails,
       memberCount: group.emails.length,
       price: group.price,
       isCancelled: group.isCancelled,
