@@ -1361,49 +1361,8 @@ export const clubRouter = createTRPCRouter({
         }
       }
 
-      if (!emailHost || !emailPassword) {
-        // In development, don't block flows if SMTP isn't configured yet.
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[club.sendInvite] SMTP not configured. Would send invite:', {
-            toEmail,
-            clubId: club.id,
-            clubName: club.name,
-            inviteUrl,
-          })
-          return { success: true, delivered: false, reason: 'smtp_missing' as const }
-        }
-
-        throw new TRPCError({
-          code: 'PRECONDITION_FAILED',
-          message: 'Email is not configured (SMTP_HOST/SMTP_PASS).',
-        })
-      }
-
-      const nodemailer = await import('nodemailer')
-      const transporter = nodemailer.default.createTransport({
-        host: emailHost,
-        port: parseInt(emailPort),
-        secure: String(emailPort) === '465',
-        auth: {
-          user: emailUser,
-          pass: emailPassword,
-        },
-      })
-
-      const fromEmail = process.env.SMTP_FROM || process.env.EMAIL_FROM || emailUser
-      const fromName = process.env.SMTP_FROM_NAME || process.env.EMAIL_FROM_NAME || 'IQSport'
-      const fromAddress = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
-
       const inviterName = ctx.session.user.name || 'Someone'
       const subject = `${inviterName} invited you to join ${club.name} on IQSport`
-      const greeting = toName ? `Hi ${toName},` : 'Hi,'
-      const text = `${greeting}
-
-${inviterName} invited you to join the club "${club.name}" on IQSport.
-
-Join here: ${inviteUrl}
-
-If you weren’t expecting this, you can ignore this email.`
       const html = buildClubInviteEmailHtml({
         baseUrl,
         inviteUrl,
@@ -1416,13 +1375,39 @@ If you weren’t expecting this, you can ignore this email.`
         state: club.state,
       })
 
-      await transporter.sendMail({
-        from: fromAddress,
-        to: toEmail,
-        subject,
-        text,
-        html,
-      })
+      const mandrillKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
+      if (mandrillKey) {
+        // Use Mandrill API (primary)
+        const res = await fetch('https://mandrillapp.com/api/1.0/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: mandrillKey,
+            message: {
+              from_email: 'noreply@iqsport.ai',
+              from_name: 'IQSport',
+              to: [{ email: toEmail, type: 'to' }],
+              subject,
+              html,
+            },
+          }),
+        })
+        const data = await res.json()
+        if (data[0]?.status === 'rejected') {
+          console.error('[sendInvite] Mandrill rejected:', data[0].reject_reason)
+        }
+      } else if (emailHost && emailPassword) {
+        // Fallback: nodemailer SMTP
+        const nodemailer = await import('nodemailer')
+        const transporter = nodemailer.default.createTransport({
+          host: emailHost, port: parseInt(emailPort), secure: String(emailPort) === '465',
+          auth: { user: emailUser, pass: emailPassword },
+        })
+        await transporter.sendMail({ from: 'IQSport <noreply@iqsport.ai>', to: toEmail, subject, html })
+      } else {
+        console.log('[sendInvite] No email provider configured:', { toEmail, clubId: club.id })
+        return { success: true, delivered: false, reason: 'smtp_missing' as const }
+      }
 
       if (inviteId) {
         try {
@@ -2014,32 +1999,50 @@ If you weren’t expecting this, you can ignore this email.`
       const inviterName = inviterUser?.name || 'A club admin'
 
       try {
-        const nodemailer = await import('nodemailer')
-        const transporter = nodemailer.default.createTransport({
-          host: process.env.EMAIL_SERVER_HOST,
-          port: Number(process.env.EMAIL_SERVER_PORT || 587),
-          auth: {
-            user: process.env.EMAIL_SERVER_USER,
-            pass: process.env.EMAIL_SERVER_PASSWORD,
-          },
+        const apiKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
+        const subject = `${inviterName} invited you to manage ${club.name} on IQSport`
+        const html = buildAdminInviteEmailHtml({
+          baseUrl,
+          inviteUrl,
+          inviterName,
+          clubName: club.name,
+          clubLogoUrl: club.logoUrl,
+          inviteeEmail: input.email,
+          role: input.role,
+          city: club.city,
+          state: club.state,
         })
 
-        await transporter.sendMail({
-          from: process.env.EMAIL_FROM || 'IQSport <noreply@iqsport.ai>',
-          to: input.email,
-          subject: `${inviterName} invited you to manage ${club.name} on IQSport`,
-          html: buildAdminInviteEmailHtml({
-            baseUrl,
-            inviteUrl,
-            inviterName,
-            clubName: club.name,
-            clubLogoUrl: club.logoUrl,
-            inviteeEmail: input.email,
-            role: input.role,
-            city: club.city,
-            state: club.state,
-          }),
-        })
+        if (apiKey) {
+          // Use Mandrill API (primary)
+          const res = await fetch('https://mandrillapp.com/api/1.0/messages/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              key: apiKey,
+              message: {
+                from_email: 'noreply@iqsport.ai',
+                from_name: 'IQSport',
+                to: [{ email: input.email, type: 'to' }],
+                subject,
+                html,
+              },
+            }),
+          })
+          const data = await res.json()
+          if (data[0]?.status === 'rejected') {
+            console.error('[AdminInvite] Mandrill rejected:', data[0].reject_reason)
+          }
+        } else {
+          // Fallback: nodemailer SMTP
+          const nodemailer = await import('nodemailer')
+          const transporter = nodemailer.default.createTransport({
+            host: process.env.EMAIL_SERVER_HOST,
+            port: Number(process.env.EMAIL_SERVER_PORT || 587),
+            auth: { user: process.env.EMAIL_SERVER_USER, pass: process.env.EMAIL_SERVER_PASSWORD },
+          })
+          await transporter.sendMail({ from: 'IQSport <noreply@iqsport.ai>', to: input.email, subject, html })
+        }
 
         await ctx.prisma.clubInvite.updateMany({
           where: { clubId: input.clubId, inviteeEmail: input.email, token },
