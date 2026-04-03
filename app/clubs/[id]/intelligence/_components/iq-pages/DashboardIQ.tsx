@@ -728,7 +728,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { id: "ai", label: "AI insights ready", done: hasRealData && hasSessions, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
   ];
   const quickStartProgress = quickStartSteps.filter(s => s.done).length;
-  const showQuickStart = quickStartProgress < quickStartSteps.length;
+  const isStillLoading = externalLoading || isPeriodLoading || periodQuery.isLoading;
+  const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length;
 
   return (
     <motion.div
