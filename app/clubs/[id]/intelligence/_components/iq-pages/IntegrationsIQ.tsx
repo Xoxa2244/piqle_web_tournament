@@ -875,32 +875,35 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
         </div>
       </div>
 
-      {/* File slots */}
+      {/* Customers slot */}
       <div className="space-y-2 mb-4">
-        {fileSlots.map(slot => {
-          const f = files[slot.key]
-          return (
-            <div key={slot.key} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
-              <button
-                onClick={() => handleFileSelect(slot.key, slot.multiple)}
-                disabled={importing}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
-                style={{ background: f ? 'rgba(16,185,129,0.1)' : 'var(--card-bg)', border: '1px solid var(--card-border)', color: f ? '#10B981' : 'var(--t2)', fontWeight: 600 }}
-              >
-                {f ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
-                {slot.label}
-              </button>
-              <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
-                {f ? f.name : slot.hint}
-              </span>
-              {f && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
-                  {f.rows.length} rows
-                </span>
-              )}
-            </div>
-          )
-        })}
+        <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
+          <button
+            onClick={() => handleFileSelect('customers')}
+            disabled={importing}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all"
+            style={{ background: files.customers ? 'rgba(16,185,129,0.1)' : 'var(--card-bg)', border: '1px solid var(--card-border)', color: files.customers ? '#10B981' : 'var(--t2)', fontWeight: 600 }}
+          >
+            {files.customers ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
+            Customers CSV
+          </button>
+          <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
+            {files.customers ? files.customers.name : 'Customers_YYYY-MM-DD.csv'}
+          </span>
+          {files.customers && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
+              {files.customers.rows.length} rows
+            </span>
+          )}
+        </div>
+
+        {/* Settlements drop zone — accepts multiple ZIPs/CSVs */}
+        <PodPlayDropZone
+          file={files.settlements}
+          onFiles={(fileList) => parseFiles(Array.from(fileList), 'settlements')}
+          onClickSelect={() => handleFileSelect('settlements', true)}
+          importing={importing}
+        />
       </div>
 
       {/* Import button */}
@@ -950,5 +953,63 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
         </div>
       )}
     </Card>
+  )
+}
+
+// ── PodPlay Drop Zone for multiple ZIPs ──
+function PodPlayDropZone({ file, onFiles, onClickSelect, importing }: {
+  file: { name: string; rows: any[] } | null
+  onFiles: (files: FileList) => void
+  onClickSelect: () => void
+  importing: boolean
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files.length > 0) {
+      onFiles(e.dataTransfer.files)
+    }
+  }
+
+  if (file) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#10B981' }} />
+        <div className="flex-1 min-w-0">
+          <div className="text-xs truncate" style={{ color: '#10B981', fontWeight: 600 }}>Settlements loaded</div>
+          <div className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>{file.name}</div>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: 'rgba(16,185,129,0.1)', color: '#10B981' }}>
+          {file.rows.length} rows
+        </span>
+        <button onClick={onClickSelect} className="text-[10px] underline" style={{ color: 'var(--t4)' }}>Replace</button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      onClick={onClickSelect}
+      className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all"
+      style={{
+        border: `2px dashed ${dragOver ? '#10B981' : 'var(--card-border)'}`,
+        background: dragOver ? 'rgba(16,185,129,0.06)' : 'var(--subtle)',
+      }}
+    >
+      <Upload className="w-5 h-5" style={{ color: dragOver ? '#10B981' : 'var(--t4)' }} />
+      <div className="text-center">
+        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>
+          Drop Settlement ZIPs here
+        </p>
+        <p className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
+          or click to select — multiple files supported
+        </p>
+      </div>
+    </div>
   )
 }
