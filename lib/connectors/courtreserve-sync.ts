@@ -119,122 +119,101 @@ async function syncMembersWithProgress(
   clubId: string,
   partnerId: string,
   connectorId: string,
-  opts: { updatedFrom?: string } = {}
-): Promise<{ created: number; updated: number; matched: number; errors: number }> {
-  let page = 1
+  opts: { updatedFrom?: string; startPage?: number; maxPages?: number } = {}
+): Promise<{ created: number; updated: number; matched: number; errors: number; nextPage?: number; totalCount: number }> {
+  let page = opts.startPage || 1
+  const maxPages = opts.maxPages || 20 // Process max 2000 members per call (20 pages × 100)
   let created = 0, updated = 0, matched = 0, errors = 0
   let hasMore = true
   let totalCount = 0
+  let pagesProcessed = 0
 
-  // Pre-load existing email→userId map for fast lookup (avoid N+1)
+  // Pre-load existing email→userId map for fast lookup
   const existingUsers = await prisma.user.findMany({
     where: { email: { not: '' } },
     select: { id: true, email: true },
   })
   const emailToUserId = new Map(existingUsers.map(u => [u.email!.toLowerCase(), u.id]))
 
-  // Pre-load existing mappings
   const existingMappings = await prisma.externalIdMapping.findMany({
     where: { partnerId, entityType: ExternalEntityType.MEMBER },
     select: { externalId: true, internalId: true },
   })
   const extIdToUserId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
 
-  while (hasMore) {
+  while (hasMore && pagesProcessed < maxPages) {
     const result = await client.getMembers({ page, pageSize: 100, updatedFrom: opts.updatedFrom })
-    if (page === 1) totalCount = result.totalCount
+    if (pagesProcessed === 0 && page === (opts.startPage || 1)) totalCount = result.totalCount
+    else if (totalCount === 0) totalCount = result.totalCount
     const members = result.items
 
-    // Process batch of 100 members with parallel DB operations
-    const batchPromises = members.map(async (member) => {
-      try {
-        if (!member.email) return 'error'
-        const email = member.email.toLowerCase().trim()
-        const externalId = member.organizationMemberId
-        const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || null
-
-        let userId = extIdToUserId.get(externalId) || emailToUserId.get(email) || null
-        let resultType: 'created' | 'updated' | 'matched' = userId ? (extIdToUserId.has(externalId) ? 'updated' : 'matched') : 'created'
-
-        const duprSingles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('singles'))?.ratingValue
-        const duprDoubles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('doubles'))?.ratingValue
-
-        let dateOfBirth: Date | undefined
-        if (member.dateOfBirth) {
-          try {
-            const parsed = new Date(member.dateOfBirth)
-            if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) dateOfBirth = parsed
-          } catch {}
-        }
-
-        const userData = {
-          email,
-          name: name || undefined,
-          phone: member.phonenumber || undefined,
-          gender: member.gender === 'Male' ? 'M' as const : member.gender === 'Female' ? 'F' as const : undefined,
-          city: member.city || undefined,
-          ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
-          ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
-          ...(dateOfBirth ? { dateOfBirth } : {}),
-          ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
-          ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
-          ...(member.zipCode ? { zipCode: member.zipCode } : {}),
-          ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
-        }
-
-        if (userId) {
-          await prisma.user.update({ where: { id: userId }, data: userData }).catch(() => {})
-        } else {
-          const newUser = await prisma.user.create({ data: userData })
-          userId = newUser.id
-          emailToUserId.set(email, userId)
-        }
-
-        // Batch: mapping + follower (parallel)
-        await Promise.all([
-          !extIdToUserId.has(externalId) ? prisma.externalIdMapping.upsert({
-            where: { partnerId_entityType_externalId: { partnerId, entityType: ExternalEntityType.MEMBER, externalId } },
-            update: { internalId: userId },
-            create: { partnerId, entityType: ExternalEntityType.MEMBER, externalId, internalId: userId },
-          }).then(() => extIdToUserId.set(externalId, userId)) : Promise.resolve(),
-          prisma.clubFollower.upsert({
-            where: { clubId_userId: { clubId, userId } },
-            create: { clubId, userId },
-            update: {},
-          }),
-        ]).catch(() => {})
-
-        return resultType
-      } catch {
-        return 'error'
-      }
-    })
-
-    // Run batch in parallel (10 concurrent)
+    // Process 10 members concurrently
     const CONCURRENCY = 10
-    for (let i = 0; i < batchPromises.length; i += CONCURRENCY) {
-      const batch = batchPromises.slice(i, i + CONCURRENCY)
+    for (let i = 0; i < members.length; i += CONCURRENCY) {
+      const batch = members.slice(i, i + CONCURRENCY).map(async (member) => {
+        try {
+          if (!member.email) return 'error'
+          const email = member.email.toLowerCase().trim()
+          const externalId = member.organizationMemberId
+          const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || null
+
+          let userId = extIdToUserId.get(externalId) || emailToUserId.get(email) || null
+          let resultType: 'created' | 'updated' | 'matched' = userId ? (extIdToUserId.has(externalId) ? 'updated' : 'matched') : 'created'
+
+          const duprSingles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('singles'))?.ratingValue
+          const duprDoubles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('doubles'))?.ratingValue
+          let dateOfBirth: Date | undefined
+          if (member.dateOfBirth) { try { const p = new Date(member.dateOfBirth); if (!isNaN(p.getTime()) && p.getFullYear() > 1900) dateOfBirth = p } catch {} }
+
+          const userData = {
+            email, name: name || undefined, phone: member.phonenumber || undefined,
+            gender: member.gender === 'Male' ? 'M' as const : member.gender === 'Female' ? 'F' as const : undefined,
+            city: member.city || undefined,
+            ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
+            ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
+            ...(dateOfBirth ? { dateOfBirth } : {}),
+            ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+            ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
+            ...(member.zipCode ? { zipCode: member.zipCode } : {}),
+            ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
+          }
+
+          if (userId) {
+            await prisma.user.update({ where: { id: userId }, data: userData }).catch(() => {})
+          } else {
+            const newUser = await prisma.user.create({ data: userData })
+            userId = newUser.id
+            emailToUserId.set(email, userId)
+          }
+
+          await Promise.all([
+            !extIdToUserId.has(externalId) ? prisma.externalIdMapping.upsert({
+              where: { partnerId_entityType_externalId: { partnerId, entityType: ExternalEntityType.MEMBER, externalId } },
+              update: { internalId: userId }, create: { partnerId, entityType: ExternalEntityType.MEMBER, externalId, internalId: userId },
+            }).then(() => extIdToUserId.set(externalId, userId)) : Promise.resolve(),
+            prisma.clubFollower.upsert({ where: { clubId_userId: { clubId, userId } }, create: { clubId, userId }, update: {} }),
+          ]).catch(() => {})
+          return resultType
+        } catch { return 'error' }
+      })
       const results = await Promise.all(batch)
-      for (const r of results) {
-        if (r === 'created') created++
-        else if (r === 'updated') updated++
-        else if (r === 'matched') matched++
-        else errors++
-      }
+      for (const r of results) { if (r === 'created') created++; else if (r === 'updated') updated++; else if (r === 'matched') matched++; else errors++ }
     }
 
-    const synced = created + updated + matched + errors
-    const percent = Math.round(10 + (synced / Math.max(totalCount, 1)) * 60)
+    // Get cumulative count from DB for accurate progress (accounts for previous chunks)
+    const totalSynced = await prisma.clubFollower.count({ where: { clubId } })
+    const percent = Math.round(10 + (totalSynced / Math.max(totalCount, 1)) * 60)
     await prisma.clubConnector.update({
       where: { id: connectorId },
-      data: { lastSyncResult: { phase: 'members', percent, status: `Syncing members... ${synced.toLocaleString()} / ${totalCount.toLocaleString()}`, membersSynced: synced, membersTotal: totalCount, courtsDone: true } as any },
+      data: { lastSyncResult: { phase: 'members', percent, status: `Syncing members... ${totalSynced.toLocaleString()} / ${totalCount.toLocaleString()}`, membersSynced: totalSynced, membersTotal: totalCount, courtsDone: true } as any },
     }).catch(() => {})
 
     hasMore = members.length === 100
     page++
+    pagesProcessed++
   }
 
-  return { created, updated, matched, errors }
+  return { created, updated, matched, errors, nextPage: hasMore ? page : undefined, totalCount }
 }
 
 /** @deprecated Use syncMembersWithProgress instead */
@@ -525,11 +504,22 @@ export async function runCourtReserveSync(
     const courtsResult = await syncCourts(client, clubId, partnerId)
     await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
 
-    // 2. Sync members (with progress updates per page)
+    // 2. Sync members in chunks (max 2000 per chunk to stay within timeout)
     console.log(`[CR Sync] ${clubId}: syncing members...`)
-    const membersResult = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
-      updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
-    })
+    let membersResult = { created: 0, updated: 0, matched: 0, errors: 0 }
+    let memberPage: number | undefined = 1
+    while (memberPage) {
+      const chunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
+        updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
+        startPage: memberPage,
+        maxPages: 20,
+      })
+      membersResult.created += chunk.created
+      membersResult.updated += chunk.updated
+      membersResult.matched += chunk.matched
+      membersResult.errors += chunk.errors
+      memberPage = chunk.nextPage
+    }
 
     // 3. Sync reservations → sessions + bookings
     console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
