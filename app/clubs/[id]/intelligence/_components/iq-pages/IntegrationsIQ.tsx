@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
+import { AILoadingAnimation } from './AILoadingAnimation'
 import { useTheme } from '../IQThemeProvider'
 import {
   Plug, CheckCircle2, AlertCircle, Loader2, RefreshCw,
@@ -121,10 +122,17 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
 
   const utils = trpc.useUtils()
 
+  const [isSyncing, setIsSyncing] = useState(false)
   const { data: status, isLoading } = trpc.connectors.getStatus.useQuery(
     { clubId },
-    { staleTime: 10_000 }
+    { staleTime: isSyncing ? 2_000 : 10_000, refetchInterval: isSyncing ? 3_000 : false }
   )
+
+  // Track syncing state from status
+  useEffect(() => {
+    const s = status && 'status' in status ? status.status : null
+    setIsSyncing(s === 'syncing')
+  }, [status])
 
   const connectMutation = trpc.connectors.connect.useMutation({
     onSuccess: () => {
@@ -288,8 +296,31 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
         ) : (
           /* ── Connected View ── */
           <div>
-            {/* Sync Stats */}
-            {'lastSyncResult' in status && status.lastSyncResult && (
+            {/* Syncing — Brain Animation */}
+            {connStatus === 'syncing' && (() => {
+              const progress = ('lastSyncResult' in status ? status.lastSyncResult : null) as any
+              const percent = progress?.percent || 0
+              const statusText = progress?.status || 'Syncing...'
+              return (
+                <div className="mb-4">
+                  <AILoadingAnimation
+                    progress={percent}
+                    statusMessage={statusText}
+                    waitForCompletion={false}
+                  />
+                  {progress?.membersSynced != null && progress?.membersTotal != null && (
+                    <div className="mt-3 text-center">
+                      <div className="text-xs" style={{ color: 'var(--t3)' }}>
+                        Members: <strong>{Number(progress.membersSynced).toLocaleString()}</strong> / {Number(progress.membersTotal).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* Sync Stats (show when not syncing) */}
+            {connStatus !== 'syncing' && 'lastSyncResult' in status && status.lastSyncResult && !(status.lastSyncResult as any)?.phase && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
                 <StatCard icon={Users} label="Members" data={status.lastSyncResult?.members} color="#6366F1" isDark={isDark} />
                 <StatCard icon={LayoutGrid} label="Sessions" data={status.lastSyncResult?.sessions} color="#3B82F6" isDark={isDark} />
