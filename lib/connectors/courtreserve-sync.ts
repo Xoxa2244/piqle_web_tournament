@@ -380,7 +380,7 @@ export async function runCourtReserveSync(
   connectorId: string,
   options: SyncOptions = {}
 ): Promise<SyncResult> {
-  const { isInitial = false, daysBack = isInitial ? 90 : 7 } = options
+  const { isInitial = false, daysBack = isInitial ? 365 : 7 } = options
 
   // Load connector
   const connector = await prisma.clubConnector.findUnique({

@@ -351,7 +351,10 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
             {/* Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <IQButton
-                onClick={() => syncMutation.mutate({ clubId, isInitial: false })}
+                onClick={() => {
+                  const hasEverSynced = 'lastSyncAt' in status && status.lastSyncAt
+                  syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+                }}
                 disabled={syncMutation.isPending || connStatus === 'syncing'}
                 variant="primary"
                 loading={syncMutation.isPending || connStatus === 'syncing'}
@@ -359,18 +362,6 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
               >
                 Sync Now
               </IQButton>
-
-              {!('lastSyncAt' in status && status.lastSyncAt) && (
-                <IQButton
-                  onClick={() => syncMutation.mutate({ clubId, isInitial: true })}
-                  disabled={syncMutation.isPending}
-                  variant="secondary"
-                  loading={false}
-                  icon={<Database size={15} />}
-                >
-                  Full Sync (90 days)
-                </IQButton>
-              )}
 
               <div style={{ flex: 1 }} />
 
