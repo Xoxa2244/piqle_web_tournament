@@ -119,14 +119,18 @@ async function syncMembersWithProgress(
   clubId: string,
   partnerId: string,
   connectorId: string,
-  opts: { updatedFrom?: string; startPage?: number; maxPages?: number } = {}
-): Promise<{ created: number; updated: number; matched: number; errors: number; nextPage?: number; totalCount: number }> {
-  let page = opts.startPage || 1
-  const maxPages = opts.maxPages || 20 // Process max 2000 members per call (20 pages × 100)
+  opts: { updatedFrom?: string; deadline?: number } = {}
+): Promise<{ created: number; updated: number; matched: number; errors: number; done: boolean; totalCount: number }> {
+  let page = 1
   let created = 0, updated = 0, matched = 0, errors = 0
   let hasMore = true
   let totalCount = 0
-  let pagesProcessed = 0
+
+  // Resume from where we left off — count existing followers as starting point
+  const existingCount = await prisma.clubFollower.count({ where: { clubId } })
+  if (existingCount > 0) {
+    page = Math.floor(existingCount / 100) + 1 // Resume from approximate page
+  }
 
   // Pre-load existing email→userId map for fast lookup
   const existingUsers = await prisma.user.findMany({
@@ -141,10 +145,13 @@ async function syncMembersWithProgress(
   })
   const extIdToUserId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
 
-  while (hasMore && pagesProcessed < maxPages) {
+  while (hasMore) {
+    // Check deadline — stop early if running out of time
+    if (opts.deadline && Date.now() > opts.deadline) {
+      return { created, updated, matched, errors, done: false, totalCount }
+    }
     const result = await client.getMembers({ page, pageSize: 100, updatedFrom: opts.updatedFrom })
-    if (pagesProcessed === 0 && page === (opts.startPage || 1)) totalCount = result.totalCount
-    else if (totalCount === 0) totalCount = result.totalCount
+    if (totalCount === 0) totalCount = result.totalCount
     const members = result.items
 
     // Process 10 members concurrently
@@ -210,10 +217,9 @@ async function syncMembersWithProgress(
 
     hasMore = members.length === 100
     page++
-    pagesProcessed++
   }
 
-  return { created, updated, matched, errors, nextPage: hasMore ? page : undefined, totalCount }
+  return { created, updated, matched, errors, done: true, totalCount }
 }
 
 /** @deprecated Use syncMembersWithProgress instead */
@@ -436,13 +442,15 @@ async function upsertReservation(
 export interface SyncOptions {
   isInitial?: boolean
   daysBack?: number
+  maxTimeMs?: number // Stop after this many ms to avoid timeout
 }
 
 export async function runCourtReserveSync(
   connectorId: string,
   options: SyncOptions = {}
-): Promise<SyncResult> {
-  const { isInitial = false, daysBack = isInitial ? 365 : 7 } = options
+): Promise<SyncResult & { incomplete?: boolean }> {
+  const { isInitial = false, daysBack = isInitial ? 365 : 7, maxTimeMs } = options
+  const startTime = Date.now()
 
   // Load connector
   const connector = await prisma.clubConnector.findUnique({
@@ -504,21 +512,33 @@ export async function runCourtReserveSync(
     const courtsResult = await syncCourts(client, clubId, partnerId)
     await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
 
-    // 2. Sync members in chunks (max 2000 per chunk to stay within timeout)
+    // 2. Sync members (time-boxed — will stop early if near timeout)
     console.log(`[CR Sync] ${clubId}: syncing members...`)
-    let membersResult = { created: 0, updated: 0, matched: 0, errors: 0 }
-    let memberPage: number | undefined = 1
-    while (memberPage) {
-      const chunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
-        updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
-        startPage: memberPage,
-        maxPages: 20,
-      })
-      membersResult.created += chunk.created
-      membersResult.updated += chunk.updated
-      membersResult.matched += chunk.matched
-      membersResult.errors += chunk.errors
-      memberPage = chunk.nextPage
+    const memberDeadline = maxTimeMs ? startTime + maxTimeMs - 10_000 : undefined // Stop 10s before timeout
+    const membersChunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
+      updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
+      deadline: memberDeadline,
+    })
+    const membersResult = { created: membersChunk.created, updated: membersChunk.updated, matched: membersChunk.matched, errors: membersChunk.errors }
+
+    // If members not done — return partial result, UI will call again
+    if (!membersChunk.done) {
+      const partialResult: SyncResult & { incomplete: boolean } = {
+        courts: courtsResult,
+        members: membersResult,
+        sessions: { created: 0, updated: 0, errors: 0 },
+        bookings: { created: 0, updated: 0, errors: 0 },
+        totalErrors: courtsResult.errors + membersResult.errors,
+        syncedAt: now.toISOString(),
+        incomplete: true,
+      }
+      // Keep status as syncing — UI will auto-retry
+      await prisma.clubConnector.update({
+        where: { id: connectorId },
+        data: { lastSyncResult: { ...partialResult, phase: 'members', status: `Syncing members... will continue automatically`, membersSynced: await prisma.clubFollower.count({ where: { clubId } }), membersTotal: membersChunk.totalCount, courtsDone: true, percent: Math.round(10 + (await prisma.clubFollower.count({ where: { clubId } }) / Math.max(membersChunk.totalCount, 1)) * 60) } as any },
+      }).catch(() => {})
+      console.log(`[CR Sync] ${clubId}: members chunk done (incomplete), will continue on next call`)
+      return partialResult
     }
 
     // 3. Sync reservations → sessions + bookings

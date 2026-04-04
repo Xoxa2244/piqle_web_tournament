@@ -149,7 +149,34 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
   })
 
   const syncMutation = trpc.connectors.syncNow.useMutation({
-    onSuccess: () => utils.connectors.getStatus.invalidate({ clubId }),
+    onSuccess: (data) => {
+      utils.connectors.getStatus.invalidate({ clubId })
+      // Auto-retry if sync is incomplete (chunked — members still loading)
+      if (data && 'incomplete' in data && (data as any).incomplete) {
+        console.log('[Sync] Chunk complete, auto-continuing...')
+        setTimeout(() => {
+          const hasEverSynced = status && 'lastSyncAt' in status && status.lastSyncAt
+          syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+        }, 1000)
+      } else {
+        setIsSyncing(false)
+      }
+    },
+    onError: () => {
+      // On timeout error, check if sync is still running and retry
+      setTimeout(() => {
+        utils.connectors.getStatus.invalidate({ clubId }).then(() => {
+          const s = status && 'status' in status ? status.status : null
+          if (s === 'syncing') {
+            console.log('[Sync] Timeout but still syncing, auto-retrying...')
+            const hasEverSynced = status && 'lastSyncAt' in status && status.lastSyncAt
+            syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+          } else {
+            setIsSyncing(false)
+          }
+        })
+      }, 2000)
+    },
   })
 
   const testMutation = trpc.connectors.testConnection.useMutation()

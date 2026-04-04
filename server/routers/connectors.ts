@@ -146,6 +146,7 @@ export const connectorsRouter = createTRPCRouter({
 
       const result = await runCourtReserveSync(connector.id, {
         isInitial: input.isInitial,
+        maxTimeMs: 45_000, // Stop after 45 sec, UI will call again
       })
 
       return result
