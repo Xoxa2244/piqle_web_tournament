@@ -13,6 +13,9 @@ import { createChatTools } from '@/lib/ai/chat-tools';
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
 
+// ── In-memory cache for advisor pre-fetch (5 min TTL per club) ──
+const advisorDataCache = new Map<string, { ts: number; data: any }>()
+
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
   try {
@@ -237,20 +240,33 @@ export async function POST(req: Request) {
       console.error('[AI Chat] RAG retrieval failed (continuing without context):', ragError instanceof Error ? ragError.message : ragError);
     }
 
-    // 6. Pre-fetch real-time club data (replaces disabled tools)
+    // 6. Pre-fetch real-time club data (cached 5 min per club)
     step = 'prefetch';
     let liveDataBlock = ''
     try {
-      const tools = createChatTools(clubId)
-      const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-      const [metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions] = await Promise.all([
-        exec(tools.getClubMetrics, {}),
-        exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
-        exec(tools.getCourtOccupancy, { days: 30 }),
-        exec(tools.getReactivationCandidates, { limit: 10 }),
-        exec(tools.getMembershipBreakdown, {}),
-        exec(tools.getUpcomingSessions, { limit: 10 }),
-      ])
+      const cacheKey = `advisor_prefetch_${clubId}`
+      const cached = advisorDataCache.get(cacheKey)
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any
+
+      if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+        // Use cached data (< 5 min old)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } = cached.data)
+        console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
+      } else {
+        // Fresh fetch
+        const tools = createChatTools(clubId)
+        const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions] = await Promise.all([
+          exec(tools.getClubMetrics, {}),
+          exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
+          exec(tools.getCourtOccupancy, { days: 30 }),
+          exec(tools.getReactivationCandidates, { limit: 10 }),
+          exec(tools.getMembershipBreakdown, {}),
+          exec(tools.getUpcomingSessions, { limit: 10 }),
+        ])
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } })
+        console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
+      }
 
       const parts: string[] = []
 
