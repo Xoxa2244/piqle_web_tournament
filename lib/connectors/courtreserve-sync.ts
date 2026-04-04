@@ -560,13 +560,20 @@ export async function runCourtReserveSync(
       client, clubId, partnerId, from, now
     )
 
+    // Get cumulative totals from DB for accurate final display
+    const totalMembers = await prisma.clubFollower.count({ where: { clubId } })
+    const totalSessions = await prisma.playSession.count({ where: { clubId } })
+    const totalBookings = await prisma.playSessionBooking.count({
+      where: { playSession: { clubId } },
+    })
+
     await updateProgress({ phase: 'done', percent: 100, status: 'Sync complete!', courtsDone: true, membersDone: true, sessionsDone: true })
 
     const result: SyncResult = {
       courts: courtsResult,
-      members: membersResult,
-      sessions: sessionsResult,
-      bookings: bookingsResult,
+      members: { created: totalMembers, updated: 0, matched: 0, errors: membersResult.errors },
+      sessions: { created: totalSessions, updated: 0, errors: sessionsResult.errors },
+      bookings: { created: totalBookings, updated: 0, errors: bookingsResult.errors },
       totalErrors: courtsResult.errors + membersResult.errors + sessionsResult.errors + bookingsResult.errors,
       syncedAt: now.toISOString(),
     }
