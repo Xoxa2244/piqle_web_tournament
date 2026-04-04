@@ -123,6 +123,10 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
 
   // Step 2: Software + Files
   const [software, setSoftware] = useState<string | null>(null)
+  const [crPlan, setCrPlan] = useState<'advanced' | 'launch' | null>(null)
+  const [crApiUsername, setCrApiUsername] = useState('')
+  const [crApiPassword, setCrApiPassword] = useState('')
+  const [crApiTestResult, setCrApiTestResult] = useState<{ ok: boolean; courtCount?: number; error?: string } | null>(null)
   const [membersFile, setMembersFile] = useState<File | null>(null)
   const [reservationsFile, setReservationsFile] = useState<File | null>(null)
   const [eventsFile, setEventsFile] = useState<File | null>(null)
@@ -185,6 +189,8 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   // Mutations
   const updateClub = trpc.club.update.useMutation()
   const saveMutation = trpc.intelligence.saveIntelligenceSettings.useMutation()
+  const connectMutation = trpc.connectors.connect.useMutation()
+  const syncMutation = trpc.connectors.syncNow.useMutation()
 
   const handleComplete = async () => {
     const hasAnyFile = !!(membersFile || reservationsFile || eventsFile || genericFile)
@@ -259,7 +265,37 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       }
     }
 
-    // 3. Import files if provided
+    // 3a. Connect via API if Advanced+ plan selected
+    if (software === 'courtreserve' && crPlan === 'advanced' && crApiUsername && crApiPassword) {
+      try {
+        setImportStatus('Testing CourtReserve API connection...')
+        setImportProgress(10)
+        const testResult = await connectMutation.mutateAsync({
+          clubId,
+          username: crApiUsername,
+          password: crApiPassword,
+          agreedToTerms: true,
+        })
+        setImportStatus('Connected! Starting initial sync...')
+        setImportProgress(30)
+
+        // Trigger initial sync
+        await syncMutation.mutateAsync({ clubId, isInitial: true })
+        setImportStatus('Sync complete!')
+        setImportProgress(100)
+      } catch (err: any) {
+        console.error('[Onboarding] API connect failed:', err?.message)
+        setImportStatus('API connection failed — you can connect later from Integrations')
+        setImportProgress(100)
+      }
+
+      await new Promise(r => setTimeout(r, 1500))
+      setProcessing(false)
+      onComplete()
+      return
+    }
+
+    // 3b. Import files if provided
     if (hasAnyFile) {
       try {
         const filesToImport = software === 'courtreserve'
@@ -451,18 +487,81 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
         ))}
       </div>
 
-      {/* CourtReserve: 3 specific file slots */}
+      {/* CourtReserve: plan selector → API or Excel */}
       {software === 'courtreserve' && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-          <div className="rounded-xl p-4" style={{ background: isDark ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.1)' }}>
-            <p className="text-xs" style={{ color: 'var(--t3)' }}>
-              <HelpCircle className="w-3.5 h-3.5 inline mr-1" />
-              In CourtReserve, go to <strong>Reports</strong> and export each file. You can upload 1, 2, or all 3 — import more later from Integrations.
-            </p>
+          {/* Plan selector */}
+          <div className="flex gap-2">
+            <button onClick={() => setCrPlan('advanced')}
+              className="flex-1 p-3 rounded-xl text-xs text-center transition-all"
+              style={{
+                background: crPlan === 'advanced' ? 'linear-gradient(135deg, #1e40af, #3b82f6)' : 'var(--subtle)',
+                color: crPlan === 'advanced' ? '#fff' : 'var(--t3)',
+                fontWeight: 700,
+                border: crPlan === 'advanced' ? 'none' : '1px solid var(--card-border)',
+              }}>
+              Advanced+ Plan
+              <div className="text-[10px] mt-0.5" style={{ fontWeight: 400, opacity: 0.8 }}>Auto-sync via API</div>
+            </button>
+            <button onClick={() => setCrPlan('launch')}
+              className="flex-1 p-3 rounded-xl text-xs text-center transition-all"
+              style={{
+                background: crPlan === 'launch' ? 'linear-gradient(135deg, #059669, #10B981)' : 'var(--subtle)',
+                color: crPlan === 'launch' ? '#fff' : 'var(--t3)',
+                fontWeight: 700,
+                border: crPlan === 'launch' ? 'none' : '1px solid var(--card-border)',
+              }}>
+              Launch / Basic
+              <div className="text-[10px] mt-0.5" style={{ fontWeight: 400, opacity: 0.8 }}>Upload Excel reports</div>
+            </button>
           </div>
-          <FileUploadSlot label="Members Report" description="Reports → Members → Export" file={membersFile} onFile={setMembersFile} />
-          <FileUploadSlot label="Reservation Report" description="Reports → Reservations → Export" file={reservationsFile} onFile={setReservationsFile} />
-          <FileUploadSlot label="Event Registrants Report" description="Reports → Events → Registrants → Export" file={eventsFile} onFile={setEventsFile} />
+
+          {/* Advanced+: API connection */}
+          {crPlan === 'advanced' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+              <div className="rounded-xl p-4" style={{ background: isDark ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                <p className="text-xs mb-2" style={{ color: 'var(--t2)', fontWeight: 600 }}>How to get your API key:</p>
+                <ol className="text-[11px] space-y-1" style={{ color: 'var(--t3)' }}>
+                  <li>1. In CourtReserve → <strong>Settings → API</strong></li>
+                  <li>2. Click <strong>Create API Key</strong></li>
+                  <li>3. Select <strong>Restricted Access</strong></li>
+                  <li>4. Enable <strong>Read</strong> for: Member, Member Membership, Event Calendar, Reservation, Event Registration Report, Transactions</li>
+                  <li>5. Save and copy <strong>Username + Password</strong></li>
+                </ol>
+              </div>
+              <input type="text" value={crApiUsername} onChange={e => setCrApiUsername(e.target.value)}
+                placeholder="API Username (e.g. Org_12345_2)"
+                className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+              <input type="password" value={crApiPassword} onChange={e => setCrApiPassword(e.target.value)}
+                placeholder="API Password"
+                className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+                style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+              {crApiTestResult && (
+                <div className="text-xs px-3 py-2 rounded-lg" style={{
+                  background: crApiTestResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                  color: crApiTestResult.ok ? '#10B981' : '#EF4444',
+                }}>
+                  {crApiTestResult.ok ? `✅ Connected — ${crApiTestResult.courtCount} courts found` : `❌ ${crApiTestResult.error}`}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Launch/Basic: Excel upload */}
+          {crPlan === 'launch' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+              <div className="rounded-xl p-4" style={{ background: isDark ? 'rgba(16,185,129,0.06)' : 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.1)' }}>
+                <p className="text-xs" style={{ color: 'var(--t3)' }}>
+                  <HelpCircle className="w-3.5 h-3.5 inline mr-1" />
+                  In CourtReserve, go to <strong>Reports</strong> and export each file.
+                </p>
+              </div>
+              <FileUploadSlot label="Members Report" description="Reports → Members → Export" file={membersFile} onFile={setMembersFile} />
+              <FileUploadSlot label="Reservation Report" description="Reports → Reservations → Export" file={reservationsFile} onFile={setReservationsFile} />
+              <FileUploadSlot label="Event Registrants Report" description="Reports → Events → Registrants → Export" file={eventsFile} onFile={setEventsFile} />
+            </motion.div>
+          )}
         </motion.div>
       )}
 
@@ -489,18 +588,21 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     return (
       <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--page-bg, #0B0D17)' }}>
         <AILoadingAnimation
-          progress={hasFilesRef.current ? importProgress : undefined}
-          statusMessage={hasFilesRef.current ? importStatus : undefined}
+          progress={importProgress || undefined}
+          statusMessage={importStatus || 'Setting up your club...'}
         />
       </div>
     )
   }
 
   const isLast = step === steps.length - 1
+  const hasApiCredentials = crPlan === 'advanced' && crApiUsername.trim() && crApiPassword.trim()
+  const hasFiles = !!(membersFile || reservationsFile || eventsFile || genericFile)
   const canProceed = step === 0
     ? clubName.trim().length >= 2
     : step === 1
     ? !!pricingModel
+    : software === 'courtreserve' ? !!(crPlan && (hasApiCredentials || hasFiles))
     : !!software
 
   return (
