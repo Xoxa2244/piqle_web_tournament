@@ -481,7 +481,7 @@ async function syncEventRegistrations(
     try {
       const data = await client.request<any[]>(
         '/api/v1/eventregistrationreport/listactive',
-        { eventDateFrom: window.from, eventDateTo: window.to }
+        { eventDateFrom: window.from, eventDateTo: window.to, includeCourts: 'true' }
       )
       if (!Array.isArray(data) || data.length === 0) continue
 
@@ -506,16 +506,31 @@ async function syncEventRegistrations(
             const activeRegs = regs.filter((r: any) => !r.CancelledOnUtc)
             const format = mapFormat(first.EventCategoryName || first.EventName || '')
 
+            // Resolve court from Courts array (first pickleball court)
+            let courtId: string | null = null
+            const courts = first.Courts || []
+            if (courts.length > 0) {
+              const pbCourt = courts.find((c: any) => c.CourtTypeName === 'Pickleball') || courts[0]
+              const courtName = pbCourt.CourtName || pbCourt.courtName
+              if (courtName) {
+                // Find existing court by name
+                const existing = await prisma.clubCourt.findFirst({ where: { clubId, name: courtName } })
+                courtId = existing?.id || null
+              }
+            }
+
             let sessionId = eventIdToSessionId.get(eventKey)
+            const numCourts = courts.filter((c: any) => (c.CourtTypeName || '').toLowerCase().includes('pickleball')).length || 1
             const sessionData = {
               clubId,
+              courtId,
               title: first.EventName || 'Event',
               date,
               startTime,
               endTime,
               format: format as any,
               skillLevel: mapSkillLevelFromEvent(first.EventCategoryName || first.EventName || '') as any,
-              maxPlayers: Math.max(activeRegs.length, 4),
+              maxPlayers: Math.max(activeRegs.length, numCourts * 4),
               registeredCount: activeRegs.length,
               status: (date < new Date() ? 'COMPLETED' : 'SCHEDULED') as any,
               pricePerSlot: first.PriceToPay || null,
