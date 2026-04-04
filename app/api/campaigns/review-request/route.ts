@@ -59,7 +59,7 @@ async function sendReviewRequests() {
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
       JOIN users u ON u.id = b."userId"
-      WHERE ps."clubId" = $1::uuid
+      WHERE ps."clubId" = $1
         AND b.status = 'CONFIRMED'
         AND ps.date <= $2
         AND ps.date >= $3
@@ -68,7 +68,7 @@ async function sendReviewRequests() {
         AND NOT EXISTS (
           SELECT 1 FROM ai_recommendation_logs arl
           WHERE arl."userId" = b."userId"
-            AND arl."clubId" = $1::uuid
+            AND arl."clubId" = $1
             AND arl.type = 'REVIEW_REQUEST'
             AND arl."createdAt" >= $4
         )

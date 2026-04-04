@@ -121,8 +121,8 @@ export async function generateDigestData(
           COUNT(*) FILTER (WHERE health_score < 15) as critical,
           ROUND(AVG(health_score), 0) as avg_score
         FROM member_health_snapshots
-        WHERE club_id = $1::uuid
-          AND date = (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1::uuid)
+        WHERE club_id = $1
+          AND date = (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1)
       `, clubId)
 
       if (snapshots[0] && Number(snapshots[0].healthy) > 0) {
@@ -141,14 +141,14 @@ export async function generateDigestData(
         WITH latest AS (
           SELECT user_id, health_score, date
           FROM member_health_snapshots
-          WHERE club_id = $1::uuid AND date = (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1::uuid)
+          WHERE club_id = $1 AND date = (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1)
         ),
         previous AS (
           SELECT user_id, health_score
           FROM member_health_snapshots
-          WHERE club_id = $1::uuid AND date = (
+          WHERE club_id = $1 AND date = (
             SELECT MAX(date) FROM member_health_snapshots
-            WHERE club_id = $1::uuid AND date < (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1::uuid)
+            WHERE club_id = $1 AND date < (SELECT MAX(date) FROM member_health_snapshots WHERE club_id = $1)
           )
         )
         SELECT

@@ -529,7 +529,7 @@ export async function _runImportPipeline(
           }),
           prisma.$executeRaw`
             INSERT INTO document_embeddings (id, club_id, content_type, source_table, source_id, content, metadata, created_at)
-            VALUES (${memberEmbeddingId}, ${clubId}::uuid, 'member', 'csv_import', ${userId}, ${memberContent}, ${JSON.stringify(memberMeta)}::jsonb, NOW())
+            VALUES (${memberEmbeddingId}, ${clubId}, 'member', 'csv_import', ${userId}, ${memberContent}, ${JSON.stringify(memberMeta)}::jsonb, NOW())
             ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata
           `,
         ])
@@ -639,7 +639,7 @@ export async function _runImportPipeline(
         INSERT INTO document_embeddings (id, club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
         VALUES (
           gen_random_uuid(),
-          ${clubId}::uuid,
+          ${clubId},
           ${content},
           'import_marker',
           ${meta}::jsonb,

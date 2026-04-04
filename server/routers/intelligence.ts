@@ -128,7 +128,7 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
     SELECT COUNT(DISTINCT cf.user_id) as count
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
-    WHERE cf.club_id = $1::uuid AND ${where}
+    WHERE cf.club_id = $1 AND ${where}
   `, clubId)
   return Number(result[0]?.count ?? 0)
 }
@@ -149,7 +149,7 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
            u.image
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
-    WHERE cf.club_id = $1::uuid AND ${where}
+    WHERE cf.club_id = $1 AND ${where}
     ORDER BY u.name ASC
     LIMIT 500
   `, clubId)
@@ -227,8 +227,7 @@ export const intelligenceRouter = createTRPCRouter({
         embeddings = await ctx.prisma.$queryRaw`
           SELECT id::text, content_type, metadata, created_at
           FROM document_embeddings
-          WHERE club_id = ${input.clubId}::uuid
-        `
+          WHERE club_id = ${input.clubId}        `
       } catch (err) {
         log.error('[Intelligence] getClubDataStatus failed:', err)
         return {
@@ -335,17 +334,16 @@ export const intelligenceRouter = createTRPCRouter({
               -- Membership info from embeddings
               (SELECT de.metadata->>'membership' FROM document_embeddings de
                WHERE de.source_id = b."userId" AND de.content_type = 'member'
-               AND de.source_table = 'csv_import' AND de.club_id = $1::uuid LIMIT 1
+               AND de.source_table = 'csv_import' AND de.club_id = $1 LIMIT 1
               ) as membership_type,
               (SELECT de.metadata->>'membershipStatus' FROM document_embeddings de
                WHERE de.source_id = b."userId" AND de.content_type = 'member'
-               AND de.source_table = 'csv_import' AND de.club_id = $1::uuid LIMIT 1
+               AND de.source_table = 'csv_import' AND de.club_id = $1 LIMIT 1
               ) as membership_status
             FROM play_session_bookings b
             JOIN play_sessions ps ON ps.id = b."sessionId"
             JOIN users u ON u.id = b."userId"
-            WHERE ps."clubId" = $1::uuid
-              AND ps.date >= $5
+            WHERE ps."clubId" = $1              AND ps.date >= $5
               AND b.status::text = 'CONFIRMED'
             GROUP BY b."userId", u.name, u.email, u.image
             HAVING (CURRENT_DATE - MAX(ps.date)::date) <= 60
@@ -849,8 +847,7 @@ export const intelligenceRouter = createTRPCRouter({
             SELECT COUNT(DISTINCT value) as count
             FROM document_embeddings,
               LATERAL jsonb_array_elements_text(metadata->'playerNames') as value
-            WHERE club_id = ${input.clubId}::uuid
-              AND content_type = 'session'
+            WHERE club_id = ${input.clubId}              AND content_type = 'session'
               AND source_table = 'csv_import'
           `.catch(() => [{ count: BigInt(0) }]),
         ])
@@ -1141,7 +1138,7 @@ export const intelligenceRouter = createTRPCRouter({
                 const rows = await ctx.prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
                   SELECT metadata->>'membershipStatus' as status, count(*) as cnt
                   FROM document_embeddings
-                  WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+                  WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
                   GROUP BY metadata->>'membershipStatus'
                 `
                 if (rows.length === 0) return null
@@ -1169,8 +1166,7 @@ export const intelligenceRouter = createTRPCRouter({
         try {
           const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
             SELECT metadata FROM document_embeddings
-            WHERE club_id = ${input.clubId}::uuid
-              AND content_type = 'session'
+            WHERE club_id = ${input.clubId}              AND content_type = 'session'
               AND source_table = 'csv_import'
           `
           allCsvSessions = rows
@@ -1432,7 +1428,7 @@ export const intelligenceRouter = createTRPCRouter({
                 const rows = await ctx.prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
                   SELECT metadata->>'membershipStatus' as status, count(*) as cnt
                   FROM document_embeddings
-                  WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+                  WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
                   GROUP BY metadata->>'membershipStatus'
                 `
                 const map: Record<string, number> = {}
@@ -1668,8 +1664,7 @@ export const intelligenceRouter = createTRPCRouter({
         try {
           const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
             SELECT metadata FROM document_embeddings
-            WHERE club_id = ${input.clubId}::uuid
-              AND content_type = 'session'
+            WHERE club_id = ${input.clubId}              AND content_type = 'session'
               AND source_table = 'csv_import'
           `
           csvSessions = rows
@@ -1724,7 +1719,7 @@ export const intelligenceRouter = createTRPCRouter({
         // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
         const memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
           SELECT source_id, metadata FROM document_embeddings
-          WHERE club_id = ${input.clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+          WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
         `
         const membershipByEmail = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
         const membershipBySourceId = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
@@ -1862,8 +1857,7 @@ export const intelligenceRouter = createTRPCRouter({
                 WHERE b.status = 'CONFIRMED'
                   AND b."sessionId" IN (
                     SELECT id FROM play_sessions
-                    WHERE "clubId" = $1::uuid
-                      AND date >= NOW() - INTERVAL '90 days'
+                    WHERE "clubId" = $1                      AND date >= NOW() - INTERVAL '90 days'
                       AND date <= NOW()
                   )
               ),
@@ -1885,8 +1879,7 @@ export const intelligenceRouter = createTRPCRouter({
                   COUNT(*) FILTER (WHERE EXISTS (
                     SELECT 1 FROM play_session_bookings b2
                     JOIN play_sessions ps2 ON ps2.id = b2."sessionId"
-                    WHERE b2."userId" = l.co_player_id AND ps2."clubId" = $1::uuid
-                      AND b2.status = 'CONFIRMED' AND ps2.date >= NOW() - INTERVAL '21 days'
+                    WHERE b2."userId" = l.co_player_id AND ps2."clubId" = $1                      AND b2.status = 'CONFIRMED' AND ps2.date >= NOW() - INTERVAL '21 days'
                   )) as active_co_players
                 FROM limited l GROUP BY l."userId"
               )
@@ -1972,7 +1965,7 @@ export const intelligenceRouter = createTRPCRouter({
       deleted.sessions = d2.count
 
       // 3. Document embeddings (sessions, members, patterns, etc.)
-      deleted.embeddings = Number(await ctx.prisma.$executeRaw`DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid`)
+      deleted.embeddings = Number(await ctx.prisma.$executeRaw`DELETE FROM document_embeddings WHERE club_id = ${clubId}`)
 
       // 4. AI profiles
       const d4 = await ctx.prisma.memberAiProfile.deleteMany({ where: { clubId } })
@@ -3058,8 +3051,7 @@ export const intelligenceRouter = createTRPCRouter({
       // 1. Delete AI recommendation logs
       try {
         const arResult = await ctx.prisma.$executeRaw`
-          DELETE FROM ai_recommendation_logs WHERE "clubId" = ${input.clubId}::uuid
-        `
+          DELETE FROM ai_recommendation_logs WHERE "clubId" = ${input.clubId}        `
         aiRecsDeleted = typeof arResult === 'number' ? arResult : 0
       } catch (err) {
         log.warn('[Delete Import] ai_recommendation_logs cleanup failed:', err)
@@ -3067,36 +3059,31 @@ export const intelligenceRouter = createTRPCRouter({
 
       // 2. Delete health snapshots
       const hResult = await ctx.prisma.$executeRaw`
-        DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}::uuid
-      `
+        DELETE FROM member_health_snapshots WHERE club_id = ${input.clubId}      `
       healthDeleted = typeof hResult === 'number' ? hResult : 0
 
       // 3. Delete bookings for all sessions of this club
       const bResult = await ctx.prisma.$executeRaw`
         DELETE FROM play_session_bookings WHERE "sessionId" IN (
-          SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
-        )
+          SELECT id FROM play_sessions WHERE "clubId" = ${input.clubId}        )
       `
       bookingsDeleted = typeof bResult === 'number' ? bResult : 0
 
       // 4. Delete all play sessions for this club
       const sResult = await ctx.prisma.$executeRaw`
-        DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}::uuid
-      `
+        DELETE FROM play_sessions WHERE "clubId" = ${input.clubId}      `
       sessionsDeleted = typeof sResult === 'number' ? sResult : 0
 
       // 5. Delete ALL document_embeddings for this club (not just one batch)
       const eResult = await ctx.prisma.$executeRaw`
-        DELETE FROM document_embeddings WHERE club_id = ${input.clubId}::uuid
-      `
+        DELETE FROM document_embeddings WHERE club_id = ${input.clubId}      `
       embeddingsDeleted = typeof eResult === 'number' ? eResult : 0
 
       // 6. Delete placeholder users created during import (email like %@placeholder.iqsport.ai)
       try {
         const fResult = await ctx.prisma.$executeRaw`
           DELETE FROM club_followers
-          WHERE club_id = ${input.clubId}::uuid
-            AND user_id IN (SELECT id FROM users WHERE email LIKE '%@placeholder.iqsport.ai')
+          WHERE club_id = ${input.clubId}            AND user_id IN (SELECT id FROM users WHERE email LIKE '%@placeholder.iqsport.ai')
         `
         followersDeleted = typeof fResult === 'number' ? fResult : 0
       } catch (err) {
@@ -3107,12 +3094,10 @@ export const intelligenceRouter = createTRPCRouter({
       try {
         await ctx.prisma.$executeRaw`
           DELETE FROM ai_messages WHERE conversation_id IN (
-            SELECT id FROM ai_conversations WHERE club_id = ${input.clubId}::uuid
-          )
+            SELECT id FROM ai_conversations WHERE club_id = ${input.clubId}          )
         `
         await ctx.prisma.$executeRaw`
-          DELETE FROM ai_conversations WHERE club_id = ${input.clubId}::uuid
-        `
+          DELETE FROM ai_conversations WHERE club_id = ${input.clubId}        `
       } catch (err) {
         log.warn('[Delete Import] AI conversations cleanup failed:', err)
       }
@@ -3522,18 +3507,14 @@ export const intelligenceRouter = createTRPCRouter({
             cf.created_at as "memberSince",
             (SELECT MAX(ps.date) FROM play_session_bookings b2
               JOIN play_sessions ps ON ps.id = b2."sessionId"
-              WHERE b2."userId" = $1 AND ps."clubId" = $2::uuid
-              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
+              WHERE b2."userId" = $1 AND ps."clubId" = $2              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
             (SELECT COUNT(*)::int FROM play_session_bookings b3
               JOIN play_sessions ps2 ON ps2.id = b3."sessionId"
-              WHERE b3."userId" = $1 AND ps2."clubId" = $2::uuid
-              AND b3.status::text = 'CONFIRMED') as "totalSessions",
+              WHERE b3."userId" = $1 AND ps2."clubId" = $2              AND b3.status::text = 'CONFIRMED') as "totalSessions",
             (SELECT mhs.health_score FROM member_health_snapshots mhs
-              WHERE mhs.user_id = $1 AND mhs.club_id = $2::uuid
-              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
+              WHERE mhs.user_id = $1 AND mhs.club_id = $2              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
           FROM users u
-          LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2::uuid
-          WHERE u.id = $1
+          LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2          WHERE u.id = $1
           LIMIT 1
         `, userId, clubId),
 
@@ -3542,8 +3523,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT DATE_TRUNC('week', ps.date)::date as week, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
             AND ps.date >= NOW() - INTERVAL '90 days'
           GROUP BY week ORDER BY week
         `, userId, clubId),
@@ -3553,8 +3533,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT ps.format::text as format, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
           GROUP BY ps.format ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3563,8 +3542,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT SPLIT_PART(ps."startTime", ':', 1)::int as hour, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
           GROUP BY hour ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3573,8 +3551,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT TRIM(TO_CHAR(ps.date, 'Day')) as day, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
           GROUP BY day ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3584,8 +3561,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
             AND cc.name IS NOT NULL
           GROUP BY cc.name ORDER BY count DESC LIMIT 3
         `, userId, clubId),
@@ -3600,8 +3576,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
           ORDER BY ps.date DESC, ps."startTime" DESC
           LIMIT 10
         `, userId, clubId),
@@ -3611,8 +3586,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT ps.date::date as d
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2::uuid
-            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
           ORDER BY ps.date DESC
         `, userId, clubId),
       ])
@@ -3682,8 +3656,7 @@ export const intelligenceRouter = createTRPCRouter({
             WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
         FROM play_sessions ps
         LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-        WHERE ps."clubId" = $1::uuid
-          AND ps.date >= CURRENT_DATE
+        WHERE ps."clubId" = $1          AND ps.date >= CURRENT_DATE
           AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
           AND ps.status::text = 'SCHEDULED'
         ORDER BY ps.date, ps."startTime"
@@ -3710,11 +3683,9 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId" = cf.user_id
-            AND ps."clubId" = $1::uuid
-            AND b.status = 'CONFIRMED'
+            AND ps."clubId" = $1            AND b.status = 'CONFIRMED'
         ) first_booking ON true
-        WHERE cf.club_id = $1::uuid
-          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
+        WHERE cf.club_id = $1          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
         ORDER BY first_booking."firstPlayedAt" DESC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }
@@ -4263,7 +4234,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           SELECT DISTINCT cf.user_id
           FROM club_followers cf
           JOIN users u ON u.id = cf.user_id
-          WHERE cf.club_id = $1::uuid AND ${where}
+          WHERE cf.club_id = $1 AND ${where}
         )
         SELECT
           to_char(ps.date, 'Day') as day_name,
@@ -4274,8 +4245,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         FROM play_session_bookings b
         JOIN play_sessions ps ON ps.id = b."sessionId"
         WHERE b."userId" IN (SELECT user_id FROM cohort_users)
-          AND ps."clubId" = $1::uuid
-          AND b.status = 'CONFIRMED'
+          AND ps."clubId" = $1          AND b.status = 'CONFIRMED'
           AND ps.date >= NOW() - INTERVAL '90 days'
           AND ps.date <= NOW()
         GROUP BY 1, 2, 3, 4

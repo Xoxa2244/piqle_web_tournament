@@ -46,7 +46,7 @@ export async function detectEventsForClub(
       (SELECT COUNT(*) FROM play_session_bookings b2 WHERE b2."sessionId" = ps.id AND b2.status = 'CONFIRMED') as confirmed
     FROM play_session_bookings b
     JOIN play_sessions ps ON ps.id = b."sessionId"
-    WHERE ps."clubId" = $1::uuid
+    WHERE ps."clubId" = $1
       AND b.status = 'CANCELLED'
       AND b."cancelledAt" >= $2
       AND ps.date >= $3
@@ -58,7 +58,7 @@ export async function detectEventsForClub(
     SELECT ps.id, ps.title, ps.date, ps."startTime", ps."maxPlayers", ps.format, ps."skillLevel",
       (SELECT COUNT(*) FROM play_session_bookings b WHERE b."sessionId" = ps.id AND b.status = 'CONFIRMED') as confirmed
     FROM play_sessions ps
-    WHERE ps."clubId" = $1::uuid
+    WHERE ps."clubId" = $1
       AND ps.status = 'SCHEDULED'
       AND ps.date >= $2
       AND ps.date <= $3
@@ -73,7 +73,7 @@ export async function detectEventsForClub(
     SELECT cf.user_id as "userId", u.name, u.email
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
-    WHERE cf.club_id = $1::uuid
+    WHERE cf.club_id = $1
       AND cf.created_at >= $2
       AND u.email NOT LIKE '%placeholder%'
       AND u.email NOT LIKE '%demo%'

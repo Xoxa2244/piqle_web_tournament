@@ -466,19 +466,19 @@ export async function POST(req: Request) {
           // Delete ALL embeddings for this club (csv_import + analytics + player patterns + club_info)
           await prisma.$executeRaw`
             DELETE FROM document_embeddings
-            WHERE club_id = ${clubId}::uuid
+            WHERE club_id = ${clubId}
           `;
           // Delete bookings → sessions → health snapshots from previous imports
           await prisma.$executeRaw`
             DELETE FROM play_session_bookings WHERE "sessionId" IN (
-              SELECT id FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+              SELECT id FROM play_sessions WHERE "clubId" = ${clubId}
             )
           `.catch(() => 0);
           await prisma.$executeRaw`
-            DELETE FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+            DELETE FROM play_sessions WHERE "clubId" = ${clubId}
           `.catch(() => 0);
           await prisma.$executeRaw`
-            DELETE FROM member_health_snapshots WHERE club_id = ${clubId}::uuid
+            DELETE FROM member_health_snapshots WHERE club_id = ${clubId}
           `.catch(() => 0);
         } catch (deleteErr) {
           send({ phase: 'error', message: `Failed to delete old data: ${deleteErr instanceof Error ? deleteErr.message : String(deleteErr)}` });
@@ -652,7 +652,7 @@ export async function POST(req: Request) {
             const offset = j * 8;
             const embeddingStr = `[${allEmbeddings[globalIdx].join(',')}]`;
             valuesClauses.push(
-              `(gen_random_uuid(), $${offset + 1}::uuid, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5}::vector, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+              `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}::jsonb, $${offset + 5}::vector, $${offset + 6}, $${offset + 7}, $${offset + 8})`
             );
             params.push(
               clubId,
@@ -735,46 +735,46 @@ export async function DELETE(req: Request) {
   try {
     // 1. Delete ALL embeddings for this club (csv_import + analytics + player patterns)
     const embeddingsDeleted = await prisma.$executeRaw`
-      DELETE FROM document_embeddings WHERE club_id = ${clubId}::uuid
+      DELETE FROM document_embeddings WHERE club_id = ${clubId}
     `;
 
     // 2. Delete bookings for imported sessions
     const bookingsDeleted = await prisma.$executeRaw`
       DELETE FROM play_session_bookings WHERE "sessionId" IN (
-        SELECT id FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+        SELECT id FROM play_sessions WHERE "clubId" = ${clubId}
       )
     `;
 
     // 3. Delete sessions
     const sessionsDeleted = await prisma.$executeRaw`
-      DELETE FROM play_sessions WHERE "clubId" = ${clubId}::uuid
+      DELETE FROM play_sessions WHERE "clubId" = ${clubId}
     `;
 
     // 4. Delete health snapshots
     const healthDeleted = await prisma.$executeRaw`
-      DELETE FROM member_health_snapshots WHERE club_id = ${clubId}::uuid
+      DELETE FROM member_health_snapshots WHERE club_id = ${clubId}
     `;
 
     // 5. Delete placeholder users created by import (and their club follower records)
     const followersDeleted = await prisma.$executeRaw`
       DELETE FROM club_followers
-      WHERE club_id = ${clubId}::uuid
+      WHERE club_id = ${clubId}
         AND user_id IN (SELECT id FROM users WHERE email LIKE '%@placeholder.iqsport.ai')
     `;
 
     // 6. Delete AI conversations
     await prisma.$executeRaw`
       DELETE FROM ai_messages WHERE conversation_id IN (
-        SELECT id FROM ai_conversations WHERE club_id = ${clubId}::uuid
+        SELECT id FROM ai_conversations WHERE club_id = ${clubId}
       )
     `.catch(() => 0);
     await prisma.$executeRaw`
-      DELETE FROM ai_conversations WHERE club_id = ${clubId}::uuid
+      DELETE FROM ai_conversations WHERE club_id = ${clubId}
     `.catch(() => 0);
 
     // 7. Delete AI recommendation logs
     await prisma.$executeRaw`
-      DELETE FROM ai_recommendation_logs WHERE "clubId" = ${clubId}::uuid
+      DELETE FROM ai_recommendation_logs WHERE "clubId" = ${clubId}
     `.catch(() => 0);
 
     console.log(`[Delete Import] Club ${clubId}: ${sessionsDeleted} sessions, ${bookingsDeleted} bookings, ${embeddingsDeleted} embeddings, ${healthDeleted} health, ${followersDeleted} placeholder users deleted`);

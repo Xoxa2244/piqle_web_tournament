@@ -411,7 +411,7 @@ export function createChatTools(clubId: string) {
           const rows = await prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
             SELECT metadata->>'membershipStatus' as status, count(*) as cnt
             FROM document_embeddings
-            WHERE club_id = ${clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
             GROUP BY metadata->>'membershipStatus'
           `
           const breakdown: Record<string, number> = {}
@@ -421,7 +421,7 @@ export function createChatTools(clubId: string) {
           const types = await prisma.$queryRaw<Array<{ membership: string; cnt: bigint }>>`
             SELECT metadata->>'membership' as membership, count(*) as cnt
             FROM document_embeddings
-            WHERE club_id = ${clubId}::uuid AND content_type = 'member' AND source_table = 'csv_import'
+            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
             AND metadata->>'membershipStatus' = 'Currently Active'
             GROUP BY metadata->>'membership'
             ORDER BY cnt DESC

@@ -352,7 +352,7 @@ export async function getSlotFillerRecommendationsCsv(
   try {
     const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
       SELECT metadata FROM document_embeddings
-      WHERE club_id = ${clubId}::uuid
+      WHERE club_id = ${clubId}
         AND content_type = 'session'
         AND source_table = 'csv_import'
     `
@@ -742,7 +742,7 @@ async function buildCsvReactivationData(
   try {
     const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
       SELECT metadata FROM document_embeddings
-      WHERE club_id = ${clubId}::uuid
+      WHERE club_id = ${clubId}
         AND content_type = 'session'
         AND source_table = 'csv_import'
     `
@@ -1591,7 +1591,7 @@ async function buildCsvEventData(
   try {
     const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
       SELECT metadata FROM document_embeddings
-      WHERE club_id = ${clubId}::uuid
+      WHERE club_id = ${clubId}
         AND content_type = 'session'
         AND source_table = 'csv_import'
     `

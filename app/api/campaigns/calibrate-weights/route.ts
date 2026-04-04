@@ -63,14 +63,14 @@ async function calibrateWeights() {
         (SELECT COUNT(*) FROM play_session_bookings b
          JOIN play_sessions ps ON ps.id = b."sessionId"
          WHERE b."userId" = cf.user_id
-           AND ps."clubId" = $1::uuid
+           AND ps."clubId" = $1
            AND b.status = 'CONFIRMED'
            AND b."bookedAt" >= NOW() - INTERVAL '30 days') as bookings_last_30d,
         -- Booking activity 30-60 days ago (baseline)
         (SELECT COUNT(*) FROM play_session_bookings b
          JOIN play_sessions ps ON ps.id = b."sessionId"
          WHERE b."userId" = cf.user_id
-           AND ps."clubId" = $1::uuid
+           AND ps."clubId" = $1
            AND b.status = 'CONFIRMED'
            AND b."bookedAt" >= NOW() - INTERVAL '60 days'
            AND b."bookedAt" < NOW() - INTERVAL '30 days') as bookings_prev_30d,
@@ -79,23 +79,23 @@ async function calibrateWeights() {
          FROM play_session_bookings b
          JOIN play_sessions ps ON ps.id = b."sessionId"
          WHERE b."userId" = cf.user_id
-           AND ps."clubId" = $1::uuid
+           AND ps."clubId" = $1
            AND b.status = 'CONFIRMED') as days_since_last,
         -- No-show count
         (SELECT COUNT(*) FROM play_session_bookings b
          JOIN play_sessions ps ON ps.id = b."sessionId"
          WHERE b."userId" = cf.user_id
-           AND ps."clubId" = $1::uuid
+           AND ps."clubId" = $1
            AND b.status = 'NO_SHOW'
            AND b."bookedAt" >= NOW() - INTERVAL '90 days') as no_show_count,
         -- Total bookings
         (SELECT COUNT(*) FROM play_session_bookings b
          JOIN play_sessions ps ON ps.id = b."sessionId"
          WHERE b."userId" = cf.user_id
-           AND ps."clubId" = $1::uuid
+           AND ps."clubId" = $1
            AND b.status = 'CONFIRMED') as total_bookings
       FROM club_followers cf
-      WHERE cf.club_id = $1::uuid
+      WHERE cf.club_id = $1
     `, clubId)
 
     if (members.length < 50) continue // Need enough data
@@ -256,7 +256,7 @@ async function calibrateWeights() {
           '{calibratedWeights}',
           $2::jsonb
         )
-        WHERE "clubId" = $1::uuid
+        WHERE "clubId" = $1
       `, clubId, JSON.stringify(newWeights))
     } catch (err) {
       log.warn(`[Calibrate] Failed to save weights for club ${clubId}:`, (err as Error).message?.slice(0, 80))

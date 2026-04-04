@@ -40,7 +40,7 @@ export async function retrieveContext(
     const analyticsSql = `SELECT id::text, content, content_type, metadata, source_id,
                 (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
          FROM document_embeddings
-         WHERE club_id = '${clubId}'::uuid
+         WHERE club_id = '${clubId}'
            AND source_id LIKE 'analytics-%'
          ORDER BY embedding <=> '${embeddingStr}'::vector`;
 
@@ -57,7 +57,7 @@ export async function retrieveContext(
       const similaritySql = `SELECT id::text, content, content_type, metadata, source_id,
                 (1 - (embedding <=> '${embeddingStr}'::vector))::float as similarity
            FROM document_embeddings
-           WHERE club_id = '${clubId}'::uuid
+           WHERE club_id = '${clubId}'
              ${excludeAnalytics}
              ${contentTypeFilter}
            ORDER BY embedding <=> '${embeddingStr}'::vector
@@ -85,7 +85,7 @@ export async function retrieveContext(
       console.log('[RAG] Attempting fallback: direct content fetch without similarity');
       const fallbackSql = `SELECT id::text, content, content_type, metadata
          FROM document_embeddings
-         WHERE club_id = '${clubId}'::uuid
+         WHERE club_id = '${clubId}'
          ORDER BY created_at DESC
          LIMIT ${limit}`;
       const fallbackRows: { id: string; content: string; content_type: string; metadata: any }[] =

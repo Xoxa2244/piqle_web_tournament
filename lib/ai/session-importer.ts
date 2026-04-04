@@ -241,7 +241,7 @@ export async function importSessionsToDB(
     batch.forEach((row, j) => {
       const offset = j * 14
       valuesClauses.push(
-        `($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13}::float, $${offset + 14}::text)`
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}::timestamp, $${offset + 6}, $${offset + 7}, $${offset + 8}::"PlaySessionFormat", $${offset + 9}::"PlaySessionSkillLevel", $${offset + 10}::int, $${offset + 11}::int, $${offset + 12}::"PlaySessionStatus", $${offset + 13}::float, $${offset + 14}::text)`
       )
       params.push(
         row.id,
@@ -312,7 +312,7 @@ export async function importSessionsToDB(
       batch.forEach((b, j) => {
         const offset = j * 4
         valuesClauses.push(
-          `(gen_random_uuid(), $${offset + 1}::uuid, $${offset + 2}, $${offset + 3}::"BookingStatus", $${offset + 4}::timestamp)`
+          `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}::"BookingStatus", $${offset + 4}::timestamp)`
         )
         params.push(b.sessionId, b.userId, b.status, b.bookedAt)
       })
@@ -371,7 +371,7 @@ export async function importSessionsToDB(
 
       const hOffset = healthBatch.length
       healthValues.push(
-        `(gen_random_uuid(), $${hOffset + 1}::uuid, $${hOffset + 2}, $${hOffset + 3}::int, $${hOffset + 4}, $${hOffset + 5}, $${hOffset + 6}::jsonb, $${hOffset + 7}::timestamp)`
+        `(gen_random_uuid(), $${hOffset + 1}, $${hOffset + 2}, $${hOffset + 3}::int, $${hOffset + 4}, $${hOffset + 5}, $${hOffset + 6}::jsonb, $${hOffset + 7}::timestamp)`
       )
       healthBatch.push(
         clubId,
@@ -504,7 +504,7 @@ export async function rematchSessionBookings(
       batch.forEach((b, j) => {
         const offset = j * 4
         valuesClauses.push(
-          `(gen_random_uuid(), $${offset + 1}::uuid, $${offset + 2}, $${offset + 3}::"BookingStatus", $${offset + 4}::timestamp)`
+          `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}::"BookingStatus", $${offset + 4}::timestamp)`
         )
         params.push(b.sessionId, b.userId, b.status, b.bookedAt)
       })

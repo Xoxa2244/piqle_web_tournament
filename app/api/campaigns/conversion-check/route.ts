@@ -82,7 +82,7 @@ async function checkConversions() {
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
       WHERE b."userId" = $1
-        AND ps."clubId" = $2::uuid
+        AND ps."clubId" = $2
         AND b.status = 'CONFIRMED'
         AND b."bookedAt" > $3
         AND b."bookedAt" <= $4
