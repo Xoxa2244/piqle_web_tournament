@@ -297,7 +297,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
           /* ── Connected View ── */
           <div>
             {/* Syncing — Brain Animation */}
-            {connStatus === 'syncing' && (() => {
+            {(connStatus === 'syncing' || isSyncing) && (() => {
               const progress = ('lastSyncResult' in status ? status.lastSyncResult : null) as any
               const percent = progress?.percent || 0
               const statusText = progress?.status || 'Syncing...'
@@ -320,7 +320,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
             })()}
 
             {/* Sync Stats (show when not syncing) */}
-            {connStatus !== 'syncing' && 'lastSyncResult' in status && status.lastSyncResult && !(status.lastSyncResult as any)?.phase && (
+            {!isSyncing && connStatus !== 'syncing' && 'lastSyncResult' in status && status.lastSyncResult && !(status.lastSyncResult as any)?.phase && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
                 <StatCard icon={Users} label="Members" data={status.lastSyncResult?.members} color="#6366F1" isDark={isDark} />
                 <StatCard icon={LayoutGrid} label="Sessions" data={status.lastSyncResult?.sessions} color="#3B82F6" isDark={isDark} />
@@ -353,9 +353,10 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
               <IQButton
                 onClick={() => {
                   const hasEverSynced = 'lastSyncAt' in status && status.lastSyncAt
+                  setIsSyncing(true) // Show brain immediately
                   syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
                 }}
-                disabled={syncMutation.isPending || connStatus === 'syncing'}
+                disabled={syncMutation.isPending || connStatus === 'syncing' || isSyncing}
                 variant="primary"
                 loading={syncMutation.isPending || connStatus === 'syncing'}
                 icon={<RefreshCw size={15} />}
