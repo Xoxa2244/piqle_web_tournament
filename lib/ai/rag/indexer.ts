@@ -138,9 +138,16 @@ export async function indexMemberPatterns(clubId: string): Promise<number> {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  // Get all club members
+  // Get only active members (with at least 1 booking) — skip 10K+ dormant
+  const activeUserIds = await prisma.playSessionBooking.findMany({
+    where: { playSession: { clubId }, status: 'CONFIRMED' },
+    select: { userId: true },
+    distinct: ['userId'],
+  })
+  const activeSet = new Set(activeUserIds.map(r => r.userId))
+
   const followers = await prisma.clubFollower.findMany({
-    where: { clubId },
+    where: { clubId, userId: { in: Array.from(activeSet) } },
     include: {
       user: {
         include: {
