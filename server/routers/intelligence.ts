@@ -1696,8 +1696,16 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       try {
-        // Get all club members with booking history and preferences
-        const followers = await ctx.prisma.clubFollower.findMany({
+        // Get only club members who have at least 1 booking (skip dormant — 10K+ members with 0 bookings)
+        const activeUserIds = await ctx.prisma.$queryRawUnsafe<Array<{ userId: string }>>(`
+          SELECT DISTINCT b."userId"
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE ps."clubId" = $1::uuid AND b.status = 'CONFIRMED'
+        `, input.clubId)
+        const activeSet = new Set(activeUserIds.map(r => r.userId))
+
+        const allFollowers = await ctx.prisma.clubFollower.findMany({
           where: { clubId: input.clubId },
           include: {
             user: {
@@ -1709,6 +1717,9 @@ export const intelligenceRouter = createTRPCRouter({
             },
           },
         })
+        // Only process members with bookings for health scoring
+        const followers = allFollowers.filter(f => activeSet.has(f.userId))
+        const dormantCount = allFollowers.length - followers.length
 
         // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
         const memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
@@ -1899,16 +1910,12 @@ export const intelligenceRouter = createTRPCRouter({
           m.coPlayerActivity = coPlayerMap.get(m.member.id) || undefined
         }
 
-        // Separate dormant members (0 bookings ever) — they're not at-risk, just never played
-        const activeMemberInputs = memberInputs.filter(m => m.history.totalBookings > 0)
-        const dormantCount = memberInputs.length - activeMemberInputs.length
-
         const { generateMemberHealth } = await import('@/lib/ai/member-health')
-        const result = generateMemberHealth(activeMemberInputs)
+        const result = generateMemberHealth(memberInputs)
 
-        // Add dormant to summary (separate from health categories)
+        // Add dormant count (followers with 0 bookings — filtered upfront for performance)
         result.summary.dormant = dormantCount
-        result.summary.total = memberInputs.length // total includes dormant
+        result.summary.total = allFollowers.length
 
         return result
       } catch (err) {
