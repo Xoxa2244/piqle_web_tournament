@@ -1701,7 +1701,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT DISTINCT b."userId"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE ps."clubId" = $1::uuid AND b.status = 'CONFIRMED'
+          WHERE ps."clubId" = $1 AND b.status = 'CONFIRMED'
         `, input.clubId)
         const activeSet = new Set(activeUserIds.map(r => r.userId))
 
