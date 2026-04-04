@@ -121,27 +121,110 @@ async function syncMembersWithProgress(
   connectorId: string,
   opts: { updatedFrom?: string } = {}
 ): Promise<{ created: number; updated: number; matched: number; errors: number }> {
-  // Paginate manually to track progress
   let page = 1
   let created = 0, updated = 0, matched = 0, errors = 0
   let hasMore = true
   let totalCount = 0
+
+  // Pre-load existing email→userId map for fast lookup (avoid N+1)
+  const existingUsers = await prisma.user.findMany({
+    where: { email: { not: '' } },
+    select: { id: true, email: true },
+  })
+  const emailToUserId = new Map(existingUsers.map(u => [u.email!.toLowerCase(), u.id]))
+
+  // Pre-load existing mappings
+  const existingMappings = await prisma.externalIdMapping.findMany({
+    where: { partnerId, entityType: ExternalEntityType.MEMBER },
+    select: { externalId: true, internalId: true },
+  })
+  const extIdToUserId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
 
   while (hasMore) {
     const result = await client.getMembers({ page, pageSize: 100, updatedFrom: opts.updatedFrom })
     if (page === 1) totalCount = result.totalCount
     const members = result.items
 
-    for (const member of members) {
-      const r = await syncSingleMember(member, clubId, partnerId)
-      if (r === 'created') created++
-      else if (r === 'updated') updated++
-      else if (r === 'matched') matched++
-      else errors++
+    // Process batch of 100 members with parallel DB operations
+    const batchPromises = members.map(async (member) => {
+      try {
+        if (!member.email) return 'error'
+        const email = member.email.toLowerCase().trim()
+        const externalId = member.organizationMemberId
+        const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || null
+
+        let userId = extIdToUserId.get(externalId) || emailToUserId.get(email) || null
+        let resultType: 'created' | 'updated' | 'matched' = userId ? (extIdToUserId.has(externalId) ? 'updated' : 'matched') : 'created'
+
+        const duprSingles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('singles'))?.ratingValue
+        const duprDoubles = member.ratings?.find((r: any) => r.ratingTypeName?.toLowerCase().includes('doubles'))?.ratingValue
+
+        let dateOfBirth: Date | undefined
+        if (member.dateOfBirth) {
+          try {
+            const parsed = new Date(member.dateOfBirth)
+            if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) dateOfBirth = parsed
+          } catch {}
+        }
+
+        const userData = {
+          email,
+          name: name || undefined,
+          phone: member.phonenumber || undefined,
+          gender: member.gender === 'Male' ? 'M' as const : member.gender === 'Female' ? 'F' as const : undefined,
+          city: member.city || undefined,
+          ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
+          ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
+          ...(dateOfBirth ? { dateOfBirth } : {}),
+          ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+          ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
+          ...(member.zipCode ? { zipCode: member.zipCode } : {}),
+          ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
+        }
+
+        if (userId) {
+          await prisma.user.update({ where: { id: userId }, data: userData }).catch(() => {})
+        } else {
+          const newUser = await prisma.user.create({ data: userData })
+          userId = newUser.id
+          emailToUserId.set(email, userId)
+        }
+
+        // Batch: mapping + follower (parallel)
+        await Promise.all([
+          !extIdToUserId.has(externalId) ? prisma.externalIdMapping.upsert({
+            where: { partnerId_entityType_externalId: { partnerId, entityType: ExternalEntityType.MEMBER, externalId } },
+            update: { internalId: userId },
+            create: { partnerId, entityType: ExternalEntityType.MEMBER, externalId, internalId: userId },
+          }).then(() => extIdToUserId.set(externalId, userId)) : Promise.resolve(),
+          prisma.clubFollower.upsert({
+            where: { clubId_userId: { clubId, userId } },
+            create: { clubId, userId },
+            update: {},
+          }),
+        ]).catch(() => {})
+
+        return resultType
+      } catch {
+        return 'error'
+      }
+    })
+
+    // Run batch in parallel (10 concurrent)
+    const CONCURRENCY = 10
+    for (let i = 0; i < batchPromises.length; i += CONCURRENCY) {
+      const batch = batchPromises.slice(i, i + CONCURRENCY)
+      const results = await Promise.all(batch)
+      for (const r of results) {
+        if (r === 'created') created++
+        else if (r === 'updated') updated++
+        else if (r === 'matched') matched++
+        else errors++
+      }
     }
 
     const synced = created + updated + matched + errors
-    const percent = Math.round(10 + (synced / Math.max(totalCount, 1)) * 60) // 10-70% range
+    const percent = Math.round(10 + (synced / Math.max(totalCount, 1)) * 60)
     await prisma.clubConnector.update({
       where: { id: connectorId },
       data: { lastSyncResult: { phase: 'members', percent, status: `Syncing members... ${synced.toLocaleString()} / ${totalCount.toLocaleString()}`, membersSynced: synced, membersTotal: totalCount, courtsDone: true } as any },
