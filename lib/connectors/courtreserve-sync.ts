@@ -388,7 +388,7 @@ async function upsertReservation(
     skillLevel: 'ALL_LEVELS' as any,
     maxPlayers: Math.max(memberCount, 4),
     registeredCount: isCancelled ? 0 : memberCount,
-    status: isCancelled ? 'CANCELLED' as any : 'SCHEDULED' as any,
+    status: isCancelled ? 'CANCELLED' as any : (date < new Date() ? 'COMPLETED' as any : 'SCHEDULED' as any),
   }
 
   if (sessionId) {
@@ -435,6 +435,149 @@ async function upsertReservation(
   }
 
   return { sessionCreated, bookingsCreated, bookingsUpdated }
+}
+
+/** Sync event registrations → PlaySessions + PlaySessionBookings
+ *  This is the PRIMARY data source for pickleball clubs (Open Play, Clinics, Leagues).
+ *  Reservations (above) are only for private court bookings. */
+async function syncEventRegistrations(
+  client: CourtReserveClient,
+  clubId: string,
+  partnerId: string,
+  from: Date,
+  to: Date,
+  connectorId: string,
+): Promise<{ sessions: { created: number; updated: number; errors: number }; bookings: { created: number; updated: number; errors: number } }> {
+  const sessionsResult = { created: 0, updated: 0, errors: 0 }
+  const bookingsResult = { created: 0, updated: 0, errors: 0 }
+
+  // Pre-load email → userId map
+  const followers = await prisma.clubFollower.findMany({
+    where: { clubId },
+    include: { user: { select: { id: true, email: true } } },
+  })
+  const emailToUserId = new Map(followers.filter(f => f.user.email).map(f => [f.user.email!.toLowerCase(), f.userId]))
+
+  // Pre-load existing event session mappings
+  const existingMappings = await prisma.externalIdMapping.findMany({
+    where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
+    select: { externalId: true, internalId: true },
+  })
+  const eventIdToSessionId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
+
+  // Fetch in 31-day windows
+  const windows: { from: string; to: string }[] = []
+  let current = new Date(from)
+  while (current < to) {
+    const windowEnd = new Date(current)
+    windowEnd.setDate(windowEnd.getDate() + 30)
+    const end = windowEnd > to ? to : windowEnd
+    windows.push({ from: current.toISOString().split('T')[0], to: end.toISOString().split('T')[0] })
+    current = new Date(end)
+    current.setDate(current.getDate() + 1)
+  }
+
+  for (const window of windows) {
+    try {
+      const data = await client.request<any[]>(
+        '/api/v1/eventregistrationreport/listactive',
+        { eventDateFrom: window.from, eventDateTo: window.to }
+      )
+      if (!Array.isArray(data) || data.length === 0) continue
+
+      // Group by EventDateId (unique session instance)
+      const grouped = new Map<string, any[]>()
+      for (const reg of data) {
+        const key = `evt_${reg.EventDateId || reg.EventId}`
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key)!.push(reg)
+      }
+
+      // Process each session group — 5 concurrent
+      const entries = Array.from(grouped.entries())
+      const BATCH = 5
+      for (let i = 0; i < entries.length; i += BATCH) {
+        await Promise.all(entries.slice(i, i + BATCH).map(async ([eventKey, regs]) => {
+          try {
+            const first = regs[0]
+            const startTime = first.StartTime?.includes('T') ? first.StartTime.split('T')[1]?.slice(0, 5) : '00:00'
+            const endTime = first.EndTime?.includes('T') ? first.EndTime.split('T')[1]?.slice(0, 5) : '01:00'
+            const date = new Date(first.StartTime || window.from)
+            const activeRegs = regs.filter((r: any) => !r.CancelledOnUtc)
+            const format = mapFormat(first.EventCategoryName || first.EventName || '')
+
+            let sessionId = eventIdToSessionId.get(eventKey)
+            const sessionData = {
+              clubId,
+              title: first.EventName || 'Event',
+              date,
+              startTime,
+              endTime,
+              format: format as any,
+              skillLevel: mapSkillLevelFromEvent(first.EventCategoryName || first.EventName || '') as any,
+              maxPlayers: Math.max(activeRegs.length, 4),
+              registeredCount: activeRegs.length,
+              status: (date < new Date() ? 'COMPLETED' : 'SCHEDULED') as any,
+              pricePerSlot: first.PriceToPay || null,
+            }
+
+            if (sessionId) {
+              await prisma.playSession.update({ where: { id: sessionId }, data: sessionData })
+              sessionsResult.updated++
+            } else {
+              const session = await prisma.playSession.create({ data: sessionData })
+              sessionId = session.id
+              await setMapping(partnerId, ExternalEntityType.PLAY_SESSION, eventKey, sessionId)
+              eventIdToSessionId.set(eventKey, sessionId)
+              sessionsResult.created++
+            }
+
+            // Create bookings — batch upsert
+            for (const reg of regs) {
+              const email = (reg.Email || '').toLowerCase().trim()
+              const userId = emailToUserId.get(email)
+              if (!userId || !sessionId) continue
+
+              const isCancelledReg = !!reg.CancelledOnUtc
+              await prisma.playSessionBooking.upsert({
+                where: { sessionId_userId: { sessionId, userId } },
+                update: { status: isCancelledReg ? 'CANCELLED' : 'CONFIRMED' },
+                create: {
+                  sessionId,
+                  userId,
+                  status: isCancelledReg ? 'CANCELLED' : 'CONFIRMED',
+                  bookedAt: reg.SignedUpOnUtc ? new Date(reg.SignedUpOnUtc) : date,
+                  ...(isCancelledReg && reg.CancelledOnUtc ? { cancelledAt: new Date(reg.CancelledOnUtc) } : {}),
+                },
+              }).catch(() => {})
+              bookingsResult.created++
+            }
+          } catch {
+            sessionsResult.errors++
+          }
+        }))
+      }
+
+      // Update progress
+      await prisma.clubConnector.update({
+        where: { id: connectorId },
+        data: { lastSyncResult: { phase: 'events', percent: 82, status: `Syncing events... ${window.from}`, courtsDone: true, membersDone: true } as any },
+      }).catch(() => {})
+
+    } catch (err) {
+      console.error(`[CR Sync] Events ${window.from}-${window.to} error:`, (err as Error).message?.slice(0, 100))
+    }
+  }
+
+  return { sessions: sessionsResult, bookings: bookingsResult }
+}
+
+function mapSkillLevelFromEvent(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('beginner') || lower.includes('casual') || lower.includes('2.0') || lower.includes('2.5')) return 'BEGINNER'
+  if (lower.includes('intermediate') || lower.includes('3.0') || lower.includes('3.5')) return 'INTERMEDIATE'
+  if (lower.includes('advanced') || lower.includes('competitive') || lower.includes('4.0') || lower.includes('4.5') || lower.includes('5.0')) return 'ADVANCED'
+  return 'ALL_LEVELS'
 }
 
 // ── Main Sync Orchestrator ──
@@ -553,12 +696,22 @@ export async function runCourtReserveSync(
       }
     }
 
-    // 3. Sync reservations → sessions + bookings
+    // 3. Sync reservations (court bookings) → sessions + bookings
     console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
-    await updateProgress({ phase: 'sessions', percent: 75, status: 'Syncing sessions & bookings...', courtsDone: true, membersDone: true, membersTotal: membersResult.created + membersResult.updated + membersResult.matched })
+    await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true })
     const { sessions: sessionsResult, bookings: bookingsResult } = await syncReservations(
       client, clubId, partnerId, from, now
     )
+
+    // 4. Sync event registrations (Open Play, Clinics, Leagues — PRIMARY data source)
+    console.log(`[CR Sync] ${clubId}: syncing event registrations (${daysBack} days)...`)
+    await updateProgress({ phase: 'events', percent: 78, status: 'Syncing events & programs...', courtsDone: true, membersDone: true })
+    const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, now, connectorId)
+    sessionsResult.created += eventResult.sessions.created
+    sessionsResult.updated += eventResult.sessions.updated
+    sessionsResult.errors += eventResult.sessions.errors
+    bookingsResult.created += eventResult.bookings.created
+    bookingsResult.errors += eventResult.bookings.errors
 
     // Get cumulative totals from DB for accurate final display
     const totalMembers = await prisma.clubFollower.count({ where: { clubId } })

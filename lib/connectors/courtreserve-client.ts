@@ -36,7 +36,7 @@ export class CourtReserveClient {
 
   // ── Private helpers ──
 
-  private async request<T>(path: string, params?: Record<string, string>): Promise<T> {
+  async request<T>(path: string, params?: Record<string, string>): Promise<T> {
     const fullUrl = this.baseUrl + (path.startsWith('/') ? path : '/' + path)
     const url = new URL(fullUrl)
     if (params) {
