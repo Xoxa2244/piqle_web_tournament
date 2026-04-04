@@ -523,7 +523,26 @@ export async function runCourtReserveSync(
 
     // If members not done — return partial result, UI will call again
     if (!membersChunk.done) {
-      const partialResult: SyncResult & { incomplete: boolean } = {
+      const followerCount = await prisma.clubFollower.count({ where: { clubId } })
+      const percent = Math.round(10 + (followerCount / Math.max(membersChunk.totalCount, 1)) * 60)
+      await prisma.clubConnector.update({
+        where: { id: connectorId },
+        data: {
+          status: 'syncing',
+          lastSyncResult: {
+            phase: 'members',
+            incomplete: true,
+            status: `Syncing members... ${followerCount.toLocaleString()} / ${membersChunk.totalCount.toLocaleString()}`,
+            membersSynced: followerCount,
+            membersTotal: membersChunk.totalCount,
+            courtsDone: true,
+            percent,
+          } as any,
+          // Do NOT set lastSyncAt — so next call knows it's still initial
+        },
+      }).catch(() => {})
+      console.log(`[CR Sync] ${clubId}: members chunk done (${followerCount}/${membersChunk.totalCount}), will continue on next call`)
+      return {
         courts: courtsResult,
         members: membersResult,
         sessions: { created: 0, updated: 0, errors: 0 },
@@ -532,13 +551,6 @@ export async function runCourtReserveSync(
         syncedAt: now.toISOString(),
         incomplete: true,
       }
-      // Keep status as syncing — UI will auto-retry
-      await prisma.clubConnector.update({
-        where: { id: connectorId },
-        data: { lastSyncResult: { ...partialResult, phase: 'members', status: `Syncing members... will continue automatically`, membersSynced: await prisma.clubFollower.count({ where: { clubId } }), membersTotal: membersChunk.totalCount, courtsDone: true, percent: Math.round(10 + (await prisma.clubFollower.count({ where: { clubId } }) / Math.max(membersChunk.totalCount, 1)) * 60) } as any },
-      }).catch(() => {})
-      console.log(`[CR Sync] ${clubId}: members chunk done (incomplete), will continue on next call`)
-      return partialResult
     }
 
     // 3. Sync reservations → sessions + bookings

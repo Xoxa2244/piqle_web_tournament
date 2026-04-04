@@ -155,8 +155,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
       if (data && 'incomplete' in data && (data as any).incomplete) {
         console.log('[Sync] Chunk complete, auto-continuing...')
         setTimeout(() => {
-          const hasEverSynced = status && 'lastSyncAt' in status && status.lastSyncAt
-          syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+          syncMutation.mutate({ clubId, isInitial: true }) // Always initial during chunked sync
         }, 1000)
       } else {
         setIsSyncing(false)
@@ -169,8 +168,7 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
           const s = status && 'status' in status ? status.status : null
           if (s === 'syncing') {
             console.log('[Sync] Timeout but still syncing, auto-retrying...')
-            const hasEverSynced = status && 'lastSyncAt' in status && status.lastSyncAt
-            syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+            syncMutation.mutate({ clubId, isInitial: true })
           } else {
             setIsSyncing(false)
           }
@@ -379,9 +377,12 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <IQButton
                 onClick={() => {
-                  const hasEverSynced = 'lastSyncAt' in status && status.lastSyncAt
-                  setIsSyncing(true) // Show brain immediately
-                  syncMutation.mutate({ clubId, isInitial: !hasEverSynced })
+                  // Always use isInitial=true until we have a successful full sync
+                  const progress = 'lastSyncResult' in status ? status.lastSyncResult as any : null
+                  const isIncomplete = progress?.incomplete || progress?.phase === 'members'
+                  const hasEverFullySynced = 'lastSyncAt' in status && status.lastSyncAt && !isIncomplete
+                  setIsSyncing(true)
+                  syncMutation.mutate({ clubId, isInitial: !hasEverFullySynced })
                 }}
                 disabled={syncMutation.isPending || connStatus === 'syncing' || isSyncing}
                 variant="primary"
