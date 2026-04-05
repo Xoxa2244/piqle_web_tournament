@@ -125,10 +125,10 @@ async function syncMembersWithProgress(
   let page = 1
   let created = 0, updated = 0, matched = 0, errors = 0
   let hasMore = true
-  let totalCount = 0
 
   // Resume from where we left off — count existing followers as starting point
   const existingCount = await prisma.clubFollower.count({ where: { clubId } })
+  let totalCount = existingCount // Start with known count, API will update
   if (existingCount > 0) {
     page = Math.floor(existingCount / 100) + 1 // Resume from approximate page
   }
