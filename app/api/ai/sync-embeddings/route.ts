@@ -12,15 +12,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Get all clubs that have active sessions or members
+    // Get all clubs with connected connectors or any sessions
     const clubs = await prisma.club.findMany({
       where: {
-        playSessions: {
-          some: {
-            status: 'SCHEDULED',
-            date: { gte: new Date() },
-          },
-        },
+        OR: [
+          { connectors: { some: { status: 'connected' } } },
+          { playSessions: { some: {} } },
+        ],
       },
       select: { id: true, name: true },
     });
