@@ -44,6 +44,7 @@ export default function CohortsIQ() {
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null)
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
+  const { data: coverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
   const deleteMutation = trpc.intelligence.deleteCohort.useMutation({ onSuccess: () => refetch() })
 
   return (
@@ -96,6 +97,31 @@ export default function CohortsIQ() {
           />
         )}
       </AnimatePresence>
+
+      {/* Data Coverage Banner */}
+      {coverage && !showCreate && !selectedCohortId && (
+        <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Filter className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+            <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
+              Data Coverage — {coverage.totalActive.toLocaleString()} active members
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(coverage.fields).map(([key, val]: [string, any]) => {
+              const label = FILTER_FIELDS.find(f => f.key === key)?.label || key
+              const color = val.percent >= 80 ? '#10B981' : val.percent >= 30 ? '#F59E0B' : '#EF4444'
+              return (
+                <span key={key} className="text-[11px] px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                  style={{ background: `${color}15`, color, fontWeight: 600 }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+                  {label}: {val.percent}%
+                </span>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Cohort list */}
       {!showCreate && !selectedCohortId && (
