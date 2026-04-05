@@ -149,14 +149,20 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
   })
 
   const syncMutation = trpc.connectors.syncNow.useMutation({
-    onSuccess: () => {
-      // Sync is now server-side — just start polling
-      setIsSyncing(true)
+    onSuccess: (data) => {
       utils.connectors.getStatus.invalidate({ clubId })
+      // Auto-retry if sync returned incomplete (chunked)
+      if (data && (data as any).incomplete) {
+        console.log('[Sync] Chunk done, continuing in 2s...')
+        setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 2000)
+      } else {
+        setIsSyncing(false)
+      }
     },
-    onError: (err) => {
-      console.error('[Sync] Failed to queue:', err.message)
-      setIsSyncing(false)
+    onError: () => {
+      // Timeout or error — retry after delay
+      console.log('[Sync] Timeout, retrying in 3s...')
+      setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 3000)
     },
   })
 
