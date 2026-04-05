@@ -161,19 +161,12 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
         setIsSyncing(false)
       }
     },
-    onError: () => {
-      // On timeout error, check if sync is still running and retry
+    onError: (err) => {
+      // On timeout/error, always retry — cron will clean up if truly broken
+      console.log('[Sync] Error, auto-retrying in 3s...', err.message?.slice(0, 80))
       setTimeout(() => {
-        utils.connectors.getStatus.invalidate({ clubId }).then(() => {
-          const s = status && 'status' in status ? status.status : null
-          if (s === 'syncing') {
-            console.log('[Sync] Timeout but still syncing, auto-retrying...')
-            syncMutation.mutate({ clubId, isInitial: true })
-          } else {
-            setIsSyncing(false)
-          }
-        })
-      }, 2000)
+        syncMutation.mutate({ clubId, isInitial: true })
+      }, 3000)
     },
   })
 
