@@ -234,6 +234,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     }
 
     // 2. Save intelligence settings with defaults
+    console.log('[Onboarding] Step 2: saving settings', { clubId, software, crPlan, pricingModel, hasApiCreds: !!(crApiUsername && crApiPassword) })
     try {
       await saveMutation.mutateAsync({
         clubId,
@@ -256,6 +257,7 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           connectedSoftware: software || undefined,
         },
       })
+      console.log('[Onboarding] Step 2: settings saved OK')
     } catch (err) {
       console.error('[Onboarding] Settings save failed:', err)
       try {
@@ -268,8 +270,16 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     // 3a. Connect via API if Advanced+ plan selected
     // Same flow as shared CourtReserveConnector: connect → fire-and-forget sync → redirect
     // Dashboard will show sync progress via CourtReserveConnector polling
-    console.log('[Onboarding] Step 3a check:', { software, crPlan, crApiUsername: !!crApiUsername, crApiPassword: !!crApiPassword, clubId })
-    if (software === 'courtreserve' && crPlan === 'advanced' && crApiUsername && crApiPassword) {
+    const step3aConditions = {
+      software,
+      crPlan,
+      hasUsername: !!crApiUsername,
+      hasPassword: !!crApiPassword,
+      clubId,
+      willConnect: software === 'courtreserve' && crPlan === 'advanced' && !!crApiUsername && !!crApiPassword,
+    }
+    console.log('[Onboarding] Step 3a check:', JSON.stringify(step3aConditions))
+    if (step3aConditions.willConnect) {
       try {
         setImportStatus('Connecting to CourtReserve API...')
         setImportProgress(30)
@@ -372,7 +382,8 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       }
     }
 
-    // Done
+    // Done — reached end without connect or file import
+    console.log('[Onboarding] Reached end without connect/import. software:', software, 'hasAnyFile:', hasAnyFile)
     setImportProgress(100)
     setImportStatus('System ready')
     await new Promise(r => setTimeout(r, 2000))
