@@ -32,10 +32,11 @@ if (!process.env.NEXTAUTH_SECRET) {
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
+  session: { strategy: 'jwt' },
   debug: true,
   logger: {
     error(code, metadata) {
-      console.error('[NextAuth Error]', code, metadata)
+      console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
     },
     warn(code) {
       console.warn('[NextAuth Warn]', code)
@@ -246,10 +247,6 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
-  },
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 }
 
