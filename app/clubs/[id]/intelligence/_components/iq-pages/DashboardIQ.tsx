@@ -20,6 +20,7 @@ import { AILoadingAnimation } from "./AILoadingAnimation";
 import { MonthCalendar } from "../MonthCalendar";
 import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -721,9 +722,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const hasMembers = totalMembers > 0;
   const hasUploads = !!uploadHistoryData?.uploads?.length;
 
+  // Connector status for Quick Start + empty state
+  const connectorStatusQuery = trpc.connectors.getStatus.useQuery({ clubId }, { enabled: !!clubId });
+  const isConnected = connectorStatusQuery.data?.connected;
+
   const quickStartSteps = [
     { id: "settings", label: "Configure club settings", done: true, href: `/clubs/${clubId}/intelligence/settings`, icon: "⚙️" },
-    { id: "import", label: "Import session history", done: hasUploads || hasSessions, action: () => setImportModal("upload"), icon: "📊" },
+    { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions, href: `/clubs/${clubId}/intelligence/integrations`, icon: "🔗" },
     { id: "members", label: "Members detected", done: hasMembers, href: `/clubs/${clubId}/intelligence/members`, icon: "👥" },
     { id: "ai", label: "AI insights ready", done: hasRealData && hasSessions, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
   ];
@@ -836,7 +841,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               const Wrapper = s.href ? 'a' : 'button';
               const wrapperProps = s.href
                 ? { href: s.href } as any
-                : { onClick: s.action } as any;
+                : {} as any;
               return (
                 <Wrapper
                   key={s.id}
@@ -873,32 +878,23 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </motion.div>
       )}
 
-      {/* Empty state hero for clubs with no data */}
+      {/* Empty state — CourtReserve connection (same as Integrations) */}
       {!hasRealData && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="rounded-2xl p-10 text-center"
-          style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)" }}
         >
-          <div className="w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15))", border: "1px solid rgba(139,92,246,0.1)" }}>
-            <BarChart3 className="w-10 h-10" style={{ color: "#8B5CF6" }} />
+          <CourtReserveConnector clubId={clubId} compact />
+          <div className="text-center mt-4">
+            <button
+              onClick={() => setImportModal("upload")}
+              className="text-sm transition-all hover:opacity-80"
+              style={{ color: "var(--t3)", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+            >
+              Or import CSV / XLSX manually
+            </button>
           </div>
-          <h3 className="text-xl mb-2" style={{ fontWeight: 700, color: "var(--heading)" }}>Your dashboard is ready</h3>
-          <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
-            Import your session history to unlock AI-powered insights, revenue analytics, and member health tracking.
-          </p>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setImportModal("upload")}
-            className="inline-flex items-center gap-2 px-8 py-3 rounded-xl text-sm text-white"
-            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 20px rgba(139,92,246,0.3)" }}
-          >
-            <Upload className="w-5 h-5" /> Import CSV / XLSX
-          </motion.button>
         </motion.div>
       )}
 
