@@ -50,6 +50,10 @@
     {
       "path": "/api/ai/sync-embeddings",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/ai/enrich-members",
+      "schedule": "0 6 1 * *"
     }
   ]
 }
