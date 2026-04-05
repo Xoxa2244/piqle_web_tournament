@@ -729,7 +729,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   ];
   const quickStartProgress = quickStartSteps.filter(s => s.done).length;
   const isStillLoading = externalLoading || isPeriodLoading || periodQuery.isLoading;
-  const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length;
+  // Hide Quick Start if members exist (sync in progress or partially done)
+  const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length && !hasMembers;
 
   return (
     <motion.div
