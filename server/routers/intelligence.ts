@@ -82,11 +82,14 @@ function buildCohortWhereClause(filters: CohortFilter[]): string {
       case 'membershipStatus':
         return f.op === 'contains' ? `u.membership_status ILIKE '%' || ${val} || '%'` : `u.membership_status = ${val}`
       case 'skillLevel':
-        if (f.op === 'in' && Array.isArray(f.value)) {
-          const orClauses = f.value.map(v => `u.skill_level ILIKE '%${String(v).replace(/'/g, "''")}%'`).join(' OR ')
+        if (f.op === 'in') {
+          // value can be string "2.5-2.99" or array ["2.5-2.99", "3.0-3.49"]
+          const vals = Array.isArray(f.value) ? f.value : [String(f.value)]
+          const orClauses = vals.map(v => `u.skill_level ILIKE '%${String(v).replace(/'/g, "''")}%'`).join(' OR ')
           return `(${orClauses})`
         }
-        return f.op === 'contains' ? `u.skill_level ILIKE '%' || ${val} || '%'` : `u.skill_level = ${val}`
+        // For eq/contains, always use ILIKE to match partial skill_level strings
+        return `u.skill_level ILIKE '%' || ${val} || '%'`
       case 'zipCode':
         return `u.zip_code = ${val}`
       case 'city':
