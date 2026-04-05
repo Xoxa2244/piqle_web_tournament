@@ -2786,16 +2786,20 @@ export const intelligenceRouter = createTRPCRouter({
       sessions.forEach((s: any) => {
         const dayName = days[(s.date.getDay() + 6) % 7]
         const startH = parseInt(s.startTime?.split(':')[0] || '0')
+        const endH = parseInt(s.endTime?.split(':')[0] || '0') || startH + 1
 
-        let si = 0
-        for (let i = slotStartHours.length - 1; i >= 0; i--) {
-          if (startH >= slotStartHours[i]) { si = i; break }
-        }
-        const key = `${dayName}-${timeSlots[si]}`
-        if (slotData[key]) {
-          slotData[key].filled += s.registeredCount || 0
-          slotData[key].capacity += s.maxPlayers || 1
-          slotData[key].count++
+        // Fill ALL hours from start to end (e.g. 3PM-5PM fills 3PM and 4PM slots)
+        for (let h = startH; h < endH && h < 23; h++) {
+          let si = 0
+          for (let i = slotStartHours.length - 1; i >= 0; i--) {
+            if (h >= slotStartHours[i]) { si = i; break }
+          }
+          const key = `${dayName}-${timeSlots[si]}`
+          if (slotData[key]) {
+            slotData[key].filled += s.registeredCount || 0
+            slotData[key].capacity += s.maxPlayers || 1
+            slotData[key].count++
+          }
         }
       })
 
