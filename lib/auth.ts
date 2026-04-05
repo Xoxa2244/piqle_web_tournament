@@ -29,11 +29,28 @@ if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
 }
 
+const useSecure = process.env.NODE_ENV === 'production'
+const cookieDomain = process.env.NEXTAUTH_URL ? new URL(process.env.NEXTAUTH_URL).hostname : undefined
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
   debug: true,
-  useSecureCookies: process.env.NODE_ENV === 'production',
+  useSecureCookies: useSecure,
+  cookies: {
+    sessionToken: {
+      name: useSecure ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure, domain: undefined },
+    },
+    callbackUrl: {
+      name: useSecure ? '__Secure-next-auth.callback-url' : 'next-auth.callback-url',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure, domain: undefined },
+    },
+    csrfToken: {
+      name: useSecure ? '__Host-next-auth.csrf-token' : 'next-auth.csrf-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure },
+    },
+  },
   logger: {
     error(code, metadata) {
       console.error('[NextAuth Error]', code, metadata)
@@ -192,23 +209,27 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async signIn({ user, account }) {
-      if (user?.id) {
-        await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
+      try {
+        if (user?.id) {
+          await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
 
-        // Ensure emailVerified is set for OAuth users (Google etc.)
-        // Without this, returning OAuth users may get OAuthAccountNotLinked errors
-        if (account?.provider === 'google' && user.email) {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: String(user.id) },
-            select: { emailVerified: true },
-          })
-          if (dbUser && !dbUser.emailVerified) {
-            await prisma.user.update({
+          // Ensure emailVerified is set for OAuth users (Google etc.)
+          // Without this, returning OAuth users may get OAuthAccountNotLinked errors
+          if (account?.provider === 'google' && user.email) {
+            const dbUser = await prisma.user.findUnique({
               where: { id: String(user.id) },
-              data: { emailVerified: new Date() },
+              select: { emailVerified: true },
             })
+            if (dbUser && !dbUser.emailVerified) {
+              await prisma.user.update({
+                where: { id: String(user.id) },
+                data: { emailVerified: new Date() },
+              })
+            }
           }
         }
+      } catch (err) {
+        console.error('[NextAuth] signIn callback error (non-fatal):', err)
       }
       return true
     },
