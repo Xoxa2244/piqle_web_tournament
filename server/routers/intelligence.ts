@@ -4123,7 +4123,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_dupr: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
+      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
         WITH active AS (
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
@@ -4135,7 +4135,6 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_gender,
           SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dob,
           SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_skill,
-          SUM(CASE WHEN u.dupr_rating_doubles IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dupr,
           SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_membership,
           SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_city
         FROM active a
@@ -4149,7 +4148,6 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           age: { filled: Number(r.has_dob), percent: Math.round(Number(r.has_dob) / total * 100) },
           gender: { filled: Number(r.has_gender), percent: Math.round(Number(r.has_gender) / total * 100) },
           skillLevel: { filled: Number(r.has_skill), percent: Math.round(Number(r.has_skill) / total * 100) },
-          duprRating: { filled: Number(r.has_dupr), percent: Math.round(Number(r.has_dupr) / total * 100) },
           membershipType: { filled: Number(r.has_membership), percent: Math.round(Number(r.has_membership) / total * 100) },
           city: { filled: Number(r.has_city), percent: Math.round(Number(r.has_city) / total * 100) },
         },

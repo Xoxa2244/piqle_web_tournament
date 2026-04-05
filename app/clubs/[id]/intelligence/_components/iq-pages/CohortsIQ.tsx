@@ -16,7 +16,6 @@ const FILTER_FIELDS = [
   { key: 'skillLevel', label: 'Skill Level', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'city', label: 'City', type: 'text' as const, ops: ['eq', 'contains'] },
   { key: 'zipCode', label: 'Zip Code', type: 'text' as const, ops: ['eq'] },
-  { key: 'duprRating', label: 'DUPR Rating', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
 ]
 
 const OP_LABELS: Record<string, string> = {
