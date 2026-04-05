@@ -29,28 +29,10 @@ if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
 }
 
-const useSecure = process.env.NODE_ENV === 'production'
-const cookieDomain = process.env.NEXTAUTH_URL ? new URL(process.env.NEXTAUTH_URL).hostname : undefined
-
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
   debug: true,
-  useSecureCookies: useSecure,
-  cookies: {
-    sessionToken: {
-      name: useSecure ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
-      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure, domain: undefined },
-    },
-    callbackUrl: {
-      name: useSecure ? '__Secure-next-auth.callback-url' : 'next-auth.callback-url',
-      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure, domain: undefined },
-    },
-    csrfToken: {
-      name: useSecure ? '__Host-next-auth.csrf-token' : 'next-auth.csrf-token',
-      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecure },
-    },
-  },
   logger: {
     error(code, metadata) {
       console.error('[NextAuth Error]', code, metadata)
@@ -66,8 +48,9 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      // Disabled — prevents account takeover via email linking
-      // allowDangerousEmailAccountLinking: true,
+      // Allow linking Google to existing user created by CourtReserve sync
+      // Safe because Google verifies email ownership
+      allowDangerousEmailAccountLinking: true,
     }),
     EmailProvider({
       server: {
