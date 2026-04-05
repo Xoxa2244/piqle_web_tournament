@@ -270,22 +270,47 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       try {
         setImportStatus('Testing CourtReserve API connection...')
         setImportProgress(10)
-        const testResult = await connectMutation.mutateAsync({
+        await connectMutation.mutateAsync({
           clubId,
           username: crApiUsername,
           password: crApiPassword,
           agreedToTerms: true,
         })
         setImportStatus('Connected! Starting initial sync...')
-        setImportProgress(30)
+        setImportProgress(20)
 
-        // Trigger initial sync
-        await syncMutation.mutateAsync({ clubId, isInitial: true })
-        setImportStatus('Sync complete!')
-        setImportProgress(100)
+        // Chunked sync with auto-retry (large clubs need multiple passes)
+        const MAX_RETRIES = 20
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            const result: any = await syncMutation.mutateAsync({ clubId, isInitial: true })
+            const syncResult = result?.lastSyncResult || result
+            const membersSynced = syncResult?.membersSynced || syncResult?.members?.created || 0
+            const membersTotal = syncResult?.membersTotal || 0
+            const phase = syncResult?.phase || 'syncing'
+
+            if (phase === 'done' || (syncResult?.incomplete !== true && !syncResult?.status?.includes('Syncing'))) {
+              setImportStatus('Sync complete!')
+              setImportProgress(100)
+              break
+            }
+
+            // Still syncing — update progress and retry
+            const pct = membersTotal > 0 ? Math.min(90, 20 + Math.round((membersSynced / membersTotal) * 70)) : 50
+            setImportProgress(pct)
+            setImportStatus(`Syncing members... ${membersSynced.toLocaleString()} / ${membersTotal.toLocaleString()}`)
+          } catch (err: any) {
+            // Timeout or transient error — retry
+            if (attempt < MAX_RETRIES - 1) {
+              setImportStatus(`Syncing... (retry ${attempt + 1})`)
+              continue
+            }
+            throw err
+          }
+        }
       } catch (err: any) {
         console.error('[Onboarding] API connect failed:', err?.message)
-        setImportStatus('API connection failed — you can connect later from Integrations')
+        setImportStatus('Sync in progress — check Integrations page for status')
         setImportProgress(100)
       }
 
