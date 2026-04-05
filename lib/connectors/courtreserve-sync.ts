@@ -81,6 +81,7 @@ async function syncCourts(
   partnerId: string
 ): Promise<{ created: number; updated: number; errors: number }> {
   const courts = await client.getCourts()
+  console.log(`[CR Sync] ${clubId}: getCourts returned ${courts.length} courts`, courts.length > 0 ? courts.map(c => c.name).join(', ') : '(empty)')
   let created = 0, updated = 0, errors = 0
 
   for (const court of courts) {
