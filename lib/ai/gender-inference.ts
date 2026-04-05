@@ -198,7 +198,88 @@ async function inferFromNames(clubId: string): Promise<{ total: number; inferred
   return { total: members.length, inferred, skipped, errors }
 }
 
-// ── Main entry point ──
+// ── Skill Level inference from session titles ──
+
+const SKILL_PATTERNS: Array<{ pattern: RegExp; level: string }> = [
+  { pattern: /beginner|2\.0\s*-\s*2\.49/i, level: '2.0-2.49 (Beginner)' },
+  { pattern: /casual|2\.5\s*-?\s*2\.99/i, level: '2.5-2.99 (Casual)' },
+  { pattern: /intermediate|3\.0\s*-?\s*3\.49/i, level: '3.0-3.49 (Intermediate)' },
+  { pattern: /competitive|3\.5\s*-?\s*3\.99/i, level: '3.5-3.99 (Competitive)' },
+  { pattern: /advanced|4\.0\s*\+|4\.0\s*-?\s*4\.49|4\.5/i, level: '4.0+ (Advanced)' },
+]
+
+function detectSkillLevel(title: string): string | null {
+  // Check from most specific (advanced) to least — take highest if multiple match
+  for (let i = SKILL_PATTERNS.length - 1; i >= 0; i--) {
+    if (SKILL_PATTERNS[i].pattern.test(title)) return SKILL_PATTERNS[i].level
+  }
+  return null
+}
+
+async function inferSkillFromEvents(clubId: string): Promise<{ inferred: number; errors: number }> {
+  const sessions: Array<{ id: string; title: string }> = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT ps.id, ps.title
+    FROM play_sessions ps
+    WHERE ps."clubId" = $1 AND ps.title IS NOT NULL
+  `, clubId)
+
+  const skilledSessionIds = new Map<string, string>()
+  for (const s of sessions) {
+    const level = detectSkillLevel(s.title)
+    if (level) skilledSessionIds.set(s.id, level)
+  }
+
+  if (skilledSessionIds.size === 0) return { inferred: 0, errors: 0 }
+
+  const sessionIds = Array.from(skilledSessionIds.keys())
+  const placeholders = sessionIds.map((_, i) => `$${i + 2}`).join(',')
+
+  const attendees: Array<{ userId: string; sessionId: string }> = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT psb."userId", psb."sessionId"
+    FROM play_session_bookings psb
+    JOIN users u ON u.id = psb."userId"
+    WHERE psb."sessionId" IN (${placeholders})
+      AND psb.status = 'CONFIRMED'
+      AND (u.skill_level IS NULL OR u.skill_level = '')
+  `, clubId, ...sessionIds)
+
+  // For each user, find their MOST FREQUENT skill level
+  const userSkillCounts = new Map<string, Map<string, number>>()
+  for (const a of attendees) {
+    const level = skilledSessionIds.get(a.sessionId)
+    if (!level) continue
+    if (!userSkillCounts.has(a.userId)) userSkillCounts.set(a.userId, new Map())
+    const counts = userSkillCounts.get(a.userId)!
+    counts.set(level, (counts.get(level) || 0) + 1)
+  }
+
+  let inferred = 0, errors = 0
+
+  const entries = Array.from(userSkillCounts.entries())
+  for (const [userId, counts] of entries) {
+    // Pick the most frequent skill level
+    let bestLevel = '', bestCount = 0
+    const countEntries = Array.from(counts.entries())
+    for (const [level, count] of countEntries) {
+      if (count > bestCount) { bestLevel = level; bestCount = count }
+    }
+    if (!bestLevel) continue
+
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { skillLevel: bestLevel },
+      })
+      inferred++
+    } catch {
+      errors++
+    }
+  }
+
+  return { inferred, errors }
+}
+
+// ── Main entry point: Gender ──
 
 export async function inferGendersForClub(clubId: string): Promise<{
   total: number
@@ -221,5 +302,30 @@ export async function inferGendersForClub(clubId: string): Promise<{
     errors: eventResult.errors + nameResult.errors,
     fromEvents: eventResult.inferred,
     fromNames: nameResult.inferred,
+  }
+}
+
+// ── Main entry point: All enrichment (gender + skill) ──
+
+export async function enrichMemberData(clubId: string): Promise<{
+  gender: { inferred: number; fromEvents: number; fromNames: number; skipped: number; errors: number }
+  skill: { inferred: number; errors: number }
+}> {
+  // Gender: events → LLM
+  const genderEvents = await inferFromEvents(clubId)
+  const genderNames = await inferFromNames(clubId)
+
+  // Skill: events only (no LLM needed — titles are definitive)
+  const skillResult = await inferSkillFromEvents(clubId)
+
+  return {
+    gender: {
+      inferred: genderEvents.inferred + genderNames.inferred,
+      fromEvents: genderEvents.inferred,
+      fromNames: genderNames.inferred,
+      skipped: genderNames.skipped,
+      errors: genderEvents.errors + genderNames.errors,
+    },
+    skill: skillResult,
   }
 }

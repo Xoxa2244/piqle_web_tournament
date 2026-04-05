@@ -4162,6 +4162,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       return inferGendersForClub(input.clubId)
     }),
 
+  // Enrich all member data (gender + skill level) from events + LLM
+  enrichMemberData: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { enrichMemberData } = await import('@/lib/ai/gender-inference')
+      return enrichMemberData(input.clubId)
+    }),
+
   listCohorts: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {

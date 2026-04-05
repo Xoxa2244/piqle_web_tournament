@@ -46,11 +46,19 @@ export default function CohortsIQ() {
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
   const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
   const deleteMutation = trpc.intelligence.deleteCohort.useMutation({ onSuccess: () => refetch() })
-  const inferGenderMutation = trpc.intelligence.inferGenders.useMutation({
+  const enrichMutation = trpc.intelligence.enrichMemberData.useMutation({
     onSuccess: (data) => {
       refetchCoverage()
       refetch()
-      alert(`Gender enriched for ${data.inferred} members:\n• ${data.fromEvents} from event history (100% accurate)\n• ${data.fromNames} from name analysis (AI)\n• ${data.skipped} ambiguous names skipped`)
+      const lines = [
+        `Gender: ${data.gender.inferred} members enriched`,
+        `  • ${data.gender.fromEvents} from event history (100% accurate)`,
+        `  • ${data.gender.fromNames} from name analysis (AI)`,
+        `  • ${data.gender.skipped} ambiguous names skipped`,
+        ``,
+        `Skill Level: ${data.skill.inferred} members enriched from event history`,
+      ]
+      alert(lines.join('\n'))
     },
   })
 
@@ -115,17 +123,17 @@ export default function CohortsIQ() {
                 Data Coverage — {coverage.totalActive.toLocaleString()} active members
               </span>
             </div>
-            {coverage.fields.gender.percent < 50 && (
+            {(coverage.fields.gender.percent < 50 || coverage.fields.skillLevel.percent < 50) && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                disabled={inferGenderMutation.isPending}
-                onClick={() => inferGenderMutation.mutate({ clubId })}
+                disabled={enrichMutation.isPending}
+                onClick={() => enrichMutation.mutate({ clubId })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
               >
                 <Wand2 className="w-3.5 h-3.5" />
-                {inferGenderMutation.isPending ? 'Inferring...' : 'Enrich Gender with AI'}
+                {enrichMutation.isPending ? 'Enriching...' : 'Enrich Data with AI'}
               </motion.button>
             )}
           </div>
