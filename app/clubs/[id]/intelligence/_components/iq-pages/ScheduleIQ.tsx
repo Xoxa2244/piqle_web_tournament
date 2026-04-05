@@ -95,8 +95,11 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
 
   const courts = useMemo(() => {
     const s = new Set<string>()
+    const hasUnassigned = allSessions.some((x) => !x.court)
     allSessions.forEach((x) => { if (x.court) s.add(x.court) })
-    return Array.from(s).sort()
+    const sorted = Array.from(s).sort()
+    if (hasUnassigned) sorted.push('__unassigned__')
+    return sorted
   }, [allSessions])
 
   const daySessions = useMemo(
@@ -116,11 +119,12 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
       const fractionalSpan = Math.max(1, (endH + endM / 60) - (startH + startM / 60))
       // Integer span for grid rows
       const span = Math.max(1, Math.ceil(fractionalSpan))
-      const key = `${s.court}|${startH}`
+      const courtKey = s.court || '__unassigned__'
+      const key = `${courtKey}|${startH}`
       if (!map[key]) map[key] = []
       map[key].push({ ...s, rowSpan: span, fractionalSpan })
       for (let h = startH + 1; h < startH + span; h++) {
-        occupied.add(`${s.court}|${h}`)
+        occupied.add(`${courtKey}|${h}`)
       }
     }
     return { map, occupied }
@@ -241,8 +245,12 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                   <div className="w-[70px] shrink-0 p-2" />
                   {courts.map((c) => (
                     <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>{shortenCourt(c)}</div>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
+                      <div className="text-xs font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
+                        {c === '__unassigned__' ? 'Unassigned' : shortenCourt(c)}
+                      </div>
+                      {c !== '__unassigned__' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
+                      )}
                     </div>
                   ))}
                 </div>
