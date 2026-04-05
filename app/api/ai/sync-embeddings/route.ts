@@ -12,16 +12,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Get all clubs with connected connectors or any sessions
-    const clubs = await prisma.club.findMany({
-      where: {
-        OR: [
-          { connectors: { some: { status: 'connected' } } },
-          { playSessions: { some: {} } },
-        ],
-      },
-      select: { id: true, name: true },
-    });
+    // Get all clubs that have any members (active clubs)
+    const clubs = await prisma.$queryRaw<Array<{ id: string; name: string }>>`
+      SELECT DISTINCT c.id, c.name FROM clubs c
+      JOIN club_followers cf ON cf.club_id = c.id
+      GROUP BY c.id, c.name
+      HAVING COUNT(cf.id) > 0
+    `;
 
     const results: Array<{ clubId: string; clubName: string; indexed: number; error?: string }> = [];
 
