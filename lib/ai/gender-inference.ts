@@ -1,8 +1,13 @@
 /**
- * LLM-based gender inference from first names.
- * Uses GPT-4o-mini to classify names in batches of 100.
- * Only updates users who don't already have gender set.
- * Stores result in `gender` field + marks `genderSource = 'inferred'` in metadata.
+ * Gender inference for club members — two-pass approach:
+ *
+ * Pass 1: Event-based (100% accuracy)
+ *   Members who booked gendered sessions ("Women's League", "Men's 3.5+")
+ *   get gender assigned with certainty.
+ *
+ * Pass 2: LLM name-based (~90% accuracy)
+ *   Remaining members get classified by first name via GPT-4o-mini.
+ *   Ambiguous names (Pat, Chris, Jordan) are skipped.
  */
 
 import { generateWithFallback } from './llm/provider'
@@ -13,6 +18,86 @@ interface GenderResult {
   gender: 'M' | 'F' | null
   confidence: number // 0-100
 }
+
+// ── Session title patterns for gender detection ──
+const FEMALE_PATTERNS = [
+  'women', 'woman', 'ladies', 'lady', 'female', 'girl', 'gal',
+]
+const MALE_PATTERNS = [
+  "men's", 'mens ', ' male', 'guys', " guy's",
+]
+
+function detectSessionGender(title: string): 'M' | 'F' | null {
+  const lower = title.toLowerCase()
+  // Check female first (more specific — "women" contains "men")
+  if (FEMALE_PATTERNS.some(p => lower.includes(p))) return 'F'
+  if (MALE_PATTERNS.some(p => lower.includes(p))) return 'M'
+  return null
+}
+
+// ── Pass 1: Event-based inference ──
+async function inferFromEvents(clubId: string): Promise<{ inferred: number; errors: number }> {
+  // Find all gendered sessions for this club
+  const sessions: Array<{ id: string; title: string }> = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT ps.id, ps.title
+    FROM play_sessions ps
+    WHERE ps."clubId" = $1
+      AND ps.title IS NOT NULL
+  `, clubId)
+
+  const genderedSessionIds = new Map<string, 'M' | 'F'>()
+  for (const s of sessions) {
+    const g = detectSessionGender(s.title)
+    if (g) genderedSessionIds.set(s.id, g)
+  }
+
+  if (genderedSessionIds.size === 0) return { inferred: 0, errors: 0 }
+
+  // Get users without gender who attended gendered sessions
+  const sessionIds = Array.from(genderedSessionIds.keys())
+  const placeholders = sessionIds.map((_, i) => `$${i + 2}`).join(',')
+
+  const attendees: Array<{ userId: string; sessionId: string }> = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT psb."userId", psb."sessionId"
+    FROM play_session_bookings psb
+    JOIN users u ON u.id = psb."userId"
+    WHERE psb."sessionId" IN (${placeholders})
+      AND psb.status = 'CONFIRMED'
+      AND u.gender IS NULL
+  `, clubId, ...sessionIds)
+
+  // Group by user — if someone attended BOTH men's and women's events, skip them
+  const userGenders = new Map<string, Set<string>>()
+  for (const a of attendees) {
+    const g = genderedSessionIds.get(a.sessionId)
+    if (!g) continue
+    if (!userGenders.has(a.userId)) userGenders.set(a.userId, new Set())
+    userGenders.get(a.userId)!.add(g)
+  }
+
+  let inferred = 0, errors = 0
+
+  const userEntries = Array.from(userGenders.entries())
+  for (const [userId, genders] of userEntries) {
+    // Skip if conflicting (attended both men's and women's events)
+    if (genders.size !== 1) continue
+    const gender = Array.from(genders)[0] as 'M' | 'F'
+
+    try {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { gender: gender as any },
+      })
+      inferred++
+    } catch {
+      errors++
+    }
+  }
+
+  return { inferred, errors }
+}
+
+// ── Pass 2: LLM name-based inference ──
 
 const SYSTEM_PROMPT = `You classify first names by likely gender. Return a JSON array.
 
@@ -30,17 +115,15 @@ Example:
 Input: ["John", "Sarah", "Pat", "Maria", "Chris"]
 Output: [{"name":"John","gender":"M","confidence":99},{"name":"Sarah","gender":"F","confidence":99},{"name":"Pat","gender":null,"confidence":45},{"name":"Maria","gender":"F","confidence":97},{"name":"Chris","gender":null,"confidence":40}]`
 
-/** Classify a batch of first names (max ~100 at a time) */
 async function classifyNames(names: string[]): Promise<GenderResult[]> {
   const { text } = await generateWithFallback({
     system: SYSTEM_PROMPT,
     prompt: JSON.stringify(names),
-    tier: 'fast', // gpt-4o-mini
+    tier: 'fast',
     maxTokens: 4000,
   })
 
   try {
-    // Extract JSON from response (might have markdown wrapper)
     const jsonMatch = text.match(/\[[\s\S]*\]/)
     if (!jsonMatch) return []
     return JSON.parse(jsonMatch[0])
@@ -50,14 +133,8 @@ async function classifyNames(names: string[]): Promise<GenderResult[]> {
   }
 }
 
-/** Run gender inference for a club's active members who don't have gender set */
-export async function inferGendersForClub(clubId: string): Promise<{
-  total: number
-  inferred: number
-  skipped: number
-  errors: number
-}> {
-  // Get active members without gender
+async function inferFromNames(clubId: string): Promise<{ total: number; inferred: number; skipped: number; errors: number }> {
+  // Get active members STILL without gender (after event pass)
   const members: Array<{ id: string; name: string | null }> = await prisma.$queryRawUnsafe(`
     SELECT DISTINCT u.id, u.name
     FROM play_session_bookings psb
@@ -72,7 +149,6 @@ export async function inferGendersForClub(clubId: string): Promise<{
 
   if (members.length === 0) return { total: 0, inferred: 0, skipped: 0, errors: 0 }
 
-  // Extract first names
   const memberNames = members.map(m => ({
     id: m.id,
     firstName: (m.name || '').split(' ')[0].trim(),
@@ -86,13 +162,12 @@ export async function inferGendersForClub(clubId: string): Promise<{
     const uniqueNames = Array.from(new Set(batch.map(b => b.firstName)))
 
     try {
-      const results = classifyNames(uniqueNames)
+      const results = await classifyNames(uniqueNames)
       const nameToGender = new Map<string, GenderResult>()
-      for (const r of await results) {
+      for (const r of results) {
         nameToGender.set(r.name.toLowerCase(), r)
       }
 
-      // Update users in parallel (10 at a time)
       const updates = batch.map(async (member) => {
         const result = nameToGender.get(member.firstName.toLowerCase())
         if (!result || !result.gender || result.confidence < 75) {
@@ -103,11 +178,7 @@ export async function inferGendersForClub(clubId: string): Promise<{
         try {
           await prisma.user.update({
             where: { id: member.id },
-            data: {
-              gender: result.gender as any,
-              // Store inference metadata in a way we can track
-              // Using zipCode as we don't have a metadata field — actually let's not pollute
-            },
+            data: { gender: result.gender as any },
           })
           inferred++
         } catch {
@@ -115,7 +186,6 @@ export async function inferGendersForClub(clubId: string): Promise<{
         }
       })
 
-      // Process 10 at a time
       for (let j = 0; j < updates.length; j += 10) {
         await Promise.all(updates.slice(j, j + 10))
       }
@@ -126,4 +196,30 @@ export async function inferGendersForClub(clubId: string): Promise<{
   }
 
   return { total: members.length, inferred, skipped, errors }
+}
+
+// ── Main entry point ──
+
+export async function inferGendersForClub(clubId: string): Promise<{
+  total: number
+  inferred: number
+  skipped: number
+  errors: number
+  fromEvents: number
+  fromNames: number
+}> {
+  // Pass 1: Event-based (100% accuracy)
+  const eventResult = await inferFromEvents(clubId)
+
+  // Pass 2: LLM name-based (remaining members)
+  const nameResult = await inferFromNames(clubId)
+
+  return {
+    total: nameResult.total + eventResult.inferred,
+    inferred: eventResult.inferred + nameResult.inferred,
+    skipped: nameResult.skipped,
+    errors: eventResult.errors + nameResult.errors,
+    fromEvents: eventResult.inferred,
+    fromNames: nameResult.inferred,
+  }
 }

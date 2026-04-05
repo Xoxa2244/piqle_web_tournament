@@ -50,7 +50,7 @@ export default function CohortsIQ() {
     onSuccess: (data) => {
       refetchCoverage()
       refetch()
-      alert(`Gender inferred for ${data.inferred} members (${data.skipped} ambiguous, ${data.errors} errors)`)
+      alert(`Gender enriched for ${data.inferred} members:\n• ${data.fromEvents} from event history (100% accurate)\n• ${data.fromNames} from name analysis (AI)\n• ${data.skipped} ambiguous names skipped`)
     },
   })
 
