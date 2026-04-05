@@ -38,7 +38,7 @@ async function handleSync(request: Request) {
       where: {
         provider: 'courtreserve',
         autoSync: true,
-        status: { in: ['connected', 'error'] }, // retry errors too
+        status: { in: ['connected', 'error', 'syncing'] }, // retry errors + resume stuck syncs
       },
     })
 
