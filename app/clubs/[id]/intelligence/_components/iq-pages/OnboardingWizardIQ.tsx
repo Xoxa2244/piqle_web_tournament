@@ -266,16 +266,19 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     }
 
     // 3a. Connect via API if Advanced+ plan selected
+    console.log('[Onboarding] Step 3a check:', { software, crPlan, crApiUsername: !!crApiUsername, crApiPassword: !!crApiPassword, clubId })
     if (software === 'courtreserve' && crPlan === 'advanced' && crApiUsername && crApiPassword) {
       try {
         setImportStatus('Testing CourtReserve API connection...')
         setImportProgress(10)
+        console.log('[Onboarding] Calling connect mutation for clubId:', clubId)
         await connectMutation.mutateAsync({
           clubId,
           username: crApiUsername,
           password: crApiPassword,
           agreedToTerms: true,
         })
+        console.log('[Onboarding] Connect succeeded!')
         setImportStatus('Connected! Starting initial sync...')
         setImportProgress(20)
 
@@ -309,8 +312,10 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           }
         }
       } catch (err: any) {
-        console.error('[Onboarding] API connect failed:', err?.message)
-        setImportStatus('Sync in progress — check Integrations page for status')
+        console.error('[Onboarding] API connect/sync failed:', err?.message, err)
+        setImportStatus(err?.message?.includes('Rate limited')
+          ? 'Rate limited — sync will continue automatically via background job'
+          : `Connection issue: ${err?.message?.slice(0, 80) || 'Unknown error'}. Check Integrations page.`)
         setImportProgress(100)
       }
 
