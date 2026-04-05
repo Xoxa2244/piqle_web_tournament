@@ -311,12 +311,14 @@ export async function enrichMemberData(clubId: string): Promise<{
   gender: { inferred: number; fromEvents: number; fromNames: number; skipped: number; errors: number }
   skill: { inferred: number; errors: number }
 }> {
-  // Gender: events → LLM
-  const genderEvents = await inferFromEvents(clubId)
-  const genderNames = await inferFromNames(clubId)
-
-  // Skill: events only (no LLM needed — titles are definitive)
+  // 1. Skill from events (instant, no LLM) — run FIRST
   const skillResult = await inferSkillFromEvents(clubId)
+
+  // 2. Gender from events (instant, 100% accuracy)
+  const genderEvents = await inferFromEvents(clubId)
+
+  // 3. Gender from LLM (slow — last)
+  const genderNames = await inferFromNames(clubId)
 
   return {
     gender: {
