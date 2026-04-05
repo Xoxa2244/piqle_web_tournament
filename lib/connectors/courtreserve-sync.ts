@@ -731,6 +731,19 @@ export async function runCourtReserveSync(
     bookingsResult.created += eventResult.bookings.created
     bookingsResult.errors += eventResult.bookings.errors
 
+    // Match sessions to courts by court name in title (for reservations without courtId)
+    try {
+      await prisma.$executeRawUnsafe(`
+        UPDATE play_sessions ps
+        SET "courtId" = cc.id
+        FROM club_courts cc
+        WHERE ps."clubId" = $1
+          AND cc."clubId" = ps."clubId"
+          AND ps."courtId" IS NULL
+          AND ps.title ILIKE '%' || cc.name || '%'
+      `, clubId)
+    } catch {}
+
     // Final totals from DB
     const totalMembers = await prisma.clubFollower.count({ where: { clubId } })
     const totalSessions = await prisma.playSession.count({ where: { clubId } })
