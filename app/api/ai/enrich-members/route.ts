@@ -8,7 +8,10 @@ import { enrichMemberData } from '@/lib/ai/gender-inference'
 
 export const maxDuration = 300 // 5 min — LLM batches take time
 
-export async function GET(req: Request) {
+export async function POST(req: Request) { return handleEnrich(req) }
+export async function GET(req: Request) { return handleEnrich(req) }
+
+async function handleEnrich(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

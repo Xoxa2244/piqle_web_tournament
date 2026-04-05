@@ -5,7 +5,10 @@ import { indexAll } from '@/lib/ai/rag/indexer'
 export const maxDuration = 300
 
 // Nightly RAG embedding sync. Supports ?clubId=xxx for single-club indexing.
-export async function GET(req: Request) {
+export async function POST(req: Request) { return handleSync(req) }
+export async function GET(req: Request) { return handleSync(req) }
+
+async function handleSync(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
