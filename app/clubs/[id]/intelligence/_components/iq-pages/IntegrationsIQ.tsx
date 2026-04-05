@@ -149,24 +149,14 @@ function CourtReserveConnector({ clubId }: { clubId: string }) {
   })
 
   const syncMutation = trpc.connectors.syncNow.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
+      // Sync is now server-side — just start polling
+      setIsSyncing(true)
       utils.connectors.getStatus.invalidate({ clubId })
-      // Auto-retry if sync is incomplete (chunked — members still loading)
-      if (data && 'incomplete' in data && (data as any).incomplete) {
-        console.log('[Sync] Chunk complete, auto-continuing...')
-        setTimeout(() => {
-          syncMutation.mutate({ clubId, isInitial: true }) // Always initial during chunked sync
-        }, 1000)
-      } else {
-        setIsSyncing(false)
-      }
     },
     onError: (err) => {
-      // On timeout/error, always retry — cron will clean up if truly broken
-      console.log('[Sync] Error, auto-retrying in 3s...', err.message?.slice(0, 80))
-      setTimeout(() => {
-        syncMutation.mutate({ clubId, isInitial: true })
-      }, 3000)
+      console.error('[Sync] Failed to queue:', err.message)
+      setIsSyncing(false)
     },
   })
 

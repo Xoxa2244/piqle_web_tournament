@@ -21,7 +21,7 @@
     },
     {
       "path": "/api/connectors/courtreserve/sync",
-      "schedule": "17 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/ai/generate-member-profiles",

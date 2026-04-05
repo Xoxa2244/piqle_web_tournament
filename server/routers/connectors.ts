@@ -144,12 +144,32 @@ export const connectorsRouter = createTRPCRouter({
         })
       }
 
-      const result = await runCourtReserveSync(connector.id, {
-        isInitial: input.isInitial,
-        maxTimeMs: 45_000, // Stop after 45 sec, UI will call again
+      // Just mark as syncing — cron will pick up and do the actual work
+      // This makes sync resilient to UI disconnects, deploys, and timeouts
+      const isInitial = input.isInitial || !connector.lastSyncAt
+      await ctx.prisma.clubConnector.update({
+        where: { id: connector.id },
+        data: {
+          status: 'syncing',
+          lastSyncResult: {
+            phase: 'queued',
+            status: 'Sync queued, starting shortly...',
+            percent: 0,
+            isInitial,
+          } as any,
+        },
       })
 
-      return result
+      // Fire-and-forget: start first chunk immediately (don't await)
+      // If it times out, cron will continue
+      runCourtReserveSync(connector.id, {
+        isInitial,
+        maxTimeMs: 45_000,
+      }).catch((err) => {
+        console.error(`[Sync] Fire-and-forget failed for ${input.clubId}:`, err.message)
+      })
+
+      return { status: 'syncing', message: 'Sync started' }
     }),
 
   /** Get connector status */
