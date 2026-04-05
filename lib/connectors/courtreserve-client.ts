@@ -18,6 +18,10 @@ const DEFAULT_BASE_URL = 'https://api.courtreserve.com'
 const REQUEST_TIMEOUT_MS = 30_000
 const MAX_PAGE_SIZE = 100
 const MAX_DATE_RANGE_DAYS = 31
+const THROTTLE_MS = 300 // delay between API calls to avoid rate limiting
+const MAX_RATE_LIMIT_RETRIES = 3
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 interface CRResponse<T> {
   ErrorMessage: string | null
@@ -45,47 +49,59 @@ export class CourtReserveClient {
       }
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    // Throttle between requests to avoid rate limiting
+    await sleep(THROTTLE_MS)
 
-    try {
-      const res = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          Authorization: this.authHeader,
-          Accept: 'application/json',
-        },
-        signal: controller.signal,
-      })
+    for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
-      if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10)
-        throw new CourtReserveError(`Rate limited. Retry after ${retryAfter}s`, 429)
-      }
+      try {
+        const res = await fetch(url.toString(), {
+          method: 'GET',
+          headers: {
+            Authorization: this.authHeader,
+            Accept: 'application/json',
+          },
+          signal: controller.signal,
+        })
 
-      if (res.status === 401) {
-        throw new CourtReserveError('Invalid API credentials', 401)
-      }
-
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new CourtReserveError(`API error: ${res.status} ${text}`, res.status)
-      }
-
-      const json = await res.json()
-
-      // CR wraps everything in { ErrorMessage, Data, IsSuccessStatusCode }
-      if (json && typeof json === 'object' && 'Data' in json) {
-        if (json.ErrorMessage) {
-          throw new CourtReserveError(`CR API: ${json.ErrorMessage}`, 400)
+        if (res.status === 429) {
+          const retryAfter = parseInt(res.headers.get('Retry-After') || '30', 10)
+          if (attempt < MAX_RATE_LIMIT_RETRIES) {
+            console.log(`[CR API] Rate limited, waiting ${retryAfter}s (attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`)
+            await sleep(retryAfter * 1000)
+            continue
+          }
+          throw new CourtReserveError(`Rate limited. Retry after ${retryAfter}s`, 429)
         }
-        return json.Data as T
-      }
 
-      return json as T
-    } finally {
-      clearTimeout(timeout)
+        if (res.status === 401) {
+          throw new CourtReserveError('Invalid API credentials', 401)
+        }
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          throw new CourtReserveError(`API error: ${res.status} ${text}`, res.status)
+        }
+
+        const json = await res.json()
+
+        // CR wraps everything in { ErrorMessage, Data, IsSuccessStatusCode }
+        if (json && typeof json === 'object' && 'Data' in json) {
+          if (json.ErrorMessage) {
+            throw new CourtReserveError(`CR API: ${json.ErrorMessage}`, 400)
+          }
+          return json.Data as T
+        }
+
+        return json as T
+      } finally {
+        clearTimeout(timeout)
+      }
     }
+    // Should not reach here
+    throw new CourtReserveError('Rate limit retries exhausted', 429)
   }
 
   /** Split a date range into 31-day windows (CR API limit) */
