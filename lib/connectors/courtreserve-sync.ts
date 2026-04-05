@@ -757,6 +757,16 @@ export async function runCourtReserveSync(
       },
     })
 
+    // Auto-enrich member data (gender from events + LLM, skill from events)
+    try {
+      console.log(`[CR Sync] ${clubId}: enriching member data...`)
+      const { enrichMemberData } = await import('@/lib/ai/gender-inference')
+      const enrichResult = await enrichMemberData(clubId)
+      console.log(`[CR Sync] ${clubId}: enriched — gender: ${enrichResult.gender.inferred}, skill: ${enrichResult.skill.inferred}`)
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: enrichment failed (non-fatal):`, err.message)
+    }
+
     console.log(`[CR Sync] ${clubId}: done —`, JSON.stringify(result))
     return result
   } catch (error: any) {
