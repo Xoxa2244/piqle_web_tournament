@@ -654,6 +654,8 @@ export async function runCourtReserveSync(
   const partnerId = partner.id // Use actual UUID, not code string
 
   const now = new Date()
+  const futureDate = new Date(now)
+  futureDate.setDate(futureDate.getDate() + 30) // Include 30 days of future sessions
   const from = new Date(now)
   from.setDate(from.getDate() - daysBack)
 
@@ -718,13 +720,13 @@ export async function runCourtReserveSync(
     // 3. Sync reservations (court bookings)
     console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
     await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true })
-    const { sessions: sessionsResult, bookings: bookingsResult } = await syncReservations(client, clubId, partnerId, from, now)
+    const { sessions: sessionsResult, bookings: bookingsResult } = await syncReservations(client, clubId, partnerId, from, futureDate)
     const sessCount = await prisma.playSession.count({ where: { clubId } })
     await updateProgress({ phase: 'events', percent: 80, status: `${sessCount.toLocaleString()} sessions synced. Syncing events...`, courtsDone: true, membersDone: true })
 
     // 4. Sync event registrations (Open Play, Clinics, Leagues — PRIMARY data)
     console.log(`[CR Sync] ${clubId}: syncing event registrations (${daysBack} days)...`)
-    const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, now, connectorId)
+    const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, futureDate, connectorId)
     sessionsResult.created += eventResult.sessions.created
     sessionsResult.updated += eventResult.sessions.updated
     sessionsResult.errors += eventResult.sessions.errors
