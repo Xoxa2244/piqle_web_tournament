@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'motion/react'
-import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare } from 'lucide-react'
+import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2 } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 
@@ -44,8 +44,15 @@ export default function CohortsIQ() {
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null)
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
-  const { data: coverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
+  const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
   const deleteMutation = trpc.intelligence.deleteCohort.useMutation({ onSuccess: () => refetch() })
+  const inferGenderMutation = trpc.intelligence.inferGenders.useMutation({
+    onSuccess: (data) => {
+      refetchCoverage()
+      refetch()
+      alert(`Gender inferred for ${data.inferred} members (${data.skipped} ambiguous, ${data.errors} errors)`)
+    },
+  })
 
   return (
     <motion.div
@@ -101,11 +108,26 @@ export default function CohortsIQ() {
       {/* Data Coverage Banner */}
       {coverage && !showCreate && !selectedCohortId && (
         <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Filter className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-            <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
-              Data Coverage — {coverage.totalActive.toLocaleString()} active members
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+              <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
+                Data Coverage — {coverage.totalActive.toLocaleString()} active members
+              </span>
+            </div>
+            {coverage.fields.gender.percent < 50 && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                disabled={inferGenderMutation.isPending}
+                onClick={() => inferGenderMutation.mutate({ clubId })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-white disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                {inferGenderMutation.isPending ? 'Inferring...' : 'Enrich Gender with AI'}
+              </motion.button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {Object.entries(coverage.fields).map(([key, val]: [string, any]) => {

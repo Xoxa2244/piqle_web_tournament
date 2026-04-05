@@ -4153,6 +4153,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
     }),
 
+  // Infer gender from first names using LLM for members without gender data
+  inferGenders: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { inferGendersForClub } = await import('@/lib/ai/gender-inference')
+      return inferGendersForClub(input.clubId)
+    }),
+
   listCohorts: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
