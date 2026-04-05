@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { AILoadingAnimation } from '../AILoadingAnimation'
@@ -175,19 +175,37 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
     setIsSyncing(s === 'syncing')
   }, [status])
 
+  const syncRetryRef = useRef(0)
+  const MAX_SYNC_RETRIES = 30
+
   const syncMutation = trpc.connectors.syncNow.useMutation({
     onSuccess: (data) => {
       utils.connectors.getStatus.invalidate({ clubId })
       if (data && (data as any).incomplete) {
-        console.log('[Sync] Chunk done, continuing in 2s...')
-        setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 2000)
+        syncRetryRef.current++
+        if (syncRetryRef.current < MAX_SYNC_RETRIES) {
+          console.log(`[Sync] Chunk done (${syncRetryRef.current}/${MAX_SYNC_RETRIES}), continuing in 2s...`)
+          setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 2000)
+        } else {
+          console.log('[Sync] Max retries reached, deferring to pg_cron')
+          setIsSyncing(false)
+          syncRetryRef.current = 0
+        }
       } else {
         setIsSyncing(false)
+        syncRetryRef.current = 0
       }
     },
     onError: () => {
-      console.log('[Sync] Timeout, retrying in 3s...')
-      setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 3000)
+      syncRetryRef.current++
+      if (syncRetryRef.current < MAX_SYNC_RETRIES) {
+        console.log(`[Sync] Timeout (${syncRetryRef.current}/${MAX_SYNC_RETRIES}), retrying in 3s...`)
+        setTimeout(() => syncMutation.mutate({ clubId, isInitial: true }), 3000)
+      } else {
+        console.log('[Sync] Max retries reached, deferring to pg_cron')
+        setIsSyncing(false)
+        syncRetryRef.current = 0
+      }
     },
   })
 
@@ -199,6 +217,7 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
       setBaseUrl('')
       setTestResult(null)
       // Auto-start sync after connection
+      syncRetryRef.current = 0
       setIsSyncing(true)
       syncMutation.mutate({ clubId, isInitial: true })
     },
@@ -424,6 +443,7 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                     const progress = 'lastSyncResult' in status ? status.lastSyncResult as any : null
                     const isIncomplete = progress?.incomplete || progress?.phase === 'members'
                     const hasEverFullySynced = 'lastSyncAt' in status && status.lastSyncAt && !isIncomplete
+                    syncRetryRef.current = 0
                     setIsSyncing(true)
                     syncMutation.mutate({ clubId, isInitial: !hasEverFullySynced })
                   }}

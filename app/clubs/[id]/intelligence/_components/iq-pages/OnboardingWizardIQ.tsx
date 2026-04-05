@@ -266,13 +266,13 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
     }
 
     // 3a. Connect via API if Advanced+ plan selected
+    // Same flow as shared CourtReserveConnector: connect → fire-and-forget sync → redirect
+    // Dashboard will show sync progress via CourtReserveConnector polling
     console.log('[Onboarding] Step 3a check:', { software, crPlan, crApiUsername: !!crApiUsername, crApiPassword: !!crApiPassword, clubId })
     if (software === 'courtreserve' && crPlan === 'advanced' && crApiUsername && crApiPassword) {
-      let connectSucceeded = false
       try {
         setImportStatus('Connecting to CourtReserve API...')
-        setImportProgress(10)
-        console.log('[Onboarding] Calling connect mutation for clubId:', clubId)
+        setImportProgress(30)
 
         // Retry connect up to 3 times (race condition with club creation)
         for (let connectAttempt = 0; connectAttempt < 3; connectAttempt++) {
@@ -283,7 +283,6 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
               password: crApiPassword,
               agreedToTerms: true,
             })
-            connectSucceeded = true
             break
           } catch (connErr: any) {
             console.warn(`[Onboarding] Connect attempt ${connectAttempt + 1} failed:`, connErr?.message)
@@ -295,58 +294,23 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
           }
         }
 
-        console.log('[Onboarding] Connect succeeded!')
-        setImportStatus('Connected! Starting initial sync...')
-        setImportProgress(20)
+        // Fire-and-forget sync — Dashboard CourtReserveConnector will poll progress
+        console.log('[Onboarding] Connect succeeded, starting sync (fire-and-forget)')
+        syncMutation.mutate({ clubId, isInitial: true })
 
-        // Chunked sync with auto-retry (large clubs need multiple passes)
-        const MAX_RETRIES = 20
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          try {
-            const result: any = await syncMutation.mutateAsync({ clubId, isInitial: true })
-            const syncResult = result?.lastSyncResult || result
-            const membersSynced = syncResult?.membersSynced || syncResult?.members?.created || 0
-            const membersTotal = syncResult?.membersTotal || 0
-            const phase = syncResult?.phase || 'syncing'
-
-            if (phase === 'done' || (syncResult?.incomplete !== true && !syncResult?.status?.includes('Syncing'))) {
-              setImportStatus('Sync complete!')
-              setImportProgress(100)
-              break
-            }
-
-            // Still syncing — update progress and retry
-            const pct = membersTotal > 0 ? Math.min(90, 20 + Math.round((membersSynced / membersTotal) * 70)) : 50
-            setImportProgress(pct)
-            setImportStatus(`Syncing members... ${membersSynced.toLocaleString()} / ${membersTotal.toLocaleString()}`)
-          } catch (err: any) {
-            // Timeout or transient error — retry
-            if (attempt < MAX_RETRIES - 1) {
-              setImportStatus(`Syncing... (retry ${attempt + 1})`)
-              continue
-            }
-            // Last retry failed — sync will continue via background job
-            console.warn('[Onboarding] Sync retries exhausted, will continue via pg_cron')
-            setImportStatus('Sync started — will continue in background')
-            setImportProgress(100)
-          }
-        }
+        setImportStatus('Connected! Sync started...')
+        setImportProgress(100)
+        await new Promise(r => setTimeout(r, 1500))
       } catch (err: any) {
-        console.error('[Onboarding] API connect/sync failed:', err?.message, err)
-        const msg = err?.message?.includes('Rate limited')
-          ? 'Rate limited — sync will continue automatically via background job'
-          : err?.message?.includes('Connection failed')
+        console.error('[Onboarding] API connect failed:', err?.message, err)
+        const msg = err?.message?.includes('Connection failed')
           ? 'Invalid API credentials. You can reconnect from the Dashboard.'
           : `Connection issue: ${err?.message?.slice(0, 80) || 'Unknown error'}`
         setImportStatus(msg)
         setImportProgress(100)
-        // Show error longer so user can read it
         await new Promise(r => setTimeout(r, 3000))
       }
 
-      if (connectSucceeded) {
-        await new Promise(r => setTimeout(r, 1500))
-      }
       setProcessing(false)
       onComplete()
       return
