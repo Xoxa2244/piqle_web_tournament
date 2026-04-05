@@ -2152,27 +2152,65 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       const since = new Date(Date.now() - input.days * 86400000)
+      const weekAgo = new Date(Date.now() - 7 * 86400000)
 
-      // Stats by type
-      const byType = await ctx.prisma.aIRecommendationLog.groupBy({
-        by: ['type'],
-        where: { clubId: input.clubId, createdAt: { gte: since } },
-        _count: true,
-      })
-
-      // Stats by status
-      const byStatus = await ctx.prisma.aIRecommendationLog.groupBy({
-        by: ['status'],
-        where: { clubId: input.clubId, createdAt: { gte: since } },
-        _count: true,
-      })
-
-      // All logs for by-day aggregation
-      const allLogs = await ctx.prisma.aIRecommendationLog.findMany({
-        where: { clubId: input.clubId, createdAt: { gte: since } },
-        select: { createdAt: true, status: true },
-        orderBy: { createdAt: 'asc' },
-      })
+      // ── Run all queries in parallel ──
+      const [byType, byStatus, allLogs, recentLogs, club, logsWithPersona] = await Promise.all([
+        // Stats by type
+        ctx.prisma.aIRecommendationLog.groupBy({
+          by: ['type'],
+          where: { clubId: input.clubId, createdAt: { gte: since } },
+          _count: true,
+        }),
+        // Stats by status
+        ctx.prisma.aIRecommendationLog.groupBy({
+          by: ['status'],
+          where: { clubId: input.clubId, createdAt: { gte: since } },
+          _count: true,
+        }),
+        // Logs for by-day aggregation (minimal select)
+        ctx.prisma.aIRecommendationLog.findMany({
+          where: { clubId: input.clubId, createdAt: { gte: since } },
+          select: { createdAt: true, status: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        // Recent 20 logs
+        ctx.prisma.aIRecommendationLog.findMany({
+          where: { clubId: input.clubId, createdAt: { gte: since } },
+          select: {
+            id: true, type: true, status: true, channel: true, reasoning: true, createdAt: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        }),
+        // Club triggers
+        ctx.prisma.club.findUniqueOrThrow({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        }),
+        // Persona breakdown
+        ctx.prisma.$queryRaw<Array<{
+          persona: string | null; total: bigint; sent: bigint;
+          delivered: bigint; opened: bigint; clicked: bigint; converted: bigint
+        }>>`
+          SELECT
+            upp.detected_persona as persona,
+            COUNT(*)::bigint as total,
+            COUNT(*) FILTER (WHERE arl.status IN ('SENT', 'DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as sent,
+            COUNT(*) FILTER (WHERE arl.status IN ('DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as delivered,
+            COUNT(*) FILTER (WHERE arl.status IN ('OPENED', 'CLICKED', 'CONVERTED'))::bigint as opened,
+            COUNT(*) FILTER (WHERE arl.status IN ('CLICKED', 'CONVERTED'))::bigint as clicked,
+            COUNT(*) FILTER (WHERE arl.status = 'CONVERTED')::bigint as converted
+          FROM ai_recommendation_logs arl
+          LEFT JOIN user_play_preferences upp
+            ON arl.user_id = upp.user_id AND arl.club_id = upp.club_id
+          WHERE arl.club_id = ${input.clubId}
+            AND arl.created_at >= ${since}
+          GROUP BY upp.detected_persona
+          ORDER BY total DESC
+        `,
+      ])
 
       const byDay: Record<string, { sent: number; failed: number; skipped: number }> = {}
       for (const log of allLogs) {
@@ -2182,53 +2220,9 @@ export const intelligenceRouter = createTRPCRouter({
         byDay[day][bucket]++
       }
 
-      // Recent 20 logs with user info
-      const recentLogs = await ctx.prisma.aIRecommendationLog.findMany({
-        where: { clubId: input.clubId },
-        include: { user: { select: { id: true, name: true, email: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-      })
-
-      // Active triggers count
-      const club: any = await ctx.prisma.club.findUniqueOrThrow({
-        where: { id: input.clubId },
-        select: { automationSettings: true },
-      })
-      const triggers = (club.automationSettings as any)?.triggers || {}
+      const triggers = ((club as any).automationSettings as any)?.triggers || {}
       const activeTriggers = Object.values(triggers).filter(Boolean).length
-
-      // This week
-      const weekAgo = new Date(Date.now() - 7 * 86400000)
       const thisWeek = allLogs.filter(l => l.createdAt >= weekAgo && l.status === 'sent').length
-
-      // ── Conversion by persona ──
-      // Join recommendation logs with user preferences to get persona breakdown
-      const logsWithPersona = await ctx.prisma.$queryRaw<Array<{
-        persona: string | null
-        total: bigint
-        sent: bigint
-        delivered: bigint
-        opened: bigint
-        clicked: bigint
-        converted: bigint
-      }>>`
-        SELECT
-          upp.detected_persona as persona,
-          COUNT(*)::bigint as total,
-          COUNT(*) FILTER (WHERE arl.status IN ('SENT', 'DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as sent,
-          COUNT(*) FILTER (WHERE arl.status IN ('DELIVERED', 'OPENED', 'CLICKED', 'CONVERTED'))::bigint as delivered,
-          COUNT(*) FILTER (WHERE arl.status IN ('OPENED', 'CLICKED', 'CONVERTED'))::bigint as opened,
-          COUNT(*) FILTER (WHERE arl.status IN ('CLICKED', 'CONVERTED'))::bigint as clicked,
-          COUNT(*) FILTER (WHERE arl.status = 'CONVERTED')::bigint as converted
-        FROM ai_recommendation_logs arl
-        LEFT JOIN user_play_preferences upp
-          ON arl.user_id = upp.user_id AND arl.club_id = upp.club_id
-        WHERE arl.club_id = ${input.clubId}
-          AND arl.created_at >= ${since}
-        GROUP BY upp.detected_persona
-        ORDER BY total DESC
-      `
 
       const byPersona = logsWithPersona.map(row => ({
         persona: row.persona || 'UNKNOWN',
@@ -2332,15 +2326,19 @@ export const intelligenceRouter = createTRPCRouter({
   getSequenceAnalytics: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
+      days: z.number().int().min(7).max(365).default(90),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      // All logs with sequence data
+      const since = new Date(Date.now() - input.days * 86400000)
+
+      // Sequence logs — limited to time window + max 500
       const logs = await ctx.prisma.aIRecommendationLog.findMany({
         where: {
           clubId: input.clubId,
           sequenceStep: { not: null },
+          createdAt: { gte: since },
         },
         select: {
           id: true,
@@ -2357,6 +2355,7 @@ export const intelligenceRouter = createTRPCRouter({
           user: { select: { name: true, email: true } },
         },
         orderBy: { createdAt: 'desc' },
+        take: 500,
       })
 
       // Find root logs (step 0) and build chains
@@ -2723,7 +2722,12 @@ export const intelligenceRouter = createTRPCRouter({
 
       const logs = await ctx.prisma.aIRecommendationLog.findMany({
         where: { clubId: input.clubId, createdAt: { gte: since }, sequenceStep: 0 },
+        select: {
+          type: true, createdAt: true, channel: true,
+          openedAt: true, clickedAt: true, respondedAt: true,
+        },
         orderBy: { createdAt: 'desc' },
+        take: 2000, // cap to avoid loading entire history
       })
 
       // Group by type + date (day granularity) to form "campaigns"
