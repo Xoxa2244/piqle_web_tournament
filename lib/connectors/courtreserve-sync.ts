@@ -780,6 +780,16 @@ export async function runCourtReserveSync(
       console.error(`[CR Sync] ${clubId}: enrichment failed (non-fatal):`, err.message)
     }
 
+    // Auto-index for RAG (AI Advisor, member insights)
+    try {
+      console.log(`[CR Sync] ${clubId}: indexing for AI...`)
+      const { indexAll } = await import('@/lib/ai/rag/indexer')
+      const indexResult = await indexAll(clubId)
+      console.log(`[CR Sync] ${clubId}: indexed ${indexResult.total} chunks`)
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: RAG indexing failed (non-fatal):`, err.message)
+    }
+
     console.log(`[CR Sync] ${clubId}: done —`, JSON.stringify(result))
     return result
   } catch (error: any) {
