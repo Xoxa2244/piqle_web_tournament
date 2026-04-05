@@ -679,10 +679,12 @@ export async function runCourtReserveSync(
     })
     const membersResult = { created: membersChunk.created, updated: membersChunk.updated, matched: membersChunk.matched, errors: membersChunk.errors }
 
-    // If members not done — return partial result, UI will call again
+    // If members not done — return partial result, cron will continue
     if (!membersChunk.done) {
       const followerCount = await prisma.clubFollower.count({ where: { clubId } })
-      const percent = Math.round(10 + (followerCount / Math.max(membersChunk.totalCount, 1)) * 60)
+      // Use totalCount from API, fallback to previous value or followerCount
+      const totalCount = membersChunk.totalCount || (connector.lastSyncResult as any)?.membersTotal || followerCount
+      const percent = Math.round(10 + (followerCount / Math.max(totalCount, 1)) * 60)
       await prisma.clubConnector.update({
         where: { id: connectorId },
         data: {
@@ -690,9 +692,10 @@ export async function runCourtReserveSync(
           lastSyncResult: {
             phase: 'members',
             incomplete: true,
-            status: `Syncing members... ${followerCount.toLocaleString()} / ${membersChunk.totalCount.toLocaleString()}`,
+            isInitial: !connector.lastSyncAt,
+            status: `Syncing members... ${followerCount.toLocaleString()} / ${totalCount.toLocaleString()}`,
             membersSynced: followerCount,
-            membersTotal: membersChunk.totalCount,
+            membersTotal: totalCount,
             courtsDone: true,
             percent,
           } as any,
