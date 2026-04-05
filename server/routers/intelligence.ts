@@ -2219,9 +2219,9 @@ export const intelligenceRouter = createTRPCRouter({
             COUNT(*) FILTER (WHERE arl.status = 'CONVERTED')::bigint as converted
           FROM ai_recommendation_logs arl
           LEFT JOIN user_play_preferences upp
-            ON arl.user_id = upp.user_id AND arl.club_id = upp.club_id
-          WHERE arl.club_id = ${input.clubId}
-            AND arl.created_at >= ${since}
+            ON arl."userId" = upp."userId" AND arl."clubId" = upp."clubId"
+          WHERE arl."clubId" = ${input.clubId}
+            AND arl."createdAt" >= ${since}
           GROUP BY upp.detected_persona
           ORDER BY total DESC
         `,
