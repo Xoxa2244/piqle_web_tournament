@@ -670,9 +670,9 @@ export async function runCourtReserveSync(
     const courtsResult = await syncCourts(client, clubId, partnerId)
     await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
 
-    // 2. Sync members (time-boxed — will stop early if near timeout)
+    // 2. Sync members (time-boxed — leave 120s for sessions/events/enrichment)
     console.log(`[CR Sync] ${clubId}: syncing members...`)
-    const memberDeadline = maxTimeMs ? startTime + maxTimeMs - 10_000 : undefined // Stop 10s before timeout
+    const memberDeadline = maxTimeMs ? startTime + Math.min(maxTimeMs - 120_000, 180_000) : undefined
     const membersChunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
       updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
       deadline: memberDeadline,
@@ -769,14 +769,18 @@ export async function runCourtReserveSync(
     console.log(`[CR Sync] ${clubId}: done —`, JSON.stringify(result))
     return result
   } catch (error: any) {
-    // Update connector with error
+    // If partial data was synced, keep status as 'syncing' so retry continues
+    // Only mark as 'error' if no data was loaded at all
+    const hasPartialData = await prisma.clubFollower.count({ where: { clubId } }).catch(() => 0)
+    const isAbort = error.message?.includes('aborted') || error.message?.includes('FUNCTION_INVOCATION_TIMEOUT')
+
     await prisma.clubConnector.update({
       where: { id: connectorId },
       data: {
-        status: 'error',
-        lastError: error.message || 'Sync failed',
+        status: (hasPartialData > 0 || isAbort) ? 'syncing' : 'error',
+        lastError: isAbort ? 'Sync timeout — will auto-resume' : (error.message || 'Sync failed'),
       },
-    })
+    }).catch(() => {})
     throw error
   }
 }
