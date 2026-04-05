@@ -714,69 +714,27 @@ export async function runCourtReserveSync(
       }
     }
 
-    // Check which phases are already done (resume after timeout)
-    const prevResult = connector.lastSyncResult as any
-    const reservationsDone = prevResult?.reservationsDone === true
-    const eventsDone = prevResult?.eventsDone === true
+    // 3. Sync reservations (court bookings)
+    console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
+    await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true })
+    const { sessions: sessionsResult, bookings: bookingsResult } = await syncReservations(client, clubId, partnerId, from, now)
+    const sessCount = await prisma.playSession.count({ where: { clubId } })
+    await updateProgress({ phase: 'events', percent: 80, status: `${sessCount.toLocaleString()} sessions synced. Syncing events...`, courtsDone: true, membersDone: true })
 
-    let sessionsResult = { created: 0, updated: 0, errors: 0 }
-    let bookingsResult = { created: 0, updated: 0, errors: 0 }
+    // 4. Sync event registrations (Open Play, Clinics, Leagues — PRIMARY data)
+    console.log(`[CR Sync] ${clubId}: syncing event registrations (${daysBack} days)...`)
+    const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, now, connectorId)
+    sessionsResult.created += eventResult.sessions.created
+    sessionsResult.updated += eventResult.sessions.updated
+    sessionsResult.errors += eventResult.sessions.errors
+    bookingsResult.created += eventResult.bookings.created
+    bookingsResult.errors += eventResult.bookings.errors
 
-    // 3. Sync reservations (skip if already done from previous chunk)
-    if (!reservationsDone) {
-      console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
-      await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true })
-
-      // Check deadline before long operation
-      if (maxTimeMs && Date.now() - startTime > maxTimeMs - 15_000) {
-        await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true, incomplete: true })
-        console.log(`[CR Sync] ${clubId}: deadline approaching, will resume reservations next call`)
-        return { courts: courtsResult, members: membersResult, sessions: sessionsResult, bookings: bookingsResult, totalErrors: 0, syncedAt: now.toISOString(), incomplete: true }
-      }
-
-      const resResult = await syncReservations(client, clubId, partnerId, from, now)
-      sessionsResult = resResult.sessions
-      bookingsResult = resResult.bookings
-      const sessCount = await prisma.playSession.count({ where: { clubId } })
-      await updateProgress({ phase: 'events', percent: 78, status: `${sessCount.toLocaleString()} sessions synced. Syncing events...`, courtsDone: true, membersDone: true, reservationsDone: true })
-    } else {
-      console.log(`[CR Sync] ${clubId}: reservations already done, skipping`)
-    }
-
-    // 4. Sync event registrations (skip if already done)
-    if (!eventsDone) {
-      console.log(`[CR Sync] ${clubId}: syncing event registrations (${daysBack} days)...`)
-      const preEventSessions = await prisma.playSession.count({ where: { clubId } })
-      await updateProgress({ phase: 'events', percent: 85, status: `Syncing events & programs...`, courtsDone: true, membersDone: true, reservationsDone: true })
-
-      // Check deadline before long operation
-      if (maxTimeMs && Date.now() - startTime > maxTimeMs - 15_000) {
-        await updateProgress({ phase: 'events', percent: 85, status: 'Syncing events...', courtsDone: true, membersDone: true, reservationsDone: true, incomplete: true })
-        console.log(`[CR Sync] ${clubId}: deadline approaching, will resume events next call`)
-        return { courts: courtsResult, members: membersResult, sessions: sessionsResult, bookings: bookingsResult, totalErrors: 0, syncedAt: now.toISOString(), incomplete: true }
-      }
-
-      const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, now, connectorId)
-      sessionsResult.created += eventResult.sessions.created
-      sessionsResult.updated += eventResult.sessions.updated
-      sessionsResult.errors += eventResult.sessions.errors
-      bookingsResult.created += eventResult.bookings.created
-      bookingsResult.errors += eventResult.bookings.errors
-      const postEventSessions = await prisma.playSession.count({ where: { clubId } })
-      const postEventBookings = await prisma.playSessionBooking.count({ where: { playSession: { clubId } } })
-      await updateProgress({ phase: 'events', percent: 95, status: `${postEventSessions.toLocaleString()} sessions, ${postEventBookings.toLocaleString()} bookings synced`, courtsDone: true, membersDone: true, reservationsDone: true, eventsDone: true })
-    } else {
-      console.log(`[CR Sync] ${clubId}: events already done, skipping`)
-    }
-
-    // Get cumulative totals from DB for accurate final display
+    // Final totals from DB
     const totalMembers = await prisma.clubFollower.count({ where: { clubId } })
     const totalSessions = await prisma.playSession.count({ where: { clubId } })
-    const totalBookings = await prisma.playSessionBooking.count({
-      where: { playSession: { clubId } },
-    })
-
-    await updateProgress({ phase: 'done', percent: 100, status: 'Sync complete!', courtsDone: true, membersDone: true, reservationsDone: true, eventsDone: true, sessionsDone: true })
+    const totalBookings = await prisma.playSessionBooking.count({ where: { playSession: { clubId } } })
+    await updateProgress({ phase: 'done', percent: 100, status: `Sync complete! ${totalMembers.toLocaleString()} members, ${totalSessions.toLocaleString()} sessions, ${totalBookings.toLocaleString()} bookings`, courtsDone: true, membersDone: true, sessionsDone: true })
 
     const result: SyncResult = {
       courts: courtsResult,

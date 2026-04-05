@@ -144,11 +144,11 @@ export const connectorsRouter = createTRPCRouter({
         })
       }
 
-      // Run sync with time limit — returns partial result if not done
+      // Run sync — members chunked at 280s, sessions/events run fully
       const isInitial = input.isInitial || !connector.lastSyncAt
       const result = await runCourtReserveSync(connector.id, {
         isInitial,
-        maxTimeMs: 240_000, // 4 min — Vercel allows 300s
+        maxTimeMs: 280_000, // 280s — leave 20s buffer for Vercel 300s limit
       })
 
       return result
