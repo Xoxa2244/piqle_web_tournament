@@ -54,6 +54,14 @@
     {
       "path": "/api/ai/enrich-members",
       "schedule": "0 6 1 * *"
+    },
+    {
+      "path": "/api/campaigns/slot-filler?mode=tomorrow",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/campaigns/slot-filler?mode=lastminute",
+      "schedule": "0 */2 * * *"
     }
   ]
 }
