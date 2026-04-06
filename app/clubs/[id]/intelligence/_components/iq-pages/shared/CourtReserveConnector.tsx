@@ -422,7 +422,7 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                     {progress?.syncPhaseIdx != null && (
                       <div className="mt-2 text-center">
                         <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
-                          Phase {progress.syncPhaseIdx + 1}/4 — {['Recent 2 months', 'Extended 5 months', 'Historical 8 months', 'Full year'][progress.syncPhaseIdx] || 'Syncing'}
+                          Phase {progress.syncPhaseIdx + 1}/4 — {['Recent + upcoming', '2-5 months ago', '5-8 months ago', '8-12 months ago'][progress.syncPhaseIdx] || 'Syncing'}
                         </div>
                       </div>
                     )}

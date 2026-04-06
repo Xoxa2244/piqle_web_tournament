@@ -662,11 +662,12 @@ export async function runCourtReserveSync(
   futureDate.setDate(futureDate.getDate() + 30) // Include 30 days of future sessions
 
   // Progressive sync phases — recent data first, expand backwards
+  // Phase 0 also includes +30 days future (most valuable for dashboard)
   const SYNC_PHASES = [
-    { daysBack: 60, label: 'Recent (2 months)' },
-    { daysBack: 150, label: 'Extended (5 months)' },
-    { daysBack: 240, label: 'Historical (8 months)' },
-    { daysBack: 365, label: 'Full year' },
+    { daysBack: 60, label: 'Recent + upcoming (2mo + 30d)' },
+    { daysBack: 150, label: '2-5 months ago' },
+    { daysBack: 240, label: '5-8 months ago' },
+    { daysBack: 365, label: '8-12 months ago' },
   ]
 
   const from = new Date(now)
