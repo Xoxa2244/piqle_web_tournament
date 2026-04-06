@@ -25,7 +25,7 @@ async function upsertEmbeddings(clubId: string, chunks: TextChunk[], embeddings:
     }
 
     // Insert new embedding
-    await supabaseAdmin.from('document_embeddings').insert({
+    const { error } = await supabaseAdmin.from('document_embeddings').insert({
       club_id: clubId,
       content: chunk.content,
       content_type: chunk.contentType,
@@ -35,6 +35,11 @@ async function upsertEmbeddings(clubId: string, chunks: TextChunk[], embeddings:
       source_table: chunk.sourceTable || null,
       chunk_index: chunk.chunkIndex,
     });
+    if (error && i === 0) {
+      // Log first error only to avoid spam
+      console.error(`[RAG] Supabase insert failed:`, error.message, error.details)
+      throw new Error(`RAG insert failed: ${error.message}`)
+    }
   }
 }
 
