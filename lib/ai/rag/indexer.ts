@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { generateEmbeddings } from './embeddings';
 import {
   chunkClubInfo, chunkSession, chunkMemberPattern, chunkBookingTrend,
-  chunkFAQ, DEFAULT_FAQS, type TextChunk
+  chunkFAQ, chunkClubInsights, DEFAULT_FAQS, type TextChunk
 } from './chunker';
 import { inferSkillLevel, getDayName, getTimeSlot, getOccupancyPercent } from '../scoring';
 
@@ -264,22 +264,80 @@ export async function indexFAQs(clubId: string): Promise<number> {
   return allChunks.length;
 }
 
+// ── Index cross-data insights for a club ──
+export async function indexClubInsights(clubId: string): Promise<number> {
+  // Clear old insights embeddings
+  await supabaseAdmin
+    .from('document_embeddings')
+    .delete()
+    .eq('club_id', clubId)
+    .eq('content_type', 'club_insights');
+
+  try {
+    // Gather insights data via raw queries
+    const [leadTimeData, cancelData, fillData] = await Promise.all([
+      prisma.$queryRaw<Array<{ avg_days: number; last_minute_pct: number }>>`
+        SELECT
+          ROUND(AVG(EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400)::numeric, 1) as avg_days,
+          ROUND(COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400 < 1)::numeric / NULLIF(COUNT(*), 0) * 100) as last_minute_pct
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId} AND psb.status = 'CONFIRMED'
+      `.catch(() => []),
+      prisma.$queryRaw<Array<{ format: string; rate: number }>>`
+        SELECT ps.format,
+          ROUND(COUNT(*) FILTER (WHERE psb.status = 'CANCELLED')::numeric / NULLIF(COUNT(*), 0) * 100) as rate
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+        GROUP BY ps.format ORDER BY rate DESC LIMIT 1
+      `.catch(() => []),
+      prisma.$queryRaw<Array<{ format: string; dow: number; time_bucket: string; avg_fill: number }>>`
+        SELECT ps.format, EXTRACT(DOW FROM ps.date)::int as dow,
+          CASE WHEN ps."startTime" < '12:00' THEN 'morning' WHEN ps."startTime" < '17:00' THEN 'afternoon' ELSE 'evening' END as time_bucket,
+          ROUND(AVG(CASE WHEN ps."maxPlayers" > 0
+            THEN (SELECT COUNT(*) FROM play_session_bookings b WHERE b."sessionId" = ps.id AND b.status = 'CONFIRMED')::numeric / ps."maxPlayers" * 100 ELSE 0 END))::int as avg_fill
+        FROM play_sessions ps WHERE ps."clubId" = ${clubId} AND ps.status IN ('COMPLETED', 'SCHEDULED')
+        GROUP BY ps.format, dow, time_bucket HAVING COUNT(*) >= 3 ORDER BY avg_fill DESC
+      `.catch(() => []),
+    ]);
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const chunks = chunkClubInsights({
+      clubId,
+      bookingLeadTime: leadTimeData[0] ? { avgDays: Number(leadTimeData[0].avg_days) || 0, lastMinutePct: Number(leadTimeData[0].last_minute_pct) || 0 } : undefined,
+      cancellationRate: cancelData[0] ? { overall: Number(cancelData[0].rate) || 0, worstFormat: cancelData[0].format, worstFormatRate: Number(cancelData[0].rate) || 0 } : undefined,
+      fillRate: fillData.map(r => ({ format: r.format, day: dayNames[r.dow] || String(r.dow), timeBucket: r.time_bucket, avgFill: r.avg_fill })),
+    });
+
+    if (chunks.length === 0) return 0;
+    const embeddings = await generateEmbeddings(chunks.map(c => c.content));
+    await upsertEmbeddings(clubId, chunks, embeddings);
+    return chunks.length;
+  } catch (err) {
+    console.error(`[RAG] Club insights indexing failed for ${clubId}:`, err);
+    return 0;
+  }
+}
+
 // ── Full re-index for a club ──
 export async function indexAll(clubId: string): Promise<{ total: number; breakdown: Record<string, number> }> {
-  const [clubCount, sessionCount, memberCount, faqCount] = await Promise.all([
+  const [clubCount, sessionCount, memberCount, faqCount, insightsCount] = await Promise.all([
     indexClub(clubId),
     indexAllSessions(clubId),
     indexMemberPatterns(clubId),
     indexFAQs(clubId),
+    indexClubInsights(clubId),
   ]);
 
   return {
-    total: clubCount + sessionCount + memberCount + faqCount,
+    total: clubCount + sessionCount + memberCount + faqCount + insightsCount,
     breakdown: {
       club_info: clubCount,
       sessions: sessionCount,
       member_patterns: memberCount,
       faqs: faqCount,
+      insights: insightsCount,
     },
   };
 }

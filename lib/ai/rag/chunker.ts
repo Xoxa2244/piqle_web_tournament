@@ -1,6 +1,6 @@
 import { getFormatLabel, getSkillLevelLabel, getDayName, getTimeSlot, getTimeSlotLabel, getOccupancyPercent } from '../scoring';
 
-export type ContentType = 'club_info' | 'session' | 'member_pattern' | 'booking_trend' | 'faq';
+export type ContentType = 'club_info' | 'session' | 'member_pattern' | 'booking_trend' | 'faq' | 'club_insights';
 
 export interface TextChunk {
   content: string;
@@ -205,6 +205,62 @@ export function chunkFAQ(faq: { question: string; answer: string; category: stri
     metadata: { category: faq.category },
     chunkIndex: 0,
   }];
+}
+
+// ── Club Insights Chunking (cross-data analytics) ──
+export function chunkClubInsights(insights: {
+  clubId: string;
+  bookingLeadTime?: { avgDays: number; lastMinutePct: number };
+  cancellationRate?: { overall: number; worstFormat?: string; worstFormatRate?: number };
+  fillRate?: Array<{ format: string; day: string; timeBucket: string; avgFill: number }>;
+  socialClusters?: Array<{ size: number; memberNames: string[] }>;
+  skillMigrations?: Array<{ from: string; to: string; count: number }>;
+  churnRiskPartners?: Array<{ userName: string; partnerName: string }>;
+}): TextChunk[] {
+  const parts: string[] = []
+
+  if (insights.bookingLeadTime) {
+    const lt = insights.bookingLeadTime
+    parts.push(`Average booking lead time: ${lt.avgDays.toFixed(1)} days. ${lt.lastMinutePct}% of bookings are last-minute (within 24 hours).`)
+  }
+
+  if (insights.cancellationRate) {
+    const cr = insights.cancellationRate
+    parts.push(`Overall cancellation rate: ${cr.overall}%.${cr.worstFormat ? ` Highest cancellation: ${cr.worstFormat} at ${cr.worstFormatRate}%.` : ''}`)
+  }
+
+  if (insights.fillRate?.length) {
+    const best = insights.fillRate.slice(0, 3)
+    const worst = insights.fillRate.slice(-3).reverse()
+    parts.push(`Best filling sessions: ${best.map(r => `${r.format} ${r.day} ${r.timeBucket} (${r.avgFill}%)`).join(', ')}.`)
+    if (worst.length && worst[0].avgFill < 60) {
+      parts.push(`Underperforming: ${worst.map(r => `${r.format} ${r.day} ${r.timeBucket} (${r.avgFill}%)`).join(', ')}.`)
+    }
+  }
+
+  if (insights.socialClusters?.length) {
+    parts.push(`${insights.socialClusters.length} social clusters detected (groups of 3+ players who frequently play together). Largest: ${insights.socialClusters[0].memberNames.slice(0, 4).join(', ')} (${insights.socialClusters[0].size} players).`)
+  }
+
+  if (insights.skillMigrations?.length) {
+    const top = insights.skillMigrations.slice(0, 3)
+    parts.push(`Skill progression: ${top.map(m => `${m.count} players moved ${m.from} → ${m.to}`).join(', ')}.`)
+  }
+
+  if (insights.churnRiskPartners?.length) {
+    parts.push(`${insights.churnRiskPartners.length} players at elevated churn risk because their frequent partner became inactive.`)
+  }
+
+  if (parts.length === 0) return []
+
+  return [{
+    content: `Club Analytics Insights: ${parts.join(' ')}`,
+    contentType: 'club_insights',
+    metadata: { type: 'cross_data_insights' },
+    sourceId: insights.clubId,
+    sourceTable: 'clubs',
+    chunkIndex: 0,
+  }]
 }
 
 // ── Default FAQ entries for pickleball context ──

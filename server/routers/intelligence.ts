@@ -4502,4 +4502,243 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const count = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
       return { count }
     }),
+
+  // ── Cross-Data Insights ──
+
+  getInsightsSocialClusters: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // Find groups of 3+ players who shared ≥5 sessions
+      const pairs = await ctx.prisma.$queryRaw<Array<{
+        user1: string; name1: string; user2: string; name2: string; shared: bigint
+      }>>`
+        SELECT b1."userId" as user1, u1.name as name1,
+               b2."userId" as user2, u2.name as name2,
+               COUNT(DISTINCT b1."sessionId")::bigint as shared
+        FROM play_session_bookings b1
+        JOIN play_session_bookings b2 ON b1."sessionId" = b2."sessionId" AND b1."userId" < b2."userId"
+        JOIN play_sessions ps ON ps.id = b1."sessionId"
+        JOIN users u1 ON u1.id = b1."userId"
+        JOIN users u2 ON u2.id = b2."userId"
+        WHERE ps."clubId" = ${input.clubId}
+          AND b1.status = 'CONFIRMED' AND b2.status = 'CONFIRMED'
+        GROUP BY b1."userId", u1.name, b2."userId", u2.name
+        HAVING COUNT(DISTINCT b1."sessionId") >= 5
+        ORDER BY shared DESC
+        LIMIT 100
+      `
+      // Build clusters from pair edges using simple union-find
+      const parent = new Map<string, string>()
+      const nameMap = new Map<string, string>()
+      const find = (x: string): string => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x)!)!); x = parent.get(x)! } return x }
+      const union = (a: string, b: string) => { parent.set(find(a), find(b)) }
+      for (const p of pairs) {
+        nameMap.set(p.user1, p.name1 || p.user1)
+        nameMap.set(p.user2, p.name2 || p.user2)
+        if (!parent.has(p.user1)) parent.set(p.user1, p.user1)
+        if (!parent.has(p.user2)) parent.set(p.user2, p.user2)
+        union(p.user1, p.user2)
+      }
+      const clusterMap = new Map<string, string[]>()
+      parent.forEach((_, id) => {
+        const root = find(id)
+        const list = clusterMap.get(root) || []
+        list.push(id)
+        clusterMap.set(root, list)
+      })
+      const clusters: Array<{ members: Array<{ id: string; name: string }>; size: number }> = []
+      clusterMap.forEach((ids) => {
+        if (ids.length >= 3) {
+          clusters.push({ members: ids.map(id => ({ id, name: nameMap.get(id) || id })), size: ids.length })
+        }
+      })
+      return clusters
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 20)
+    }),
+
+  getInsightsBookingLeadTime: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const data = await ctx.prisma.$queryRaw<Array<{ bucket: string; count: bigint }>>`
+        SELECT
+          CASE
+            WHEN EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400 < 0 THEN 'same_day'
+            WHEN EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400 < 1 THEN 'last_minute'
+            WHEN EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400 < 3 THEN '1_3_days'
+            WHEN EXTRACT(EPOCH FROM (ps.date - psb."bookedAt")) / 86400 < 7 THEN '3_7_days'
+            ELSE 'week_plus'
+          END as bucket,
+          COUNT(*)::bigint as count
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${input.clubId} AND psb.status = 'CONFIRMED'
+        GROUP BY bucket
+        ORDER BY count DESC
+      `
+      const total = data.reduce((s, d) => s + Number(d.count), 0)
+      return {
+        buckets: data.map(d => ({ label: d.bucket, count: Number(d.count), pct: total > 0 ? Math.round(Number(d.count) / total * 100) : 0 })),
+        total,
+      }
+    }),
+
+  getInsightsCancellationPatterns: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const [byFormat, byDay, topCancellers] = await Promise.all([
+        ctx.prisma.$queryRaw<Array<{ format: string; total: bigint; cancelled: bigint }>>`
+          SELECT ps.format, COUNT(*)::bigint as total,
+            COUNT(*) FILTER (WHERE psb.status = 'CANCELLED')::bigint as cancelled
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = ${input.clubId}
+          GROUP BY ps.format
+        `,
+        ctx.prisma.$queryRaw<Array<{ dow: number; total: bigint; cancelled: bigint }>>`
+          SELECT EXTRACT(DOW FROM ps.date)::int as dow, COUNT(*)::bigint as total,
+            COUNT(*) FILTER (WHERE psb.status = 'CANCELLED')::bigint as cancelled
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = ${input.clubId}
+          GROUP BY dow
+        `,
+        ctx.prisma.$queryRaw<Array<{ user_id: string; name: string; cancelled: bigint; total: bigint }>>`
+          SELECT psb."userId" as user_id, u.name,
+            COUNT(*) FILTER (WHERE psb.status = 'CANCELLED')::bigint as cancelled,
+            COUNT(*)::bigint as total
+          FROM play_session_bookings psb
+          JOIN users u ON u.id = psb."userId"
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = ${input.clubId}
+          GROUP BY psb."userId", u.name
+          HAVING COUNT(*) FILTER (WHERE psb.status = 'CANCELLED') >= 3
+          ORDER BY cancelled DESC
+          LIMIT 10
+        `,
+      ])
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      return {
+        byFormat: byFormat.map(r => ({ format: r.format, total: Number(r.total), cancelled: Number(r.cancelled), rate: Number(r.total) > 0 ? Math.round(Number(r.cancelled) / Number(r.total) * 100) : 0 })),
+        byDay: byDay.map(r => ({ day: dayNames[r.dow] || String(r.dow), total: Number(r.total), cancelled: Number(r.cancelled), rate: Number(r.total) > 0 ? Math.round(Number(r.cancelled) / Number(r.total) * 100) : 0 })),
+        topCancellers: topCancellers.map(r => ({ userId: r.user_id, name: r.name, cancelled: Number(r.cancelled), total: Number(r.total) })),
+      }
+    }),
+
+  getInsightsSkillMigration: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // Track skill levels played by each user per month
+      const data = await ctx.prisma.$queryRaw<Array<{ user_id: string; month: string; skill_level: string }>>`
+        SELECT psb."userId" as user_id,
+          TO_CHAR(ps.date, 'YYYY-MM') as month,
+          MODE() WITHIN GROUP (ORDER BY ps."skillLevel") as skill_level
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${input.clubId} AND psb.status = 'CONFIRMED'
+          AND ps."skillLevel" IS NOT NULL AND ps."skillLevel" != 'ALL_LEVELS'
+        GROUP BY psb."userId", TO_CHAR(ps.date, 'YYYY-MM')
+        ORDER BY user_id, month
+      `
+      // Detect transitions
+      const transitions: Array<{ from: string; to: string; count: number }> = []
+      const transMap = new Map<string, number>()
+      let prevUser = '', prevLevel = ''
+      for (const row of data) {
+        if (row.user_id === prevUser && row.skill_level !== prevLevel) {
+          const key = `${prevLevel}→${row.skill_level}`
+          transMap.set(key, (transMap.get(key) || 0) + 1)
+        }
+        prevUser = row.user_id
+        prevLevel = row.skill_level
+      }
+      transMap.forEach((count, key) => {
+        const [from, to] = key.split('→')
+        transitions.push({ from, to, count })
+      })
+      return transitions.sort((a, b) => b.count - a.count)
+    }),
+
+  getInsightsChurnRiskBySocialGraph: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // Find players whose top partner hasn't played in 30+ days
+      const atRiskPairs = await ctx.prisma.$queryRaw<Array<{
+        user_id: string; user_name: string; partner_id: string; partner_name: string;
+        shared_sessions: bigint; partner_last_played: Date | null;
+      }>>`
+        WITH partner_pairs AS (
+          SELECT b1."userId" as user_id, b2."userId" as partner_id,
+            COUNT(DISTINCT b1."sessionId")::bigint as shared_sessions
+          FROM play_session_bookings b1
+          JOIN play_session_bookings b2 ON b1."sessionId" = b2."sessionId" AND b1."userId" != b2."userId"
+          JOIN play_sessions ps ON ps.id = b1."sessionId"
+          WHERE ps."clubId" = ${input.clubId} AND b1.status = 'CONFIRMED' AND b2.status = 'CONFIRMED'
+          GROUP BY b1."userId", b2."userId"
+          HAVING COUNT(DISTINCT b1."sessionId") >= 5
+        ),
+        partner_activity AS (
+          SELECT pp.user_id, pp.partner_id, pp.shared_sessions,
+            MAX(ps2.date) as partner_last_played
+          FROM partner_pairs pp
+          LEFT JOIN play_session_bookings psb2 ON psb2."userId" = pp.partner_id AND psb2.status = 'CONFIRMED'
+          LEFT JOIN play_sessions ps2 ON ps2.id = psb2."sessionId" AND ps2."clubId" = ${input.clubId}
+          GROUP BY pp.user_id, pp.partner_id, pp.shared_sessions
+        )
+        SELECT pa.user_id, u1.name as user_name, pa.partner_id, u2.name as partner_name,
+          pa.shared_sessions, pa.partner_last_played
+        FROM partner_activity pa
+        JOIN users u1 ON u1.id = pa.user_id
+        JOIN users u2 ON u2.id = pa.partner_id
+        WHERE pa.partner_last_played < CURRENT_DATE - INTERVAL '30 days'
+          OR pa.partner_last_played IS NULL
+        ORDER BY pa.shared_sessions DESC
+        LIMIT 30
+      `
+      return atRiskPairs.map(p => ({
+        userId: p.user_id, userName: p.user_name,
+        partnerId: p.partner_id, partnerName: p.partner_name,
+        sharedSessions: Number(p.shared_sessions),
+        partnerLastPlayed: p.partner_last_played?.toISOString().split('T')[0] || null,
+      }))
+    }),
+
+  getInsightsFillRate: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const data = await ctx.prisma.$queryRaw<Array<{
+        format: string; dow: number; time_bucket: string;
+        avg_fill: number; session_count: bigint;
+      }>>`
+        SELECT ps.format,
+          EXTRACT(DOW FROM ps.date)::int as dow,
+          CASE
+            WHEN ps."startTime" < '12:00' THEN 'morning'
+            WHEN ps."startTime" < '17:00' THEN 'afternoon'
+            ELSE 'evening'
+          END as time_bucket,
+          ROUND(AVG(
+            CASE WHEN ps."maxPlayers" > 0
+              THEN (SELECT COUNT(*) FROM play_session_bookings b WHERE b."sessionId" = ps.id AND b.status = 'CONFIRMED')::numeric / ps."maxPlayers" * 100
+              ELSE 0 END
+          ))::int as avg_fill,
+          COUNT(*)::bigint as session_count
+        FROM play_sessions ps
+        WHERE ps."clubId" = ${input.clubId} AND ps.status IN ('COMPLETED', 'SCHEDULED')
+        GROUP BY ps.format, dow, time_bucket
+        HAVING COUNT(*) >= 3
+        ORDER BY avg_fill DESC
+      `
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      return data.map(r => ({
+        format: r.format, day: dayNames[r.dow] || String(r.dow), timeBucket: r.time_bucket,
+        avgFill: r.avg_fill, sessionCount: Number(r.session_count),
+      }))
+    }),
 })
