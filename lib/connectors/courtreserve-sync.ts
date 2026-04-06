@@ -667,23 +667,35 @@ export async function runCourtReserveSync(
   }
 
   try {
-    // 1. Sync courts
-    console.log(`[CR Sync] ${clubId}: syncing courts...`)
-    await updateProgress({ phase: 'courts', percent: 5, status: 'Syncing courts...' })
-    const courtsResult = await syncCourts(client, clubId, partnerId)
-    await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
+    // Check previous progress — skip completed phases on resume
+    const prevProgress = connector.lastSyncResult as any
+    const membersDone = prevProgress?.membersDone === true
+    const courtsDone = prevProgress?.courtsDone === true
 
-    // 2. Sync members (time-boxed — stop 10s before deadline)
-    console.log(`[CR Sync] ${clubId}: syncing members...`)
-    const memberDeadline = maxTimeMs ? startTime + maxTimeMs - 10_000 : undefined
-    const membersChunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
-      updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
-      deadline: memberDeadline,
-    })
-    const membersResult = { created: membersChunk.created, updated: membersChunk.updated, matched: membersChunk.matched, errors: membersChunk.errors }
+    // 1. Sync courts (skip if already done in previous chunk)
+    let courtsResult = { created: 0, updated: 0, errors: 0 }
+    if (!courtsDone) {
+      console.log(`[CR Sync] ${clubId}: syncing courts...`)
+      await updateProgress({ phase: 'courts', percent: 5, status: 'Syncing courts...' })
+      courtsResult = await syncCourts(client, clubId, partnerId)
+      await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
+    } else {
+      console.log(`[CR Sync] ${clubId}: courts already done, skipping`)
+    }
 
-    // If members not done — return partial result, cron will continue
-    if (!membersChunk.done) {
+    // 2. Sync members (skip if already done in previous chunk)
+    let membersResult = { created: 0, updated: 0, matched: 0, errors: 0 }
+    if (!membersDone) {
+      console.log(`[CR Sync] ${clubId}: syncing members...`)
+      const memberDeadline = maxTimeMs ? startTime + maxTimeMs - 10_000 : undefined
+      const membersChunk = await syncMembersWithProgress(client, clubId, partnerId, connectorId, {
+        updatedFrom: isInitial ? undefined : connector.lastSyncAt?.toISOString(),
+        deadline: memberDeadline,
+      })
+      membersResult = { created: membersChunk.created, updated: membersChunk.updated, matched: membersChunk.matched, errors: membersChunk.errors }
+
+      // If members not done — return partial result, cron will continue
+      if (!membersChunk.done) {
       const followerCount = await prisma.clubFollower.count({ where: { clubId } })
       // Use totalCount from API, fallback to previous value or followerCount
       const totalCount = membersChunk.totalCount || (connector.lastSyncResult as any)?.membersTotal || followerCount
@@ -715,6 +727,9 @@ export async function runCourtReserveSync(
         syncedAt: now.toISOString(),
         incomplete: true,
       }
+    }
+    } else {
+      console.log(`[CR Sync] ${clubId}: members already done, skipping`)
     }
 
     // 3. Sync reservations (court bookings)
