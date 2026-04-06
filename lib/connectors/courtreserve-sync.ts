@@ -929,6 +929,16 @@ export async function runCourtReserveSync(
       console.error(`[CR Sync] ${clubId}: RAG indexing failed (non-fatal):`, err.message)
     }
 
+    // Auto-generate AI member profiles (personalized insights per active player)
+    try {
+      console.log(`[CR Sync] ${clubId}: generating AI member profiles...`)
+      const { generateMemberProfilesForClub } = await import('@/lib/ai/member-profile-generator')
+      const profileResult = await generateMemberProfilesForClub(prisma, clubId, { batchSize: 10, delayMs: 300 })
+      console.log(`[CR Sync] ${clubId}: profiles — ${profileResult.generated} generated, ${profileResult.skipped} skipped`)
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: member profiles failed (non-fatal):`, err.message)
+    }
+
     console.log(`[CR Sync] ${clubId}: done —`, JSON.stringify(result))
     return result
   } catch (error: any) {
