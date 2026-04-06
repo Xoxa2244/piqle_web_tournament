@@ -38,6 +38,7 @@ export default function PublicProfileScreen() {
   const { colors } = useAppTheme()
   const { isReady, token, user } = useAuth()
   const isAuthenticated = Boolean(token)
+  const ownProfile = Boolean(user?.id && user.id === profileId)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const [tdRatedLocally, setTdRatedLocally] = useState(false)
@@ -66,9 +67,19 @@ export default function PublicProfileScreen() {
     { targets: [{ entityType: 'TD', entityId: profileId }] },
     { enabled: FEEDBACK_API_ENABLED && Boolean(profileId) && isAuthenticated, retry: false },
   )
+  const tdEligibilityQuery = trpc.feedback.getEligibility.useQuery(
+    { entityType: 'TD', entityId: profileId },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(profileId) && isAuthenticated && !ownProfile, retry: false },
+  )
   const hasRatedTd = Boolean(hasRatedQuery.data?.map?.[`TD:${profileId}`])
   const hasRatedTdEffective = hasRatedTd || tdRatedLocally
-  const ownProfile = Boolean(user?.id && user.id === profileId)
+  const canRateTd = (() => {
+    if (ownProfile) return false
+    if (!FEEDBACK_API_ENABLED) return false
+    if (!isAuthenticated || !profileId) return false
+    if (!tdEligibilityQuery.isFetched) return false
+    return Boolean(tdEligibilityQuery.data?.canRate) && !hasRatedTdEffective
+  })()
   const tournamentsQuery = (trpc as any).public.listBoards.useQuery(undefined, {
     enabled: Boolean(profileId),
   })
@@ -133,7 +144,7 @@ export default function PublicProfileScreen() {
   const doublesRatingLabel = doublesNum !== null ? doublesNum.toFixed(2) : '—'
 
   /** Свой профиль всегда через вкладку / стек `profile/index` (редактирование, DUPR Connect и т.д.). */
-  if (isReady && token && user?.id && profileId && user.id === profileId) {
+  if (isReady && token && user?.id && profileId && ownProfile) {
     return <Redirect href="/profile" />
   }
 
@@ -221,7 +232,7 @@ export default function PublicProfileScreen() {
               </View>
             ) : null}
 
-            {!ownProfile && isAuthenticated && !hasRatedTdEffective ? (
+            {canRateTd ? (
               <Pressable
                 onPress={() => setTdFeedbackOpen(true)}
                 style={[styles.feedbackRateBtn, { backgroundColor: colors.primary }]}
@@ -292,7 +303,7 @@ export default function PublicProfileScreen() {
         </View>
 
       <FeedbackRatingModal
-        open={tdFeedbackOpen}
+        open={tdFeedbackOpen && canRateTd}
         onClose={() => setTdFeedbackOpen(false)}
         entityType="TD"
         entityId={profileId}

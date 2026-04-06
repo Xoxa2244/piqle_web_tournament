@@ -1,0 +1,6801 @@
+{
+  "generatedAt": "2026-04-06T10:03:25.599Z",
+  "scope": "apps/mobile",
+  "instructions": [
+    "Edit only the text values if you want safe replacement later.",
+    "Keep file, line, and group keys unchanged.",
+    "Texts are grouped by screen files first, then shared component files."
+  ],
+  "screens": {
+    "(tabs)/ai.tsx": [
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 29,
+        "text": "Hi! I'm your Piqle AI Coach for pickleball.\n\nWhat's your main goal right now? For example: getting fit, improving your DUPR rating, finding tournaments, or just having more fun on the court. Tell me and we'll make a plan.",
+        "context": "variable:WELCOME_MESSAGE"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 32,
+        "text": "How do I register for a tournament?",
+        "context": "property:text"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 33,
+        "text": "What are pickleball scoring rules?",
+        "context": "property:text"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 34,
+        "text": "Tips for improving my game",
+        "context": "property:text"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 256,
+        "text": "Failed to refresh chat history.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 256,
+        "text": "Update failed",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 260,
+        "text": "AI Coach chat was reset.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 264,
+        "text": "Unable to reset right now. Please try again.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 264,
+        "text": "Reset failed",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 271,
+        "text": "Sign in to chat with your pickleball AI coach.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 284,
+        "text": "Reset AI chat",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 311,
+        "text": "Loading your chat…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 382,
+        "text": "Suggested questions:",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 408,
+        "text": "Ask me anything...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 421,
+        "text": "Reset AI Coach?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 422,
+        "text": "This will delete your AI Coach chat history and saved memory for onboarding questions. This cannot be undone.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 426,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 427,
+        "text": "Resetting...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/ai.tsx",
+        "line": 427,
+        "text": "Reset",
+        "context": "string"
+      }
+    ],
+    "(tabs)/chats.tsx": [
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 152,
+        "text": "Sign in to open chats",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 153,
+        "text": "Club chat, tournament chat, and division chat all use the same backend membership rules as the web app.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 163,
+        "text": "Search messages...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 195,
+        "text": "Loading chats…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 201,
+        "text": "Club chats could not be loaded. Pull to retry.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 207,
+        "text": "Event chats could not be loaded. Pull to retry.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 213,
+        "text": "No chats yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 213,
+        "text": "Join clubs or register for tournaments to unlock chat access.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 222,
+        "text": "No club chats",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 223,
+        "text": "You are not in any clubs yet. Browse clubs to join and unlock club chat.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 225,
+        "text": "Browse clubs",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 229,
+        "text": "Your club chats",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 236,
+        "text": "Club chat",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 258,
+        "text": "No event chats",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 259,
+        "text": "You do not have access to event chats yet. Register for events or join as staff to see threads here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 264,
+        "text": "Active",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 278,
+        "text": "No active events.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/chats.tsx",
+        "line": 289,
+        "text": "Archive (",
+        "context": "jsx"
+      }
+    ],
+    "(tabs)/clubs.tsx": [
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 101,
+        "text": "Request sent.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 102,
+        "text": "You joined the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 103,
+        "text": "You left the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 105,
+        "text": "You manage this club as an admin.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 109,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 154,
+        "text": "My clubs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 156,
+        "text": "Nearby clubs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 158,
+        "text": "Discover clubs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 158,
+        "text": "All clubs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 271,
+        "text": "Sign in required",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 272,
+        "text": "Sign in and add your city to your profile to discover nearby clubs.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 278,
+        "text": "Add your city first",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 279,
+        "text": "Update your profile city to make the Nearby filter show clubs around you.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 286,
+        "text": "No matching clubs",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 287,
+        "text": "None of your clubs match this search yet.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 290,
+        "text": "No clubs yet",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 291,
+        "text": "Clubs you join or request access to will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 298,
+        "text": "No nearby matches",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 302,
+        "text": "No nearby clubs found",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 309,
+        "text": "No clubs found",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 310,
+        "text": "Try another search term or check back later.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 313,
+        "text": "Nothing to discover",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 314,
+        "text": "Check back later for new clubs in the directory.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 324,
+        "text": "Search clubs...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 358,
+        "text": "Create",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 366,
+        "text": "Discover",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 367,
+        "text": "My Clubs",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 368,
+        "text": "Nearby",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 383,
+        "text": "Finding nearby clubs…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 383,
+        "text": "Loading clubs…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 388,
+        "text": "Could not load clubs",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 389,
+        "text": "Check your connection and API settings (EXPO_PUBLIC_API_URL), then pull to refresh.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 412,
+        "text": "Sign in required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 413,
+        "text": "Sign in and add your city to your profile to discover nearby clubs.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 423,
+        "text": "Add city",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 436,
+        "text": "Create Club",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 439,
+        "text": "Club creation is currently available only in the web version of Piqle.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 444,
+        "text": "Open Piqle Web",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/clubs.tsx",
+        "line": 454,
+        "text": "Open web to create a new club, configure details, and manage membership settings.",
+        "context": "jsx"
+      }
+    ],
+    "(tabs)/index.tsx": [
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 192,
+        "text": "Admin",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 193,
+        "text": "Registered",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 194,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 197,
+        "text": "Closed",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 203,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 206,
+        "text": "Filling Fast",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 210,
+        "text": "Open",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 247,
+        "text": "Unpaid",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 408,
+        "text": "Welcome back!",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 409,
+        "text": "Here&apos;s what&apos;s coming up",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 426,
+        "text": "AI Assistant",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 427,
+        "text": "Get help with strategies, rules, and more",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 436,
+        "text": "My Events",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 437,
+        "text": "View all",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 453,
+        "text": "Could not load events",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 454,
+        "text": "Check your connection and EXPO_PUBLIC_API_URL, then pull down to refresh.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 457,
+        "text": "Loading events…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 462,
+        "text": "No upcoming events right now",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 464,
+        "text": "Tournaments where you are registered or have admin access will show up here.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 468,
+        "text": "Find events here.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 499,
+        "text": "This Month",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 503,
+        "text": "Events",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 508,
+        "text": "Confirmed",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/index.tsx",
+        "line": 513,
+        "text": "Admin",
+        "context": "jsx"
+      }
+    ],
+    "(tabs)/tournaments.tsx": [
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 38,
+        "text": "Single Elimination",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 40,
+        "text": "Round Robin",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 44,
+        "text": "Indy League",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 46,
+        "text": "League Round Robin",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 48,
+        "text": "One Day Ladder",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 50,
+        "text": "Ladder League",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 52,
+        "text": "Tournament",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 71,
+        "text": "Admin",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 72,
+        "text": "Registered",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 73,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 76,
+        "text": "Closed",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 82,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 85,
+        "text": "Filling Fast",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 89,
+        "text": "Open",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 128,
+        "text": "Unpaid",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 399,
+        "text": "No matching events",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 400,
+        "text": "Adjust your search or filters to find tournaments you participate in.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 404,
+        "text": "No tournaments yet",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 406,
+        "text": "Tournaments where you are registered or have admin access will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 407,
+        "text": "Sign in to see tournaments where you are registered or admin.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 412,
+        "text": "No matching events",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 413,
+        "text": "Try different keywords or clear filters to see more tournaments.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 418,
+        "text": "No past tournaments",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 419,
+        "text": "Finished tournaments in this list will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 423,
+        "text": "No upcoming tournaments",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 424,
+        "text": "New public events will show up here when organizers publish them.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 511,
+        "text": "Search tournaments...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 545,
+        "text": "Create",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 554,
+        "text": "Filters",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 559,
+        "text": "Near Me",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 561,
+        "text": "This Month",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 571,
+        "text": "Upcoming",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 572,
+        "text": "My events",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 573,
+        "text": "Past",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 591,
+        "text": "Pending invitations",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 592,
+        "text": "Accept an invite and jump straight into registration.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 608,
+        "text": "Accept",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 615,
+        "text": "Decline",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 636,
+        "text": "Could not load tournaments",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 637,
+        "text": "Check your connection and EXPO_PUBLIC_API_URL, then pull down to refresh.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 640,
+        "text": "Loading tournaments...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 651,
+        "text": "Sign in required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 652,
+        "text": "Sign in to see tournaments where you are registered or admin.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 706,
+        "text": "Create Tournament",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 709,
+        "text": "Tournament creation is currently available only in the web version of Piqle.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 714,
+        "text": "Open Piqle Web",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 724,
+        "text": "Open web to create a new tournament, configure divisions, pricing, and registration settings.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 731,
+        "text": "Filters",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 735,
+        "text": "Clear All",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 738,
+        "text": "Apply Filters",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 749,
+        "text": "Entry fee",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 752,
+        "text": "Any",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 753,
+        "text": "Free",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 754,
+        "text": "Under $50",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 755,
+        "text": "Under $100",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 774,
+        "text": "Format",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/(tabs)/tournaments.tsx",
+        "line": 794,
+        "text": "Divisions",
+        "context": "jsx"
+      }
+    ],
+    "chats/club/[clubId]/index.tsx": [
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 34,
+        "text": "Club chat",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 82,
+        "text": "Some words were filtered.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 82,
+        "text": "Filtered",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 85,
+        "text": "Failed to send message",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 126,
+        "text": "Sign in to access club messages.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 128,
+        "text": "Authentication required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 129,
+        "text": "Club chat follows the same membership and moderation rules as the web app.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 180,
+        "text": "No messages yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 181,
+        "text": "Start the conversation or wait for the next club update.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 201,
+        "text": "System",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 202,
+        "text": "Rate this club",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 204,
+        "text": "Tap stars to leave your feedback.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 213,
+        "text": "Message club...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 225,
+        "text": "Delete this message?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 226,
+        "text": "This message will be permanently removed.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 230,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 231,
+        "text": "Deleting…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 231,
+        "text": "Delete",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 249,
+        "text": "Rate this club",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/club/[clubId]/index.tsx",
+        "line": 250,
+        "text": "Your feedback helps improve club experience.",
+        "context": "prop:subtitle"
+      }
+    ],
+    "chats/event/division/[divisionId]/index.tsx": [
+      {
+        "file": "apps/mobile/app/chats/event/division/[divisionId]/index.tsx",
+        "line": 19,
+        "text": "Event chat",
+        "context": "property:title"
+      }
+    ],
+    "chats/event/tournament/[tournamentId]/index.tsx": [
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 42,
+        "text": "Event chat",
+        "context": "variable:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 128,
+        "text": "Some words were filtered.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 128,
+        "text": "Filtered",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 131,
+        "text": "Failed to send message",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 141,
+        "text": "Some words were filtered.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 141,
+        "text": "Filtered",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 144,
+        "text": "Failed to send message",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 189,
+        "text": "Sign in to access tournament chat.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 191,
+        "text": "Authentication required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 192,
+        "text": "Tournament chat is restricted to participants and admins.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 210,
+        "text": "Division thread.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 211,
+        "text": "Chat unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 211,
+        "text": "You do not have access to this division thread.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 216,
+        "text": "Tournament-wide event thread.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 217,
+        "text": "Chat unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 217,
+        "text": "You do not have access to this thread.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 224,
+        "text": "General Chat",
+        "context": "variable:activeLabel"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 243,
+        "text": "General Chat",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 246,
+        "text": "Unread messages",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 267,
+        "text": "Unread messages",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 301,
+        "text": "Tournament Chat",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 312,
+        "text": "Loading messages…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 315,
+        "text": "No messages yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 316,
+        "text": "Say hi to other players or ask the organizer a question.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 360,
+        "text": "Delete this message?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 361,
+        "text": "This message will be permanently removed.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 365,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 368,
+        "text": "Deleting…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/chats/event/tournament/[tournamentId]/index.tsx",
+        "line": 369,
+        "text": "Delete",
+        "context": "string"
+      }
+    ],
+    "clubs/[id]/calendar.tsx": [
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 40,
+        "text": "This club no longer exists or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 79,
+        "text": "Loading calendar...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 89,
+        "text": "Club not found",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 89,
+        "text": "This club could not be loaded.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 102,
+        "text": "Club calendar",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 115,
+        "text": "Month",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 116,
+        "text": "Week",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 145,
+        "text": "Today",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 221,
+        "text": "No events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 231,
+        "text": "Select a day",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 234,
+        "text": "Pick a date",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 234,
+        "text": "Select a date to see club events.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 236,
+        "text": "No events",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 236,
+        "text": "No events planned on this day.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/calendar.tsx",
+        "line": 252,
+        "text": "Open all upcoming events",
+        "context": "jsx"
+      }
+    ],
+    "clubs/[id]/events.tsx": [
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 24,
+        "text": "This club no longer exists or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 35,
+        "text": "Loading events…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 45,
+        "text": "Club not found",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 45,
+        "text": "This club could not be loaded.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 59,
+        "text": "Upcoming tournaments",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 62,
+        "text": "No upcoming events",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/events.tsx",
+        "line": 62,
+        "text": "This club has no published upcoming events yet.",
+        "context": "string"
+      }
+    ],
+    "clubs/[id]/index.tsx": [
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 79,
+        "text": "This club no longer exists or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 101,
+        "text": "Request sent.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 102,
+        "text": "You joined the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 103,
+        "text": "You left the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 105,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 113,
+        "text": "Join request cancelled.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 115,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 120,
+        "text": "Announcement published.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 122,
+        "text": "Failed to post",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 127,
+        "text": "Announcement updated.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 129,
+        "text": "Failed to update",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 134,
+        "text": "Announcement removed.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 136,
+        "text": "Failed to delete",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 144,
+        "text": "User joined the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 146,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 154,
+        "text": "Request rejected.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 156,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 164,
+        "text": "Member removed from the club.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 166,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 174,
+        "text": "User banned.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 176,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 181,
+        "text": "User can join again.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 183,
+        "text": "Something went wrong",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 345,
+        "text": "Invite link copied to clipboard.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 345,
+        "text": "Copied",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 347,
+        "text": "Please copy it manually.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 347,
+        "text": "Copy failed",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 354,
+        "text": "Club",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 355,
+        "text": "this club",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 421,
+        "text": "1 day ago",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 444,
+        "text": "Search members...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 451,
+        "text": "Pending Requests",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 476,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 490,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 538,
+        "text": "Members are private",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 539,
+        "text": "Join this club to view the members list.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 544,
+        "text": "Loading members…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 551,
+        "text": "Admins",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 586,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 603,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 631,
+        "text": "Members",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 667,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 684,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 704,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 721,
+        "text": "Banned users",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 728,
+        "text": "No banned users.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 752,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 768,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 784,
+        "text": "Reason:",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 789,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 833,
+        "text": "Loading club…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 844,
+        "text": "Club not found",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 844,
+        "text": "This club could not be loaded.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 856,
+        "text": "Events",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 857,
+        "text": "News",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 858,
+        "text": "Members",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 899,
+        "text": "Unable to open link",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 899,
+        "text": "Please try again later.",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 922,
+        "text": "Leave club",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 965,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 980,
+        "text": "Sign in to join",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 983,
+        "text": "Cancel join request",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 990,
+        "text": "Request to join",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 990,
+        "text": "Join club",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1003,
+        "text": "About",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1030,
+        "text": "Hide description",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1030,
+        "text": "Show full description",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1044,
+        "text": "Leave club?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1045,
+        "text": "You will lose access to club chat and members-only content until you join again.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1049,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1050,
+        "text": "Leave club",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1069,
+        "text": "Invite to this club",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1070,
+        "text": "Share this link in social media or copy it into a message.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1073,
+        "text": "Invite link",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1094,
+        "text": "Share",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1104,
+        "text": "Delete announcement?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1105,
+        "text": "This announcement will be permanently removed.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1109,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1110,
+        "text": "Delete",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1136,
+        "text": "Member actions",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1140,
+        "text": "Kick from club",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1150,
+        "text": "Ban in club",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1166,
+        "text": "Banned user actions",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1170,
+        "text": "Unban user",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1184,
+        "text": "Kick member?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1185,
+        "text": "this user",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1189,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1190,
+        "text": "Removing…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1190,
+        "text": "Remove",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1198,
+        "text": "Failed",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1198,
+        "text": "Could not remove this member.",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1212,
+        "text": "Ban user?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1213,
+        "text": "This user",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1217,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1218,
+        "text": "Banning…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1218,
+        "text": "Ban",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1232,
+        "text": "Failed",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1232,
+        "text": "Could not ban this user.",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1243,
+        "text": "Reason (optional)",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1250,
+        "text": "Unban user?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1251,
+        "text": "this user",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1255,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1256,
+        "text": "Unbanning…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1256,
+        "text": "Unban",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1264,
+        "text": "Failed",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1264,
+        "text": "Could not unban this user.",
+        "context": "call:alert"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1296,
+        "text": "Post announcement",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1300,
+        "text": "Title (optional)",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1306,
+        "text": "Message *",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1318,
+        "text": "Cancel",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1337,
+        "text": "Posting…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1337,
+        "text": "Post",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1348,
+        "text": "Create new post",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1361,
+        "text": "Title (optional)",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1367,
+        "text": "Message *",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1379,
+        "text": "Cancel",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1403,
+        "text": "Saving…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1403,
+        "text": "Save",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1416,
+        "text": "Posted",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1450,
+        "text": "Welcome to the Club!",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1451,
+        "text": "Stay updated with announcements and events",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1455,
+        "text": "Join Club Chat",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1482,
+        "text": "Calendar",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1487,
+        "text": "Upcoming club events",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1497,
+        "text": "No upcoming dates yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1534,
+        "text": "Upcoming tournaments",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1541,
+        "text": "View all",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1558,
+        "text": "No upcoming events yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1573,
+        "text": "Rate this club",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1574,
+        "text": "Your feedback helps improve club experience.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1597,
+        "text": "Club rating",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1599,
+        "text": "No public rating yet. Need at least 5 ratings.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1604,
+        "text": "Rate this club",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/clubs/[id]/index.tsx",
+        "line": 1632,
+        "text": "Not enough public data yet.",
+        "context": "jsx"
+      }
+    ],
+    "notifications.tsx": [
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 91,
+        "text": "All notifications cleared.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 93,
+        "text": "Could not clear notifications.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 99,
+        "text": "Could not remove this notification.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 229,
+        "text": "Clear all notifications from the list",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 264,
+        "text": "Rate this tournament",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 266,
+        "text": "Rate this club",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 268,
+        "text": "Rate tournament director",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 269,
+        "text": "Rate app experience",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 270,
+        "text": "Your feedback helps improve the experience.",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 322,
+        "text": "Tournament",
+        "context": "variable:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 326,
+        "text": "Date TBD",
+        "context": "variable:dateLabel"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 328,
+        "text": "Single Elimination",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 329,
+        "text": "Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 331,
+        "text": "Indy League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 332,
+        "text": "League Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 333,
+        "text": "One Day Ladder",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 334,
+        "text": "Ladder League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 338,
+        "text": "Tournament",
+        "context": "variable:formatLabel"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 339,
+        "text": "Address TBD",
+        "context": "variable:addressLabel"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 345,
+        "text": "Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 346,
+        "text": "Date TBD",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 347,
+        "text": "Address TBD",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 353,
+        "text": "Club",
+        "context": "variable:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 354,
+        "text": "Address TBD",
+        "context": "variable:addressLabel"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 363,
+        "text": "Address TBD",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 369,
+        "text": "Tournament director",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 387,
+        "text": "Notifications",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 389,
+        "text": "Sign in required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 389,
+        "text": "Sign in to view your notifications.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 390,
+        "text": "Loading notifications...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 392,
+        "text": "No notifications yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 392,
+        "text": "New invitations and feedback prompts will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 418,
+        "text": "Notification removed.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 431,
+        "text": "Could not remove notification.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 482,
+        "text": "Clear all notifications?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 483,
+        "text": "They will disappear from this list. New invitations and reminders will show again when available.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 487,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 488,
+        "text": "Clear all",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/notifications.tsx",
+        "line": 506,
+        "text": "Rate",
+        "context": "prop:title"
+      }
+    ],
+    "profile/[id].tsx": [
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 55,
+        "text": "This profile is unavailable or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 142,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 144,
+        "text": "Loading profile...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 151,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 153,
+        "text": "Profile unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 153,
+        "text": "Could not load this player profile.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 164,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 167,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 170,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 187,
+        "text": "Tournament director rating",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 205,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 229,
+        "text": "Rate TD",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 234,
+        "text": "You already rated this tournament director.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 242,
+        "text": "Sign in to rate",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 251,
+        "text": "Past tournaments",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 262,
+        "text": "View all",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 268,
+        "text": "No past tournaments yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 285,
+        "text": "Hosted",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 285,
+        "text": "Played",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 299,
+        "text": "Rate tournament director",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 300,
+        "text": "Your feedback helps improve director quality.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 334,
+        "text": "Tournament director rating",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 336,
+        "text": "No public rating yet. Need at least 5 ratings.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/[id].tsx",
+        "line": 370,
+        "text": "Not enough public data yet.",
+        "context": "jsx"
+      }
+    ],
+    "profile/edit.tsx": [
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 22,
+        "text": "\"path\":[\"image\"]",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 22,
+        "text": "\"validation\":\"url\"",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 48,
+        "text": "Save",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 70,
+        "text": "Could not save profile.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 155,
+        "text": "Profile saved.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 170,
+        "text": "Please allow photo access to update your avatar.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 194,
+        "text": "Avatar updated.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 197,
+        "text": "Could not update avatar.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 213,
+        "text": "Avatar removed.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 216,
+        "text": "Avatar removal requires backend update. Please use the latest API deployment.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 218,
+        "text": "Could not remove avatar.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 227,
+        "text": "Edit Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 229,
+        "text": "Sign in required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 229,
+        "text": "Sign in to edit your profile details.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 237,
+        "text": "Edit Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 239,
+        "text": "Loading profile…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 247,
+        "text": "Edit Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 249,
+        "text": "Profile unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 249,
+        "text": "We could not load your profile editor right now.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 258,
+        "text": "Edit Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 280,
+        "text": "Profile Photo",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 287,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 313,
+        "text": "Use the trash icon to remove your profile photo.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 313,
+        "text": "Upload a new profile photo",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 317,
+        "text": "To replace it, remove current photo first, then upload a new one.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 318,
+        "text": "Tap anywhere on this card to choose an image.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 332,
+        "text": "Profile",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 335,
+        "text": "Name",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 345,
+        "text": "Your name",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 352,
+        "text": "Gender",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 357,
+        "text": "Unset",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 371,
+        "text": "City",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 376,
+        "text": "Enter your city",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 388,
+        "text": "Remove profile photo?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 389,
+        "text": "Your avatar will be cleared and replaced with initials.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 393,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/edit.tsx",
+        "line": 394,
+        "text": "Remove",
+        "context": "string"
+      }
+    ],
+    "profile/index.tsx": [
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 42,
+        "text": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 60,
+        "text": "Admin",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 64,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 68,
+        "text": "Registered",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 71,
+        "text": "Open",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 75,
+        "text": "Admin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 76,
+        "text": "Registered",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 77,
+        "text": "Waitlist",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 88,
+        "text": "Edit profile",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 100,
+        "text": "Settings",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 127,
+        "text": "Your DUPR account is now linked.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 127,
+        "text": "DUPR connected",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 131,
+        "text": "Unable to connect DUPR right now.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 131,
+        "text": "DUPR connect failed",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 138,
+        "text": "Missing DUPR_CLIENT_KEY (or EXPO_PUBLIC_DUPR_CLIENT_KEY) in the mobile app environment. Add it and rebuild the app.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 139,
+        "text": "DUPR not configured",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 145,
+        "text": "[DUPR] client key loaded",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 163,
+        "text": "\n    (function () {\n      try {\n        function forward(event) {\n          try {\n            var raw = event && event.data !== undefined ? event.data : event;\n            if (window.ReactNativeWebView) {\n              window.ReactNativeWebView.postMessage(JSON.stringify({\n                origin: event && event.origin ? event.origin : null,\n                data: raw\n              }));\n            }\n          } catch (e) {}\n        }\n        window.addEventListener('message', forward);\n      } catch (e) {}\n      true;\n    })();\n  ",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 185,
+        "text": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 186,
+        "text": "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 236,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 237,
+        "text": "Sign in to unlock your profile, connected DUPR stats, account settings, and tournament activity.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 248,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 250,
+        "text": "Loading profile…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 258,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 260,
+        "text": "Profile unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 260,
+        "text": "We could not load your player profile right now.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 281,
+        "text": "Profile",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 307,
+        "text": "Tournament director rating",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 325,
+        "text": "No rating yet",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 350,
+        "text": "Connect DUPR",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 351,
+        "text": "Sign in to DUPR below. When login completes, we link your account automatically.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 352,
+        "text": "Close",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 377,
+        "text": "[DUPR WebView]",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 378,
+        "text": "Could not load DUPR page.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 381,
+        "text": "[DUPR WebView HTTP]",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 424,
+        "text": "Loading DUPR…",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 430,
+        "text": "DUPR client key is missing.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 438,
+        "text": "Tournament director rating",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 440,
+        "text": "No public rating yet. Need at least 5 ratings.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 474,
+        "text": "Not enough public data yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 481,
+        "text": "Past tournaments",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 487,
+        "text": "View all",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 492,
+        "text": "Loading activity…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 496,
+        "text": "No past tournaments yet",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/index.tsx",
+        "line": 498,
+        "text": "Finished events where you played or had admin access will appear here.",
+        "context": "jsx"
+      }
+    ],
+    "profile/settings.tsx": [
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 101,
+        "text": "no account exists for this email",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 102,
+        "text": "No account exists for this email.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 104,
+        "text": "linked to google sign-in",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 104,
+        "text": "linked to a google account",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 107,
+        "text": "This email is linked to social sign-in. Use password reset to add a password.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 110,
+        "text": "does not have a password yet",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 113,
+        "text": "This account does not have a password yet. Use password reset to add one.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 116,
+        "text": "please wait before requesting a new code",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 117,
+        "text": "Please wait before requesting a new code.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 119,
+        "text": "invalid code",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 120,
+        "text": "Invalid reset code.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 122,
+        "text": "code expired",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 123,
+        "text": "Reset code expired. Request a new code.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 125,
+        "text": "too many attempts",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 126,
+        "text": "Too many attempts. Request a new code.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 128,
+        "text": "failed to send password reset code",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 129,
+        "text": "Failed to send password reset code.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 131,
+        "text": "failed to reset password",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 132,
+        "text": "Failed to reset password.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 135,
+        "text": "Request failed.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 151,
+        "text": "No \"query\"-procedure on path \"user.getNotificationSettings\"",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 158,
+        "text": "Failed to save notification settings.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 250,
+        "text": "No \"mutation\"-procedure on path \"user.updateNotificationSettings\"",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 252,
+        "text": "Backend update required for notification sync. Local toggles remain active.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 255,
+        "text": "Failed to save notification settings.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 267,
+        "text": "mailto:info@piqle.io?subject=Delete%20Account%20Request",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 273,
+        "text": "Settings",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 274,
+        "text": "Sign in required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 274,
+        "text": "Sign in to manage your account settings.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 281,
+        "text": "Settings",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 285,
+        "text": "Loading settings…",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 316,
+        "text": "Please enter your email first.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 317,
+        "text": "Please enter your email first.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 324,
+        "text": "Password reset request sent. Check your email for the code.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 339,
+        "text": "Please enter your email first.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 340,
+        "text": "Please enter your email first.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 344,
+        "text": "Enter the reset code from email.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 345,
+        "text": "Enter the reset code from email.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 349,
+        "text": "Password must be at least 8 characters.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 350,
+        "text": "Password must be at least 8 characters.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 354,
+        "text": "Passwords do not match.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 355,
+        "text": "Passwords do not match.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 362,
+        "text": "Password updated successfully.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 380,
+        "text": "Settings",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 382,
+        "text": "Settings unavailable",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 384,
+        "text": "We could not load your account settings right now.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 392,
+        "text": "Settings",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 400,
+        "text": "Account",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 402,
+        "text": "Email",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 406,
+        "text": "Change Email",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 407,
+        "text": "Request email change via support",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 409,
+        "text": "mailto:info@piqle.io?subject=Change%20Email%20Request",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 414,
+        "text": "Change Password",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 415,
+        "text": "Open password reset flow",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 424,
+        "text": "Theme",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 426,
+        "text": "Choose how the app looks on your device.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 430,
+        "text": "Light",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 431,
+        "text": "Dark",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 432,
+        "text": "System",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 468,
+        "text": "Notifications",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 473,
+        "text": "Push Notifications",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 474,
+        "text": "Receive notifications on your device",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 481,
+        "text": "Email Notifications",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 482,
+        "text": "Get updates via email",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 489,
+        "text": "Tournament Updates",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 490,
+        "text": "Schedule changes and announcements",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 497,
+        "text": "Match Reminders",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 498,
+        "text": "Remind me before scheduled matches",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 505,
+        "text": "Chat Messages",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 506,
+        "text": "New messages from chats",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 513,
+        "text": "Club Announcements",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 514,
+        "text": "Updates from your clubs",
+        "context": "prop:description"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 523,
+        "text": "About & Support",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 525,
+        "text": "Terms of Service",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 526,
+        "text": "Privacy Policy",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 530,
+        "text": "Contact Support",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 532,
+        "text": "mailto:info@piqle.io",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 539,
+        "text": "Account Actions",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 542,
+        "text": "Log Out",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 551,
+        "text": "Delete Account",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 559,
+        "text": "Piqle v1.0.0",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 568,
+        "text": "Password reset",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 571,
+        "text": "Enter your email and we will send a password reset request.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 572,
+        "text": "Enter code from email and set a new password.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 576,
+        "text": "Send request",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 576,
+        "text": "Update password",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 583,
+        "text": "Email",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 587,
+        "text": "your@email.com",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 594,
+        "text": "Reset code",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 598,
+        "text": "Enter code from email",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 601,
+        "text": "New password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 605,
+        "text": "At least 8 characters",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 609,
+        "text": "Confirm password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 613,
+        "text": "Repeat new password",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 624,
+        "text": "We will send a verification code to this email so you can set a new password. This also works if the account was first created with social sign-in.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/settings.tsx",
+        "line": 625,
+        "text": "Use the code from your email and choose a strong new password.",
+        "context": "string"
+      }
+    ],
+    "profile/tournaments.tsx": [
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 15,
+        "text": "Admin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 16,
+        "text": "Registered",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 17,
+        "text": "Waitlist",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 140,
+        "text": "Past tournaments",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 146,
+        "text": "Sign in to view your past tournaments.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 154,
+        "text": "Past tournaments",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 163,
+        "text": "Hosted",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 164,
+        "text": "Played",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 169,
+        "text": "Loading activity…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 173,
+        "text": "No past tournaments yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 176,
+        "text": "Finished events where you participated will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 177,
+        "text": "Finished events where you were a host will appear here.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 186,
+        "text": "Hosted",
+        "context": "variable:statusLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 188,
+        "text": "Admin",
+        "context": "variable:statusLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 190,
+        "text": "Registered",
+        "context": "variable:statusLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 192,
+        "text": "Waitlist",
+        "context": "variable:statusLabel"
+      },
+      {
+        "file": "apps/mobile/app/profile/tournaments.tsx",
+        "line": 193,
+        "text": "Played",
+        "context": "variable:statusLabel"
+      }
+    ],
+    "search.tsx": [
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 30,
+        "text": "Beginner tournaments",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 31,
+        "text": "Advanced mixed doubles",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 32,
+        "text": "Weekend leagues",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 91,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 201,
+        "text": "Try another keyword or browse trending suggestions.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 294,
+        "text": "Tournament",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 297,
+        "text": "Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 300,
+        "text": "Tournament",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 322,
+        "text": "Club",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 325,
+        "text": "Club",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 327,
+        "text": "Verified",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 328,
+        "text": "Club",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 337,
+        "text": "Player",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 340,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 345,
+        "text": "DUPR linked",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 347,
+        "text": "Player",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 352,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 360,
+        "text": "Events",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 361,
+        "text": "Clubs",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 362,
+        "text": "Players",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 378,
+        "text": "Player",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 379,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 383,
+        "text": "Player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 393,
+        "text": "Tournaments near me",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 394,
+        "text": "Location",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 403,
+        "text": "Summer Championship 2026",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 404,
+        "text": "Tournament",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 408,
+        "text": "Summer Championship 2026",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 412,
+        "text": "Downtown Pickleball Club",
+        "context": "property:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 413,
+        "text": "Club",
+        "context": "property:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 417,
+        "text": "Downtown Pickleball Club",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 447,
+        "text": "Search tournaments, clubs, players...",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 457,
+        "text": "Clear search text",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 479,
+        "text": "Trending",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 507,
+        "text": "Recent",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 508,
+        "text": "Clear all",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 511,
+        "text": "Recent searches cleared.",
+        "context": "property:message"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 536,
+        "text": "Searching the app...",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/search.tsx",
+        "line": 554,
+        "text": "Sign in to include players in search results.",
+        "context": "jsx"
+      }
+    ],
+    "sign-in.tsx": [
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 116,
+        "text": "Failed to sign in",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 131,
+        "text": "Failed to send verification code",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 139,
+        "text": "Password must be at least 8 characters.",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 143,
+        "text": "Passwords do not match.",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 160,
+        "text": "Failed to create account",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 174,
+        "text": "We sent a password reset code to your email.",
+        "context": "call:setNotice"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 176,
+        "text": "Failed to send password reset code",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 184,
+        "text": "Password must be at least 8 characters.",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 188,
+        "text": "Passwords do not match.",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 199,
+        "text": "Failed to reset password",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 213,
+        "text": "Google sign-in was cancelled.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 217,
+        "text": "Failed to continue with Google",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 232,
+        "text": "Apple sign-in was cancelled.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 236,
+        "text": "Failed to continue with Apple",
+        "context": "call:setError"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 273,
+        "text": "Piqle",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 274,
+        "text": "Your pickleball journey starts here",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 299,
+        "text": "Sign In",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 299,
+        "text": "Sign Up",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 303,
+        "text": "Sign In",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 303,
+        "text": "Sign Up",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 312,
+        "text": "Email",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 316,
+        "text": "your@email.com",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 328,
+        "text": "Password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 360,
+        "text": "Forgot password?",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 396,
+        "text": "Signing In...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 396,
+        "text": "Sign In",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 404,
+        "text": "We will send a verification code to your email so you can choose a new password.\n                      If this account already exists through social sign-in, this will add password\n                      sign-in to that same account.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 442,
+        "text": "Sending Code...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 442,
+        "text": "Send Reset Code",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 455,
+        "text": "Back to sign in",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 462,
+        "text": "Reset pending",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 467,
+        "text": "Expires",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 478,
+        "text": "Reset code",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 482,
+        "text": "Enter 6-digit code",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 489,
+        "text": "New password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 493,
+        "text": "At least 8 characters",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 510,
+        "text": "Confirm new password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 514,
+        "text": "Repeat new password",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 554,
+        "text": "Updating Password...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 554,
+        "text": "Update Password",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 567,
+        "text": "Back to sign in",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 575,
+        "text": "Resend code",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 582,
+        "text": "We will send a verification code to your email before creating your account. If\n                    this email already exists through social sign-in, we will attach a password to\n                    that same account.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 614,
+        "text": "Sending Code...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 614,
+        "text": "Send Verification Code",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 623,
+        "text": "Verification pending",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 628,
+        "text": "Expires",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 639,
+        "text": "Verification code",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 643,
+        "text": "Enter 6-digit code",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 651,
+        "text": "First name",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 655,
+        "text": "First name",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 660,
+        "text": "Last name",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 664,
+        "text": "Last name",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 671,
+        "text": "Password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 675,
+        "text": "At least 8 characters",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 692,
+        "text": "Confirm password",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 696,
+        "text": "Repeat password",
+        "context": "prop:placeholder"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 730,
+        "text": "Creating Account...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 730,
+        "text": "Create Account",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 739,
+        "text": "Back to email",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 750,
+        "text": "Continue with Apple",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 768,
+        "text": "Continue with Google",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 784,
+        "text": "By signing up, you agree to our",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 784,
+        "text": "Terms of Service",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/sign-in.tsx",
+        "line": 785,
+        "text": "Privacy Policy",
+        "context": "jsx"
+      }
+    ],
+    "tournaments/[id]/index.tsx": [
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 71,
+        "text": "Date TBD",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 108,
+        "text": "Unknown player",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 117,
+        "text": "Single Elimination",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 119,
+        "text": "Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 123,
+        "text": "Indy League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 125,
+        "text": "League Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 127,
+        "text": "One Day Ladder",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 129,
+        "text": "Ladder League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 131,
+        "text": "Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 281,
+        "text": "Admin",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 285,
+        "text": "Registered",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 288,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 291,
+        "text": "Closed",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 296,
+        "text": "Waitlist",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 299,
+        "text": "Filling Fast",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 302,
+        "text": "Open",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 378,
+        "text": "Third Place Match",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 381,
+        "text": "Third Place Match",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 391,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 399,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 400,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 406,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 414,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 415,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 534,
+        "text": "This tournament no longer exists or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 629,
+        "text": "You left the tournament.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 635,
+        "text": "Failed to leave tournament.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 873,
+        "text": "$ Free",
+        "context": "variable:feeLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 874,
+        "text": "Free",
+        "context": "variable:quickFeeLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 877,
+        "text": "Location not set",
+        "context": "variable:locationLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 890,
+        "text": "Piqle",
+        "context": "variable:organizerLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 909,
+        "text": "Payment successful.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 918,
+        "text": "Loading tournament...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 931,
+        "text": "Could not load tournament",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 932,
+        "text": "Check your network and EXPO_PUBLIC_API_URL, then try again.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 934,
+        "text": "Try again",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 947,
+        "text": "Tournament not found.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 962,
+        "text": "Accepting...",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 963,
+        "text": "Accept Invitation",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 966,
+        "text": "Leaving...",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 967,
+        "text": "Leave Tournament",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 969,
+        "text": "View Waitlist Spot",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 971,
+        "text": "Register for Tournament",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 973,
+        "text": "Manage Registration",
+        "context": "variable:ctaLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 976,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 976,
+        "text": "Venue Details",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 977,
+        "text": "Public Scoreboard",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 978,
+        "text": "Online Registration",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 979,
+        "text": "Multiple Divisions",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 980,
+        "text": "Paid Entry",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 980,
+        "text": "Free Entry",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1047,
+        "text": "Loading club...",
+        "context": "variable:clubLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1055,
+        "text": "Past",
+        "context": "variable:timelineStatusLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1057,
+        "text": "Upcoming",
+        "context": "variable:timelineStatusLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1058,
+        "text": "Ongoing",
+        "context": "variable:timelineStatusLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1085,
+        "text": "Unable to open checkout right now.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1128,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1229,
+        "text": "Leave tournament",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1283,
+        "text": "Soon",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1287,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1313,
+        "text": "Registration is unavailable",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1316,
+        "text": "This tournament may be closed or invite-only",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1342,
+        "text": "Opening payment...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1350,
+        "text": "Confirming payment...",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1388,
+        "text": "Info",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1389,
+        "text": "Divisions",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1390,
+        "text": "Dashboard",
+        "context": "property:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1399,
+        "text": "You&apos;re registered:",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1403,
+        "text": "Division",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1408,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1416,
+        "text": "Payment successful",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1426,
+        "text": "Invitation pending",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1427,
+        "text": "Accept this invite to jump straight into registration.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1432,
+        "text": "Accept",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1439,
+        "text": "Decline",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1454,
+        "text": "Tap to expand or collapse the full description",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1461,
+        "text": "About",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1470,
+        "text": "Hide description",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1470,
+        "text": "Show full description",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1476,
+        "text": "About",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1500,
+        "text": "Information",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1533,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1592,
+        "text": "More venue details will be added by the organizer soon.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1598,
+        "text": "Organizer",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1629,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1658,
+        "text": "My division",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1675,
+        "text": "No teams created yet",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1694,
+        "text": "My team:",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1721,
+        "text": "No divisions yet",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1722,
+        "text": "This tournament will show its divisions here once the organizer publishes them.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1732,
+        "text": "Loading dashboard...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1848,
+        "text": "Third Place Match",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1904,
+        "text": "All dates, season standings",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1930,
+        "text": "All dates",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1936,
+        "text": "Loading days…",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 1990,
+        "text": "No match days yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2046,
+        "text": "Round Robin table",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2050,
+        "text": "Standings for the selected day only",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2051,
+        "text": "Standings across all match days (season)",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2057,
+        "text": "Team",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2062,
+        "text": "Diff",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2066,
+        "text": "Loading standings…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2099,
+        "text": "Team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2136,
+        "text": "No players assigned yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2152,
+        "text": "Match results",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2156,
+        "text": "Loading matchups…",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2158,
+        "text": "No matchups for this day.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2171,
+        "text": "Home",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2171,
+        "text": "Away",
+        "context": "prop:accessibilityLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2181,
+        "text": "Home",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2181,
+        "text": "Away",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2205,
+        "text": "Home",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2218,
+        "text": "No active players with letters.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2224,
+        "text": "Away",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2237,
+        "text": "No active players with letters.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2251,
+        "text": "No round-robin matches for this day.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2266,
+        "text": "Round Robin",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2287,
+        "text": "Play-in",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2289,
+        "text": "Preliminary stage to reduce to the required number of participants",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2318,
+        "text": "Play-in",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2322,
+        "text": "Completed",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2329,
+        "text": "Scheduled",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2344,
+        "text": "Winner",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2361,
+        "text": "Winner",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2373,
+        "text": "No play-in matches yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2380,
+        "text": "Playoff / Bracket",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2382,
+        "text": "Elimination stage with knockout rounds and finals",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2428,
+        "text": "Round",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2433,
+        "text": "Completed",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2440,
+        "text": "Scheduled",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2455,
+        "text": "Winner",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2474,
+        "text": "Winner",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2488,
+        "text": "Bracket will appear after round-robin.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2498,
+        "text": "Champion & placements",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2500,
+        "text": "Champion, 2nd and 3rd place from the bracket (final and third-place match)",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2512,
+        "text": "Champion",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2528,
+        "text": "2nd place",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2544,
+        "text": "3rd place",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2556,
+        "text": "No final results yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2568,
+        "text": "Dashboard unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2569,
+        "text": "The public scoreboard could not be prepared for this tournament yet.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2597,
+        "text": "Leave tournament?",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2598,
+        "text": "Your registration will be cancelled and your slot will be released.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2602,
+        "text": "Keep spot",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2603,
+        "text": "Leave Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2623,
+        "text": "Paid registration refund",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2624,
+        "text": "This is a paid tournament. After cancellation, the refund is initiated automatically. Final posting time depends on your bank and Stripe processing policies and may take several business days.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2628,
+        "text": "Back",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2629,
+        "text": "Confirm leave",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2642,
+        "text": "Payment unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2651,
+        "text": "Rate this tournament",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2652,
+        "text": "Your feedback helps improve tournament quality.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2660,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2675,
+        "text": "Tournament rating",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2678,
+        "text": "Rating becomes available 2 hours after the tournament ends.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2681,
+        "text": "No public rating yet. Need at least 5 ratings.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2686,
+        "text": "Rate this tournament",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2714,
+        "text": "Not enough public data yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2723,
+        "text": "Rate tournament director",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2724,
+        "text": "Your feedback helps improve director quality.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2745,
+        "text": "Tournament director rating",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2747,
+        "text": "No public rating yet. Need at least 5 ratings.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2769,
+        "text": "Not enough public data yet.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2785,
+        "text": "Rate this organizer",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2788,
+        "text": "You cannot rate yourself.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/index.tsx",
+        "line": 2790,
+        "text": "You already rated this tournament director.",
+        "context": "jsx"
+      }
+    ],
+    "tournaments/[id]/register.tsx": [
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 36,
+        "text": "SINGLES_1v1",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 36,
+        "text": "DOUBLES_2v2",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 36,
+        "text": "SQUAD_4v4",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 39,
+        "text": "SQUAD_4v4",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 43,
+        "text": "SINGLES_1v1",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 44,
+        "text": "SQUAD_4v4",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 117,
+        "text": "This tournament no longer exists or the link is invalid.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 142,
+        "text": "Failed to claim slot",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 151,
+        "text": "You're on the waitlist.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 153,
+        "text": "Failed to join waitlist",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 162,
+        "text": "You left the waitlist.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 164,
+        "text": "Failed to leave waitlist",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 167,
+        "text": "Failed to start payment",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 291,
+        "text": "Payment successful.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 299,
+        "text": "You're registered!",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 358,
+        "text": "Register",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 358,
+        "text": "Sign in to claim a slot or join a waitlist.",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 360,
+        "text": "Authentication required",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 361,
+        "text": "Tournament registration uses your existing player account from the web app.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 371,
+        "text": "Register",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 371,
+        "text": "Loading registration…",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 375,
+        "text": "Register",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 375,
+        "text": "Registration unavailable",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 375,
+        "text": "The event could not be loaded.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 384,
+        "text": "$ Free",
+        "context": "variable:feeLabel"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 423,
+        "text": "You're registered 🎉",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 426,
+        "text": "Registration overview",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 427,
+        "text": "Registration window is open",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 427,
+        "text": "Registration is closed",
+        "context": "prop:subtitle"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 444,
+        "text": "Pay by deadline",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 444,
+        "text": "Pay in 15 minutes",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 454,
+        "text": "You are registered in this division and team.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 462,
+        "text": "Unknown division",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 470,
+        "text": "Unknown team",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 475,
+        "text": "You also have admin access.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 496,
+        "text": "entry fee already paid",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 496,
+        "text": "already paid",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 498,
+        "text": "Payment already confirmed.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 503,
+        "text": "Failed to start payment",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 511,
+        "text": "You are on the waitlist",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 512,
+        "text": "We will keep your spot in line for the selected division.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 513,
+        "text": "Leave waitlist",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 517,
+        "text": "You have admin access",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 519,
+        "text": "You can still join a slot or waitlist from this screen if you want to participate.",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 529,
+        "text": "Confirming payment...",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 535,
+        "text": "Payment successful",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/app/tournaments/[id]/register.tsx",
+        "line": 616,
+        "text": "Join waitlist",
+        "context": "prop:label"
+      }
+    ]
+  },
+  "shared_components": {
+    "AppBottomSheet.tsx": [
+      {
+        "file": "apps/mobile/src/components/AppBottomSheet.tsx",
+        "line": 155,
+        "text": "Close sheet",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "AuthRequiredCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/AuthRequiredCard.tsx",
+        "line": 18,
+        "text": "You are browsing as a guest",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/AuthRequiredCard.tsx",
+        "line": 20,
+        "text": "Sign in",
+        "context": "string"
+      }
+    ],
+    "BellNotificationLeadIcon.tsx": [
+      {
+        "file": "apps/mobile/src/components/BellNotificationLeadIcon.tsx",
+        "line": 54,
+        "text": "Tournament director",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/BellNotificationLeadIcon.tsx",
+        "line": 95,
+        "text": "Member",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/BellNotificationLeadIcon.tsx",
+        "line": 108,
+        "text": "Request",
+        "context": "string"
+      }
+    ],
+    "ChatPreviewCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/ChatPreviewCard.tsx",
+        "line": 38,
+        "text": "Unread messages",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "ChatScreenLoading.tsx": [
+      {
+        "file": "apps/mobile/src/components/ChatScreenLoading.tsx",
+        "line": 14,
+        "text": "Loading chat…",
+        "context": "string"
+      }
+    ],
+    "ChatThreadMessageList.tsx": [
+      {
+        "file": "apps/mobile/src/components/ChatThreadMessageList.tsx",
+        "line": 31,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ChatThreadMessageList.tsx",
+        "line": 133,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ChatThreadMessageList.tsx",
+        "line": 138,
+        "text": "Message removed",
+        "context": "string"
+      }
+    ],
+    "ClubCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 112,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 121,
+        "text": "New",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 139,
+        "text": "Member",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 145,
+        "text": "Owner",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 151,
+        "text": "Admin",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 157,
+        "text": "Pending",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 166,
+        "text": "Courts",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 170,
+        "text": "Community",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 175,
+        "text": "Booking",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 180,
+        "text": "Verified",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 204,
+        "text": "Sending request…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 204,
+        "text": "Joining…",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 209,
+        "text": "Request to join",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ClubCard.tsx",
+        "line": 209,
+        "text": "Join Club",
+        "context": "string"
+      }
+    ],
+    "ClubTournamentCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/ClubTournamentCard.tsx",
+        "line": 71,
+        "text": "Open",
+        "context": "string"
+      }
+    ],
+    "EventChatListItem.tsx": [
+      {
+        "file": "apps/mobile/src/components/EventChatListItem.tsx",
+        "line": 41,
+        "text": "Unread messages",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "FeedbackEntityContextCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/FeedbackEntityContextCard.tsx",
+        "line": 89,
+        "text": "1 member",
+        "context": "variable:membersLabel"
+      }
+    ],
+    "FeedbackRatingModal.tsx": [
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 16,
+        "text": "Excellent organization",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 16,
+        "text": "Clear schedule",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 16,
+        "text": "Strong opponents",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 16,
+        "text": "Great atmosphere",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 16,
+        "text": "No delays",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 17,
+        "text": "Good, but delays happened",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 17,
+        "text": "Not enough updates/announcements",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 17,
+        "text": "Registration felt hard",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 17,
+        "text": "Matches felt slow",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 17,
+        "text": "Organization could be better",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 18,
+        "text": "Frequent delays",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 18,
+        "text": "Poor communication",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 18,
+        "text": "Unclear rules",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 18,
+        "text": "Bracket/schedule issues",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 18,
+        "text": "Long waits between matches",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 19,
+        "text": "Chaotic schedule",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 19,
+        "text": "Refereeing/rules felt questionable",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 19,
+        "text": "Conflicts were not resolved",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 19,
+        "text": "Poor court conditions",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 19,
+        "text": "Reality did not match expectations",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 20,
+        "text": "Very poorly organized",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 20,
+        "text": "Disrespectful behavior",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 20,
+        "text": "Would not recommend",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 23,
+        "text": "Solved issues quickly",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 23,
+        "text": "Great communication",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 23,
+        "text": "Fair decisions",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 23,
+        "text": "Professional",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 23,
+        "text": "Handled conflicts well",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 24,
+        "text": "Overall good, but responses were not always fast",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 24,
+        "text": "Sometimes lacked clarity",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 24,
+        "text": "Issues were solved, but slowly",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 25,
+        "text": "Slow responses",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 25,
+        "text": "Weak announcements/instructions",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 25,
+        "text": "Limited process control",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 26,
+        "text": "Ignored problems",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 26,
+        "text": "Harsh/disrespectful communication",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 26,
+        "text": "Questionable decisions",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 27,
+        "text": "Very unprofessional",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 27,
+        "text": "Conflict-prone / toxic",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 27,
+        "text": "Situations were not resolved",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 30,
+        "text": "Regular events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 30,
+        "text": "Good value for money",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 30,
+        "text": "Great atmosphere",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 30,
+        "text": "Active community",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 30,
+        "text": "Helpful support",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 31,
+        "text": "Overall good, but with some issues",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 31,
+        "text": "Queues / event organization issues",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 31,
+        "text": "Issues were solved, but slowly",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 32,
+        "text": "Rare events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 32,
+        "text": "Too expensive",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 32,
+        "text": "Low community engagement",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 32,
+        "text": "Low support quality",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 33,
+        "text": "Poor service",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 33,
+        "text": "No events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 33,
+        "text": "Ignored requests",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 34,
+        "text": "Toxic/conflict atmosphere",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 34,
+        "text": "No events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 37,
+        "text": "User-friendly interface",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 37,
+        "text": "Fast tournament creation",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 37,
+        "text": "Easy payments",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 37,
+        "text": "Everything is clear",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 37,
+        "text": "Convenient navigation",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 38,
+        "text": "Hard to find what I need",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 38,
+        "text": "Too many steps",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 38,
+        "text": "Unclear statuses/rules",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 38,
+        "text": "Weak calendar/timezone flow",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 38,
+        "text": "Navigation could be better",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 39,
+        "text": "Lags",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 39,
+        "text": "Bugs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 39,
+        "text": "Errors",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 40,
+        "text": "Poor service",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 40,
+        "text": "Lags",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 40,
+        "text": "Bugs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 40,
+        "text": "Errors",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 41,
+        "text": "I am a hater",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 47,
+        "text": "Could not submit feedback.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 50,
+        "text": "Club not found.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 51,
+        "text": "Only club members can rate this club.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 51,
+        "text": "Join this club first to leave a rating.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 52,
+        "text": "Only club members or admins can rate this club.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 52,
+        "text": "Join this club first to leave a rating.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 53,
+        "text": "You can rate this club after 3 days of membership or after participating in a club event.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 54,
+        "text": "You can rate this club after 3 days in the club or after playing a club event.",
+        "context": "variable:getFriendlySubmitError"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 98,
+        "text": "Feedback is temporarily unavailable. Please try again later.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 101,
+        "text": "Could not submit feedback.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 104,
+        "text": "Thanks — your feedback was sent.",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 146,
+        "text": "Cancel",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 147,
+        "text": "Submitting...",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 147,
+        "text": "Submit",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 152,
+        "text": "Thanks — feedback recorded (offline).",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/FeedbackRatingModal.tsx",
+        "line": 215,
+        "text": "Optional comment",
+        "context": "prop:placeholder"
+      }
+    ],
+    "OptionalLinearGradient.tsx": [
+      {
+        "file": "apps/mobile/src/components/OptionalLinearGradient.tsx",
+        "line": 19,
+        "text": "ExpoLinearGradient",
+        "context": "string"
+      }
+    ],
+    "PickleballRefreshIndicator.tsx": [
+      {
+        "file": "apps/mobile/src/components/PickleballRefreshIndicator.tsx",
+        "line": 157,
+        "text": "Refreshing",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "RemoteUserAvatar.tsx": [
+      {
+        "file": "apps/mobile/src/components/RemoteUserAvatar.tsx",
+        "line": 30,
+        "text": "User",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/RemoteUserAvatar.tsx",
+        "line": 39,
+        "text": "User",
+        "context": "prop:label"
+      }
+    ],
+    "SwipeDismissNotificationRow.tsx": [
+      {
+        "file": "apps/mobile/src/components/SwipeDismissNotificationRow.tsx",
+        "line": 213,
+        "text": "Delete",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/SwipeDismissNotificationRow.tsx",
+        "line": 224,
+        "text": "Delete notification",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "TournamentCard.tsx": [
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 21,
+        "text": "Date TBD",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 41,
+        "text": "Single Elimination",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 43,
+        "text": "Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 47,
+        "text": "Indy League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 49,
+        "text": "League Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 51,
+        "text": "One Day Ladder",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 53,
+        "text": "Ladder League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 55,
+        "text": "Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 63,
+        "text": "Single Elim",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 65,
+        "text": "Round Robin",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 69,
+        "text": "Indy League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 71,
+        "text": "League RR",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 73,
+        "text": "1‑Day Ladder",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 75,
+        "text": "Ladder League",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 77,
+        "text": "Tournament",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 191,
+        "text": "Closed",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 193,
+        "text": "Waitlist",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 194,
+        "text": "Filling Fast",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 196,
+        "text": "Open",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 376,
+        "text": "$ Free",
+        "context": "variable:feeLabel"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 381,
+        "text": "$ Free",
+        "context": "variable:feeLabel"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 412,
+        "text": "Open registration",
+        "context": "variable:occupancyLabel"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 417,
+        "text": "Location not set",
+        "context": "variable:locationLabel"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 596,
+        "text": "Divisions",
+        "context": "prop:title"
+      },
+      {
+        "file": "apps/mobile/src/components/TournamentCard.tsx",
+        "line": 599,
+        "text": "Open Tournament",
+        "context": "prop:label"
+      }
+    ],
+    "navigation/BackCircleButton.tsx": [
+      {
+        "file": "apps/mobile/src/components/navigation/BackCircleButton.tsx",
+        "line": 26,
+        "text": "Go back",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "navigation/PiqleLogo.tsx": [
+      {
+        "file": "apps/mobile/src/components/navigation/PiqleLogo.tsx",
+        "line": 19,
+        "text": "Piqle",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "navigation/TabBarTabIcon.tsx": [
+      {
+        "file": "apps/mobile/src/components/navigation/TabBarTabIcon.tsx",
+        "line": 20,
+        "text": "Home",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TabBarTabIcon.tsx",
+        "line": 21,
+        "text": "Events",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TabBarTabIcon.tsx",
+        "line": 22,
+        "text": "Clubs",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TabBarTabIcon.tsx",
+        "line": 23,
+        "text": "Chats",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TabBarTabIcon.tsx",
+        "line": 99,
+        "text": "Unread messages",
+        "context": "prop:accessibilityLabel"
+      }
+    ],
+    "navigation/TopBar.tsx": [
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 30,
+        "text": "Piqle",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 31,
+        "text": "Events",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 32,
+        "text": "Clubs",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 33,
+        "text": "AI Assistant",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 33,
+        "text": "Messages",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 34,
+        "text": "AI Assistant",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 35,
+        "text": "Profile",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 36,
+        "text": "Search",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 37,
+        "text": "Notifications",
+        "context": "variable:getTitle"
+      },
+      {
+        "file": "apps/mobile/src/components/navigation/TopBar.tsx",
+        "line": 38,
+        "text": "Piqle",
+        "context": "variable:getTitle"
+      }
+    ],
+    "profile/ProfileIdentityBlock.tsx": [
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 48,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 49,
+        "text": "Location not set",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 161,
+        "text": "Clubs",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 165,
+        "text": "Played",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 169,
+        "text": "Hosted",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 192,
+        "text": "Singles",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 196,
+        "text": "Doubles",
+        "context": "jsx"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 203,
+        "text": "Connecting...",
+        "context": "prop:label"
+      },
+      {
+        "file": "apps/mobile/src/components/profile/ProfileIdentityBlock.tsx",
+        "line": 203,
+        "text": "Connect DUPR",
+        "context": "prop:label"
+      }
+    ],
+    "ui.tsx": [
+      {
+        "file": "apps/mobile/src/components/ui.tsx",
+        "line": 370,
+        "text": "Search",
+        "context": "string"
+      },
+      {
+        "file": "apps/mobile/src/components/ui.tsx",
+        "line": 427,
+        "text": "Loading…",
+        "context": "string"
+      }
+    ]
+  }
+}

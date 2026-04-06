@@ -55,6 +55,12 @@ const getFriendlySubmitError = (entityType: EntityType, rawMessage?: string) => 
     }
   }
 
+  if (entityType === 'TD') {
+    if (message === 'You can rate this organizer only after playing in one of their completed tournaments.') {
+      return 'You can rate this director only after you played in one of their completed tournaments.'
+    }
+  }
+
   return message
 }
 
@@ -90,6 +96,8 @@ export function FeedbackRatingModal({
     { entityType, rating: Math.max(1, rating || 5) },
     { enabled: FEEDBACK_API_ENABLED && open && rating > 0 },
   )
+  /** Офлайн-fake успех только для APP. Иначе при EXPO_PUBLIC_ENABLE_FEEDBACK_API=false «голос» за TD/турнир/клуб шёл без сервера. */
+  const useOfflineAppSuccess = !FEEDBACK_API_ENABLED && entityType === 'APP'
   const submitMutation = trpc.feedback.submit.useMutation({
     onSuccess: (result) => {
       const payload = result as { ok?: boolean; pendingMigration?: boolean } | undefined
@@ -117,12 +125,11 @@ export function FeedbackRatingModal({
     setComment('')
   }, [open, entityId, entityType])
 
-  const useLocalFallback = !FEEDBACK_API_ENABLED
-  const availableChips = useLocalFallback
-    ? DEV_SURVEY_CHIPS[entityType]?.[Math.max(1, rating || 5)] ?? []
-    : chipsQuery.data?.chips ?? []
+  const availableChips = FEEDBACK_API_ENABLED
+    ? chipsQuery.data?.chips ?? []
+    : DEV_SURVEY_CHIPS[entityType]?.[Math.max(1, rating || 5)] ?? []
   const canComment = rating > 0 && rating < 5
-  const commentLimit = useLocalFallback ? DEV_COMMENT_LIMIT : chipsQuery.data?.commentMaxLength ?? DEV_COMMENT_LIMIT
+  const commentLimit = FEEDBACK_API_ENABLED ? chipsQuery.data?.commentMaxLength ?? DEV_COMMENT_LIMIT : DEV_COMMENT_LIMIT
 
   useEffect(() => {
     if (!rating || chips.length === 0) return
@@ -148,7 +155,7 @@ export function FeedbackRatingModal({
           onCancel={onClose}
           onConfirm={() => {
             if (!canSubmit) return
-            if (useLocalFallback) {
+            if (useOfflineAppSuccess) {
               toast.success('Thanks — feedback recorded (offline).')
               onSubmitted?.()
               onClose()

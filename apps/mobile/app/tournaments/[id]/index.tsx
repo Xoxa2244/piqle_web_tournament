@@ -846,6 +846,10 @@ export default function TournamentDetailScreen() {
     { targets: tdUserId ? [{ entityType: 'TD', entityId: tdUserId }] : [] },
     { enabled: FEEDBACK_API_ENABLED && Boolean(tdUserId) && isAuthenticated, retry: false },
   )
+  const tdEligibilityQuery = api.feedback.getEligibility.useQuery(
+    { entityType: 'TD', entityId: tdUserId ?? '' },
+    { enabled: FEEDBACK_API_ENABLED && Boolean(tdUserId) && isAuthenticated, retry: false },
+  )
   const hasRatedTd = Boolean(tdUserId && tdHasRatedQuery.data?.map?.[`TD:${tdUserId}`])
   const tournamentFeedbackAvailableAtMs = new Date(tournamentData?.endDate ?? 0).getTime() + 2 * 60 * 60 * 1000
   const tournamentRatingReady = Number.isFinite(tournamentFeedbackAvailableAtMs)
@@ -859,7 +863,14 @@ export default function TournamentDetailScreen() {
   const isTournamentParticipant = myStatus === 'active' || myStatus === 'waitlisted'
   const canRateTournament = tournamentRatingReady && isTournamentParticipant && !hasRatedTournament
   const isSelfTd = Boolean(tdUserId && user?.id && tdUserId === user.id)
-  const canRateTd = !isSelfTd && !hasRatedTd
+  /** TD: только если юзер играл хотя бы в одном завершённом турнире этого директора (см. feedback.getEligibility на бэке). */
+  const canRateTd = (() => {
+    if (!tdUserId) return false
+    if (!FEEDBACK_API_ENABLED) return false
+    if (!isAuthenticated) return false
+    if (!tdEligibilityQuery.isFetched) return false
+    return Boolean(tdEligibilityQuery.data?.canRate) && !hasRatedTd
+  })()
   const accessInfo = accessQuery.data?.userAccessInfo
   const isOwner = Boolean(user?.id && tournamentData?.user?.id === user.id)
   const hasPrivilegedAccess = Boolean(isOwner || accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
@@ -2716,7 +2727,7 @@ export default function TournamentDetailScreen() {
         </View>
       </AppBottomSheet>
       <FeedbackRatingModal
-        open={tdFeedbackOpen}
+        open={tdFeedbackOpen && canRateTd}
         onClose={() => setTdFeedbackOpen(false)}
         entityType="TD"
         entityId={tdUserId ?? ''}
@@ -2784,11 +2795,15 @@ export default function TournamentDetailScreen() {
           >
             <Text style={styles.primaryFeedbackCtaText}>Rate this organizer</Text>
               </Pressable>
+        ) : hasRatedTd ? (
+          <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
         ) : isSelfTd ? (
           <Text style={styles.feedbackThanksText}>You cannot rate yourself.</Text>
-        ) : (
-          <Text style={styles.feedbackThanksText}>You already rated this tournament director.</Text>
-        )}
+        ) : FEEDBACK_API_ENABLED && isAuthenticated && tdEligibilityQuery.isFetched && !tdEligibilityQuery.data?.canRate ? (
+          <Text style={styles.feedbackThanksText}>
+            You can rate this director after you play in one of their completed tournaments.
+          </Text>
+        ) : null}
       </AppBottomSheet>
 
     </SafeAreaView>
