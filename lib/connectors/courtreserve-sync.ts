@@ -856,7 +856,9 @@ export async function runCourtReserveSync(
     // Check if more phases needed (initial sync only)
     const nextPhaseIdx = currentPhaseIdx + 1
     if (isInitial && nextPhaseIdx < SYNC_PHASES.length) {
-      console.log(`[CR Sync] ${clubId}: phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done, next phase will run on next cron`)
+      const PHASE_PAUSE_MS = 2 * 60 * 60 * 1000 // 2 hours between phases — let API cool down
+      const nextPhaseAt = new Date(Date.now() + PHASE_PAUSE_MS)
+      console.log(`[CR Sync] ${clubId}: phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done, next phase at ${nextPhaseAt.toISOString()}`)
       const currentSessCount = await prisma.playSession.count({ where: { clubId } })
       const currentMemCount = await prisma.clubFollower.count({ where: { clubId } })
       await prisma.clubConnector.update({
@@ -866,9 +868,10 @@ export async function runCourtReserveSync(
           lastSyncAt: now, // Mark partial sync time so incremental works
           lastSyncResult: {
             phase: 'sessions', percent: 72, incomplete: true, isInitial: true,
-            status: `Phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done. ${currentMemCount.toLocaleString()} members, ${currentSessCount.toLocaleString()} sessions`,
+            status: `Phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done. ${currentMemCount.toLocaleString()} members, ${currentSessCount.toLocaleString()} sessions. Next phase in 2h.`,
             courtsDone: true, membersDone: true,
             syncPhaseIdx: nextPhaseIdx, completedWindows: [], // Reset windows for next phase
+            nextRetryAt: nextPhaseAt.toISOString(), // Pause 2h between phases
           } as any,
           lastError: null,
         },
