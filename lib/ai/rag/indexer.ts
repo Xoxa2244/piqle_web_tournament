@@ -24,8 +24,9 @@ async function upsertEmbeddings(clubId: string, chunks: TextChunk[], embeddings:
         .eq('chunk_index', chunk.chunkIndex);
     }
 
-    // Insert new embedding
+    // Insert new embedding (generate id — Prisma uses client-side uuid, Supabase needs it explicit)
     const { error } = await supabaseAdmin.from('document_embeddings').insert({
+      id: crypto.randomUUID(),
       club_id: clubId,
       content: chunk.content,
       content_type: chunk.contentType,
