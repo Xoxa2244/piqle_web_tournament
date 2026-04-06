@@ -68,7 +68,8 @@ export class CourtReserveClient {
 
         if (res.status === 429) {
           const retryAfter = parseInt(res.headers.get('Retry-After') || '30', 10)
-          if (attempt < MAX_RATE_LIMIT_RETRIES) {
+          // Only retry in-process if wait is short (< 10s). Otherwise let pg_cron retry later.
+          if (attempt < MAX_RATE_LIMIT_RETRIES && retryAfter <= 10) {
             console.log(`[CR API] Rate limited, waiting ${retryAfter}s (attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`)
             await sleep(retryAfter * 1000)
             continue
