@@ -84,6 +84,8 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }, [session.date])
 
+  const isPast = useMemo(() => new Date(session.date + 'T23:59:59') < new Date(), [session.date])
+
   // Load registered players for this session
   const { data: playersData } = trpc.intelligence.getSessionPlayers.useQuery(
     { sessionId: session.id, clubId },
@@ -160,16 +162,21 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
             <span className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Players ({session.registered} registered)</span>
           </div>
           {players.length > 0 ? (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {players.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 py-1.5 rounded-lg px-2 cursor-pointer transition-colors hover:bg-[rgba(139,92,246,0.08)]" onClick={() => p.id && setSelectedPlayerId(p.id)}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
-                    {initials(p.name)}
+            <>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {players.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 py-1.5 rounded-lg px-2 cursor-pointer transition-colors hover:bg-[rgba(139,92,246,0.08)]" onClick={() => p.id && setSelectedPlayerId(p.id)}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
+                      {initials(p.name)}
+                    </div>
+                    <span className="text-sm" style={{ color: 'var(--t2)' }}>{p.name}</span>
                   </div>
-                  <span className="text-sm" style={{ color: 'var(--t2)' }}>{p.name}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {isPast && (
+                <CreateCohortButton clubId={clubId} sessionId={session.id} playerCount={players.length} />
+              )}
+            </>
           ) : (
             <p className="text-sm py-6 text-center" style={{ color: 'var(--t4)' }}>Player details not available for this session</p>
           )}
@@ -270,5 +277,33 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
         </div>
       </div>
     </motion.div>
+  )
+}
+
+// ── Create Cohort from Session Participants ──
+function CreateCohortButton({ clubId, sessionId, playerCount }: { clubId: string; sessionId: string; playerCount: number }) {
+  const [created, setCreated] = useState(false)
+  const mutation = trpc.intelligence.createCohortFromSession.useMutation({
+    onSuccess: () => setCreated(true),
+  })
+
+  if (created) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: '#10B981' }}>
+        <Check className="w-3.5 h-3.5" /> Cohort created
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => mutation.mutate({ clubId, sessionId })}
+      disabled={mutation.isPending}
+      className="mt-3 flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all hover:opacity-80"
+      style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600, border: 'none', cursor: 'pointer' }}
+    >
+      {mutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
+      Create Cohort ({playerCount})
+    </button>
   )
 }

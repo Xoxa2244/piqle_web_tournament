@@ -94,6 +94,22 @@ function buildCohortWhereClause(filters: CohortFilter[]): string {
         return `u.zip_code = ${val}`
       case 'city':
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
+      case 'sessionFormat':
+        // Players who have played in a specific session format
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
+      case 'dayOfWeek': {
+        // Players who play on a specific day of week (Monday=1, Sunday=0)
+        const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
+        const dayNum = dayMap[String(f.value)] ?? 0
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
+      }
+      case 'userId':
+        // Direct user ID filter (used for "cohort from session")
+        if (f.op === 'in' && Array.isArray(f.value)) {
+          const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'`).join(',')
+          return `u.id IN (${ids})`
+        }
+        return 'TRUE'
       case 'duprRating': {
         // Fallback: match against skill_level text when numeric DUPR is empty
         // skill_level values: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)"
@@ -3494,6 +3510,39 @@ export const intelligenceRouter = createTRPCRouter({
     }),
 
   // ── Player Profile: full player analytics ──
+  getFrequentPartners: protectedProcedure
+    .input(z.object({ userId: z.string(), clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const partners = await ctx.prisma.$queryRaw<Array<{
+        id: string; name: string; email: string; gender: string | null;
+        shared_sessions: bigint; last_played_together: Date; favorite_format: string | null;
+      }>>`
+        SELECT
+          u.id, u.name, u.email, u.gender,
+          COUNT(DISTINCT b2."sessionId")::bigint as shared_sessions,
+          MAX(ps.date) as last_played_together,
+          MODE() WITHIN GROUP (ORDER BY ps.format) as favorite_format
+        FROM play_session_bookings b1
+        JOIN play_session_bookings b2 ON b1."sessionId" = b2."sessionId" AND b1."userId" != b2."userId"
+        JOIN play_sessions ps ON ps.id = b1."sessionId"
+        JOIN users u ON u.id = b2."userId"
+        WHERE b1."userId" = ${input.userId}
+          AND ps."clubId" = ${input.clubId}
+          AND b1.status = 'CONFIRMED'
+          AND b2.status = 'CONFIRMED'
+        GROUP BY u.id, u.name, u.email, u.gender
+        HAVING COUNT(DISTINCT b2."sessionId") >= 2
+        ORDER BY shared_sessions DESC
+        LIMIT 10
+      `
+      return partners.map(p => ({
+        ...p,
+        shared_sessions: Number(p.shared_sessions),
+        last_played_together: p.last_played_together?.toISOString().split('T')[0] || null,
+      }))
+    }),
+
   getPlayerProfile: protectedProcedure
     .input(z.object({ userId: z.string(), clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -4192,6 +4241,37 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         } catch {}
       }
       return cohorts
+    }),
+
+  createCohortFromSession: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string().uuid(),
+      name: z.string().max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const bookings = await ctx.prisma.playSessionBooking.findMany({
+        where: { sessionId: input.sessionId, status: 'CONFIRMED' },
+        include: { playSession: true },
+        distinct: ['userId'],
+      })
+      if (bookings.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: 'No confirmed participants in this session' })
+
+      const session = bookings[0].playSession
+      const userIds = bookings.map(b => b.userId)
+      const name = input.name || `${session.title || 'Session'} — ${session.date?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) || 'Unknown date'}`
+
+      return ctx.prisma.clubCohort.create({
+        data: {
+          clubId: input.clubId,
+          name,
+          filters: [{ field: 'userId', op: 'in', value: userIds }] as any,
+          memberCount: userIds.length,
+          createdBy: ctx.session.user.id,
+        },
+      })
     }),
 
   createCohort: protectedProcedure

@@ -11,6 +11,14 @@ import { trpc } from '@/lib/trpc'
 const FILTER_FIELDS = [
   { key: 'age', label: 'Age', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
   { key: 'gender', label: 'Gender', type: 'select' as const, ops: ['eq'], options: [{ label: 'Male', value: 'M' }, { label: 'Female', value: 'F' }] },
+  { key: 'sessionFormat', label: 'Session Type', type: 'select' as const, ops: ['eq'], options: [
+    { label: 'Open Play', value: 'OPEN_PLAY' }, { label: 'Clinic', value: 'CLINIC' },
+    { label: 'League', value: 'LEAGUE_PLAY' }, { label: 'Drill', value: 'DRILL' }, { label: 'Social', value: 'SOCIAL' },
+  ] },
+  { key: 'dayOfWeek', label: 'Day of Week', type: 'select' as const, ops: ['eq'], options: [
+    { label: 'Monday', value: 'Monday' }, { label: 'Tuesday', value: 'Tuesday' }, { label: 'Wednesday', value: 'Wednesday' },
+    { label: 'Thursday', value: 'Thursday' }, { label: 'Friday', value: 'Friday' }, { label: 'Saturday', value: 'Saturday' }, { label: 'Sunday', value: 'Sunday' },
+  ] },
   { key: 'membershipType', label: 'Membership Type', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'membershipStatus', label: 'Membership Status', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'skillLevel', label: 'Skill Level', type: 'text' as const, ops: ['contains', 'eq'] },

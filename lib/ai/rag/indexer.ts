@@ -169,6 +169,31 @@ export async function indexMemberPatterns(clubId: string): Promise<number> {
 
   if (followers.length === 0) return 0;
 
+  // Build co-player map: userId → top partners
+  const coPlayerMap = new Map<string, Array<{ name: string; sharedSessions: number; favoriteFormat: string | null }>>();
+  try {
+    const pairs = await prisma.$queryRaw<Array<{ user_id: string; partner_name: string; shared_sessions: bigint; favorite_format: string | null }>>`
+      SELECT b1."userId" as user_id, u2.name as partner_name,
+        COUNT(DISTINCT b1."sessionId")::bigint as shared_sessions,
+        MODE() WITHIN GROUP (ORDER BY ps.format) as favorite_format
+      FROM play_session_bookings b1
+      JOIN play_session_bookings b2 ON b1."sessionId" = b2."sessionId" AND b1."userId" != b2."userId"
+      JOIN play_sessions ps ON ps.id = b1."sessionId"
+      JOIN users u2 ON u2.id = b2."userId"
+      WHERE ps."clubId" = ${clubId} AND b1.status = 'CONFIRMED' AND b2.status = 'CONFIRMED'
+      GROUP BY b1."userId", u2.id, u2.name
+      HAVING COUNT(DISTINCT b1."sessionId") >= 3
+      ORDER BY b1."userId", shared_sessions DESC
+    `;
+    for (const p of pairs) {
+      const list = coPlayerMap.get(p.user_id) || [];
+      if (list.length < 5) list.push({ name: p.partner_name || 'Unknown', sharedSessions: Number(p.shared_sessions), favoriteFormat: p.favorite_format });
+      coPlayerMap.set(p.user_id, list);
+    }
+  } catch (err) {
+    console.error('[RAG] Co-player query failed (non-fatal):', err);
+  }
+
   // Clear old member pattern embeddings
   await supabaseAdmin
     .from('document_embeddings')
@@ -211,6 +236,7 @@ export async function indexMemberPatterns(clubId: string): Promise<number> {
       preferredFormats: pref?.preferredFormats as string[] | undefined,
       cancelledCount,
       noShowCount,
+      frequentPartners: coPlayerMap.get(user.id),
     }));
   }
 

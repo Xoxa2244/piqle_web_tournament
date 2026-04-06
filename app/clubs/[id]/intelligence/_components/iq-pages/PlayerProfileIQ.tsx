@@ -243,6 +243,9 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
         />
       </div>
 
+      {/* Section 3.5: Frequent Partners */}
+      <FrequentPartnersCard userId={userId} clubId={clubId} />
+
       {/* Section 4: Risk + Recent Sessions */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Risk Card */}
@@ -325,5 +328,50 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
         </Card>
       </div>
     </motion.div>
+  )
+}
+
+// ── Frequent Partners Card ──
+function FrequentPartnersCard({ userId, clubId }: { userId: string; clubId: string }) {
+  const { data: partners, isLoading } = trpc.intelligence.getFrequentPartners.useQuery(
+    { userId, clubId },
+    { enabled: !!userId },
+  )
+
+  if (isLoading || !partners || partners.length === 0) return null
+
+  const formatMap: Record<string, string> = {
+    OPEN_PLAY: 'Open Play', CLINIC: 'Clinic', LEAGUE_PLAY: 'League', DRILL: 'Drill', SOCIAL: 'Social',
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-4">
+        <Trophy className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+        <h2 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--heading)' }}>Frequent Partners</h2>
+      </div>
+      <div className="space-y-2">
+        {partners.map((p) => (
+          <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ background: 'var(--subtle)' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+              style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
+              {(p.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm truncate" style={{ color: 'var(--t1)', fontWeight: 600 }}>{p.name || p.email}</div>
+              <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                {p.shared_sessions} sessions together
+                {p.favorite_format ? ` · ${formatMap[p.favorite_format] || p.favorite_format}` : ''}
+              </div>
+            </div>
+            {p.last_played_together && (
+              <div className="text-[10px] shrink-0" style={{ color: 'var(--t4)' }}>
+                Last: {new Date(p.last_played_together + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
   )
 }

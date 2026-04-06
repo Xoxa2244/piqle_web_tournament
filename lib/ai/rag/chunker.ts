@@ -107,6 +107,7 @@ export function chunkMemberPattern(member: {
   preferredFormats?: string[];
   cancelledCount?: number;
   noShowCount?: number;
+  frequentPartners?: Array<{ name: string; sharedSessions: number; favoriteFormat?: string | null }>;
 }): TextChunk[] {
   const displayName = member.name || member.email.split('@')[0];
   const rating = member.duprRatingDoubles ? `DUPR: ${member.duprRatingDoubles}` : 'No DUPR rating';
@@ -131,12 +132,17 @@ export function chunkMemberPattern(member: {
   if (member.cancelledCount) reliability.push(`${member.cancelledCount} cancellations`);
   if (member.noShowCount) reliability.push(`${member.noShowCount} no-shows`);
 
+  const partners = member.frequentPartners?.length
+    ? `Frequent partners: ${member.frequentPartners.map(p => `${p.name} (${p.sharedSessions} sessions${p.favoriteFormat ? ', ' + getFormatLabel(p.favoriteFormat) : ''})`).join(', ')}.`
+    : '';
+
   const content = [
     `Member: ${displayName}. ${rating}.`,
     member.persona ? `Player type: ${member.persona}.` : '',
     `${activity}. ${frequency}. ${member.totalBookings} total bookings.`,
     prefs.length ? prefs.join('. ') + '.' : '',
     reliability.length ? `Reliability: ${reliability.join(', ')}.` : '',
+    partners,
   ].filter(Boolean).join(' ');
 
   return [{
