@@ -4741,4 +4741,123 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         avgFill: r.avg_fill, sessionCount: Number(r.session_count),
       }))
     }),
+
+  // ── Data Coverage Checklist ──
+  getDataCoverageChecklist: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubId = input.clubId
+
+      const [memberRows, sessionRows, bookingRows, courtCount, connector] = await Promise.all([
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint; has_email: bigint; has_phone: bigint; has_gender: bigint;
+          has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint;
+          has_zip: bigint; has_dupr: bigint;
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN u.email IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_email,
+            SUM(CASE WHEN u.phone IS NOT NULL AND u.phone != '' THEN 1 ELSE 0 END)::bigint as has_phone,
+            SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_gender,
+            SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dob,
+            SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_skill,
+            SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_membership,
+            SUM(CASE WHEN u.city IS NOT NULL AND u.city != '' THEN 1 ELSE 0 END)::bigint as has_city,
+            SUM(CASE WHEN u.zip_code IS NOT NULL AND u.zip_code != '' THEN 1 ELSE 0 END)::bigint as has_zip,
+            SUM(CASE WHEN u.dupr_rating_doubles IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dupr
+          FROM club_followers cf
+          JOIN users u ON u.id = cf.user_id
+          WHERE cf.club_id = $1
+        `, clubId),
+
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint; has_title: bigint; has_format: bigint; has_skill: bigint;
+          has_court: bigint; has_price: bigint; has_description: bigint;
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN title IS NOT NULL AND title != '' THEN 1 ELSE 0 END)::bigint as has_title,
+            SUM(CASE WHEN format IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_format,
+            SUM(CASE WHEN "skillLevel" IS NOT NULL AND "skillLevel" != 'ALL_LEVELS' THEN 1 ELSE 0 END)::bigint as has_skill,
+            SUM(CASE WHEN "courtId" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_court,
+            SUM(CASE WHEN "pricePerSlot" IS NOT NULL AND "pricePerSlot" > 0 THEN 1 ELSE 0 END)::bigint as has_price,
+            SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END)::bigint as has_description
+          FROM play_sessions
+          WHERE "clubId" = $1
+        `, clubId),
+
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint; has_cancelled_at: bigint; has_checked_in: bigint;
+          confirmed: bigint; cancelled: bigint; no_show: bigint;
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN psb."cancelledAt" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_cancelled_at,
+            SUM(CASE WHEN psb."checkedInAt" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_checked_in,
+            SUM(CASE WHEN psb.status = 'CONFIRMED' THEN 1 ELSE 0 END)::bigint as confirmed,
+            SUM(CASE WHEN psb.status = 'CANCELLED' THEN 1 ELSE 0 END)::bigint as cancelled,
+            SUM(CASE WHEN psb.status = 'NO_SHOW' THEN 1 ELSE 0 END)::bigint as no_show
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = $1
+        `, clubId),
+
+        ctx.prisma.clubCourt.count({ where: { clubId, isActive: true } }),
+
+        ctx.prisma.clubConnector.findFirst({
+          where: { clubId, status: { not: 'disconnected' } },
+          select: { provider: true, status: true, lastSyncAt: true },
+        }),
+      ])
+
+      const pct = (n: bigint, t: bigint) => Number(t) > 0 ? Math.round(Number(n) / Number(t) * 100) : 0
+      const m = memberRows[0]
+      const s = sessionRows[0]
+      const b = bookingRows[0]
+
+      return {
+        members: {
+          total: Number(m.total),
+          fields: {
+            email: { filled: Number(m.has_email), percent: pct(m.has_email, m.total), label: 'Email' },
+            phone: { filled: Number(m.has_phone), percent: pct(m.has_phone, m.total), label: 'Phone' },
+            gender: { filled: Number(m.has_gender), percent: pct(m.has_gender, m.total), label: 'Gender' },
+            dateOfBirth: { filled: Number(m.has_dob), percent: pct(m.has_dob, m.total), label: 'Date of Birth' },
+            skillLevel: { filled: Number(m.has_skill), percent: pct(m.has_skill, m.total), label: 'Skill Level' },
+            membershipType: { filled: Number(m.has_membership), percent: pct(m.has_membership, m.total), label: 'Membership' },
+            city: { filled: Number(m.has_city), percent: pct(m.has_city, m.total), label: 'City' },
+            zipCode: { filled: Number(m.has_zip), percent: pct(m.has_zip, m.total), label: 'Zip Code' },
+            duprDoubles: { filled: Number(m.has_dupr), percent: pct(m.has_dupr, m.total), label: 'DUPR Rating' },
+          },
+        },
+        sessions: {
+          total: Number(s.total),
+          fields: {
+            title: { filled: Number(s.has_title), percent: pct(s.has_title, s.total), label: 'Title' },
+            format: { filled: Number(s.has_format), percent: pct(s.has_format, s.total), label: 'Format' },
+            skillLevel: { filled: Number(s.has_skill), percent: pct(s.has_skill, s.total), label: 'Skill Level' },
+            court: { filled: Number(s.has_court), percent: pct(s.has_court, s.total), label: 'Court' },
+            price: { filled: Number(s.has_price), percent: pct(s.has_price, s.total), label: 'Price' },
+            description: { filled: Number(s.has_description), percent: pct(s.has_description, s.total), label: 'Description' },
+          },
+        },
+        bookings: {
+          total: Number(b.total),
+          fields: {
+            confirmed: { filled: Number(b.confirmed), percent: pct(b.confirmed, b.total), label: 'Confirmed' },
+            cancelled: { filled: Number(b.cancelled), percent: pct(b.cancelled, b.total), label: 'Cancelled' },
+            noShow: { filled: Number(b.no_show), percent: pct(b.no_show, b.total), label: 'No-Show' },
+            cancelledAt: { filled: Number(b.has_cancelled_at), percent: pct(b.has_cancelled_at, b.total), label: 'Cancel Date' },
+            checkedInAt: { filled: Number(b.has_checked_in), percent: pct(b.has_checked_in, b.total), label: 'Check-in' },
+          },
+        },
+        courts: { total: courtCount },
+        connector: connector ? {
+          provider: connector.provider,
+          status: connector.status,
+          lastSyncAt: connector.lastSyncAt?.toISOString() || null,
+        } : null,
+      }
+    }),
 })

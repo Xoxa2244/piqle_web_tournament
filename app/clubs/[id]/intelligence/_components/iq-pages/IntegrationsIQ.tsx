@@ -42,6 +42,9 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
 
       <CourtReserveConnector clubId={clubId} />
 
+      {/* Data Coverage Checklist */}
+      <DataCoverageChecklist clubId={clubId} />
+
       {/* Coming soon cards */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} style={{ marginTop: 24 }}>
         <Card>
@@ -98,6 +101,99 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
 }
 
 /* CourtReserveConnector + helpers moved to ./shared/CourtReserveConnector.tsx */
+
+// ── Data Coverage Checklist ──
+
+function DataCoverageChecklist({ clubId }: { clubId: string }) {
+  const { data, isLoading } = trpc.intelligence.getDataCoverageChecklist.useQuery(
+    { clubId },
+    { enabled: !!clubId },
+  )
+
+  if (isLoading || !data) return null
+  if (data.members.total === 0 && data.sessions.total === 0) return null
+
+  const badgeColor = (pct: number) => pct >= 80 ? '#10B981' : pct >= 30 ? '#F59E0B' : '#EF4444'
+
+  type FieldData = { filled: number; percent: number; label: string }
+
+  function FieldBadges({ fields }: { fields: Record<string, FieldData> }) {
+    return (
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {Object.entries(fields).map(([key, val]) => {
+          const color = badgeColor(val.percent)
+          return (
+            <span key={key} className="text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1"
+              style={{ background: `${color}12`, color, fontWeight: 600 }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+              {val.label}: {val.percent}%
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function Section({ icon, title, total, children }: { icon: string; title: string; total: number; children: React.ReactNode }) {
+    const hasData = total > 0
+    return (
+      <div className="p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{icon}</span>
+          <span className="text-xs" style={{ fontWeight: 700, color: 'var(--heading)' }}>{title}</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto" style={{
+            background: hasData ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+            color: hasData ? '#10B981' : '#EF4444',
+            fontWeight: 700,
+          }}>
+            {hasData ? total.toLocaleString() : 'No data'}
+          </span>
+        </div>
+        {hasData && children}
+      </div>
+    )
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} style={{ marginTop: 24 }}>
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <Database className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+          <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Data Coverage</span>
+          {data.connector?.lastSyncAt && (
+            <span className="text-[10px] ml-auto" style={{ color: 'var(--text-secondary)' }}>
+              Last sync: {new Date(data.connector.lastSyncAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <Section icon="👥" title="Members" total={data.members.total}>
+            <FieldBadges fields={data.members.fields} />
+          </Section>
+
+          <Section icon="🎾" title="Sessions" total={data.sessions.total}>
+            <FieldBadges fields={data.sessions.fields} />
+          </Section>
+
+          <Section icon="📋" title="Bookings" total={data.bookings.total}>
+            <FieldBadges fields={data.bookings.fields} />
+          </Section>
+
+          <Section icon="🏟️" title="Courts" total={data.courts.total}>
+            {data.courts.total > 0 && (
+              <div className="mt-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-lg" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 600 }}>
+                  {data.courts.total} active court{data.courts.total > 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </Section>
+        </div>
+      </Card>
+    </motion.div>
+  )
+}
 
 // ── Excel Import Section ──
 
