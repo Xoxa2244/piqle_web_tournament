@@ -60,13 +60,13 @@ function describeAgentAction(type: string, reasoning: any): string {
 }
 
 // ── Cohort filter helpers ──
-interface CohortFilter {
+export interface CohortFilter {
   field: string
   op: string
   value: string | number | string[]
 }
 
-function buildCohortWhereClause(filters: CohortFilter[]): string {
+export function buildCohortWhereClause(filters: CohortFilter[]): string {
   if (filters.length === 0) return 'TRUE'
   return filters.map(f => {
     const val = typeof f.value === 'string' ? `'${f.value.replace(/'/g, "''")}'` : f.value

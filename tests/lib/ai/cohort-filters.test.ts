@@ -1,0 +1,143 @@
+import { describe, it, expect } from 'vitest'
+import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
+
+describe('Cohort Filters — buildCohortWhereClause', () => {
+  describe('Empty filters', () => {
+    it('returns TRUE for no filters', () => {
+      expect(buildCohortWhereClause([])).toBe('TRUE')
+    })
+  })
+
+  describe('Gender filter', () => {
+    it('eq male', () => {
+      const result = buildCohortWhereClause([{ field: 'gender', op: 'eq', value: 'M' }])
+      expect(result).toContain("u.gender = 'M'")
+    })
+
+    it('eq female', () => {
+      const result = buildCohortWhereClause([{ field: 'gender', op: 'eq', value: 'F' }])
+      expect(result).toContain("u.gender = 'F'")
+    })
+  })
+
+  describe('Age filter', () => {
+    it('gte 55 → inverts to <= for date_of_birth', () => {
+      const result = buildCohortWhereClause([{ field: 'age', op: 'gte', value: 55 }])
+      expect(result).toContain("u.date_of_birth IS NOT NULL")
+      expect(result).toContain("<= (CURRENT_DATE - INTERVAL '55 years')")
+    })
+
+    it('lte 30 → inverts to >=', () => {
+      const result = buildCohortWhereClause([{ field: 'age', op: 'lte', value: 30 }])
+      expect(result).toContain(">= (CURRENT_DATE - INTERVAL '30 years')")
+    })
+  })
+
+  describe('Session Format filter (NEW)', () => {
+    it('generates subquery for OPEN_PLAY', () => {
+      const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' }])
+      expect(result).toContain('play_session_bookings')
+      expect(result).toContain('play_sessions')
+      expect(result).toContain("ps.format = 'OPEN_PLAY'")
+      expect(result).toContain("psb.status = 'CONFIRMED'")
+    })
+
+    it('generates subquery for CLINIC', () => {
+      const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'CLINIC' }])
+      expect(result).toContain("ps.format = 'CLINIC'")
+    })
+
+    it('includes clubId placeholder $1', () => {
+      const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'LEAGUE_PLAY' }])
+      expect(result).toContain('ps."clubId" = $1')
+    })
+  })
+
+  describe('Day of Week filter (NEW)', () => {
+    it('Monday = DOW 1', () => {
+      const result = buildCohortWhereClause([{ field: 'dayOfWeek', op: 'eq', value: 'Monday' }])
+      expect(result).toContain('EXTRACT(DOW FROM ps.date) = 1')
+    })
+
+    it('Wednesday = DOW 3', () => {
+      const result = buildCohortWhereClause([{ field: 'dayOfWeek', op: 'eq', value: 'Wednesday' }])
+      expect(result).toContain('EXTRACT(DOW FROM ps.date) = 3')
+    })
+
+    it('Sunday = DOW 0', () => {
+      const result = buildCohortWhereClause([{ field: 'dayOfWeek', op: 'eq', value: 'Sunday' }])
+      expect(result).toContain('EXTRACT(DOW FROM ps.date) = 0')
+    })
+
+    it('Saturday = DOW 6', () => {
+      const result = buildCohortWhereClause([{ field: 'dayOfWeek', op: 'eq', value: 'Saturday' }])
+      expect(result).toContain('EXTRACT(DOW FROM ps.date) = 6')
+    })
+
+    it('includes confirmed status check', () => {
+      const result = buildCohortWhereClause([{ field: 'dayOfWeek', op: 'eq', value: 'Friday' }])
+      expect(result).toContain("psb.status = 'CONFIRMED'")
+    })
+  })
+
+  describe('UserId filter (NEW — cohort from session)', () => {
+    it('in operator with array of IDs', () => {
+      const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ['user-1', 'user-2', 'user-3'] }])
+      expect(result).toContain("u.id IN ('user-1','user-2','user-3')")
+    })
+
+    it('escapes single quotes in user IDs', () => {
+      const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ["user-O'Brien"] }])
+      expect(result).toContain("u.id IN ('user-O''Brien')")
+    })
+
+    it('non-in operator returns TRUE (safety)', () => {
+      const result = buildCohortWhereClause([{ field: 'userId', op: 'eq', value: 'user-1' }])
+      expect(result).toBe('TRUE')
+    })
+  })
+
+  describe('Combined filters', () => {
+    it('multiple filters joined with AND', () => {
+      const result = buildCohortWhereClause([
+        { field: 'gender', op: 'eq', value: 'F' },
+        { field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' },
+        { field: 'dayOfWeek', op: 'eq', value: 'Wednesday' },
+      ])
+      expect(result).toContain("u.gender = 'F'")
+      expect(result).toContain("ps.format = 'OPEN_PLAY'")
+      expect(result).toContain('EXTRACT(DOW FROM ps.date) = 3')
+      // All three filters present in output
+      expect(result).toContain(' AND ')
+    })
+  })
+
+  describe('Skill Level filter', () => {
+    it('in operator with multiple ranges', () => {
+      const result = buildCohortWhereClause([{ field: 'skillLevel', op: 'in', value: ['3.0-3.49', '3.5-3.99'] }])
+      expect(result).toContain("u.skill_level ILIKE '%3.0-3.49%'")
+      expect(result).toContain("u.skill_level ILIKE '%3.5-3.99%'")
+      expect(result).toContain(' OR ')
+    })
+
+    it('contains operator', () => {
+      const result = buildCohortWhereClause([{ field: 'skillLevel', op: 'contains', value: 'Intermediate' }])
+      expect(result).toContain("u.skill_level ILIKE '%' || 'Intermediate' || '%'")
+    })
+  })
+
+  describe('SQL injection prevention', () => {
+    it('escapes single quotes in string values', () => {
+      const result = buildCohortWhereClause([{ field: 'city', op: 'eq', value: "O'Fallon" }])
+      expect(result).toContain("O''Fallon")
+      expect(result).not.toContain("O'Fallon'")
+    })
+  })
+
+  describe('Unknown field', () => {
+    it('returns TRUE for unknown fields', () => {
+      const result = buildCohortWhereClause([{ field: 'unknown_field' as any, op: 'eq', value: 'test' }])
+      expect(result).toBe('TRUE')
+    })
+  })
+})
