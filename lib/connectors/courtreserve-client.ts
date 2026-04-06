@@ -18,7 +18,7 @@ const DEFAULT_BASE_URL = 'https://api.courtreserve.com'
 const REQUEST_TIMEOUT_MS = 30_000
 const MAX_PAGE_SIZE = 100
 const MAX_DATE_RANGE_DAYS = 31
-const THROTTLE_MS = 300 // delay between API calls to avoid rate limiting
+const THROTTLE_MS = 1000 // delay between API calls to avoid rate limiting
 const MAX_RATE_LIMIT_RETRIES = 3
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
