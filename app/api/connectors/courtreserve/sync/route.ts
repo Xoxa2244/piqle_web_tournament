@@ -66,6 +66,15 @@ async function handleSync(request: Request) {
       const prevResult = connector.lastSyncResult as any
       const isInitial = isSyncing ? (prevResult?.isInitial ?? !connector.lastSyncAt) : false
 
+      // Skip if rate limited and cooldown hasn't passed
+      const nextRetryAt = prevResult?.nextRetryAt ? new Date(prevResult.nextRetryAt) : null
+      if (nextRetryAt && nextRetryAt > new Date()) {
+        const waitSec = Math.round((nextRetryAt.getTime() - Date.now()) / 1000)
+        log.info(`[CR Cron] ${connector.clubId}: rate limited, skip until ${nextRetryAt.toISOString()} (${waitSec}s)`)
+        results.push({ clubId: connector.clubId, status: 'rate_limited', phase: prevResult?.phase })
+        continue
+      }
+
       try {
         log.info(`[CR Cron] Syncing ${connector.clubId} (${isSyncing ? 'resume' : 'incremental'})`)
 

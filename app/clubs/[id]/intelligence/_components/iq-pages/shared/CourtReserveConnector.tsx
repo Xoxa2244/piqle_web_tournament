@@ -384,22 +384,45 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
           ) : (
             /* ── Connected View ── */
             <div>
-              {/* Syncing — Brain Animation */}
+              {/* Syncing — Brain Animation + Phase Info */}
               {(connStatus === 'syncing' || isSyncing) && (() => {
                 const progress = ('lastSyncResult' in status ? status.lastSyncResult : null) as any
                 const percent = progress?.percent || 0
                 const statusText = progress?.status || 'Syncing...'
+                const nextRetry = progress?.nextRetryAt ? new Date(progress.nextRetryAt) : null
+                const isPaused = nextRetry && nextRetry > new Date()
+                const pauseMinutes = isPaused ? Math.ceil((nextRetry.getTime() - Date.now()) / 60000) : 0
+
                 return (
                   <div className="mb-4">
-                    <AILoadingAnimation
-                      progress={percent}
-                      statusMessage={statusText}
-                      waitForCompletion={false}
-                    />
+                    {isPaused ? (
+                      <div className="text-center py-6">
+                        <div className="text-2xl mb-2">⏸</div>
+                        <p className="text-sm mb-1" style={{ color: 'var(--t2)', fontWeight: 600 }}>
+                          Paused — API rate limit
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--t3)' }}>
+                          Resuming automatically in ~{pauseMinutes} min
+                        </p>
+                      </div>
+                    ) : (
+                      <AILoadingAnimation
+                        progress={percent}
+                        statusMessage={statusText}
+                        waitForCompletion={false}
+                      />
+                    )}
                     {progress?.membersSynced != null && progress?.membersTotal != null && (
                       <div className="mt-3 text-center">
                         <div className="text-xs" style={{ color: 'var(--t3)' }}>
                           Members: <strong>{Number(progress.membersSynced).toLocaleString()}</strong> / {Number(progress.membersTotal).toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+                    {progress?.syncPhaseIdx != null && (
+                      <div className="mt-2 text-center">
+                        <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                          Phase {progress.syncPhaseIdx + 1}/4 — {['Recent 2 months', 'Extended 5 months', 'Historical 8 months', 'Full year'][progress.syncPhaseIdx] || 'Syncing'}
                         </div>
                       </div>
                     )}

@@ -106,7 +106,7 @@ export class CourtReserveClient {
   }
 
   /** Split a date range into 31-day windows (CR API limit) */
-  private dateWindows(from: Date, to: Date): { from: string; to: string }[] {
+  dateWindows(from: Date, to: Date): { from: string; to: string }[] {
     const windows: { from: string; to: string }[] = []
     let current = new Date(from)
     while (current < to) {

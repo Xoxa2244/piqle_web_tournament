@@ -617,10 +617,14 @@ export async function runCourtReserveSync(
   })
   if (!connector) throw new Error(`Connector ${connectorId} not found`)
 
-  // Update status to syncing
+  // Update status to syncing + clear nextRetryAt
+  const prevSyncResult = (connector.lastSyncResult as any) || {}
+  if (prevSyncResult.nextRetryAt) {
+    delete prevSyncResult.nextRetryAt
+  }
   await prisma.clubConnector.update({
     where: { id: connectorId },
-    data: { status: 'syncing' },
+    data: { status: 'syncing', lastSyncResult: prevSyncResult as any },
   })
 
   const clubId = connector.clubId
@@ -656,6 +660,15 @@ export async function runCourtReserveSync(
   const now = new Date()
   const futureDate = new Date(now)
   futureDate.setDate(futureDate.getDate() + 30) // Include 30 days of future sessions
+
+  // Progressive sync phases — recent data first, expand backwards
+  const SYNC_PHASES = [
+    { daysBack: 60, label: 'Recent (2 months)' },
+    { daysBack: 150, label: 'Extended (5 months)' },
+    { daysBack: 240, label: 'Historical (8 months)' },
+    { daysBack: 365, label: 'Full year' },
+  ]
+
   const from = new Date(now)
   from.setDate(from.getDate() - daysBack)
 
@@ -732,23 +745,101 @@ export async function runCourtReserveSync(
       console.log(`[CR Sync] ${clubId}: members already done, skipping`)
     }
 
-    // 3. Sync reservations (court bookings)
-    console.log(`[CR Sync] ${clubId}: syncing reservations (${daysBack} days)...`)
-    await updateProgress({ phase: 'sessions', percent: 72, status: 'Syncing court reservations...', courtsDone: true, membersDone: true })
-    const { sessions: sessionsResult, bookings: bookingsResult } = await syncReservations(client, clubId, partnerId, from, futureDate)
+    // 3-4. Sync reservations + events in progressive phases
+    // Phase 0: today-2mo → today+30d (most valuable)
+    // Phase 1: today-5mo → today-2mo
+    // Phase 2: today-8mo → today-5mo
+    // Phase 3: today-12mo → today-8mo
+    const currentPhaseIdx = prevProgress?.syncPhaseIdx ?? 0
+    const completedWindows: string[] = prevProgress?.completedWindows || []
+    let sessionsResult = { created: 0, updated: 0, errors: 0 }
+    let bookingsResult = { created: 0, updated: 0, errors: 0 }
+
+    // Determine date range for current phase
+    const phase = isInitial ? SYNC_PHASES[Math.min(currentPhaseIdx, SYNC_PHASES.length - 1)] : null
+    const phaseFrom = phase ? new Date(now.getTime() - phase.daysBack * 86400000) : from
+    const prevPhaseDays = currentPhaseIdx > 0 ? SYNC_PHASES[currentPhaseIdx - 1].daysBack : 0
+    const phaseTo = (phase && currentPhaseIdx > 0) ? new Date(now.getTime() - prevPhaseDays * 86400000) : futureDate
+
+    const phaseLabel = phase ? `${phase.label} (${currentPhaseIdx + 1}/${SYNC_PHASES.length})` : `${daysBack} days`
+    console.log(`[CR Sync] ${clubId}: syncing reservations+events — ${phaseLabel}`)
+
+    // 3. Sync reservations with deadline + window tracking
+    await updateProgress({ phase: 'sessions', percent: 72, status: `Syncing reservations — ${phaseLabel}`, courtsDone: true, membersDone: true, syncPhaseIdx: currentPhaseIdx })
+
+    const reservationDeadline = maxTimeMs ? startTime + maxTimeMs - 30_000 : undefined
+    const allResWindows = client.dateWindows(phaseFrom, phaseTo)
+    const remainingResWindows = allResWindows.filter(w => !completedWindows.includes(`res:${w.from}`))
+
+    for (const window of remainingResWindows) {
+      if (reservationDeadline && Date.now() > reservationDeadline) {
+        console.log(`[CR Sync] ${clubId}: reservations deadline reached, will continue next chunk`)
+        const sessCount = await prisma.playSession.count({ where: { clubId } })
+        await updateProgress({
+          phase: 'sessions', percent: 72, incomplete: true, isInitial,
+          status: `Syncing reservations... ${sessCount.toLocaleString()} sessions`,
+          courtsDone: true, membersDone: true,
+          syncPhaseIdx: currentPhaseIdx, completedWindows,
+        })
+        return {
+          courts: courtsResult, members: membersResult, sessions: sessionsResult, bookings: bookingsResult,
+          totalErrors: courtsResult.errors + membersResult.errors + sessionsResult.errors + bookingsResult.errors,
+          syncedAt: now.toISOString(), incomplete: true,
+        }
+      }
+      try {
+        const windowFrom = new Date(window.from)
+        const windowTo = new Date(window.to)
+        const { sessions: ws, bookings: wb } = await syncReservations(client, clubId, partnerId, windowFrom, windowTo)
+        sessionsResult.created += ws.created; sessionsResult.updated += ws.updated; sessionsResult.errors += ws.errors
+        bookingsResult.created += wb.created; bookingsResult.errors += wb.errors
+        completedWindows.push(`res:${window.from}`)
+      } catch (err: any) {
+        if (err.message?.includes('Rate limited')) throw err // bubble up for nextRetryAt
+        console.error(`[CR Sync] ${clubId}: reservation window ${window.from} error:`, err.message)
+        sessionsResult.errors++
+      }
+    }
+
+    // 4. Sync event registrations with deadline + window tracking
     const sessCount = await prisma.playSession.count({ where: { clubId } })
-    await updateProgress({ phase: 'events', percent: 80, status: `${sessCount.toLocaleString()} sessions synced. Syncing events...`, courtsDone: true, membersDone: true })
+    await updateProgress({ phase: 'events', percent: 80, status: `${sessCount.toLocaleString()} sessions. Syncing events — ${phaseLabel}`, courtsDone: true, membersDone: true, syncPhaseIdx: currentPhaseIdx, completedWindows })
 
-    // 4. Sync event registrations (Open Play, Clinics, Leagues — PRIMARY data)
-    console.log(`[CR Sync] ${clubId}: syncing event registrations (${daysBack} days)...`)
-    const eventResult = await syncEventRegistrations(client, clubId, partnerId, from, futureDate, connectorId)
-    sessionsResult.created += eventResult.sessions.created
-    sessionsResult.updated += eventResult.sessions.updated
-    sessionsResult.errors += eventResult.sessions.errors
-    bookingsResult.created += eventResult.bookings.created
-    bookingsResult.errors += eventResult.bookings.errors
+    const eventDeadline = maxTimeMs ? startTime + maxTimeMs - 15_000 : undefined
+    const allEventWindows = client.dateWindows(phaseFrom, phaseTo)
+    const remainingEventWindows = allEventWindows.filter(w => !completedWindows.includes(`evt:${w.from}`))
 
-    // Match sessions to courts by court name in title (for reservations without courtId)
+    for (const window of remainingEventWindows) {
+      if (eventDeadline && Date.now() > eventDeadline) {
+        console.log(`[CR Sync] ${clubId}: events deadline reached, will continue next chunk`)
+        const currentSessCount = await prisma.playSession.count({ where: { clubId } })
+        await updateProgress({
+          phase: 'events', percent: 82, incomplete: true, isInitial,
+          status: `Syncing events... ${currentSessCount.toLocaleString()} sessions`,
+          courtsDone: true, membersDone: true,
+          syncPhaseIdx: currentPhaseIdx, completedWindows,
+        })
+        return {
+          courts: courtsResult, members: membersResult, sessions: sessionsResult, bookings: bookingsResult,
+          totalErrors: courtsResult.errors + membersResult.errors + sessionsResult.errors + bookingsResult.errors,
+          syncedAt: now.toISOString(), incomplete: true,
+        }
+      }
+      try {
+        const windowFrom = new Date(window.from)
+        const windowTo = new Date(window.to)
+        const eventResult = await syncEventRegistrations(client, clubId, partnerId, windowFrom, windowTo, connectorId)
+        sessionsResult.created += eventResult.sessions.created; sessionsResult.updated += eventResult.sessions.updated; sessionsResult.errors += eventResult.sessions.errors
+        bookingsResult.created += eventResult.bookings.created; bookingsResult.errors += eventResult.bookings.errors
+        completedWindows.push(`evt:${window.from}`)
+      } catch (err: any) {
+        if (err.message?.includes('Rate limited')) throw err
+        console.error(`[CR Sync] ${clubId}: event window ${window.from} error:`, err.message)
+        sessionsResult.errors++
+      }
+    }
+
+    // Match sessions to courts by court name in title
     try {
       await prisma.$executeRawUnsafe(`
         UPDATE play_sessions ps
@@ -761,7 +852,34 @@ export async function runCourtReserveSync(
       `, clubId)
     } catch {}
 
-    // Final totals from DB
+    // Check if more phases needed (initial sync only)
+    const nextPhaseIdx = currentPhaseIdx + 1
+    if (isInitial && nextPhaseIdx < SYNC_PHASES.length) {
+      console.log(`[CR Sync] ${clubId}: phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done, next phase will run on next cron`)
+      const currentSessCount = await prisma.playSession.count({ where: { clubId } })
+      const currentMemCount = await prisma.clubFollower.count({ where: { clubId } })
+      await prisma.clubConnector.update({
+        where: { id: connectorId },
+        data: {
+          status: 'syncing',
+          lastSyncAt: now, // Mark partial sync time so incremental works
+          lastSyncResult: {
+            phase: 'sessions', percent: 72, incomplete: true, isInitial: true,
+            status: `Phase ${currentPhaseIdx + 1}/${SYNC_PHASES.length} done. ${currentMemCount.toLocaleString()} members, ${currentSessCount.toLocaleString()} sessions`,
+            courtsDone: true, membersDone: true,
+            syncPhaseIdx: nextPhaseIdx, completedWindows: [], // Reset windows for next phase
+          } as any,
+          lastError: null,
+        },
+      })
+      return {
+        courts: courtsResult, members: membersResult, sessions: sessionsResult, bookings: bookingsResult,
+        totalErrors: courtsResult.errors + sessionsResult.errors + bookingsResult.errors,
+        syncedAt: now.toISOString(), incomplete: true,
+      }
+    }
+
+    // All phases complete — final totals
     const totalMembers = await prisma.clubFollower.count({ where: { clubId } })
     const totalSessions = await prisma.playSession.count({ where: { clubId } })
     const totalBookings = await prisma.playSessionBooking.count({ where: { playSession: { clubId } } })
@@ -814,13 +932,34 @@ export async function runCourtReserveSync(
     // Only mark as 'error' if no data was loaded at all
     const hasPartialData = await prisma.clubFollower.count({ where: { clubId } }).catch(() => 0)
     const isAbort = error.message?.includes('aborted') || error.message?.includes('FUNCTION_INVOCATION_TIMEOUT')
+    const isRateLimit = error.message?.includes('Rate limited')
+
+    // Extract Retry-After seconds from error message
+    const retryMatch = error.message?.match(/Retry after (\d+)s/)
+    const retryAfterSec = retryMatch ? parseInt(retryMatch[1], 10) : (isRateLimit ? 120 : 0)
+
+    // Preserve previous progress and add nextRetryAt for rate limits
+    const prevResult = (connector.lastSyncResult as any) || {}
+    const updateData: any = {
+      status: (hasPartialData > 0 || isAbort || isRateLimit) ? 'syncing' : 'error',
+      lastError: isAbort ? 'Sync timeout — will auto-resume'
+        : isRateLimit ? `Rate limited. Retry after ${retryAfterSec}s`
+        : (error.message || 'Sync failed'),
+    }
+
+    // Set nextRetryAt so cron doesn't retry before cooldown
+    if (isRateLimit || isAbort) {
+      const cooldownMs = isRateLimit ? retryAfterSec * 1000 + 30_000 : 120_000 // extra 30s buffer for rate limit
+      updateData.lastSyncResult = {
+        ...prevResult,
+        nextRetryAt: new Date(Date.now() + cooldownMs).toISOString(),
+      }
+      console.log(`[CR Sync] ${clubId}: rate limited, nextRetryAt in ${Math.round(cooldownMs / 1000)}s`)
+    }
 
     await prisma.clubConnector.update({
       where: { id: connectorId },
-      data: {
-        status: (hasPartialData > 0 || isAbort) ? 'syncing' : 'error',
-        lastError: isAbort ? 'Sync timeout — will auto-resume' : (error.message || 'Sync failed'),
-      },
+      data: updateData,
     }).catch(() => {})
     throw error
   }
