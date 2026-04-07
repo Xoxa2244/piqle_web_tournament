@@ -248,7 +248,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     setResult(null)
     setProgress({ current: '', done: [], errors: [] })
 
-    const XLSX = (await import('xlsx')).default
+    const XLSX = await import('xlsx')
     const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
 
     // Import order: members first, then reservations, then events
@@ -340,6 +340,16 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     }
     reader.readAsDataURL(file)
   }
+
+  const hasImportSuccess =
+    !!result &&
+    (progress.done.length > 0 ||
+      result.members.created > 0 ||
+      result.members.updated > 0 ||
+      result.sessions.created > 0 ||
+      result.sessions.updated > 0 ||
+      result.bookings.created > 0 ||
+      result.bookings.updated > 0)
 
   return (
     <Card>
@@ -433,9 +443,16 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
       {result && !importing && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 13, color: '#10b981' }}>
-            <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />Import complete!
-          </div>
+          {hasImportSuccess ? (
+            <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 13, color: '#10b981' }}>
+              <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />
+              {progress.errors.length > 0 ? 'Import completed with warnings.' : 'Import complete!'}
+            </div>
+          ) : (
+            <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
+              <AlertCircle size={14} style={{ display: 'inline', verticalAlign: -2, marginRight: 6 }} />Import failed. No files were processed successfully.
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
             <StatCard icon={Users} label="Members" color="#6366f1" data={result.members} isDark={isDark} />
             <StatCard icon={LayoutGrid} label="Sessions" color="#f59e0b" data={result.sessions} isDark={isDark} />
@@ -570,6 +587,17 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
   }
 
   const hasFiles = Object.values(files).some(Boolean)
+  const hasImportSuccess =
+    !!result &&
+    (progress.done.length > 0 ||
+      result.members.created > 0 ||
+      result.members.updated > 0 ||
+      result.sessions.created > 0 ||
+      result.sessions.updated > 0 ||
+      result.bookings.created > 0 ||
+      result.bookings.updated > 0 ||
+      result.courts.created > 0 ||
+      result.courts.updated > 0)
 
   return (
     <Card>
@@ -649,9 +677,16 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
       {/* Results */}
       {result && (
         <div className="mt-4 space-y-3">
-          <div className="flex items-center gap-2 text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
-            <CheckCircle2 className="w-4 h-4" /> Import complete!
-          </div>
+          {hasImportSuccess ? (
+            <div className="flex items-center gap-2 text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
+              <CheckCircle2 className="w-4 h-4" />
+              {progress.errors.length > 0 ? 'Import completed with warnings.' : 'Import complete!'}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs" style={{ color: '#EF4444', fontWeight: 600 }}>
+              <AlertCircle className="w-4 h-4" /> Import failed. No files were processed successfully.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <StatCard icon={Users} label="Members" color="#8b5cf6" data={result.members} isDark={isDark} />
             <StatCard icon={CalendarDays} label="Sessions" color="#06b6d4" data={result.sessions} isDark={isDark} />
