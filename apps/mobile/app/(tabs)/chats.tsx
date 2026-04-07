@@ -251,9 +251,8 @@ export default function ChatsTab() {
 
   useFocusEffect(
     useCallback(() => {
-      setRevealEpoch((v) => v + 1)
       void onRefreshChats()
-    }, [])
+    }, [onRefreshChats])
   )
 
   const showFullChatLoading =

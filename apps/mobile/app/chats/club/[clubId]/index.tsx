@@ -51,6 +51,7 @@ export default function ClubChatScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const lastSentTextRef = useRef('')
   const lastSentTextAtRef = useRef(0)
@@ -201,22 +202,34 @@ export default function ClubChatScreen() {
     },
   })
   const likeMessage = trpc.clubChat.likeMessage.useMutation({
-    onMutate: ({ messageId }: { messageId: string }) => {
+    onMutate: async ({ messageId }: { messageId: string }) => {
+      await utils.clubChat.list.cancel({ clubId, limit: 100 })
+      const seq = (likeMutationSeqRef.current[messageId] ?? 0) + 1
+      likeMutationSeqRef.current[messageId] = seq
+      let previousState: { likeCount: number; viewerHasLiked: boolean } | null = null
       utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === messageId
-            ? {
-                ...message,
-                likeCount: message.viewerHasLiked
-                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                  : Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: !message.viewerHasLiked,
-              }
+            ? (() => {
+                previousState = {
+                  likeCount: Number(message.likeCount ?? 0),
+                  viewerHasLiked: Boolean(message.viewerHasLiked),
+                }
+                return {
+                  ...message,
+                  likeCount: previousState.viewerHasLiked
+                    ? Math.max(0, previousState.likeCount - 1)
+                    : previousState.likeCount + 1,
+                  viewerHasLiked: !previousState.viewerHasLiked,
+                }
+              })()
             : message
         )
       )
+      return { messageId, previousState, seq }
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, _vars: unknown, context: any) => {
+      if (!context || likeMutationSeqRef.current[data.messageId] !== context.seq) return
       utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === data.messageId
@@ -225,16 +238,15 @@ export default function ClubChatScreen() {
         )
       )
     },
-    onError: (error: any, variables: { messageId: string }) => {
+    onError: (error: any, variables: { messageId: string }, context: any) => {
+      if (!context?.previousState || likeMutationSeqRef.current[variables.messageId] !== context.seq) return
       utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === variables.messageId
             ? {
                 ...message,
-                likeCount: message.viewerHasLiked
-                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                  : Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: !message.viewerHasLiked,
+                likeCount: context.previousState.likeCount,
+                viewerHasLiked: context.previousState.viewerHasLiked,
               }
             : message
         )
@@ -358,10 +370,8 @@ export default function ClubChatScreen() {
               messages={messages as ChatMessage[]}
               currentUserId={user?.id}
               onToggleLike={(m) => {
-                if (likeMessage.isPending) return
                 likeMessage.mutate({ messageId: m.id })
               }}
-              likeDisabled={likeMessage.isPending}
               onPressAvatar={(m) => {
                 if (!m.userId) return
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })

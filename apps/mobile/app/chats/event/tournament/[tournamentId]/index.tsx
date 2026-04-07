@@ -68,6 +68,8 @@ export default function TournamentChatScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const tournamentLikeMutationSeqRef = useRef<Record<string, number>>({})
+  const divisionLikeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const lastSentTextRef = useRef('')
   const lastSentTextAtRef = useRef(0)
@@ -355,22 +357,34 @@ export default function TournamentChatScreen() {
     },
   })
   const likeTournamentMessage = trpc.tournamentChat.likeTournamentMessage.useMutation({
-    onMutate: ({ messageId }: { messageId: string }) => {
+    onMutate: async ({ messageId }: { messageId: string }) => {
+      await utils.tournamentChat.listTournament.cancel({ tournamentId, limit: 100 })
+      const seq = (tournamentLikeMutationSeqRef.current[messageId] ?? 0) + 1
+      tournamentLikeMutationSeqRef.current[messageId] = seq
+      let previousState: { likeCount: number; viewerHasLiked: boolean } | null = null
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === messageId
-            ? {
-                ...message,
-                likeCount: message.viewerHasLiked
-                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                  : Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: !message.viewerHasLiked,
-              }
+            ? (() => {
+                previousState = {
+                  likeCount: Number(message.likeCount ?? 0),
+                  viewerHasLiked: Boolean(message.viewerHasLiked),
+                }
+                return {
+                  ...message,
+                  likeCount: previousState.viewerHasLiked
+                    ? Math.max(0, previousState.likeCount - 1)
+                    : previousState.likeCount + 1,
+                  viewerHasLiked: !previousState.viewerHasLiked,
+                }
+              })()
             : message
         )
       )
+      return { messageId, previousState, seq }
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, _vars: unknown, context: any) => {
+      if (!context || tournamentLikeMutationSeqRef.current[data.messageId] !== context.seq) return
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === data.messageId
@@ -379,16 +393,15 @@ export default function TournamentChatScreen() {
         )
       )
     },
-    onError: (error: any, variables: { messageId: string }) => {
+    onError: (error: any, variables: { messageId: string }, context: any) => {
+      if (!context?.previousState || tournamentLikeMutationSeqRef.current[variables.messageId] !== context.seq) return
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === variables.messageId
             ? {
                 ...message,
-                likeCount: message.viewerHasLiked
-                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                  : Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: !message.viewerHasLiked,
+                likeCount: context.previousState.likeCount,
+                viewerHasLiked: context.previousState.viewerHasLiked,
               }
             : message
         )
@@ -397,24 +410,36 @@ export default function TournamentChatScreen() {
     },
   })
   const likeDivisionMessage = trpc.tournamentChat.likeDivisionMessage.useMutation({
-    onMutate: ({ messageId }: { messageId: string }) => {
+    onMutate: async ({ messageId }: { messageId: string }) => {
       if (!activeDivisionId) return
+      await utils.tournamentChat.listDivision.cancel({ divisionId: activeDivisionId, limit: 100 })
+      const seq = (divisionLikeMutationSeqRef.current[messageId] ?? 0) + 1
+      divisionLikeMutationSeqRef.current[messageId] = seq
+      let previousState: { likeCount: number; viewerHasLiked: boolean } | null = null
       utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === messageId
-            ? {
-                ...message,
-                likeCount: message.viewerHasLiked
-                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                  : Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: !message.viewerHasLiked,
-              }
+            ? (() => {
+                previousState = {
+                  likeCount: Number(message.likeCount ?? 0),
+                  viewerHasLiked: Boolean(message.viewerHasLiked),
+                }
+                return {
+                  ...message,
+                  likeCount: previousState.viewerHasLiked
+                    ? Math.max(0, previousState.likeCount - 1)
+                    : previousState.likeCount + 1,
+                  viewerHasLiked: !previousState.viewerHasLiked,
+                }
+              })()
             : message
         )
       )
+      return { messageId, previousState, seq }
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, _vars: unknown, context: any) => {
       if (!activeDivisionId) return
+      if (!context || divisionLikeMutationSeqRef.current[data.messageId] !== context.seq) return
       utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === data.messageId
@@ -423,17 +448,15 @@ export default function TournamentChatScreen() {
         )
       )
     },
-    onError: (error: any, variables: { messageId: string }) => {
-      if (activeDivisionId) {
+    onError: (error: any, variables: { messageId: string }, context: any) => {
+      if (activeDivisionId && context?.previousState && divisionLikeMutationSeqRef.current[variables.messageId] === context.seq) {
         utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
           (current ?? []).map((message) =>
             message.id === variables.messageId
               ? {
                   ...message,
-                  likeCount: message.viewerHasLiked
-                    ? Math.max(0, Number(message.likeCount ?? 1) - 1)
-                    : Number(message.likeCount ?? 0) + 1,
-                  viewerHasLiked: !message.viewerHasLiked,
+                  likeCount: context.previousState.likeCount,
+                  viewerHasLiked: context.previousState.viewerHasLiked,
                 }
               : message
           )
@@ -616,14 +639,11 @@ export default function TournamentChatScreen() {
                 currentUserId={user?.id}
                 onToggleLike={(m) => {
                   if (activeDivisionId) {
-                    if (likeDivisionMessage.isPending) return
                     likeDivisionMessage.mutate({ messageId: m.id })
                     return
                   }
-                  if (likeTournamentMessage.isPending) return
                   likeTournamentMessage.mutate({ messageId: m.id })
                 }}
-                likeDisabled={activeDivisionId ? likeDivisionMessage.isPending : likeTournamentMessage.isPending}
                 onPressAvatar={(m) => {
                   if (!m.userId) return
                   router.push({ pathname: '/profile/[id]', params: { id: m.userId } })

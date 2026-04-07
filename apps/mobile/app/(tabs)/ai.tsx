@@ -507,7 +507,7 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
   },
   bubbleTextMine: {
     color: theme === 'dark' ? colors.white : colors.text,
-    fontWeight: '600',
+    fontWeight: '400',
   },
   inlineBold: {
     fontWeight: '800',
