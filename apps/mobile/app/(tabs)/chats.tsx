@@ -16,7 +16,7 @@ import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNotificationRow'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
-import { chatRealtimeQueryOptions } from '../../src/lib/realtimePoll'
+import { useChatRealtimeQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -32,6 +32,7 @@ export default function ChatsTab() {
   const styles = useMemo(() => createStyles(colors), [colors])
   const toast = useToast()
   const isAuthenticated = Boolean(token)
+  const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
   const api = trpc as any
   const utils = (trpc as any).useUtils()
   const [search, setSearch] = useState('')

@@ -24,7 +24,7 @@ import {
 import { getTournamentSlotMetrics } from '../../src/lib/tournamentSlots'
 import { buildWebUrl, FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
-import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
+import { useRealtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
@@ -172,12 +172,13 @@ const FilterChip = ({
 const useTournamentsTheme = () => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
 
-  return { colors, styles }
+  return { colors, styles, realtimeAwareQueryOptions }
 }
 
 export default function TournamentsTab() {
-  const { colors, styles } = useTournamentsTheme()
+  const { colors, styles, realtimeAwareQueryOptions } = useTournamentsTheme()
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
   const [mode, setMode] = useState<'upcoming' | 'registered' | 'past'>('upcoming')

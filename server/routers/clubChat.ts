@@ -178,6 +178,21 @@ export const clubChatRouter = createTRPCRouter({
         throw err
       }
 
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId },
+          select: { userId: true },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId },
+          select: { userId: true },
+        }),
+      ])
+      const recipientIds = Array.from(
+        new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
+      ).filter((id) => id !== userId)
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
+
       return { success: true }
     }),
 
@@ -244,7 +259,7 @@ export const clubChatRouter = createTRPCRouter({
       }
 
       const isAdmin = Boolean(admin)
-      const cooldownMs = isAdmin ? 300 : 500
+      const cooldownMs = isAdmin ? 250 : 350
       const maxPerMinute = isAdmin ? 30 : 10
 
       if (lastMessage) {
@@ -313,6 +328,7 @@ export const clubChatRouter = createTRPCRouter({
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'delivered' as const,
         createdAt: message.createdAt,
         user: message.user,
       }

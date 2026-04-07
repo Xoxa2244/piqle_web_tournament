@@ -26,6 +26,7 @@ async function getThreadForUser(prisma: any, threadId: string, userId: string) {
           image: true,
           city: true,
           isActive: true,
+          updatedAt: true,
         },
       },
       participantB: {
@@ -35,6 +36,7 @@ async function getThreadForUser(prisma: any, threadId: string, userId: string) {
           image: true,
           city: true,
           isActive: true,
+          updatedAt: true,
         },
       },
     },
@@ -179,6 +181,9 @@ export const directChatRouter = createTRPCRouter({
           name: otherUser.name,
           image: otherUser.image,
           city: otherUser.city,
+        },
+        presence: {
+          lastActiveAt: otherUser.updatedAt,
         },
         messagingState: {
           blockedByMe: blockState.blockedByMe,
@@ -402,6 +407,10 @@ export const directChatRouter = createTRPCRouter({
         throw err
       }
 
+      const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
+      const otherUserId = thread.participantAId === userId ? thread.participantBId : thread.participantAId
+      pushToUsers([otherUserId], { type: 'invalidate', keys: ['directChat.listMyChats'] })
+
       return { success: true }
     }),
 
@@ -446,7 +455,7 @@ export const directChatRouter = createTRPCRouter({
 
       if (lastMessage) {
         const delta = now.getTime() - new Date(lastMessage.createdAt).getTime()
-        if (delta < 350) {
+        if (delta < 250) {
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
         }
 
@@ -506,6 +515,7 @@ export const directChatRouter = createTRPCRouter({
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'delivered' as const,
         createdAt: message.createdAt,
         user: message.user,
       }

@@ -13,7 +13,10 @@ import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, InputField, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
+import {
+  useChatRealtimeQueryOptions,
+  useMessageThreadRealtimeQueryOptions,
+} from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -26,6 +29,25 @@ const CLIENT_SEND_COOLDOWN_MS = 400
 const CLIENT_DUPLICATE_GUARD_MS = 10_000
 type PendingMenuAction = 'block' | 'report' | null
 
+const ONLINE_WINDOW_MS = 5 * 60 * 1000
+
+function formatPresenceLabel(lastActiveAt?: string | Date | null) {
+  if (!lastActiveAt) return null
+  const last = new Date(lastActiveAt)
+  const diffMs = Date.now() - last.getTime()
+  if (!Number.isFinite(diffMs)) return null
+  if (diffMs <= ONLINE_WINDOW_MS) return 'Online'
+
+  const diffMinutes = Math.max(1, Math.floor(diffMs / 60_000))
+  if (diffMinutes < 60) return `last seen ${diffMinutes}m ago`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `last seen ${diffHours}h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `last seen ${diffDays}d ago`
+}
+
 export default function DirectChatScreen() {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -35,6 +57,8 @@ export default function DirectChatScreen() {
   const fallbackUserId = params.userId
   const { token, user } = useAuth()
   const isAuthenticated = Boolean(token)
+  const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
+  const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
   const toast = useToast()
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
@@ -75,7 +99,6 @@ export default function DirectChatScreen() {
     },
     onSuccess: () => {
       clearDirectUnreadCache()
-      void utils.directChat.listMyChats.invalidate()
     },
   })
   const sendMessage = trpc.directChat.send.useMutation({
@@ -93,6 +116,7 @@ export default function DirectChatScreen() {
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'sent' as const,
         createdAt,
         user: {
           id: user.id,
@@ -137,10 +161,26 @@ export default function DirectChatScreen() {
         if (list.some((message) => message.id === data.id)) return list
         return [...list, data]
       })
+      utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((chat) =>
+          chat.id === threadId
+            ? {
+                ...chat,
+                unreadCount: 0,
+                updatedAt: data.createdAt,
+                lastMessage: {
+                  id: data.id,
+                  text: data.text,
+                  isDeleted: false,
+                  createdAt: data.createdAt,
+                  userId: data.userId,
+                  userName: data.user?.name ?? user?.name ?? null,
+                },
+              }
+            : chat
+        )
+      )
       clearDirectUnreadCache()
-      void threadQuery.refetch()
-      void messagesQuery.refetch()
-      void utils.directChat.listMyChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -156,8 +196,20 @@ export default function DirectChatScreen() {
     },
   })
   const deleteMessage = trpc.directChat.delete.useMutation({
-    onSuccess: async () => {
-      await messagesQuery.refetch()
+    onSuccess: (_data: any, variables: { messageId: string }) => {
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? {
+                ...message,
+                text: null,
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedByUserId: user?.id ?? null,
+              }
+            : message
+        )
+      )
     },
     onError: (error: any) => toast.error(error.message || 'Failed to delete message'),
   })
@@ -259,6 +311,7 @@ export default function DirectChatScreen() {
   const displayName = threadQuery.data?.otherUser?.name?.trim() || fallbackTitle
   const otherUserId = threadQuery.data?.otherUser?.id || fallbackUserId
   const messagingState = threadQuery.data?.messagingState
+  const presenceLabel = formatPresenceLabel((threadQuery.data as any)?.presence?.lastActiveAt)
   const messagingBlocked = Boolean(messagingState && !messagingState.canMessage)
   const blockedComposerText = messagingState?.blockedByMe
     ? 'You blocked this user and cannot send messages.'
@@ -304,6 +357,7 @@ export default function DirectChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={displayName}
+      topBarTitleBelow={presenceLabel}
       onTopBarTitlePress={() => {
         if (!otherUserId) return
         router.push({ pathname: '/profile/[id]', params: { id: otherUserId } })

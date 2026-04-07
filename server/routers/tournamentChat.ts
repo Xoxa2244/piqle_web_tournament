@@ -199,7 +199,7 @@ async function sanitizeAndRateLimit(input: {
   }
 
   const now = new Date()
-  const cooldownMs = input.isModerator ? 300 : 500
+  const cooldownMs = input.isModerator ? 250 : 350
   const maxPerMinute = input.isModerator ? 30 : 10
 
   if (input.lastMessage) {
@@ -539,6 +539,34 @@ export const tournamentChatRouter = createTRPCRouter({
         throw err
       }
 
+      const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+        ctx.prisma.tournament.findUnique({
+          where: { id: input.tournamentId },
+          select: { userId: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: { tournamentId: input.tournamentId, accessLevel: 'ADMIN' },
+          select: { userId: true },
+        }),
+        ctx.prisma.teamPlayer.findMany({
+          where: { team: { division: { tournamentId: input.tournamentId } } },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+        ctx.prisma.waitlistEntry.findMany({
+          where: { tournamentId: input.tournamentId, status: 'ACTIVE' },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+      ])
+      const recipientIds = [
+        ...(owner?.userId ? [owner.userId] : []),
+        ...(accessAdmins?.map((a) => a.userId) ?? []),
+        ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+        ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+      ].filter((id): id is string => id != null && id !== userId)
+      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+
       return { success: true }
     }),
 
@@ -580,6 +608,44 @@ export const tournamentChatRouter = createTRPCRouter({
           })
         }
         throw err
+      }
+
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: input.divisionId },
+        select: { tournamentId: true },
+      })
+      if (division?.tournamentId) {
+        const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+          ctx.prisma.tournament.findUnique({
+            where: { id: division.tournamentId },
+            select: { userId: true },
+          }),
+          ctx.prisma.tournamentAccess.findMany({
+            where: {
+              tournamentId: division.tournamentId,
+              accessLevel: 'ADMIN',
+              OR: [{ divisionId: null }, { divisionId: input.divisionId }],
+            },
+            select: { userId: true },
+          }),
+          ctx.prisma.teamPlayer.findMany({
+            where: { team: { divisionId: input.divisionId } },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+          ctx.prisma.waitlistEntry.findMany({
+            where: { divisionId: input.divisionId, status: 'ACTIVE' },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+        ])
+        const recipientIds = [
+          ...(owner?.userId ? [owner.userId] : []),
+          ...(accessAdmins?.map((a) => a.userId) ?? []),
+          ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+          ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+        ].filter((id): id is string => id != null && id !== userId)
+        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
       }
 
       return { success: true }
@@ -717,6 +783,7 @@ export const tournamentChatRouter = createTRPCRouter({
       return {
         ...mapMessage(message),
         text: message.text,
+        deliveryStatus: 'delivered' as const,
         wasFiltered,
       }
     }),
@@ -897,6 +964,7 @@ export const tournamentChatRouter = createTRPCRouter({
       return {
         ...mapMessage(message),
         text: message.text,
+        deliveryStatus: 'delivered' as const,
         wasFiltered,
       }
     }),

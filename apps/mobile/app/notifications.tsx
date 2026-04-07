@@ -30,7 +30,7 @@ import { SwipeDismissNotificationRow } from '../src/components/SwipeDismissNotif
 import { EmptyState, LoadingBlock, SurfaceCard } from '../src/components/ui'
 import { formatDateRange, formatLocation } from '../src/lib/formatters'
 import { palette, spacing } from '../src/lib/theme'
-import { realtimeAwareQueryOptions } from '../src/lib/realtimePoll'
+import { useRealtimeAwareQueryOptions } from '../src/lib/realtimePoll'
 import { trpc } from '../src/lib/trpc'
 import { useAuth } from '../src/providers/AuthProvider'
 import { useNotificationSwipeHidden } from '../src/providers/NotificationSwipeHiddenProvider'
@@ -54,6 +54,7 @@ export default function NotificationsScreen() {
   const toast = useToast()
   const { colors } = useAppTheme()
   const isAuthenticated = Boolean(token)
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null)
   const [clearAllSheetOpen, setClearAllSheetOpen] = useState(false)
   const navigationLock = useRef<{ id: string; at: number } | null>(null)

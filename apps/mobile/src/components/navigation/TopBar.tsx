@@ -3,10 +3,10 @@ import { Feather } from '@expo/vector-icons'
 import { router, usePathname } from 'expo-router'
 import { useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { Animated, Easing, Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { useEffectivePathname } from '../../hooks/useEffectivePathname'
-import { realtimeAwareQueryOptions } from '../../lib/realtimePoll'
+import { useRealtimeAwareQueryOptions } from '../../lib/realtimePoll'
 import { spacing, type ThemePalette } from '../../lib/theme'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../providers/AuthProvider'
@@ -118,6 +118,21 @@ const createStyles = (colors: ThemePalette) =>
       justifyContent: 'center',
       flexShrink: 1,
       minWidth: 0,
+    },
+    titleTextWrapWithBelow: {
+      height: 42,
+      justifyContent: 'center',
+      gap: 0,
+    },
+    titleMainWrap: {
+      minWidth: 0,
+    },
+    titleBelowText: {
+      marginTop: -4,
+      fontSize: 11,
+      lineHeight: 14,
+      color: colors.textMuted,
+      fontWeight: '600',
     },
     backBtn: {
       marginRight: 0,
@@ -376,6 +391,7 @@ function AnimatedHomeTitle({
 
 export const TopBar = ({
   titleAccessory,
+  titleBelow,
   titleAccessoryLeading = false,
   titleOverride,
   onTitlePress,
@@ -385,6 +401,7 @@ export const TopBar = ({
   rightSlot,
 }: {
   titleAccessory?: ReactNode
+  titleBelow?: ReactNode
   titleAccessoryLeading?: boolean
   titleOverride?: string
   onTitlePress?: () => void
@@ -399,6 +416,7 @@ export const TopBar = ({
   const navigation = useNavigation()
   const { user, token } = useAuth()
   const { swipeHiddenIds, swipeHiddenHydrated } = useNotificationSwipeHidden()
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const api = trpc as any
   const profileQuery = api.user.getProfile.useQuery(undefined, { enabled: Boolean(token) })
   const notificationsQuery = api.notification.list.useQuery(
@@ -439,17 +457,24 @@ export const TopBar = ({
             <View style={styles.titleWithAccessoryRow}>
               {titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
               <Pressable disabled={!onTitlePress} onPress={onTitlePress} style={styles.titlePressable}>
-                <View style={styles.titleTextWrap}>
-                  <BrandGradientText
-                    style={[
-                      styles.title,
-                      styles.titleNextToAccessory,
-                      showBack && styles.titleAlignedWithBack,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {resolvedTitle}
-                  </BrandGradientText>
+                <View style={[styles.titleTextWrap, titleBelow && styles.titleTextWrapWithBelow]}>
+                  <View style={styles.titleMainWrap}>
+                    <BrandGradientText
+                      style={[
+                        styles.title,
+                        styles.titleNextToAccessory,
+                        showBack && styles.titleAlignedWithBack,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {resolvedTitle}
+                    </BrandGradientText>
+                  </View>
+                  {titleBelow ? (
+                    <Text style={styles.titleBelowText} numberOfLines={1}>
+                      {titleBelow}
+                    </Text>
+                  ) : null}
                 </View>
               </Pressable>
               {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
@@ -469,18 +494,25 @@ export const TopBar = ({
             </View>
           ) : titleOverride != null && titleOverride !== '' ? (
             <Pressable disabled={!onTitlePress} onPress={onTitlePress} style={styles.titlePressable}>
-              <View style={styles.titleTextWrap}>
-                <BrandGradientText
-                  style={[
-                    styles.title,
-                    styles.titleInCluster,
-                    showBack && styles.titleWithBack,
-                    showBack && styles.titleAlignedWithBack,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {resolvedTitle}
-                </BrandGradientText>
+              <View style={[styles.titleTextWrap, titleBelow && styles.titleTextWrapWithBelow]}>
+                <View style={styles.titleMainWrap}>
+                  <BrandGradientText
+                    style={[
+                      styles.title,
+                      styles.titleInCluster,
+                      showBack && styles.titleWithBack,
+                      showBack && styles.titleAlignedWithBack,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {resolvedTitle}
+                  </BrandGradientText>
+                </View>
+                {titleBelow ? (
+                  <Text style={styles.titleBelowText} numberOfLines={1}>
+                    {titleBelow}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           ) : (

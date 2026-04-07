@@ -142,20 +142,25 @@ export function ChatThreadMessageList({
                     {isMine ? (
                       <View style={styles.statusWrap}>
                         {m.deliveryStatus === 'read' ? (
-                          <>
-                            <Feather name="check" size={11} color={colors.primary} />
-                            <Feather name="check" size={11} color={colors.primary} style={styles.statusSecondCheck} />
-                          </>
+                          <View style={styles.statusDoubleWrap}>
+                            <Feather name="check" size={11} color={colors.primary} style={styles.statusCheckBack} />
+                            <Feather name="check" size={11} color={colors.primary} style={styles.statusCheckFront} />
+                          </View>
                         ) : m.deliveryStatus === 'delivered' ? (
-                          <>
-                            <Feather name="check" size={11} color={colors.textMuted} />
+                          <View style={styles.statusDoubleWrap}>
                             <Feather
                               name="check"
                               size={11}
                               color={colors.textMuted}
-                              style={styles.statusSecondCheck}
+                              style={styles.statusCheckBack}
                             />
-                          </>
+                            <Feather
+                              name="check"
+                              size={11}
+                              color={colors.textMuted}
+                              style={styles.statusCheckFront}
+                            />
+                          </View>
                         ) : (
                           <Feather name="check" size={11} color={colors.textMuted} />
                         )}
@@ -282,8 +287,21 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 14,
+    height: 11,
   },
-  statusSecondCheck: {
-    marginLeft: -4,
+  statusDoubleWrap: {
+    width: 16,
+    height: 11,
+    position: 'relative',
+  },
+  statusCheckBack: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  statusCheckFront: {
+    position: 'absolute',
+    left: 5,
+    top: 0,
   },
 })

@@ -14,7 +14,10 @@ import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../sr
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
+import {
+  useChatRealtimeQueryOptions,
+  useMessageThreadRealtimeQueryOptions,
+} from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
@@ -37,6 +40,8 @@ export default function ClubChatScreen() {
   const { token, user } = useAuth()
   const toast = useToast()
   const isAuthenticated = Boolean(token)
+  const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
+  const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -110,7 +115,6 @@ export default function ClubChatScreen() {
     },
     onSuccess: () => {
       clearClubUnreadCache()
-      void utils.club.listMyChatClubs.invalidate()
     },
   })
   const sendMessage = trpc.clubChat.send.useMutation({
@@ -128,6 +132,7 @@ export default function ClubChatScreen() {
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'sent' as const,
         createdAt,
         user: {
           id: user.id,
@@ -158,9 +163,12 @@ export default function ClubChatScreen() {
         if (list.some((message) => message.id === data.id)) return list
         return [...list, data]
       })
+      utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((club) =>
+          club.id === clubId ? { ...club, unreadCount: 0, lastMessageAt: data.createdAt } : club
+        )
+      )
       clearClubUnreadCache()
-      void messagesQuery.refetch()
-      void utils.club.listMyChatClubs.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -176,8 +184,20 @@ export default function ClubChatScreen() {
     },
   })
   const deleteMessage = trpc.clubChat.delete.useMutation({
-    onSuccess: async () => {
-      await messagesQuery.refetch()
+    onSuccess: (_data: any, variables: { messageId: string }) => {
+      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? {
+                ...message,
+                text: null,
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedByUserId: user?.id ?? null,
+              }
+            : message
+        )
+      )
     },
   })
 

@@ -23,7 +23,10 @@ import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../..
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
-import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
+import {
+  useChatRealtimeQueryOptions,
+  useMessageThreadRealtimeQueryOptions,
+} from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -53,6 +56,8 @@ export default function TournamentChatScreen() {
   const { token, user } = useAuth()
   const toast = useToast()
   const isAuthenticated = Boolean(token)
+  const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
+  const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
   const utils = trpc.useUtils()
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
@@ -174,7 +179,6 @@ export default function TournamentChatScreen() {
     },
     onSuccess: () => {
       clearEventUnreadCache(null)
-      void utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
   const markDivisionRead = trpc.tournamentChat.markDivisionRead.useMutation({
@@ -183,7 +187,6 @@ export default function TournamentChatScreen() {
     },
     onSuccess: (_data: unknown, variables: { divisionId: string }) => {
       clearEventUnreadCache(variables.divisionId)
-      void utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
@@ -201,6 +204,7 @@ export default function TournamentChatScreen() {
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'sent' as const,
         createdAt,
         user: {
           id: user.id,
@@ -231,9 +235,12 @@ export default function TournamentChatScreen() {
         if (list.some((message) => message.id === data.id)) return list
         return [...list, data]
       })
+      utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((event) =>
+          event.id === tournamentId ? { ...event, unreadCount: 0, lastMessageAt: data.createdAt } : event
+        )
+      )
       clearEventUnreadCache(null)
-      void tournamentMessagesQuery.refetch()
-      void utils.tournamentChat.listMyEventChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -263,6 +270,7 @@ export default function TournamentChatScreen() {
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
+        deliveryStatus: 'sent' as const,
         createdAt,
         user: {
           id: user.id,
@@ -285,17 +293,18 @@ export default function TournamentChatScreen() {
         setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
       }
       if (activeDivisionId) {
-        utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) => {
-          const list = (current ?? []) as any[]
-          if (list.some((message) => message.id === data.id)) return list
-          return [...list, data]
-        })
+        utils.tournamentChat.listDivision.setData(
+          { divisionId: activeDivisionId, limit: 100 },
+          (current: any[] | undefined) => {
+            const list = (current ?? []) as any[]
+            if (list.some((message) => message.id === data.id)) return list
+            return [...list, data]
+          }
+        )
       }
       if (activeDivisionId) {
         clearEventUnreadCache(activeDivisionId)
       }
-      void divisionMessagesQuery.refetch()
-      void utils.tournamentChat.listMyEventChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -311,13 +320,38 @@ export default function TournamentChatScreen() {
     },
   })
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
-    onSuccess: async () => {
-      await tournamentMessagesQuery.refetch()
+    onSuccess: (_data: any, variables: { messageId: string }) => {
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? {
+                ...message,
+                text: null,
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedByUserId: user?.id ?? null,
+              }
+            : message
+        )
+      )
     },
   })
   const deleteDivisionMessage = trpc.tournamentChat.deleteDivision.useMutation({
-    onSuccess: async () => {
-      await divisionMessagesQuery.refetch()
+    onSuccess: (_data: any, variables: { messageId: string }) => {
+      if (!activeDivisionId) return
+      utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? {
+                ...message,
+                text: null,
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedByUserId: user?.id ?? null,
+              }
+            : message
+        )
+      )
     },
   })
 

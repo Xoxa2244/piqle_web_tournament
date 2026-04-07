@@ -10,6 +10,7 @@ import { getClientAuthToken } from '../lib/authStorage'
 import { trpc } from '../lib/trpc'
 import { AuthProvider, useAuth } from './AuthProvider'
 import { NotificationSwipeHiddenProvider } from './NotificationSwipeHiddenProvider'
+import { RealtimeConnectionProvider } from './RealtimeProvider'
 import { ThemeProvider } from './ThemeProvider'
 import { ToastProvider } from './ToastProvider'
 
@@ -33,20 +34,25 @@ function MobileForegroundSync() {
   return null
 }
 
-function MobileRealtimeSync() {
+function useMobileRealtimeSync() {
   const utils = trpc.useUtils()
   const { token } = useAuth()
+  const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    if (!token) return
-    if (typeof EventSource === 'undefined') return
+    if (!token) {
+      setConnected(false)
+      return
+    }
 
-    const realtimeUrl = `${buildApiUrl('/api/realtime')}?access_token=${encodeURIComponent(token)}`
-    const source = new EventSource(realtimeUrl)
+    let cancelled = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let abortController: AbortController | null = null
+    const decoder = new TextDecoder()
 
-    source.onmessage = (event) => {
+    const handleRealtimePayload = (raw: string) => {
       try {
-        const payload = JSON.parse(String(event.data ?? '{}')) as {
+        const payload = JSON.parse(String(raw ?? '{}')) as {
           type?: string
           keys?: string[]
         }
@@ -83,16 +89,98 @@ function MobileRealtimeSync() {
       }
     }
 
-    source.onerror = () => {
-      // Native EventSource reconnects by itself; keep handler silent.
+    const scheduleReconnect = () => {
+      if (cancelled) return
+      reconnectTimer = setTimeout(() => {
+        void connect()
+      }, 2_000)
     }
 
+    const consumeSseStream = async (response: Response) => {
+      const reader = response.body?.getReader?.()
+      if (!reader) {
+        throw new Error('SSE stream is not supported in this runtime')
+      }
+
+      let buffer = ''
+      while (!cancelled) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        buffer = buffer.replace(/\r\n/g, '\n')
+
+        let boundaryIndex = buffer.indexOf('\n\n')
+        while (boundaryIndex >= 0) {
+          const block = buffer.slice(0, boundaryIndex)
+          buffer = buffer.slice(boundaryIndex + 2)
+
+          const dataLines = block
+            .split('\n')
+            .map((line) => line.replace(/\r$/, ''))
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+
+          if (dataLines.length > 0) {
+            handleRealtimePayload(dataLines.join('\n'))
+          }
+
+          boundaryIndex = buffer.indexOf('\n\n')
+        }
+      }
+    }
+
+    const connect = async () => {
+      abortController?.abort()
+      abortController = new AbortController()
+
+      try {
+        const realtimeUrl = `${buildApiUrl('/api/realtime')}?access_token=${encodeURIComponent(token)}`
+        const response = await fetch(realtimeUrl, {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            Authorization: `Bearer ${token}`,
+          },
+          signal: abortController.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error(`Realtime HTTP ${response.status}`)
+        }
+
+        setConnected(true)
+        await consumeSseStream(response)
+      } catch (error: any) {
+        if (cancelled || error?.name === 'AbortError') return
+      } finally {
+        if (!cancelled) {
+          setConnected(false)
+          scheduleReconnect()
+        }
+      }
+    }
+
+    void connect()
+
     return () => {
-      source.close()
+      cancelled = true
+      setConnected(false)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      abortController?.abort()
     }
   }, [token, utils])
 
-  return null
+  return { connected, enabled: Boolean(token) }
+}
+
+const MobileRealtimeConnectionLayer = ({ children }: PropsWithChildren) => {
+  const realtime = useMobileRealtimeSync()
+
+  return (
+    <RealtimeConnectionProvider value={realtime}>
+      <NotificationSwipeHiddenProvider>{children}</NotificationSwipeHiddenProvider>
+    </RealtimeConnectionProvider>
+  )
 }
 
 const TrpcLayer = ({ children }: PropsWithChildren) => {
@@ -152,8 +240,7 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <MobileForegroundSync />
-        <MobileRealtimeSync />
-        <NotificationSwipeHiddenProvider>{children}</NotificationSwipeHiddenProvider>
+        <MobileRealtimeConnectionLayer>{children}</MobileRealtimeConnectionLayer>
       </QueryClientProvider>
     </trpc.Provider>
   )
