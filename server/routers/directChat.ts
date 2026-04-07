@@ -590,19 +590,28 @@ export const directChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this chat' })
       }
 
-      await ctx.prisma.directChatLike.upsert({
+      const existingLike = await ctx.prisma.directChatLike.findUnique({
         where: {
           messageId_userId: {
             messageId: message.id,
             userId,
           },
         },
-        create: {
-          messageId: message.id,
-          userId,
-        },
-        update: {},
+        select: { id: true },
       })
+
+      if (existingLike) {
+        await ctx.prisma.directChatLike.delete({
+          where: { id: existingLike.id },
+        })
+      } else {
+        await ctx.prisma.directChatLike.create({
+          data: {
+            messageId: message.id,
+            userId,
+          },
+        })
+      }
 
       const likeCount = await ctx.prisma.directChatLike.count({
         where: { messageId: message.id },
@@ -614,7 +623,7 @@ export const directChatRouter = createTRPCRouter({
       return {
         messageId: message.id,
         likeCount,
-        viewerHasLiked: true,
+        viewerHasLiked: !existingLike,
       }
     }),
 

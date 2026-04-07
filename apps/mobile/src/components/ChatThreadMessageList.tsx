@@ -137,7 +137,7 @@ export function ChatThreadMessageList({
 
   const tryLike = useCallback(
     (m: ChatMessage) => {
-      if (!onToggleLike || likeDisabled || m.isDeleted || m.viewerHasLiked) return
+      if (!onToggleLike || likeDisabled || m.isDeleted) return
       void Haptics.selectionAsync().catch(() => {})
       onToggleLike(m)
     },
@@ -199,7 +199,8 @@ export function ChatThreadMessageList({
             const showAvatar = showOtherAvatars && !isMine && (!next || next.userId !== m.userId)
             const tightTop = sameAuthorAsPrev
             const deletable = canDelete(m) && !m.isDeleted && !deleteDisabled
-            const showLikeChip = Boolean((m.likeCount ?? 0) > 0 || m.viewerHasLiked)
+            const likeCountValue = Math.max(0, Number(m.likeCount ?? 0))
+            const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked)
 
             return (
               <View
@@ -226,7 +227,7 @@ export function ChatThreadMessageList({
                 ) : null}
 
                 <Pressable
-                  disabled={!deletable}
+                  disabled={m.isDeleted}
                   delayLongPress={LONG_PRESS_MS}
                   onPress={() => {
                     if (!onToggleLike || likeDisabled || m.isDeleted) return
@@ -267,20 +268,38 @@ export function ChatThreadMessageList({
                     </Pressable>
                   ) : null}
                   {renderMessageText(m.isDeleted ? 'Message removed' : m.text || '', isMine)}
-                  {showLikeChip ? (
-                    <View style={[styles.likeChip, m.viewerHasLiked && styles.likeChipActive]}>
-                      <MaterialCommunityIcons
-                        name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
-                        size={12}
-                        color={m.viewerHasLiked ? colors.primary : colors.textMuted}
-                      />
-                      <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
-                        {Math.max(1, Number(m.likeCount ?? 0))}
-                      </Text>
-                    </View>
-                  ) : null}
                   <View style={styles.metaRow}>
+                    {!isMine ? <Text style={[styles.time, isMine && styles.timeMine]}>{formatChatTime(m.createdAt)}</Text> : null}
+                    {!isMine && showLikeChip ? (
+                      <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
+                        <MaterialCommunityIcons
+                          name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
+                          size={11}
+                          color={m.viewerHasLiked ? colors.primary : colors.textMuted}
+                        />
+                        {likeCountValue > 1 ? (
+                          <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
+                            {likeCountValue}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
                     {isMine ? (
+                      <>
+                        {showLikeChip ? (
+                          <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
+                            <MaterialCommunityIcons
+                              name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
+                              size={11}
+                              color={m.viewerHasLiked ? colors.primary : colors.textMuted}
+                            />
+                            {likeCountValue > 1 ? (
+                              <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
+                                {likeCountValue}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : null}
                       <View style={styles.statusWrap}>
                         {m.deliveryStatus === 'read' ? (
                           <View style={styles.statusDoubleWrap}>
@@ -306,8 +325,9 @@ export function ChatThreadMessageList({
                           <Feather name="check" size={11} color={colors.textMuted} />
                         )}
                       </View>
+                      <Text style={[styles.time, isMine && styles.timeMine]}>{formatChatTime(m.createdAt)}</Text>
+                    </>
                     ) : null}
-                    <Text style={[styles.time, isMine && styles.timeMine]}>{formatChatTime(m.createdAt)}</Text>
                   </View>
                 </Pressable>
               </View>
@@ -428,18 +448,14 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     backgroundColor: theme === 'dark' ? 'rgba(117, 230, 109, 0.2)' : 'rgba(117, 230, 109, 0.18)',
     borderRadius: 8,
   },
-  likeChip: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
+  likeChipInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    height: 22,
+    paddingHorizontal: 6,
+    height: 18,
     borderRadius: 999,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    backgroundColor: 'transparent',
   },
   likeChipActive: {
     borderColor: colors.brandPrimaryBorder,

@@ -401,19 +401,28 @@ export const clubChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to react to messages' })
       }
 
-      await ctx.prisma.clubChatLike.upsert({
+      const existingLike = await ctx.prisma.clubChatLike.findUnique({
         where: {
           messageId_userId: {
             messageId: message.id,
             userId,
           },
         },
-        create: {
-          messageId: message.id,
-          userId,
-        },
-        update: {},
+        select: { id: true },
       })
+
+      if (existingLike) {
+        await ctx.prisma.clubChatLike.delete({
+          where: { id: existingLike.id },
+        })
+      } else {
+        await ctx.prisma.clubChatLike.create({
+          data: {
+            messageId: message.id,
+            userId,
+          },
+        })
+      }
 
       const likeCount = await ctx.prisma.clubChatLike.count({
         where: { messageId: message.id },
@@ -437,7 +446,7 @@ export const clubChatRouter = createTRPCRouter({
       return {
         messageId: message.id,
         likeCount,
-        viewerHasLiked: true,
+        viewerHasLiked: !existingLike,
       }
     }),
 

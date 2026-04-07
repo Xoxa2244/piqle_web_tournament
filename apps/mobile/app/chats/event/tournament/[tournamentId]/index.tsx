@@ -359,7 +359,13 @@ export default function TournamentChatScreen() {
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === messageId
-            ? { ...message, likeCount: Number(message.likeCount ?? 0) + 1, viewerHasLiked: true }
+            ? {
+                ...message,
+                likeCount: message.viewerHasLiked
+                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                  : Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: !message.viewerHasLiked,
+              }
             : message
         )
       )
@@ -377,7 +383,13 @@ export default function TournamentChatScreen() {
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === variables.messageId
-            ? { ...message, likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1), viewerHasLiked: false }
+            ? {
+                ...message,
+                likeCount: message.viewerHasLiked
+                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                  : Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: !message.viewerHasLiked,
+              }
             : message
         )
       )
@@ -390,7 +402,13 @@ export default function TournamentChatScreen() {
       utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
         (current ?? []).map((message) =>
           message.id === messageId
-            ? { ...message, likeCount: Number(message.likeCount ?? 0) + 1, viewerHasLiked: true }
+            ? {
+                ...message,
+                likeCount: message.viewerHasLiked
+                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                  : Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: !message.viewerHasLiked,
+              }
             : message
         )
       )
@@ -410,7 +428,13 @@ export default function TournamentChatScreen() {
         utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
           (current ?? []).map((message) =>
             message.id === variables.messageId
-              ? { ...message, likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1), viewerHasLiked: false }
+              ? {
+                  ...message,
+                  likeCount: message.viewerHasLiked
+                    ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                    : Number(message.likeCount ?? 0) + 1,
+                  viewerHasLiked: !message.viewerHasLiked,
+                }
               : message
           )
         )
@@ -591,7 +615,6 @@ export default function TournamentChatScreen() {
                 messages={messages as ChatMessage[]}
                 currentUserId={user?.id}
                 onToggleLike={(m) => {
-                  if (m.viewerHasLiked) return
                   if (activeDivisionId) {
                     if (likeDivisionMessage.isPending) return
                     likeDivisionMessage.mutate({ messageId: m.id })

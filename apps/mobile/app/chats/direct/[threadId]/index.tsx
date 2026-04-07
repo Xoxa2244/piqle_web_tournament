@@ -221,8 +221,10 @@ export default function DirectChatScreen() {
           message.id === messageId
             ? {
                 ...message,
-                likeCount: Number(message.likeCount ?? 0) + 1,
-                viewerHasLiked: true,
+                likeCount: message.viewerHasLiked
+                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                  : Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: !message.viewerHasLiked,
               }
             : message
         )
@@ -247,8 +249,10 @@ export default function DirectChatScreen() {
           message.id === variables.messageId
             ? {
                 ...message,
-                likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1),
-                viewerHasLiked: false,
+                likeCount: message.viewerHasLiked
+                  ? Math.max(0, Number(message.likeCount ?? 1) - 1)
+                  : Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: !message.viewerHasLiked,
               }
             : message
         )
@@ -461,7 +465,7 @@ export default function DirectChatScreen() {
               currentUserId={user?.id}
               showOtherAvatars={false}
               onToggleLike={(m) => {
-                if (m.viewerHasLiked || likeMessage.isPending) return
+                if (likeMessage.isPending) return
                 likeMessage.mutate({ messageId: m.id })
               }}
               likeDisabled={likeMessage.isPending}

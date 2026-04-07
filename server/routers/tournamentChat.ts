@@ -1012,19 +1012,28 @@ export const tournamentChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
       }
 
-      await ctx.prisma.tournamentChatLike.upsert({
+      const existingLike = await ctx.prisma.tournamentChatLike.findUnique({
         where: {
           messageId_userId: {
             messageId: message.id,
             userId,
           },
         },
-        create: {
-          messageId: message.id,
-          userId,
-        },
-        update: {},
+        select: { id: true },
       })
+
+      if (existingLike) {
+        await ctx.prisma.tournamentChatLike.delete({
+          where: { id: existingLike.id },
+        })
+      } else {
+        await ctx.prisma.tournamentChatLike.create({
+          data: {
+            messageId: message.id,
+            userId,
+          },
+        })
+      }
 
       const likeCount = await ctx.prisma.tournamentChatLike.count({
         where: { messageId: message.id },
@@ -1061,7 +1070,7 @@ export const tournamentChatRouter = createTRPCRouter({
       return {
         messageId: message.id,
         likeCount,
-        viewerHasLiked: true,
+        viewerHasLiked: !existingLike,
       }
     }),
 
@@ -1090,19 +1099,28 @@ export const tournamentChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
       }
 
-      await ctx.prisma.divisionChatLike.upsert({
+      const existingLike = await ctx.prisma.divisionChatLike.findUnique({
         where: {
           messageId_userId: {
             messageId: message.id,
             userId,
           },
         },
-        create: {
-          messageId: message.id,
-          userId,
-        },
-        update: {},
+        select: { id: true },
       })
+
+      if (existingLike) {
+        await ctx.prisma.divisionChatLike.delete({
+          where: { id: existingLike.id },
+        })
+      } else {
+        await ctx.prisma.divisionChatLike.create({
+          data: {
+            messageId: message.id,
+            userId,
+          },
+        })
+      }
 
       const likeCount = await ctx.prisma.divisionChatLike.count({
         where: { messageId: message.id },
@@ -1149,7 +1167,7 @@ export const tournamentChatRouter = createTRPCRouter({
       return {
         messageId: message.id,
         likeCount,
-        viewerHasLiked: true,
+        viewerHasLiked: !existingLike,
       }
     }),
 
