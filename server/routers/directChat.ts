@@ -433,4 +433,24 @@ export const directChatRouter = createTRPCRouter({
 
       return { success: true }
     }),
+
+  deleteThread: protectedProcedure
+    .input(
+      z.object({
+        threadId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
+
+      await ctx.prisma.directChatThread.delete({
+        where: { id: thread.id },
+      })
+
+      const participantIds = [thread.participantAId, thread.participantBId]
+      pushToUsers(participantIds, { type: 'invalidate', keys: ['directChat.listMyChats'] })
+
+      return { success: true }
+    }),
 })

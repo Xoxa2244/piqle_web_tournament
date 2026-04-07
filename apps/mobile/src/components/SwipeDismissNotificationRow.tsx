@@ -36,12 +36,19 @@ type Props = {
   /** Не перехватывать жест (например идёт открытие). */
   disabled?: boolean
   style?: StyleProp<ViewStyle>
+  onSwipeActiveChange?: (active: boolean) => void
 }
 
 /**
  * Свайп влево: красная плашка справа; жест с инерцией (spring + velocity), как в системных списках iOS / чатах.
  */
-export function SwipeDismissNotificationRow({ children, onDismiss, disabled, style }: Props) {
+export function SwipeDismissNotificationRow({
+  children,
+  onDismiss,
+  disabled,
+  style,
+  onSwipeActiveChange,
+}: Props) {
   const { colors } = useAppTheme()
   const widthRef = useRef(0)
   const translateX = useRef(new Animated.Value(0)).current
@@ -68,7 +75,8 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
     posRef.current = 0
     startOffsetRef.current = 0
     setRevealPx(0)
-  }, [rowOpacity, translateX])
+    onSwipeActiveChange?.(false)
+  }, [onSwipeActiveChange, rowOpacity, translateX])
 
   const runDismiss = useCallback(
     (releaseVelocityPxPerSec: number = 0) => {
@@ -157,6 +165,7 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
         onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: () => {
           touchSettledRef.current = false
+          onSwipeActiveChange?.(true)
           translateX.stopAnimation((v) => {
             const x = typeof v === 'number' && !Number.isNaN(v) ? v : 0
             startOffsetRef.current = x
@@ -177,14 +186,16 @@ export function SwipeDismissNotificationRow({ children, onDismiss, disabled, sty
           setRevealPx(Math.min(-next, w))
         },
         onPanResponderRelease: (_, g) => {
+          onSwipeActiveChange?.(false)
           settleAfterPan(vxToPxPerSec(g.vx))
         },
         /** Система отняла responder (например конфликт со скроллом) — доводим до 0 или удаления. */
         onPanResponderTerminate: () => {
+          onSwipeActiveChange?.(false)
           settleAfterPan(0)
         },
       }),
-    [settleAfterPan, translateX],
+    [onSwipeActiveChange, settleAfterPan, translateX],
   )
 
   const onDeleteStripPress = useCallback(() => {

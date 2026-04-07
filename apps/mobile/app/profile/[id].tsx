@@ -10,7 +10,7 @@ import { RatingStarIcon } from '../../src/components/icons/RatingStarIcon'
 import { TournamentCard } from '../../src/components/TournamentCard'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { ProfileHeroCard, ProfileStatsDuprSection } from '../../src/components/profile/ProfileIdentityBlock'
-import { EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
+import { ActionButton, EmptyState, LoadingBlock, SurfaceCard } from '../../src/components/ui'
 import { FEEDBACK_API_ENABLED } from '../../src/lib/config'
 import { formatDate, formatGenderLabel, formatLocation } from '../../src/lib/formatters'
 import { radius, spacing } from '../../src/lib/theme'
@@ -188,15 +188,6 @@ export default function PublicProfileScreen() {
       }
     >
       <View style={styles.headerCard}>
-        <ProfileStatsDuprSection
-          clubsJoinedCount={profile?.clubsJoinedCount ?? 0}
-          tournamentsPlayedCount={profile?.tournamentsPlayedCount ?? 0}
-          tournamentsCreatedCount={profile?.tournamentsCreatedCount ?? 0}
-          singlesRatingLabel={singlesRatingLabel}
-          doublesRatingLabel={doublesRatingLabel}
-          showDuprConnect={false}
-        />
-
         {canMessage ? (
           <ActionButton
             label={openDirectChat.isPending ? 'Opening chat...' : 'Message'}
@@ -226,6 +217,15 @@ export default function PublicProfileScreen() {
             disabled={openDirectChat.isPending}
           />
         ) : null}
+
+        <ProfileStatsDuprSection
+          clubsJoinedCount={profile?.clubsJoinedCount ?? 0}
+          tournamentsPlayedCount={profile?.tournamentsPlayedCount ?? 0}
+          tournamentsCreatedCount={profile?.tournamentsCreatedCount ?? 0}
+          singlesRatingLabel={singlesRatingLabel}
+          doublesRatingLabel={doublesRatingLabel}
+          showDuprConnect={false}
+        />
 
         {isTd ? (
           <SurfaceCard>

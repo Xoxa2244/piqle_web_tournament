@@ -1,22 +1,28 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
+import * as Haptics from 'expo-haptics'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Easing, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 
 import { Feather } from '@expo/vector-icons'
+import { AppBottomSheet } from '../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ChatPreviewCard } from '../../src/components/ChatPreviewCard'
 import { EventChatListItemActive, EventChatListItemArchived, type EventChatListEvent } from '../../src/components/EventChatListItem'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { StaggeredReveal } from '../../src/components/StaggeredReveal'
+import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNotificationRow'
 import { SegmentedControl } from '../../src/components/SegmentedControl'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
+import { buildWebUrl } from '../../src/lib/config'
 import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
 type Segment = 'direct' | 'clubs' | 'events'
@@ -25,29 +31,43 @@ export default function ChatsTab() {
   const { token, user } = useAuth()
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
+  const api = trpc as any
+  const utils = (trpc as any).useUtils()
   const [search, setSearch] = useState('')
   const [segment, setSegment] = useState<Segment>('direct')
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
   const [revealEpoch, setRevealEpoch] = useState(0)
-
-  const directChatsQuery = trpc.directChat.listMyChats.useQuery(undefined, {
+  const [createSheetOpen, setCreateSheetOpen] = useState(false)
+  const [directSwipeActive, setDirectSwipeActive] = useState(false)
+  const createPlusSpin = useRef(new Animated.Value(0)).current
+  const createSpinLoopRef = useRef<Animated.CompositeAnimation | null>(null)
+  const createLongPressTriggeredRef = useRef(false)
+  const directChatsQuery = api.directChat.listMyChats.useQuery(undefined, {
     enabled: isAuthenticated,
     ...realtimeAwareQueryOptions,
   })
-  const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
+  const deleteDirectThread = api.directChat.deleteThread.useMutation()
+  const clubChatsQuery = api.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
     ...realtimeAwareQueryOptions,
   })
-  const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
+  const eventChatsQuery = api.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: isAuthenticated,
     ...realtimeAwareQueryOptions,
   })
+  const directChats = useMemo(() => ((directChatsQuery.data ?? []) as any[]), [directChatsQuery.data])
+  const clubChats = useMemo(() => ((clubChatsQuery.data ?? []) as any[]), [clubChatsQuery.data])
+  const eventChats = useMemo(
+    () => ((eventChatsQuery.data ?? []) as EventChatListEvent[]),
+    [eventChatsQuery.data]
+  )
 
   const filteredDirectChats = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const list = directChatsQuery.data ?? []
+    const list = directChats
     if (!term) return list
     return list.filter((chat) => {
       const name = String(chat.otherUser?.name ?? '').toLowerCase()
@@ -55,26 +75,67 @@ export default function ChatsTab() {
       const text = String(chat.lastMessage?.text ?? '').toLowerCase()
       return name.includes(term) || city.includes(term) || text.includes(term)
     })
-  }, [directChatsQuery.data, search])
+  }, [directChats, search])
+
+  const triggerCreateHaptic = useCallback(() => {
+    void Haptics.selectionAsync().catch(() => {})
+  }, [])
+
+  const createPlusRotate = createPlusSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  })
+
+  const startCreateHoldAnimation = useCallback(() => {
+    if (!createSpinLoopRef.current) {
+      createPlusSpin.setValue(0)
+      createSpinLoopRef.current = Animated.loop(
+        Animated.timing(createPlusSpin, {
+          toValue: 1,
+          duration: 680,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      )
+      createSpinLoopRef.current.start()
+    }
+  }, [createPlusSpin])
+
+  const stopCreateHoldAnimation = useCallback(() => {
+    createSpinLoopRef.current?.stop()
+    createSpinLoopRef.current = null
+    Animated.timing(createPlusSpin, {
+      toValue: 0,
+      duration: 150,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start()
+  }, [createPlusSpin])
+
+  useEffect(() => {
+    return () => {
+      createSpinLoopRef.current?.stop()
+    }
+  }, [])
 
   const filteredClubChats = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const list = clubChatsQuery.data ?? []
+    const list = clubChats
     if (!term) return list
     return list.filter((club) => club.name.toLowerCase().includes(term))
-  }, [clubChatsQuery.data, search])
+  }, [clubChats, search])
 
   const filteredEventChats = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return eventChatsQuery.data ?? []
+    if (!term) return eventChats
 
-    return ((eventChatsQuery.data ?? []) as EventChatListEvent[])
+    return eventChats
       .map((event) => ({
         ...event,
         divisions: event.divisions.filter((division) => division.name.toLowerCase().includes(term)),
       }))
       .filter((event) => event.title.toLowerCase().includes(term) || event.divisions.length > 0)
-  }, [eventChatsQuery.data, search])
+  }, [eventChats, search])
 
   const activeEventChats = useMemo(() => {
     const now = Date.now()
@@ -94,27 +155,27 @@ export default function ChatsTab() {
       .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
   }, [filteredEventChats])
 
-  const directTotal = (directChatsQuery.data ?? []).length
-  const clubTotal = (clubChatsQuery.data ?? []).length
-  const eventTotal = (eventChatsQuery.data ?? []).length
+  const directTotal = directChats.length
+  const clubTotal = clubChats.length
+  const eventTotal = eventChats.length
 
   const directSegmentHasUnread = useMemo(() => {
-    const list = directChatsQuery.data ?? []
+    const list = directChats
     return list.some((chat) => (chat.unreadCount ?? 0) > 0)
-  }, [directChatsQuery.data])
+  }, [directChats])
 
   const clubsSegmentHasUnread = useMemo(() => {
-    const list = clubChatsQuery.data ?? []
+    const list = clubChats
     return list.some((c: { unreadCount?: number }) => (c.unreadCount ?? 0) > 0)
-  }, [clubChatsQuery.data])
+  }, [clubChats])
 
   const eventsSegmentHasUnread = useMemo(() => {
-    const list = (eventChatsQuery.data ?? []) as EventChatListEvent[]
+    const list = eventChats
     return list.some((e) => {
       const divSum = (e.divisions ?? []).reduce((s, d) => s + (d.unreadCount ?? 0), 0)
       return (e.unreadCount ?? 0) + divSum > 0
     })
-  }, [eventChatsQuery.data])
+  }, [eventChats])
 
   const toggleArchiveEventExpanded = (eventId: string) => {
     setExpandedArchiveEventIds((prev) => {
@@ -143,7 +204,50 @@ export default function ChatsTab() {
     await Promise.all([directChatsQuery.refetch(), clubChatsQuery.refetch(), eventChatsQuery.refetch()])
   }, [clubChatsQuery, directChatsQuery, eventChatsQuery])
 
+  const appInviteUrl = buildWebUrl('/')
+
+  const handleInviteToApp = useCallback(async () => {
+    try {
+      await Share.share({
+        message: `Join me on Piqle\n${appInviteUrl}`,
+        url: appInviteUrl,
+      })
+    } catch {
+      // silent on dismiss/cancel
+    }
+  }, [appInviteUrl])
+
+  const handleCopyInviteToApp = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(appInviteUrl)
+      toast.success('Invite link copied to clipboard.', 'Copied')
+    } catch {
+      toast.error('Could not copy invite link.')
+    }
+  }, [appInviteUrl, toast])
+
   const pullToRefresh = usePullToRefresh(onRefreshChats)
+
+  const dismissDirectChat = useCallback(
+    async (threadId: string) => {
+      const previous = (utils.directChat.listMyChats.getData(undefined) ?? []) as any[]
+      utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).filter((chat) => chat.id !== threadId)
+      )
+
+      try {
+        await deleteDirectThread.mutateAsync({ threadId })
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        toast.success('Chat removed.')
+      } catch (error: any) {
+        utils.directChat.listMyChats.setData(undefined, previous)
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        toast.error(error?.message || 'Could not remove chat.')
+        throw error
+      }
+    },
+    [deleteDirectThread, toast, utils.directChat.listMyChats]
+  )
 
   useFocusEffect(
     useCallback(() => {
@@ -183,10 +287,51 @@ export default function ChatsTab() {
   }
 
   return (
-    <PageLayout scroll={false} contentStyle={styles.pageLayout}>
-      <View style={styles.page}>
+    <>
+      <PageLayout scroll={false} contentStyle={styles.pageLayout}>
+        <View style={styles.page}>
         <View style={styles.searchGutter}>
-          <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
+          <View style={styles.searchRow}>
+            <View style={styles.searchFieldWrap}>
+              <SearchField value={search} onChangeText={setSearch} placeholder="Search messages..." />
+            </View>
+            <Pressable
+              onPress={() => {
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  return
+                }
+                setCreateSheetOpen(true)
+              }}
+              onPressIn={() => {
+                triggerCreateHaptic()
+                startCreateHoldAnimation()
+              }}
+              onPressOut={() => {
+                stopCreateHoldAnimation()
+                if (createLongPressTriggeredRef.current) {
+                  createLongPressTriggeredRef.current = false
+                  setCreateSheetOpen(true)
+                }
+              }}
+              onLongPress={() => {
+                createLongPressTriggeredRef.current = true
+                startCreateHoldAnimation()
+              }}
+              style={({ pressed, hovered }) => [
+                styles.createButton,
+                hovered && styles.createButtonHovered,
+                pressed && styles.createButtonPressed,
+              ]}
+            >
+              <Animated.View
+                style={[styles.createIconCircle, { transform: [{ rotate: createPlusRotate }] }]}
+              >
+                <Feather name="plus" size={14} color={colors.primary} />
+              </Animated.View>
+              <Text style={styles.createButtonText}>Invite</Text>
+            </Pressable>
+          </View>
         </View>
 
         <SegmentedControl<Segment>
@@ -219,6 +364,7 @@ export default function ChatsTab() {
             showsVerticalScrollIndicator={false}
             refreshing={pullToRefresh.refreshing}
             onRefresh={pullToRefresh.onRefresh}
+            scrollEnabled={!directSwipeActive}
             bounces
           >
       {showFullChatLoading ? (
@@ -280,22 +426,30 @@ export default function ChatsTab() {
 
                 return (
                   <StaggeredReveal key={`direct-${chat.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
-                    <ChatPreviewCard
-                      title={otherUserName}
-                      imageUri={chat.otherUser?.image}
-                      subtitle={subtitle}
-                      unreadCount={chat.unreadCount}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/chats/direct/[threadId]',
-                          params: {
-                            threadId: chat.id,
-                            title: otherUserName,
-                            userId: chat.otherUser.id,
-                          },
-                        })
-                      }
-                    />
+                    <SwipeDismissNotificationRow
+                      disabled={deleteDirectThread.isPending}
+                      onSwipeActiveChange={setDirectSwipeActive}
+                      onDismiss={async () => {
+                        await dismissDirectChat(chat.id)
+                      }}
+                    >
+                      <ChatPreviewCard
+                        title={otherUserName}
+                        imageUri={chat.otherUser?.image}
+                        subtitle={subtitle}
+                        unreadCount={chat.unreadCount}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/chats/direct/[threadId]',
+                            params: {
+                              threadId: chat.id,
+                              title: otherUserName,
+                              userId: chat.otherUser.id,
+                            },
+                          })
+                        }
+                      />
+                    </SwipeDismissNotificationRow>
                   </StaggeredReveal>
                 )
               })}
@@ -408,8 +562,39 @@ export default function ChatsTab() {
       ) : null}
           </PickleRefreshScrollView>
         </SegmentedContentFade>
-      </View>
-    </PageLayout>
+        </View>
+      </PageLayout>
+      <AppBottomSheet
+        open={createSheetOpen}
+        onClose={() => setCreateSheetOpen(false)}
+        title="Invite"
+        subtitle="Share this link on social media or copy it into a message."
+      >
+        <View style={styles.shareSheetBlock}>
+          <Text style={styles.shareSheetLabel}>Invite link</Text>
+          <View style={styles.shareLinkRow}>
+            <Text style={styles.shareLinkText} numberOfLines={1}>
+                {appInviteUrl}
+            </Text>
+            <Pressable
+              onPress={() => {
+                void handleCopyInviteToApp()
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [styles.shareCopyButton, pressed && styles.shareCopyButtonPressed]}
+            >
+              <Feather name="copy" size={18} color={colors.text} />
+            </Pressable>
+          </View>
+          <ActionButton
+            label="Share"
+            onPress={() => {
+              void handleInviteToApp()
+            }}
+          />
+        </View>
+      </AppBottomSheet>
+    </>
   )
 }
 
@@ -436,6 +621,15 @@ const createStyles = (colors: ThemePalette) =>
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchFieldWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   segmentTrack: {
     marginHorizontal: spacing.lg,
@@ -501,5 +695,84 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  createButton: {
+    minHeight: 44,
+    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.brandPrimaryBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  createButtonHovered: {
+    backgroundColor: colors.brandPrimaryTint,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  createButtonPressed: {
+    opacity: 0.9,
+  },
+  createIconCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brandPrimaryTint,
+  },
+  createButtonText: {
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  shareSheetBlock: {
+    gap: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  shareSheetLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shareLinkRow: {
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
+    paddingLeft: spacing.md,
+    paddingRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  shareLinkText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 14,
+  },
+  shareCopyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shareCopyButtonPressed: {
+    opacity: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.brandPrimaryBorder,
+    transform: [{ scale: 0.94 }],
   },
 })

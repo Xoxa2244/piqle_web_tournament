@@ -18,6 +18,7 @@ import {
   Text,
   View,
 } from 'react-native'
+import { FullWindowOverlay } from 'react-native-screens'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAppTheme } from './ThemeProvider'
@@ -334,14 +335,27 @@ export function ToastProvider({ children }: PropsWithChildren) {
     <ToastContext.Provider value={value}>
       {children}
       {toast ? (
-        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-          <ToastView
-            key={toast.id}
-            toast={toast}
-            dismissSignal={dismissSignal}
-            onDismissed={onDismissed}
-          />
-        </View>
+        Platform.OS === 'ios' ? (
+          <FullWindowOverlay>
+            <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+              <ToastView
+                key={toast.id}
+                toast={toast}
+                dismissSignal={dismissSignal}
+                onDismissed={onDismissed}
+              />
+            </View>
+          </FullWindowOverlay>
+        ) : (
+          <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+            <ToastView
+              key={toast.id}
+              toast={toast}
+              dismissSignal={dismissSignal}
+              onDismissed={onDismissed}
+            />
+          </View>
+        )
       ) : null}
     </ToastContext.Provider>
   )
