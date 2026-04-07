@@ -16,7 +16,7 @@ import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNotificationRow'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
-import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
@@ -46,16 +46,16 @@ export default function ChatsTab() {
   const createLongPressTriggeredRef = useRef(false)
   const directChatsQuery = api.directChat.listMyChats.useQuery(undefined, {
     enabled: isAuthenticated,
-    ...realtimeAwareQueryOptions,
+    ...chatRealtimeQueryOptions,
   })
   const deleteDirectThread = api.directChat.deleteThread.useMutation()
   const clubChatsQuery = api.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
-    ...realtimeAwareQueryOptions,
+    ...chatRealtimeQueryOptions,
   })
   const eventChatsQuery = api.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: isAuthenticated,
-    ...realtimeAwareQueryOptions,
+    ...chatRealtimeQueryOptions,
   })
   const directChats = useMemo(() => ((directChatsQuery.data ?? []) as any[]), [directChatsQuery.data])
   const clubChats = useMemo(() => ((clubChatsQuery.data ?? []) as any[]), [clubChatsQuery.data])
@@ -250,6 +250,7 @@ export default function ChatsTab() {
   useFocusEffect(
     useCallback(() => {
       setRevealEpoch((v) => v + 1)
+      void onRefreshChats()
     }, [])
   )
 

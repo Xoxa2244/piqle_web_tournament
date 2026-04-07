@@ -12,7 +12,7 @@ import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
 import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { realtimeAwareQueryOptions } from '../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -41,32 +41,102 @@ export default function DirectChatScreen() {
 
   const threadQuery = trpc.directChat.getThread.useQuery(
     { threadId },
-    { enabled: Boolean(threadId) && isAuthenticated, ...realtimeAwareQueryOptions }
+    { enabled: Boolean(threadId) && isAuthenticated, ...chatRealtimeQueryOptions }
   )
   const messagesQuery = trpc.directChat.list.useQuery(
     { threadId, limit: 100 },
-    { enabled: Boolean(threadId) && isAuthenticated, ...realtimeAwareQueryOptions }
+    { enabled: Boolean(threadId) && isAuthenticated, ...chatRealtimeQueryOptions }
   )
+  const clearDirectUnreadCache = useCallback(() => {
+    if (!threadId) return
+    utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
+      (current ?? []).map((chat) => (chat.id === threadId ? { ...chat, unreadCount: 0 } : chat))
+    )
+  }, [threadId, utils.directChat.listMyChats])
   const markRead = trpc.directChat.markRead.useMutation({
-    onSuccess: async () => {
-      await utils.directChat.listMyChats.invalidate()
+    onMutate: () => {
+      clearDirectUnreadCache()
+    },
+    onSuccess: () => {
+      clearDirectUnreadCache()
+      void utils.directChat.listMyChats.invalidate()
     },
   })
   const sendMessage = trpc.directChat.send.useMutation({
-    onSuccess: async (data: { wasFiltered?: boolean }) => {
+    onMutate: ({ text }: { text: string }) => {
+      const trimmed = text.trim()
+      if (!trimmed || !threadId || !user?.id) return null
+
+      const createdAt = new Date()
+      const optimisticMessage = {
+        id: `optimistic-${threadId}-${createdAt.getTime()}`,
+        threadId,
+        userId: user.id,
+        text: trimmed,
+        isDeleted: false,
+        deletedAt: null,
+        deletedByUserId: null,
+        createdAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          image: user.image,
+        },
+      }
+
+      const previousMessages = (messagesQuery.data ?? []) as ChatMessage[]
+      const previousChats = ((utils.directChat.listMyChats.getData(undefined) ?? []) as any[]).slice()
+
       setDraft('')
-      await Promise.all([messagesQuery.refetch(), utils.directChat.listMyChats.invalidate()])
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) => [
+        ...((current ?? []) as any[]),
+        optimisticMessage,
+      ])
+      utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((chat) =>
+          chat.id === threadId
+            ? {
+                ...chat,
+                unreadCount: 0,
+                updatedAt: createdAt,
+                lastMessage: {
+                  id: optimisticMessage.id,
+                  text: trimmed,
+                  isDeleted: false,
+                  createdAt,
+                  userId: user.id,
+                  userName: user.name ?? null,
+                },
+              }
+            : chat
+        )
+      )
+
+      return { previousMessages, previousChats }
+    },
+    onSuccess: (data: { wasFiltered?: boolean }) => {
+      clearDirectUnreadCache()
+      void messagesQuery.refetch()
+      void utils.directChat.listMyChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
     },
-    onError: (error) => toast.error(error.message || 'Failed to send message'),
+    onError: (error: any, _vars: unknown, context: any) => {
+      if (context?.previousMessages) {
+        utils.directChat.list.setData({ threadId, limit: 100 }, context.previousMessages)
+      }
+      if (context?.previousChats) {
+        utils.directChat.listMyChats.setData(undefined, context.previousChats)
+      }
+      toast.error(error.message || 'Failed to send message')
+    },
   })
   const deleteMessage = trpc.directChat.delete.useMutation({
     onSuccess: async () => {
       await messagesQuery.refetch()
     },
-    onError: (error) => toast.error(error.message || 'Failed to delete message'),
+    onError: (error: any) => toast.error(error.message || 'Failed to delete message'),
   })
 
   const scrollToBottom = useCallback((animated = true) => {
@@ -78,7 +148,7 @@ export default function DirectChatScreen() {
   useEffect(() => {
     if (!threadId || !isAuthenticated) return
     markRead.mutate({ threadId })
-  }, [threadId, isAuthenticated])
+  }, [threadId, isAuthenticated, messagesQuery.data?.length])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -191,7 +261,9 @@ export default function DirectChatScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Message..."
-          onSend={() => sendMessage.mutate({ threadId, text: draft.trim() })}
+          onSend={() => {
+            void sendMessage.mutateAsync({ threadId, text: draft.trim() }).catch(() => undefined)
+          }}
           sendDisabled={sendMessage.isPending || draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}

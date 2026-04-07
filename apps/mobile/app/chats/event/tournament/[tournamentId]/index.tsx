@@ -23,7 +23,7 @@ import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
-import { realtimeAwareQueryOptions } from '../../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -85,7 +85,7 @@ export default function TournamentChatScreen() {
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
-    ...realtimeAwareQueryOptions,
+    ...chatRealtimeQueryOptions,
   })
   const eventMeta = useMemo(() => {
     const all = (eventChatsQuery.data ?? []) as any[]
@@ -100,48 +100,160 @@ export default function TournamentChatScreen() {
     { tournamentId, limit: 100 },
     {
       enabled: Boolean(tournamentId) && isAuthenticated && !activeDivisionId,
-      ...realtimeAwareQueryOptions,
+      ...chatRealtimeQueryOptions,
     }
   )
   const divisionMessagesQuery = trpc.tournamentChat.listDivision.useQuery(
     { divisionId: activeDivisionId || '', limit: 100 },
-    { enabled: Boolean(activeDivisionId) && isAuthenticated, ...realtimeAwareQueryOptions }
+    { enabled: Boolean(activeDivisionId) && isAuthenticated, ...chatRealtimeQueryOptions }
+  )
+  const clearEventUnreadCache = useCallback(
+    (divisionId?: string | null) => {
+      if (!tournamentId) return
+      utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((event) => {
+          if (event.id !== tournamentId) return event
+          if (divisionId) {
+            return {
+              ...event,
+              divisions: (event.divisions ?? []).map((division: any) =>
+                division.id === divisionId ? { ...division, unreadCount: 0 } : division
+              ),
+            }
+          }
+          return { ...event, unreadCount: 0 }
+        })
+      )
+    },
+    [tournamentId, utils.tournamentChat.listMyEventChats]
   )
   const markRead = trpc.tournamentChat.markTournamentRead.useMutation({
-    onSuccess: async () => {
-      await utils.tournamentChat.listMyEventChats.invalidate()
+    onMutate: () => {
+      clearEventUnreadCache(null)
+    },
+    onSuccess: () => {
+      clearEventUnreadCache(null)
+      void utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
   const markDivisionRead = trpc.tournamentChat.markDivisionRead.useMutation({
-    onSuccess: async () => {
-      await utils.tournamentChat.listMyEventChats.invalidate()
+    onMutate: ({ divisionId }: { divisionId: string }) => {
+      clearEventUnreadCache(divisionId)
+    },
+    onSuccess: (_data: unknown, variables: { divisionId: string }) => {
+      clearEventUnreadCache(variables.divisionId)
+      void utils.tournamentChat.listMyEventChats.invalidate()
     },
   })
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onSuccess: async (data: { wasFiltered?: boolean }) => {
+    onMutate: ({ text }: { text: string }) => {
+      const trimmed = text.trim()
+      if (!trimmed || !tournamentId || !user?.id) return null
+
+      const createdAt = new Date()
+      const optimisticMessage = {
+        id: `optimistic-tournament-${tournamentId}-${createdAt.getTime()}`,
+        tournamentId,
+        userId: user.id,
+        text: trimmed,
+        isDeleted: false,
+        deletedAt: null,
+        deletedByUserId: null,
+        createdAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          image: user.image,
+        },
+      }
+
+      const previousMessages = ((tournamentMessagesQuery.data ?? []) as ChatMessage[]).slice()
+      const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
+
       setDraft('')
-      await Promise.all([
-        tournamentMessagesQuery.refetch(),
-        utils.tournamentChat.listMyEventChats.invalidate(),
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) => [
+        ...((current ?? []) as any[]),
+        optimisticMessage,
       ])
+      utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((event) =>
+          event.id === tournamentId ? { ...event, unreadCount: 0, lastMessageAt: createdAt } : event
+        )
+      )
+
+      return { previousMessages, previousEvents }
+    },
+    onSuccess: (data: { wasFiltered?: boolean }) => {
+      clearEventUnreadCache(null)
+      void tournamentMessagesQuery.refetch()
+      void utils.tournamentChat.listMyEventChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
     },
-    onError: (e) => toast.error(e.message || 'Failed to send message'),
+    onError: (e: any, _vars: unknown, context: any) => {
+      if (context?.previousMessages) {
+        utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, context.previousMessages)
+      }
+      if (context?.previousEvents) {
+        utils.tournamentChat.listMyEventChats.setData(undefined, context.previousEvents)
+      }
+      toast.error(e.message || 'Failed to send message')
+    },
   })
   const sendDivisionMessage = trpc.tournamentChat.sendDivision.useMutation({
-    onSuccess: async (data: { wasFiltered?: boolean }) => {
+    onMutate: ({ text, divisionId }: { text: string; divisionId: string }) => {
+      const trimmed = text.trim()
+      if (!trimmed || !divisionId || !user?.id) return null
+
+      const createdAt = new Date()
+      const optimisticMessage = {
+        id: `optimistic-division-${divisionId}-${createdAt.getTime()}`,
+        divisionId,
+        userId: user.id,
+        text: trimmed,
+        isDeleted: false,
+        deletedAt: null,
+        deletedByUserId: null,
+        createdAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          image: user.image,
+        },
+      }
+
+      const previousMessages = ((divisionMessagesQuery.data ?? []) as ChatMessage[]).slice()
+      const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
+
       setDraft('')
-      await Promise.all([
-        divisionMessagesQuery.refetch(),
-        utils.tournamentChat.listMyEventChats.invalidate(),
+      utils.tournamentChat.listDivision.setData({ divisionId, limit: 100 }, (current: any[] | undefined) => [
+        ...((current ?? []) as any[]),
+        optimisticMessage,
       ])
+      clearEventUnreadCache(divisionId)
+
+      return { previousMessages, previousEvents }
+    },
+    onSuccess: (data: { wasFiltered?: boolean }) => {
+      if (activeDivisionId) {
+        clearEventUnreadCache(activeDivisionId)
+      }
+      void divisionMessagesQuery.refetch()
+      void utils.tournamentChat.listMyEventChats.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
     },
-    onError: (e) => toast.error(e.message || 'Failed to send message'),
+    onError: (e: any, _vars: unknown, context: any) => {
+      if (activeDivisionId && context?.previousMessages) {
+        utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, context.previousMessages)
+      }
+      if (context?.previousEvents) {
+        utils.tournamentChat.listMyEventChats.setData(undefined, context.previousEvents)
+      }
+      toast.error(e.message || 'Failed to send message')
+    },
   })
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
     onSuccess: async () => {
@@ -156,6 +268,7 @@ export default function TournamentChatScreen() {
 
   const permission = permissionsQuery.data?.tournament
   const activeDivisionPermission = activeDivisionId ? permissionsQuery.data?.divisions?.[0] : null
+  const messagesLen = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []).length
 
   useEffect(() => {
     if (!tournamentId || !isAuthenticated) return
@@ -164,9 +277,8 @@ export default function TournamentChatScreen() {
     } else {
       markRead.mutate({ tournamentId })
     }
-  }, [tournamentId, isAuthenticated, activeDivisionId])
+  }, [tournamentId, isAuthenticated, activeDivisionId, messagesLen])
 
-  const messagesLen = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []).length
   useEffect(() => {
     scrollToBottom(true)
   }, [messagesLen, activeDivisionId, scrollToBottom])
@@ -328,11 +440,12 @@ export default function TournamentChatScreen() {
             value={draft}
             onChangeText={setDraft}
             placeholder={`Message ${activeDivision ? activeDivision.name : 'General Chat'}...`}
-            onSend={() =>
-              activeDivisionId
-                ? sendDivisionMessage.mutate({ divisionId: activeDivisionId, text: draft.trim() })
-                : sendMessage.mutate({ tournamentId, text: draft.trim() })
-            }
+            onSend={() => {
+              const run = activeDivisionId
+                ? sendDivisionMessage.mutateAsync({ divisionId: activeDivisionId, text: draft.trim() })
+                : sendMessage.mutateAsync({ tournamentId, text: draft.trim() })
+              void run.catch(() => undefined)
+            }}
             sendDisabled={
               (activeDivisionId ? sendDivisionMessage.isPending : sendMessage.isPending) || draft.trim().length === 0
             }

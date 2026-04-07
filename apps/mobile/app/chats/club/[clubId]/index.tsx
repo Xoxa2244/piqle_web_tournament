@@ -14,7 +14,7 @@ import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { realtimeAwareQueryOptions } from '../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
@@ -50,7 +50,7 @@ export default function ClubChatScreen() {
   }, [])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
-    ...realtimeAwareQueryOptions,
+    ...chatRealtimeQueryOptions,
   })
   const clubDetailQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) && isAuthenticated })
   const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
@@ -61,28 +61,81 @@ export default function ClubChatScreen() {
 
   const messagesQuery = trpc.clubChat.list.useQuery(
     { clubId, limit: 100 },
-    { enabled: Boolean(clubId) && isAuthenticated, ...realtimeAwareQueryOptions }
+    { enabled: Boolean(clubId) && isAuthenticated, ...chatRealtimeQueryOptions }
   )
   const pendingFeedbackQuery = trpc.feedback.getPendingPrompts.useQuery(undefined, {
     enabled: isAuthenticated && FEEDBACK_API_ENABLED,
   })
+  const clearClubUnreadCache = useCallback(() => {
+    if (!clubId) return
+    utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
+      (current ?? []).map((club) => (club.id === clubId ? { ...club, unreadCount: 0 } : club))
+    )
+  }, [clubId, utils.club.listMyChatClubs])
   const markRead = trpc.clubChat.markRead.useMutation({
-    onSuccess: async () => {
-      await utils.club.listMyChatClubs.invalidate()
+    onMutate: () => {
+      clearClubUnreadCache()
+    },
+    onSuccess: () => {
+      clearClubUnreadCache()
+      void utils.club.listMyChatClubs.invalidate()
     },
   })
   const sendMessage = trpc.clubChat.send.useMutation({
-    onSuccess: async (data: { wasFiltered?: boolean }) => {
+    onMutate: ({ text }: { text: string }) => {
+      const trimmed = text.trim()
+      if (!trimmed || !clubId || !user?.id) return null
+
+      const createdAt = new Date()
+      const optimisticMessage = {
+        id: `optimistic-${clubId}-${createdAt.getTime()}`,
+        clubId,
+        userId: user.id,
+        text: trimmed,
+        isDeleted: false,
+        deletedAt: null,
+        deletedByUserId: null,
+        createdAt,
+        user: {
+          id: user.id,
+          name: user.name,
+          image: user.image,
+        },
+      }
+
+      const previousMessages = (messagesQuery.data ?? []) as ChatMessage[]
+      const previousClubs = ((utils.club.listMyChatClubs.getData(undefined) ?? []) as any[]).slice()
+
       setDraft('')
-      await Promise.all([
-        messagesQuery.refetch(),
-        utils.club.listMyChatClubs.invalidate(),
+      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) => [
+        ...((current ?? []) as any[]),
+        optimisticMessage,
       ])
+      utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((club) =>
+          club.id === clubId ? { ...club, unreadCount: 0, lastMessageAt: createdAt } : club
+        )
+      )
+
+      return { previousMessages, previousClubs }
+    },
+    onSuccess: (data: { wasFiltered?: boolean }) => {
+      clearClubUnreadCache()
+      void messagesQuery.refetch()
+      void utils.club.listMyChatClubs.invalidate()
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
     },
-    onError: (e) => toast.error(e.message || 'Failed to send message'),
+    onError: (e: any, _vars: unknown, context: any) => {
+      if (context?.previousMessages) {
+        utils.clubChat.list.setData({ clubId, limit: 100 }, context.previousMessages)
+      }
+      if (context?.previousClubs) {
+        utils.club.listMyChatClubs.setData(undefined, context.previousClubs)
+      }
+      toast.error(e.message || 'Failed to send message')
+    },
   })
   const deleteMessage = trpc.clubChat.delete.useMutation({
     onSuccess: async () => {
@@ -93,7 +146,7 @@ export default function ClubChatScreen() {
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
     markRead.mutate({ clubId })
-  }, [clubId, isAuthenticated])
+  }, [clubId, isAuthenticated, messagesQuery.data?.length])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -211,7 +264,9 @@ export default function ClubChatScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Message club..."
-          onSend={() => sendMessage.mutate({ clubId, text: draft.trim() })}
+          onSend={() => {
+            void sendMessage.mutateAsync({ clubId, text: draft.trim() }).catch(() => undefined)
+          }}
           sendDisabled={sendMessage.isPending || draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}
