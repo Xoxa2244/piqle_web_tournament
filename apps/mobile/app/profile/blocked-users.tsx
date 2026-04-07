@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons'
+import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
-import { useFocusEffect } from 'expo-router'
 
 import { EmptyState, SurfaceCard } from '../../src/components/ui'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
@@ -47,7 +47,10 @@ export default function BlockedUsersScreen() {
 
       {(blockedUsersQuery.data ?? []).map((blockedUser: any) => (
         <SurfaceCard key={blockedUser.id}>
-          <View style={styles.row}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/profile/[id]', params: { id: blockedUser.id } })}
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          >
             <View style={styles.identity}>
               <RemoteUserAvatar
                 uri={blockedUser.image}
@@ -77,7 +80,7 @@ export default function BlockedUsersScreen() {
             >
               <Feather name="unlock" size={18} color={colors.text} />
             </Pressable>
-          </View>
+          </Pressable>
         </SurfaceCard>
       ))}
     </PageLayout>
@@ -106,6 +109,9 @@ const createStyles = (colors: ThemePalette) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: spacing.md,
+    },
+    rowPressed: {
+      opacity: 0.9,
     },
     identity: {
       flex: 1,

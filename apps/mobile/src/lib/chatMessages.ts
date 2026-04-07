@@ -13,6 +13,7 @@ export type ChatMessage = {
   isDeleted: boolean
   createdAt: string | Date
   user?: ChatMessageUser
+  deliveryStatus?: 'sent' | 'delivered' | 'read'
   clientOrder?: number
 }
 

@@ -23,7 +23,7 @@ const mapMessage = (m: {
   deletedByUserId: string | null
   createdAt: Date
   user: { id: string; name: string | null; image: string | null }
-}) => ({
+}, currentUserId?: string, latestReadAt?: Date | null) => ({
   id: m.id,
   userId: m.userId,
   text: m.deletedAt ? null : m.text,
@@ -31,6 +31,12 @@ const mapMessage = (m: {
   deletedAt: m.deletedAt,
   deletedByUserId: m.deletedByUserId,
   createdAt: m.createdAt,
+  deliveryStatus:
+    currentUserId && m.userId === currentUserId
+      ? latestReadAt && new Date(m.createdAt) <= latestReadAt
+        ? 'read'
+        : 'delivered'
+      : undefined,
   user: m.user,
 })
 
@@ -608,7 +614,17 @@ export const tournamentChatRouter = createTRPCRouter({
         },
       })
 
-      return raw.slice().reverse().map(mapMessage)
+      const latestReadByOthers = await ctx.prisma.tournamentChatReadState.findFirst({
+        where: {
+          tournamentId: input.tournamentId,
+          userId: { not: userId },
+        },
+        orderBy: { lastReadAt: 'desc' },
+        select: { lastReadAt: true },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
+
+      return raw.slice().reverse().map((message) => mapMessage(message, userId, latestReadAt))
     }),
 
   sendTournament: protectedProcedure
@@ -771,8 +787,17 @@ export const tournamentChatRouter = createTRPCRouter({
           },
         },
       })
+      const latestReadByOthers = await ctx.prisma.divisionChatReadState.findFirst({
+        where: {
+          divisionId: input.divisionId,
+          userId: { not: userId },
+        },
+        orderBy: { lastReadAt: 'desc' },
+        select: { lastReadAt: true },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
 
-      return raw.slice().reverse().map(mapMessage)
+      return raw.slice().reverse().map((message) => mapMessage(message, userId, latestReadAt))
     }),
 
   sendDivision: protectedProcedure

@@ -14,7 +14,7 @@ type ChatScreenLoadingProps = {
 export function ChatScreenLoading({ title, label = 'Loading chat…' }: ChatScreenLoadingProps) {
   const styles = useMemo(() => createStyles(), [])
   return (
-    <PageLayout chatAmbient scroll={false} contentStyle={styles.shell} topBarTitle={title}>
+    <PageLayout chatAmbient scroll={false} contentStyle={styles.shell} topBarTitle={title} topBarRightSlot={null}>
       <View style={styles.center}>
         <LoadingBlock label={label} />
       </View>

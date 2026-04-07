@@ -357,6 +357,16 @@ export default function TournamentChatScreen() {
     }
   }, [scrollToBottom])
 
+  const messages = useMemo(() => {
+    const serverMessages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as ChatMessage[]
+    return mergeMessagesByStableLiveOrder(
+      serverMessages,
+      optimisticMessages,
+      messageOrderRef.current,
+      nextMessageOrderRef
+    )
+  }, [activeDivisionId, divisionMessagesQuery.data, tournamentMessagesQuery.data, optimisticMessages])
+
   if (!isAuthenticated) {
     return (
       <Screen title={title} subtitle="Sign in to access tournament chat.">
@@ -396,15 +406,6 @@ export default function TournamentChatScreen() {
   const activeDivision = activeDivisionId ? divisions.find((d: any) => d.id === activeDivisionId) ?? null : null
   const canPost = activeDivisionId ? Boolean(activeDivisionPermission?.canPost) : Boolean(permission?.canPost)
   const canModerate = activeDivisionId ? Boolean(activeDivisionPermission?.canModerate) : Boolean(permission?.canModerate)
-  const messages = useMemo(() => {
-    const serverMessages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as ChatMessage[]
-    return mergeMessagesByStableLiveOrder(
-      serverMessages,
-      optimisticMessages,
-      messageOrderRef.current,
-      nextMessageOrderRef
-    )
-  }, [activeDivisionId, divisionMessagesQuery.data, tournamentMessagesQuery.data, optimisticMessages])
   const isEmpty = (messages.length ?? 0) === 0
   const topicBar = (
     <View style={styles.topicBarWrap}>
@@ -460,6 +461,7 @@ export default function TournamentChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={title}
+      topBarRightSlot={null}
       onTopBarTitlePress={() => {
         if (!tournamentId) return
         router.push(`/tournaments/${tournamentId}`)

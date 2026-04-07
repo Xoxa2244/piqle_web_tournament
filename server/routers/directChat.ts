@@ -316,7 +316,20 @@ export const directChatRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const limit = input.limit ?? 100
 
-      await getThreadForUser(ctx.prisma, input.threadId, userId)
+      const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
+      const otherUserId = thread.participantAId === userId ? thread.participantBId : thread.participantAId
+      const otherReadState = await ctx.prisma.directChatReadState.findUnique({
+        where: {
+          threadId_userId: {
+            threadId: input.threadId,
+            userId: otherUserId,
+          },
+        },
+        select: {
+          lastReadAt: true,
+        },
+      })
+      const otherLastReadAt = otherReadState?.lastReadAt ? new Date(otherReadState.lastReadAt) : null
 
       const raw = await ctx.prisma.directChatMessage.findMany({
         where: { threadId: input.threadId },
@@ -342,6 +355,12 @@ export const directChatRouter = createTRPCRouter({
         deletedAt: message.deletedAt,
         deletedByUserId: message.deletedByUserId,
         createdAt: message.createdAt,
+        deliveryStatus:
+          message.userId === userId
+            ? otherLastReadAt && new Date(message.createdAt) <= otherLastReadAt
+              ? 'read'
+              : 'delivered'
+            : undefined,
         user: message.user,
       }))
     }),

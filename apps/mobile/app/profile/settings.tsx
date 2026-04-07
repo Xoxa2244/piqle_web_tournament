@@ -421,6 +421,21 @@ export default function ProfileSettingsScreen() {
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Messaging</Text>
+          <View>
+            <SettingItem
+              colors={colors}
+              icon="slash"
+              title="Blacklist"
+              description="Manage blocked users"
+              type="link"
+              showBottomDivider={false}
+              onPress={() => router.push('/profile/blocked-users')}
+            />
+          </View>
+        </SurfaceCard>
+
+        <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Theme</Text>
           <Text style={[styles.cardDescription, { color: colors.textMuted }]}>
             Choose how the app looks on your device.
@@ -515,21 +530,6 @@ export default function ProfileSettingsScreen() {
               value={settings.notifications.clubAnnouncements}
               onChange={() => toggleNotificationSetting('clubAnnouncements')}
               showBottomDivider={false}
-            />
-          </View>
-        </SurfaceCard>
-
-        <SurfaceCard style={[styles.card, themedCardStyle]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Messaging</Text>
-          <View>
-            <SettingItem
-              colors={colors}
-              icon="slash"
-              title="Blacklist"
-              description="Manage blocked users"
-              type="link"
-              showBottomDivider={false}
-              onPress={() => router.push('/profile/blocked-users')}
             />
           </View>
         </SurfaceCard>

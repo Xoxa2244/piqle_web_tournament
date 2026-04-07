@@ -253,6 +253,7 @@ export default function ClubChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={clubName}
+      topBarRightSlot={null}
       onTopBarTitlePress={() => {
         if (!clubId) return
         router.push(`/clubs/${clubId}`)

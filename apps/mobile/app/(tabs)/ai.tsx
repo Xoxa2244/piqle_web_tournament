@@ -105,8 +105,8 @@ const renderInlineMarkdown = (input: string, keyPrefix: string, styles: ReturnTy
 export default function AITab() {
   const { token } = useAuth()
   const toast = useToast()
-  const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { colors, theme } = useAppTheme()
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
   const isAuthenticated = Boolean(token)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const tabBarHeight = useBottomTabBarHeight()
@@ -330,12 +330,12 @@ export default function AITab() {
                       <OptionalLinearGradient
                         colors={
                           msg.role === 'user'
-                            ? [colors.primary, colors.purple]
+                            ? [theme === 'dark' ? colors.chip : colors.brandPrimaryTint, theme === 'dark' ? colors.chip : colors.brandPrimaryTint]
                             : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
                         }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        fallbackColor={msg.role === 'user' ? colors.primary : colors.surfaceElevated}
+                        fallbackColor={msg.role === 'user' ? (theme === 'dark' ? colors.chip : colors.brandPrimaryTint) : colors.surfaceElevated}
                         style={[
                           styles.bubble,
                           msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
@@ -435,7 +435,7 @@ export default function AITab() {
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
   StyleSheet.create({
   screen: {
     paddingHorizontal: 0,
@@ -506,7 +506,7 @@ const createStyles = (colors: ThemePalette) =>
     lineHeight: 20,
   },
   bubbleTextMine: {
-    color: colors.white,
+    color: theme === 'dark' ? colors.white : colors.text,
     fontWeight: '600',
   },
   inlineBold: {

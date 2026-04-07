@@ -91,7 +91,12 @@ const createStyles = (colors: ThemePalette) =>
       justifyContent: 'flex-start',
       minWidth: 0,
       gap: 6,
-      paddingRight: 16,
+      paddingRight: 6,
+    },
+    titlePressable: {
+      flex: 1,
+      minWidth: 0,
+      marginRight: 6,
     },
     titleNextToAccessory: {
       flexGrow: 0,
@@ -112,6 +117,7 @@ const createStyles = (colors: ThemePalette) =>
       height: 36,
       justifyContent: 'center',
       flexShrink: 1,
+      minWidth: 0,
     },
     backBtn: {
       marginRight: 0,
@@ -156,6 +162,8 @@ const createStyles = (colors: ThemePalette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
+      flexShrink: 0,
+      marginLeft: 4,
     },
     iconBubble: {
       width: 36,
@@ -430,7 +438,7 @@ export const TopBar = ({
           {hasTitleAccessory && titleBesideAccessory ? (
             <View style={styles.titleWithAccessoryRow}>
               {titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
-              <Pressable disabled={!onTitlePress} onPress={onTitlePress}>
+              <Pressable disabled={!onTitlePress} onPress={onTitlePress} style={styles.titlePressable}>
                 <View style={styles.titleTextWrap}>
                   <BrandGradientText
                     style={[
@@ -460,7 +468,7 @@ export const TopBar = ({
               {!titleAccessoryLeading ? <View style={styles.titleAccessory}>{titleAccessory}</View> : null}
             </View>
           ) : titleOverride != null && titleOverride !== '' ? (
-            <Pressable disabled={!onTitlePress} onPress={onTitlePress}>
+            <Pressable disabled={!onTitlePress} onPress={onTitlePress} style={styles.titlePressable}>
               <View style={styles.titleTextWrap}>
                 <BrandGradientText
                   style={[

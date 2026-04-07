@@ -74,6 +74,20 @@ export const clubChatRouter = createTRPCRouter({
         },
       })
 
+      const latestReadByOthers = await ctx.prisma.clubChatReadState.findFirst({
+        where: {
+          clubId,
+          userId: { not: userId },
+        },
+        orderBy: {
+          lastReadAt: 'desc',
+        },
+        select: {
+          lastReadAt: true,
+        },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
+
       // Return chronologically (oldest -> newest) for chat UI.
       const ordered = raw.slice().reverse()
 
@@ -86,6 +100,12 @@ export const clubChatRouter = createTRPCRouter({
         deletedAt: m.deletedAt,
         deletedByUserId: m.deletedByUserId,
         createdAt: m.createdAt,
+        deliveryStatus:
+          m.userId === userId
+            ? latestReadAt && new Date(m.createdAt) <= latestReadAt
+              ? 'read'
+              : 'delivered'
+            : undefined,
         user: m.user,
       }))
     }),

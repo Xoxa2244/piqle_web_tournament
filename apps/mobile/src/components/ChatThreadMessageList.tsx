@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics'
+import { Feather } from '@expo/vector-icons'
 import { useCallback, useMemo } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
@@ -137,7 +138,31 @@ export function ChatThreadMessageList({
                   <Text style={[styles.body, isMine && styles.bodyMine]}>
                     {m.isDeleted ? 'Message removed' : m.text || ''}
                   </Text>
-                  <Text style={[styles.time, isMine && styles.timeMine]}>{formatChatTime(m.createdAt)}</Text>
+                  <View style={styles.metaRow}>
+                    {isMine ? (
+                      <View style={styles.statusWrap}>
+                        {m.deliveryStatus === 'read' ? (
+                          <>
+                            <Feather name="check" size={11} color={colors.primary} />
+                            <Feather name="check" size={11} color={colors.primary} style={styles.statusSecondCheck} />
+                          </>
+                        ) : m.deliveryStatus === 'delivered' ? (
+                          <>
+                            <Feather name="check" size={11} color={colors.textMuted} />
+                            <Feather
+                              name="check"
+                              size={11}
+                              color={colors.textMuted}
+                              style={styles.statusSecondCheck}
+                            />
+                          </>
+                        ) : (
+                          <Feather name="check" size={11} color={colors.textMuted} />
+                        )}
+                      </View>
+                    ) : null}
+                    <Text style={[styles.time, isMine && styles.timeMine]}>{formatChatTime(m.createdAt)}</Text>
+                  </View>
                 </Pressable>
               </View>
             )
@@ -206,7 +231,7 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
   },
   bubbleMine: {
     borderBottomRightRadius: 6,
-    backgroundColor: theme === 'dark' ? colors.chip : colors.primary,
+    backgroundColor: theme === 'dark' ? colors.chip : colors.brandPrimaryTint,
     ...(theme === 'dark'
       ? {
           shadowOpacity: 0,
@@ -237,14 +262,28 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     color: colors.text,
   },
   bodyMine: {
-    color: colors.white,
+    color: theme === 'dark' ? colors.white : colors.text,
   },
   time: {
-    marginTop: 6,
     fontSize: 10,
     color: colors.textMuted,
   },
   timeMine: {
-    color: theme === 'dark' ? colors.textMuted : 'rgba(255,255,255,0.75)',
+    color: theme === 'dark' ? colors.textMuted : colors.textMuted,
+  },
+  metaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+  },
+  statusWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 14,
+  },
+  statusSecondCheck: {
+    marginLeft: -4,
   },
 })
