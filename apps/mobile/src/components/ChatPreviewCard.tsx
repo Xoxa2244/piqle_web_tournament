@@ -5,13 +5,20 @@ import { formatDateTime } from '../lib/formatters'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
-import { UnreadIndicatorDot } from './UnreadIndicatorDot'
+
+const formatPreviewTime = (value?: string | Date | null) => {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
 
 export const ChatPreviewCard = ({
   title,
   subtitle,
   imageUri,
   unreadCount,
+  trailingTime,
   onPress,
 }: {
   title: string
@@ -19,10 +26,12 @@ export const ChatPreviewCard = ({
   /** Логотип клуба; без него — тот же плейсхолдер, что и для обложки ивента */
   imageUri?: string | null
   unreadCount?: number
+  trailingTime?: string | Date | null
   onPress: () => void
 }) => {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
+  const timeLabel = useMemo(() => formatPreviewTime(trailingTime), [trailingTime])
 
   return (
     <Pressable onPress={onPress}>
@@ -34,16 +43,21 @@ export const ChatPreviewCard = ({
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
-              {unreadCount && unreadCount > 0 ? (
-                <View style={styles.titleUnreadDot} accessibilityLabel="Unread messages">
-                  <UnreadIndicatorDot />
-                </View>
+              {timeLabel ? (
+                <Text style={styles.trailingTime} numberOfLines={1}>
+                  {timeLabel}
+                </Text>
               ) : null}
             </View>
             <View style={styles.subtitleRow}>
               <Text numberOfLines={1} style={styles.subtitle}>
                 {subtitle}
               </Text>
+              {unreadCount && unreadCount > 0 ? (
+                <View style={styles.unreadChip} accessibilityLabel={`${unreadCount} unread messages`}>
+                  <Text style={styles.unreadChipText}>{unreadCount}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -109,9 +123,11 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     minWidth: 0,
   },
-  titleUnreadDot: {
-    marginLeft: 6,
-    justifyContent: 'center',
+  trailingTime: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   subtitleRow: {
     marginTop: 4,
@@ -123,6 +139,21 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.textMuted,
     fontSize: 13,
     flex: 1,
+  },
+  unreadChip: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    marginLeft: 8,
+  },
+  unreadChipText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: '700',
   },
   messageWrap: {
     alignItems: 'flex-start',

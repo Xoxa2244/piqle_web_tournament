@@ -434,6 +434,14 @@ export const tournamentChatRouter = createTRPCRouter({
               },
             })
           : 0
+        const tournamentLastMessage = await ctx.prisma.tournamentChatMessage.findFirst({
+          where: {
+            tournamentId: tournament.id,
+            deletedAt: null,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true },
+        })
 
         const divisions = await Promise.all(
           tournament.divisions.map(async (division) => {
@@ -476,6 +484,7 @@ export const tournamentChatRouter = createTRPCRouter({
           club: tournament.club,
           permission: membership,
           unreadCount: tournamentUnreadCount,
+          lastMessageAt: tournamentLastMessage?.createdAt ?? null,
           divisions: visibleDivisions,
         }
       })

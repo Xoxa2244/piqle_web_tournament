@@ -221,7 +221,6 @@ export default function TournamentChatScreen() {
 
   const divisions = (eventMeta?.divisions ?? []) as any[]
   const activeDivision = activeDivisionId ? divisions.find((d: any) => d.id === activeDivisionId) ?? null : null
-  const activeLabel = activeDivision ? activeDivision.name : 'General Chat'
   const canPost = activeDivisionId ? Boolean(activeDivisionPermission?.canPost) : Boolean(permission?.canPost)
   const canModerate = activeDivisionId ? Boolean(activeDivisionPermission?.canModerate) : Boolean(permission?.canModerate)
   const messages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as any[]
@@ -292,16 +291,6 @@ export default function TournamentChatScreen() {
       >
         {topicBar}
         <Animated.View style={[styles.threadFadeWrap, { opacity: threadContentOpacity }]}>
-          <View style={styles.contextRow}>
-            <View style={styles.contextLeft}>
-              <Feather name={activeDivisionId ? 'hash' : 'award'} size={16} color={colors.textMuted} />
-              <Text style={styles.contextTitle}>{activeLabel}</Text>
-              <Text style={styles.contextDot}>·</Text>
-              <Feather name="users" size={16} color={colors.textMuted} />
-              <Text style={styles.contextMeta}>Tournament Chat</Text>
-            </View>
-          </View>
-
           <ChatThreadRoot
             ref={scrollRef}
             contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
@@ -338,7 +327,7 @@ export default function TournamentChatScreen() {
           <ChatComposer
             value={draft}
             onChangeText={setDraft}
-            placeholder={`Message ${activeLabel}...`}
+            placeholder={`Message ${activeDivision ? activeDivision.name : 'General Chat'}...`}
             onSend={() =>
               activeDivisionId
                 ? sendDivisionMessage.mutate({ divisionId: activeDivisionId, text: draft.trim() })
@@ -442,34 +431,9 @@ const createStyles = (colors: ThemePalette) =>
     marginLeft: 8,
     justifyContent: 'center',
   },
-  contextRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  contextLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  contextTitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  contextDot: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  contextMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-  },
   scrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: 0,
     gap: 12,
   },

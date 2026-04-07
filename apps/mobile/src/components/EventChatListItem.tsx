@@ -6,7 +6,13 @@ import { formatEventStartInTimezone, getEventTimezoneLabel } from '../lib/format
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { TournamentThumbnail } from './TournamentThumbnail'
-import { UnreadIndicatorDot } from './UnreadIndicatorDot'
+
+const formatPreviewTime = (value?: string | Date | null) => {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
 
 export type EventChatDivision = {
   id: string
@@ -24,31 +30,14 @@ export type EventChatListEvent = {
   timezone?: string | null
   club?: { id: string; name: string } | null
   unreadCount: number
+  lastMessageAt?: string | Date | null
   divisions: EventChatDivision[]
 }
 
-function UnreadDotRow({
-  count,
-  compact,
-  styles,
-}: {
-  count: number
-  compact?: boolean
-  styles: ReturnType<typeof createStyles>
-}) {
-  if (count <= 0) return null
-  return (
-    <View style={[styles.unreadDotWrap, compact && styles.unreadDotWrapCompact]} accessibilityLabel="Unread messages">
-      <UnreadIndicatorDot size={compact ? 7 : 8} />
-    </View>
-  )
-}
-
-/** Активный ивент: общий чат + вложенные дивизионы (как на вебе). */
+/** Превью ивента в списке чатов: только общий чат. Дивизионы открываются уже внутри экрана ивента. */
 export function EventChatListItemActive({
   event,
   onOpenGeneral,
-  onOpenDivision,
 }: {
   event: EventChatListEvent
   onOpenGeneral: () => void
@@ -56,8 +45,8 @@ export function EventChatListItemActive({
 }) {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
-  const hasDivisions = (event.divisions?.length ?? 0) > 0
   const meta = `${formatEventStartInTimezone(event.startDate, event.timezone)} · ${getEventTimezoneLabel(event.timezone)}`
+  const timeLabel = formatPreviewTime(event.lastMessageAt)
 
   return (
     <View style={styles.card}>
@@ -69,9 +58,22 @@ export function EventChatListItemActive({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadDotRow count={event.unreadCount} styles={styles} /> : null}
+              <View style={styles.titleRight}>
+                {timeLabel ? (
+                  <Text style={styles.trailingTime} numberOfLines={1}>
+                    {timeLabel}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-            <Text style={styles.meta}>{meta}</Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.meta}>{meta}</Text>
+              {event.unreadCount > 0 ? (
+                <View style={styles.unreadChip} accessibilityLabel={`${event.unreadCount} unread messages`}>
+                  <Text style={styles.unreadChipText}>{event.unreadCount}</Text>
+                </View>
+              ) : null}
+            </View>
             {event.club?.name ? (
               <View style={styles.clubRow}>
                 <Feather name="map-pin" size={12} color={colors.textMuted} />
@@ -83,33 +85,16 @@ export function EventChatListItemActive({
           </View>
         </View>
       </Pressable>
-
-      {hasDivisions ? (
-        <View style={styles.nested}>
-          {event.divisions.map((division) => (
-            <Pressable
-              key={division.id}
-              onPress={() => onOpenDivision(division.id)}
-              style={({ pressed }) => [styles.divisionPress, pressed && styles.divisionPressPressed]}
-            >
-              <Text style={styles.divisionName} numberOfLines={2}>
-                {division.name}
-              </Text>
-              <UnreadDotRow count={division.unreadCount ?? 0} compact styles={styles} />
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
     </View>
   )
 }
 
-/** Архив: раскрытие дивизионов по тапу на строку ивента (как на вебе). */
+/** Архивное превью: тоже только общий чат, без вложенных дивизионов. */
 export function EventChatListItemArchived({
   event,
+  onOpenGeneral,
   expanded,
   onToggleExpand,
-  onOpenGeneral,
   onOpenDivision,
 }: {
   event: EventChatListEvent
@@ -120,16 +105,13 @@ export function EventChatListItemArchived({
 }) {
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
-  const hasDivisions = (event.divisions?.length ?? 0) > 0
   const meta = `${formatEventStartInTimezone(event.startDate, event.timezone)} · ${getEventTimezoneLabel(event.timezone)}`
+  const timeLabel = formatPreviewTime(event.lastMessageAt)
 
   return (
     <View style={styles.card}>
       <Pressable
-        onPress={() => {
-          onOpenGeneral()
-          if (hasDivisions) onToggleExpand()
-        }}
+        onPress={onOpenGeneral}
         style={({ pressed }) => [styles.mainPress, pressed && styles.mainPressPressed]}
       >
         <View style={styles.archivedTitleRow}>
@@ -139,9 +121,22 @@ export function EventChatListItemArchived({
               <Text style={styles.eventTitle} numberOfLines={2}>
                 {event.title}
               </Text>
-              {event.unreadCount > 0 ? <UnreadDotRow count={event.unreadCount} styles={styles} /> : null}
+              <View style={styles.titleRight}>
+                {timeLabel ? (
+                  <Text style={styles.trailingTime} numberOfLines={1}>
+                    {timeLabel}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-            <Text style={styles.meta}>{meta}</Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.meta}>{meta}</Text>
+              {event.unreadCount > 0 ? (
+                <View style={styles.unreadChip} accessibilityLabel={`${event.unreadCount} unread messages`}>
+                  <Text style={styles.unreadChipText}>{event.unreadCount}</Text>
+                </View>
+              ) : null}
+            </View>
             {event.club?.name ? (
               <View style={styles.clubRow}>
                 <Feather name="map-pin" size={12} color={colors.textMuted} />
@@ -151,28 +146,8 @@ export function EventChatListItemArchived({
               </View>
             ) : null}
           </View>
-          {hasDivisions ? (
-            <Feather name="chevron-right" size={18} color={colors.textMuted} style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }} />
-          ) : null}
         </View>
       </Pressable>
-
-      {hasDivisions && expanded ? (
-        <View style={styles.nested}>
-          {event.divisions.map((division) => (
-            <Pressable
-              key={division.id}
-              onPress={() => onOpenDivision(division.id)}
-              style={({ pressed }) => [styles.divisionPress, pressed && styles.divisionPressPressed]}
-            >
-              <Text style={styles.divisionName} numberOfLines={2}>
-                {division.name}
-              </Text>
-              <UnreadDotRow count={division.unreadCount ?? 0} compact styles={styles} />
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -215,20 +190,43 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     minWidth: 0,
   },
-  unreadDotWrap: {
-    marginLeft: 6,
-    justifyContent: 'flex-start',
-    paddingTop: 2,
+  titleRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexShrink: 0,
+    marginLeft: 8,
   },
-  unreadDotWrapCompact: {
-    marginLeft: 4,
-    paddingTop: 0,
+  trailingTime: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  metaRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   meta: {
-    marginTop: 4,
     fontSize: 13,
     color: colors.textMuted,
     lineHeight: 18,
+    flex: 1,
+  },
+  unreadChip: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  unreadChipText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: '700',
   },
   clubRow: {
     marginTop: 4,

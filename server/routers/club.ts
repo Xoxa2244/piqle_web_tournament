@@ -468,19 +468,45 @@ export const clubRouter = createTRPCRouter({
     }
 
     const unreadCountByClubId = new Map<string, number>()
+    const lastMessageAtByClubId = new Map<string, Date | null>()
     if (hasReadStates && clubIds.length > 0) {
       await Promise.all(
         clubIds.map(async (clubId) => {
           const lastReadAt = readStateByClubId.get(clubId)
-          const unreadCount = await ctx.prisma.clubChatMessage.count({
+          const [unreadCount, lastMessage] = await Promise.all([
+            ctx.prisma.clubChatMessage.count({
+              where: {
+                clubId,
+                deletedAt: null,
+                userId: { not: userId },
+                ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
+              },
+            }),
+            ctx.prisma.clubChatMessage.findFirst({
+              where: {
+                clubId,
+                deletedAt: null,
+              },
+              orderBy: { createdAt: 'desc' },
+              select: { createdAt: true },
+            }),
+          ])
+          unreadCountByClubId.set(clubId, unreadCount)
+          lastMessageAtByClubId.set(clubId, lastMessage?.createdAt ?? null)
+        })
+      )
+    } else if (clubIds.length > 0) {
+      await Promise.all(
+        clubIds.map(async (clubId) => {
+          const lastMessage = await ctx.prisma.clubChatMessage.findFirst({
             where: {
               clubId,
               deletedAt: null,
-              userId: { not: userId },
-              ...(lastReadAt ? { createdAt: { gt: lastReadAt } } : {}),
             },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true },
           })
-          unreadCountByClubId.set(clubId, unreadCount)
+          lastMessageAtByClubId.set(clubId, lastMessage?.createdAt ?? null)
         })
       )
     }
@@ -497,6 +523,7 @@ export const clubRouter = createTRPCRouter({
       isFollowing: club.followers.length > 0,
       isAdmin: club.admins.length > 0,
       unreadCount: hasReadStates ? unreadCountByClubId.get(club.id) ?? 0 : 0,
+      lastMessageAt: lastMessageAtByClubId.get(club.id) ?? null,
     }))
   }),
 

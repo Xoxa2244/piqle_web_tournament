@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, Easing, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 
@@ -14,7 +14,6 @@ import { PageLayout } from '../../src/components/navigation/PageLayout'
 import { PickleRefreshScrollView } from '../../src/components/PickleRefreshScrollView'
 import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNotificationRow'
-import { SegmentedControl } from '../../src/components/SegmentedControl'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
 import { realtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
@@ -158,7 +157,6 @@ export default function ChatsTab() {
   const directTotal = directChats.length
   const clubTotal = clubChats.length
   const eventTotal = eventChats.length
-
   const directSegmentHasUnread = useMemo(() => {
     const list = directChats
     return list.some((chat) => (chat.unreadCount ?? 0) > 0)
@@ -334,39 +332,58 @@ export default function ChatsTab() {
           </View>
         </View>
 
-        <SegmentedControl<Segment>
-          options={[
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsRow}
+          style={styles.chipsScroller}
+        >
+          {[
             {
-              value: 'direct',
-              label: `Chats${directTotal > 0 ? ` (${directTotal})` : ''}`,
+              value: 'direct' as const,
+              label: 'Chats',
               showDot: directSegmentHasUnread,
             },
             {
-              value: 'clubs',
-              label: `Club chats${clubTotal > 0 ? ` (${clubTotal})` : ''}`,
+              value: 'clubs' as const,
+              label: 'Clubs',
               showDot: clubsSegmentHasUnread,
             },
             {
-              value: 'events',
-              label: `Event chats${eventTotal > 0 ? ` (${eventTotal})` : ''}`,
+              value: 'events' as const,
+              label: 'Events',
               showDot: eventsSegmentHasUnread,
             },
-          ]}
-          value={segment}
-          onChange={setSegment}
-          trackStyle={styles.segmentTrack}
-        />
+          ].map((chip) => {
+            const active = segment === chip.value
+            return (
+              <Pressable
+                key={chip.value}
+                onPress={() => setSegment(chip.value)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  active && styles.filterChipActive,
+                  pressed && styles.filterChipPressed,
+                ]}
+              >
+                <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>
+                  {chip.label}
+                </Text>
+                {chip.showDot ? <View style={[styles.filterChipDot, active && styles.filterChipDotActive]} /> : null}
+              </Pressable>
+            )
+          })}
+        </ScrollView>
 
-        <SegmentedContentFade activeKey={segment} segmentOrder={['direct', 'clubs', 'events']} opacityOnly style={styles.listScroll}>
-          <PickleRefreshScrollView
-            style={styles.listScroll}
-            contentContainerStyle={styles.listScrollContent}
-            showsVerticalScrollIndicator={false}
-            refreshing={pullToRefresh.refreshing}
-            onRefresh={pullToRefresh.onRefresh}
-            scrollEnabled={!directSwipeActive}
-            bounces
-          >
+        <PickleRefreshScrollView
+          style={styles.listScroll}
+          contentContainerStyle={styles.listScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          scrollEnabled={!directSwipeActive}
+          bounces
+        >
       {showFullChatLoading ? (
         <View style={styles.bodyGutter}>
           <LoadingBlock label="Loading chats…" />
@@ -397,171 +414,173 @@ export default function ChatsTab() {
         </View>
       ) : null}
 
-      {!showFullChatLoading && !noDataAtAll && segment === 'direct' ? (
-        <View style={styles.tabContent}>
-          {directTabEmpty ? (
-            <View style={styles.bodyGutter}>
-              <EmptyState
-                title="No personal chats"
-                body="Open any player profile and tap Message to start a conversation."
-              />
-            </View>
-          ) : (
-            <>
-              <Text style={styles.sectionLabel}>Chats</Text>
-              {filteredDirectChats.map((chat, index) => {
-                const otherUserName = chat.otherUser?.name?.trim() || 'Player'
-                const lastMessagePrefix =
-                  chat.lastMessage && !chat.lastMessage.isDeleted
-                    ? chat.lastMessage.userId === user?.id
-                      ? 'You: '
-                      : ''
-                    : ''
-                const subtitle =
-                  chat.lastMessage && !chat.lastMessage.isDeleted && chat.lastMessage.text
-                    ? `${lastMessagePrefix}${chat.lastMessage.text}`
-                    : chat.lastMessage?.isDeleted
-                    ? 'Message removed'
-                    : chat.otherUser?.city || 'Personal chat'
-
-                return (
-                  <StaggeredReveal key={`direct-${chat.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
-                    <SwipeDismissNotificationRow
-                      disabled={deleteDirectThread.isPending}
-                      onSwipeActiveChange={setDirectSwipeActive}
-                      onDismiss={async () => {
-                        await dismissDirectChat(chat.id)
-                      }}
-                    >
-                      <ChatPreviewCard
-                        title={otherUserName}
-                        imageUri={chat.otherUser?.image}
-                        subtitle={subtitle}
-                        unreadCount={chat.unreadCount}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/chats/direct/[threadId]',
-                            params: {
-                              threadId: chat.id,
-                              title: otherUserName,
-                              userId: chat.otherUser.id,
-                            },
-                          })
-                        }
-                      />
-                    </SwipeDismissNotificationRow>
-                  </StaggeredReveal>
-                )
-              })}
-            </>
-          )}
-        </View>
-      ) : null}
-
-      {!showFullChatLoading && !noDataAtAll && segment === 'clubs' ? (
-        <View style={styles.tabContent}>
-          {clubsTabEmpty ? (
-            <View style={styles.bodyGutter}>
-              <EmptyState
-                title="No club chats"
-                body="You are not in any clubs yet. Browse clubs to join and unlock club chat."
-              />
-              <ActionButton label="Browse clubs" onPress={() => router.push('/clubs')} />
-            </View>
-          ) : (
-            <>
-              <Text style={styles.sectionLabel}>Your club chats</Text>
-              {filteredClubChats.map((club, index) => (
-                <StaggeredReveal key={`club-${club.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
-                  <ChatPreviewCard
-                    title={club.name}
-                    imageUri={club.logoUrl}
-                    subtitle={
-                      [club.city, club.state].filter(Boolean).join(', ') || 'Club chat'
-                    }
-                    unreadCount={club.unreadCount}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/chats/club/[clubId]',
-                        params: { clubId: club.id, name: club.name },
-                      })
-                    }
-                  />
-                </StaggeredReveal>
-              ))}
-            </>
-          )}
-        </View>
-      ) : null}
-
-      {!showFullChatLoading && !noDataAtAll && segment === 'events' ? (
-        <View style={styles.tabContent}>
-          {eventsTabEmpty ? (
-            <View style={styles.bodyGutter}>
-              <EmptyState
-                title="No event chats"
-                body="You do not have access to event chats yet. Register for events or join as staff to see threads here."
-              />
-            </View>
-          ) : (
-            <>
-              <Text style={styles.sectionLabel}>Active</Text>
-              <View style={styles.eventStack}>
-                {activeEventChats.length > 0 ? (
-                  activeEventChats.map((event, index) => (
-                    <StaggeredReveal key={`event-active-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
-                      <EventChatListItemActive
-                        event={event as EventChatListEvent}
-                        onOpenGeneral={() => openEventGeneral(event)}
-                        onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
-                      />
-                    </StaggeredReveal>
-                  ))
-                ) : (
-                  <View style={styles.dashedBox}>
-                    <Text style={styles.dashedBoxText}>No active events.</Text>
+      {!showFullChatLoading && !noDataAtAll ? (
+        <SegmentedContentFade activeKey={segment} segmentOrder={['direct', 'clubs', 'events']} style={styles.listScroll}>
+          <>
+            {segment === 'direct' ? (
+              <View style={styles.tabContent}>
+                {directTabEmpty ? (
+                  <View style={styles.bodyGutter}>
+                    <EmptyState
+                      title="No personal chats"
+                      body="Open any player profile and tap Message to start a conversation."
+                    />
                   </View>
+                ) : (
+                  <>
+                    {filteredDirectChats.map((chat, index) => {
+                      const otherUserName = chat.otherUser?.name?.trim() || 'Player'
+                      const lastMessagePrefix =
+                        chat.lastMessage && !chat.lastMessage.isDeleted
+                          ? chat.lastMessage.userId === user?.id
+                            ? 'You: '
+                            : ''
+                          : ''
+                      const subtitle =
+                        chat.lastMessage && !chat.lastMessage.isDeleted && chat.lastMessage.text
+                          ? `${lastMessagePrefix}${chat.lastMessage.text}`
+                          : chat.lastMessage?.isDeleted
+                          ? 'Message removed'
+                          : chat.otherUser?.city || 'Personal chat'
+
+                      return (
+                        <StaggeredReveal key={`direct-${chat.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`} distance={0}>
+                          <SwipeDismissNotificationRow
+                            disabled={deleteDirectThread.isPending}
+                            onSwipeActiveChange={setDirectSwipeActive}
+                            onDismiss={async () => {
+                              await dismissDirectChat(chat.id)
+                            }}
+                          >
+                            <ChatPreviewCard
+                              title={otherUserName}
+                              imageUri={chat.otherUser?.image}
+                              subtitle={subtitle}
+                              unreadCount={chat.unreadCount}
+                              trailingTime={chat.lastMessage?.createdAt ?? chat.updatedAt}
+                              onPress={() =>
+                                router.push({
+                                  pathname: '/chats/direct/[threadId]',
+                                  params: {
+                                    threadId: chat.id,
+                                    title: otherUserName,
+                                    userId: chat.otherUser.id,
+                                  },
+                                })
+                              }
+                            />
+                          </SwipeDismissNotificationRow>
+                        </StaggeredReveal>
+                      )
+                    })}
+                  </>
                 )}
               </View>
+            ) : null}
 
-              {archivedEventChats.length > 0 ? (
-                <View style={styles.archiveBlock}>
-                  <Pressable
-                    onPress={() => setArchiveOpen((prev) => !prev)}
-                    style={({ pressed }) => [styles.archiveHeader, pressed && { opacity: 0.85 }]}
-                  >
-                    <Text style={styles.archiveHeaderText}>Archive ({archivedEventChats.length})</Text>
-                    <Feather
-                      name="chevron-right"
-                      size={18}
-                      color={colors.textMuted}
-                      style={{ transform: [{ rotate: archiveOpen ? '90deg' : '0deg' }] }}
+            {segment === 'clubs' ? (
+              <View style={styles.tabContent}>
+                {clubsTabEmpty ? (
+                  <View style={styles.bodyGutter}>
+                    <EmptyState
+                      title="No club chats"
+                      body="You are not in any clubs yet. Browse clubs to join and unlock club chat."
                     />
-                  </Pressable>
+                    <ActionButton label="Browse clubs" onPress={() => router.push('/clubs')} />
+                  </View>
+                ) : (
+                  <>
+                    {filteredClubChats.map((club, index) => (
+                      <StaggeredReveal key={`club-${club.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`} distance={0}>
+                        <ChatPreviewCard
+                          title={club.name}
+                          imageUri={club.logoUrl}
+                          subtitle={[club.city, club.state].filter(Boolean).join(', ') || 'Club chat'}
+                          unreadCount={club.unreadCount}
+                          trailingTime={club.lastMessageAt}
+                          onPress={() =>
+                            router.push({
+                              pathname: '/chats/club/[clubId]',
+                              params: { clubId: club.id, name: club.name },
+                            })
+                          }
+                        />
+                      </StaggeredReveal>
+                    ))}
+                  </>
+                )}
+              </View>
+            ) : null}
 
-                  {archiveOpen ? (
+            {segment === 'events' ? (
+              <View style={styles.tabContent}>
+                {eventsTabEmpty ? (
+                  <View style={styles.bodyGutter}>
+                    <EmptyState
+                      title="No event chats"
+                      body="You do not have access to event chats yet. Register for events or join as staff to see threads here."
+                    />
+                  </View>
+                ) : (
+                  <>
                     <View style={styles.eventStack}>
-                      {archivedEventChats.map((event, index) => (
-                        <StaggeredReveal key={`event-arch-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}-archive-${archiveOpen ? 1 : 0}`}>
-                          <EventChatListItemArchived
-                            event={event as EventChatListEvent}
-                            expanded={expandedArchiveEventIds.has(event.id)}
-                            onToggleExpand={() => toggleArchiveEventExpanded(event.id)}
-                            onOpenGeneral={() => openEventGeneral(event)}
-                            onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
-                          />
-                        </StaggeredReveal>
-                      ))}
+                      {activeEventChats.length > 0 ? (
+                        activeEventChats.map((event, index) => (
+                          <StaggeredReveal key={`event-active-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`} distance={0}>
+                            <EventChatListItemActive
+                              event={event as EventChatListEvent}
+                              onOpenGeneral={() => openEventGeneral(event)}
+                              onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
+                            />
+                          </StaggeredReveal>
+                        ))
+                      ) : (
+                        <View style={styles.dashedBox}>
+                          <Text style={styles.dashedBoxText}>No active events.</Text>
+                        </View>
+                      )}
                     </View>
-                  ) : null}
-                </View>
-              ) : null}
-            </>
-          )}
-        </View>
-      ) : null}
-          </PickleRefreshScrollView>
+
+                    {archivedEventChats.length > 0 ? (
+                      <View style={styles.archiveBlock}>
+                        <Pressable
+                          onPress={() => setArchiveOpen((prev) => !prev)}
+                          style={({ pressed }) => [styles.archiveHeader, pressed && { opacity: 0.85 }]}
+                        >
+                          <Text style={styles.archiveHeaderText}>Archive ({archivedEventChats.length})</Text>
+                          <Feather
+                            name="chevron-right"
+                            size={18}
+                            color={colors.textMuted}
+                            style={{ transform: [{ rotate: archiveOpen ? '90deg' : '0deg' }] }}
+                          />
+                        </Pressable>
+
+                        {archiveOpen ? (
+                          <View style={styles.eventStack}>
+                            {archivedEventChats.map((event, index) => (
+                              <StaggeredReveal key={`event-arch-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}-archive-${archiveOpen ? 1 : 0}`} distance={0}>
+                                <EventChatListItemArchived
+                                  event={event as EventChatListEvent}
+                                  expanded={expandedArchiveEventIds.has(event.id)}
+                                  onToggleExpand={() => toggleArchiveEventExpanded(event.id)}
+                                  onOpenGeneral={() => openEventGeneral(event)}
+                                  onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
+                                />
+                              </StaggeredReveal>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </>
+                )}
+              </View>
+            ) : null}
+          </>
         </SegmentedContentFade>
+      ) : null}
+        </PickleRefreshScrollView>
         </View>
       </PageLayout>
       <AppBottomSheet
@@ -631,9 +650,15 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     minWidth: 0,
   },
-  segmentTrack: {
+  chipsScroller: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
+    flexGrow: 0,
+  },
+  chipsRow: {
+    gap: 8,
+    paddingRight: spacing.lg,
+    alignItems: 'center',
   },
   bodyGutter: {
     paddingHorizontal: spacing.lg,
@@ -660,6 +685,43 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  filterChip: {
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterChipPressed: {
+    opacity: 0.88,
+  },
+  filterChipLabel: {
+    color: colors.text,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  filterChipLabelActive: {
+    color: colors.white,
+  },
+  filterChipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    flexShrink: 0,
+  },
+  filterChipDotActive: {
+    backgroundColor: colors.white,
   },
   eventStack: {
     paddingHorizontal: spacing.lg,
