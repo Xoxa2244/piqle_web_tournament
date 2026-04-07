@@ -26,7 +26,6 @@ async function getThreadForUser(prisma: any, threadId: string, userId: string) {
           image: true,
           city: true,
           isActive: true,
-          updatedAt: true,
         },
       },
       participantB: {
@@ -36,7 +35,6 @@ async function getThreadForUser(prisma: any, threadId: string, userId: string) {
           image: true,
           city: true,
           isActive: true,
-          updatedAt: true,
         },
       },
     },
@@ -172,7 +170,37 @@ export const directChatRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
       const otherUser = thread.participantAId === userId ? thread.participantB : thread.participantA
+      const otherUserId = thread.participantAId === userId ? thread.participantBId : thread.participantAId
       const blockState = await getDirectBlockState(ctx.prisma, userId, otherUser.id)
+      const [otherReadState, latestOtherMessage] = await Promise.all([
+        ctx.prisma.directChatReadState.findUnique({
+          where: {
+            threadId_userId: {
+              threadId: thread.id,
+              userId: otherUserId,
+            },
+          },
+          select: {
+            lastReadAt: true,
+          },
+        }),
+        ctx.prisma.directChatMessage.findFirst({
+          where: {
+            threadId: thread.id,
+            userId: otherUserId,
+            deletedAt: null,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            createdAt: true,
+          },
+        }),
+      ])
+      const lastActiveAt = [otherReadState?.lastReadAt, latestOtherMessage?.createdAt]
+        .filter(Boolean)
+        .sort((left: any, right: any) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null
 
       return {
         id: thread.id,
@@ -183,7 +211,7 @@ export const directChatRouter = createTRPCRouter({
           city: otherUser.city,
         },
         presence: {
-          lastActiveAt: otherUser.updatedAt,
+          lastActiveAt,
         },
         messagingState: {
           blockedByMe: blockState.blockedByMe,

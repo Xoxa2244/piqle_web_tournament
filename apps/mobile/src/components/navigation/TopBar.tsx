@@ -120,17 +120,22 @@ const createStyles = (colors: ThemePalette) =>
       minWidth: 0,
     },
     titleTextWrapWithBelow: {
-      height: 42,
+      height: 28,
       justifyContent: 'center',
       gap: 0,
     },
     titleMainWrap: {
       minWidth: 0,
     },
+    titleCompact: {
+      fontSize: 15,
+      lineHeight: 16,
+      letterSpacing: -0.2,
+    },
     titleBelowText: {
-      marginTop: -4,
-      fontSize: 11,
-      lineHeight: 14,
+      marginTop: 0,
+      fontSize: 9,
+      lineHeight: 10,
       color: colors.textMuted,
       fontWeight: '600',
     },
@@ -462,6 +467,7 @@ export const TopBar = ({
                     <BrandGradientText
                       style={[
                         styles.title,
+                        titleBelow && styles.titleCompact,
                         styles.titleNextToAccessory,
                         showBack && styles.titleAlignedWithBack,
                       ]}
@@ -499,6 +505,7 @@ export const TopBar = ({
                   <BrandGradientText
                     style={[
                       styles.title,
+                      titleBelow && styles.titleCompact,
                       styles.titleInCluster,
                       showBack && styles.titleWithBack,
                       showBack && styles.titleAlignedWithBack,
