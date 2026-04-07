@@ -224,7 +224,7 @@ export const clubChatRouter = createTRPCRouter({
       }
 
       const isAdmin = Boolean(admin)
-      const cooldownMs = isAdmin ? 1000 : 2500
+      const cooldownMs = isAdmin ? 300 : 500
       const maxPerMinute = isAdmin ? 30 : 10
 
       if (lastMessage) {

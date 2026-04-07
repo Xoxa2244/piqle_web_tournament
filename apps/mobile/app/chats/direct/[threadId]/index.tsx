@@ -12,7 +12,7 @@ import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
 import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { chatRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -36,6 +36,7 @@ export default function DirectChatScreen() {
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
 
@@ -45,7 +46,7 @@ export default function DirectChatScreen() {
   )
   const messagesQuery = trpc.directChat.list.useQuery(
     { threadId, limit: 100 },
-    { enabled: Boolean(threadId) && isAuthenticated, ...chatRealtimeQueryOptions }
+    { enabled: Boolean(threadId) && isAuthenticated, ...messageThreadRealtimeQueryOptions }
   )
   const clearDirectUnreadCache = useCallback(() => {
     if (!threadId) return
@@ -68,8 +69,9 @@ export default function DirectChatScreen() {
       if (!trimmed || !threadId || !user?.id) return null
 
       const createdAt = new Date()
+      const optimisticId = `optimistic-${threadId}-${createdAt.getTime()}`
       const optimisticMessage = {
-        id: `optimistic-${threadId}-${createdAt.getTime()}`,
+        id: optimisticId,
         threadId,
         userId: user.id,
         text: trimmed,
@@ -84,14 +86,10 @@ export default function DirectChatScreen() {
         },
       }
 
-      const previousMessages = (messagesQuery.data ?? []) as ChatMessage[]
       const previousChats = ((utils.directChat.listMyChats.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
-      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) => [
-        ...((current ?? []) as any[]),
-        optimisticMessage,
-      ])
+      setOptimisticMessages((current) => [...current, optimisticMessage])
       utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((chat) =>
           chat.id === threadId
@@ -112,10 +110,19 @@ export default function DirectChatScreen() {
         )
       )
 
-      return { previousMessages, previousChats }
+      return { optimisticId, previousChats }
     },
-    onSuccess: (data: { wasFiltered?: boolean }) => {
+    onSuccess: (data: any, _vars, context: any) => {
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+      }
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) => {
+        const list = (current ?? []) as any[]
+        if (list.some((message) => message.id === data.id)) return list
+        return [...list, data]
+      })
       clearDirectUnreadCache()
+      void threadQuery.refetch()
       void messagesQuery.refetch()
       void utils.directChat.listMyChats.invalidate()
       if (data?.wasFiltered) {
@@ -123,8 +130,8 @@ export default function DirectChatScreen() {
       }
     },
     onError: (error: any, _vars: unknown, context: any) => {
-      if (context?.previousMessages) {
-        utils.directChat.list.setData({ threadId, limit: 100 }, context.previousMessages)
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
       }
       if (context?.previousChats) {
         utils.directChat.listMyChats.setData(undefined, context.previousChats)
@@ -163,7 +170,12 @@ export default function DirectChatScreen() {
     }
   }, [scrollToBottom])
 
-  const messages = (messagesQuery.data ?? []) as ChatMessage[]
+  const messages = useMemo(() => {
+    const serverMessages = (messagesQuery.data ?? []) as ChatMessage[]
+    if (!optimisticMessages.length) return serverMessages
+    const serverIds = new Set(serverMessages.map((message) => message.id))
+    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+  }, [messagesQuery.data, optimisticMessages])
   const displayName = threadQuery.data?.otherUser?.name?.trim() || fallbackTitle
   const otherUserId = threadQuery.data?.otherUser?.id || fallbackUserId
   const isEmpty = messages.length === 0
@@ -183,7 +195,7 @@ export default function DirectChatScreen() {
     )
   }
 
-  if (threadQuery.isLoading || messagesQuery.isLoading) {
+  if (threadQuery.isLoading || (messagesQuery.isLoading && !messagesQuery.data?.length && optimisticMessages.length === 0)) {
     return <ChatScreenLoading title={displayName} />
   }
 
@@ -264,7 +276,7 @@ export default function DirectChatScreen() {
           onSend={() => {
             void sendMessage.mutateAsync({ threadId, text: draft.trim() }).catch(() => undefined)
           }}
-          sendDisabled={sendMessage.isPending || draft.trim().length === 0}
+          sendDisabled={draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}

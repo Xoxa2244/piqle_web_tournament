@@ -334,7 +334,7 @@ export const directChatRouter = createTRPCRouter({
 
       if (lastMessage) {
         const delta = now.getTime() - new Date(lastMessage.createdAt).getTime()
-        if (delta < 1200) {
+        if (delta < 350) {
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
         }
 

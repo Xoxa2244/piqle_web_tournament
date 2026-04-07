@@ -193,7 +193,7 @@ async function sanitizeAndRateLimit(input: {
   }
 
   const now = new Date()
-  const cooldownMs = input.isModerator ? 1000 : 2500
+  const cooldownMs = input.isModerator ? 300 : 500
   const maxPerMinute = input.isModerator ? 30 : 10
 
   if (input.lastMessage) {

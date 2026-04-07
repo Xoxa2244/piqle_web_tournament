@@ -14,7 +14,7 @@ import type { ChatMessage } from '../../../../src/lib/chatMessages'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
-import { chatRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
@@ -39,6 +39,7 @@ export default function ClubChatScreen() {
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
@@ -61,7 +62,7 @@ export default function ClubChatScreen() {
 
   const messagesQuery = trpc.clubChat.list.useQuery(
     { clubId, limit: 100 },
-    { enabled: Boolean(clubId) && isAuthenticated, ...chatRealtimeQueryOptions }
+    { enabled: Boolean(clubId) && isAuthenticated, ...messageThreadRealtimeQueryOptions }
   )
   const pendingFeedbackQuery = trpc.feedback.getPendingPrompts.useQuery(undefined, {
     enabled: isAuthenticated && FEEDBACK_API_ENABLED,
@@ -87,8 +88,9 @@ export default function ClubChatScreen() {
       if (!trimmed || !clubId || !user?.id) return null
 
       const createdAt = new Date()
+      const optimisticId = `optimistic-${clubId}-${createdAt.getTime()}`
       const optimisticMessage = {
-        id: `optimistic-${clubId}-${createdAt.getTime()}`,
+        id: optimisticId,
         clubId,
         userId: user.id,
         text: trimmed,
@@ -103,23 +105,27 @@ export default function ClubChatScreen() {
         },
       }
 
-      const previousMessages = (messagesQuery.data ?? []) as ChatMessage[]
       const previousClubs = ((utils.club.listMyChatClubs.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
-      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) => [
-        ...((current ?? []) as any[]),
-        optimisticMessage,
-      ])
+      setOptimisticMessages((current) => [...current, optimisticMessage])
       utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((club) =>
           club.id === clubId ? { ...club, unreadCount: 0, lastMessageAt: createdAt } : club
         )
       )
 
-      return { previousMessages, previousClubs }
+      return { optimisticId, previousClubs }
     },
-    onSuccess: (data: { wasFiltered?: boolean }) => {
+    onSuccess: (data: any, _vars, context: any) => {
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+      }
+      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) => {
+        const list = (current ?? []) as any[]
+        if (list.some((message) => message.id === data.id)) return list
+        return [...list, data]
+      })
       clearClubUnreadCache()
       void messagesQuery.refetch()
       void utils.club.listMyChatClubs.invalidate()
@@ -128,8 +134,8 @@ export default function ClubChatScreen() {
       }
     },
     onError: (e: any, _vars: unknown, context: any) => {
-      if (context?.previousMessages) {
-        utils.clubChat.list.setData({ clubId, limit: 100 }, context.previousMessages)
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
       }
       if (context?.previousClubs) {
         utils.club.listMyChatClubs.setData(undefined, context.previousClubs)
@@ -163,7 +169,12 @@ export default function ClubChatScreen() {
     }
   }, [scrollToBottom])
 
-  const messages = (messagesQuery.data ?? []) as any[]
+  const messages = useMemo(() => {
+    const serverMessages = (messagesQuery.data ?? []) as ChatMessage[]
+    if (!optimisticMessages.length) return serverMessages
+    const serverIds = new Set(serverMessages.map((message) => message.id))
+    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+  }, [messagesQuery.data, optimisticMessages])
   const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
     (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,
   )
@@ -185,7 +196,7 @@ export default function ClubChatScreen() {
     )
   }
 
-  if (messagesQuery.isLoading) {
+  if (messagesQuery.isLoading && !messagesQuery.data?.length && optimisticMessages.length === 0) {
     return <ChatScreenLoading title={clubDisplayName} />
   }
 
@@ -267,7 +278,7 @@ export default function ClubChatScreen() {
           onSend={() => {
             void sendMessage.mutateAsync({ clubId, text: draft.trim() }).catch(() => undefined)
           }}
-          sendDisabled={sendMessage.isPending || draft.trim().length === 0}
+          sendDisabled={draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}

@@ -14,4 +14,11 @@ export const realtimeAwareQueryOptions = {
 export const chatRealtimeQueryOptions = {
   refetchInterval: CHAT_REALTIME_POLL_INTERVAL_MS,
   staleTime: 0,
+  refetchOnMount: 'always' as const,
+} as const
+
+export const messageThreadRealtimeQueryOptions = {
+  refetchInterval: 1000,
+  staleTime: 0,
+  refetchOnMount: 'always' as const,
 } as const

@@ -23,7 +23,7 @@ import type { ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
-import { chatRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
+import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
@@ -55,6 +55,7 @@ export default function TournamentChatScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const threadContentOpacity = useRef(new Animated.Value(1)).current
@@ -100,12 +101,12 @@ export default function TournamentChatScreen() {
     { tournamentId, limit: 100 },
     {
       enabled: Boolean(tournamentId) && isAuthenticated && !activeDivisionId,
-      ...chatRealtimeQueryOptions,
+      ...messageThreadRealtimeQueryOptions,
     }
   )
   const divisionMessagesQuery = trpc.tournamentChat.listDivision.useQuery(
     { divisionId: activeDivisionId || '', limit: 100 },
-    { enabled: Boolean(activeDivisionId) && isAuthenticated, ...chatRealtimeQueryOptions }
+    { enabled: Boolean(activeDivisionId) && isAuthenticated, ...messageThreadRealtimeQueryOptions }
   )
   const clearEventUnreadCache = useCallback(
     (divisionId?: string | null) => {
@@ -151,8 +152,9 @@ export default function TournamentChatScreen() {
       if (!trimmed || !tournamentId || !user?.id) return null
 
       const createdAt = new Date()
+      const optimisticId = `optimistic-tournament-${tournamentId}-${createdAt.getTime()}`
       const optimisticMessage = {
-        id: `optimistic-tournament-${tournamentId}-${createdAt.getTime()}`,
+        id: optimisticId,
         tournamentId,
         userId: user.id,
         text: trimmed,
@@ -167,23 +169,27 @@ export default function TournamentChatScreen() {
         },
       }
 
-      const previousMessages = ((tournamentMessagesQuery.data ?? []) as ChatMessage[]).slice()
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
-      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) => [
-        ...((current ?? []) as any[]),
-        optimisticMessage,
-      ])
+      setOptimisticMessages((current) => [...current, optimisticMessage])
       utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((event) =>
           event.id === tournamentId ? { ...event, unreadCount: 0, lastMessageAt: createdAt } : event
         )
       )
 
-      return { previousMessages, previousEvents }
+      return { optimisticId, previousEvents }
     },
-    onSuccess: (data: { wasFiltered?: boolean }) => {
+    onSuccess: (data: any, _vars, context: any) => {
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+      }
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) => {
+        const list = (current ?? []) as any[]
+        if (list.some((message) => message.id === data.id)) return list
+        return [...list, data]
+      })
       clearEventUnreadCache(null)
       void tournamentMessagesQuery.refetch()
       void utils.tournamentChat.listMyEventChats.invalidate()
@@ -192,8 +198,8 @@ export default function TournamentChatScreen() {
       }
     },
     onError: (e: any, _vars: unknown, context: any) => {
-      if (context?.previousMessages) {
-        utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, context.previousMessages)
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
       }
       if (context?.previousEvents) {
         utils.tournamentChat.listMyEventChats.setData(undefined, context.previousEvents)
@@ -207,8 +213,9 @@ export default function TournamentChatScreen() {
       if (!trimmed || !divisionId || !user?.id) return null
 
       const createdAt = new Date()
+      const optimisticId = `optimistic-division-${divisionId}-${createdAt.getTime()}`
       const optimisticMessage = {
-        id: `optimistic-division-${divisionId}-${createdAt.getTime()}`,
+        id: optimisticId,
         divisionId,
         userId: user.id,
         text: trimmed,
@@ -223,19 +230,25 @@ export default function TournamentChatScreen() {
         },
       }
 
-      const previousMessages = ((divisionMessagesQuery.data ?? []) as ChatMessage[]).slice()
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
-      utils.tournamentChat.listDivision.setData({ divisionId, limit: 100 }, (current: any[] | undefined) => [
-        ...((current ?? []) as any[]),
-        optimisticMessage,
-      ])
+      setOptimisticMessages((current) => [...current, optimisticMessage])
       clearEventUnreadCache(divisionId)
 
-      return { previousMessages, previousEvents }
+      return { optimisticId, previousEvents }
     },
-    onSuccess: (data: { wasFiltered?: boolean }) => {
+    onSuccess: (data: any, _vars, context: any) => {
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+      }
+      if (activeDivisionId) {
+        utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) => {
+          const list = (current ?? []) as any[]
+          if (list.some((message) => message.id === data.id)) return list
+          return [...list, data]
+        })
+      }
       if (activeDivisionId) {
         clearEventUnreadCache(activeDivisionId)
       }
@@ -246,8 +259,8 @@ export default function TournamentChatScreen() {
       }
     },
     onError: (e: any, _vars: unknown, context: any) => {
-      if (activeDivisionId && context?.previousMessages) {
-        utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, context.previousMessages)
+      if (context?.optimisticId) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
       }
       if (context?.previousEvents) {
         utils.tournamentChat.listMyEventChats.setData(undefined, context.previousEvents)
@@ -335,7 +348,12 @@ export default function TournamentChatScreen() {
   const activeDivision = activeDivisionId ? divisions.find((d: any) => d.id === activeDivisionId) ?? null : null
   const canPost = activeDivisionId ? Boolean(activeDivisionPermission?.canPost) : Boolean(permission?.canPost)
   const canModerate = activeDivisionId ? Boolean(activeDivisionPermission?.canModerate) : Boolean(permission?.canModerate)
-  const messages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as any[]
+  const messages = useMemo(() => {
+    const serverMessages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as ChatMessage[]
+    if (!optimisticMessages.length) return serverMessages
+    const serverIds = new Set(serverMessages.map((message) => message.id))
+    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+  }, [activeDivisionId, divisionMessagesQuery.data, tournamentMessagesQuery.data, optimisticMessages])
   const isEmpty = (messages.length ?? 0) === 0
   const topicBar = (
     <View style={styles.topicBarWrap}>
@@ -409,7 +427,7 @@ export default function TournamentChatScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {messagesLoading ? (
+            {messagesLoading && messages.length === 0 ? (
               <LoadingBlock label="Loading messages…" />
             ) : isEmpty ? (
               <EmptyState
@@ -447,7 +465,7 @@ export default function TournamentChatScreen() {
               void run.catch(() => undefined)
             }}
             sendDisabled={
-              (activeDivisionId ? sendDivisionMessage.isPending : sendMessage.isPending) || draft.trim().length === 0
+              draft.trim().length === 0
             }
             paddingHorizontal={16}
             paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
