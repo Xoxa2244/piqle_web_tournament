@@ -593,7 +593,8 @@ export const tournamentChatRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const membership = await getTournamentMembership(ctx.prisma, ctx.session.user.id, input.tournamentId)
+      const userId = ctx.session.user.id
+      const membership = await getTournamentMembership(ctx.prisma, userId, input.tournamentId)
       if (!membership.canView) {
         throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
       }
@@ -767,7 +768,8 @@ export const tournamentChatRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const membership = await getDivisionMembership(ctx.prisma, ctx.session.user.id, input.divisionId)
+      const userId = ctx.session.user.id
+      const membership = await getDivisionMembership(ctx.prisma, userId, input.divisionId)
       if (!membership.canView) {
         throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
       }
