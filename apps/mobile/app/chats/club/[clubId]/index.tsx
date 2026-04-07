@@ -26,6 +26,7 @@ import { useToast } from '../../../../src/providers/ToastProvider'
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
+const CLIENT_DUPLICATE_GUARD_MS = 10_000
 
 export default function ClubChatScreen() {
   const { colors } = useAppTheme()
@@ -42,9 +43,12 @@ export default function ClubChatScreen() {
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
   const lastSendAtRef = useRef(0)
+  const lastSentTextRef = useRef('')
+  const lastSentTextAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
 
@@ -62,9 +66,19 @@ export default function ClubChatScreen() {
       toast.error('Slow down a bit.')
       return
     }
+    if (
+      lastSentTextRef.current &&
+      lastSentTextRef.current === text &&
+      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
+    ) {
+      toast.error('Duplicate message.')
+      return
+    }
 
     lastSendAtRef.current = now
-    void sendMessage.mutateAsync({ clubId, text }).catch(() => undefined)
+    lastSentTextRef.current = text
+    lastSentTextAtRef.current = now
+    sendMessage.mutate({ clubId, text })
   }, [clubId, draft, sendMessage, toast])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -168,6 +182,10 @@ export default function ClubChatScreen() {
   })
 
   useEffect(() => {
+    initialScrollDoneRef.current = false
+  }, [clubId])
+
+  useEffect(() => {
     if (!clubId || !isAuthenticated) return
     markRead.mutate({ clubId })
   }, [clubId, isAuthenticated, messagesQuery.data?.length])
@@ -203,6 +221,12 @@ export default function ClubChatScreen() {
   const showClubFeedbackPrompt = Boolean(pendingClubPrompt || showDevClubPrompt)
 
   useEffect(() => {
+    if (messages.length === 0 && !showClubFeedbackPrompt) return
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true
+      scrollToBottom(false)
+      return
+    }
     scrollToBottom(true)
   }, [messages.length, showClubFeedbackPrompt, scrollToBottom])
 

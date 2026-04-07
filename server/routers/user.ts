@@ -1,4 +1,6 @@
+import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
+import { pushToUsers } from '@/lib/realtime'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
 const notificationSettingsInput = z.object({
@@ -41,6 +43,46 @@ const decimalToNumber = (value: any): number | null => {
   }
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+const isMissingDbRelation = (err: any, relationName: string) => {
+  const msg = String(err?.message ?? '').toLowerCase()
+  return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
+}
+
+async function getDirectMessageState(prisma: any, userId: string, otherUserId: string) {
+  try {
+    const blocks = await prisma.directChatBlock.findMany({
+      where: {
+        OR: [
+          { blockerId: userId, blockedUserId: otherUserId },
+          { blockerId: otherUserId, blockedUserId: userId },
+        ],
+      },
+      select: {
+        blockerId: true,
+        blockedUserId: true,
+      },
+    })
+
+    const blockedByMe = blocks.some((row: any) => row.blockerId === userId && row.blockedUserId === otherUserId)
+    const blockedByOther = blocks.some((row: any) => row.blockerId === otherUserId && row.blockedUserId === userId)
+
+    return {
+      blockedByMe,
+      blockedByOther,
+      canMessage: !(blockedByMe || blockedByOther),
+    }
+  } catch (err: any) {
+    if (isMissingDbRelation(err, 'direct_chat_blocks')) {
+      return {
+        blockedByMe: false,
+        blockedByOther: false,
+        canMessage: true,
+      }
+    }
+    throw err
+  }
 }
 
 /** Public DUPR dashboard profile URL (numeric id from OAuth) or fallback search by DUPR code. */
@@ -287,6 +329,197 @@ export const userRouter = createTRPCRouter({
         tournamentsPlayedCount: _count.players,
         tournamentsCreatedCount: _count.tournaments,
       }
+    }),
+
+  getDirectMessageState: protectedProcedure
+    .input(z.object({ otherUserId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const otherUserId = input.otherUserId.trim()
+
+      if (!otherUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'User is required.' })
+      }
+      if (otherUserId === userId) {
+        return {
+          blockedByMe: false,
+          blockedByOther: false,
+          canMessage: false,
+        }
+      }
+
+      return getDirectMessageState(ctx.prisma, userId, otherUserId)
+    }),
+
+  listBlockedUsers: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const rows = await ctx.prisma.directChatBlock.findMany({
+        where: { blockerId: ctx.session.user.id },
+        orderBy: [{ updatedAt: 'desc' }],
+        select: {
+          id: true,
+          createdAt: true,
+          blockedUser: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              city: true,
+            },
+          },
+        },
+      })
+
+      return rows.map((row: any) => ({
+        id: row.blockedUser.id,
+        name: row.blockedUser.name,
+        image: row.blockedUser.image,
+        city: row.blockedUser.city,
+        blockedAt: row.createdAt,
+      }))
+    } catch (err: any) {
+      if (isMissingDbRelation(err, 'direct_chat_blocks')) {
+        return []
+      }
+      throw err
+    }
+  }),
+
+  blockUser: protectedProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const blockerId = ctx.session.user.id
+      const blockedUserId = input.userId.trim()
+
+      if (!blockedUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'User is required.' })
+      }
+      if (blockedUserId === blockerId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot block yourself.' })
+      }
+
+      const target = await ctx.prisma.user.findUnique({
+        where: { id: blockedUserId },
+        select: { id: true, isActive: true },
+      })
+      if (!target || !target.isActive) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' })
+      }
+
+      try {
+        await ctx.prisma.directChatBlock.upsert({
+          where: {
+            blockerId_blockedUserId: {
+              blockerId,
+              blockedUserId,
+            },
+          },
+          create: {
+            blockerId,
+            blockedUserId,
+          },
+          update: {},
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'direct_chat_blocks')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'direct_chat_blocks table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      pushToUsers([blockerId, blockedUserId], {
+        type: 'invalidate',
+        keys: ['directChat.listMyChats'],
+      })
+
+      return { success: true }
+    }),
+
+  unblockUser: protectedProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const blockerId = ctx.session.user.id
+      const blockedUserId = input.userId.trim()
+
+      if (!blockedUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'User is required.' })
+      }
+
+      try {
+        await ctx.prisma.directChatBlock.deleteMany({
+          where: {
+            blockerId,
+            blockedUserId,
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'direct_chat_blocks')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'direct_chat_blocks table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      pushToUsers([blockerId, blockedUserId], {
+        type: 'invalidate',
+        keys: ['directChat.listMyChats'],
+      })
+
+      return { success: true }
+    }),
+
+  reportDirectMessageUser: protectedProcedure
+    .input(
+      z.object({
+        reportedUserId: z.string(),
+        threadId: z.string().optional(),
+        details: z.string().trim().min(10).max(2000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const reporterId = ctx.session.user.id
+      const reportedUserId = input.reportedUserId.trim()
+
+      if (!reportedUserId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'User is required.' })
+      }
+      if (reportedUserId === reporterId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot report yourself.' })
+      }
+
+      const target = await ctx.prisma.user.findUnique({
+        where: { id: reportedUserId },
+        select: { id: true, isActive: true },
+      })
+      if (!target || !target.isActive) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found.' })
+      }
+
+      try {
+        await ctx.prisma.directChatReport.create({
+          data: {
+            reporterId,
+            reportedUserId,
+            threadId: input.threadId?.trim() || null,
+            details: input.details.trim(),
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'direct_chat_reports')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'direct_chat_reports table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      return { success: true }
     }),
 
   linkDupr: protectedProcedure

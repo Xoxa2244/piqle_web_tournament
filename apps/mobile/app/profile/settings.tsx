@@ -520,6 +520,21 @@ export default function ProfileSettingsScreen() {
         </SurfaceCard>
 
         <SurfaceCard style={[styles.card, themedCardStyle]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy & Messaging</Text>
+          <View>
+            <SettingItem
+              colors={colors}
+              icon="slash"
+              title="Blacklist"
+              description="Manage blocked users"
+              type="link"
+              showBottomDivider={false}
+              onPress={() => router.push('/profile/blocked-users')}
+            />
+          </View>
+        </SurfaceCard>
+
+        <SurfaceCard style={[styles.card, themedCardStyle]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>About & Support</Text>
           <View>
             <SettingItem colors={colors} icon="external-link" title="Terms of Service" type="link" onPress={() => void openExternal()} />

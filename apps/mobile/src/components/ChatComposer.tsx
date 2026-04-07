@@ -12,6 +12,7 @@ export type ChatComposerProps = {
   placeholder: string
   onSend: () => void
   sendDisabled?: boolean
+  editable?: boolean
   maxLength?: number
   paddingBottom?: number
   /** Например 16 на вкладке AI, где родитель без chatScreenBody */
@@ -33,6 +34,7 @@ export const ChatComposer = ({
   placeholder,
   onSend,
   sendDisabled = false,
+  editable = true,
   maxLength = 1000,
   paddingBottom = 16,
   paddingHorizontal = 0,
@@ -85,6 +87,7 @@ export const ChatComposer = ({
           style={[styles.input, multiline && styles.inputMultiline]}
           multiline={multiline}
           maxLength={maxLength}
+          editable={editable}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
           onFocus={onFocus}
@@ -97,8 +100,12 @@ export const ChatComposer = ({
           })}
         />
         <Pressable
-          style={({ pressed }) => [styles.sendBtn, sendDisabled && styles.sendBtnDisabled, pressed && !sendDisabled && { opacity: 0.9 }]}
-          disabled={sendDisabled}
+          style={({ pressed }) => [
+            styles.sendBtn,
+            (sendDisabled || !editable) && styles.sendBtnDisabled,
+            pressed && !(sendDisabled || !editable) && { opacity: 0.9 },
+          ]}
+          disabled={sendDisabled || !editable}
           onPress={onSend}
         >
           <View style={styles.sendIconWrap}>

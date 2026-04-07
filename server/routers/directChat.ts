@@ -51,6 +51,33 @@ async function getThreadForUser(prisma: any, threadId: string, userId: string) {
   return thread
 }
 
+async function getDirectBlockState(prisma: any, userId: string, otherUserId: string) {
+  try {
+    const rows = await prisma.directChatBlock.findMany({
+      where: {
+        OR: [
+          { blockerId: userId, blockedUserId: otherUserId },
+          { blockerId: otherUserId, blockedUserId: userId },
+        ],
+      },
+      select: {
+        blockerId: true,
+        blockedUserId: true,
+      },
+    })
+
+    return {
+      blockedByMe: rows.some((row: any) => row.blockerId === userId && row.blockedUserId === otherUserId),
+      blockedByOther: rows.some((row: any) => row.blockerId === otherUserId && row.blockedUserId === userId),
+    }
+  } catch (err: any) {
+    if (isMissingDbRelation(err, 'direct_chat_blocks')) {
+      return { blockedByMe: false, blockedByOther: false }
+    }
+    throw err
+  }
+}
+
 export const directChatRouter = createTRPCRouter({
   getOrCreate: protectedProcedure
     .input(
@@ -85,6 +112,16 @@ export const directChatRouter = createTRPCRouter({
       }
 
       const [participantAId, participantBId] = sortParticipantIds(userId, otherUserId)
+      const blockState = await getDirectBlockState(ctx.prisma, userId, otherUserId)
+      if (blockState.blockedByMe || blockState.blockedByOther) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: blockState.blockedByMe
+            ? 'You blocked this user and cannot send messages.'
+            : 'You cannot send messages to this user.',
+        })
+      }
+
       const thread = await ctx.prisma.directChatThread.upsert({
         where: {
           participantAId_participantBId: {
@@ -99,8 +136,8 @@ export const directChatRouter = createTRPCRouter({
         update: {},
       })
 
-      await ctx.prisma.directChatHiddenState
-        .delete({
+      try {
+        await ctx.prisma.directChatHiddenState.delete({
           where: {
             threadId_userId: {
               threadId: thread.id,
@@ -108,7 +145,11 @@ export const directChatRouter = createTRPCRouter({
             },
           },
         })
-        .catch(() => undefined)
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'direct_chat_hidden_states')) {
+          throw err
+        }
+      }
 
       return {
         threadId: thread.id,
@@ -131,6 +172,7 @@ export const directChatRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
       const otherUser = thread.participantAId === userId ? thread.participantB : thread.participantA
+      const blockState = await getDirectBlockState(ctx.prisma, userId, otherUser.id)
 
       return {
         id: thread.id,
@@ -139,6 +181,11 @@ export const directChatRouter = createTRPCRouter({
           name: otherUser.name,
           image: otherUser.image,
           city: otherUser.city,
+        },
+        messagingState: {
+          blockedByMe: blockState.blockedByMe,
+          blockedByOther: blockState.blockedByOther,
+          canMessage: !(blockState.blockedByMe || blockState.blockedByOther),
         },
       }
     }),
@@ -186,15 +233,28 @@ export const directChatRouter = createTRPCRouter({
             lastReadAt: true,
           },
         },
-        hiddenStates: {
-          where: { userId },
-          take: 1,
-          select: {
-            hiddenAt: true,
-          },
-        },
       },
     })
+
+    let hiddenRows: { threadId: string; hiddenAt: Date }[] = []
+    try {
+      hiddenRows = await ctx.prisma.directChatHiddenState.findMany({
+        where: {
+          userId,
+          threadId: { in: threads.map((thread) => thread.id) },
+        },
+        select: {
+          threadId: true,
+          hiddenAt: true,
+        },
+      })
+    } catch (err: any) {
+      if (!isMissingDbRelation(err, 'direct_chat_hidden_states')) {
+        throw err
+      }
+    }
+
+    const hiddenAtByThreadId = new Map(hiddenRows.map((row) => [row.threadId, row.hiddenAt]))
 
     const unreadCounts = await Promise.all(
       threads.map(async (thread) => {
@@ -215,7 +275,7 @@ export const directChatRouter = createTRPCRouter({
 
     return threads
       .filter((thread) => {
-        const hiddenAt = thread.hiddenStates[0]?.hiddenAt
+        const hiddenAt = hiddenAtByThreadId.get(thread.id)
         if (!hiddenAt) return true
         const visibleUpdatedAt = thread.messages[0]?.createdAt ?? thread.updatedAt
         return visibleUpdatedAt > hiddenAt
@@ -343,6 +403,16 @@ export const directChatRouter = createTRPCRouter({
       }
 
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
+      const otherUserId = thread.participantAId === userId ? thread.participantBId : thread.participantAId
+      const blockState = await getDirectBlockState(ctx.prisma, userId, otherUserId)
+      if (blockState.blockedByMe || blockState.blockedByOther) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: blockState.blockedByMe
+            ? 'You blocked this user and cannot send messages.'
+            : 'You cannot send messages to this user.',
+        })
+      }
       const now = new Date()
       const minuteAgo = new Date(now.getTime() - 60 * 1000)
 
@@ -469,22 +539,32 @@ export const directChatRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
 
-      await ctx.prisma.directChatHiddenState.upsert({
-        where: {
-          threadId_userId: {
+      try {
+        await ctx.prisma.directChatHiddenState.upsert({
+          where: {
+            threadId_userId: {
+              threadId: thread.id,
+              userId,
+            },
+          },
+          create: {
             threadId: thread.id,
             userId,
+            hiddenAt: new Date(),
           },
-        },
-        create: {
-          threadId: thread.id,
-          userId,
-          hiddenAt: new Date(),
-        },
-        update: {
-          hiddenAt: new Date(),
-        },
-      })
+          update: {
+            hiddenAt: new Date(),
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'direct_chat_hidden_states')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'direct_chat_hidden_states table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
 
       pushToUsers([userId], { type: 'invalidate', keys: ['directChat.listMyChats'] })
 

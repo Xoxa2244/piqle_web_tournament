@@ -43,6 +43,7 @@ const wantsTopBarBack = (pathname: string) =>
   pathname === '/search' ||
   pathname === '/profile' ||
   pathname.startsWith('/profile/') ||
+  pathname.startsWith('/chats/direct/') ||
   pathname.startsWith('/chats/club/') ||
   pathname.startsWith('/chats/event/tournament/')
 

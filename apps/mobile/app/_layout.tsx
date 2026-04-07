@@ -50,6 +50,7 @@ const RootNavigator = () => {
         <Stack.Screen name="profile/index" />
         <Stack.Screen name="profile/edit" />
         <Stack.Screen name="profile/settings" />
+        <Stack.Screen name="profile/blocked-users" />
         <Stack.Screen name="tournaments/[id]/index" />
         <Stack.Screen name="tournaments/[id]/register" />
         <Stack.Screen name="clubs/[id]/index" />

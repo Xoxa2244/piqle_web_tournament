@@ -46,6 +46,10 @@ model User {
   directChatMessages             DirectChatMessage[]
   directChatReadStates           DirectChatReadState[]
   directChatHiddenStates         DirectChatHiddenState[]
+  directChatBlocksInitiated      DirectChatBlock[]            @relation("DirectChatBlockBlocker")
+  directChatBlocksReceived       DirectChatBlock[]            @relation("DirectChatBlockBlockedUser")
+  directChatReportsAuthored      DirectChatReport[]           @relation("DirectChatReportReporter")
+  directChatReportsReceived      DirectChatReport[]           @relation("DirectChatReportReportedUser")
   clubInvitesSent                ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived            ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests               ClubJoinRequest[]
@@ -487,6 +491,7 @@ model DirectChatThread {
   messages     DirectChatMessage[]
   readStates   DirectChatReadState[]
   hiddenStates DirectChatHiddenState[]
+  reports      DirectChatReport[]
 
   @@unique([participantAId, participantBId])
   @@index([participantAId, updatedAt])
@@ -542,6 +547,41 @@ model DirectChatHiddenState {
   @@unique([threadId, userId])
   @@index([userId, updatedAt])
   @@map("direct_chat_hidden_states")
+}
+
+model DirectChatBlock {
+  id            String   @id @default(uuid())
+  blockerId     String   @map("blocker_id")
+  blockedUserId String   @map("blocked_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  blocker     User @relation("DirectChatBlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedUser User @relation("DirectChatBlockBlockedUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedUserId])
+  @@index([blockerId, updatedAt])
+  @@index([blockedUserId, updatedAt])
+  @@map("direct_chat_blocks")
+}
+
+model DirectChatReport {
+  id             String   @id @default(uuid())
+  reporterId     String   @map("reporter_id")
+  reportedUserId String   @map("reported_user_id")
+  threadId       String?  @map("thread_id")
+  details        String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  reporter     User              @relation("DirectChatReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUser User              @relation("DirectChatReportReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  thread       DirectChatThread? @relation(fields: [threadId], references: [id], onDelete: SetNull)
+
+  @@index([reporterId, createdAt])
+  @@index([reportedUserId, createdAt])
+  @@index([threadId, createdAt])
+  @@map("direct_chat_reports")
 }
 
 model AiCoachMessage {

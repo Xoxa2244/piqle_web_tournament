@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Feather } from '@expo/vector-icons'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 
@@ -11,7 +12,7 @@ import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
-import { EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
+import { ActionButton, EmptyState, InputField, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
@@ -22,6 +23,8 @@ import { useToast } from '../../../../src/providers/ToastProvider'
 
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
+const CLIENT_DUPLICATE_GUARD_MS = 10_000
+type PendingMenuAction = 'block' | 'report' | null
 
 export default function DirectChatScreen() {
   const { colors } = useAppTheme()
@@ -36,12 +39,20 @@ export default function DirectChatScreen() {
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportDetails, setReportDetails] = useState('')
+  const [pendingMenuAction, setPendingMenuAction] = useState<PendingMenuAction>(null)
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
   const lastSendAtRef = useRef(0)
+  const lastSentTextRef = useRef('')
+  const lastSentTextAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
 
   const threadQuery = trpc.directChat.getThread.useQuery(
@@ -150,6 +161,31 @@ export default function DirectChatScreen() {
     },
     onError: (error: any) => toast.error(error.message || 'Failed to delete message'),
   })
+  const blockUser = trpc.user.blockUser.useMutation({
+    onSuccess: async () => {
+      setMenuOpen(false)
+      setBlockConfirmOpen(false)
+      toast.success('User blocked.')
+      await Promise.all([threadQuery.refetch(), utils.user.getDirectMessageState.invalidate()])
+    },
+    onError: (error: any) => toast.error(error.message || 'Failed to block user.'),
+  })
+  const reportUser = trpc.user.reportDirectMessageUser.useMutation({
+    onSuccess: () => {
+      setReportDetails('')
+      setReportOpen(false)
+      setMenuOpen(false)
+      toast.success('Report sent.')
+    },
+    onError: (error: any) => toast.error(error.message || 'Failed to send report.'),
+  })
+  const unblockUser = trpc.user.unblockUser.useMutation({
+    onSuccess: async () => {
+      toast.success('User unblocked.')
+      await Promise.all([threadQuery.refetch(), utils.user.getDirectMessageState.invalidate()])
+    },
+    onError: (error: any) => toast.error(error.message || 'Failed to unblock user.'),
+  })
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -166,15 +202,29 @@ export default function DirectChatScreen() {
       toast.error('Slow down a bit.')
       return
     }
+    if (
+      lastSentTextRef.current &&
+      lastSentTextRef.current === text &&
+      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
+    ) {
+      toast.error('Duplicate message.')
+      return
+    }
 
     lastSendAtRef.current = now
-    void sendMessage.mutateAsync({ threadId, text }).catch(() => undefined)
+    lastSentTextRef.current = text
+    lastSentTextAtRef.current = now
+    sendMessage.mutate({ threadId, text })
   }, [draft, sendMessage, threadId, toast])
 
   useEffect(() => {
     if (!threadId || !isAuthenticated) return
     markRead.mutate({ threadId })
   }, [threadId, isAuthenticated, messagesQuery.data?.length])
+
+  useEffect(() => {
+    initialScrollDoneRef.current = false
+  }, [threadId])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
@@ -200,9 +250,20 @@ export default function DirectChatScreen() {
   }, [messagesQuery.data, optimisticMessages])
   const displayName = threadQuery.data?.otherUser?.name?.trim() || fallbackTitle
   const otherUserId = threadQuery.data?.otherUser?.id || fallbackUserId
+  const messagingState = threadQuery.data?.messagingState
+  const messagingBlocked = Boolean(messagingState && !messagingState.canMessage)
+  const blockedComposerText = messagingState?.blockedByMe
+    ? 'You blocked this user and cannot send messages.'
+    : 'You cannot send messages to this user.'
   const isEmpty = messages.length === 0
 
   useEffect(() => {
+    if (messages.length === 0) return
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true
+      scrollToBottom(false)
+      return
+    }
     scrollToBottom(true)
   }, [messages.length, scrollToBottom])
 
@@ -256,6 +317,18 @@ export default function DirectChatScreen() {
           />
         </Pressable>
       }
+      topBarRightSlot={
+        <Pressable
+          onPress={() => setMenuOpen(true)}
+          style={({ pressed }) => [
+            styles.menuButton,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            pressed && styles.menuButtonPressed,
+          ]}
+        >
+          <Feather name="more-vertical" size={18} color={colors.text} />
+        </Pressable>
+      }
     >
       {messagesQuery.error ? (
         <SurfaceCard tone="soft">
@@ -291,17 +364,163 @@ export default function DirectChatScreen() {
           )}
         </ChatThreadRoot>
 
+        {messagingState?.blockedByMe ? (
+          <SurfaceCard style={styles.blockedBanner}>
+            <Text style={[styles.blockedBannerTitle, { color: colors.text }]}>You blocked this user</Text>
+            <Text style={[styles.blockedBannerBody, { color: colors.textMuted }]}>
+              Unblock them to see new messages and continue chatting.
+            </Text>
+            <ActionButton
+              label={unblockUser.isPending ? 'Unblocking…' : 'Unblock'}
+              onPress={() => {
+                if (!otherUserId) return
+                unblockUser.mutate({ userId: otherUserId })
+              }}
+              loading={unblockUser.isPending}
+            />
+          </SurfaceCard>
+        ) : null}
+
         <ChatComposer
-          value={draft}
+          value={messagingBlocked ? blockedComposerText : draft}
           onChangeText={setDraft}
-          placeholder="Message..."
+          placeholder={messagingBlocked ? blockedComposerText : 'Message...'}
           onSend={handleSend}
-          sendDisabled={draft.trim().length === 0}
+          sendDisabled={messagingBlocked || draft.trim().length === 0}
+          editable={!messagingBlocked}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
         />
       </KeyboardAvoidingView>
+
+      <AppBottomSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onDismissed={() => {
+          if (pendingMenuAction === 'block') {
+            setPendingMenuAction(null)
+            setBlockConfirmOpen(true)
+            return
+          }
+          if (pendingMenuAction === 'report') {
+            setPendingMenuAction(null)
+            setReportOpen(true)
+          }
+        }}
+        title={displayName}
+        subtitle="Chat actions"
+      >
+        <View style={styles.sheetActions}>
+          <Pressable
+            onPress={() => {
+              setPendingMenuAction('block')
+              setMenuOpen(false)
+            }}
+            disabled={!otherUserId || Boolean(messagingState?.blockedByMe) || blockUser.isPending}
+            style={({ pressed }) => [
+              styles.sheetActionRow,
+              { borderColor: colors.border, backgroundColor: colors.surface },
+              pressed && styles.sheetActionRowPressed,
+              (!otherUserId || Boolean(messagingState?.blockedByMe)) && styles.sheetActionRowDisabled,
+            ]}
+          >
+            <View style={styles.sheetActionCopy}>
+              <Feather
+                name="slash"
+                size={18}
+                color={messagingState?.blockedByMe ? colors.textMuted : colors.danger}
+              />
+              <View style={styles.sheetActionTextWrap}>
+                <Text style={[styles.sheetActionTitle, { color: colors.text }]}>
+                  {messagingState?.blockedByMe ? 'User blocked' : 'Block user'}
+                </Text>
+                <Text style={[styles.sheetActionSubtitle, { color: colors.textMuted }]}>
+                  They will be moved to your blacklist.
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              setPendingMenuAction('report')
+              setMenuOpen(false)
+            }}
+            disabled={!otherUserId}
+            style={({ pressed }) => [
+              styles.sheetActionRow,
+              { borderColor: colors.border, backgroundColor: colors.surface },
+              pressed && styles.sheetActionRowPressed,
+            ]}
+          >
+            <View style={styles.sheetActionCopy}>
+              <Feather name="flag" size={18} color={colors.text} />
+              <View style={styles.sheetActionTextWrap}>
+                <Text style={[styles.sheetActionTitle, { color: colors.text }]}>Report user</Text>
+                <Text style={[styles.sheetActionSubtitle, { color: colors.textMuted }]}>
+                  Send a complaint with context from this chat.
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+      </AppBottomSheet>
+
+      <AppBottomSheet
+        open={blockConfirmOpen}
+        onClose={() => setBlockConfirmOpen(false)}
+        title="Block this user?"
+        subtitle="They will be added to your blacklist and personal messaging will be disabled."
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={blockUser.isPending ? 'Blocking…' : 'Block'}
+            onCancel={() => setBlockConfirmOpen(false)}
+            onConfirm={() => {
+              if (!otherUserId) return
+              blockUser.mutate({ userId: otherUserId })
+            }}
+            confirmLoading={blockUser.isPending}
+          />
+        }
+      />
+
+      <AppBottomSheet
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        title="Report user"
+        subtitle="Describe what happened and we will review it."
+        footer={
+          <ActionButton
+            label={reportUser.isPending ? 'Sending…' : 'Send report'}
+            loading={reportUser.isPending}
+            disabled={reportDetails.trim().length < 10}
+            onPress={() => {
+              if (!otherUserId) return
+              reportUser.mutate({
+                reportedUserId: otherUserId,
+                threadId,
+                details: reportDetails.trim(),
+              })
+            }}
+          />
+        }
+      >
+        <View style={styles.reportSheetContent}>
+          <InputField
+            value={reportDetails}
+            onChangeText={(value) => setReportDetails(value.slice(0, 2000))}
+            placeholder="Explain the issue..."
+            multiline
+            containerStyle={styles.reportInput}
+          />
+          <Text style={[styles.reportHint, { color: colors.textMuted }]}>
+            At least 10 characters. Include only the details that matter.
+          </Text>
+        </View>
+      </AppBottomSheet>
 
       <AppBottomSheet
         open={Boolean(deleteTargetId)}
@@ -339,6 +558,18 @@ const createStyles = (colors: ThemePalette) =>
       color: colors.danger,
       fontSize: 13,
     },
+    menuButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuButtonPressed: {
+      opacity: 0.88,
+      transform: [{ scale: 0.96 }],
+    },
     scrollContent: {
       paddingHorizontal: 12,
       paddingTop: 8,
@@ -348,5 +579,64 @@ const createStyles = (colors: ThemePalette) =>
     messagesEmpty: {
       justifyContent: 'center',
       paddingBottom: spacing.xl,
+    },
+    sheetActions: {
+      gap: spacing.sm,
+    },
+    blockedBanner: {
+      marginHorizontal: 16,
+      marginTop: spacing.sm,
+      gap: spacing.sm,
+    },
+    blockedBannerTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    blockedBannerBody: {
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '500',
+    },
+    sheetActionRow: {
+      borderWidth: 1,
+      borderRadius: 18,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    sheetActionRowPressed: {
+      opacity: 0.88,
+    },
+    sheetActionRowDisabled: {
+      opacity: 0.55,
+    },
+    sheetActionCopy: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    sheetActionTextWrap: {
+      flex: 1,
+      gap: 3,
+    },
+    sheetActionTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    sheetActionSubtitle: {
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '500',
+    },
+    reportSheetContent: {
+      gap: spacing.sm,
+    },
+    reportInput: {
+      minHeight: 132,
+      alignItems: 'flex-start',
+    },
+    reportHint: {
+      fontSize: 12,
+      lineHeight: 18,
+      fontWeight: '500',
     },
   })

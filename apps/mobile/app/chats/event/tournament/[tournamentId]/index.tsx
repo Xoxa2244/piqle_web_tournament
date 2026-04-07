@@ -34,6 +34,7 @@ import { useToast } from '../../../../../src/providers/ToastProvider'
 /** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
+const CLIENT_DUPLICATE_GUARD_MS = 10_000
 
 export default function TournamentChatScreen() {
   const { colors } = useAppTheme()
@@ -59,15 +60,23 @@ export default function TournamentChatScreen() {
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
   const lastSendAtRef = useRef(0)
+  const lastSentTextRef = useRef('')
+  const lastSentTextAtRef = useRef(0)
   const threadContentOpacity = useRef(new Animated.Value(1)).current
   const skipThreadTopicFadeRef = useRef(true)
 
   useEffect(() => {
     skipThreadTopicFadeRef.current = true
+    initialScrollDoneRef.current = false
   }, [tournamentId])
+
+  useEffect(() => {
+    initialScrollDoneRef.current = false
+  }, [activeDivisionId])
 
   useEffect(() => {
     if (skipThreadTopicFadeRef.current) {
@@ -96,12 +105,23 @@ export default function TournamentChatScreen() {
       toast.error('Slow down a bit.')
       return
     }
+    if (
+      lastSentTextRef.current &&
+      lastSentTextRef.current === text &&
+      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
+    ) {
+      toast.error('Duplicate message.')
+      return
+    }
 
     lastSendAtRef.current = now
-    const run = activeDivisionId
-      ? sendDivisionMessage.mutateAsync({ divisionId: activeDivisionId, text })
-      : sendMessage.mutateAsync({ tournamentId, text })
-    void run.catch(() => undefined)
+    lastSentTextRef.current = text
+    lastSentTextAtRef.current = now
+    if (activeDivisionId) {
+      sendDivisionMessage.mutate({ divisionId: activeDivisionId, text })
+      return
+    }
+    sendMessage.mutate({ tournamentId, text })
   }, [activeDivisionId, draft, sendDivisionMessage, sendMessage, toast, tournamentId])
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
@@ -315,6 +335,12 @@ export default function TournamentChatScreen() {
   }, [tournamentId, isAuthenticated, activeDivisionId, messagesLen])
 
   useEffect(() => {
+    if (messagesLen === 0) return
+    if (!initialScrollDoneRef.current) {
+      initialScrollDoneRef.current = true
+      scrollToBottom(false)
+      return
+    }
     scrollToBottom(true)
   }, [messagesLen, activeDivisionId, scrollToBottom])
 

@@ -44,6 +44,7 @@ export default function PublicProfileScreen() {
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const [tdRatedLocally, setTdRatedLocally] = useState(false)
+  const [messageBlockedInfoOpen, setMessageBlockedInfoOpen] = useState(false)
   const utils = trpc.useUtils()
   const openDirectChat = trpc.directChat.getOrCreate.useMutation()
 
@@ -86,6 +87,10 @@ export default function PublicProfileScreen() {
   const tournamentsQuery = (trpc as any).public.listBoards.useQuery(undefined, {
     enabled: Boolean(profileId),
   })
+  const directMessageStateQuery = trpc.user.getDirectMessageState.useQuery(
+    { otherUserId: profileId },
+    { enabled: Boolean(profileId) && isAuthenticated && !ownProfile }
+  )
 
   const tdAverage = tdSummaryQuery.data?.averageRating ?? null
   const tdCanPublish = Boolean(tdSummaryQuery.data?.canPublish)
@@ -173,6 +178,11 @@ export default function PublicProfileScreen() {
   const locationLabel = formatLocation([profile.city])
   const genderLabel = formatGenderLabel(profile?.gender)
   const canMessage = Boolean(profileId && !ownProfile)
+  const directMessageState = directMessageStateQuery.data
+  const directMessagingBlocked = Boolean(directMessageState && !directMessageState.canMessage)
+  const blockedMessage = directMessageState?.blockedByMe
+    ? 'You blocked this user and cannot send messages.'
+    : 'You cannot send messages to this user.'
 
   return (
     <PageLayout
@@ -197,6 +207,10 @@ export default function PublicProfileScreen() {
                 router.push('/sign-in')
                 return
               }
+              if (directMessagingBlocked) {
+                setMessageBlockedInfoOpen(true)
+                return
+              }
               void openDirectChat
                 .mutateAsync({ otherUserId: profileId })
                 .then((result) => {
@@ -214,7 +228,7 @@ export default function PublicProfileScreen() {
                 })
             }}
             loading={openDirectChat.isPending}
-            disabled={openDirectChat.isPending}
+            disabled={openDirectChat.isPending || directMessageStateQuery.isLoading}
           />
         ) : null}
 
@@ -372,6 +386,12 @@ export default function PublicProfileScreen() {
             utils.feedback.getEntitySummary.invalidate({ entityType: 'TD', entityId: profileId }),
           ])
         }}
+      />
+      <AppBottomSheet
+        open={messageBlockedInfoOpen}
+        onClose={() => setMessageBlockedInfoOpen(false)}
+        title="Messaging unavailable"
+        subtitle={blockedMessage}
       />
       <AppBottomSheet
         open={tdFeedbackInfoOpen}
