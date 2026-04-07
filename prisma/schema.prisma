@@ -45,6 +45,7 @@ model User {
   directChatThreadsB             DirectChatThread[]        @relation("DirectChatParticipantB")
   directChatMessages             DirectChatMessage[]
   directChatReadStates           DirectChatReadState[]
+  directChatHiddenStates         DirectChatHiddenState[]
   clubInvitesSent                ClubInvite[]              @relation("ClubInviteInviter")
   clubInvitesReceived            ClubInvite[]              @relation("ClubInviteInvitee")
   clubJoinRequests               ClubJoinRequest[]
@@ -485,6 +486,7 @@ model DirectChatThread {
   participantB User              @relation("DirectChatParticipantB", fields: [participantBId], references: [id], onDelete: Cascade)
   messages     DirectChatMessage[]
   readStates   DirectChatReadState[]
+  hiddenStates DirectChatHiddenState[]
 
   @@unique([participantAId, participantBId])
   @@index([participantAId, updatedAt])
@@ -524,6 +526,22 @@ model DirectChatReadState {
   @@unique([threadId, userId])
   @@index([userId, updatedAt])
   @@map("direct_chat_read_states")
+}
+
+model DirectChatHiddenState {
+  id        String   @id @default(uuid())
+  threadId  String   @map("thread_id")
+  userId    String   @map("user_id")
+  hiddenAt  DateTime @default(now()) @map("hidden_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  thread DirectChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@index([userId, updatedAt])
+  @@map("direct_chat_hidden_states")
 }
 
 model AiCoachMessage {

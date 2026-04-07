@@ -6,7 +6,7 @@ import { router } from 'expo-router'
 import { useFocusEffect } from '@react-navigation/native'
 
 import { Feather } from '@expo/vector-icons'
-import { AppBottomSheet } from '../../src/components/AppBottomSheet'
+import { AppBottomSheet, AppConfirmActions } from '../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../src/components/AuthRequiredCard'
 import { ChatPreviewCard } from '../../src/components/ChatPreviewCard'
 import { EventChatListItemActive, EventChatListItemArchived, type EventChatListEvent } from '../../src/components/EventChatListItem'
@@ -41,6 +41,7 @@ export default function ChatsTab() {
   const [revealEpoch, setRevealEpoch] = useState(0)
   const [createSheetOpen, setCreateSheetOpen] = useState(false)
   const [directSwipeActive, setDirectSwipeActive] = useState(false)
+  const [pendingDirectDelete, setPendingDirectDelete] = useState<{ threadId: string; name: string } | null>(null)
   const createPlusSpin = useRef(new Animated.Value(0)).current
   const createSpinLoopRef = useRef<Animated.CompositeAnimation | null>(null)
   const createLongPressTriggeredRef = useRef(false)
@@ -449,9 +450,10 @@ export default function ChatsTab() {
                           <SwipeDismissNotificationRow
                             disabled={deleteDirectThread.isPending}
                             onSwipeActiveChange={setDirectSwipeActive}
-                            onDismiss={async () => {
-                              await dismissDirectChat(chat.id)
+                            onRequestDismiss={async () => {
+                              setPendingDirectDelete({ threadId: chat.id, name: otherUserName })
                             }}
+                            onDismiss={async () => {}}
                           >
                             <ChatPreviewCard
                               title={otherUserName}
@@ -614,6 +616,31 @@ export default function ChatsTab() {
           />
         </View>
       </AppBottomSheet>
+      <AppBottomSheet
+        open={Boolean(pendingDirectDelete)}
+        onClose={() => setPendingDirectDelete(null)}
+        title="Delete this chat?"
+        subtitle={
+          pendingDirectDelete
+            ? `This chat with ${pendingDirectDelete.name} will be removed from your list.`
+            : 'This chat will be removed from your list.'
+        }
+        footer={
+          <AppConfirmActions
+            intent="destructive"
+            cancelLabel="Cancel"
+            confirmLabel={deleteDirectThread.isPending ? 'Deleting…' : 'Delete'}
+            onCancel={() => setPendingDirectDelete(null)}
+            onConfirm={() => {
+              if (!pendingDirectDelete) return
+              void dismissDirectChat(pendingDirectDelete.threadId)
+                .then(() => setPendingDirectDelete(null))
+                .catch(() => setPendingDirectDelete(null))
+            }}
+            confirmLoading={deleteDirectThread.isPending}
+          />
+        }
+      />
     </>
   )
 }

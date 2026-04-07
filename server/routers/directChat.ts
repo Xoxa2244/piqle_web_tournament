@@ -99,6 +99,17 @@ export const directChatRouter = createTRPCRouter({
         update: {},
       })
 
+      await ctx.prisma.directChatHiddenState
+        .delete({
+          where: {
+            threadId_userId: {
+              threadId: thread.id,
+              userId,
+            },
+          },
+        })
+        .catch(() => undefined)
+
       return {
         threadId: thread.id,
         otherUser: {
@@ -175,6 +186,13 @@ export const directChatRouter = createTRPCRouter({
             lastReadAt: true,
           },
         },
+        hiddenStates: {
+          where: { userId },
+          take: 1,
+          select: {
+            hiddenAt: true,
+          },
+        },
       },
     })
 
@@ -195,31 +213,38 @@ export const directChatRouter = createTRPCRouter({
 
     const unreadByThreadId = new Map(unreadCounts)
 
-    return threads.map((thread) => {
-      const otherUser = thread.participantAId === userId ? thread.participantB : thread.participantA
-      const lastMessage = thread.messages[0] ?? null
-      return {
-        id: thread.id,
-        otherUser: {
-          id: otherUser.id,
-          name: otherUser.name,
-          image: otherUser.image,
-          city: otherUser.city,
-        },
-        lastMessage: lastMessage
-          ? {
-              id: lastMessage.id,
-              text: lastMessage.deletedAt ? null : lastMessage.text,
-              isDeleted: Boolean(lastMessage.deletedAt),
-              createdAt: lastMessage.createdAt,
-              userId: lastMessage.userId,
-              userName: lastMessage.user?.name ?? null,
-            }
-          : null,
-        unreadCount: unreadByThreadId.get(thread.id) ?? 0,
-        updatedAt: lastMessage?.createdAt ?? thread.updatedAt,
-      }
-    })
+    return threads
+      .filter((thread) => {
+        const hiddenAt = thread.hiddenStates[0]?.hiddenAt
+        if (!hiddenAt) return true
+        const visibleUpdatedAt = thread.messages[0]?.createdAt ?? thread.updatedAt
+        return visibleUpdatedAt > hiddenAt
+      })
+      .map((thread) => {
+        const otherUser = thread.participantAId === userId ? thread.participantB : thread.participantA
+        const lastMessage = thread.messages[0] ?? null
+        return {
+          id: thread.id,
+          otherUser: {
+            id: otherUser.id,
+            name: otherUser.name,
+            image: otherUser.image,
+            city: otherUser.city,
+          },
+          lastMessage: lastMessage
+            ? {
+                id: lastMessage.id,
+                text: lastMessage.deletedAt ? null : lastMessage.text,
+                isDeleted: Boolean(lastMessage.deletedAt),
+                createdAt: lastMessage.createdAt,
+                userId: lastMessage.userId,
+                userName: lastMessage.user?.name ?? null,
+              }
+            : null,
+          unreadCount: unreadByThreadId.get(thread.id) ?? 0,
+          updatedAt: lastMessage?.createdAt ?? thread.updatedAt,
+        }
+      })
   }),
 
   list: protectedProcedure
@@ -444,12 +469,24 @@ export const directChatRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
 
-      await ctx.prisma.directChatThread.delete({
-        where: { id: thread.id },
+      await ctx.prisma.directChatHiddenState.upsert({
+        where: {
+          threadId_userId: {
+            threadId: thread.id,
+            userId,
+          },
+        },
+        create: {
+          threadId: thread.id,
+          userId,
+          hiddenAt: new Date(),
+        },
+        update: {
+          hiddenAt: new Date(),
+        },
       })
 
-      const participantIds = [thread.participantAId, thread.participantBId]
-      pushToUsers(participantIds, { type: 'invalidate', keys: ['directChat.listMyChats'] })
+      pushToUsers([userId], { type: 'invalidate', keys: ['directChat.listMyChats'] })
 
       return { success: true }
     }),

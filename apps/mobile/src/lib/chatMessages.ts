@@ -16,6 +16,35 @@ export type ChatMessage = {
   clientOrder?: number
 }
 
+function toTime(value: string | Date | null | undefined): number {
+  if (!value) return 0
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function findMatchingOptimisticMessage(
+  serverMessage: ChatMessage,
+  optimisticMessages: ChatMessage[]
+): ChatMessage | null {
+  const serverTime = toTime(serverMessage.createdAt)
+  let bestMatch: ChatMessage | null = null
+
+  for (const optimisticMessage of optimisticMessages) {
+    if (!optimisticMessage.id.startsWith('optimistic-')) continue
+    if (optimisticMessage.userId !== serverMessage.userId) continue
+    if ((optimisticMessage.text ?? '') !== (serverMessage.text ?? '')) continue
+
+    const optimisticTime = toTime(optimisticMessage.createdAt)
+    if (Math.abs(serverTime - optimisticTime) > 15_000) continue
+
+    if (!bestMatch || toTime(bestMatch.createdAt) > optimisticTime) {
+      bestMatch = optimisticMessage
+    }
+  }
+
+  return bestMatch
+}
+
 export function toLocalYmd(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -65,11 +94,21 @@ export function mergeMessagesByStableLiveOrder(
   nextOrderRef: { current: number }
 ): ChatMessage[] {
   const merged = new Map<string, ChatMessage>()
+  const consumedOptimisticIds = new Set<string>()
 
   for (const message of serverMessages) {
+    const matchedOptimistic = findMatchingOptimisticMessage(message, optimisticMessages)
+    if (matchedOptimistic) {
+      const optimisticOrder = orderById.get(matchedOptimistic.id)
+      if (optimisticOrder != null && !orderById.has(message.id)) {
+        orderById.set(message.id, optimisticOrder)
+      }
+      consumedOptimisticIds.add(matchedOptimistic.id)
+    }
     merged.set(message.id, message)
   }
   for (const message of optimisticMessages) {
+    if (consumedOptimisticIds.has(message.id)) continue
     if (!merged.has(message.id)) {
       merged.set(message.id, message)
     }

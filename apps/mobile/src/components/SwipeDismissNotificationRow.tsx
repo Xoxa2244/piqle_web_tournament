@@ -33,6 +33,8 @@ type Props = {
   children: ReactNode
   /** После анимации скрытия; при ошибке можно бросить исключение — строка откатится. */
   onDismiss: () => void | Promise<void>
+  /** Если нужен confirm flow: вместо скрытия строка откатывается назад и только зовёт callback. */
+  onRequestDismiss?: () => void | Promise<void>
   /** Не перехватывать жест (например идёт открытие). */
   disabled?: boolean
   style?: StyleProp<ViewStyle>
@@ -45,6 +47,7 @@ type Props = {
 export function SwipeDismissNotificationRow({
   children,
   onDismiss,
+  onRequestDismiss,
   disabled,
   style,
   onSwipeActiveChange,
@@ -133,6 +136,25 @@ export function SwipeDismissNotificationRow({
       const pos = posRef.current
       const pastHalf = pos <= -w * DISMISS_POSITION_FRACTION
       if (pastHalf) {
+        if (onRequestDismiss) {
+          void Promise.resolve(onRequestDismiss()).catch(() => undefined)
+          setRevealPx(0)
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 210,
+            velocity: vxPxPerSec,
+            overshootClamping: true,
+            restDisplacementThreshold: 0.5,
+            restSpeedThreshold: 0.5,
+          }).start(() => {
+            posRef.current = 0
+            startOffsetRef.current = 0
+            setRevealPx(0)
+          })
+          return
+        }
         runDismiss(vxPxPerSec)
       } else {
         setRevealPx(0)
@@ -152,7 +174,7 @@ export function SwipeDismissNotificationRow({
         })
       }
     },
-    [runDismiss, translateX],
+    [onRequestDismiss, runDismiss, translateX],
   )
 
   const panResponder = useMemo(
@@ -203,8 +225,27 @@ export function SwipeDismissNotificationRow({
     const w = widthRef.current
     if (w <= 0) return
     if (revealPx < w * DISMISS_POSITION_FRACTION) return
+    if (onRequestDismiss) {
+      void Promise.resolve(onRequestDismiss()).catch(() => undefined)
+      setRevealPx(0)
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 210,
+        velocity: 0,
+        overshootClamping: true,
+        restDisplacementThreshold: 0.5,
+        restSpeedThreshold: 0.5,
+      }).start(() => {
+        posRef.current = 0
+        startOffsetRef.current = 0
+        setRevealPx(0)
+      })
+      return
+    }
     runDismiss(0)
-  }, [disabled, revealPx, runDismiss])
+  }, [disabled, onRequestDismiss, revealPx, runDismiss, translateX])
 
   if (disabled) {
     return <View style={style}>{children}</View>
