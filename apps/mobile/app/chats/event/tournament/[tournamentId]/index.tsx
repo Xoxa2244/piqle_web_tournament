@@ -19,7 +19,7 @@ import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoadi
 import { ChatComposer } from '../../../../../src/components/ChatComposer'
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
-import type { ChatMessage } from '../../../../../src/lib/chatMessages'
+import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
@@ -58,6 +58,8 @@ export default function TournamentChatScreen() {
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const messageOrderRef = useRef(new Map<string, number>())
+  const nextMessageOrderRef = useRef(0)
   const threadContentOpacity = useRef(new Animated.Value(1)).current
   const skipThreadTopicFadeRef = useRef(true)
 
@@ -167,6 +169,7 @@ export default function TournamentChatScreen() {
           name: user.name,
           image: user.image,
         },
+        clientOrder: nextMessageOrderRef.current,
       }
 
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
@@ -228,6 +231,7 @@ export default function TournamentChatScreen() {
           name: user.name,
           image: user.image,
         },
+        clientOrder: nextMessageOrderRef.current,
       }
 
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
@@ -350,9 +354,12 @@ export default function TournamentChatScreen() {
   const canModerate = activeDivisionId ? Boolean(activeDivisionPermission?.canModerate) : Boolean(permission?.canModerate)
   const messages = useMemo(() => {
     const serverMessages = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []) as ChatMessage[]
-    if (!optimisticMessages.length) return serverMessages
-    const serverIds = new Set(serverMessages.map((message) => message.id))
-    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+    return mergeMessagesByStableLiveOrder(
+      serverMessages,
+      optimisticMessages,
+      messageOrderRef.current,
+      nextMessageOrderRef
+    )
   }, [activeDivisionId, divisionMessagesQuery.data, tournamentMessagesQuery.data, optimisticMessages])
   const isEmpty = (messages.length ?? 0) === 0
   const topicBar = (

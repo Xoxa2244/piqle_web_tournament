@@ -9,7 +9,7 @@ import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
-import type { ChatMessage } from '../../../../src/lib/chatMessages'
+import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
 import { chatRealtimeQueryOptions, messageThreadRealtimeQueryOptions } from '../../../../src/lib/realtimePoll'
@@ -38,6 +38,8 @@ export default function DirectChatScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const messageOrderRef = useRef(new Map<string, number>())
+  const nextMessageOrderRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
 
   const threadQuery = trpc.directChat.getThread.useQuery(
@@ -84,6 +86,7 @@ export default function DirectChatScreen() {
           name: user.name,
           image: user.image,
         },
+        clientOrder: nextMessageOrderRef.current,
       }
 
       const previousChats = ((utils.directChat.listMyChats.getData(undefined) ?? []) as any[]).slice()
@@ -172,9 +175,12 @@ export default function DirectChatScreen() {
 
   const messages = useMemo(() => {
     const serverMessages = (messagesQuery.data ?? []) as ChatMessage[]
-    if (!optimisticMessages.length) return serverMessages
-    const serverIds = new Set(serverMessages.map((message) => message.id))
-    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+    return mergeMessagesByStableLiveOrder(
+      serverMessages,
+      optimisticMessages,
+      messageOrderRef.current,
+      nextMessageOrderRef
+    )
   }, [messagesQuery.data, optimisticMessages])
   const displayName = threadQuery.data?.otherUser?.name?.trim() || fallbackTitle
   const otherUserId = threadQuery.data?.otherUser?.id || fallbackUserId

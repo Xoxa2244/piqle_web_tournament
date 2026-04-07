@@ -13,6 +13,7 @@ export type ChatMessage = {
   isDeleted: boolean
   createdAt: string | Date
   user?: ChatMessageUser
+  clientOrder?: number
 }
 
 export function toLocalYmd(date: Date): string {
@@ -55,4 +56,35 @@ export function formatChatTime(value?: string | Date | null): string {
   } catch {
     return ''
   }
+}
+
+export function mergeMessagesByStableLiveOrder(
+  serverMessages: ChatMessage[],
+  optimisticMessages: ChatMessage[],
+  orderById: Map<string, number>,
+  nextOrderRef: { current: number }
+): ChatMessage[] {
+  const merged = new Map<string, ChatMessage>()
+
+  for (const message of serverMessages) {
+    merged.set(message.id, message)
+  }
+  for (const message of optimisticMessages) {
+    if (!merged.has(message.id)) {
+      merged.set(message.id, message)
+    }
+  }
+
+  const list = Array.from(merged.values())
+  for (const message of list) {
+    if (!orderById.has(message.id)) {
+      orderById.set(message.id, nextOrderRef.current++)
+    }
+  }
+
+  return list.sort((left, right) => {
+    const leftOrder = orderById.get(left.id) ?? Number.MAX_SAFE_INTEGER
+    const rightOrder = orderById.get(right.id) ?? Number.MAX_SAFE_INTEGER
+    return leftOrder - rightOrder
+  })
 }

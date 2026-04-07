@@ -1,12 +1,37 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { getSessionFromMobileToken } from '@/lib/mobileAuth'
 import { addConnection, removeConnection, type RealtimeEvent } from '@/lib/realtime'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-export async function GET() {
-  const session = await getServerSession(authOptions)
+const getBearerToken = (request: Request) => {
+  const header = request.headers.get('authorization') || request.headers.get('Authorization')
+  if (header) {
+    const [scheme, token] = header.split(' ')
+    if (scheme?.toLowerCase() === 'bearer' && token?.trim()) {
+      return token.trim()
+    }
+  }
+
+  try {
+    const url = new URL(request.url)
+    return url.searchParams.get('access_token')?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+export async function GET(request: Request) {
+  let session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    const bearerToken = getBearerToken(request)
+    if (bearerToken) {
+      session = await getSessionFromMobileToken(bearerToken)
+    }
+  }
+
   if (!session?.user?.id) {
     return new Response('Unauthorized', { status: 401 })
   }

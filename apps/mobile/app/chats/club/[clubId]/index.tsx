@@ -10,7 +10,7 @@ import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMess
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { EntityImage } from '../../../../src/components/EntityImage'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
-import type { ChatMessage } from '../../../../src/lib/chatMessages'
+import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
@@ -41,6 +41,8 @@ export default function ClubChatScreen() {
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const messageOrderRef = useRef(new Map<string, number>())
+  const nextMessageOrderRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
 
@@ -103,6 +105,7 @@ export default function ClubChatScreen() {
           name: user.name,
           image: user.image,
         },
+        clientOrder: nextMessageOrderRef.current,
       }
 
       const previousClubs = ((utils.club.listMyChatClubs.getData(undefined) ?? []) as any[]).slice()
@@ -171,9 +174,12 @@ export default function ClubChatScreen() {
 
   const messages = useMemo(() => {
     const serverMessages = (messagesQuery.data ?? []) as ChatMessage[]
-    if (!optimisticMessages.length) return serverMessages
-    const serverIds = new Set(serverMessages.map((message) => message.id))
-    return [...serverMessages, ...optimisticMessages.filter((message) => !serverIds.has(message.id))]
+    return mergeMessagesByStableLiveOrder(
+      serverMessages,
+      optimisticMessages,
+      messageOrderRef.current,
+      nextMessageOrderRef
+    )
   }, [messagesQuery.data, optimisticMessages])
   const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
     (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,

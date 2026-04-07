@@ -33,6 +33,68 @@ function MobileForegroundSync() {
   return null
 }
 
+function MobileRealtimeSync() {
+  const utils = trpc.useUtils()
+  const { token } = useAuth()
+
+  useEffect(() => {
+    if (!token) return
+    if (typeof EventSource === 'undefined') return
+
+    const realtimeUrl = `${buildApiUrl('/api/realtime')}?access_token=${encodeURIComponent(token)}`
+    const source = new EventSource(realtimeUrl)
+
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(String(event.data ?? '{}')) as {
+          type?: string
+          keys?: string[]
+        }
+
+        if (payload.type !== 'invalidate' || !Array.isArray(payload.keys)) return
+
+        for (const key of payload.keys) {
+          if (key === 'notification.list') {
+            void utils.notification.list.invalidate()
+          }
+          if (key === 'directChat.listMyChats') {
+            void utils.directChat.listMyChats.invalidate()
+            void utils.directChat.getThread.invalidate()
+            void utils.directChat.list.invalidate()
+          }
+          if (key === 'club.listMyChatClubs') {
+            void utils.club.listMyChatClubs.invalidate()
+            void utils.clubChat.list.invalidate()
+          }
+          if (key === 'tournamentChat.listMyEventChats') {
+            void utils.tournamentChat.listMyEventChats.invalidate()
+            void utils.tournamentChat.listTournament.invalidate()
+            void utils.tournamentChat.listDivision.invalidate()
+          }
+          if (key === 'registration.getMyStatus') {
+            void utils.registration.getMyStatus.invalidate()
+          }
+          if (key === 'registration.getSeatMap') {
+            void utils.registration.getSeatMap.invalidate()
+          }
+        }
+      } catch (error) {
+        console.warn('[MobileRealtimeSync] failed to handle realtime event', error)
+      }
+    }
+
+    source.onerror = () => {
+      // Native EventSource reconnects by itself; keep handler silent.
+    }
+
+    return () => {
+      source.close()
+    }
+  }, [token, utils])
+
+  return null
+}
+
 const TrpcLayer = ({ children }: PropsWithChildren) => {
   const { token } = useAuth()
   const [queryClient] = useState(
@@ -90,6 +152,7 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <MobileForegroundSync />
+        <MobileRealtimeSync />
         <NotificationSwipeHiddenProvider>{children}</NotificationSwipeHiddenProvider>
       </QueryClientProvider>
     </trpc.Provider>
