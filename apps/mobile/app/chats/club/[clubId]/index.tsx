@@ -242,11 +242,7 @@ export default function ClubChatScreen() {
 
   useEffect(() => {
     if (messages.length === 0 && !showClubFeedbackPrompt) return
-    if (!initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true
-      scrollToBottom(false)
-      return
-    }
+    if (!initialScrollDoneRef.current) return
     scrollToBottom(true)
   }, [messages.length, showClubFeedbackPrompt, scrollToBottom])
 
@@ -304,6 +300,11 @@ export default function ClubChatScreen() {
           contentContainerStyle={[styles.scrollContent, isEmpty && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => {
+            if ((messages.length === 0 && !showClubFeedbackPrompt) || initialScrollDoneRef.current) return
+            initialScrollDoneRef.current = true
+            scrollToBottom(false)
+          }}
         >
           {isEmpty ? (
             <EmptyState

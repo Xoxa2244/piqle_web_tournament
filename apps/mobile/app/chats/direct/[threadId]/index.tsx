@@ -32,10 +32,11 @@ type PendingMenuAction = 'block' | 'report' | null
 const ONLINE_WINDOW_MS = 5 * 60 * 1000
 
 function formatPresenceLabel(lastActiveAt?: string | Date | null) {
-  if (!lastActiveAt) return null
+  if (!lastActiveAt) return 'Offline'
   const last = new Date(lastActiveAt)
   const diffMs = Date.now() - last.getTime()
-  if (!Number.isFinite(diffMs)) return null
+  if (!Number.isFinite(diffMs)) return 'Offline'
+  if (diffMs < 0) return 'Online'
   if (diffMs <= ONLINE_WINDOW_MS) return 'Online'
 
   const diffMinutes = Math.max(1, Math.floor(diffMs / 60_000))
@@ -320,11 +321,7 @@ export default function DirectChatScreen() {
 
   useEffect(() => {
     if (messages.length === 0) return
-    if (!initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true
-      scrollToBottom(false)
-      return
-    }
+    if (!initialScrollDoneRef.current) return
     scrollToBottom(true)
   }, [messages.length, scrollToBottom])
 
@@ -373,7 +370,7 @@ export default function DirectChatScreen() {
         >
           <RemoteUserAvatar
             uri={threadQuery.data?.otherUser?.image}
-            size={28}
+            size={36}
             fallback="initials"
             initialsLabel={displayName}
           />
@@ -408,6 +405,11 @@ export default function DirectChatScreen() {
           contentContainerStyle={[styles.scrollContent, isEmpty && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => {
+            if (messages.length === 0 || initialScrollDoneRef.current) return
+            initialScrollDoneRef.current = true
+            scrollToBottom(false)
+          }}
         >
           {isEmpty ? (
             <EmptyState title="No messages yet" body="Send the first message to start this conversation." />
@@ -415,6 +417,7 @@ export default function DirectChatScreen() {
             <ChatThreadMessageList
               messages={messages}
               currentUserId={user?.id}
+              showOtherAvatars={false}
               onPressAvatar={() => {
                 if (!otherUserId) return
                 router.push({ pathname: '/profile/[id]', params: { id: otherUserId } })

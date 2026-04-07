@@ -134,8 +134,8 @@ const createStyles = (colors: ThemePalette) =>
     },
     titleBelowText: {
       marginTop: 0,
-      fontSize: 9,
-      lineHeight: 10,
+      fontSize: 10,
+      lineHeight: 12,
       color: colors.textMuted,
       fontWeight: '600',
     },

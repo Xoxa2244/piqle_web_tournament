@@ -370,11 +370,7 @@ export default function TournamentChatScreen() {
 
   useEffect(() => {
     if (messagesLen === 0) return
-    if (!initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true
-      scrollToBottom(false)
-      return
-    }
+    if (!initialScrollDoneRef.current) return
     scrollToBottom(true)
   }, [messagesLen, activeDivisionId, scrollToBottom])
 
@@ -513,6 +509,11 @@ export default function TournamentChatScreen() {
             contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            onContentSizeChange={() => {
+              if ((messagesLen === 0 && !messagesLoading) || initialScrollDoneRef.current) return
+              initialScrollDoneRef.current = true
+              scrollToBottom(false)
+            }}
           >
             {messagesLoading && messages.length === 0 ? (
               <LoadingBlock label="Loading messages…" />
