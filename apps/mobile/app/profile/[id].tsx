@@ -47,6 +47,19 @@ export default function PublicProfileScreen() {
   const [messageBlockedInfoOpen, setMessageBlockedInfoOpen] = useState(false)
   const utils = trpc.useUtils()
   const openDirectChat = trpc.directChat.getOrCreate.useMutation()
+  const unblockUser = trpc.user.unblockUser.useMutation({
+    onSuccess: async () => {
+      setMessageBlockedInfoOpen(false)
+      toast.success('User unblocked.')
+      await Promise.all([
+        directMessageStateQuery.refetch(),
+        utils.user.listBlockedUsers.invalidate(),
+      ])
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to unblock user.')
+    },
+  })
 
   const profileQuery = trpc.user.getProfileById.useQuery(
     { id: profileId },
@@ -392,6 +405,15 @@ export default function PublicProfileScreen() {
         onClose={() => setMessageBlockedInfoOpen(false)}
         title="Messaging unavailable"
         subtitle={blockedMessage}
+        footer={
+          directMessageState?.blockedByMe ? (
+            <ActionButton
+              label={unblockUser.isPending ? 'Unblocking…' : 'Unblock'}
+              loading={unblockUser.isPending}
+              onPress={() => unblockUser.mutate({ userId: profileId })}
+            />
+          ) : undefined
+        }
       />
       <AppBottomSheet
         open={tdFeedbackInfoOpen}

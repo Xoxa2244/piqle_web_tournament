@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useFocusEffect } from 'expo-router'
 
 import { EmptyState, SurfaceCard } from '../../src/components/ui'
 import { PageLayout } from '../../src/components/navigation/PageLayout'
@@ -15,6 +16,12 @@ export default function BlockedUsersScreen() {
   const styles = useMemo(() => createStyles(colors), [colors])
   const toast = useToast()
   const blockedUsersQuery = trpc.user.listBlockedUsers.useQuery(undefined)
+  useFocusEffect(
+    useCallback(() => {
+        void blockedUsersQuery.refetch()
+      return undefined
+    }, [blockedUsersQuery])
+  )
   const unblockUser = trpc.user.unblockUser.useMutation({
     onSuccess: async () => {
       await blockedUsersQuery.refetch()

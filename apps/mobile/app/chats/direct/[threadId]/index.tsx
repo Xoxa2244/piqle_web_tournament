@@ -166,7 +166,11 @@ export default function DirectChatScreen() {
       setMenuOpen(false)
       setBlockConfirmOpen(false)
       toast.success('User blocked.')
-      await Promise.all([threadQuery.refetch(), utils.user.getDirectMessageState.invalidate()])
+      await Promise.all([
+        threadQuery.refetch(),
+        utils.user.getDirectMessageState.invalidate(),
+        utils.user.listBlockedUsers.invalidate(),
+      ])
     },
     onError: (error: any) => toast.error(error.message || 'Failed to block user.'),
   })
@@ -182,7 +186,11 @@ export default function DirectChatScreen() {
   const unblockUser = trpc.user.unblockUser.useMutation({
     onSuccess: async () => {
       toast.success('User unblocked.')
-      await Promise.all([threadQuery.refetch(), utils.user.getDirectMessageState.invalidate()])
+      await Promise.all([
+        threadQuery.refetch(),
+        utils.user.getDirectMessageState.invalidate(),
+        utils.user.listBlockedUsers.invalidate(),
+      ])
     },
     onError: (error: any) => toast.error(error.message || 'Failed to unblock user.'),
   })

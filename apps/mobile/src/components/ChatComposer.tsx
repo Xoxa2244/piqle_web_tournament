@@ -84,7 +84,7 @@ export const ChatComposer = ({
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           keyboardAppearance={keyboardAppearanceForTheme(theme)}
-          style={[styles.input, multiline && styles.inputMultiline]}
+          style={[styles.input, multiline && styles.inputMultiline, !editable && styles.inputDisabledText]}
           multiline={multiline}
           maxLength={maxLength}
           editable={editable}
@@ -147,6 +147,9 @@ const createStyles = (colors: ThemePalette) =>
     maxHeight: 120,
     paddingTop: 12,
     paddingBottom: 12,
+  },
+  inputDisabledText: {
+    color: colors.textMuted,
   },
   sendBtn: {
     width: 44,

@@ -137,12 +137,10 @@ export const directChatRouter = createTRPCRouter({
       })
 
       try {
-        await ctx.prisma.directChatHiddenState.delete({
+        await ctx.prisma.directChatHiddenState.deleteMany({
           where: {
-            threadId_userId: {
-              threadId: thread.id,
-              userId,
-            },
+            threadId: thread.id,
+            userId,
           },
         })
       } catch (err: any) {
