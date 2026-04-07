@@ -21,6 +21,7 @@ import { useAppTheme } from '../../../../src/providers/ThemeProvider'
 import { useToast } from '../../../../src/providers/ToastProvider'
 
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
+const CLIENT_SEND_COOLDOWN_MS = 400
 
 export default function DirectChatScreen() {
   const { colors } = useAppTheme()
@@ -40,6 +41,7 @@ export default function DirectChatScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
 
   const threadQuery = trpc.directChat.getThread.useQuery(
@@ -154,6 +156,20 @@ export default function DirectChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
+
+  const handleSend = useCallback(() => {
+    const text = draft.trim()
+    if (!text) return
+
+    const now = Date.now()
+    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+      toast.error('Slow down a bit.')
+      return
+    }
+
+    lastSendAtRef.current = now
+    void sendMessage.mutateAsync({ threadId, text }).catch(() => undefined)
+  }, [draft, sendMessage, threadId, toast])
 
   useEffect(() => {
     if (!threadId || !isAuthenticated) return
@@ -279,9 +295,7 @@ export default function DirectChatScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Message..."
-          onSend={() => {
-            void sendMessage.mutateAsync({ threadId, text: draft.trim() }).catch(() => undefined)
-          }}
+          onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}

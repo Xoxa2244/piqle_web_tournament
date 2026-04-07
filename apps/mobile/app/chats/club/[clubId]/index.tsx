@@ -25,6 +25,7 @@ import { useToast } from '../../../../src/providers/ToastProvider'
 
 /** Доп. отступ снизу у поля, пока клавиатура закрыта (полноэкранный стек без tab bar). */
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
+const CLIENT_SEND_COOLDOWN_MS = 400
 
 export default function ClubChatScreen() {
   const { colors } = useAppTheme()
@@ -43,6 +44,7 @@ export default function ClubChatScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
 
@@ -51,6 +53,19 @@ export default function ClubChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
+  const handleSend = useCallback(() => {
+    const text = draft.trim()
+    if (!text) return
+
+    const now = Date.now()
+    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+      toast.error('Slow down a bit.')
+      return
+    }
+
+    lastSendAtRef.current = now
+    void sendMessage.mutateAsync({ clubId, text }).catch(() => undefined)
+  }, [clubId, draft, sendMessage, toast])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
     ...chatRealtimeQueryOptions,
@@ -281,9 +296,7 @@ export default function ClubChatScreen() {
           value={draft}
           onChangeText={setDraft}
           placeholder="Message club..."
-          onSend={() => {
-            void sendMessage.mutateAsync({ clubId, text: draft.trim() }).catch(() => undefined)
-          }}
+          onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
           multiline={false}
           paddingHorizontal={16}

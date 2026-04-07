@@ -33,6 +33,7 @@ import { useToast } from '../../../../../src/providers/ToastProvider'
 
 /** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
+const CLIENT_SEND_COOLDOWN_MS = 400
 
 export default function TournamentChatScreen() {
   const { colors } = useAppTheme()
@@ -60,6 +61,7 @@ export default function TournamentChatScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastSendAtRef = useRef(0)
   const threadContentOpacity = useRef(new Animated.Value(1)).current
   const skipThreadTopicFadeRef = useRef(true)
 
@@ -85,6 +87,22 @@ export default function TournamentChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
+  const handleSend = useCallback(() => {
+    const text = draft.trim()
+    if (!text) return
+
+    const now = Date.now()
+    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+      toast.error('Slow down a bit.')
+      return
+    }
+
+    lastSendAtRef.current = now
+    const run = activeDivisionId
+      ? sendDivisionMessage.mutateAsync({ divisionId: activeDivisionId, text })
+      : sendMessage.mutateAsync({ tournamentId, text })
+    void run.catch(() => undefined)
+  }, [activeDivisionId, draft, sendDivisionMessage, sendMessage, toast, tournamentId])
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
@@ -465,12 +483,7 @@ export default function TournamentChatScreen() {
             value={draft}
             onChangeText={setDraft}
             placeholder={`Message ${activeDivision ? activeDivision.name : 'General Chat'}...`}
-            onSend={() => {
-              const run = activeDivisionId
-                ? sendDivisionMessage.mutateAsync({ divisionId: activeDivisionId, text: draft.trim() })
-                : sendMessage.mutateAsync({ tournamentId, text: draft.trim() })
-              void run.catch(() => undefined)
-            }}
+            onSend={handleSend}
             sendDisabled={
               draft.trim().length === 0
             }

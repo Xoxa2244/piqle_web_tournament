@@ -12,6 +12,7 @@ export type ChatComposerProps = {
   placeholder: string
   onSend: () => void
   sendDisabled?: boolean
+  maxLength?: number
   paddingBottom?: number
   /** Например 16 на вкладке AI, где родитель без chatScreenBody */
   paddingHorizontal?: number
@@ -32,6 +33,7 @@ export const ChatComposer = ({
   placeholder,
   onSend,
   sendDisabled = false,
+  maxLength = 1000,
   paddingBottom = 16,
   paddingHorizontal = 0,
   safeAreaBottom = false,
@@ -76,12 +78,13 @@ export const ChatComposer = ({
       <View style={styles.row}>
         <TextInput
           value={value}
-          onChangeText={onChangeText}
+          onChangeText={(nextValue) => onChangeText(nextValue.slice(0, maxLength))}
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
           keyboardAppearance={keyboardAppearanceForTheme(theme)}
           style={[styles.input, multiline && styles.inputMultiline]}
           multiline={multiline}
+          maxLength={maxLength}
           returnKeyType={returnKeyType}
           onSubmitEditing={onSubmitEditing}
           onFocus={onFocus}
