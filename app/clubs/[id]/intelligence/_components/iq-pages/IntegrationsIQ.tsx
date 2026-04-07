@@ -250,6 +250,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
     const XLSX = await import('xlsx')
     const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
+    let hadErrors = false
 
     // Import order: members first, then reservations, then events
     const ordered = ['members', 'reservations', 'events'] as const
@@ -291,12 +292,17 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
         setProgress(prev => ({ ...prev, done: [...prev.done, file.name] }))
       } catch (err: any) {
+        hadErrors = true
         setProgress(prev => ({ ...prev, errors: [...prev.errors, `${file.name}: ${err.message}`] }))
       }
     }
 
+    const hadFullSuccess = !hadErrors && combined.members.errors === 0 && combined.sessions.errors === 0 && combined.bookings.errors === 0
     setResult(combined)
     setProgress(prev => ({ ...prev, current: '' }))
+    if (hadFullSuccess) {
+      setFiles([])
+    }
     setImporting(false)
   }
 
@@ -555,6 +561,7 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
       sessions: { created: 0, updated: 0, errors: 0 },
       bookings: { created: 0, updated: 0, errors: 0 },
     }
+    let hadErrors = false
 
     // Import customers first, then settlements
     const order: PodPlayFileType[] = ['customers', 'settlements']
@@ -578,11 +585,16 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
         }
         setProgress(p => ({ ...p, done: [...p.done, type] }))
       } catch (err: any) {
+        hadErrors = true
         setProgress(p => ({ ...p, errors: [...p.errors, `${type}: ${err.message}`] }))
       }
     }
 
+    const hadFullSuccess = !hadErrors
     setResult(merged)
+    if (hadFullSuccess) {
+      setFiles({ customers: null, settlements: null })
+    }
     setImporting(false)
   }
 

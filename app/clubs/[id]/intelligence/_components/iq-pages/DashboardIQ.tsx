@@ -581,6 +581,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     const CHUNK_SIZE = 500
     // Accumulate results across files and chunks
     const totals = { members: 0, sessions: 0, bookings: 0, errors: 0 }
+    let hadErrors = false
 
     try {
       // Total chunk count across all files for progress tracking
@@ -628,12 +629,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         missing: [],
       })
       setImportStatus("Import complete!")
+      if (!hadErrors && totals.errors === 0) {
+        setExcelFiles([null, null, null])
+      }
       // Invalidate dashboard queries so data refreshes without page reload
       trpcUtils.intelligence.getDashboardV2.invalidate({ clubId })
       trpcUtils.intelligence.getMemberHealth.invalidate({ clubId })
       trpcUtils.intelligence.getUploadHistory.invalidate({ clubId })
       setImportProgress(100)
     } catch (err: any) {
+      hadErrors = true
       const msg = err?.data?.message || err?.message || "Import failed"
       setImportError(msg)
       setImportProgress(100)
