@@ -23,6 +23,8 @@ const mapMessage = (m: {
   deletedByUserId: string | null
   createdAt: Date
   user: { id: string; name: string | null; image: string | null }
+  likes?: { id: string }[]
+  _count?: { likes?: number }
 }, currentUserId?: string, latestReadAt?: Date | null) => ({
   id: m.id,
   userId: m.userId,
@@ -37,6 +39,8 @@ const mapMessage = (m: {
         ? 'read'
         : 'delivered'
       : undefined,
+  likeCount: m._count?.likes ?? 0,
+  viewerHasLiked: Boolean(m.likes?.length),
   user: m.user,
 })
 
@@ -678,6 +682,13 @@ export const tournamentChatRouter = createTRPCRouter({
               image: true,
             },
           },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
         },
       })
 
@@ -854,6 +865,13 @@ export const tournamentChatRouter = createTRPCRouter({
               image: true,
             },
           },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
         },
       })
       const latestReadByOthers = await ctx.prisma.divisionChatReadState.findFirst({
@@ -966,6 +984,172 @@ export const tournamentChatRouter = createTRPCRouter({
         text: message.text,
         deliveryStatus: 'delivered' as const,
         wasFiltered,
+      }
+    }),
+
+  likeTournamentMessage: protectedProcedure
+    .input(z.object({ messageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const message = await ctx.prisma.tournamentChatMessage.findUnique({
+        where: { id: input.messageId },
+        select: {
+          id: true,
+          tournamentId: true,
+          deletedAt: true,
+        },
+      })
+
+      if (!message) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
+      }
+      if (message.deletedAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
+      }
+
+      const membership = await getTournamentMembership(ctx.prisma, userId, message.tournamentId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      await ctx.prisma.tournamentChatLike.upsert({
+        where: {
+          messageId_userId: {
+            messageId: message.id,
+            userId,
+          },
+        },
+        create: {
+          messageId: message.id,
+          userId,
+        },
+        update: {},
+      })
+
+      const likeCount = await ctx.prisma.tournamentChatLike.count({
+        where: { messageId: message.id },
+      })
+
+      const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+        ctx.prisma.tournament.findUnique({
+          where: { id: message.tournamentId },
+          select: { userId: true },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: { tournamentId: message.tournamentId, accessLevel: 'ADMIN' },
+          select: { userId: true },
+        }),
+        ctx.prisma.teamPlayer.findMany({
+          where: { team: { division: { tournamentId: message.tournamentId } } },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+        ctx.prisma.waitlistEntry.findMany({
+          where: { tournamentId: message.tournamentId, status: 'ACTIVE' },
+          select: { player: { select: { userId: true } } },
+          distinct: ['playerId'],
+        }),
+      ])
+      const recipientIds = [
+        ...(owner?.userId ? [owner.userId] : []),
+        ...(accessAdmins?.map((a) => a.userId) ?? []),
+        ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+        ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+      ].filter((id): id is string => id != null && id !== userId)
+      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+
+      return {
+        messageId: message.id,
+        likeCount,
+        viewerHasLiked: true,
+      }
+    }),
+
+  likeDivisionMessage: protectedProcedure
+    .input(z.object({ messageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const message = await ctx.prisma.divisionChatMessage.findUnique({
+        where: { id: input.messageId },
+        select: {
+          id: true,
+          divisionId: true,
+          deletedAt: true,
+        },
+      })
+
+      if (!message) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
+      }
+      if (message.deletedAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
+      }
+
+      const membership = await getDivisionMembership(ctx.prisma, userId, message.divisionId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      await ctx.prisma.divisionChatLike.upsert({
+        where: {
+          messageId_userId: {
+            messageId: message.id,
+            userId,
+          },
+        },
+        create: {
+          messageId: message.id,
+          userId,
+        },
+        update: {},
+      })
+
+      const likeCount = await ctx.prisma.divisionChatLike.count({
+        where: { messageId: message.id },
+      })
+
+      const division = await ctx.prisma.division.findUnique({
+        where: { id: message.divisionId },
+        select: { tournamentId: true },
+      })
+      if (division?.tournamentId) {
+        const [owner, accessAdmins, teamPlayerUsers, waitlistUsers] = await Promise.all([
+          ctx.prisma.tournament.findUnique({
+            where: { id: division.tournamentId },
+            select: { userId: true },
+          }),
+          ctx.prisma.tournamentAccess.findMany({
+            where: {
+              tournamentId: division.tournamentId,
+              accessLevel: 'ADMIN',
+              OR: [{ divisionId: null }, { divisionId: message.divisionId }],
+            },
+            select: { userId: true },
+          }),
+          ctx.prisma.teamPlayer.findMany({
+            where: { team: { divisionId: message.divisionId } },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+          ctx.prisma.waitlistEntry.findMany({
+            where: { divisionId: message.divisionId, status: 'ACTIVE' },
+            select: { player: { select: { userId: true } } },
+            distinct: ['playerId'],
+          }),
+        ])
+        const recipientIds = [
+          ...(owner?.userId ? [owner.userId] : []),
+          ...(accessAdmins?.map((a) => a.userId) ?? []),
+          ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
+          ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
+        ].filter((id): id is string => id != null && id !== userId)
+        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      }
+
+      return {
+        messageId: message.id,
+        likeCount,
+        viewerHasLiked: true,
       }
     }),
 

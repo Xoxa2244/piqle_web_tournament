@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
-import { useCallback, useMemo, useState } from 'react'
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
@@ -12,6 +13,7 @@ import { RemoteUserAvatar } from './RemoteUserAvatar'
 const AVATAR = 32
 const LONG_PRESS_MS = 450
 const DOUBLE_TAP_DELAY_MS = 35
+const LIKE_DOUBLE_TAP_MS = 280
 const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s]+)/gi
 const isLinkPart = (value: string) => /^(?:https?:\/\/|www\.)[^\s]+$/i.test(value)
 const LINK_WRAP_PATTERN = /([/:.?&=_-]+)/g
@@ -101,6 +103,8 @@ type Props = {
   canDelete: (m: ChatMessage) => boolean
   onPressAvatar?: (m: ChatMessage) => void
   showOtherAvatars?: boolean
+  onToggleLike?: (m: ChatMessage) => void
+  likeDisabled?: boolean
   /** Долгое нажатие: родитель открывает шторку подтверждения */
   onRequestDelete: (m: ChatMessage) => void
   deleteDisabled?: boolean
@@ -112,12 +116,16 @@ export function ChatThreadMessageList({
   canDelete,
   onPressAvatar,
   showOtherAvatars = true,
+  onToggleLike,
+  likeDisabled,
   onRequestDelete,
   deleteDisabled,
 }: Props) {
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
   const groups = groupMessagesByDate(messages)
+  const lastTapAtRef = useRef(0)
+  const lastTapMessageIdRef = useRef<string | null>(null)
 
   const tryDelete = useCallback(
     (m: ChatMessage) => {
@@ -125,6 +133,15 @@ export function ChatThreadMessageList({
       onRequestDelete(m)
     },
     [canDelete, deleteDisabled, onRequestDelete]
+  )
+
+  const tryLike = useCallback(
+    (m: ChatMessage) => {
+      if (!onToggleLike || likeDisabled || m.isDeleted || m.viewerHasLiked) return
+      void Haptics.selectionAsync().catch(() => {})
+      onToggleLike(m)
+    },
+    [likeDisabled, onToggleLike]
   )
 
   const renderMessageText = useCallback(
@@ -182,6 +199,7 @@ export function ChatThreadMessageList({
             const showAvatar = showOtherAvatars && !isMine && (!next || next.userId !== m.userId)
             const tightTop = sameAuthorAsPrev
             const deletable = canDelete(m) && !m.isDeleted && !deleteDisabled
+            const showLikeChip = Boolean((m.likeCount ?? 0) > 0 || m.viewerHasLiked)
 
             return (
               <View
@@ -210,6 +228,18 @@ export function ChatThreadMessageList({
                 <Pressable
                   disabled={!deletable}
                   delayLongPress={LONG_PRESS_MS}
+                  onPress={() => {
+                    if (!onToggleLike || likeDisabled || m.isDeleted) return
+                    const now = Date.now()
+                    if (lastTapMessageIdRef.current === m.id && now - lastTapAtRef.current <= LIKE_DOUBLE_TAP_MS) {
+                      lastTapMessageIdRef.current = null
+                      lastTapAtRef.current = 0
+                      tryLike(m)
+                      return
+                    }
+                    lastTapMessageIdRef.current = m.id
+                    lastTapAtRef.current = now
+                  }}
                   onLongPress={() => {
                     void playLongPressHaptic()
                     tryDelete(m)
@@ -237,6 +267,18 @@ export function ChatThreadMessageList({
                     </Pressable>
                   ) : null}
                   {renderMessageText(m.isDeleted ? 'Message removed' : m.text || '', isMine)}
+                  {showLikeChip ? (
+                    <View style={[styles.likeChip, m.viewerHasLiked && styles.likeChipActive]}>
+                      <MaterialCommunityIcons
+                        name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
+                        size={12}
+                        color={m.viewerHasLiked ? colors.primary : colors.textMuted}
+                      />
+                      <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
+                        {Math.max(1, Number(m.likeCount ?? 0))}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.metaRow}>
                     {isMine ? (
                       <View style={styles.statusWrap}>
@@ -385,6 +427,30 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
   linkTextPressed: {
     backgroundColor: theme === 'dark' ? 'rgba(117, 230, 109, 0.2)' : 'rgba(117, 230, 109, 0.18)',
     borderRadius: 8,
+  },
+  likeChip: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  likeChipActive: {
+    borderColor: colors.brandPrimaryBorder,
+  },
+  likeChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  likeChipTextActive: {
+    color: colors.primary,
   },
   bodyMine: {
     color: theme === 'dark' ? colors.white : colors.text,

@@ -71,6 +71,13 @@ export const clubChatRouter = createTRPCRouter({
               image: true,
             },
           },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
         },
       })
 
@@ -106,6 +113,8 @@ export const clubChatRouter = createTRPCRouter({
               ? 'read'
               : 'delivered'
             : undefined,
+        likeCount: m._count.likes,
+        viewerHasLiked: m.likes.length > 0,
         user: m.user,
       }))
     }),
@@ -329,8 +338,106 @@ export const clubChatRouter = createTRPCRouter({
         deletedAt: null,
         deletedByUserId: null,
         deliveryStatus: 'delivered' as const,
+        likeCount: 0,
+        viewerHasLiked: false,
         createdAt: message.createdAt,
         user: message.user,
+      }
+    }),
+
+  likeMessage: protectedProcedure
+    .input(z.object({ messageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const message = await ctx.prisma.clubChatMessage.findUnique({
+        where: { id: input.messageId },
+        select: {
+          id: true,
+          clubId: true,
+          deletedAt: true,
+        },
+      })
+
+      if (!message) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
+      }
+      if (message.deletedAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
+      }
+
+      const [club, follower, admin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: message.clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: message.clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: message.clubId, userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+
+      try {
+        const ban = await ctx.prisma.clubBan.findUnique({
+          where: { clubId_userId: { clubId: message.clubId, userId } },
+          select: { id: true },
+        })
+        if (ban) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'You are banned from this club' })
+        }
+      } catch (err: any) {
+        if (err instanceof TRPCError) throw err
+        if (!isMissingDbRelation(err, 'club_bans')) throw err
+      }
+
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to react to messages' })
+      }
+
+      await ctx.prisma.clubChatLike.upsert({
+        where: {
+          messageId_userId: {
+            messageId: message.id,
+            userId,
+          },
+        },
+        create: {
+          messageId: message.id,
+          userId,
+        },
+        update: {},
+      })
+
+      const likeCount = await ctx.prisma.clubChatLike.count({
+        where: { messageId: message.id },
+      })
+
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: message.clubId },
+          select: { userId: true },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId: message.clubId },
+          select: { userId: true },
+        }),
+      ])
+      const recipientIds = Array.from(
+        new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
+      ).filter((id) => id !== userId)
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
+
+      return {
+        messageId: message.id,
+        likeCount,
+        viewerHasLiked: true,
       }
     }),
 

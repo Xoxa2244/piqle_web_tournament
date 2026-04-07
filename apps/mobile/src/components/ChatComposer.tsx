@@ -138,8 +138,8 @@ const createStyles = (colors: ThemePalette) =>
     paddingVertical: 0,
     backgroundColor: colors.surfaceMuted,
     color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '400',
   },
   inputMultiline: {
     height: undefined,

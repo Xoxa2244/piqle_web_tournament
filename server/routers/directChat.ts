@@ -376,6 +376,13 @@ export const directChatRouter = createTRPCRouter({
               image: true,
             },
           },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
         },
       })
 
@@ -394,6 +401,8 @@ export const directChatRouter = createTRPCRouter({
               ? 'read'
               : 'delivered'
             : undefined,
+        likeCount: message._count.likes,
+        viewerHasLiked: message.likes.length > 0,
         user: message.user,
       }))
     }),
@@ -544,8 +553,68 @@ export const directChatRouter = createTRPCRouter({
         deletedAt: null,
         deletedByUserId: null,
         deliveryStatus: 'delivered' as const,
+        likeCount: 0,
+        viewerHasLiked: false,
         createdAt: message.createdAt,
         user: message.user,
+      }
+    }),
+
+  likeMessage: protectedProcedure
+    .input(z.object({ messageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const message = await ctx.prisma.directChatMessage.findUnique({
+        where: { id: input.messageId },
+        select: {
+          id: true,
+          threadId: true,
+          userId: true,
+          deletedAt: true,
+          thread: {
+            select: {
+              participantAId: true,
+              participantBId: true,
+            },
+          },
+        },
+      })
+
+      if (!message) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
+      }
+      if (message.deletedAt) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
+      }
+      if (message.thread.participantAId !== userId && message.thread.participantBId !== userId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this chat' })
+      }
+
+      await ctx.prisma.directChatLike.upsert({
+        where: {
+          messageId_userId: {
+            messageId: message.id,
+            userId,
+          },
+        },
+        create: {
+          messageId: message.id,
+          userId,
+        },
+        update: {},
+      })
+
+      const likeCount = await ctx.prisma.directChatLike.count({
+        where: { messageId: message.id },
+      })
+
+      const recipientIds = [message.thread.participantAId, message.thread.participantBId].filter((id) => id !== userId)
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['directChat.listMyChats'] })
+
+      return {
+        messageId: message.id,
+        likeCount,
+        viewerHasLiked: true,
       }
     }),
 

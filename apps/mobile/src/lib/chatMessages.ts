@@ -14,6 +14,8 @@ export type ChatMessage = {
   createdAt: string | Date
   user?: ChatMessageUser
   deliveryStatus?: 'sent' | 'delivered' | 'read'
+  likeCount?: number
+  viewerHasLiked?: boolean
   clientOrder?: number
 }
 

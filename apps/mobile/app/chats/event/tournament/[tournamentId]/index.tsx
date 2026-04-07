@@ -354,6 +354,70 @@ export default function TournamentChatScreen() {
       )
     },
   })
+  const likeTournamentMessage = trpc.tournamentChat.likeTournamentMessage.useMutation({
+    onMutate: ({ messageId }: { messageId: string }) => {
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === messageId
+            ? { ...message, likeCount: Number(message.likeCount ?? 0) + 1, viewerHasLiked: true }
+            : message
+        )
+      )
+    },
+    onSuccess: (data: any) => {
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === data.messageId
+            ? { ...message, likeCount: data.likeCount, viewerHasLiked: data.viewerHasLiked }
+            : message
+        )
+      )
+    },
+    onError: (error: any, variables: { messageId: string }) => {
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? { ...message, likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1), viewerHasLiked: false }
+            : message
+        )
+      )
+      toast.error(error.message || 'Failed to like message')
+    },
+  })
+  const likeDivisionMessage = trpc.tournamentChat.likeDivisionMessage.useMutation({
+    onMutate: ({ messageId }: { messageId: string }) => {
+      if (!activeDivisionId) return
+      utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === messageId
+            ? { ...message, likeCount: Number(message.likeCount ?? 0) + 1, viewerHasLiked: true }
+            : message
+        )
+      )
+    },
+    onSuccess: (data: any) => {
+      if (!activeDivisionId) return
+      utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === data.messageId
+            ? { ...message, likeCount: data.likeCount, viewerHasLiked: data.viewerHasLiked }
+            : message
+        )
+      )
+    },
+    onError: (error: any, variables: { messageId: string }) => {
+      if (activeDivisionId) {
+        utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
+          (current ?? []).map((message) =>
+            message.id === variables.messageId
+              ? { ...message, likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1), viewerHasLiked: false }
+              : message
+          )
+        )
+      }
+      toast.error(error.message || 'Failed to like message')
+    },
+  })
 
   const permission = permissionsQuery.data?.tournament
   const activeDivisionPermission = activeDivisionId ? permissionsQuery.data?.divisions?.[0] : null
@@ -526,6 +590,17 @@ export default function TournamentChatScreen() {
               <ChatThreadMessageList
                 messages={messages as ChatMessage[]}
                 currentUserId={user?.id}
+                onToggleLike={(m) => {
+                  if (m.viewerHasLiked) return
+                  if (activeDivisionId) {
+                    if (likeDivisionMessage.isPending) return
+                    likeDivisionMessage.mutate({ messageId: m.id })
+                    return
+                  }
+                  if (likeTournamentMessage.isPending) return
+                  likeTournamentMessage.mutate({ messageId: m.id })
+                }}
+                likeDisabled={activeDivisionId ? likeDivisionMessage.isPending : likeTournamentMessage.isPending}
                 onPressAvatar={(m) => {
                   if (!m.userId) return
                   router.push({ pathname: '/profile/[id]', params: { id: m.userId } })

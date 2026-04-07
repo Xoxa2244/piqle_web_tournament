@@ -36,14 +36,18 @@ model User {
   clubAnnouncementsCreated       ClubAnnouncement[]        @relation("ClubAnnouncementCreatedBy")
   clubBookingRequestsCreated     ClubBookingRequest[]      @relation("ClubBookingRequestRequestedBy")
   clubChatMessages               ClubChatMessage[]
+  clubChatLikes                  ClubChatLike[]
   clubChatReadStates             ClubChatReadState[]
   tournamentChatMessages         TournamentChatMessage[]
+  tournamentChatLikes            TournamentChatLike[]
   tournamentChatReadStates       TournamentChatReadState[]
   divisionChatMessages           DivisionChatMessage[]
+  divisionChatLikes              DivisionChatLike[]
   divisionChatReadStates         DivisionChatReadState[]
   directChatThreadsA             DirectChatThread[]        @relation("DirectChatParticipantA")
   directChatThreadsB             DirectChatThread[]        @relation("DirectChatParticipantB")
   directChatMessages             DirectChatMessage[]
+  directChatLikes                DirectChatLike[]
   directChatReadStates           DirectChatReadState[]
   directChatHiddenStates         DirectChatHiddenState[]
   directChatBlocksInitiated      DirectChatBlock[]            @relation("DirectChatBlockBlocker")
@@ -389,10 +393,27 @@ model ClubChatMessage {
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes ClubChatLike[]
 
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_chat_messages")
+}
+
+model ClubChatLike {
+  id        String          @id @default(uuid())
+  messageId String          @map("message_id")
+  userId    String          @map("user_id")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  message ClubChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, updatedAt])
+  @@index([messageId, createdAt])
+  @@map("club_chat_likes")
 }
 
 model TournamentChatMessage {
@@ -407,10 +428,27 @@ model TournamentChatMessage {
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes      TournamentChatLike[]
 
   @@index([tournamentId, createdAt])
   @@index([userId])
   @@map("tournament_chat_messages")
+}
+
+model TournamentChatLike {
+  id        String                @id @default(uuid())
+  messageId String                @map("message_id")
+  userId    String                @map("user_id")
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  message TournamentChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, updatedAt])
+  @@index([messageId, createdAt])
+  @@map("tournament_chat_likes")
 }
 
 model DivisionChatMessage {
@@ -425,10 +463,27 @@ model DivisionChatMessage {
 
   division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes    DivisionChatLike[]
 
   @@index([divisionId, createdAt])
   @@index([userId])
   @@map("division_chat_messages")
+}
+
+model DivisionChatLike {
+  id        String              @id @default(uuid())
+  messageId String              @map("message_id")
+  userId    String              @map("user_id")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  message DivisionChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, updatedAt])
+  @@index([messageId, createdAt])
+  @@map("division_chat_likes")
 }
 
 model ClubChatReadState {
@@ -511,10 +566,27 @@ model DirectChatMessage {
 
   thread DirectChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes  DirectChatLike[]
 
   @@index([threadId, createdAt])
   @@index([userId, createdAt])
   @@map("direct_chat_messages")
+}
+
+model DirectChatLike {
+  id        String            @id @default(uuid())
+  messageId String            @map("message_id")
+  userId    String            @map("user_id")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  message DirectChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, updatedAt])
+  @@index([messageId, createdAt])
+  @@map("direct_chat_likes")
 }
 
 model DirectChatReadState {

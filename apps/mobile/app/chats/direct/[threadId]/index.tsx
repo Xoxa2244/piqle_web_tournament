@@ -214,6 +214,48 @@ export default function DirectChatScreen() {
     },
     onError: (error: any) => toast.error(error.message || 'Failed to delete message'),
   })
+  const likeMessage = trpc.directChat.likeMessage.useMutation({
+    onMutate: ({ messageId }: { messageId: string }) => {
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                likeCount: Number(message.likeCount ?? 0) + 1,
+                viewerHasLiked: true,
+              }
+            : message
+        )
+      )
+    },
+    onSuccess: (data: any) => {
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === data.messageId
+            ? {
+                ...message,
+                likeCount: data.likeCount,
+                viewerHasLiked: data.viewerHasLiked,
+              }
+            : message
+        )
+      )
+    },
+    onError: (error: any, variables: { messageId: string }) => {
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) =>
+        (current ?? []).map((message) =>
+          message.id === variables.messageId
+            ? {
+                ...message,
+                likeCount: Math.max(0, Number(message.likeCount ?? 1) - 1),
+                viewerHasLiked: false,
+              }
+            : message
+        )
+      )
+      toast.error(error.message || 'Failed to like message')
+    },
+  })
   const blockUser = trpc.user.blockUser.useMutation({
     onSuccess: async () => {
       setMenuOpen(false)
@@ -418,6 +460,11 @@ export default function DirectChatScreen() {
               messages={messages}
               currentUserId={user?.id}
               showOtherAvatars={false}
+              onToggleLike={(m) => {
+                if (m.viewerHasLiked || likeMessage.isPending) return
+                likeMessage.mutate({ messageId: m.id })
+              }}
+              likeDisabled={likeMessage.isPending}
               onPressAvatar={() => {
                 if (!otherUserId) return
                 router.push({ pathname: '/profile/[id]', params: { id: otherUserId } })
