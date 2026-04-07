@@ -25,6 +25,7 @@ export function TabDataWarmup() {
     void Promise.all([
       run(() => utils.club.list.fetch(undefined)),
       run(() => utils.user.getProfile.fetch()),
+      run(() => utils.directChat.listMyChats.fetch()),
       run(() => utils.club.listMyChatClubs.fetch()),
       run(() => utils.tournamentChat.listMyEventChats.fetch()),
       run(() => utils.public.listBoards.fetch()),

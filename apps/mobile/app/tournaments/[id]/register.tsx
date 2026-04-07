@@ -381,7 +381,7 @@ export default function TournamentRegistrationScreen() {
   const hasPrivilegedAccess = Boolean(accessInfo?.isOwner || accessInfo?.accessLevel === 'ADMIN')
   const registrationOpen = isRegistrationOpen(seatMap)
   const isPaidTournament = (seatMap.entryFeeCents ?? 0) > 0
-  const feeLabel = isPaidTournament ? formatMoney(seatMap.entryFeeCents) : '$ Free'
+  const feeLabel = isPaidTournament ? formatMoney(seatMap.entryFeeCents) : 'Free'
 
   return (
     <Screen title="" subtitle="" scroll={false} contentStyle={styles.screenContent}>
@@ -451,7 +451,7 @@ export default function TournamentRegistrationScreen() {
             {showRegisteredHero ? (
               <View style={styles.statusCard}>
                 <Text style={styles.registeredIntro}>
-                  You are registered in this division and team.
+                  You are registered in this division with this team.
                 </Text>
                 <View style={styles.registeredChipsRow}>
                   <Pressable
@@ -863,6 +863,5 @@ const createStyles = (colors: ThemePalette) =>
     color: colors.primary,
   },
   })
-
 
 

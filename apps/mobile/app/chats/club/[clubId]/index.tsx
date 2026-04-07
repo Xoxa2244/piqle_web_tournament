@@ -247,7 +247,7 @@ export default function ClubChatScreen() {
         entityType="CLUB"
         entityId={clubId}
         title="Rate this club"
-        subtitle="Your feedback helps improve club experience."
+        subtitle="Your feedback helps improve the club experience."
         contextCard={
           <FeedbackEntityContextCard
             entityType="CLUB"

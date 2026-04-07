@@ -37,7 +37,7 @@ export function TabBarTabIcon({
   focused: boolean
   tabActive: string
   tabInactive: string
-  /** Только для `chats`: точка при непрочитанных в клубных/ивентных чатах. */
+  /** Только для `chats`: точка при непрочитанных в личных/клубных/ивентных чатах. */
   showUnreadDot?: boolean
 }) {
   const { colors } = useAppTheme()
@@ -112,6 +112,10 @@ export function TabBarTabIcon({
 export function ChatsTabBarIcon({ focused }: { focused: boolean }) {
   const { colors } = useAppTheme()
   const { token } = useAuth()
+  const directChatsQuery = trpc.directChat.listMyChats.useQuery(undefined, {
+    enabled: Boolean(token),
+    ...realtimeAwareQueryOptions,
+  })
   const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: Boolean(token),
     ...realtimeAwareQueryOptions,
@@ -122,6 +126,8 @@ export function ChatsTabBarIcon({ focused }: { focused: boolean }) {
   })
   const showUnreadDot = useMemo(() => {
     if (!token) return false
+    const direct = directChatsQuery.data ?? []
+    if (direct.some((chat) => (chat.unreadCount ?? 0) > 0)) return true
     const clubs = clubChatsQuery.data ?? []
     if (clubs.some((c: { unreadCount?: number }) => (c.unreadCount ?? 0) > 0)) return true
     const events = (eventChatsQuery.data ?? []) as {
@@ -132,7 +138,7 @@ export function ChatsTabBarIcon({ focused }: { focused: boolean }) {
       const divSum = (e.divisions ?? []).reduce((s, d) => s + (d.unreadCount ?? 0), 0)
       return (e.unreadCount ?? 0) + divSum > 0
     })
-  }, [token, clubChatsQuery.data, eventChatsQuery.data])
+  }, [token, clubChatsQuery.data, directChatsQuery.data, eventChatsQuery.data])
 
   return (
     <TabBarTabIcon

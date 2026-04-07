@@ -348,7 +348,7 @@ export default function ProfileTab() {
             open={showDuprConnect}
             onClose={() => setShowDuprConnect(false)}
             title="Connect DUPR"
-            subtitle="Sign in to DUPR below. When login completes, we link your account automatically."
+            subtitle="Sign in to DUPR below. Once you sign in, we will link your account automatically."
             footer={<AppInfoFooter label="Close" onPress={() => setShowDuprConnect(false)} />}
           >
             {duprLoginUrl ? (
@@ -437,7 +437,7 @@ export default function ProfileTab() {
             onClose={() => setTdFeedbackInfoOpen(false)}
             title="Tournament director rating"
             subtitle={
-              tdCanPublish && tdAverage ? '' : 'No public rating yet. Need at least 5 ratings.'
+              tdCanPublish && tdAverage ? '' : 'No public rating yet. At least 5 ratings are required.'
             }
           >
             {tdCanPublish && tdAverage ? (
@@ -709,6 +709,5 @@ const styles = StyleSheet.create({
     height: 16,
   },
 })
-
 
 

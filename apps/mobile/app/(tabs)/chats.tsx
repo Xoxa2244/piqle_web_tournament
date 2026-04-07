@@ -19,19 +19,23 @@ import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
 
-type Segment = 'clubs' | 'events'
+type Segment = 'direct' | 'clubs' | 'events'
 
 export default function ChatsTab() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const { colors } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const isAuthenticated = Boolean(token)
   const [search, setSearch] = useState('')
-  const [segment, setSegment] = useState<Segment>('clubs')
+  const [segment, setSegment] = useState<Segment>('direct')
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [expandedArchiveEventIds, setExpandedArchiveEventIds] = useState<Set<string>>(new Set())
   const [revealEpoch, setRevealEpoch] = useState(0)
 
+  const directChatsQuery = trpc.directChat.listMyChats.useQuery(undefined, {
+    enabled: isAuthenticated,
+    ...realtimeAwareQueryOptions,
+  })
   const clubChatsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
     ...realtimeAwareQueryOptions,
@@ -40,6 +44,18 @@ export default function ChatsTab() {
     enabled: isAuthenticated,
     ...realtimeAwareQueryOptions,
   })
+
+  const filteredDirectChats = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    const list = directChatsQuery.data ?? []
+    if (!term) return list
+    return list.filter((chat) => {
+      const name = String(chat.otherUser?.name ?? '').toLowerCase()
+      const city = String(chat.otherUser?.city ?? '').toLowerCase()
+      const text = String(chat.lastMessage?.text ?? '').toLowerCase()
+      return name.includes(term) || city.includes(term) || text.includes(term)
+    })
+  }, [directChatsQuery.data, search])
 
   const filteredClubChats = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -78,8 +94,14 @@ export default function ChatsTab() {
       .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime())
   }, [filteredEventChats])
 
+  const directTotal = (directChatsQuery.data ?? []).length
   const clubTotal = (clubChatsQuery.data ?? []).length
   const eventTotal = (eventChatsQuery.data ?? []).length
+
+  const directSegmentHasUnread = useMemo(() => {
+    const list = directChatsQuery.data ?? []
+    return list.some((chat) => (chat.unreadCount ?? 0) > 0)
+  }, [directChatsQuery.data])
 
   const clubsSegmentHasUnread = useMemo(() => {
     const list = clubChatsQuery.data ?? []
@@ -118,8 +140,8 @@ export default function ChatsTab() {
   }
 
   const onRefreshChats = useCallback(async () => {
-    await Promise.all([clubChatsQuery.refetch(), eventChatsQuery.refetch()])
-  }, [clubChatsQuery, eventChatsQuery])
+    await Promise.all([directChatsQuery.refetch(), clubChatsQuery.refetch(), eventChatsQuery.refetch()])
+  }, [clubChatsQuery, directChatsQuery, eventChatsQuery])
 
   const pullToRefresh = usePullToRefresh(onRefreshChats)
 
@@ -131,17 +153,21 @@ export default function ChatsTab() {
 
   const showFullChatLoading =
     isAuthenticated &&
+    directChatsQuery.data === undefined &&
     clubChatsQuery.data === undefined &&
     eventChatsQuery.data === undefined &&
-    (clubChatsQuery.isLoading || eventChatsQuery.isLoading)
+    (directChatsQuery.isLoading || clubChatsQuery.isLoading || eventChatsQuery.isLoading)
 
   const noDataAtAll =
     !showFullChatLoading &&
+    directTotal === 0 &&
     clubTotal === 0 &&
     eventTotal === 0 &&
+    !directChatsQuery.isError &&
     !clubChatsQuery.isError &&
     !eventChatsQuery.isError
 
+  const directTabEmpty = segment === 'direct' && filteredDirectChats.length === 0 && !directChatsQuery.isError
   const clubsTabEmpty = segment === 'clubs' && filteredClubChats.length === 0 && !clubChatsQuery.isError
   const eventsTabEmpty = segment === 'events' && filteredEventChats.length === 0 && !eventChatsQuery.isError
 
@@ -150,7 +176,7 @@ export default function ChatsTab() {
       <PageLayout>
         <AuthRequiredCard
           title="Sign in to open chats"
-          body="Club chat, tournament chat, and division chat all use the same backend membership rules as the web app."
+          body="Personal messages, club chats, tournament chats, and division chats are available after sign in."
         />
       </PageLayout>
     )
@@ -165,6 +191,11 @@ export default function ChatsTab() {
 
         <SegmentedControl<Segment>
           options={[
+            {
+              value: 'direct',
+              label: `Chats${directTotal > 0 ? ` (${directTotal})` : ''}`,
+              showDot: directSegmentHasUnread,
+            },
             {
               value: 'clubs',
               label: `Club chats${clubTotal > 0 ? ` (${clubTotal})` : ''}`,
@@ -181,7 +212,7 @@ export default function ChatsTab() {
           trackStyle={styles.segmentTrack}
         />
 
-        <SegmentedContentFade activeKey={segment} segmentOrder={['clubs', 'events']} opacityOnly style={styles.listScroll}>
+        <SegmentedContentFade activeKey={segment} segmentOrder={['direct', 'clubs', 'events']} opacityOnly style={styles.listScroll}>
           <PickleRefreshScrollView
             style={styles.listScroll}
             contentContainerStyle={styles.listScrollContent}
@@ -193,6 +224,12 @@ export default function ChatsTab() {
       {showFullChatLoading ? (
         <View style={styles.bodyGutter}>
           <LoadingBlock label="Loading chats…" />
+        </View>
+      ) : null}
+
+      {directChatsQuery.isError ? (
+        <View style={styles.hintGutter}>
+          <Text style={styles.hint}>Personal chats could not be loaded. Pull to retry.</Text>
         </View>
       ) : null}
 
@@ -210,7 +247,60 @@ export default function ChatsTab() {
 
       {noDataAtAll ? (
         <View style={styles.bodyGutter}>
-          <EmptyState title="No chats yet" body="Join clubs or register for tournaments to unlock chat access." />
+          <EmptyState title="No chats yet" body="Open a player profile to start a personal chat, or join clubs and events to unlock group conversations." />
+        </View>
+      ) : null}
+
+      {!showFullChatLoading && !noDataAtAll && segment === 'direct' ? (
+        <View style={styles.tabContent}>
+          {directTabEmpty ? (
+            <View style={styles.bodyGutter}>
+              <EmptyState
+                title="No personal chats"
+                body="Open any player profile and tap Message to start a conversation."
+              />
+            </View>
+          ) : (
+            <>
+              <Text style={styles.sectionLabel}>Chats</Text>
+              {filteredDirectChats.map((chat, index) => {
+                const otherUserName = chat.otherUser?.name?.trim() || 'Player'
+                const lastMessagePrefix =
+                  chat.lastMessage && !chat.lastMessage.isDeleted
+                    ? chat.lastMessage.userId === user?.id
+                      ? 'You: '
+                      : ''
+                    : ''
+                const subtitle =
+                  chat.lastMessage && !chat.lastMessage.isDeleted && chat.lastMessage.text
+                    ? `${lastMessagePrefix}${chat.lastMessage.text}`
+                    : chat.lastMessage?.isDeleted
+                    ? 'Message removed'
+                    : chat.otherUser?.city || 'Personal chat'
+
+                return (
+                  <StaggeredReveal key={`direct-${chat.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`}>
+                    <ChatPreviewCard
+                      title={otherUserName}
+                      imageUri={chat.otherUser?.image}
+                      subtitle={subtitle}
+                      unreadCount={chat.unreadCount}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/chats/direct/[threadId]',
+                          params: {
+                            threadId: chat.id,
+                            title: otherUserName,
+                            userId: chat.otherUser.id,
+                          },
+                        })
+                      }
+                    />
+                  </StaggeredReveal>
+                )
+              })}
+            </>
+          )}
         </View>
       ) : null}
 

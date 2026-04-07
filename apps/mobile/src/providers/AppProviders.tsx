@@ -22,6 +22,7 @@ function MobileForegroundSync() {
       if (state !== 'active' || !token) return
       void Promise.all([
         utils.notification.list.invalidate(),
+        utils.directChat.listMyChats.invalidate(),
         utils.club.listMyChatClubs.invalidate(),
         utils.tournamentChat.listMyEventChats.invalidate(),
       ])

@@ -404,7 +404,7 @@ export default function TournamentsTab() {
         title: 'No tournaments yet',
         body: isAuthenticated
           ? 'Tournaments where you are registered or have admin access will appear here.'
-          : 'Sign in to see tournaments where you are registered or admin.',
+          : 'Sign in to see tournaments where you are registered or an admin.',
       }
     }
     if (hasNarrowing) {
@@ -649,7 +649,7 @@ export default function TournamentsTab() {
           !hasNarrowing ? (
             <AuthRequiredCard
               title="Sign in required"
-              body="Sign in to see tournaments where you are registered or admin."
+              body="Sign in to see tournaments where you are registered or an admin."
             />
           ) : null}
 

@@ -341,8 +341,8 @@ export default function ProfileSettingsScreen() {
       return
     }
     if (!resetCode.trim()) {
-      setResetError('Enter the reset code from email.')
-      setNotice('Enter the reset code from email.')
+      setResetError('Enter the reset code from your email.')
+      setNotice('Enter the reset code from your email.')
       return
     }
     if (resetNewPassword.length < 8) {
@@ -404,7 +404,7 @@ export default function ProfileSettingsScreen() {
               colors={colors}
               icon="mail"
               title="Change Email"
-              description="Request email change via support"
+              description="Request an email change via support"
               type="link"
               onPress={() => void Linking.openURL('mailto:info@piqle.io?subject=Change%20Email%20Request')}
             />
@@ -568,8 +568,8 @@ export default function ProfileSettingsScreen() {
           title="Password reset"
           subtitle={
             resetStep === 'email'
-              ? 'Enter your email and we will send a password reset request.'
-              : 'Enter code from email and set a new password.'
+              ? 'Enter your email and we will send you a password reset code.'
+              : 'Enter the code from your email and set a new password.'
           }
           footer={
             <ActionButton
@@ -595,7 +595,7 @@ export default function ProfileSettingsScreen() {
                 <InputField
                   value={resetCode}
                   onChangeText={setResetCode}
-                  placeholder="Enter code from email"
+                  placeholder="Enter the code from your email"
                   left={<Feather name="hash" size={18} color={colors.textMuted} />}
                 />
                 <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>New password</Text>

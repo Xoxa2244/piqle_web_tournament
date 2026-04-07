@@ -276,7 +276,7 @@ export default function ClubsTab() {
     if (nearbyBlockedByProfile) {
       return {
         title: 'Add your city first',
-        body: 'Update your profile city to make the Nearby filter show clubs around you.',
+        body: 'Update the city in your profile to make the Nearby filter show clubs around you.',
       }
     }
 

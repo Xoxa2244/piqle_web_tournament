@@ -9,6 +9,7 @@ export type RealtimeEvent = {
     | 'notification.list'
     | 'club.listMyChatClubs'
     | 'tournamentChat.listMyEventChats'
+    | 'directChat.listMyChats'
     | 'registration.getMyStatus'
     | 'registration.getSeatMap'
   )[]

@@ -18,6 +18,7 @@ import { trpc } from '../../src/lib/trpc'
 import { useToastWhenEntityMissing } from '../../src/hooks/useToastWhenEntityMissing'
 import { useAuth } from '../../src/providers/AuthProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
+import { useToast } from '../../src/providers/ToastProvider'
 
 const parseNumberish = (value: unknown) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -37,12 +38,14 @@ export default function PublicProfileScreen() {
   const profileId = String(params.id ?? '').trim()
   const { colors } = useAppTheme()
   const { isReady, token, user } = useAuth()
+  const toast = useToast()
   const isAuthenticated = Boolean(token)
   const ownProfile = Boolean(user?.id && user.id === profileId)
   const [tdFeedbackOpen, setTdFeedbackOpen] = useState(false)
   const [tdFeedbackInfoOpen, setTdFeedbackInfoOpen] = useState(false)
   const [tdRatedLocally, setTdRatedLocally] = useState(false)
   const utils = trpc.useUtils()
+  const openDirectChat = trpc.directChat.getOrCreate.useMutation()
 
   const profileQuery = trpc.user.getProfileById.useQuery(
     { id: profileId },
@@ -169,6 +172,7 @@ export default function PublicProfileScreen() {
 
   const locationLabel = formatLocation([profile.city])
   const genderLabel = formatGenderLabel(profile?.gender)
+  const canMessage = Boolean(profileId && !ownProfile)
 
   return (
     <PageLayout
@@ -192,6 +196,36 @@ export default function PublicProfileScreen() {
           doublesRatingLabel={doublesRatingLabel}
           showDuprConnect={false}
         />
+
+        {canMessage ? (
+          <ActionButton
+            label={openDirectChat.isPending ? 'Opening chat...' : 'Message'}
+            icon={<Feather name="message-circle" size={16} color={colors.white} />}
+            onPress={() => {
+              if (!isAuthenticated) {
+                router.push('/sign-in')
+                return
+              }
+              void openDirectChat
+                .mutateAsync({ otherUserId: profileId })
+                .then((result) => {
+                  router.push({
+                    pathname: '/chats/direct/[threadId]',
+                    params: {
+                      threadId: result.threadId,
+                      title: result.otherUser?.name ?? profile?.name ?? 'Chat',
+                      userId: profileId,
+                    },
+                  })
+                })
+                .catch((error: any) => {
+                  toast.error(error?.message || 'Failed to open chat')
+                })
+            }}
+            loading={openDirectChat.isPending}
+            disabled={openDirectChat.isPending}
+          />
+        ) : null}
 
         {isTd ? (
           <SurfaceCard>
@@ -308,7 +342,7 @@ export default function PublicProfileScreen() {
         entityType="TD"
         entityId={profileId}
         title="Rate tournament director"
-        subtitle="Your feedback helps improve director quality."
+        subtitle="Your feedback helps improve tournament director quality."
         contextCard={
           <FeedbackEntityContextCard
             entityType="TD"
@@ -344,7 +378,7 @@ export default function PublicProfileScreen() {
         onClose={() => setTdFeedbackInfoOpen(false)}
         title="Tournament director rating"
         subtitle={
-          tdCanPublish && tdAverage ? '' : 'No public rating yet. Need at least 5 ratings.'
+          tdCanPublish && tdAverage ? '' : 'No public rating yet. At least 5 ratings are required.'
         }
       >
         {tdCanPublish && tdAverage ? (

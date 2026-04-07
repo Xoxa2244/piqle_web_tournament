@@ -32,6 +32,7 @@ import { tournamentChatRouter } from './tournamentChat'
 import { timezoneRouter } from './timezone'
 import { aiCoachRouter } from './aiCoach'
 import { feedbackRouter } from './feedback'
+import { directChatRouter } from './directChat'
 
 export const appRouter = createTRPCRouter({
   tournament: tournamentRouter,
@@ -67,6 +68,7 @@ export const appRouter = createTRPCRouter({
   timezone: timezoneRouter,
   aiCoach: aiCoachRouter,
   feedback: feedbackRouter,
+  directChat: directChatRouter,
 })
 
 export type AppRouter = typeof appRouter

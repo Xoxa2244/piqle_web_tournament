@@ -881,7 +881,7 @@ export default function TournamentDetailScreen() {
       : Number(tournamentData?.entryFee ?? 0) > 0
       ? Math.round(Number(tournamentData?.entryFee) * 100)
       : 0
-  const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : '$ Free'
+  const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : 'Free'
   const quickFeeLabel = entryFeeCents > 0 ? `$${Math.round(entryFeeCents / 100)}+` : 'Free'
   const venueNameLabel = String(tournamentData?.venueName ?? '').trim()
   const venueAddressLabel = String(tournamentData?.venueAddress ?? '').trim()
@@ -2297,7 +2297,7 @@ export default function TournamentDetailScreen() {
                           <View style={styles.dashboardStageBlock}>
                             <Text style={styles.dashboardStageTitle}>Play-in</Text>
                             <Text style={styles.dashboardStageSubtitle}>
-                              Preliminary stage to reduce to the required number of participants
+                              Preliminary stage to reduce the field to the required number of participants
                             </Text>
                             {playInMatches.length ? (
                               <RNScrollView
@@ -2689,7 +2689,7 @@ export default function TournamentDetailScreen() {
             ? 'Rating becomes available 2 hours after the tournament ends.'
             : feedbackCanPublish && feedbackAverageValue
             ? ''
-            : 'No public rating yet. Need at least 5 ratings.'
+            : 'No public rating yet. At least 5 ratings are required.'
         }
         footer={
           canRateTournament ? (
@@ -2732,7 +2732,7 @@ export default function TournamentDetailScreen() {
         entityType="TD"
         entityId={tdUserId ?? ''}
         title="Rate tournament director"
-        subtitle="Your feedback helps improve director quality."
+        subtitle="Your feedback helps improve tournament director quality."
         contextCard={
           <FeedbackEntityContextCard
             entityType="TD"
@@ -2755,7 +2755,7 @@ export default function TournamentDetailScreen() {
         }}
         title="Tournament director rating"
         subtitle={
-          tdCanPublish && tdAverageValue ? '' : 'No public rating yet. Need at least 5 ratings.'
+          tdCanPublish && tdAverageValue ? '' : 'No public rating yet. At least 5 ratings are required.'
         }
       >
         {tdCanPublish && tdAverageValue ? (
@@ -4530,4 +4530,3 @@ const createStyles = (colors: ThemePalette) =>
     fontWeight: '700',
   },
 })
-

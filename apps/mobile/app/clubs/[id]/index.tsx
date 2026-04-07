@@ -1067,7 +1067,7 @@ export default function ClubDetailScreen() {
         open={clubShareSheetOpen}
         onClose={() => setClubShareSheetOpen(false)}
         title="Invite to this club"
-        subtitle="Share this link in social media or copy it into a message."
+        subtitle="Share this link on social media or copy it into a message."
       >
         <View style={styles.shareSheetBlock}>
           <Text style={styles.shareSheetLabel}>Invite link</Text>
@@ -1137,7 +1137,7 @@ export default function ClubDetailScreen() {
       >
         <View style={styles.memberActionSheetBody}>
           <ActionButton
-            label="Kick from club"
+            label="Remove from club"
             variant="outline"
             onPress={() => {
               if (!memberMenuTarget) return
@@ -1147,7 +1147,7 @@ export default function ClubDetailScreen() {
             }}
           />
           <ActionButton
-            label="Ban in club"
+            label="Ban from club"
             variant="neutral"
             onPress={() => {
               if (!memberMenuTarget) return
@@ -1182,7 +1182,7 @@ export default function ClubDetailScreen() {
         open={Boolean(kickTarget)}
         onClose={() => setKickTarget(null)}
         title="Kick member?"
-        subtitle={`Remove ${kickTarget?.name ?? 'this user'} from the club?`}
+        subtitle={kickTarget?.name ? `Remove ${kickTarget.name} from the club?` : 'This user will be removed from the club.'}
         footer={
           <AppConfirmActions
             intent="destructive"
@@ -1210,7 +1210,7 @@ export default function ClubDetailScreen() {
           setBanReason('')
         }}
         title="Ban user?"
-        subtitle={`${banTarget?.name ?? 'This user'} will not be able to re-join the club.`}
+        subtitle={banTarget?.name ? `${banTarget.name} will be banned from the club.` : 'This user will be banned from the club.'}
         footer={
           <AppConfirmActions
             intent="destructive"
@@ -1248,7 +1248,7 @@ export default function ClubDetailScreen() {
         open={Boolean(unbanTarget)}
         onClose={() => setUnbanTarget(null)}
         title="Unban user?"
-        subtitle={`Allow ${unbanTarget?.name ?? 'this user'} to join the club again?`}
+        subtitle={unbanTarget?.name ? `Allow ${unbanTarget.name} to join the club again?` : 'This user will be unbanned.'}
         footer={
           <AppConfirmActions
             intent="positive"
@@ -1571,7 +1571,7 @@ export default function ClubDetailScreen() {
         entityType="CLUB"
         entityId={clubId}
         title="Rate this club"
-        subtitle="Your feedback helps improve club experience."
+        subtitle="Your feedback helps improve the club experience."
         contextCard={
           <FeedbackEntityContextCard
             entityType="CLUB"
@@ -1596,7 +1596,7 @@ export default function ClubDetailScreen() {
         }}
         title="Club rating"
         subtitle={
-          feedbackCanPublish && feedbackAverage ? '' : `No public rating yet. Need at least 5 ratings.`
+          feedbackCanPublish && feedbackAverage ? '' : `No public rating yet. At least 5 ratings are required.`
         }
         footer={
           showRateClubAction ? (

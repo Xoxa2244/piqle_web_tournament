@@ -373,12 +373,12 @@ export const TournamentCard = ({
   const [divisionsTooltipEnabled, setDivisionsTooltipEnabled] = useState(false)
   const feeLabel = (() => {
     if (typeof tournament.entryFeeCents === 'number') {
-      return tournament.entryFeeCents > 0 ? formatMoney(tournament.entryFeeCents) : '$ Free'
+      return tournament.entryFeeCents > 0 ? formatMoney(tournament.entryFeeCents) : 'Free'
     }
     if (tournament.entryFee != null && Number(tournament.entryFee) > 0) {
       return `$${Number(tournament.entryFee).toFixed(2)}`
     }
-    return '$ Free'
+    return 'Free'
   })()
   const feeChipLabel = secondaryStatusLabel ? `${feeLabel} • ${secondaryStatusLabel}` : feeLabel
   const slotMetrics = getTournamentSlotMetrics(tournament)
@@ -909,4 +909,3 @@ const stylesMarquee = StyleSheet.create({
     fontWeight: '600',
   },
 })
-
