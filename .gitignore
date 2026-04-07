@@ -43,3 +43,5 @@ next-env.d.ts
 apps/mobile/node_modules
 apps/mobile/.expo
 apps/mobile/dist
+/apps/mobile/android
+/apps/mobile/ios
