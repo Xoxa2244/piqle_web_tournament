@@ -87,13 +87,11 @@ export default function ClubChatThreadScreen() {
   )
 
   const sendMessage = trpc.clubChat.send.useMutation({
-    onMutate: async ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !clubId || !user?.id) return null
-      await Promise.all([
-        utils.clubChat.listThread.cancel({ clubId, rootMessageId }),
-        utils.clubChat.list.cancel({ clubId, limit: 100 }),
-      ])
+      void utils.clubChat.listThread.cancel({ clubId, rootMessageId })
+      void utils.clubChat.list.cancel({ clubId, limit: 100 })
       const createdAt = new Date()
       const optimisticId = `optimistic-thread-${clubId}-${createdAt.getTime()}`
       const resolvedReplyTarget =

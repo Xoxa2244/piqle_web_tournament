@@ -90,13 +90,11 @@ export default function TournamentThreadScreen() {
   )
 
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onMutate: async ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !tournamentId || !user?.id) return null
-      await Promise.all([
-        utils.tournamentChat.listTournamentThread.cancel({ tournamentId, rootMessageId }),
-        utils.tournamentChat.listTournament.cancel({ tournamentId, limit: 100 }),
-      ])
+      void utils.tournamentChat.listTournamentThread.cancel({ tournamentId, rootMessageId })
+      void utils.tournamentChat.listTournament.cancel({ tournamentId, limit: 100 })
       const createdAt = new Date()
       const optimisticId = `optimistic-thread-${tournamentId}-${createdAt.getTime()}`
       const resolvedReplyTarget =

@@ -91,13 +91,11 @@ export default function DivisionThreadScreen() {
   )
 
   const sendMessage = trpc.tournamentChat.sendDivision.useMutation({
-    onMutate: async ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !divisionId || !user?.id) return null
-      await Promise.all([
-        utils.tournamentChat.listDivisionThread.cancel({ divisionId, rootMessageId }),
-        utils.tournamentChat.listDivision.cancel({ divisionId, limit: 100 }),
-      ])
+      void utils.tournamentChat.listDivisionThread.cancel({ divisionId, rootMessageId })
+      void utils.tournamentChat.listDivision.cancel({ divisionId, limit: 100 })
       const createdAt = new Date()
       const optimisticId = `optimistic-thread-${divisionId}-${createdAt.getTime()}`
       const resolvedReplyTarget =
