@@ -70,9 +70,12 @@ export function parseMentionToken(token: string): ParsedMentionToken | null {
   }
 }
 
-export function getMentionDisplayText(token: string): string {
+export function getMentionDisplayText(token: string, displayName?: string | null): string {
   const parsed = parseMentionToken(token)
-  return parsed ? `@${parsed.handle}` : token
+  if (!parsed) return token
+  const normalizedName = String(displayName ?? '').trim()
+  const fallback = parsed.handle.replace(/_/g, ' ').trim()
+  return normalizedName ? `@${normalizedName}` : `@${fallback || parsed.handle}`
 }
 
 function escapeRegex(value: string): string {

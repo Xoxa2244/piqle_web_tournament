@@ -70,6 +70,9 @@ function useMobileRealtimeSync() {
             void utils.club.listMyChatClubs.invalidate()
             void utils.clubChat.list.invalidate()
           }
+          if (key === 'club.listMembers') {
+            void utils.club.listMembers.invalidate()
+          }
           if (key === 'clubChat.listThread') {
             void utils.clubChat.listThread.invalidate()
           }

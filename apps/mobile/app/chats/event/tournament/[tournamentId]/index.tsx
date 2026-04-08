@@ -168,7 +168,7 @@ export default function TournamentChatScreen() {
   )
   const mentionCandidatesQuery = trpc.tournamentChat.listMentionCandidates.useQuery(
     { tournamentId, divisionId: activeDivisionId || undefined },
-    { enabled: Boolean(tournamentId) && isAuthenticated && activeMentionQuery !== null }
+    { enabled: Boolean(tournamentId) && isAuthenticated }
   )
   const mentionCandidates = useMemo(
     () => ((mentionCandidatesQuery.data ?? []) as any[]).map((user) => toMentionCandidate(user)).filter((candidate) => candidate.id !== user?.id),

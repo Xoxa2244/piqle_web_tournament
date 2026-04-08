@@ -66,7 +66,7 @@ export default function ClubChatThreadScreen() {
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
   const clubMembersQuery = trpc.club.listMembers.useQuery(
     { clubId },
-    { enabled: Boolean(clubId) && isAuthenticated && activeMentionQuery !== null }
+    { enabled: Boolean(clubId) && isAuthenticated }
   )
   const isAdmin = Boolean(myChatClubsQuery.data?.find((club) => club.id === clubId)?.isAdmin)
   const mentionCandidates = useMemo(
@@ -83,6 +83,19 @@ export default function ClubChatThreadScreen() {
       .filter((candidate) => !query || candidate.handle.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query))
       .slice(0, 8)
   }, [activeMentionQuery, mentionCandidates])
+  const userTagByUserId = useMemo(
+    () =>
+      Object.fromEntries(
+        (((clubMembersQuery.data?.members ?? []) as any[])
+          .map((member) => {
+            const chatTag = String(member.chatTag ?? '').trim()
+            const roleTag = String(member.role ?? '').trim()
+            return [String(member.userId), chatTag || roleTag || null] as const
+          })
+          .filter((entry) => Boolean(entry[1])))
+      ),
+    [clubMembersQuery.data?.members]
+  )
   const markRead = trpc.clubChat.markRead.useMutation()
 
   const scrollToBottom = useCallback((animated = true) => {
@@ -422,6 +435,7 @@ export default function ClubChatThreadScreen() {
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
               }}
               mentionCandidates={mentionCandidates}
+              userTagByUserId={userTagByUserId}
               onPressMentionUser={(userId) => {
                 router.push({ pathname: '/profile/[id]', params: { id: userId } })
               }}

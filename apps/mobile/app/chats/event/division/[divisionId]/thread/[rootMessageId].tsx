@@ -71,7 +71,7 @@ export default function DivisionThreadScreen() {
   const canModerate = Boolean(permissionsQuery.data?.divisions?.[0]?.canModerate)
   const mentionCandidatesQuery = trpc.tournamentChat.listMentionCandidates.useQuery(
     { tournamentId, divisionId },
-    { enabled: Boolean(tournamentId) && Boolean(divisionId) && isAuthenticated && activeMentionQuery !== null }
+    { enabled: Boolean(tournamentId) && Boolean(divisionId) && isAuthenticated }
   )
   const mentionCandidates = useMemo(
     () => ((mentionCandidatesQuery.data ?? []) as any[]).map((item) => toMentionCandidate(item)).filter((candidate) => candidate.id !== user?.id),

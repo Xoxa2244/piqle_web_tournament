@@ -1567,6 +1567,42 @@ If you weren’t expecting this, you can ignore this email.`
         (a, b) => b.joinedAt.getTime() - a.joinedAt.getTime()
       )
 
+      const memberUserIds = members.map((member) => member.userId)
+      let tagRows: Array<{ userId: string; label: string }> = []
+      try {
+        tagRows =
+          memberUserIds.length > 0
+            ? await ctx.prisma.clubChatMemberTag.findMany({
+                where: { clubId: input.clubId, userId: { in: memberUserIds } },
+                select: { userId: true, label: true },
+              })
+            : []
+      } catch (err: any) {
+        if (!isMissingDbRelation(err, 'club_chat_member_tags')) throw err
+        tagRows = []
+      }
+      const tagByUserId = new Map(tagRows.map((row) => [row.userId, row.label] as const))
+
+      const [readStates, latestMessages] =
+        memberUserIds.length > 0
+          ? await Promise.all([
+              ctx.prisma.clubChatReadState.findMany({
+                where: { clubId: input.clubId, userId: { in: memberUserIds } },
+                select: { userId: true, lastReadAt: true },
+              }),
+              ctx.prisma.clubChatMessage.groupBy({
+                by: ['userId'],
+                where: { clubId: input.clubId, userId: { in: memberUserIds } },
+                _max: { createdAt: true },
+              }),
+            ])
+          : [[], []]
+
+      const lastReadAtByUserId = new Map(readStates.map((row) => [row.userId, row.lastReadAt] as const))
+      const lastMessageAtByUserId = new Map(
+        latestMessages.map((row: any) => [String(row.userId), row._max?.createdAt ?? null] as const)
+      )
+
       let bans: Array<{
         userId: string
         reason: string | null
@@ -1624,7 +1660,22 @@ If you weren’t expecting this, you can ignore this email.`
       return {
         canModerate,
         myRole: myAdminRole?.role ?? null,
-        members,
+        members: members.map((member) => {
+          const readAt = lastReadAtByUserId.get(member.userId) ?? null
+          const messageAt = lastMessageAtByUserId.get(member.userId) ?? null
+          const lastActiveAt =
+            readAt && messageAt
+              ? new Date(readAt).getTime() >= new Date(messageAt).getTime()
+                ? readAt
+                : messageAt
+              : readAt ?? messageAt ?? null
+
+          return {
+            ...member,
+            chatTag: tagByUserId.get(member.userId) ?? null,
+            lastActiveAt,
+          }
+        }),
         bans: bans.map((b) => ({
           userId: b.userId,
           bannedAt: b.createdAt,
@@ -1652,6 +1703,127 @@ If you weren’t expecting this, you can ignore this email.`
           },
         })),
       }
+    }),
+
+  setChatMemberTag: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+        userId: z.string(),
+        label: z.string().trim().min(1).max(24),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+
+      const [admin, targetFollower, targetAdmin] = await Promise.all([
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can assign chat tags' })
+      }
+      if (!targetFollower && !targetAdmin) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club member not found' })
+      }
+
+      const label = input.label.trim()
+
+      try {
+        await ctx.prisma.clubChatMemberTag.upsert({
+          where: { clubId_userId: { clubId: input.clubId, userId: input.userId } },
+          create: {
+            clubId: input.clubId,
+            userId: input.userId,
+            label,
+          },
+          update: {
+            label,
+          },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_chat_member_tags')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_chat_member_tags table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+      ])
+      const recipientIds = Array.from(new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)]))
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMembers', 'clubChat.listThread'] })
+
+      return { success: true }
+    }),
+
+  deleteChatMemberTag: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+        userId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const currentUserId = ctx.session.user.id
+      const admin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: currentUserId } },
+        select: { id: true },
+      })
+
+      if (!admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can remove chat tags' })
+      }
+
+      try {
+        await ctx.prisma.clubChatMemberTag.deleteMany({
+          where: { clubId: input.clubId, userId: input.userId },
+        })
+      } catch (err: any) {
+        if (isMissingDbRelation(err, 'club_chat_member_tags')) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'club_chat_member_tags table is missing. Apply DB migration first.',
+          })
+        }
+        throw err
+      }
+
+      const [followers, admins] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          select: { userId: true },
+        }),
+      ])
+      const recipientIds = Array.from(new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)]))
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMembers', 'clubChat.listThread'] })
+
+      return { success: true }
     }),
 
   kickMember: protectedProcedure

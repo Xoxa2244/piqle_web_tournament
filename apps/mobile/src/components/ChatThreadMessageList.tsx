@@ -206,6 +206,7 @@ type Props = {
   highlightedMessageId?: string | null
   mentionCandidates?: MentionCandidate[]
   onPressMentionUser?: (userId: string) => void
+  userTagByUserId?: Record<string, string | null | undefined>
 }
 
 export function ChatThreadMessageList({
@@ -228,6 +229,7 @@ export function ChatThreadMessageList({
   highlightedMessageId,
   mentionCandidates,
   onPressMentionUser,
+  userTagByUserId,
 }: Props) {
   const { colors, theme } = useAppTheme()
   const toast = useToast()
@@ -376,14 +378,14 @@ export function ChatThreadMessageList({
           if (parsedMention && mentionUserId) {
             return (
               <Text
-                style={[styles.body, isMine && styles.bodyMine, styles.mentionText]}
-                suppressHighlighting
-                onPress={() => onPressMentionUser?.(mentionUserId)}
-              >
-                {getMentionDisplayText(single)}
-              </Text>
-            )
-          }
+              style={[styles.body, isMine && styles.bodyMine, styles.mentionText]}
+              suppressHighlighting
+              onPress={() => onPressMentionUser?.(mentionUserId)}
+            >
+              {getMentionDisplayText(single, candidate?.name)}
+            </Text>
+          )
+        }
         }
         return <Text style={[styles.body, isMine && styles.bodyMine]}>{rawText}</Text>
       }
@@ -414,7 +416,7 @@ export function ChatThreadMessageList({
                       suppressHighlighting
                       onPress={() => onPressMentionUser?.(mentionUserId)}
                     >
-                      {getMentionDisplayText(part)}
+                      {getMentionDisplayText(part, candidate?.name)}
                     </Text>
                   )
                 }
@@ -506,6 +508,7 @@ export function ChatThreadMessageList({
       const sameAuthorAsPrev =
         Boolean(prev) && prev?.level === entry.level && prev?.message.userId === m.userId && prev?.threadRootId === entry.threadRootId
       const showName = !isMine && entry.level === 0 && (!prev || prev.level !== entry.level || prev.message.userId !== m.userId)
+      const userTag = String(userTagByUserId?.[m.userId] ?? '').trim() || null
       const showAvatar =
         showOtherAvatars &&
         !isMine &&
@@ -592,9 +595,18 @@ export function ChatThreadMessageList({
                 hitSlop={6}
                 style={({ pressed }) => [pressed && styles.namePressed]}
               >
-                <Text style={styles.authorName} numberOfLines={1}>
-                  {m.user?.name || 'User'}
-                </Text>
+                <View style={styles.authorRow}>
+                  <Text style={styles.authorName} numberOfLines={1}>
+                    {m.user?.name || 'User'}
+                  </Text>
+                  {userTag ? (
+                    <View style={styles.authorTagChip}>
+                      <Text style={styles.authorTagText} numberOfLines={1}>
+                        {userTag}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </Pressable>
             ) : null}
             {m.replyToMessageId ? renderReplyContext(m, isMine) : null}
@@ -722,6 +734,7 @@ export function ChatThreadMessageList({
       styles,
       threadRootMessageId,
       tryLike,
+      userTagByUserId,
     ]
   )
 
@@ -971,7 +984,29 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       fontSize: 12,
       fontWeight: '700',
       color: colors.textMuted,
+      marginBottom: 0,
+    },
+    authorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
       marginBottom: 4,
+      minWidth: 0,
+      alignSelf: 'flex-start',
+    },
+    authorTagChip: {
+      maxWidth: 110,
+      borderRadius: 999,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    authorTagText: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: colors.primary,
     },
     body: {
       fontSize: 15,

@@ -7,6 +7,7 @@ export type RealtimeEvent = {
   type: 'invalidate'
   keys: (
     | 'notification.list'
+    | 'club.listMembers'
     | 'club.listMyChatClubs'
     | 'clubChat.listThread'
     | 'tournamentChat.listMyEventChats'

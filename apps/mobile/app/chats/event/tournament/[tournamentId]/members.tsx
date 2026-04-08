@@ -15,7 +15,7 @@ export default function TournamentChatMembersScreen() {
   const params = useLocalSearchParams<{ tournamentId: string; divisionId?: string; title?: string }>()
   const tournamentId = params.tournamentId
   const divisionId = typeof params.divisionId === 'string' && params.divisionId ? params.divisionId : undefined
-  const title = divisionId ? 'Division members' : params.title || 'Event chat members'
+  const title = divisionId ? 'Division chat users' : 'Event chat users'
   const membersQuery = trpc.tournamentChat.listMentionCandidates.useQuery(
     { tournamentId, divisionId },
     { enabled: Boolean(tournamentId) }

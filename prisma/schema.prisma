@@ -62,6 +62,7 @@ model User {
   clubJoinRequestSeen            ClubJoinRequestSeen[]
   clubBans                       ClubBan[]
   clubBansIssued                 ClubBan[]                 @relation("ClubBanBannedBy")
+  clubChatMemberTags             ClubChatMemberTag[]
   clubTournamentTemplatesCreated ClubTournamentTemplate[]  @relation("ClubTournamentTemplateCreatedBy")
   clubTournamentTemplatesUpdated ClubTournamentTemplate[]  @relation("ClubTournamentTemplateUpdatedBy")
   players                        Player[]
@@ -246,6 +247,7 @@ model Club {
   bookingRequests     ClubBookingRequest[]
   chatMessages        ClubChatMessage[]
   chatReadStates      ClubChatReadState[]
+  chatMemberTags      ClubChatMemberTag[]
   invites             ClubInvite[]
   bans                ClubBan[]
   feedbacks           Feedback[]               @relation("FeedbackClub")
@@ -742,6 +744,23 @@ model ClubBan {
   @@index([clubId, createdAt])
   @@index([userId])
   @@map("club_bans")
+}
+
+model ClubChatMemberTag {
+  id        String   @id @default(uuid())
+  clubId     String   @map("club_id") @db.Uuid
+  userId     String   @map("user_id") @db.Text
+  label      String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([clubId, updatedAt])
+  @@index([userId, updatedAt])
+  @@map("club_chat_member_tags")
 }
 
 model ClubTournamentTemplate {
