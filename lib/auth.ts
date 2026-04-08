@@ -177,10 +177,25 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async jwt({ token, user }) {
-      if (user?.id) {
-        token.sub = user.id
+    async jwt({ token, user, trigger, session }) {
+      if (user) {
+        const authUser = user as typeof user & { isActive?: boolean }
+        token.sub = String(user.id)
+        token.email = user.email ?? token.email ?? null
+        token.name = user.name ?? token.name ?? null
+        token.picture = user.image ?? token.picture ?? null
+        token.isActive = typeof authUser.isActive === 'boolean' ? authUser.isActive : true
       }
+
+      if (trigger === 'update' && session?.user) {
+        token.name = session.user.name ?? token.name ?? null
+        token.email = session.user.email ?? token.email ?? null
+        token.picture = session.user.image ?? token.picture ?? null
+        if (typeof session.user.isActive === 'boolean') {
+          token.isActive = session.user.isActive
+        }
+      }
+
       return token
     },
     async signIn({ user }) {
@@ -206,16 +221,11 @@ export const authOptions: NextAuthOptions = {
       const userId = session?.user?.id || user?.id || token?.sub
       if (session?.user && userId) {
         session.user.id = String(userId)
-        // Always load name/image/email from DB so profile updates show in header
-        const dbUser = await prisma.user.findUnique({
-          where: { id: String(userId) },
-          select: { name: true, image: true, email: true },
-        })
-        if (dbUser) {
-          session.user.name = dbUser.name ?? session.user.name ?? null
-          session.user.image = dbUser.image ?? session.user.image ?? null
-          session.user.email = dbUser.email ?? session.user.email ?? null
-        }
+        session.user.name = token?.name ?? session.user.name ?? null
+        session.user.image =
+          typeof token?.picture === 'string' ? token.picture : session.user.image ?? null
+        session.user.email = token?.email ?? session.user.email ?? null
+        session.user.isActive = typeof token?.isActive === 'boolean' ? token.isActive : true
       }
       return session
     },

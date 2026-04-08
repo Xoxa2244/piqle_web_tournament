@@ -77,6 +77,7 @@ export const getSessionFromMobileToken = async (token: string): Promise<Session 
       email: true,
       name: true,
       image: true,
+      isActive: true,
     },
   })
 
@@ -88,6 +89,7 @@ export const getSessionFromMobileToken = async (token: string): Promise<Session 
       email: user.email,
       name: user.name,
       image: user.image,
+      isActive: user.isActive,
     },
     expires: new Date(payload.exp * 1000).toISOString(),
   }

@@ -77,6 +77,7 @@ const getSessionFromDb = async (sessionToken: string): Promise<Session | null> =
       email: dbSession.user.email,
       name: dbSession.user.name,
       image: dbSession.user.image,
+      isActive: dbSession.user.isActive,
     },
     expires: dbSession.expires.toISOString(),
   }
@@ -124,41 +125,35 @@ export const createTRPCRouter = t.router
 
 export const publicProcedure = t.procedure
 
-export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user?.id) {
+const requireActiveSession = (session: Session | null) => {
+  if (!session?.user?.id) {
     throw new TRPCError({ code: 'UNAUTHORIZED' })
   }
-  const user = await ctx.prisma.user.findUnique({
-    where: { id: ctx.session.user.id },
-    select: { isActive: true },
-  })
-  if (user && user.isActive === false) {
+
+  if (session.user.isActive === false) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'User account is blocked.' })
   }
+
+  return session as Session & { user: { id: string; isActive?: boolean } }
+}
+
+export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
+  const session = requireActiveSession(ctx.session)
   return next({
     ctx: {
       ...ctx,
-      session: ctx.session as Session & { user: { id: string } },
+      session,
     },
   })
 })
 
 export const tdProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user?.id) {
-    throw new TRPCError({ code: 'UNAUTHORIZED' })
-  }
-  const user = await ctx.prisma.user.findUnique({
-    where: { id: ctx.session.user.id },
-    select: { isActive: true },
-  })
-  if (user && user.isActive === false) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'User account is blocked.' })
-  }
+  const session = requireActiveSession(ctx.session)
 
   return next({
     ctx: {
       ...ctx,
-      session: ctx.session as Session & { user: { id: string } },
+      session,
     },
   })
 })
