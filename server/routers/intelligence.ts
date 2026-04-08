@@ -1723,13 +1723,17 @@ export const intelligenceRouter = createTRPCRouter({
 
       try {
         // Get only club members who have at least 1 booking (skip dormant — 10K+ members with 0 bookings)
-        const activeUserIds = await ctx.prisma.$queryRawUnsafe<Array<{ userId: string }>>(`
+        const activeUserIds = await ctx.prisma.$queryRawUnsafe<Array<{ userId?: string; userid?: string }>>(`
           SELECT DISTINCT b."userId"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE ps."clubId" = $1 AND b.status = 'CONFIRMED'
         `, input.clubId)
-        const activeSet = new Set(activeUserIds.map(r => r.userId))
+        const activeSet = new Set(
+          activeUserIds
+            .map(r => r.userId ?? r.userid)
+            .filter((id): id is string => !!id)
+        )
 
         const allFollowers = await ctx.prisma.clubFollower.findMany({
           where: { clubId: input.clubId },
@@ -1746,6 +1750,9 @@ export const intelligenceRouter = createTRPCRouter({
         // Only process members with bookings for health scoring
         const followers = allFollowers.filter(f => activeSet.has(f.userId))
         const dormantCount = allFollowers.length - followers.length
+        log.info(
+          `[Intelligence] getMemberHealth counts: activeUserRows=${activeUserIds.length} activeSet=${activeSet.size} followers=${allFollowers.length} activeFollowers=${followers.length} dormant=${dormantCount}`
+        )
 
         // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
         let memberEmbeddings: Array<{ source_id: string; metadata: any }> = []
@@ -1798,11 +1805,13 @@ export const intelligenceRouter = createTRPCRouter({
           },
           orderBy: { bookedAt: 'desc' },
         })
+        log.info(`[Intelligence] getMemberHealth bookings: users=${userIds.length} bookings=${bookings.length}`)
 
         // Get preferences
         const preferences = await ctx.prisma.userPlayPreference.findMany({
           where: { clubId: input.clubId, userId: { in: userIds } },
         })
+        log.info(`[Intelligence] getMemberHealth preferences: ${preferences.length}`)
 
         // Build input for health scoring
         const now = new Date()
@@ -1882,6 +1891,7 @@ export const intelligenceRouter = createTRPCRouter({
             })),
           }
         })
+        log.info(`[Intelligence] getMemberHealth memberInputs: ${memberInputs.length}`)
 
         // ── Co-player social graph (Level 2) ──
         // Expensive self-join query (~700ms for 21K bookings) — cached for 30 minutes
@@ -1947,6 +1957,7 @@ export const intelligenceRouter = createTRPCRouter({
 
         const { generateMemberHealth } = await import('@/lib/ai/member-health')
         const result = generateMemberHealth(memberInputs)
+        log.info(`[Intelligence] getMemberHealth result: members=${result.members.length} summaryTotal=${result.summary.total}`)
 
         // Add dormant count (followers with 0 bookings — filtered upfront for performance)
         result.summary.dormant = dormantCount
