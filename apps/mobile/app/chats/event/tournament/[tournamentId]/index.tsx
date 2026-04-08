@@ -19,20 +19,21 @@ import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoadi
 import { ChatComposer } from '../../../../../src/components/ChatComposer'
 import { ChatMentionAnchorIndicator } from '../../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../../src/components/ChatMentionPicker'
+import { ChatScrollToBottomButton } from '../../../../../src/components/ChatScrollToBottomButton'
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../../src/lib/chatMessages'
 import {
   applyMentionCandidate,
-  buildMentionHandle,
   encodeMentionsForSend,
   findActiveMentionQuery,
   formatMentionsForPreview,
-  messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../src/lib/chatMentions'
 import {
   buildDivisionMentionNotificationId,
+  getDivisionMentionMessageIds,
+  getTournamentMentionMessageIds,
   buildTournamentMentionNotificationId,
 } from '../../../../../src/lib/chatMentionNotifications'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
@@ -41,11 +42,13 @@ import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../s
 import {
   useChatRealtimeQueryOptions,
   useMessageThreadRealtimeQueryOptions,
+  useRealtimeAwareQueryOptions,
 } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../../src/providers/AuthProvider'
+import { useNotificationSwipeHidden } from '../../../../../src/providers/NotificationSwipeHiddenProvider'
 import { useAppTheme } from '../../../../../src/providers/ThemeProvider'
 import { useToast } from '../../../../../src/providers/ToastProvider'
 
@@ -72,7 +75,9 @@ export default function TournamentChatScreen() {
   const isAuthenticated = Boolean(token)
   const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
   const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const utils = trpc.useUtils()
+  const { swipeHiddenIds, setSwipeHiddenIds } = useNotificationSwipeHidden()
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
@@ -81,6 +86,7 @@ export default function TournamentChatScreen() {
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const activeMentionQuery = useMemo(() => findActiveMentionQuery(draft), [draft])
   const [seenMentionMessageIds, setSeenMentionMessageIds] = useState<string[]>([])
   const messageOffsetsRef = useRef(new Map<string, number>())
@@ -127,9 +133,15 @@ export default function TournamentChatScreen() {
   }, [activeDivisionId, threadContentOpacity])
 
   const scrollToBottom = useCallback((animated = true) => {
+    setShowScrollToBottom(false)
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated })
     })
+  }, [])
+  const handleThreadScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
+    setShowScrollToBottom(distanceFromBottom > 140)
   }, [])
   const handleMessageLayout = useCallback((messageId: string, y: number) => {
     messageOffsetsRef.current.set(messageId, y)
@@ -151,16 +163,47 @@ export default function TournamentChatScreen() {
       await utils.notification.list.invalidate()
     },
   })
+  const mentionNotificationsQuery = trpc.notification.list.useQuery(
+    { limit: 100 },
+    { enabled: isAuthenticated, ...realtimeAwareQueryOptions }
+  )
   const markMentionSeen = useCallback(
     (messageId: string) => {
+      const notificationId = activeDivisionId
+        ? buildDivisionMentionNotificationId(messageId)
+        : buildTournamentMentionNotificationId(messageId)
       setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
-      dismissNotification.mutate({
-        notificationId: activeDivisionId
-          ? buildDivisionMentionNotificationId(messageId)
-          : buildTournamentMentionNotificationId(messageId),
+      setSwipeHiddenIds((current) => {
+        if (current.has(notificationId)) return current
+        const next = new Set(current)
+        next.add(notificationId)
+        return next
       })
+      utils.notification.list.setData({ limit: 100 }, (current: any) => {
+        if (!current?.items) return current
+        const removed = (current.items as any[]).find((item) => String(item?.id ?? '') === notificationId)
+        const nextItems = (current.items as any[]).filter((item) => String(item?.id ?? '') !== notificationId)
+        const wasUnread = Boolean(removed && !(removed.readAt ?? null))
+        return {
+          ...current,
+          items: nextItems,
+          unreadCount: Math.max(0, Number(current.unreadCount ?? 0) - (wasUnread ? 1 : 0)),
+        }
+      })
+      utils.notification.list.setData({ limit: 40 }, (current: any) => {
+        if (!current?.items) return current
+        const removed = (current.items as any[]).find((item) => String(item?.id ?? '') === notificationId)
+        const nextItems = (current.items as any[]).filter((item) => String(item?.id ?? '') !== notificationId)
+        const wasUnread = Boolean(removed && !(removed.readAt ?? null))
+        return {
+          ...current,
+          items: nextItems,
+          unreadCount: Math.max(0, Number(current.unreadCount ?? 0) - (wasUnread ? 1 : 0)),
+        }
+      })
+      dismissNotification.mutate({ notificationId })
     },
-    [activeDivisionId, dismissNotification]
+    [activeDivisionId, dismissNotification, setSwipeHiddenIds, utils.notification.list]
   )
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
@@ -637,18 +680,17 @@ export default function TournamentChatScreen() {
       nextMessageOrderRef
     )
   }, [activeDivisionId, divisionMessagesQuery.data, tournamentMessagesQuery.data, optimisticMessages])
-  const myMentionHandle = useMemo(() => buildMentionHandle(user?.name), [user?.name])
   const unseenMentionMessageIds = useMemo(
-    () =>
-      messages
-        .filter(
-          (message) =>
-            message.userId !== user?.id &&
-            messageMentionsHandle(message.text, myMentionHandle, user?.id) &&
-            !seenMentionMessageIds.includes(message.id)
-        )
-        .map((message) => message.id),
-    [messages, myMentionHandle, seenMentionMessageIds, user?.id]
+    () => {
+      const visibleItems = ((mentionNotificationsQuery.data?.items ?? []) as any[]).filter(
+        (item) => !swipeHiddenIds.has(String(item?.id ?? ''))
+      )
+      const ids = activeDivisionId
+        ? getDivisionMentionMessageIds(visibleItems, activeDivisionId)
+        : getTournamentMentionMessageIds(visibleItems, tournamentId)
+      return ids.filter((messageId) => !seenMentionMessageIds.includes(messageId))
+    },
+    [activeDivisionId, mentionNotificationsQuery.data?.items, seenMentionMessageIds, swipeHiddenIds, tournamentId]
   )
 
   if (!isAuthenticated) {
@@ -783,6 +825,8 @@ export default function TournamentChatScreen() {
             contentContainerStyle={[styles.scrollContent, (isEmpty || messagesLoading) && styles.messagesEmpty]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            onScroll={handleThreadScroll}
+            scrollEventThrottle={16}
             onContentSizeChange={() => {
               if ((messagesLen === 0 && !messagesLoading) || initialScrollDoneRef.current) return
               initialScrollDoneRef.current = true
@@ -875,6 +919,7 @@ export default function TournamentChatScreen() {
               />
             )}
           </ChatThreadRoot>
+          <ChatScrollToBottomButton visible={showScrollToBottom} onPress={() => scrollToBottom(true)} />
         </Animated.View>
 
         {canPost ? (

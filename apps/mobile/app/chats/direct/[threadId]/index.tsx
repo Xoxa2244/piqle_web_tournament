@@ -7,6 +7,7 @@ import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/Ap
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
+import { ChatScrollToBottomButton } from '../../../../src/components/ChatScrollToBottomButton'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
@@ -16,6 +17,7 @@ import { ActionButton, EmptyState, InputField, Screen, SurfaceCard } from '../..
 import {
   useChatRealtimeQueryOptions,
   useMessageThreadRealtimeQueryOptions,
+  useRealtimeAwareQueryOptions,
 } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
@@ -60,6 +62,7 @@ export default function DirectChatScreen() {
   const isAuthenticated = Boolean(token)
   const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
   const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const toast = useToast()
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
@@ -70,6 +73,7 @@ export default function DirectChatScreen() {
   const [reportDetails, setReportDetails] = useState('')
   const [pendingMenuAction, setPendingMenuAction] = useState<PendingMenuAction>(null)
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
   const initialScrollDoneRef = useRef(false)
@@ -84,7 +88,7 @@ export default function DirectChatScreen() {
 
   const threadQuery = trpc.directChat.getThread.useQuery(
     { threadId },
-    { enabled: Boolean(threadId) && isAuthenticated, ...chatRealtimeQueryOptions }
+    { enabled: Boolean(threadId) && isAuthenticated, ...realtimeAwareQueryOptions }
   )
   const messagesQuery = trpc.directChat.list.useQuery(
     { threadId, limit: 100 },
@@ -328,9 +332,15 @@ export default function DirectChatScreen() {
   })
 
   const scrollToBottom = useCallback((animated = true) => {
+    setShowScrollToBottom(false)
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated })
     })
+  }, [])
+  const handleThreadScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
+    setShowScrollToBottom(distanceFromBottom > 140)
   }, [])
 
   const handleSend = useCallback(() => {
@@ -420,7 +430,7 @@ export default function DirectChatScreen() {
     )
   }
 
-  if (threadQuery.isLoading || (messagesQuery.isLoading && !messagesQuery.data?.length && optimisticMessages.length === 0)) {
+  if ((messagesQuery.isLoading && !messagesQuery.data?.length && optimisticMessages.length === 0) || (!threadQuery.data && threadQuery.isLoading && messages.length === 0)) {
     return <ChatScreenLoading title={displayName} />
   }
 
@@ -489,6 +499,8 @@ export default function DirectChatScreen() {
           contentContainerStyle={[styles.scrollContent, isEmpty && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={handleThreadScroll}
+          scrollEventThrottle={16}
           onContentSizeChange={() => {
             if (messages.length === 0 || initialScrollDoneRef.current) return
             initialScrollDoneRef.current = true
@@ -516,6 +528,7 @@ export default function DirectChatScreen() {
             />
           )}
         </ChatThreadRoot>
+        <ChatScrollToBottomButton visible={showScrollToBottom} onPress={() => scrollToBottom(true)} />
 
         {messagingState?.blockedByMe ? (
           <SurfaceCard style={styles.blockedBanner}>

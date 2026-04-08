@@ -47,3 +47,43 @@ export function buildMentionCountMaps(items: ChatMentionNotificationItem[]) {
 
   return { clubCounts, tournamentCounts, divisionCounts }
 }
+
+export function getClubMentionMessageIds(items: ChatMentionNotificationItem[], clubId: string): string[] {
+  const normalizedClubId = String(clubId ?? '').trim()
+  if (!normalizedClubId) return []
+  return items
+    .filter(
+      (item) =>
+        String(item.type ?? '') === 'CHAT_MENTION' &&
+        String(item.clubId ?? '').trim() === normalizedClubId
+    )
+    .map((item) => String(item.messageId ?? '').trim())
+    .filter(Boolean)
+}
+
+export function getTournamentMentionMessageIds(items: ChatMentionNotificationItem[], tournamentId: string): string[] {
+  const normalizedTournamentId = String(tournamentId ?? '').trim()
+  if (!normalizedTournamentId) return []
+  return items
+    .filter(
+      (item) =>
+        String(item.type ?? '') === 'CHAT_MENTION' &&
+        !String(item.divisionId ?? '').trim() &&
+        String(item.tournamentId ?? '').trim() === normalizedTournamentId
+    )
+    .map((item) => String(item.messageId ?? '').trim())
+    .filter(Boolean)
+}
+
+export function getDivisionMentionMessageIds(items: ChatMentionNotificationItem[], divisionId: string): string[] {
+  const normalizedDivisionId = String(divisionId ?? '').trim()
+  if (!normalizedDivisionId) return []
+  return items
+    .filter(
+      (item) =>
+        String(item.type ?? '') === 'CHAT_MENTION' &&
+        String(item.divisionId ?? '').trim() === normalizedDivisionId
+    )
+    .map((item) => String(item.messageId ?? '').trim())
+    .filter(Boolean)
+}

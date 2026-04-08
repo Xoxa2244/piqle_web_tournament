@@ -2,7 +2,6 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
-import LottieView from 'lottie-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
@@ -32,26 +31,6 @@ const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s]+)/gi
 const isLinkPart = (value: string) => /^(?:https?:\/\/|www\.)[^\s]+$/i.test(value)
 const LINK_WRAP_PATTERN = /([/:.?&=_-]+)/g
 const INLINE_TOKEN_PATTERN = /(\s+|(?:https?:\/\/|www\.)[^\s]+|@[^\s@]+)/giu
-
-const likeBurstStyles = StyleSheet.create({
-  iconWrap: {
-    width: STATIC_LIKE_ICON_SIZE,
-    height: STATIC_LIKE_ICON_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  burst: {
-    position: 'absolute',
-    width: 72,
-    height: 72,
-    left: -28,
-    top: -28,
-  },
-  outlineGlyph: {
-    zIndex: 1,
-  },
-})
 
 type DisplayMessageEntry = {
   type: 'message'
@@ -142,56 +121,6 @@ function LinkInlineText({
   )
 }
 
-function LikeChipIcon({
-  active,
-  color,
-  animateKey,
-  shouldAnimate,
-  onAnimationEnd,
-}: {
-  active: boolean
-  color: string
-  animateKey: number
-  shouldAnimate: boolean
-  onAnimationEnd?: () => void
-}) {
-  const lastAnimatedKeyRef = useRef(0)
-  const [visibleAnimationKey, setVisibleAnimationKey] = useState(0)
-
-  useEffect(() => {
-    if (!shouldAnimate || animateKey <= 0 || animateKey === lastAnimatedKeyRef.current) {
-      return
-    }
-    lastAnimatedKeyRef.current = animateKey
-    setVisibleAnimationKey(animateKey)
-  }, [animateKey, shouldAnimate])
-
-  return (
-    <View style={likeBurstStyles.iconWrap}>
-      {visibleAnimationKey > 0 ? (
-        <LottieView
-          key={visibleAnimationKey}
-          source={require('../assets/animations/like-burst.json')}
-          autoPlay
-          loop={false}
-          style={likeBurstStyles.burst}
-          resizeMode="contain"
-          onAnimationFinish={() => {
-            setVisibleAnimationKey(0)
-            onAnimationEnd?.()
-          }}
-        />
-      ) : null}
-      <MaterialCommunityIcons
-        name={active ? 'heart' : 'heart-outline'}
-        size={STATIC_LIKE_ICON_SIZE}
-        color={color}
-        style={likeBurstStyles.outlineGlyph}
-      />
-    </View>
-  )
-}
-
 type Props = {
   messages: ChatMessage[]
   currentUserId?: string
@@ -243,8 +172,6 @@ export function ChatThreadMessageList({
   const lastTapAtRef = useRef(0)
   const lastTapMessageIdRef = useRef<string | null>(null)
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [likeAnimationTickByMessageId, setLikeAnimationTickByMessageId] = useState<Record<string, number>>({})
-  const [animatingLikeMessageIds, setAnimatingLikeMessageIds] = useState<Record<string, true>>({})
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null)
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<ChatMessage | null>(null)
 
@@ -358,13 +285,6 @@ export function ChatThreadMessageList({
     (m: ChatMessage) => {
       if (!onToggleLike || likeDisabled) return
       void Haptics.selectionAsync().catch(() => {})
-      if (!m.viewerHasLiked) {
-        setAnimatingLikeMessageIds((current) => ({ ...current, [m.id]: true }))
-        setLikeAnimationTickByMessageId((current) => ({
-          ...current,
-          [m.id]: (current[m.id] ?? 0) + 1,
-        }))
-      }
       onToggleLike(m)
     },
     [likeDisabled, onToggleLike]
@@ -511,19 +431,28 @@ export function ChatThreadMessageList({
       const m = entry.message
       const isMine = Boolean(currentUserId && m.userId === currentUserId)
       const { prev, next } = findNeighborMessageEntry(m.id)
+      const sameClusterAsPrev =
+        Boolean(prev) &&
+        prev?.level === entry.level &&
+        (entry.level === 0 || prev?.threadRootId === entry.threadRootId)
+      const sameClusterAsNext =
+        Boolean(next) &&
+        next?.level === entry.level &&
+        (entry.level === 0 || next?.threadRootId === entry.threadRootId)
       const sameAuthorAsPrev =
-        Boolean(prev) && prev?.level === entry.level && prev?.message.userId === m.userId && prev?.threadRootId === entry.threadRootId
-      const showName = !isMine && entry.level === 0 && (!prev || prev.level !== entry.level || prev.message.userId !== m.userId)
+        Boolean(sameClusterAsPrev) && prev?.message.userId === m.userId
+      const sameAuthorAsNext =
+        Boolean(sameClusterAsNext) && next?.message.userId === m.userId
+      const showName = !isMine && entry.level === 0 && !sameAuthorAsPrev
       const userTag = String(userTagByUserId?.[m.userId] ?? '').trim() || null
       const showAvatar =
         showOtherAvatars &&
         !isMine &&
-        (!next || next.level !== entry.level || next.message.userId !== m.userId || next.threadRootId !== entry.threadRootId)
+        !sameAuthorAsPrev
       const tightTop = sameAuthorAsPrev
       const deletable = canDelete(m) && !m.isDeleted && !deleteDisabled
       const likeCountValue = Math.max(0, Number(m.likeCount ?? 0))
-      const isLikeAnimating = Boolean(animatingLikeMessageIds[m.id])
-      const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked || isLikeAnimating)
+      const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked)
       const replyCount = threadRootMessageId ? 0 : replyCountByRootId.get(m.id) ?? 0
       const rowStyles = [
         styles.row,
@@ -587,6 +516,8 @@ export function ChatThreadMessageList({
               styles.bubble,
               entry.level === 1 ? styles.bubbleReply : null,
               isMine ? styles.bubbleMine : styles.bubbleOther,
+              sameAuthorAsPrev ? (isMine ? styles.bubbleMineGroupedTop : styles.bubbleOtherGroupedTop) : null,
+              sameAuthorAsNext ? (isMine ? styles.bubbleMineGroupedBottom : styles.bubbleOtherGroupedBottom) : null,
               pressed &&
                 ((longPressMenuEnabled && !m.isDeleted) || deletable || onToggleLike) && {
                   opacity: 0.92,
@@ -620,19 +551,10 @@ export function ChatThreadMessageList({
             <View style={styles.metaRow}>
               {!isMine && showLikeChip ? (
                 <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
-                  <LikeChipIcon
-                    active={Boolean(m.viewerHasLiked)}
+                  <MaterialCommunityIcons
+                    name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
+                    size={STATIC_LIKE_ICON_SIZE}
                     color={m.viewerHasLiked ? colors.primary : colors.textMuted}
-                    animateKey={likeAnimationTickByMessageId[m.id] ?? 0}
-                    shouldAnimate={isLikeAnimating}
-                    onAnimationEnd={() => {
-                      setAnimatingLikeMessageIds((current) => {
-                        if (!current[m.id]) return current
-                        const nextState = { ...current }
-                        delete nextState[m.id]
-                        return nextState
-                      })
-                    }}
                   />
                   {likeCountValue > 1 ? (
                     <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
@@ -659,19 +581,10 @@ export function ChatThreadMessageList({
                 <>
                   {showLikeChip ? (
                     <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
-                      <LikeChipIcon
-                        active={Boolean(m.viewerHasLiked)}
+                      <MaterialCommunityIcons
+                        name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
+                        size={STATIC_LIKE_ICON_SIZE}
                         color={m.viewerHasLiked ? colors.primary : colors.textMuted}
-                        animateKey={likeAnimationTickByMessageId[m.id] ?? 0}
-                        shouldAnimate={isLikeAnimating}
-                        onAnimationEnd={() => {
-                          setAnimatingLikeMessageIds((current) => {
-                            if (!current[m.id]) return current
-                            const nextState = { ...current }
-                            delete nextState[m.id]
-                            return nextState
-                          })
-                        }}
                       />
                       {likeCountValue > 1 ? (
                         <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
@@ -717,7 +630,6 @@ export function ChatThreadMessageList({
       )
     },
     [
-      animatingLikeMessageIds,
       canDelete,
       colors.primary,
       colors.textMuted,
@@ -726,7 +638,6 @@ export function ChatThreadMessageList({
       findNeighborMessageEntry,
       highlightedMessageId,
       handleLongPress,
-      likeAnimationTickByMessageId,
       likeDisabled,
       longPressMenuEnabled,
       messageById,
@@ -974,6 +885,20 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     bubbleOther: {
       borderBottomLeftRadius: 6,
       backgroundColor: theme === 'light' ? 'rgba(10, 10, 10, 0.045)' : colors.surfaceMuted,
+    },
+    bubbleMineGroupedTop: {
+      borderTopRightRadius: 8,
+      marginTop: 1,
+    },
+    bubbleMineGroupedBottom: {
+      borderBottomRightRadius: 8,
+    },
+    bubbleOtherGroupedTop: {
+      borderTopLeftRadius: 8,
+      marginTop: 1,
+    },
+    bubbleOtherGroupedBottom: {
+      borderBottomLeftRadius: 8,
     },
     previewBubble: {
       borderRadius: 16,

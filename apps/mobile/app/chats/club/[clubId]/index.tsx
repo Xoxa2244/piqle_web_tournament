@@ -8,6 +8,7 @@ import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
 import { ChatMentionAnchorIndicator } from '../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../src/components/ChatMentionPicker'
+import { ChatScrollToBottomButton } from '../../../../src/components/ChatScrollToBottomButton'
 import { FeedbackEntityContextCard } from '../../../../src/components/FeedbackEntityContextCard'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
@@ -16,26 +17,29 @@ import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingMo
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
 import {
   applyMentionCandidate,
-  buildMentionHandle,
   encodeMentionsForSend,
   findActiveMentionQuery,
   formatMentionsForPreview,
-  messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../src/lib/chatMentions'
-import { buildClubMentionNotificationId } from '../../../../src/lib/chatMentionNotifications'
+import {
+  buildClubMentionNotificationId,
+  getClubMentionMessageIds,
+} from '../../../../src/lib/chatMentionNotifications'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
 import {
   useChatRealtimeQueryOptions,
   useMessageThreadRealtimeQueryOptions,
+  useRealtimeAwareQueryOptions,
 } from '../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../src/lib/trpc'
 import { FEEDBACK_API_ENABLED } from '../../../../src/lib/config'
 import { spacing, type ThemePalette } from '../../../../src/lib/theme'
 import { useChatKeyboardVerticalOffset } from '../../../../src/hooks/useChatKeyboardVerticalOffset'
 import { useAuth } from '../../../../src/providers/AuthProvider'
+import { useNotificationSwipeHidden } from '../../../../src/providers/NotificationSwipeHiddenProvider'
 import { useAppTheme } from '../../../../src/providers/ThemeProvider'
 import { useToast } from '../../../../src/providers/ToastProvider'
 
@@ -54,7 +58,9 @@ export default function ClubChatScreen() {
   const isAuthenticated = Boolean(token)
   const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
   const messageThreadRealtimeQueryOptions = useMessageThreadRealtimeQueryOptions()
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const utils = trpc.useUtils()
+  const { swipeHiddenIds, setSwipeHiddenIds } = useNotificationSwipeHidden()
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
@@ -72,13 +78,20 @@ export default function ClubChatScreen() {
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const activeMentionQuery = useMemo(() => findActiveMentionQuery(draft), [draft])
   const [seenMentionMessageIds, setSeenMentionMessageIds] = useState<string[]>([])
 
   const scrollToBottom = useCallback((animated = true) => {
+    setShowScrollToBottom(false)
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated })
     })
+  }, [])
+  const handleThreadScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
+    setShowScrollToBottom(distanceFromBottom > 140)
   }, [])
   const handleMessageLayout = useCallback((messageId: string, y: number) => {
     messageOffsetsRef.current.set(messageId, y)
@@ -102,10 +115,39 @@ export default function ClubChatScreen() {
   })
   const markMentionSeen = useCallback(
     (messageId: string) => {
+      const notificationId = buildClubMentionNotificationId(messageId)
       setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
-      dismissNotification.mutate({ notificationId: buildClubMentionNotificationId(messageId) })
+      setSwipeHiddenIds((current) => {
+        if (current.has(notificationId)) return current
+        const next = new Set(current)
+        next.add(notificationId)
+        return next
+      })
+      utils.notification.list.setData({ limit: 100 }, (current: any) => {
+        if (!current?.items) return current
+        const removed = (current.items as any[]).find((item) => String(item?.id ?? '') === notificationId)
+        const nextItems = (current.items as any[]).filter((item) => String(item?.id ?? '') !== notificationId)
+        const wasUnread = Boolean(removed && !(removed.readAt ?? null))
+        return {
+          ...current,
+          items: nextItems,
+          unreadCount: Math.max(0, Number(current.unreadCount ?? 0) - (wasUnread ? 1 : 0)),
+        }
+      })
+      utils.notification.list.setData({ limit: 40 }, (current: any) => {
+        if (!current?.items) return current
+        const removed = (current.items as any[]).find((item) => String(item?.id ?? '') === notificationId)
+        const nextItems = (current.items as any[]).filter((item) => String(item?.id ?? '') !== notificationId)
+        const wasUnread = Boolean(removed && !(removed.readAt ?? null))
+        return {
+          ...current,
+          items: nextItems,
+          unreadCount: Math.max(0, Number(current.unreadCount ?? 0) - (wasUnread ? 1 : 0)),
+        }
+      })
+      dismissNotification.mutate({ notificationId })
     },
-    [dismissNotification]
+    [dismissNotification, setSwipeHiddenIds, utils.notification.list]
   )
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -115,6 +157,10 @@ export default function ClubChatScreen() {
   const clubMembersQuery = trpc.club.listMembers.useQuery(
     { clubId },
     { enabled: Boolean(clubId) && isAuthenticated }
+  )
+  const mentionNotificationsQuery = trpc.notification.list.useQuery(
+    { limit: 100 },
+    { enabled: isAuthenticated, ...realtimeAwareQueryOptions }
   )
   const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
   /** Список чатов может ещё не подгрузиться — logo из club.get; иначе логотип в шапке пропадает. */
@@ -396,18 +442,15 @@ export default function ClubChatScreen() {
       nextMessageOrderRef
     )
   }, [messagesQuery.data, optimisticMessages])
-  const myMentionHandle = useMemo(() => buildMentionHandle(user?.name), [user?.name])
   const unseenMentionMessageIds = useMemo(
     () =>
-      messages
-        .filter(
-          (message) =>
-            message.userId !== user?.id &&
-            messageMentionsHandle(message.text, myMentionHandle, user?.id) &&
-            !seenMentionMessageIds.includes(message.id)
-        )
-        .map((message) => message.id),
-    [messages, myMentionHandle, seenMentionMessageIds, user?.id]
+      getClubMentionMessageIds(
+        ((mentionNotificationsQuery.data?.items ?? []) as any[]).filter(
+          (item) => !swipeHiddenIds.has(String(item?.id ?? ''))
+        ),
+        clubId
+      ).filter((messageId) => !seenMentionMessageIds.includes(messageId)),
+    [clubId, mentionNotificationsQuery.data?.items, seenMentionMessageIds, swipeHiddenIds]
   )
   const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
     (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,
@@ -486,6 +529,8 @@ export default function ClubChatScreen() {
           contentContainerStyle={[styles.scrollContent, isEmpty && styles.messagesEmpty]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={handleThreadScroll}
+          scrollEventThrottle={16}
           onContentSizeChange={() => {
             if ((messages.length === 0 && !showClubFeedbackPrompt) || initialScrollDoneRef.current) return
             initialScrollDoneRef.current = true
@@ -556,6 +601,7 @@ export default function ClubChatScreen() {
             </View>
           ) : null}
         </ChatThreadRoot>
+        <ChatScrollToBottomButton visible={showScrollToBottom} onPress={() => scrollToBottom(true)} />
 
         <ChatComposer
           value={draft}
