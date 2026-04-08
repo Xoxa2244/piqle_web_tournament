@@ -307,7 +307,7 @@ export default function ClubChatScreen() {
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
     markRead.mutate({ clubId })
-  }, [clubId, isAuthenticated, messagesQuery.data?.length])
+  }, [clubId, isAuthenticated, markRead])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'

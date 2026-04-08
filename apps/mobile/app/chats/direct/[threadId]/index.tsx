@@ -359,7 +359,7 @@ export default function DirectChatScreen() {
   useEffect(() => {
     if (!threadId || !isAuthenticated) return
     markRead.mutate({ threadId })
-  }, [threadId, isAuthenticated, messagesQuery.data?.length])
+  }, [threadId, isAuthenticated, markRead])
 
   useEffect(() => {
     initialScrollDoneRef.current = false

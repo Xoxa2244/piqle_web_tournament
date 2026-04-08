@@ -22,7 +22,7 @@ export const chatRealtimeQueryOptions = {
 } as const
 
 export const messageThreadRealtimeQueryOptions = {
-  refetchInterval: 1000,
+  refetchInterval: 3000,
   staleTime: 0,
   refetchOnMount: 'always' as const,
 } as const
@@ -54,7 +54,7 @@ export function useMessageThreadRealtimeQueryOptions() {
   const { enabled, connected } = useRealtimeConnection()
   return useMemo(
     () => ({
-      refetchInterval: enabled && connected ? false : 1000,
+      refetchInterval: enabled && connected ? false : 3000,
       staleTime: 0,
       refetchOnMount: 'always' as const,
     }),

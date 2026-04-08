@@ -14,6 +14,7 @@ if (__DEV__) {
 
 import { AppProviders } from '../src/providers/AppProviders'
 import { useAuth } from '../src/providers/AuthProvider'
+import { useRealtimeConnection } from '../src/providers/RealtimeProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
 
 const isAuthOnlyPath = (pathname: string) => {
@@ -61,6 +62,7 @@ const RootNavigator = () => {
 
   return (
     <>
+      <ChatRealtimeRouteSync />
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <Stack
         key={theme}
@@ -100,6 +102,17 @@ const RootNavigator = () => {
       </Stack>
     </>
   )
+}
+
+const ChatRealtimeRouteSync = () => {
+  const pathname = usePathname()
+  const { setChatScopeActive } = useRealtimeConnection()
+
+  useEffect(() => {
+    setChatScopeActive(pathname === '/chats' || pathname.startsWith('/chats/'))
+  }, [pathname, setChatScopeActive])
+
+  return null
 }
 
 export default function RootLayout() {

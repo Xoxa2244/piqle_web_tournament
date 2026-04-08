@@ -86,9 +86,13 @@ export default function ClubChatThreadScreen() {
   )
 
   const sendMessage = trpc.clubChat.send.useMutation({
-    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
+    onMutate: async ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !clubId || !user?.id) return null
+      await Promise.all([
+        utils.clubChat.listThread.cancel({ clubId, rootMessageId }),
+        utils.clubChat.list.cancel({ clubId, limit: 100 }),
+      ])
       const createdAt = new Date()
       const optimisticId = `optimistic-thread-${clubId}-${createdAt.getTime()}`
       const resolvedReplyTarget =
@@ -129,6 +133,14 @@ export default function ClubChatThreadScreen() {
       setDraft('')
       setReplyTarget(null)
       setOptimisticMessages((current) => [...current, optimisticMessage])
+      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) => {
+        const list = (current ?? []) as any[]
+        if (list.some((message) => message.id === optimisticId)) return list
+        return [...list, optimisticMessage]
+      })
+      utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((club) => (club.id === clubId ? { ...club, unreadCount: 0, lastMessageAt: createdAt } : club))
+      )
       return { optimisticId }
     },
     onSuccess: (data: any, _vars, context: any) => {
@@ -140,6 +152,14 @@ export default function ClubChatThreadScreen() {
         if (list.some((message) => message.id === data.id)) return current
         return { rootMessageId: current?.rootMessageId ?? rootMessageId, messages: [...list, data] }
       })
+      utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) => {
+        const withoutOptimistic = ((current ?? []) as any[]).filter((message) => message.id !== context?.optimisticId)
+        if (withoutOptimistic.some((message) => message.id === data.id)) return withoutOptimistic
+        return [...withoutOptimistic, data]
+      })
+      utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((club) => (club.id === clubId ? { ...club, unreadCount: 0, lastMessageAt: data.createdAt } : club))
+      )
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -147,6 +167,9 @@ export default function ClubChatThreadScreen() {
     onError: (error: any, _vars, context: any) => {
       if (context?.optimisticId) {
         setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+        utils.clubChat.list.setData({ clubId, limit: 100 }, (current: any[] | undefined) =>
+          ((current ?? []) as any[]).filter((message) => message.id !== context.optimisticId)
+        )
       }
       toast.error(error.message || 'Failed to send message')
     },
@@ -269,7 +292,7 @@ export default function ClubChatThreadScreen() {
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
     markRead.mutate({ clubId })
-  }, [clubId, isAuthenticated, markRead, threadQuery.data?.messages?.length])
+  }, [clubId, isAuthenticated, markRead])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'

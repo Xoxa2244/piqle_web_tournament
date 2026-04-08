@@ -22,7 +22,6 @@ function MobileForegroundSync() {
     const onChange = (state: AppStateStatus) => {
       if (state !== 'active' || !token) return
       void Promise.all([
-        utils.notification.list.invalidate(),
         utils.directChat.listMyChats.invalidate(),
         utils.club.listMyChatClubs.invalidate(),
         utils.tournamentChat.listMyEventChats.invalidate(),
@@ -38,9 +37,10 @@ function useMobileRealtimeSync() {
   const utils = trpc.useUtils()
   const { token, clearSession } = useAuth()
   const [connected, setConnected] = useState(false)
+  const [chatScopeActive, setChatScopeActive] = useState(false)
 
   useEffect(() => {
-    if (!token) {
+    if (!token || !chatScopeActive) {
       setConnected(false)
       return
     }
@@ -61,9 +61,6 @@ function useMobileRealtimeSync() {
         if (payload.type !== 'invalidate' || !Array.isArray(payload.keys)) return
 
         for (const key of payload.keys) {
-          if (key === 'notification.list') {
-            void utils.notification.list.invalidate()
-          }
           if (key === 'directChat.listMyChats') {
             void utils.directChat.listMyChats.invalidate()
             void utils.directChat.getThread.invalidate()
@@ -86,12 +83,6 @@ function useMobileRealtimeSync() {
           }
           if (key === 'tournamentChat.listDivisionThread') {
             void utils.tournamentChat.listDivisionThread.invalidate()
-          }
-          if (key === 'registration.getMyStatus') {
-            void utils.registration.getMyStatus.invalidate()
-          }
-          if (key === 'registration.getSeatMap') {
-            void utils.registration.getSeatMap.invalidate()
           }
         }
       } catch (error) {
@@ -185,9 +176,9 @@ function useMobileRealtimeSync() {
       if (reconnectTimer) clearTimeout(reconnectTimer)
       abortController?.abort()
     }
-  }, [clearSession, token, utils])
+  }, [chatScopeActive, clearSession, token, utils])
 
-  return { connected, enabled: Boolean(token) }
+  return { connected, enabled: Boolean(token) && chatScopeActive, chatScopeActive, setChatScopeActive }
 }
 
 const MobileRealtimeConnectionLayer = ({ children }: PropsWithChildren) => {

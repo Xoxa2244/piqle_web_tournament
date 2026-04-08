@@ -552,7 +552,7 @@ export default function TournamentChatScreen() {
     } else {
       markRead.mutate({ tournamentId })
     }
-  }, [tournamentId, isAuthenticated, activeDivisionId, messagesLen])
+  }, [tournamentId, isAuthenticated, activeDivisionId, markDivisionRead, markRead])
 
   useEffect(() => {
     if (messagesLen === 0) return

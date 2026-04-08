@@ -1,14 +1,18 @@
-import type { PropsWithChildren } from 'react'
+import type { Dispatch, PropsWithChildren, SetStateAction } from 'react'
 import { createContext, useContext } from 'react'
 
 type RealtimeConnectionState = {
   enabled: boolean
   connected: boolean
+  chatScopeActive: boolean
+  setChatScopeActive: Dispatch<SetStateAction<boolean>>
 }
 
 const RealtimeConnectionContext = createContext<RealtimeConnectionState>({
   enabled: false,
   connected: false,
+  chatScopeActive: false,
+  setChatScopeActive: () => undefined,
 })
 
 export function RealtimeConnectionProvider({

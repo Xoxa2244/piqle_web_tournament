@@ -85,10 +85,22 @@ const getSessionFromDb = async (sessionToken: string): Promise<Session | null> =
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   let session: Session | null = null
-  try {
-    session = await getServerSession(authOptions)
-  } catch (error) {
-    console.error('[TRPC] getServerSession failed, falling back to other auth modes', error)
+  const bearerToken = getBearerTokenFromRequest(opts.req)
+
+  if (bearerToken) {
+    try {
+      session = await getSessionFromMobileToken(bearerToken)
+    } catch (error) {
+      console.error('[TRPC] getSessionFromMobileToken failed', error)
+    }
+  }
+
+  if (!session) {
+    try {
+      session = await getServerSession(authOptions)
+    } catch (error) {
+      console.error('[TRPC] getServerSession failed, falling back to other auth modes', error)
+    }
   }
 
   if (!session) {
@@ -98,17 +110,6 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
         session = await getSessionFromDb(sessionToken)
       } catch (error) {
         console.error('[TRPC] getSessionFromDb failed', error)
-      }
-    }
-  }
-
-  if (!session) {
-    const bearerToken = getBearerTokenFromRequest(opts.req)
-    if (bearerToken) {
-      try {
-        session = await getSessionFromMobileToken(bearerToken)
-      } catch (error) {
-        console.error('[TRPC] getSessionFromMobileToken failed', error)
       }
     }
   }

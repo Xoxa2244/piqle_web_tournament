@@ -89,9 +89,13 @@ export default function TournamentThreadScreen() {
   )
 
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
+    onMutate: async ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !tournamentId || !user?.id) return null
+      await Promise.all([
+        utils.tournamentChat.listTournamentThread.cancel({ tournamentId, rootMessageId }),
+        utils.tournamentChat.listTournament.cancel({ tournamentId, limit: 100 }),
+      ])
       const createdAt = new Date()
       const optimisticId = `optimistic-thread-${tournamentId}-${createdAt.getTime()}`
       const resolvedReplyTarget =
@@ -132,6 +136,14 @@ export default function TournamentThreadScreen() {
       setDraft('')
       setReplyTarget(null)
       setOptimisticMessages((current) => [...current, optimisticMessage])
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) => {
+        const list = (current ?? []) as any[]
+        if (list.some((message) => message.id === optimisticId)) return list
+        return [...list, optimisticMessage]
+      })
+      utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((event) => (event.id === tournamentId ? { ...event, unreadCount: 0, lastMessageAt: createdAt } : event))
+      )
       return { optimisticId }
     },
     onSuccess: (data: any, _vars, context: any) => {
@@ -143,6 +155,14 @@ export default function TournamentThreadScreen() {
         if (list.some((message) => message.id === data.id)) return current
         return { rootMessageId: current?.rootMessageId ?? rootMessageId, messages: [...list, data] }
       })
+      utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) => {
+        const withoutOptimistic = ((current ?? []) as any[]).filter((message) => message.id !== context?.optimisticId)
+        if (withoutOptimistic.some((message) => message.id === data.id)) return withoutOptimistic
+        return [...withoutOptimistic, data]
+      })
+      utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((event) => (event.id === tournamentId ? { ...event, unreadCount: 0, lastMessageAt: data.createdAt } : event))
+      )
       if (data?.wasFiltered) {
         toast.success('Some words were filtered.', 'Filtered')
       }
@@ -150,6 +170,9 @@ export default function TournamentThreadScreen() {
     onError: (error: any, _vars, context: any) => {
       if (context?.optimisticId) {
         setOptimisticMessages((current) => current.filter((message) => message.id !== context.optimisticId))
+        utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
+          ((current ?? []) as any[]).filter((message) => message.id !== context.optimisticId)
+        )
       }
       toast.error(error.message || 'Failed to send message')
     },
@@ -261,7 +284,7 @@ export default function TournamentThreadScreen() {
   useEffect(() => {
     if (!tournamentId || !isAuthenticated) return
     markRead.mutate({ tournamentId })
-  }, [isAuthenticated, markRead, threadQuery.data?.messages?.length, tournamentId])
+  }, [isAuthenticated, markRead, tournamentId])
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'

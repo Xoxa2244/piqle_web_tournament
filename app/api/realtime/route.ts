@@ -24,12 +24,15 @@ const getBearerToken = (request: Request) => {
 }
 
 export async function GET(request: Request) {
-  let session = await getServerSession(authOptions)
+  let session = null
+  const bearerToken = getBearerToken(request)
+
+  if (bearerToken) {
+    session = await getSessionFromMobileToken(bearerToken)
+  }
+
   if (!session?.user?.id) {
-    const bearerToken = getBearerToken(request)
-    if (bearerToken) {
-      session = await getSessionFromMobileToken(bearerToken)
-    }
+    session = await getServerSession(authOptions)
   }
 
   if (!session?.user?.id) {
