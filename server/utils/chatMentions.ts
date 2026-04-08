@@ -13,7 +13,8 @@ export function extractMentionedUserIds(text: string | null | undefined): string
   if (!source) return []
   const ids = new Set<string>()
   const regex = /@([^\s@~]+)~([^\s@]+?)(?=$|[\s.,!?;:])/g
-  for (const match of source.matchAll(regex)) {
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(source)) !== null) {
     const userId = String(match[2] ?? '').trim()
     if (userId) ids.add(userId)
   }
