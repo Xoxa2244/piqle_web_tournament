@@ -12,7 +12,7 @@ export function extractMentionedUserIds(text: string | null | undefined): string
   const source = String(text ?? '')
   if (!source) return []
   const ids = new Set<string>()
-  const regex = /@([^\s@~]+)~([^\s@]+?)(?=$|[\s.,!?;:])/gu
+  const regex = /@([^\s@~]+)~([^\s@]+?)(?=$|[\s.,!?;:])/g
   for (const match of source.matchAll(regex)) {
     const userId = String(match[2] ?? '').trim()
     if (userId) ids.add(userId)
@@ -21,5 +21,5 @@ export function extractMentionedUserIds(text: string | null | undefined): string
 }
 
 export function stripMentionIds(text: string | null | undefined): string {
-  return String(text ?? '').replace(/@([^\s@~]+)~([^\s@]+?)(?=$|[\s.,!?;:])/gu, '@$1')
+  return String(text ?? '').replace(/@([^\s@~]+)~([^\s@]+?)(?=$|[\s.,!?;:])/g, '@$1')
 }
