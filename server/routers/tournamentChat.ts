@@ -102,46 +102,57 @@ async function getTournamentMembership(
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
   }
 
-  const [adminAccess, clubAdmin, teamParticipant, waitlistParticipant] = await Promise.all([
-    prisma.tournamentAccess.findFirst({
-      where: {
-        userId,
-        tournamentId,
-        accessLevel: 'ADMIN',
-      },
-      select: { id: true },
-    }),
-    tournament.clubId
-      ? prisma.clubAdmin.findUnique({
-          where: { clubId_userId: { clubId: tournament.clubId, userId } },
-          select: { id: true },
-        })
-      : Promise.resolve(null),
-    prisma.teamPlayer.findFirst({
-      where: {
-        player: { userId },
-        team: {
-          division: {
-            tournamentId,
+  const adminAccess = await prisma.tournamentAccess.findFirst({
+    where: {
+      userId,
+      tournamentId,
+      accessLevel: 'ADMIN',
+    },
+    select: { id: true },
+  })
+
+  const clubAdmin = tournament.clubId
+    ? await prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: tournament.clubId, userId } },
+        select: { id: true },
+      })
+    : null
+
+  const playerRecord = await prisma.player.findFirst({
+    where: {
+      userId,
+      tournamentId,
+    },
+    select: {
+      id: true,
+      teamPlayers: {
+        where: {
+          team: {
+            division: {
+              tournamentId,
+            },
           },
         },
+        select: { id: true },
+        take: 1,
       },
-      select: { id: true },
-    }),
-    prisma.waitlistEntry.findFirst({
-      where: {
-        tournamentId,
-        status: 'ACTIVE',
-        player: { userId },
+      waitlistEntries: {
+        where: {
+          tournamentId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+        take: 1,
       },
-      select: { id: true },
-    }),
-  ])
+    },
+  })
 
   const isOwner = tournament.userId === userId
   const isTournamentAdmin = Boolean(adminAccess)
   const isClubAdmin = Boolean(clubAdmin)
-  const isParticipant = Boolean(teamParticipant || waitlistParticipant)
+  const isParticipant = Boolean(
+    (playerRecord?.teamPlayers?.length ?? 0) > 0 || (playerRecord?.waitlistEntries?.length ?? 0) > 0
+  )
   const canView = isOwner || isTournamentAdmin || isClubAdmin || isParticipant
 
   return {
@@ -179,43 +190,54 @@ async function getDivisionMembership(
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Division not found' })
   }
 
-  const [adminAccess, clubAdmin, teamParticipant, waitlistParticipant] = await Promise.all([
-    prisma.tournamentAccess.findFirst({
-      where: {
-        userId,
-        tournamentId: division.tournamentId,
-        accessLevel: 'ADMIN',
-        OR: [{ divisionId: null }, { divisionId }],
+  const adminAccess = await prisma.tournamentAccess.findFirst({
+    where: {
+      userId,
+      tournamentId: division.tournamentId,
+      accessLevel: 'ADMIN',
+      OR: [{ divisionId: null }, { divisionId }],
+    },
+    select: { id: true },
+  })
+
+  const clubAdmin = division.tournament.clubId
+    ? await prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: division.tournament.clubId, userId } },
+        select: { id: true },
+      })
+    : null
+
+  const playerRecord = await prisma.player.findFirst({
+    where: {
+      userId,
+      tournamentId: division.tournamentId,
+    },
+    select: {
+      id: true,
+      teamPlayers: {
+        where: {
+          team: { divisionId },
+        },
+        select: { id: true },
+        take: 1,
       },
-      select: { id: true },
-    }),
-    division.tournament.clubId
-      ? prisma.clubAdmin.findUnique({
-          where: { clubId_userId: { clubId: division.tournament.clubId, userId } },
-          select: { id: true },
-        })
-      : Promise.resolve(null),
-    prisma.teamPlayer.findFirst({
-      where: {
-        player: { userId },
-        team: { divisionId },
+      waitlistEntries: {
+        where: {
+          divisionId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+        take: 1,
       },
-      select: { id: true },
-    }),
-    prisma.waitlistEntry.findFirst({
-      where: {
-        divisionId,
-        status: 'ACTIVE',
-        player: { userId },
-      },
-      select: { id: true },
-    }),
-  ])
+    },
+  })
 
   const isOwner = division.tournament.userId === userId
   const isTournamentAdmin = Boolean(adminAccess)
   const isClubAdmin = Boolean(clubAdmin)
-  const isParticipant = Boolean(teamParticipant || waitlistParticipant)
+  const isParticipant = Boolean(
+    (playerRecord?.teamPlayers?.length ?? 0) > 0 || (playerRecord?.waitlistEntries?.length ?? 0) > 0
+  )
   const canView = isOwner || isTournamentAdmin || isClubAdmin || isParticipant
 
   return {

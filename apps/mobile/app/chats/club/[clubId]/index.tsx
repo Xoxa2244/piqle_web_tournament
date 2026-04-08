@@ -55,6 +55,7 @@ export default function ClubChatScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastMarkedReadKeyRef = useRef<string | null>(null)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
@@ -295,6 +296,7 @@ export default function ClubChatScreen() {
 
   useEffect(() => {
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [clubId])
 
   useEffect(
@@ -306,6 +308,10 @@ export default function ClubChatScreen() {
 
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
+    const messagesCount = messagesQuery.data?.length ?? 0
+    const markReadKey = `${clubId}:${messagesCount}`
+    if (lastMarkedReadKeyRef.current === markReadKey) return
+    lastMarkedReadKeyRef.current = markReadKey
     markRead.mutate({ clubId })
   }, [clubId, isAuthenticated, markRead])
 

@@ -46,6 +46,7 @@ export default function DivisionThreadScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastMarkedReadKeyRef = useRef<string | null>(null)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
@@ -277,6 +278,7 @@ export default function DivisionThreadScreen() {
 
   useEffect(() => {
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [divisionId, rootMessageId])
 
   useEffect(
@@ -288,6 +290,10 @@ export default function DivisionThreadScreen() {
 
   useEffect(() => {
     if (!divisionId || !isAuthenticated) return
+    const messagesCount = threadQuery.data?.messages?.length ?? 0
+    const markReadKey = `${divisionId}:${messagesCount}`
+    if (lastMarkedReadKeyRef.current === markReadKey) return
+    lastMarkedReadKeyRef.current = markReadKey
     markRead.mutate({ divisionId })
   }, [divisionId, isAuthenticated, markRead])
 

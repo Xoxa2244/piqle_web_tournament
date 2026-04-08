@@ -46,6 +46,7 @@ export default function TournamentThreadScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastMarkedReadKeyRef = useRef<string | null>(null)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
@@ -272,6 +273,7 @@ export default function TournamentThreadScreen() {
 
   useEffect(() => {
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [rootMessageId, tournamentId])
 
   useEffect(
@@ -283,6 +285,10 @@ export default function TournamentThreadScreen() {
 
   useEffect(() => {
     if (!tournamentId || !isAuthenticated) return
+    const messagesCount = threadQuery.data?.messages?.length ?? 0
+    const markReadKey = `${tournamentId}:${messagesCount}`
+    if (lastMarkedReadKeyRef.current === markReadKey) return
+    lastMarkedReadKeyRef.current = markReadKey
     markRead.mutate({ tournamentId })
   }, [isAuthenticated, markRead, tournamentId])
 
