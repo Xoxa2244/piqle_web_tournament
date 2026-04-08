@@ -6,12 +6,15 @@ import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { ChatMentionAnchorIndicator } from '../../../../src/components/ChatMentionAnchorIndicator'
+import { ChatMentionPicker } from '../../../../src/components/ChatMentionPicker'
 import { FeedbackEntityContextCard } from '../../../../src/components/FeedbackEntityContextCard'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { EntityImage } from '../../../../src/components/EntityImage'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
+import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../src/lib/chatMentions'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
@@ -60,6 +63,8 @@ export default function ClubChatScreen() {
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const activeMentionQuery = useMemo(() => findActiveMentionQuery(draft), [draft])
+  const [seenMentionMessageIds, setSeenMentionMessageIds] = useState<string[]>([])
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -86,11 +91,29 @@ export default function ClubChatScreen() {
     ...chatRealtimeQueryOptions,
   })
   const clubDetailQuery = trpc.club.get.useQuery({ id: clubId }, { enabled: Boolean(clubId) && isAuthenticated })
+  const clubMembersQuery = trpc.club.listMembers.useQuery(
+    { clubId },
+    { enabled: Boolean(clubId) && isAuthenticated && activeMentionQuery !== null }
+  )
   const activeClub = myChatClubsQuery.data?.find((c: any) => c.id === clubId) as any
   /** Список чатов может ещё не подгрузиться — logo из club.get; иначе логотип в шапке пропадает. */
   const clubLogoUrl = activeClub?.logoUrl ?? clubDetailQuery.data?.logoUrl ?? null
   const clubDisplayName = activeClub?.name ?? clubDetailQuery.data?.name ?? clubName
   const isAdmin = Boolean(myChatClubsQuery.data?.find((c) => c.id === clubId)?.isAdmin)
+  const mentionCandidates = useMemo(
+    () =>
+      ((clubMembersQuery.data?.members ?? []) as any[])
+        .map((member) => toMentionCandidate(member.user))
+        .filter((candidate) => candidate.id !== user?.id),
+    [clubMembersQuery.data?.members, user?.id]
+  )
+  const filteredMentionCandidates = useMemo(() => {
+    if (activeMentionQuery === null) return []
+    const query = activeMentionQuery.trim().toLowerCase()
+    return mentionCandidates
+      .filter((candidate) => !query || candidate.handle.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query))
+      .slice(0, 8)
+  }, [activeMentionQuery, mentionCandidates])
 
   const messagesQuery = trpc.clubChat.list.useQuery(
     { clubId, limit: 100 },
@@ -339,6 +362,19 @@ export default function ClubChatScreen() {
       nextMessageOrderRef
     )
   }, [messagesQuery.data, optimisticMessages])
+  const myMentionHandle = useMemo(() => buildMentionHandle(user?.name), [user?.name])
+  const unseenMentionMessageIds = useMemo(
+    () =>
+      messages
+        .filter(
+          (message) =>
+            message.userId !== user?.id &&
+            messageMentionsHandle(message.text, myMentionHandle, user?.id) &&
+            !seenMentionMessageIds.includes(message.id)
+        )
+        .map((message) => message.id),
+    [messages, myMentionHandle, seenMentionMessageIds, user?.id]
+  )
   const pendingClubPrompt = (pendingFeedbackQuery.data?.items ?? []).find(
     (item: any) => item.entityType === 'CLUB' && item.entityId === clubId,
   )
@@ -451,6 +487,10 @@ export default function ClubChatScreen() {
                 if (!m.userId) return
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
               }}
+              mentionCandidates={mentionCandidates}
+              onPressMentionUser={(userId) => {
+                router.push({ pathname: '/profile/[id]', params: { id: userId } })
+              }}
               canDelete={(m) =>
                 Boolean((user?.id && m.userId === user?.id) || isAdmin) && !m.isDeleted
               }
@@ -481,24 +521,50 @@ export default function ClubChatScreen() {
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}
           topSlot={
-            replyTarget ? (
-              <View style={styles.replyComposerCard}>
-                <View style={styles.replyComposerBody}>
-                  <Text style={styles.replyComposerLabel} numberOfLines={1}>
-                    Replying to {replyTarget.user?.name || 'User'}
-                  </Text>
-                  <Text style={styles.replyComposerText} numberOfLines={1}>
-                    {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => setReplyTarget(null)}
-                  hitSlop={8}
-                  style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}
-                >
-                  <Feather name="x" size={16} color={colors.textMuted} />
-                </Pressable>
+            unseenMentionMessageIds.length > 0 || replyTarget ? (
+              <View style={styles.composerTopStack}>
+                {unseenMentionMessageIds.length > 0 ? (
+                  <ChatMentionAnchorIndicator
+                    count={unseenMentionMessageIds.length}
+                    onPress={() => {
+                      const targetMessageId = unseenMentionMessageIds[0]
+                      if (!targetMessageId) return
+                      const didScroll = scrollToMessage(targetMessageId)
+                      if (!didScroll) return
+                      setSeenMentionMessageIds((current) =>
+                        current.includes(targetMessageId) ? current : [...current, targetMessageId]
+                      )
+                    }}
+                  />
+                ) : null}
+                {replyTarget ? (
+                  <View style={styles.replyComposerCard}>
+                    <View style={styles.replyComposerBody}>
+                      <Text style={styles.replyComposerLabel} numberOfLines={1}>
+                        Replying to {replyTarget.user?.name || 'User'}
+                      </Text>
+                      <Text style={styles.replyComposerText} numberOfLines={1}>
+                        {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setReplyTarget(null)}
+                      hitSlop={8}
+                      style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}
+                    >
+                      <Feather name="x" size={16} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
+            ) : null
+          }
+          bottomSlot={
+            activeMentionQuery !== null ? (
+              <ChatMentionPicker
+                candidates={filteredMentionCandidates}
+                onSelect={(candidate) => setDraft((current) => applyMentionCandidate(current, candidate))}
+              />
             ) : null
           }
         />
@@ -622,6 +688,9 @@ const createStyles = (colors: ThemePalette) =>
     height: 28,
     borderRadius: 14,
     backgroundColor: colors.surface,
+  },
+  composerTopStack: {
+    gap: 10,
   },
   replyComposerCard: {
     borderRadius: 16,

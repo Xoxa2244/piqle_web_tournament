@@ -32,6 +32,21 @@ const chatReplyPreviewSelect = {
   },
 } as const
 
+const mapMentionCandidates = (users: Array<{ id: string; name: string | null; image: string | null }>) =>
+  Array.from(
+    new Map(
+      users
+        .filter((user) => user?.id)
+        .map((user) => [user.id, { id: user.id, name: user.name, image: user.image }])
+    ).values()
+  ).sort((left, right) => String(left.name ?? '').localeCompare(String(right.name ?? ''), undefined, { sensitivity: 'base' }))
+
+const isMentionUser = (user: { id: string; name: string | null; image: string | null } | null | undefined): user is {
+  id: string
+  name: string | null
+  image: string | null
+} => Boolean(user?.id)
+
 const mapMessage = (m: {
   id: string
   userId: string
@@ -344,6 +359,117 @@ export const tournamentChatRouter = createTRPCRouter({
         tournament,
         divisions,
       }
+    }),
+
+  listMentionCandidates: protectedProcedure
+    .input(
+      z.object({
+        tournamentId: z.string(),
+        divisionId: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      if (input.divisionId) {
+        const membership = await getDivisionMembership(ctx.prisma, userId, input.divisionId)
+        if (!membership.canView) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+        }
+
+        const division = await ctx.prisma.division.findUnique({
+          where: { id: input.divisionId },
+          select: { tournamentId: true },
+        })
+        if (!division || division.tournamentId !== input.tournamentId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Division not found' })
+        }
+
+        const [owner, accessAdmins, clubAdmins, players] = await Promise.all([
+          ctx.prisma.tournament.findUnique({
+            where: { id: input.tournamentId },
+            select: { user: { select: chatUserSelect } },
+          }),
+          ctx.prisma.tournamentAccess.findMany({
+            where: {
+              tournamentId: input.tournamentId,
+              accessLevel: 'ADMIN',
+              OR: [{ divisionId: null }, { divisionId: input.divisionId }],
+            },
+            select: { userId: true, user: { select: chatUserSelect } },
+            distinct: ['userId'],
+          }),
+          ctx.prisma.clubAdmin.findMany({
+            where: {
+              club: {
+                tournaments: {
+                  some: { id: input.tournamentId },
+                },
+              },
+            },
+            select: { userId: true, user: { select: chatUserSelect } },
+            distinct: ['userId'],
+          }),
+          ctx.prisma.teamPlayer.findMany({
+            where: { team: { divisionId: input.divisionId } },
+            select: { player: { select: { user: { select: chatUserSelect } } } },
+            distinct: ['playerId'],
+          }),
+        ])
+
+        return mapMentionCandidates([
+          ...(owner?.user ? [owner.user] : []),
+          ...accessAdmins.map((row) => row.user).filter(isMentionUser),
+          ...clubAdmins.map((row) => row.user).filter(isMentionUser),
+          ...players.map((row) => row.player?.user).filter(isMentionUser),
+        ])
+      }
+
+      const membership = await getTournamentMembership(ctx.prisma, userId, input.tournamentId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      const [owner, accessAdmins, clubAdmins, teamPlayers, waitlistUsers] = await Promise.all([
+        ctx.prisma.tournament.findUnique({
+          where: { id: input.tournamentId },
+          select: { user: { select: chatUserSelect } },
+        }),
+        ctx.prisma.tournamentAccess.findMany({
+          where: { tournamentId: input.tournamentId, accessLevel: 'ADMIN' },
+          select: { userId: true, user: { select: chatUserSelect } },
+          distinct: ['userId'],
+        }),
+        ctx.prisma.clubAdmin.findMany({
+          where: {
+            club: {
+              tournaments: {
+                some: { id: input.tournamentId },
+              },
+            },
+          },
+          select: { userId: true, user: { select: chatUserSelect } },
+          distinct: ['userId'],
+        }),
+        ctx.prisma.teamPlayer.findMany({
+          where: { team: { division: { tournamentId: input.tournamentId } } },
+          select: { player: { select: { user: { select: chatUserSelect } } } },
+          distinct: ['playerId'],
+        }),
+        ctx.prisma.waitlistEntry.findMany({
+          where: { tournamentId: input.tournamentId, status: 'ACTIVE' },
+          select: { player: { select: { user: { select: chatUserSelect } } } },
+          distinct: ['playerId'],
+        }),
+      ])
+
+      return mapMentionCandidates([
+        ...(owner?.user ? [owner.user] : []),
+        ...accessAdmins.map((row) => row.user).filter(isMentionUser),
+        ...clubAdmins.map((row) => row.user).filter(isMentionUser),
+        ...teamPlayers.map((row) => row.player?.user).filter(isMentionUser),
+        ...waitlistUsers.map((row) => row.player?.user).filter(isMentionUser),
+      ])
     }),
 
   listMyEventChats: protectedProcedure.query(async ({ ctx }) => {

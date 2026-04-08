@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
+import { buildMentionHandle, getMentionDisplayText, parseMentionToken, type MentionCandidate } from '../lib/chatMentions'
 import { formatChatTime, toLocalYmd } from '../lib/chatMessages'
 import { formatDate } from '../lib/formatters'
 import { radius, spacing, type AppTheme, type ThemePalette } from '../lib/theme'
@@ -24,6 +25,7 @@ const STATIC_LIKE_ICON_SIZE = 14
 const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s]+)/gi
 const isLinkPart = (value: string) => /^(?:https?:\/\/|www\.)[^\s]+$/i.test(value)
 const LINK_WRAP_PATTERN = /([/:.?&=_-]+)/g
+const INLINE_TOKEN_PATTERN = /(\s+|(?:https?:\/\/|www\.)[^\s]+|@[^\s@]+)/giu
 
 const likeBurstStyles = StyleSheet.create({
   iconWrap: {
@@ -202,6 +204,8 @@ type Props = {
   onMessageLayout?: (messageId: string, y: number) => void
   onPressReplyTarget?: (message: ChatMessage, targetMessageId: string) => void
   highlightedMessageId?: string | null
+  mentionCandidates?: MentionCandidate[]
+  onPressMentionUser?: (userId: string) => void
 }
 
 export function ChatThreadMessageList({
@@ -222,6 +226,8 @@ export function ChatThreadMessageList({
   onMessageLayout,
   onPressReplyTarget,
   highlightedMessageId,
+  mentionCandidates,
+  onPressMentionUser,
 }: Props) {
   const { colors, theme } = useAppTheme()
   const toast = useToast()
@@ -241,6 +247,22 @@ export function ChatThreadMessageList({
     }
     return map
   }, [messages])
+
+  const mentionByHandle = useMemo(() => {
+    const map = new Map<string, MentionCandidate>()
+    for (const candidate of mentionCandidates ?? []) {
+      map.set(candidate.handle.toLowerCase(), candidate)
+      map.set(buildMentionHandle(candidate.name).toLowerCase(), candidate)
+    }
+    return map
+  }, [mentionCandidates])
+  const mentionById = useMemo(() => {
+    const map = new Map<string, MentionCandidate>()
+    for (const candidate of mentionCandidates ?? []) {
+      map.set(candidate.id, candidate)
+    }
+    return map
+  }, [mentionCandidates])
 
   const displayEntries = useMemo<DisplayEntry[]>(() => {
     const repliesByRoot = new Map<string, ChatMessage[]>()
@@ -342,8 +364,27 @@ export function ChatThreadMessageList({
 
   const renderMessageText = useCallback(
     (rawText: string, isMine: boolean) => {
-      const parts = rawText.split(LINK_PATTERN)
+      const parts = rawText.split(INLINE_TOKEN_PATTERN).filter(Boolean)
       if (parts.length === 1) {
+        const single = parts[0] ?? rawText
+        if (single.startsWith('@')) {
+          const parsedMention = parseMentionToken(single)
+          const candidate =
+            (parsedMention?.userId ? mentionById.get(parsedMention.userId) : null) ??
+            (parsedMention ? mentionByHandle.get(parsedMention.handle.toLowerCase()) : null)
+          const mentionUserId = parsedMention?.userId ?? candidate?.id ?? null
+          if (parsedMention && mentionUserId) {
+            return (
+              <Text
+                style={[styles.body, isMine && styles.bodyMine, styles.mentionText]}
+                suppressHighlighting
+                onPress={() => onPressMentionUser?.(mentionUserId)}
+              >
+                {getMentionDisplayText(single)}
+              </Text>
+            )
+          }
+        }
         return <Text style={[styles.body, isMine && styles.bodyMine]}>{rawText}</Text>
       }
 
@@ -351,7 +392,33 @@ export function ChatThreadMessageList({
         <View style={styles.bodyFlow}>
           {parts.map((part, index) => {
             if (!part) return null
+            if (/^\s+$/u.test(part)) {
+              return (
+                <Text key={`${index}-ws`} style={[styles.body, isMine && styles.bodyMine]}>
+                  {part}
+                </Text>
+              )
+            }
             if (!isLinkPart(part)) {
+              if (part.startsWith('@')) {
+                const parsedMention = parseMentionToken(part)
+                const candidate =
+                  (parsedMention?.userId ? mentionById.get(parsedMention.userId) : null) ??
+                  (parsedMention ? mentionByHandle.get(parsedMention.handle.toLowerCase()) : null)
+                const mentionUserId = parsedMention?.userId ?? candidate?.id ?? null
+                if (parsedMention && mentionUserId) {
+                  return (
+                    <Text
+                      key={`${index}-${part}`}
+                      style={[styles.body, isMine && styles.bodyMine, styles.mentionText]}
+                      suppressHighlighting
+                      onPress={() => onPressMentionUser?.(mentionUserId)}
+                    >
+                      {getMentionDisplayText(part)}
+                    </Text>
+                  )
+                }
+              }
               return (
                 <Text key={`${index}-${part}`} style={[styles.body, isMine && styles.bodyMine]}>
                   {part}
@@ -374,7 +441,7 @@ export function ChatThreadMessageList({
         </View>
       )
     },
-    [styles]
+    [mentionByHandle, mentionById, onPressMentionUser, styles]
   )
 
   const handleCopy = useCallback(
@@ -932,6 +999,10 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     linkTextPressed: {
       backgroundColor: theme === 'dark' ? 'rgba(117, 230, 109, 0.2)' : 'rgba(117, 230, 109, 0.18)',
       borderRadius: 8,
+    },
+    mentionText: {
+      color: colors.primary,
+      fontWeight: '600',
     },
     replyContext: {
       borderLeftWidth: 2,

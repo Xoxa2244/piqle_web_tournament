@@ -28,6 +28,7 @@ export type ChatComposerProps = {
   onFocus?: TextInputProps['onFocus']
   onBlur?: TextInputProps['onBlur']
   topSlot?: ReactNode
+  bottomSlot?: ReactNode
 }
 
 export const ChatComposer = ({
@@ -48,6 +49,7 @@ export const ChatComposer = ({
   onFocus,
   onBlur,
   topSlot,
+  bottomSlot,
 }: ChatComposerProps) => {
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -117,6 +119,7 @@ export const ChatComposer = ({
           </View>
         </Pressable>
       </View>
+      {bottomSlot ? <View style={styles.bottomSlot}>{bottomSlot}</View> : null}
     </View>
   )
 }
@@ -136,6 +139,9 @@ const createStyles = (colors: ThemePalette) =>
   },
   topSlot: {
     marginBottom: 10,
+  },
+  bottomSlot: {
+    marginTop: 10,
   },
   input: {
     flex: 1,

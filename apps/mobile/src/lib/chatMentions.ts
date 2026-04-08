@@ -1,0 +1,80 @@
+export type MentionCandidate = {
+  id: string
+  name: string
+  image: string | null
+  handle: string
+}
+
+export type ParsedMentionToken = {
+  handle: string
+  userId: string | null
+}
+
+export function buildMentionHandle(name: string | null | undefined): string {
+  const source = String(name ?? '').trim()
+  if (!source) return 'user'
+  const collapsed = source.replace(/\s+/g, '_')
+  const cleaned = collapsed.replace(/[^\p{L}\p{N}_.-]/gu, '')
+  return cleaned || 'user'
+}
+
+export function toMentionCandidate(user: { id: string; name: string | null; image: string | null }): MentionCandidate {
+  return {
+    id: user.id,
+    name: String(user.name ?? 'User').trim() || 'User',
+    image: user.image,
+    handle: buildMentionHandle(user.name),
+  }
+}
+
+export function findActiveMentionQuery(text: string): string | null {
+  const match = text.match(/(?:^|\s)@([^\s@]*)$/u)
+  return match ? match[1] ?? '' : null
+}
+
+export function buildMentionToken(candidate: MentionCandidate): string {
+  return `@${candidate.handle}~${candidate.id}`
+}
+
+export function applyMentionCandidate(text: string, candidate: MentionCandidate): string {
+  return text.replace(/(?:^|\s)@([^\s@]*)$/u, (full) => {
+    const prefix = full.startsWith(' ') ? ' ' : ''
+    return `${prefix}${buildMentionToken(candidate)} `
+  })
+}
+
+export function parseMentionToken(token: string): ParsedMentionToken | null {
+  const match = token.match(/^@([^\s@~]+)(?:~([^\s@]+))?$/u)
+  if (!match) return null
+  return {
+    handle: match[1] ?? '',
+    userId: match[2] ?? null,
+  }
+}
+
+export function getMentionDisplayText(token: string): string {
+  const parsed = parseMentionToken(token)
+  return parsed ? `@${parsed.handle}` : token
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function messageMentionsHandle(
+  text: string | null | undefined,
+  handle: string | null | undefined,
+  userId?: string | null
+): boolean {
+  const normalizedText = String(text ?? '')
+  const normalizedHandle = String(handle ?? '').trim()
+  const normalizedUserId = String(userId ?? '').trim()
+  if (!normalizedText) return false
+  if (normalizedUserId) {
+    const idRegex = new RegExp(`(?:^|\\s)@[^\\s@~]+~${escapeRegex(normalizedUserId)}(?=$|\\s|[.,!?;:])`, 'iu')
+    if (idRegex.test(normalizedText)) return true
+  }
+  if (!normalizedHandle) return false
+  const legacyRegex = new RegExp(`(?:^|\\s)@${escapeRegex(normalizedHandle)}(?=$|\\s|[.,!?;:])`, 'iu')
+  return legacyRegex.test(normalizedText)
+}

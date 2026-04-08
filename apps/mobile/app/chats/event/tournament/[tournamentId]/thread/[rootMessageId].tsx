@@ -6,10 +6,13 @@ import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../../../src/components/ChatComposer'
+import { ChatMentionAnchorIndicator } from '../../../../../../src/components/ChatMentionAnchorIndicator'
+import { ChatMentionPicker } from '../../../../../../src/components/ChatMentionPicker'
 import { ChatScreenLoading } from '../../../../../../src/components/ChatScreenLoading'
 import { ChatThreadMessageList } from '../../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../../src/components/ChatThreadRoot'
 import { type ChatMessage, mergeMessagesByStableLiveOrder } from '../../../../../../src/lib/chatMessages'
+import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../../../src/lib/chatMentions'
 import { useMessageThreadRealtimeQueryOptions } from '../../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../../src/lib/theme'
@@ -51,10 +54,27 @@ export default function TournamentThreadScreen() {
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const activeMentionQuery = useMemo(() => findActiveMentionQuery(draft), [draft])
+  const [seenMentionMessageIds, setSeenMentionMessageIds] = useState<string[]>([])
   const permissionsQuery = trpc.tournamentChat.getPermissions.useQuery(
     { tournamentId },
     { enabled: Boolean(tournamentId) && isAuthenticated }
   )
+  const mentionCandidatesQuery = trpc.tournamentChat.listMentionCandidates.useQuery(
+    { tournamentId },
+    { enabled: Boolean(tournamentId) && isAuthenticated && activeMentionQuery !== null }
+  )
+  const mentionCandidates = useMemo(
+    () => ((mentionCandidatesQuery.data ?? []) as any[]).map((item) => toMentionCandidate(item)).filter((candidate) => candidate.id !== user?.id),
+    [mentionCandidatesQuery.data, user?.id]
+  )
+  const filteredMentionCandidates = useMemo(() => {
+    if (activeMentionQuery === null) return []
+    const query = activeMentionQuery.trim().toLowerCase()
+    return mentionCandidates
+      .filter((candidate) => !query || candidate.handle.toLowerCase().includes(query) || candidate.name.toLowerCase().includes(query))
+      .slice(0, 8)
+  }, [activeMentionQuery, mentionCandidates])
   const canModerate = Boolean(permissionsQuery.data?.tournament?.canModerate)
   const markRead = trpc.tournamentChat.markTournamentRead.useMutation()
 
@@ -307,6 +327,19 @@ export default function TournamentThreadScreen() {
     const serverMessages = ((threadQuery.data?.messages ?? []) as ChatMessage[])
     return mergeMessagesByStableLiveOrder(serverMessages, optimisticMessages, messageOrderRef.current, nextMessageOrderRef)
   }, [optimisticMessages, threadQuery.data?.messages])
+  const myMentionHandle = useMemo(() => buildMentionHandle(user?.name), [user?.name])
+  const unseenMentionMessageIds = useMemo(
+    () =>
+      messages
+        .filter(
+          (message) =>
+            message.userId !== user?.id &&
+            messageMentionsHandle(message.text, myMentionHandle, user?.id) &&
+            !seenMentionMessageIds.includes(message.id)
+        )
+        .map((message) => message.id),
+    [messages, myMentionHandle, seenMentionMessageIds, user?.id]
+  )
 
   useEffect(() => {
     if (messages.length === 0) return
@@ -364,6 +397,10 @@ export default function TournamentThreadScreen() {
                 if (!m.userId) return
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
               }}
+              mentionCandidates={mentionCandidates}
+              onPressMentionUser={(userId) => {
+                router.push({ pathname: '/profile/[id]', params: { id: userId } })
+              }}
               canDelete={(m) => Boolean((user?.id && m.userId === user?.id) || canModerate) && !m.isDeleted}
               onRequestDelete={(m) => setDeleteTargetId(m.id)}
               deleteDisabled={deleteMessage.isPending}
@@ -382,20 +419,46 @@ export default function TournamentThreadScreen() {
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
           multiline={false}
           topSlot={
-            replyTarget ? (
-              <View style={styles.replyComposerCard}>
-                <View style={styles.replyComposerBody}>
-                  <Text style={styles.replyComposerLabel} numberOfLines={1}>
-                    Replying to {replyTarget.user?.name || 'User'}
-                  </Text>
-                  <Text style={styles.replyComposerText} numberOfLines={1}>
-                    {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
-                  </Text>
-                </View>
-                <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}>
-                  <Feather name="x" size={16} color={colors.textMuted} />
-                </Pressable>
+            unseenMentionMessageIds.length > 0 || replyTarget ? (
+              <View style={styles.composerTopStack}>
+                {unseenMentionMessageIds.length > 0 ? (
+                  <ChatMentionAnchorIndicator
+                    count={unseenMentionMessageIds.length}
+                    onPress={() => {
+                      const targetMessageId = unseenMentionMessageIds[0]
+                      if (!targetMessageId) return
+                      const didScroll = scrollToMessage(targetMessageId)
+                      if (!didScroll) return
+                      setSeenMentionMessageIds((current) =>
+                        current.includes(targetMessageId) ? current : [...current, targetMessageId]
+                      )
+                    }}
+                  />
+                ) : null}
+                {replyTarget ? (
+                  <View style={styles.replyComposerCard}>
+                    <View style={styles.replyComposerBody}>
+                      <Text style={styles.replyComposerLabel} numberOfLines={1}>
+                        Replying to {replyTarget.user?.name || 'User'}
+                      </Text>
+                      <Text style={styles.replyComposerText} numberOfLines={1}>
+                        {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}>
+                      <Feather name="x" size={16} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
+            ) : null
+          }
+          bottomSlot={
+            activeMentionQuery !== null ? (
+              <ChatMentionPicker
+                candidates={filteredMentionCandidates}
+                onSelect={(candidate) => setDraft((current) => applyMentionCandidate(current, candidate))}
+              />
             ) : null
           }
         />
@@ -445,6 +508,9 @@ const createStyles = (colors: ThemePalette) =>
       justifyContent: 'center',
       alignItems: 'stretch',
       paddingBottom: 0,
+    },
+    composerTopStack: {
+      gap: 10,
     },
     replyComposerCard: {
       borderRadius: 16,
