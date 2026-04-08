@@ -2,7 +2,7 @@ import profanity from 'leo-profanity'
 
 let dictionariesLoaded = false
 
-const SAFE_CHAT_WORDS = ['себя', 'себе', 'тебя', 'тебе', 'ребята', 'ребят']
+const SAFE_CHAT_WORDS = ['себя', 'себе', 'тебя', 'тебе', 'ребята', 'ребят', 'бляшка']
 
 type HardBlockPattern = {
   pattern: RegExp
@@ -13,7 +13,7 @@ const HARD_BLOCK_PATTERNS: HardBlockPattern[] = [
   { pattern: /(^|[^a-zа-яё0-9_])(ху[йеёияю][а-яёa-z0-9_-]*)/gi, wordGroup: 2 },
   { pattern: /(^|[^a-zа-яё0-9_])(пизд[а-яёa-z0-9_-]*)/gi, wordGroup: 2 },
   { pattern: /(^|[^a-zа-яё0-9_])(еб[а-яёa-z0-9_-]*)/gi, wordGroup: 2 },
-  { pattern: /(^|[^a-zа-яё0-9_])(бля[а-яёa-z0-9_-]*)/gi, wordGroup: 2 },
+  { pattern: /(^|[^a-zа-яё0-9_])(бля(?!шк)[а-яёa-z0-9_-]*)/gi, wordGroup: 2 },
   { pattern: /puta[s]?\b/gi },
   { pattern: /mierda[s]?\b/gi },
   { pattern: /cabr[oó]n(?:es)?\b/gi },
@@ -32,7 +32,6 @@ function ensureChatDictionariesLoaded() {
   if (dictionariesLoaded) return
 
   profanity.loadDictionary('en')
-  profanity.add(profanity.getDictionary('ru'))
   profanity.add(profanity.getDictionary('es'))
   profanity.addWhitelist(SAFE_CHAT_WORDS)
 
