@@ -1,6 +1,7 @@
-import { Stack } from 'expo-router'
+import { router, Stack, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { ActivityIndicator, LogBox, Text, View } from 'react-native'
+import { useEffect } from 'react'
 
 /** Отмена fetch (новый refetch, уход с экрана) — не баг API; RN всё равно шумит в логах. */
 if (__DEV__) {
@@ -15,9 +16,39 @@ import { AppProviders } from '../src/providers/AppProviders'
 import { useAuth } from '../src/providers/AuthProvider'
 import { useAppTheme } from '../src/providers/ThemeProvider'
 
+const isAuthOnlyPath = (pathname: string) => {
+  if (
+    pathname === '/ai' ||
+    pathname === '/chats' ||
+    pathname === '/notifications' ||
+    pathname === '/profile'
+  ) {
+    return true
+  }
+
+  if (pathname.startsWith('/chats/')) return true
+  if (pathname.startsWith('/profile/')) return true
+  if (/^\/tournaments\/[^/]+\/register$/.test(pathname)) return true
+
+  return false
+}
+
 const RootNavigator = () => {
-  const { isReady } = useAuth()
+  const { isReady, token } = useAuth()
   const { colors, isReady: isThemeReady, theme } = useAppTheme()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isReady) return
+    if (token) return
+    if (!isAuthOnlyPath(pathname)) return
+    if (pathname === '/sign-in') return
+
+    router.replace({
+      pathname: '/sign-in',
+      params: pathname !== '/sign-in' ? { redirect: pathname } : undefined,
+    })
+  }, [isReady, pathname, token])
 
   if (!isReady || !isThemeReady) {
     return (

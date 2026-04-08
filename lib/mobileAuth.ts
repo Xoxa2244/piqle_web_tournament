@@ -1,8 +1,6 @@
 import crypto from 'crypto'
 import type { Session } from 'next-auth'
 
-import { prisma } from './prisma'
-
 const MOBILE_TOKEN_VERSION = 2
 const MOBILE_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
 
@@ -89,39 +87,21 @@ export const getSessionFromMobileToken = async (token: string): Promise<Session 
   const payload = verifyMobileAccessToken(token)
   if (!payload) return null
 
-  if (typeof payload.email === 'string' && payload.email.trim()) {
-    return {
-      user: {
-        id: payload.sub,
-        email: payload.email,
-        name: payload.name ?? null,
-        image: payload.image ?? null,
-        isActive: typeof payload.isActive === 'boolean' ? payload.isActive : true,
-      },
-      expires: new Date(payload.exp * 1000).toISOString(),
-    }
+  const email = typeof payload.email === 'string' ? payload.email.trim() : ''
+  if (!email) {
+    // Legacy v1 mobile tokens required a DB lookup to resolve the user profile.
+    // We intentionally reject them here so mobile auth never consumes a Prisma
+    // connection inside tRPC context creation.
+    return null
   }
-
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      image: true,
-      isActive: true,
-    },
-  })
-
-  if (!user) return null
 
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      image: user.image,
-      isActive: user.isActive,
+      id: payload.sub,
+      email,
+      name: payload.name ?? null,
+      image: payload.image ?? null,
+      isActive: typeof payload.isActive === 'boolean' ? payload.isActive : true,
     },
     expires: new Date(payload.exp * 1000).toISOString(),
   }

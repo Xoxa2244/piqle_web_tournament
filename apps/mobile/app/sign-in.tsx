@@ -17,7 +17,7 @@ const GoogleMark = () => (
 )
 
 export default function SignInScreen() {
-  const params = useLocalSearchParams<{ mode?: string; email?: string }>()
+  const params = useLocalSearchParams<{ mode?: string; email?: string; redirect?: string }>()
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors, theme === 'dark'), [colors, theme])
   const iconColor = colors.textMuted
@@ -59,6 +59,10 @@ export default function SignInScreen() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [expiresAt, setExpiresAt] = useState<string | undefined>()
   const [showPassword, setShowPassword] = useState(false)
+  const successHref =
+    typeof params.redirect === 'string' && params.redirect.startsWith('/')
+      ? (params.redirect as any)
+      : '/(tabs)'
   const normalizedEmail = email.trim()
   const canSubmitSignIn = normalizedEmail.length > 0 && password.length > 0
   const canRequestCode = normalizedEmail.length > 0
@@ -76,9 +80,9 @@ export default function SignInScreen() {
 
   useEffect(() => {
     if (user && !forcedResetFlow) {
-      router.replace('/(tabs)')
+      router.replace(successHref)
     }
-  }, [forcedResetFlow, user])
+  }, [forcedResetFlow, successHref, user])
 
   useEffect(() => {
     if (params.email && typeof params.email === 'string') {
@@ -111,7 +115,7 @@ export default function SignInScreen() {
     setNotice(null)
     try {
       await signIn(normalizedEmail, password)
-      router.replace('/(tabs)')
+      router.replace(successHref)
     } catch (nextError: any) {
       setError(nextError?.message || 'Failed to sign in')
     } finally {
@@ -155,7 +159,7 @@ export default function SignInScreen() {
         lastName: lastName.trim(),
         password,
       })
-      router.replace('/(tabs)')
+      router.replace(successHref)
     } catch (nextError: any) {
       setError(nextError?.message || 'Failed to create account')
     } finally {
@@ -194,7 +198,7 @@ export default function SignInScreen() {
     setNotice(null)
     try {
       await resetPasswordWithCode(normalizedEmail, resetCode.trim(), resetNewPassword)
-      router.replace('/(tabs)')
+      router.replace(successHref)
     } catch (nextError: any) {
       setError(nextError?.message || 'Failed to reset password')
     } finally {
@@ -208,7 +212,7 @@ export default function SignInScreen() {
     setNotice(null)
     try {
       await signInWithGoogle()
-      router.replace('/(tabs)')
+      router.replace(successHref)
     } catch (nextError: any) {
       if (nextError?.message === 'Google sign-in was cancelled.') {
         setGoogleLoading(false)
@@ -227,7 +231,7 @@ export default function SignInScreen() {
     setNotice(null)
     try {
       await signInWithApple()
-      router.replace('/(tabs)')
+      router.replace(successHref)
     } catch (nextError: any) {
       if (nextError?.message === 'Apple sign-in was cancelled.') {
         setAppleLoading(false)

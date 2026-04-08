@@ -198,11 +198,10 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         const stored = await authStorage.load()
         if (!isMounted) return
 
-        if (!stored?.token) {
-          setSession(null)
-          setIsReady(true)
-          return
-        }
+        setSession(stored)
+        setIsReady(true)
+
+        if (!stored?.token) return
 
         try {
           const validatedSession = await authApi.getMobileSession(stored.token)
@@ -220,10 +219,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       } catch {
         if (!isMounted) return
         setSession(null)
-      } finally {
-        if (isMounted) {
-          setIsReady(true)
-        }
+        setIsReady(true)
       }
     })()
 
