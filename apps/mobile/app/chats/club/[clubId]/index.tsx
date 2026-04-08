@@ -23,6 +23,7 @@ import {
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../src/lib/chatMentions'
+import { buildClubMentionNotificationId } from '../../../../src/lib/chatMentionNotifications'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
@@ -94,6 +95,18 @@ export default function ClubChatScreen() {
     }, 1400)
     return true
   }, [])
+  const dismissNotification = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
+  const markMentionSeen = useCallback(
+    (messageId: string) => {
+      setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
+      dismissNotification.mutate({ notificationId: buildClubMentionNotificationId(messageId) })
+    },
+    [dismissNotification]
+  )
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
     ...chatRealtimeQueryOptions,
@@ -564,9 +577,7 @@ export default function ClubChatScreen() {
                       if (!targetMessageId) return
                       const didScroll = scrollToMessage(targetMessageId)
                       if (!didScroll) return
-                      setSeenMentionMessageIds((current) =>
-                        current.includes(targetMessageId) ? current : [...current, targetMessageId]
-                      )
+                      markMentionSeen(targetMessageId)
                     }}
                   />
                 ) : null}

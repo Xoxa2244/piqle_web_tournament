@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Feather } from '@expo/vector-icons'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { formatDateTime } from '../lib/formatters'
@@ -18,6 +19,7 @@ export const ChatPreviewCard = ({
   subtitle,
   imageUri,
   unreadCount,
+  mentionCount,
   trailingTime,
   onPress,
 }: {
@@ -26,6 +28,7 @@ export const ChatPreviewCard = ({
   /** Логотип клуба; без него — тот же плейсхолдер, что и для обложки ивента */
   imageUri?: string | null
   unreadCount?: number
+  mentionCount?: number
   trailingTime?: string | Date | null
   onPress: () => void
 }) => {
@@ -53,6 +56,12 @@ export const ChatPreviewCard = ({
               <Text numberOfLines={1} style={styles.subtitle}>
                 {subtitle}
               </Text>
+              {mentionCount && mentionCount > 0 ? (
+                <View style={styles.mentionChip} accessibilityLabel={`${mentionCount} mentions`}>
+                  <Feather name="at-sign" size={11} color={colors.primary} />
+                  <Text style={styles.mentionChipText}>{mentionCount}</Text>
+                </View>
+              ) : null}
               {unreadCount && unreadCount > 0 ? (
                 <View style={styles.unreadChip} accessibilityLabel={`${unreadCount} unread messages`}>
                   <Text style={styles.unreadChipText}>{unreadCount}</Text>
@@ -149,6 +158,24 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'center',
     backgroundColor: colors.primary,
     marginLeft: 8,
+  },
+  mentionChip: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 3,
+    backgroundColor: colors.primaryGhost,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  mentionChipText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
   },
   unreadChipText: {
     color: colors.white,

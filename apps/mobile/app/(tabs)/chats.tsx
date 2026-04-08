@@ -16,10 +16,12 @@ import { StaggeredReveal } from '../../src/components/StaggeredReveal'
 import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNotificationRow'
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
-import { useChatRealtimeQueryOptions } from '../../src/lib/realtimePoll'
+import { buildMentionCountMaps } from '../../src/lib/chatMentionNotifications'
+import { useChatRealtimeQueryOptions, useRealtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
 import { useAuth } from '../../src/providers/AuthProvider'
+import { useNotificationSwipeHidden } from '../../src/providers/NotificationSwipeHiddenProvider'
 import { useAppTheme } from '../../src/providers/ThemeProvider'
 import { useToast } from '../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../src/hooks/usePullToRefresh'
@@ -33,8 +35,10 @@ export default function ChatsTab() {
   const toast = useToast()
   const isAuthenticated = Boolean(token)
   const chatRealtimeQueryOptions = useChatRealtimeQueryOptions()
+  const realtimeAwareQueryOptions = useRealtimeAwareQueryOptions()
   const api = trpc as any
   const utils = (trpc as any).useUtils()
+  const { swipeHiddenIds } = useNotificationSwipeHidden()
   const [search, setSearch] = useState('')
   const [segment, setSegment] = useState<Segment>('direct')
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -59,11 +63,29 @@ export default function ChatsTab() {
     enabled: isAuthenticated,
     ...chatRealtimeQueryOptions,
   })
+  const notificationMentionsQuery = api.notification.list.useQuery(
+    { limit: 100 },
+    {
+      enabled: isAuthenticated,
+      ...realtimeAwareQueryOptions,
+    }
+  )
   const directChats = useMemo(() => ((directChatsQuery.data ?? []) as any[]), [directChatsQuery.data])
   const clubChats = useMemo(() => ((clubChatsQuery.data ?? []) as any[]), [clubChatsQuery.data])
   const eventChats = useMemo(
     () => ((eventChatsQuery.data ?? []) as EventChatListEvent[]),
     [eventChatsQuery.data]
+  )
+  const mentionNotificationItems = useMemo(
+    () =>
+      (((notificationMentionsQuery.data?.items ?? []) as any[]).filter(
+        (item) => String(item?.type ?? '') === 'CHAT_MENTION' && !swipeHiddenIds.has(String(item?.id ?? ''))
+      )),
+    [notificationMentionsQuery.data?.items, swipeHiddenIds]
+  )
+  const mentionCountMaps = useMemo(
+    () => buildMentionCountMaps(mentionNotificationItems),
+    [mentionNotificationItems]
   )
 
   const filteredDirectChats = useMemo(() => {
@@ -500,6 +522,7 @@ export default function ChatsTab() {
                           imageUri={club.logoUrl}
                           subtitle={[club.city, club.state].filter(Boolean).join(', ') || 'Club chat'}
                           unreadCount={club.unreadCount}
+                          mentionCount={mentionCountMaps.clubCounts.get(club.id) ?? 0}
                           trailingTime={club.lastMessageAt}
                           onPress={() =>
                             router.push({
@@ -531,7 +554,15 @@ export default function ChatsTab() {
                         activeEventChats.map((event, index) => (
                           <StaggeredReveal key={`event-active-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}`} distance={0}>
                             <EventChatListItemActive
-                              event={event as EventChatListEvent}
+                              event={{
+                                ...(event as EventChatListEvent),
+                                mentionCount:
+                                  (mentionCountMaps.tournamentCounts.get(event.id) ?? 0) +
+                                  (event.divisions ?? []).reduce(
+                                    (sum, division) => sum + (mentionCountMaps.divisionCounts.get(division.id) ?? 0),
+                                    0
+                                  ),
+                              }}
                               onOpenGeneral={() => openEventGeneral(event)}
                               onOpenDivision={(divisionId) => openEventDivision(event, divisionId)}
                             />
@@ -564,7 +595,15 @@ export default function ChatsTab() {
                             {archivedEventChats.map((event, index) => (
                               <StaggeredReveal key={`event-arch-${event.id}`} index={index} triggerKey={`${revealEpoch}-${segment}-${search.trim()}-archive-${archiveOpen ? 1 : 0}`} distance={0}>
                                 <EventChatListItemArchived
-                                  event={event as EventChatListEvent}
+                                  event={{
+                                    ...(event as EventChatListEvent),
+                                    mentionCount:
+                                      (mentionCountMaps.tournamentCounts.get(event.id) ?? 0) +
+                                      (event.divisions ?? []).reduce(
+                                        (sum, division) => sum + (mentionCountMaps.divisionCounts.get(division.id) ?? 0),
+                                        0
+                                      ),
+                                  }}
                                   expanded={expandedArchiveEventIds.has(event.id)}
                                   onToggleExpand={() => toggleArchiveEventExpanded(event.id)}
                                   onOpenGeneral={() => openEventGeneral(event)}

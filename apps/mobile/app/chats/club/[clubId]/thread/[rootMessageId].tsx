@@ -21,6 +21,7 @@ import {
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../src/lib/chatMentions'
+import { buildClubMentionNotificationId } from '../../../../../src/lib/chatMentionNotifications'
 import { useMessageThreadRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../src/lib/theme'
@@ -98,6 +99,11 @@ export default function ClubChatThreadScreen() {
     [clubMembersQuery.data?.members]
   )
   const markRead = trpc.clubChat.markRead.useMutation()
+  const dismissNotification = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
@@ -119,6 +125,13 @@ export default function ClubChatThreadScreen() {
     }, 1400)
     return true
   }, [])
+  const markMentionSeen = useCallback(
+    (messageId: string) => {
+      setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
+      dismissNotification.mutate({ notificationId: buildClubMentionNotificationId(messageId) })
+    },
+    [dismissNotification]
+  )
 
   const threadQuery = trpc.clubChat.listThread.useQuery(
     { clubId, rootMessageId },
@@ -468,9 +481,7 @@ export default function ClubChatThreadScreen() {
                       if (!targetMessageId) return
                       const didScroll = scrollToMessage(targetMessageId)
                       if (!didScroll) return
-                      setSeenMentionMessageIds((current) =>
-                        current.includes(targetMessageId) ? current : [...current, targetMessageId]
-                      )
+                      markMentionSeen(targetMessageId)
                     }}
                   />
                 ) : null}

@@ -20,7 +20,7 @@ export function ChatMentionAnchorIndicator({ count, onPress }: Props) {
         <Text style={styles.badgeText}>{count > 1 ? count : '@'}</Text>
       </View>
       <Text style={styles.label} numberOfLines={1}>
-        {count > 1 ? `${count} mentions` : 'Mentioned you'}
+        Mentions
       </Text>
     </Pressable>
   )

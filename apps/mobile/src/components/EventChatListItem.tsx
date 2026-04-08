@@ -18,6 +18,7 @@ export type EventChatDivision = {
   id: string
   name: string
   unreadCount?: number
+  mentionCount?: number
 }
 
 export type EventChatListEvent = {
@@ -30,6 +31,7 @@ export type EventChatListEvent = {
   timezone?: string | null
   club?: { id: string; name: string } | null
   unreadCount: number
+  mentionCount?: number
   lastMessageAt?: string | Date | null
   divisions: EventChatDivision[]
 }
@@ -68,6 +70,12 @@ export function EventChatListItemActive({
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.meta}>{meta}</Text>
+              {event.mentionCount && event.mentionCount > 0 ? (
+                <View style={styles.mentionChip} accessibilityLabel={`${event.mentionCount} mentions`}>
+                  <Feather name="at-sign" size={11} color={colors.primary} />
+                  <Text style={styles.mentionChipText}>{event.mentionCount}</Text>
+                </View>
+              ) : null}
               {event.unreadCount > 0 ? (
                 <View style={styles.unreadChip} accessibilityLabel={`${event.unreadCount} unread messages`}>
                   <Text style={styles.unreadChipText}>{event.unreadCount}</Text>
@@ -131,6 +139,12 @@ export function EventChatListItemArchived({
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.meta}>{meta}</Text>
+              {event.mentionCount && event.mentionCount > 0 ? (
+                <View style={styles.mentionChip} accessibilityLabel={`${event.mentionCount} mentions`}>
+                  <Feather name="at-sign" size={11} color={colors.primary} />
+                  <Text style={styles.mentionChipText}>{event.mentionCount}</Text>
+                </View>
+              ) : null}
               {event.unreadCount > 0 ? (
                 <View style={styles.unreadChip} accessibilityLabel={`${event.unreadCount} unread messages`}>
                   <Text style={styles.unreadChipText}>{event.unreadCount}</Text>
@@ -222,6 +236,24 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
+  },
+  mentionChip: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 3,
+    backgroundColor: colors.primaryGhost,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  mentionChipText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
   },
   unreadChipText: {
     color: colors.white,

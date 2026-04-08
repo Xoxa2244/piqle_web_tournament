@@ -21,6 +21,7 @@ import {
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../../src/lib/chatMentions'
+import { buildTournamentMentionNotificationId } from '../../../../../../src/lib/chatMentionNotifications'
 import { useMessageThreadRealtimeQueryOptions } from '../../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../../src/lib/theme'
@@ -106,6 +107,18 @@ export default function TournamentThreadScreen() {
     }, 1400)
     return true
   }, [])
+  const dismissNotification = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
+  const markMentionSeen = useCallback(
+    (messageId: string) => {
+      setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
+      dismissNotification.mutate({ notificationId: buildTournamentMentionNotificationId(messageId) })
+    },
+    [dismissNotification]
+  )
 
   const threadQuery = trpc.tournamentChat.listTournamentThread.useQuery(
     { tournamentId, rootMessageId },
@@ -437,9 +450,7 @@ export default function TournamentThreadScreen() {
                       if (!targetMessageId) return
                       const didScroll = scrollToMessage(targetMessageId)
                       if (!didScroll) return
-                      setSeenMentionMessageIds((current) =>
-                        current.includes(targetMessageId) ? current : [...current, targetMessageId]
-                      )
+                      markMentionSeen(targetMessageId)
                     }}
                   />
                 ) : null}

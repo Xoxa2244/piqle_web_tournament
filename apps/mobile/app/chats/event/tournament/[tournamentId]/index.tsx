@@ -31,6 +31,10 @@ import {
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../src/lib/chatMentions'
+import {
+  buildDivisionMentionNotificationId,
+  buildTournamentMentionNotificationId,
+} from '../../../../../src/lib/chatMentionNotifications'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
@@ -142,6 +146,22 @@ export default function TournamentChatScreen() {
     }, 1400)
     return true
   }, [])
+  const dismissNotification = trpc.notification.dismiss.useMutation({
+    onSuccess: async () => {
+      await utils.notification.list.invalidate()
+    },
+  })
+  const markMentionSeen = useCallback(
+    (messageId: string) => {
+      setSeenMentionMessageIds((current) => (current.includes(messageId) ? current : [...current, messageId]))
+      dismissNotification.mutate({
+        notificationId: activeDivisionId
+          ? buildDivisionMentionNotificationId(messageId)
+          : buildTournamentMentionNotificationId(messageId),
+      })
+    },
+    [activeDivisionId, dismissNotification]
+  )
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
@@ -873,19 +893,17 @@ export default function TournamentChatScreen() {
               unseenMentionMessageIds.length > 0 || replyTarget ? (
                 <View style={styles.composerTopStack}>
                   {unseenMentionMessageIds.length > 0 ? (
-                    <ChatMentionAnchorIndicator
-                      count={unseenMentionMessageIds.length}
-                      onPress={() => {
-                        const targetMessageId = unseenMentionMessageIds[0]
-                        if (!targetMessageId) return
-                        const didScroll = scrollToMessage(targetMessageId)
-                        if (!didScroll) return
-                        setSeenMentionMessageIds((current) =>
-                          current.includes(targetMessageId) ? current : [...current, targetMessageId]
-                        )
-                      }}
-                    />
-                  ) : null}
+                  <ChatMentionAnchorIndicator
+                    count={unseenMentionMessageIds.length}
+                    onPress={() => {
+                      const targetMessageId = unseenMentionMessageIds[0]
+                      if (!targetMessageId) return
+                      const didScroll = scrollToMessage(targetMessageId)
+                      if (!didScroll) return
+                      markMentionSeen(targetMessageId)
+                    }}
+                  />
+                ) : null}
                   {replyTarget ? (
                     <View style={styles.replyComposerCard}>
                       <View style={styles.replyComposerBody}>
