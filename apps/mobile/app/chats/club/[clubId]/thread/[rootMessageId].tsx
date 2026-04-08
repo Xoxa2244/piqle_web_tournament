@@ -46,6 +46,7 @@ export default function ClubChatThreadScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastMarkedReadKeyRef = useRef<string | null>(null)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
@@ -257,6 +258,7 @@ export default function ClubChatThreadScreen() {
 
   useEffect(() => {
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [clubId, rootMessageId])
 
   useEffect(
@@ -268,6 +270,10 @@ export default function ClubChatThreadScreen() {
 
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
+    const messagesCount = threadQuery.data?.messages?.length ?? 0
+    const markReadKey = `${clubId}:${messagesCount}`
+    if (lastMarkedReadKeyRef.current === markReadKey) return
+    lastMarkedReadKeyRef.current = markReadKey
     markRead.mutate({ clubId })
   }, [clubId, isAuthenticated, markRead, threadQuery.data?.messages?.length])
 

@@ -71,6 +71,7 @@ export default function TournamentChatScreen() {
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
+  const lastMarkedReadKeyRef = useRef<string | null>(null)
   const tournamentLikeMutationSeqRef = useRef<Record<string, number>>({})
   const divisionLikeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
@@ -80,10 +81,12 @@ export default function TournamentChatScreen() {
   useEffect(() => {
     skipThreadTopicFadeRef.current = true
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [tournamentId])
 
   useEffect(() => {
     initialScrollDoneRef.current = false
+    lastMarkedReadKeyRef.current = null
   }, [activeDivisionId])
 
   useEffect(
@@ -547,6 +550,10 @@ export default function TournamentChatScreen() {
 
   useEffect(() => {
     if (!tournamentId || !isAuthenticated) return
+    const markTarget = activeDivisionId ? `division:${activeDivisionId}` : `tournament:${tournamentId}`
+    const markReadKey = `${markTarget}:${messagesLen}`
+    if (lastMarkedReadKeyRef.current === markReadKey) return
+    lastMarkedReadKeyRef.current = markReadKey
     if (activeDivisionId) {
       markDivisionRead.mutate({ divisionId: activeDivisionId })
     } else {
