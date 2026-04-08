@@ -22,7 +22,14 @@ import { ChatMentionPicker } from '../../../../../src/components/ChatMentionPick
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../../src/lib/chatMessages'
-import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../../src/lib/chatMentions'
+import {
+  applyMentionCandidate,
+  buildMentionHandle,
+  encodeMentionsForSend,
+  findActiveMentionQuery,
+  messageMentionsHandle,
+  toMentionCandidate,
+} from '../../../../../src/lib/chatMentions'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
@@ -548,7 +555,7 @@ export default function TournamentChatScreen() {
   })
 
   const handleSend = useCallback(() => {
-    const text = draft.trim()
+    const text = encodeMentionsForSend(draft.trim(), mentionCandidates)
     if (!text) return
 
     const now = Date.now()
@@ -562,7 +569,7 @@ export default function TournamentChatScreen() {
       return
     }
     sendMessage.mutate({ tournamentId, text, replyToMessageId: replyTarget?.id })
-  }, [activeDivisionId, draft, replyTarget?.id, sendDivisionMessage, sendMessage, toast, tournamentId])
+  }, [activeDivisionId, draft, mentionCandidates, replyTarget?.id, sendDivisionMessage, sendMessage, toast, tournamentId])
 
   const permission = permissionsQuery.data?.tournament
   const activeDivisionPermission = activeDivisionId ? permissionsQuery.data?.divisions?.[0] : null

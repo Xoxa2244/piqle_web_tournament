@@ -14,7 +14,14 @@ import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { EntityImage } from '../../../../src/components/EntityImage'
 import { FeedbackRatingModal } from '../../../../src/components/FeedbackRatingModal'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
-import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../src/lib/chatMentions'
+import {
+  applyMentionCandidate,
+  buildMentionHandle,
+  encodeMentionsForSend,
+  findActiveMentionQuery,
+  messageMentionsHandle,
+  toMentionCandidate,
+} from '../../../../src/lib/chatMentions'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
@@ -305,7 +312,7 @@ export default function ClubChatScreen() {
   })
 
   const handleSend = useCallback(() => {
-    const text = draft.trim()
+    const text = encodeMentionsForSend(draft.trim(), mentionCandidates)
     if (!text) return
 
     const now = Date.now()
@@ -315,7 +322,7 @@ export default function ClubChatScreen() {
     }
     lastSendAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
-  }, [clubId, draft, replyTarget?.id, sendMessage, toast])
+  }, [clubId, draft, mentionCandidates, replyTarget?.id, sendMessage, toast])
 
   useEffect(() => {
     initialScrollDoneRef.current = false

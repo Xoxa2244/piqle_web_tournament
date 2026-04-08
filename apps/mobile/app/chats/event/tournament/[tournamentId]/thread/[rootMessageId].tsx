@@ -12,7 +12,14 @@ import { ChatScreenLoading } from '../../../../../../src/components/ChatScreenLo
 import { ChatThreadMessageList } from '../../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../../src/components/ChatThreadRoot'
 import { type ChatMessage, mergeMessagesByStableLiveOrder } from '../../../../../../src/lib/chatMessages'
-import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../../../src/lib/chatMentions'
+import {
+  applyMentionCandidate,
+  buildMentionHandle,
+  encodeMentionsForSend,
+  findActiveMentionQuery,
+  messageMentionsHandle,
+  toMentionCandidate,
+} from '../../../../../../src/lib/chatMentions'
 import { useMessageThreadRealtimeQueryOptions } from '../../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../../src/lib/theme'
@@ -198,7 +205,7 @@ export default function TournamentThreadScreen() {
   })
 
   const handleSend = useCallback(() => {
-    const text = draft.trim()
+    const text = encodeMentionsForSend(draft.trim(), mentionCandidates)
     if (!text) return
     const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
     if (!targetId) return
@@ -209,7 +216,7 @@ export default function TournamentThreadScreen() {
     }
     lastSendAtRef.current = now
     sendMessage.mutate({ tournamentId, text, replyToMessageId: targetId })
-  }, [draft, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast, tournamentId])
+  }, [draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast, tournamentId])
 
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
     onMutate: ({ messageId }: { messageId: string }) => {

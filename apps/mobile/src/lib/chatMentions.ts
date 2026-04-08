@@ -39,7 +39,25 @@ export function buildMentionToken(candidate: MentionCandidate): string {
 export function applyMentionCandidate(text: string, candidate: MentionCandidate): string {
   return text.replace(/(?:^|\s)@([^\s@]*)$/u, (full) => {
     const prefix = full.startsWith(' ') ? ' ' : ''
-    return `${prefix}${buildMentionToken(candidate)} `
+    return `${prefix}@${candidate.handle} `
+  })
+}
+
+export function encodeMentionsForSend(text: string, candidates: MentionCandidate[]): string {
+  const candidateByHandle = new Map<string, MentionCandidate>()
+  for (const candidate of candidates) {
+    const key = candidate.handle.trim().toLowerCase()
+    if (key && !candidateByHandle.has(key)) {
+      candidateByHandle.set(key, candidate)
+    }
+  }
+
+  return text.replace(/(^|\s)@([^\s@~]+)(?=$|[\s.,!?;:])/g, (full, prefix: string, rawHandle: string) => {
+    const handle = String(rawHandle ?? '').trim()
+    if (!handle) return full
+    const candidate = candidateByHandle.get(handle.toLowerCase())
+    if (!candidate) return full
+    return `${prefix}${buildMentionToken(candidate)}`
   })
 }
 

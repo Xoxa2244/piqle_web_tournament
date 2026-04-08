@@ -12,7 +12,14 @@ import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoadi
 import { ChatThreadMessageList } from '../../../../../src/components/ChatThreadMessageList'
 import { ChatThreadRoot } from '../../../../../src/components/ChatThreadRoot'
 import { type ChatMessage, mergeMessagesByStableLiveOrder } from '../../../../../src/lib/chatMessages'
-import { applyMentionCandidate, buildMentionHandle, findActiveMentionQuery, messageMentionsHandle, toMentionCandidate } from '../../../../../src/lib/chatMentions'
+import {
+  applyMentionCandidate,
+  buildMentionHandle,
+  encodeMentionsForSend,
+  findActiveMentionQuery,
+  messageMentionsHandle,
+  toMentionCandidate,
+} from '../../../../../src/lib/chatMentions'
 import { useMessageThreadRealtimeQueryOptions } from '../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../src/lib/theme'
@@ -286,7 +293,7 @@ export default function ClubChatThreadScreen() {
   })
 
   const handleSend = useCallback(() => {
-    const text = draft.trim()
+    const text = encodeMentionsForSend(draft.trim(), mentionCandidates)
     if (!text) return
     const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
     if (!targetId) return
@@ -298,7 +305,7 @@ export default function ClubChatThreadScreen() {
     }
     lastSendAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: targetId })
-  }, [clubId, draft, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
+  }, [clubId, draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
 
   useEffect(() => {
     initialScrollDoneRef.current = false
