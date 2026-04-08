@@ -326,7 +326,7 @@ export function ChatThreadMessageList({
 
   const tryLike = useCallback(
     (m: ChatMessage) => {
-      if (!onToggleLike || likeDisabled || m.isDeleted) return
+      if (!onToggleLike || likeDisabled) return
       void Haptics.selectionAsync().catch(() => {})
       if (!m.viewerHasLiked) {
         setAnimatingLikeMessageIds((current) => ({ ...current, [m.id]: true }))
@@ -480,10 +480,9 @@ export function ChatThreadMessageList({
           ) : null}
 
           <Pressable
-            disabled={m.isDeleted}
             delayLongPress={LONG_PRESS_MS}
             onPress={() => {
-              if (!onToggleLike || likeDisabled || m.isDeleted) return
+              if (!onToggleLike || likeDisabled) return
               const now = Date.now()
               if (lastTapMessageIdRef.current === m.id && now - lastTapAtRef.current <= LIKE_DOUBLE_TAP_MS) {
                 if (singleTapTimerRef.current) {
@@ -513,7 +512,7 @@ export function ChatThreadMessageList({
               entry.level === 1 ? styles.bubbleReply : null,
               isMine ? styles.bubbleMine : styles.bubbleOther,
               pressed &&
-                ((longPressMenuEnabled && !m.isDeleted) || deletable) && {
+                ((longPressMenuEnabled && !m.isDeleted) || deletable || onToggleLike) && {
                   opacity: 0.92,
                   transform: [{ scale: 0.97 }],
                 },
@@ -741,7 +740,7 @@ export function ChatThreadMessageList({
             </Pressable>
           ) : null}
 
-          {onToggleLike && menuTarget && !menuTarget.isDeleted ? (
+          {onToggleLike && menuTarget ? (
             <Pressable
               onPress={() => {
                 const target = menuTarget

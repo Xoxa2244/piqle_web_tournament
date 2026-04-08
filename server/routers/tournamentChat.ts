@@ -857,9 +857,6 @@ export const tournamentChatRouter = createTRPCRouter({
         if (!replyTarget || replyTarget.tournamentId !== input.tournamentId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
         }
-        if (replyTarget.deletedAt) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
-        }
       }
 
       const { sanitized, wasFiltered } = await sanitizeAndRateLimit({
@@ -1135,9 +1132,6 @@ export const tournamentChatRouter = createTRPCRouter({
         if (!replyTarget || replyTarget.divisionId !== input.divisionId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
         }
-        if (replyTarget.deletedAt) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
-        }
       }
 
       const { sanitized, wasFiltered } = await sanitizeAndRateLimit({
@@ -1231,9 +1225,6 @@ export const tournamentChatRouter = createTRPCRouter({
       if (!message) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
       }
-      if (message.deletedAt) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
-      }
 
       const membership = await getTournamentMembership(ctx.prisma, userId, message.tournamentId)
       if (!membership.canView) {
@@ -1317,9 +1308,6 @@ export const tournamentChatRouter = createTRPCRouter({
 
       if (!message) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
-      }
-      if (message.deletedAt) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
       }
 
       const membership = await getDivisionMembership(ctx.prisma, userId, message.divisionId)

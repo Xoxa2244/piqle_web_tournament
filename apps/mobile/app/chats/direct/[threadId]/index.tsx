@@ -506,6 +506,7 @@ export default function DirectChatScreen() {
               canDelete={(message) => Boolean(user?.id && message.userId === user.id) && !message.isDeleted}
               onRequestDelete={(message) => setDeleteTargetId(message.id)}
               deleteDisabled={deleteMessage.isPending}
+              longPressMenuEnabled
             />
           )}
         </ChatThreadRoot>

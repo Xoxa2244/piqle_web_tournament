@@ -402,9 +402,6 @@ export const clubChatRouter = createTRPCRouter({
         if (!replyTarget || replyTarget.clubId !== clubId) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
         }
-        if (replyTarget.deletedAt) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
-        }
       }
 
       const isAdmin = Boolean(admin)
@@ -496,9 +493,6 @@ export const clubChatRouter = createTRPCRouter({
 
       if (!message) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Message not found' })
-      }
-      if (message.deletedAt) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot like a deleted message' })
       }
 
       const [club, follower, admin] = await Promise.all([
