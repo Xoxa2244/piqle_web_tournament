@@ -59,6 +59,11 @@
     /* Keep fixed header/navbar from moving during overscroll (touchpad/mobile rubber-band) */
     overscroll-behavior: none;
   }
+
+  body[data-brand="iqsport"] {
+    background: #0b0d17;
+    color: #e2e8f0;
+  }
 }
 
 @layer utilities {

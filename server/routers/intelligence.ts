@@ -3591,14 +3591,14 @@ export const intelligenceRouter = createTRPCRouter({
             cf.created_at as "memberSince",
             (SELECT MAX(ps.date) FROM play_session_bookings b2
               JOIN play_sessions ps ON ps.id = b2."sessionId"
-              WHERE b2."userId" = $1 AND ps."clubId" = $2              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
+              WHERE b2."userId" = $1::uuid AND ps."clubId" = $2::uuid              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
             (SELECT COUNT(*)::int FROM play_session_bookings b3
               JOIN play_sessions ps2 ON ps2.id = b3."sessionId"
-              WHERE b3."userId" = $1 AND ps2."clubId" = $2              AND b3.status::text = 'CONFIRMED') as "totalSessions",
+              WHERE b3."userId" = $1::uuid AND ps2."clubId" = $2::uuid              AND b3.status::text = 'CONFIRMED') as "totalSessions",
             (SELECT mhs.health_score FROM member_health_snapshots mhs
-              WHERE mhs.user_id = $1 AND mhs.club_id = $2              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
+              WHERE mhs.user_id = $1::uuid AND mhs.club_id = $2::uuid              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
           FROM users u
-          LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2          WHERE u.id = $1
+          LEFT JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $2::uuid          WHERE u.id = $1::uuid
           LIMIT 1
         `, userId, clubId),
 
@@ -3607,7 +3607,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT DATE_TRUNC('week', ps.date)::date as week, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
             AND ps.date >= NOW() - INTERVAL '90 days'
           GROUP BY week ORDER BY week
         `, userId, clubId),
@@ -3617,7 +3617,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT ps.format::text as format, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
           GROUP BY ps.format ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3626,7 +3626,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT SPLIT_PART(ps."startTime", ':', 1)::int as hour, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
           GROUP BY hour ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3635,7 +3635,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT TRIM(TO_CHAR(ps.date, 'Day')) as day, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
           GROUP BY day ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -3645,7 +3645,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
             AND cc.name IS NOT NULL
           GROUP BY cc.name ORDER BY count DESC LIMIT 3
         `, userId, clubId),
@@ -3660,7 +3660,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
           ORDER BY ps.date DESC, ps."startTime" DESC
           LIMIT 10
         `, userId, clubId),
@@ -3670,7 +3670,7 @@ export const intelligenceRouter = createTRPCRouter({
           SELECT ps.date::date as d
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = $1 AND ps."clubId" = $2            AND b.status::text = 'CONFIRMED'
+          WHERE b."userId" = $1::uuid AND ps."clubId" = $2::uuid            AND b.status::text = 'CONFIRMED'
           ORDER BY ps.date DESC
         `, userId, clubId),
       ])

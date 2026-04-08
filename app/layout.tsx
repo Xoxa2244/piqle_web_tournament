@@ -23,16 +23,19 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const headersList = await headers()
+  const brandKey = (headersList.get('x-brand') || 'piqle') as BrandKey
+
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={inter.className} data-brand={brandKey}>
         <Providers>
-          <BrandProvider>
+          <BrandProvider initialBrandKey={brandKey}>
             <LayoutWithOptionalHeader>
               {children}
             </LayoutWithOptionalHeader>
