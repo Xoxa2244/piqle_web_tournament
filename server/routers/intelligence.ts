@@ -1748,14 +1748,25 @@ export const intelligenceRouter = createTRPCRouter({
         const dormantCount = allFollowers.length - followers.length
 
         // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
-        const memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
-          SELECT source_id, metadata FROM document_embeddings
-          WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
-        `
+        let memberEmbeddings: Array<{ source_id: string; metadata: any }> = []
+        try {
+          memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
+            SELECT source_id, metadata FROM document_embeddings
+            WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
+          `
+        } catch (err) {
+          log.warn('[Intelligence] getMemberHealth member embeddings query failed:', (err as Error).message?.slice(0, 120))
+        }
         const membershipByEmail = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
         const membershipBySourceId = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
         for (const e of memberEmbeddings) {
-          const m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata
+          let m: any
+          try {
+            m = typeof e.metadata === 'string' ? JSON.parse(e.metadata) : e.metadata
+          } catch (err) {
+            log.warn('[Intelligence] getMemberHealth member embedding parse failed:', (err as Error).message?.slice(0, 120))
+            continue
+          }
           const info = {
             membership: m?.membership || null,
             membershipStatus: m?.membershipStatus || null,
