@@ -303,8 +303,8 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
           <div>
             <label className="text-xs mb-1.5 block" style={{ color: "var(--t3)", fontWeight: 600 }}>Channel</label>
             <div className="flex gap-2">
-              {[{ id: "email", label: "Email", icon: Mail }, { id: "sms", label: "SMS (Coming Soon)", icon: Smartphone, disabled: true }, { id: "both", label: "Email + SMS (Coming Soon)", icon: Mail, disabled: true }].map(c => (
-                <Chip key={c.id} selected={channel === c.id} onClick={() => !(c as any).disabled && setChannel(c.id)}>{c.label}</Chip>
+              {[{ id: "email", label: "Email", icon: Mail }, { id: "sms", label: "SMS", icon: Smartphone }, { id: "both", label: "Email + SMS", icon: Mail }].map(c => (
+                <Chip key={c.id} selected={channel === c.id} onClick={() => setChannel(c.id)}>{c.label}</Chip>
               ))}
             </div>
           </div>

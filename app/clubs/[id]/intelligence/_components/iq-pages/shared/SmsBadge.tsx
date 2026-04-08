@@ -2,23 +2,27 @@
 
 import { Smartphone } from 'lucide-react'
 
-/** SMS button that shows "Coming Soon" tooltip. Disabled until A2P approval. */
-export function SmsComingSoon({ size = 'sm' }: { size?: 'sm' | 'xs' }) {
+/** SMS badge — active (A2P verified) */
+export function SmsBadge({ size = 'sm', active }: { size?: 'sm' | 'xs'; active?: boolean }) {
   const px = size === 'sm' ? 'px-2.5 py-1' : 'px-2 py-0.5'
   const text = size === 'sm' ? 'text-[10px]' : 'text-[9px]'
   return (
     <span
-      className={`${px} rounded-lg ${text} flex items-center gap-1 cursor-not-allowed relative group`}
-      style={{ background: 'rgba(100,100,100,0.1)', color: 'var(--t4)', fontWeight: 600 }}
-      title="SMS coming soon — awaiting A2P approval"
+      className={`${px} rounded-lg ${text} flex items-center gap-1`}
+      style={{
+        background: active ? 'rgba(16,185,129,0.1)' : 'rgba(139,92,246,0.1)',
+        color: active ? '#10B981' : '#8B5CF6',
+        fontWeight: 600,
+      }}
+      title="SMS available (A2P verified)"
     >
       <Smartphone className="w-3 h-3" /> SMS
-      <span className="absolute -top-1 -right-1 px-1 py-px rounded text-[7px] leading-none" style={{ background: '#F59E0B', color: '#000', fontWeight: 700 }}>
-        SOON
-      </span>
     </span>
   )
 }
+
+/** @deprecated Use SmsBadge instead */
+export const SmsComingSoon = SmsBadge
 
 /** DUPR rating badge with brand blue color */
 export function DuprBadge({ rating }: { rating: number }) {
