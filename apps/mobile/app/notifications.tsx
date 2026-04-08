@@ -41,6 +41,7 @@ type FeedbackEntityType = 'TOURNAMENT' | 'CLUB' | 'TD' | 'APP'
 
 /** Тап → переход: убрать строку из колокольника (pending club/tournament access обрабатываются на сервере). */
 const BELL_DISMISS_ON_NAVIGATE_TYPES = new Set([
+  'CHAT_MENTION',
   'TOURNAMENT_ACCESS_GRANTED',
   'TOURNAMENT_ACCESS_DENIED',
   'WAITLIST_PROMOTED',

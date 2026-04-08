@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { buildMentionHandle, stripMentionIds } from './chatMentions'
 
 const fmtDate = (d: Date) =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(d)
@@ -338,6 +339,248 @@ export async function buildExtraBellItems(prisma: PrismaClient, userId: string):
     }
   } catch {
     /* ignore */
+  }
+
+  return extra
+}
+
+const truncateText = (value: string, max = 120) => {
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  if (normalized.length <= max) return normalized
+  return `${normalized.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+}
+
+const buildMentionPreview = (text: string) => {
+  const cleaned = truncateText(stripMentionIds(text), 120)
+  return cleaned ? `Mentioned you: "${cleaned}"` : 'Mentioned you in chat.'
+}
+
+const buildMentionTitle = (senderName: string, scopeName: string) =>
+  `${senderName} mentioned you in ${scopeName} chat`
+
+export async function buildChatMentionBellItems(prisma: PrismaClient, userId: string): Promise<BellExtra[]> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  })
+  const legacyMentionNeedle = `@${buildMentionHandle(me?.name)}`
+  const mentionTextWhere = {
+    OR: [
+      { text: { contains: `~${userId}` } },
+      { text: { contains: legacyMentionNeedle, mode: 'insensitive' as const } },
+    ],
+  }
+  const extra: BellExtra[] = []
+
+  const [clubAccess, owned, adminAccesses, clubAdminTournaments, participantDivisions, waitlistEntries] = await Promise.all([
+    prisma.club.findMany({
+      where: {
+        OR: [{ followers: { some: { userId } } }, { admins: { some: { userId } } }],
+        bans: { none: { userId } },
+      },
+      select: { id: true, name: true },
+    }),
+    prisma.tournament.findMany({
+      where: { userId },
+      select: { id: true },
+    }),
+    prisma.tournamentAccess.findMany({
+      where: { userId, accessLevel: 'ADMIN' },
+      select: { tournamentId: true, divisionId: true },
+    }),
+    prisma.tournament.findMany({
+      where: {
+        club: {
+          admins: {
+            some: { userId },
+          },
+        },
+      },
+      select: { id: true },
+    }),
+    prisma.division.findMany({
+      where: {
+        teams: {
+          some: {
+            teamPlayers: {
+              some: {
+                player: { userId },
+              },
+            },
+          },
+        },
+      },
+      select: { id: true, tournamentId: true },
+      distinct: ['id'],
+    }),
+    prisma.waitlistEntry.findMany({
+      where: {
+        status: 'ACTIVE',
+        player: { userId },
+      },
+      select: { tournamentId: true, divisionId: true },
+      distinct: ['playerId', 'divisionId'],
+    }),
+  ])
+
+  const clubIds = clubAccess.map((club) => club.id)
+  if (clubIds.length > 0) {
+    const clubById = new Map(clubAccess.map((club) => [club.id, club]))
+    const rows = await prisma.clubChatMessage.findMany({
+      where: {
+        clubId: { in: clubIds },
+        userId: { not: userId },
+        deletedAt: null,
+        ...mentionTextWhere,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      include: {
+        user: { select: { id: true, name: true, image: true } },
+      },
+    })
+    for (const row of rows) {
+      const club = clubById.get(row.clubId)
+      if (!club) continue
+      const senderName = row.user?.name || 'Someone'
+      const createdAt = row.createdAt.toISOString()
+      const targetUrl = row.parentMessageId
+        ? `/chats/club/${row.clubId}/thread/${row.parentMessageId}?name=${encodeURIComponent(club.name)}`
+        : `/chats/club/${row.clubId}?name=${encodeURIComponent(club.name)}`
+      extra.push({
+        _sort: createdAt,
+        id: `chat-mention-club-${row.id}`,
+        type: 'CHAT_MENTION',
+        title: buildMentionTitle(senderName, club.name),
+        body: buildMentionPreview(row.text),
+        createdAt,
+        readAt: null,
+        targetUrl,
+        userAvatarUrl: row.user?.image ?? null,
+        requesterName: senderName,
+        clubId: row.clubId,
+        messageId: row.id,
+      })
+    }
+  }
+
+  const generalTournamentIds = new Set<string>([
+    ...owned.map((row) => row.id),
+    ...clubAdminTournaments.map((row) => row.id),
+    ...adminAccesses.filter((row) => !row.divisionId).map((row) => row.tournamentId),
+  ])
+  const specificDivisionIds = new Set<string>([
+    ...adminAccesses.map((row) => row.divisionId).filter((id): id is string => Boolean(id)),
+    ...participantDivisions.map((row) => row.id),
+    ...waitlistEntries.map((row) => row.divisionId),
+  ])
+  const tournamentIds = Array.from(
+    new Set([
+      ...Array.from(generalTournamentIds),
+      ...participantDivisions.map((row) => row.tournamentId),
+      ...waitlistEntries.map((row) => row.tournamentId),
+      ...adminAccesses.map((row) => row.tournamentId),
+    ])
+  )
+
+  if (tournamentIds.length > 0) {
+    const tournaments = await prisma.tournament.findMany({
+      where: { id: { in: tournamentIds } },
+      select: { id: true, title: true },
+    })
+    const tournamentById = new Map(tournaments.map((row) => [row.id, row]))
+    const rows = await prisma.tournamentChatMessage.findMany({
+      where: {
+        tournamentId: { in: tournamentIds },
+        userId: { not: userId },
+        deletedAt: null,
+        ...mentionTextWhere,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      include: {
+        user: { select: { id: true, name: true, image: true } },
+      },
+    })
+    for (const row of rows) {
+      const tournament = tournamentById.get(row.tournamentId)
+      if (!tournament) continue
+      const senderName = row.user?.name || 'Someone'
+      const createdAt = row.createdAt.toISOString()
+      const targetUrl = row.parentMessageId
+        ? `/chats/event/tournament/${row.tournamentId}/thread/${row.parentMessageId}?title=${encodeURIComponent(tournament.title)}`
+        : `/chats/event/tournament/${row.tournamentId}?title=${encodeURIComponent(tournament.title)}`
+      extra.push({
+        _sort: createdAt,
+        id: `chat-mention-tournament-${row.id}`,
+        type: 'CHAT_MENTION',
+        title: buildMentionTitle(senderName, tournament.title),
+        body: buildMentionPreview(row.text),
+        createdAt,
+        readAt: null,
+        targetUrl,
+        userAvatarUrl: row.user?.image ?? null,
+        requesterName: senderName,
+        tournamentId: row.tournamentId,
+        messageId: row.id,
+      })
+    }
+  }
+
+  const divisionIds = Array.from(specificDivisionIds)
+  if (generalTournamentIds.size > 0 || divisionIds.length > 0) {
+    const divisions = await prisma.division.findMany({
+      where: {
+        OR: [
+          ...(generalTournamentIds.size > 0 ? [{ tournamentId: { in: Array.from(generalTournamentIds) } }] : []),
+          ...(divisionIds.length > 0 ? [{ id: { in: divisionIds } }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        tournamentId: true,
+        tournament: { select: { title: true } },
+      },
+    })
+    const divisionById = new Map(divisions.map((row) => [row.id, row]))
+    const rows = await prisma.divisionChatMessage.findMany({
+      where: {
+        divisionId: { in: divisions.map((row) => row.id) },
+        userId: { not: userId },
+        deletedAt: null,
+        ...mentionTextWhere,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 25,
+      include: {
+        user: { select: { id: true, name: true, image: true } },
+      },
+    })
+    for (const row of rows) {
+      const division = divisionById.get(row.divisionId)
+      if (!division) continue
+      const senderName = row.user?.name || 'Someone'
+      const createdAt = row.createdAt.toISOString()
+      const targetUrl = row.parentMessageId
+        ? `/chats/event/division/${row.divisionId}/thread/${row.parentMessageId}?tournamentId=${encodeURIComponent(division.tournamentId)}&title=${encodeURIComponent(division.name)}&eventTitle=${encodeURIComponent(division.tournament.title)}`
+        : `/chats/event/tournament/${division.tournamentId}?title=${encodeURIComponent(division.tournament.title)}&divisionId=${encodeURIComponent(row.divisionId)}`
+      extra.push({
+        _sort: createdAt,
+        id: `chat-mention-division-${row.id}`,
+        type: 'CHAT_MENTION',
+        title: buildMentionTitle(senderName, division.name),
+        body: buildMentionPreview(row.text),
+        createdAt,
+        readAt: null,
+        targetUrl,
+        userAvatarUrl: row.user?.image ?? null,
+        requesterName: senderName,
+        tournamentId: division.tournamentId,
+        divisionId: row.divisionId,
+        messageId: row.id,
+      })
+    }
   }
 
   return extra

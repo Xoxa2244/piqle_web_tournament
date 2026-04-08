@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { sanitizeChatText } from '../utils/chatModeration'
+import { extractMentionedUserIds } from '../utils/chatMentions'
 import { pushToUsers } from '@/lib/realtime'
 
 const isMissingDbRelation = (err: any, relationName: string) => {
@@ -461,6 +462,13 @@ export const clubChatRouter = createTRPCRouter({
         new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
       ).filter((id) => id !== userId)
       pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs', 'clubChat.listThread'] })
+      const mentionedUserIds = extractMentionedUserIds(sanitized).filter((id) => id !== userId)
+      if (mentionedUserIds.length > 0) {
+        pushToUsers(Array.from(new Set(mentionedUserIds)), {
+          type: 'invalidate',
+          keys: ['notification.list'],
+        })
+      }
 
       return {
         ...mapClubChatMessage(

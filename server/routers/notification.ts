@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { pushToUser } from '@/lib/realtime'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { buildExtraBellItems } from '../utils/bellNotificationItems'
+import { buildChatMentionBellItems, buildExtraBellItems } from '../utils/bellNotificationItems'
 
 const formatPromptDate = (value: Date) =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
@@ -442,10 +442,16 @@ export const notificationRouter = createTRPCRouter({
       }
 
       let extraBellItems: Array<Record<string, unknown> & { _sort: string }> = []
+      let mentionBellItems: Array<Record<string, unknown> & { _sort: string }> = []
       try {
         extraBellItems = await buildExtraBellItems(ctx.prisma, userId)
       } catch {
         extraBellItems = []
+      }
+      try {
+        mentionBellItems = await buildChatMentionBellItems(ctx.prisma, userId)
+      } catch {
+        mentionBellItems = []
       }
 
       const activePendingAccessIds = new Set(
@@ -462,6 +468,7 @@ export const notificationRouter = createTRPCRouter({
         ...clubLeaveItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubOpenJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...feedbackPromptItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...mentionBellItems.map((i) => ({ ...i })),
         ...extraBellItems.map((i) => ({ ...i })),
       ]
       const sortDesc = (a: Merged, b: Merged) => b._sort.localeCompare(a._sort)

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { sanitizeChatText } from '../utils/chatModeration'
+import { extractMentionedUserIds } from '../utils/chatMentions'
 import { pushToUsers } from '@/lib/realtime'
 
 type ChatMembership = {
@@ -1068,6 +1069,13 @@ export const tournamentChatRouter = createTRPCRouter({
         type: 'invalidate',
         keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listTournamentThread'],
       })
+      const mentionedUserIds = extractMentionedUserIds(sanitized).filter((id) => id !== userId)
+      if (mentionedUserIds.length > 0) {
+        pushToUsers(Array.from(new Set(mentionedUserIds)), {
+          type: 'invalidate',
+          keys: ['notification.list'],
+        })
+      }
 
       return {
         ...mapMessage(
@@ -1351,6 +1359,13 @@ export const tournamentChatRouter = createTRPCRouter({
           type: 'invalidate',
           keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listDivisionThread'],
         })
+        const mentionedUserIds = extractMentionedUserIds(sanitized).filter((id) => id !== userId)
+        if (mentionedUserIds.length > 0) {
+          pushToUsers(Array.from(new Set(mentionedUserIds)), {
+            type: 'invalidate',
+            keys: ['notification.list'],
+          })
+        }
       }
 
       return {

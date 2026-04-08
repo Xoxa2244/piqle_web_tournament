@@ -82,6 +82,7 @@ export function BellNotificationLeadIcon({ item }: { item: any }) {
   }
 
   if (
+    item.type === 'CHAT_MENTION' ||
     item.type === 'CLUB_JOIN_REQUEST' ||
     item.type === 'CLUB_MEMBER_LEFT' ||
     item.type === 'CLUB_MEMBER_JOINED'
