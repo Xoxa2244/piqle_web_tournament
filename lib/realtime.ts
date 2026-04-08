@@ -8,7 +8,10 @@ export type RealtimeEvent = {
   keys: (
     | 'notification.list'
     | 'club.listMyChatClubs'
+    | 'clubChat.listThread'
     | 'tournamentChat.listMyEventChats'
+    | 'tournamentChat.listTournamentThread'
+    | 'tournamentChat.listDivisionThread'
     | 'directChat.listMyChats'
     | 'registration.getMyStatus'
     | 'registration.getSeatMap'

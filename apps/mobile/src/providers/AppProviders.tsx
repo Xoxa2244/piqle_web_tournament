@@ -46,6 +46,7 @@ function useMobileRealtimeSync() {
     }
 
     let cancelled = false
+    let shouldReconnect = true
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let abortController: AbortController | null = null
     const decoder = new TextDecoder()
@@ -72,10 +73,19 @@ function useMobileRealtimeSync() {
             void utils.club.listMyChatClubs.invalidate()
             void utils.clubChat.list.invalidate()
           }
+          if (key === 'clubChat.listThread') {
+            void utils.clubChat.listThread.invalidate()
+          }
           if (key === 'tournamentChat.listMyEventChats') {
             void utils.tournamentChat.listMyEventChats.invalidate()
             void utils.tournamentChat.listTournament.invalidate()
             void utils.tournamentChat.listDivision.invalidate()
+          }
+          if (key === 'tournamentChat.listTournamentThread') {
+            void utils.tournamentChat.listTournamentThread.invalidate()
+          }
+          if (key === 'tournamentChat.listDivisionThread') {
+            void utils.tournamentChat.listDivisionThread.invalidate()
           }
           if (key === 'registration.getMyStatus') {
             void utils.registration.getMyStatus.invalidate()
@@ -144,6 +154,12 @@ function useMobileRealtimeSync() {
           signal: abortController.signal,
         })
 
+        if (response.status === 401 || response.status === 403) {
+          shouldReconnect = false
+          setConnected(false)
+          return
+        }
+
         if (!response.ok) {
           throw new Error(`Realtime HTTP ${response.status}`)
         }
@@ -153,7 +169,7 @@ function useMobileRealtimeSync() {
       } catch (error: any) {
         if (cancelled || error?.name === 'AbortError') return
       } finally {
-        if (!cancelled) {
+        if (!cancelled && shouldReconnect) {
           setConnected(false)
           scheduleReconnect()
         }

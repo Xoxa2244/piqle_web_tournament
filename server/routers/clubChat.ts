@@ -314,7 +314,7 @@ export const clubChatRouter = createTRPCRouter({
       const recipientIds = Array.from(
         new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
       ).filter((id) => id !== userId)
-      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs', 'clubChat.listThread'] })
 
       return { success: true }
     }),
@@ -460,7 +460,7 @@ export const clubChatRouter = createTRPCRouter({
       const recipientIds = Array.from(
         new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
       ).filter((id) => id !== userId)
-      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs', 'clubChat.listThread'] })
 
       return {
         ...mapClubChatMessage(
@@ -571,7 +571,7 @@ export const clubChatRouter = createTRPCRouter({
       const recipientIds = Array.from(
         new Set([...followers.map((f) => f.userId), ...admins.map((a) => a.userId)])
       ).filter((id) => id !== userId)
-      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
+      pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs', 'clubChat.listThread'] })
 
       return {
         messageId: message.id,

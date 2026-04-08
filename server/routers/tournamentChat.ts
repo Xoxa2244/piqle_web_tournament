@@ -605,7 +605,10 @@ export const tournamentChatRouter = createTRPCRouter({
         ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
         ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
       ].filter((id): id is string => id != null && id !== userId)
-      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      pushToUsers(Array.from(new Set(recipientIds)), {
+        type: 'invalidate',
+        keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listTournamentThread'],
+      })
 
       return { success: true }
     }),
@@ -685,7 +688,10 @@ export const tournamentChatRouter = createTRPCRouter({
           ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
           ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
         ].filter((id): id is string => id != null && id !== userId)
-        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+        pushToUsers(Array.from(new Set(recipientIds)), {
+          type: 'invalidate',
+          keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listDivisionThread'],
+        })
       }
 
       return { success: true }
@@ -910,7 +916,10 @@ export const tournamentChatRouter = createTRPCRouter({
         ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
         ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
       ].filter((id): id is string => id != null && id !== userId)
-      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      pushToUsers(Array.from(new Set(recipientIds)), {
+        type: 'invalidate',
+        keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listTournamentThread'],
+      })
 
       return {
         ...mapMessage(
@@ -1190,7 +1199,10 @@ export const tournamentChatRouter = createTRPCRouter({
           ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
           ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
         ].filter((id): id is string => id != null && id !== userId)
-        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+        pushToUsers(Array.from(new Set(recipientIds)), {
+          type: 'invalidate',
+          keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listDivisionThread'],
+        })
       }
 
       return {
@@ -1284,7 +1296,10 @@ export const tournamentChatRouter = createTRPCRouter({
         ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
         ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
       ].filter((id): id is string => id != null && id !== userId)
-      pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+      pushToUsers(Array.from(new Set(recipientIds)), {
+        type: 'invalidate',
+        keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listTournamentThread'],
+      })
 
       return {
         messageId: message.id,
@@ -1377,7 +1392,10 @@ export const tournamentChatRouter = createTRPCRouter({
           ...(teamPlayerUsers?.map((tp) => tp.player?.userId).filter(Boolean) ?? []),
           ...(waitlistUsers?.map((w) => w.player?.userId).filter(Boolean) ?? []),
         ].filter((id): id is string => id != null && id !== userId)
-        pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
+        pushToUsers(Array.from(new Set(recipientIds)), {
+          type: 'invalidate',
+          keys: ['tournamentChat.listMyEventChats', 'tournamentChat.listDivisionThread'],
+        })
       }
 
       return {
