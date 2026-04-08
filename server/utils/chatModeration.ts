@@ -7,6 +7,12 @@ const HARD_BLOCK_PATTERNS: RegExp[] = [
   /пизд[а-яёa-z0-9_-]*/gi,
   /еб[а-яёa-z0-9_-]*/gi,
   /бля[а-яёa-z0-9_-]*/gi,
+  /puta[s]?\b/gi,
+  /mierda[s]?\b/gi,
+  /cabr[oó]n(?:es)?\b/gi,
+  /pendej[oa]s?\b/gi,
+  /coñ[oa]s?\b/gi,
+  /joder(?:es|se|te|os)?\b/gi,
 ]
 
 function ensureChatDictionariesLoaded() {
