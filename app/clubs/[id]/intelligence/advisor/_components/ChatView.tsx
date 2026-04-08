@@ -60,12 +60,14 @@ function getMessageText(message: { parts?: Array<{ type: string; text?: string }
 }
 
 const suggestedQuestions = [
+  // Analytics
   { icon: '📊', text: 'What is my weakest day of the week?' },
-  { icon: '🚪', text: 'What does my churn look like?' },
-  { icon: '🏆', text: 'Which sessions are underfilled?' },
-  { icon: '⏰', text: 'When are my peak and dead hours?' },
-  { icon: '💰', text: 'How can I improve revenue?' },
+  { icon: '🏆', text: 'Which sessions fill the fastest?' },
   { icon: '👥', text: 'Who are my most active members?' },
+  // Platform support
+  { icon: '🔧', text: 'How do I create a targeted cohort?' },
+  { icon: '📈', text: 'What insights are on the Analytics page?' },
+  { icon: '💡', text: 'How can I fill empty session slots?' },
 ]
 
 type ChatViewProps = {
@@ -321,8 +323,8 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                 <h2 className="text-xl font-bold mb-2">AI Club Advisor</h2>
                 <p className="text-sm text-muted-foreground max-w-md mb-8">
                   {dataStatus?.hasData
-                    ? 'Ask me anything about your club — sessions, members, occupancy, engagement strategies, and more.'
-                    : 'Ask me general questions about club management, or upload your data for personalized insights.'}
+                    ? 'I can help with your club analytics and the IQSport platform — ask about members, sessions, fill rates, or how to use any feature.'
+                    : 'I can help you get started with IQSport — ask about connecting data, setting up integrations, or any platform feature.'}
                 </p>
 
                 <div className="w-full max-w-xl">

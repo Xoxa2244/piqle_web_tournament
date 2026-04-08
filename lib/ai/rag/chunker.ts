@@ -263,26 +263,48 @@ export function chunkClubInsights(insights: {
   }]
 }
 
-// ── Default FAQ entries for pickleball context ──
+// ── Default FAQ entries: pickleball + platform how-tos + troubleshooting ──
 export const DEFAULT_FAQS = [
-  {
-    question: 'What is DUPR?',
-    answer: 'DUPR (Dynamic Universal Pickleball Rating) is the global rating system for pickleball players. Ratings range from 2.0 to 8.0. Below 3.0 is beginner, 3.0-4.5 is intermediate, and 5.0+ is advanced. Ratings are based on match results.',
-    category: 'pickleball',
-  },
-  {
-    question: 'What are the session formats?',
-    answer: 'Open Play is drop-in style where players rotate partners. Clinic is instructor-led with structured teaching. Drill focuses on specific skills practice. League Play is competitive organized play. Social is casual, fun-focused play.',
-    category: 'sessions',
-  },
-  {
-    question: 'What does occupancy percentage mean?',
-    answer: 'Occupancy shows how full a session is — the percentage of confirmed players vs maximum capacity. Below 50% is underfilled (opportunity to invite more players). 70-90% is healthy. Above 90% may need a waitlist.',
-    category: 'metrics',
-  },
-  {
-    question: 'How does the Slot Filler work?',
-    answer: 'Slot Filler identifies underfilled sessions and recommends members most likely to join, based on their schedule preferences, skill level, format preferences, and recent activity. You can send personalized invites directly from the recommendations.',
-    category: 'features',
-  },
+  // ── Pickleball basics ──
+  { question: 'What is DUPR?', answer: 'DUPR (Dynamic Universal Pickleball Rating) is the global rating system for pickleball players. Ratings range from 2.0 to 8.0. Below 3.0 is beginner, 3.0-4.5 is intermediate, and 5.0+ is advanced. Ratings are based on match results.', category: 'pickleball' },
+  { question: 'What are the session formats?', answer: 'Open Play is drop-in style where players rotate partners. Clinic is instructor-led with structured teaching. Drill focuses on specific skills practice. League Play is competitive organized play. Social is casual, fun-focused play.', category: 'sessions' },
+  { question: 'What are skill levels?', answer: 'Sessions can be tagged by skill: Beginner (2.0-2.99), Intermediate (3.0-3.49), Competitive (3.5-3.99), Advanced (4.0+), or All Levels. This helps match players to appropriate sessions and improves the experience for everyone.', category: 'pickleball' },
+
+  // ── Platform metrics ──
+  { question: 'What does occupancy percentage mean?', answer: 'Occupancy shows how full a session is — confirmed players vs maximum capacity. Below 50% is underfilled (opportunity to invite more). 70-90% is healthy. Above 90% may need a waitlist.', category: 'metrics' },
+  { question: 'What are member health scores?', answer: 'Health scores track how engaged each member is based on booking frequency and recency. Segments: Healthy (active recently), Watch (slowing down), At-Risk (significant decline), Critical (nearly churned). The system automatically detects transitions and can trigger outreach.', category: 'metrics' },
+  { question: 'What is booking lead time?', answer: 'Lead time measures how far in advance players book sessions. "Last minute" is under 24 hours, "planners" book 7+ days ahead. Understanding this helps optimize when to send session invites — last-minute players need same-day notifications.', category: 'metrics' },
+  { question: 'What is fill rate?', answer: 'Fill rate shows which session combinations (format + day + time) fill the best. High fill rate (80%+) means strong demand. Low fill rate (<50%) means you should consider adjusting the time, format, or promoting it more.', category: 'metrics' },
+
+  // ── Platform features ──
+  { question: 'How does the Slot Filler work?', answer: 'Slot Filler identifies underfilled sessions and recommends members most likely to join, based on their schedule preferences, skill level, format preferences, and recent activity. You can send personalized invites directly from the recommendations.', category: 'features' },
+  { question: 'How do Cohorts work?', answer: 'Cohorts are saved groups of members based on filters. You can filter by gender, age, skill level, membership type, session format, and day of week. Use cohorts for targeted campaigns — e.g. "Women who play Open Play on Wednesdays". You can also create a cohort directly from a past session\'s participant list.', category: 'features' },
+  { question: 'How does AI Enrichment work?', answer: 'AI Enrichment automatically fills in missing member data. Gender is inferred from booking patterns (women\'s events) and name analysis. Skill level is detected from session titles (e.g. "Open Play Intermediate" → 3.0-3.49). Run it from the Cohorts page via "Enrich Data with AI" button.', category: 'features' },
+  { question: 'What are Campaigns?', answer: 'Campaigns are automated or manual outreach messages sent to members via email or SMS. Types: Check-In (friendly nudge), Retention Boost (for declining members), Reactivation (win-back), Slot Filler (session invites), Event Invite. The system scores confidence for each message and auto-sends high-confidence ones.', category: 'features' },
+  { question: 'What is the AI Advisor?', answer: 'I am the AI Advisor! I can help you with club analytics (members, sessions, revenue, fill rates), answer questions about your data, explain platform features, troubleshoot issues, and suggest actions to grow your club. Just ask me anything.', category: 'features' },
+  { question: 'What are Frequent Partners?', answer: 'Frequent Partners shows which players regularly play together (based on shared session bookings). This helps with: targeted invites ("your partner John is already signed up!"), churn risk detection (if one partner leaves, the other may follow), and social cluster analysis.', category: 'features' },
+  { question: 'What are Social Clusters?', answer: 'Social Clusters are groups of 3+ players who frequently play together. If one member in a cluster becomes inactive, the whole group is at elevated churn risk. Monitor clusters on the Analytics page to proactively retain friend groups.', category: 'features' },
+  { question: 'How does the Schedule view work?', answer: 'The Schedule shows a grid of sessions by court and time. Click any session to see details: registered players, fill rate, and AI-recommended players to invite. Past sessions show a "Create Cohort" button to save participants as a group.', category: 'features' },
+
+  // ── How-to guides ──
+  { question: 'How do I connect CourtReserve?', answer: 'Go to Integrations page → enter your CourtReserve API Username and Password → check the consent checkbox → click Test Connection → if successful, click Connect & Sync. Your data will start syncing automatically. You need a Scale or Enterprise CourtReserve plan for API access. Find your API key in CourtReserve → Settings → API → Create API Key.', category: 'how-to' },
+  { question: 'How do I import data from Excel/CSV?', answer: 'Go to Integrations → scroll to Import Data section. For CourtReserve: upload Members, Reservations, and Events .xlsx files (export from CourtReserve Reports). For PodPlay: upload Customers CSV and Settlements ZIP files. Files are auto-detected by filename.', category: 'how-to' },
+  { question: 'How do I create a cohort?', answer: 'Go to Cohorts page → click "Create Cohort" → either type a natural language description (AI will parse it) or manually add filters. Available filters: Age, Gender, Session Type, Day of Week, Skill Level, Membership Type/Status, City, Zip Code. Preview shows matching count in real-time. Name your cohort and save.', category: 'how-to' },
+  { question: 'How do I create a cohort from a past session?', answer: 'Go to Schedule → click on a past session → in the Players section, click "Create Cohort (N)" button. This creates a cohort containing all confirmed participants of that session. Useful for follow-up messaging after events.', category: 'how-to' },
+  { question: 'How do I send invites to fill a session?', answer: 'Go to a future session with empty spots → check the Suggested Players section on the right → select players you want to invite → click "Invite Selected". The system ranks candidates by schedule fit, skill match, format preference, and recent activity.', category: 'how-to' },
+  { question: 'How do I set up automated campaigns?', answer: 'Automated health-based campaigns run daily when enabled. Go to Settings → enable "Agent Live" mode. The system detects when members\' health scores decline and automatically sends appropriate messages (Check-In, Retention Boost, Reactivation). Messages are personalized with session recommendations and social proof.', category: 'how-to' },
+  { question: 'How do I view analytics?', answer: 'Go to the Analytics page to see 6 cross-data insights: Social Clusters (player groups), Booking Lead Time (when people book), Cancellation Patterns (who cancels what), Skill Progression (level changes over time), Partner Churn Risk (inactive partner alerts), and Fill Rate (best/worst session combinations).', category: 'how-to' },
+  { question: 'How do I see a player profile?', answer: 'Go to Members → click on any member name → their profile shows: activity trend (12-week chart), play patterns (favorite format, preferred time, active days, favorite courts), frequent partners, risk assessment, and recent sessions.', category: 'how-to' },
+  { question: 'How do I enrich missing member data?', answer: 'Go to Cohorts page → if the Data Coverage banner shows low percentages (e.g. Gender 9%), click "Enrich Data with AI". This infers gender from event names and player names, and skill level from session titles. It runs automatically after each data sync too.', category: 'how-to' },
+  { question: 'How do I check data coverage?', answer: 'Go to Integrations page → the Data Coverage section shows field-level percentages for Members, Sessions, Bookings, and Courts. Green (80%+) means good coverage, yellow (30-80%) means partial, red (<30%) means data is missing and may limit some features.', category: 'how-to' },
+
+  // ── Troubleshooting ──
+  { question: 'Why is my sync taking so long?', answer: 'Large clubs (5,000+ members) sync in progressive phases: Phase 1 loads the last 2 months + upcoming sessions first (most valuable). Phases 2-4 load older history over several hours with 2-hour pauses between phases to respect API rate limits. Your dashboard is useful after Phase 1.', category: 'troubleshooting' },
+  { question: 'What does "Rate limited" mean during sync?', answer: 'CourtReserve API limits how many requests we can make per minute. When hit, sync pauses automatically and resumes after the cooldown (usually 1-3 minutes). This is normal for large initial syncs. The system handles it automatically — no action needed.', category: 'troubleshooting' },
+  { question: 'Why does sync show over 100%?', answer: 'This is a known UI display issue — the member count estimate from the first API response can be lower than the actual total. The sync is working correctly, just the percentage display is inaccurate. We are fixing this.', category: 'troubleshooting' },
+  { question: 'Why is some member data missing?', answer: 'Data coverage depends on what your club management software tracks. CourtReserve provides most fields. PodPlay CSV exports may lack: courts, cancellation dates, check-in data, zip codes, and skill levels. Use AI Enrichment to fill gender and skill level gaps. Check the Data Coverage section on Integrations for details.', category: 'troubleshooting' },
+  { question: 'Why are AI recommendations not showing?', answer: 'Slot Filler recommendations require: (1) future sessions with empty spots, (2) active members with booking history, and (3) completed data sync. If you just connected, wait for the initial sync to finish. Check the Integrations page for sync status.', category: 'troubleshooting' },
+  { question: 'My CourtReserve connection failed', answer: 'Common causes: (1) Wrong API credentials — verify in CourtReserve → Settings → API, (2) Plan doesn\'t support API — need Scale or Enterprise, (3) API key permissions — enable Read access for Members, Reservations, Events, Transactions. Try Test Connection on the Integrations page to see the specific error.', category: 'troubleshooting' },
+  { question: 'How do I disconnect and reconnect?', answer: 'Go to Integrations → click "Disconnect" on the CourtReserve connector. This removes credentials but keeps existing data. Then enter new credentials and click Connect & Sync to reconnect. All data will be re-synced.', category: 'troubleshooting' },
+  { question: 'Emails are not being sent', answer: 'Automated emails only send when "Agent Live" is enabled in Settings. By default, the system runs in dry-run mode (calculates but doesn\'t send). Also check: member has valid email, member hasn\'t opted out, anti-spam limits haven\'t been reached (max 2-3 per day per member).', category: 'troubleshooting' },
 ];
