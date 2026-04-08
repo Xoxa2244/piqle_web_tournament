@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
@@ -26,6 +27,7 @@ export type ChatComposerProps = {
   onSubmitEditing?: TextInputProps['onSubmitEditing']
   onFocus?: TextInputProps['onFocus']
   onBlur?: TextInputProps['onBlur']
+  topSlot?: ReactNode
 }
 
 export const ChatComposer = ({
@@ -45,6 +47,7 @@ export const ChatComposer = ({
   onSubmitEditing,
   onFocus,
   onBlur,
+  topSlot,
 }: ChatComposerProps) => {
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -77,6 +80,7 @@ export const ChatComposer = ({
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal }]}>
+      {topSlot ? <View style={styles.topSlot}>{topSlot}</View> : null}
       <View style={styles.row}>
         <TextInput
           value={value}
@@ -129,6 +133,9 @@ const createStyles = (colors: ThemePalette) =>
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+  },
+  topSlot: {
+    marginBottom: 10,
   },
   input: {
     flex: 1,

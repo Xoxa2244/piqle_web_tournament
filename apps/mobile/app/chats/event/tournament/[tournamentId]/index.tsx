@@ -62,6 +62,7 @@ export default function TournamentChatScreen() {
   const scrollRef = useRef<ScrollView>(null)
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
@@ -103,33 +104,6 @@ export default function TournamentChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
-  const handleSend = useCallback(() => {
-    const text = draft.trim()
-    if (!text) return
-
-    const now = Date.now()
-    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
-      toast.error('Slow down a bit.')
-      return
-    }
-    if (
-      lastSentTextRef.current &&
-      lastSentTextRef.current === text &&
-      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
-    ) {
-      toast.error('Duplicate message.')
-      return
-    }
-
-    lastSendAtRef.current = now
-    lastSentTextRef.current = text
-    lastSentTextAtRef.current = now
-    if (activeDivisionId) {
-      sendDivisionMessage.mutate({ divisionId: activeDivisionId, text })
-      return
-    }
-    sendMessage.mutate({ tournamentId, text })
-  }, [activeDivisionId, draft, sendDivisionMessage, sendMessage, toast, tournamentId])
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
     enabled: Boolean(tournamentId) && isAuthenticated,
@@ -192,17 +166,31 @@ export default function TournamentChatScreen() {
     },
   })
   const sendMessage = trpc.tournamentChat.sendTournament.useMutation({
-    onMutate: ({ text }: { text: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !tournamentId || !user?.id) return null
 
       const createdAt = new Date()
       const optimisticId = `optimistic-tournament-${tournamentId}-${createdAt.getTime()}`
+      const resolvedReplyTarget =
+        replyTarget && replyToMessageId === replyTarget.id ? replyTarget : null
       const optimisticMessage = {
         id: optimisticId,
         tournamentId,
         userId: user.id,
         text: trimmed,
+        parentMessageId: resolvedReplyTarget ? resolvedReplyTarget.parentMessageId ?? resolvedReplyTarget.id : null,
+        replyToMessageId: resolvedReplyTarget ? resolvedReplyTarget.id : null,
+        replyToMessage: resolvedReplyTarget
+          ? {
+              id: resolvedReplyTarget.id,
+              userId: resolvedReplyTarget.userId,
+              text: resolvedReplyTarget.text,
+              isDeleted: resolvedReplyTarget.isDeleted,
+              createdAt: resolvedReplyTarget.createdAt,
+              user: resolvedReplyTarget.user,
+            }
+          : null,
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
@@ -219,6 +207,7 @@ export default function TournamentChatScreen() {
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
+      setReplyTarget(null)
       setOptimisticMessages((current) => [...current, optimisticMessage])
       utils.tournamentChat.listMyEventChats.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((event) =>
@@ -258,17 +247,31 @@ export default function TournamentChatScreen() {
     },
   })
   const sendDivisionMessage = trpc.tournamentChat.sendDivision.useMutation({
-    onMutate: ({ text, divisionId }: { text: string; divisionId: string }) => {
+    onMutate: ({ text, divisionId, replyToMessageId }: { text: string; divisionId: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !divisionId || !user?.id) return null
 
       const createdAt = new Date()
       const optimisticId = `optimistic-division-${divisionId}-${createdAt.getTime()}`
+      const resolvedReplyTarget =
+        replyTarget && replyToMessageId === replyTarget.id ? replyTarget : null
       const optimisticMessage = {
         id: optimisticId,
         divisionId,
         userId: user.id,
         text: trimmed,
+        parentMessageId: resolvedReplyTarget ? resolvedReplyTarget.parentMessageId ?? resolvedReplyTarget.id : null,
+        replyToMessageId: resolvedReplyTarget ? resolvedReplyTarget.id : null,
+        replyToMessage: resolvedReplyTarget
+          ? {
+              id: resolvedReplyTarget.id,
+              userId: resolvedReplyTarget.userId,
+              text: resolvedReplyTarget.text,
+              isDeleted: resolvedReplyTarget.isDeleted,
+              createdAt: resolvedReplyTarget.createdAt,
+              user: resolvedReplyTarget.user,
+            }
+          : null,
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
@@ -285,6 +288,7 @@ export default function TournamentChatScreen() {
       const previousEvents = ((utils.tournamentChat.listMyEventChats.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
+      setReplyTarget(null)
       setOptimisticMessages((current) => [...current, optimisticMessage])
       clearEventUnreadCache(divisionId)
 
@@ -466,6 +470,34 @@ export default function TournamentChatScreen() {
     },
   })
 
+  const handleSend = useCallback(() => {
+    const text = draft.trim()
+    if (!text) return
+
+    const now = Date.now()
+    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+      toast.error('Slow down a bit.')
+      return
+    }
+    if (
+      lastSentTextRef.current &&
+      lastSentTextRef.current === text &&
+      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
+    ) {
+      toast.error('Duplicate message.')
+      return
+    }
+
+    lastSendAtRef.current = now
+    lastSentTextRef.current = text
+    lastSentTextAtRef.current = now
+    if (activeDivisionId) {
+      sendDivisionMessage.mutate({ divisionId: activeDivisionId, text, replyToMessageId: replyTarget?.id })
+      return
+    }
+    sendMessage.mutate({ tournamentId, text, replyToMessageId: replyTarget?.id })
+  }, [activeDivisionId, draft, replyTarget?.id, sendDivisionMessage, sendMessage, toast, tournamentId])
+
   const permission = permissionsQuery.data?.tournament
   const activeDivisionPermission = activeDivisionId ? permissionsQuery.data?.divisions?.[0] : null
   const messagesLen = ((activeDivisionId ? divisionMessagesQuery.data : tournamentMessagesQuery.data) ?? []).length
@@ -644,6 +676,30 @@ export default function TournamentChatScreen() {
                   }
                   likeTournamentMessage.mutate({ messageId: m.id })
                 }}
+                onRequestReply={(m) => setReplyTarget(m)}
+                onPressRepliesSummary={(m) => {
+                  if (activeDivisionId) {
+                    router.push({
+                      pathname: '/chats/event/division/[divisionId]/thread/[rootMessageId]',
+                      params: {
+                        divisionId: activeDivisionId,
+                        rootMessageId: m.id,
+                        tournamentId,
+                        title: activeDivision?.name || 'Division chat',
+                        eventTitle: title,
+                      },
+                    })
+                    return
+                  }
+                  router.push({
+                    pathname: '/chats/event/tournament/[tournamentId]/thread/[rootMessageId]',
+                    params: {
+                      tournamentId,
+                      rootMessageId: m.id,
+                      title,
+                    },
+                  })
+                }}
                 onPressAvatar={(m) => {
                   if (!m.userId) return
                   router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
@@ -654,6 +710,7 @@ export default function TournamentChatScreen() {
                 }}
                 onRequestDelete={(m) => setDeleteTargetId(m.id)}
                 deleteDisabled={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
+                longPressMenuEnabled
               />
             )}
           </ChatThreadRoot>
@@ -671,6 +728,27 @@ export default function TournamentChatScreen() {
             paddingHorizontal={16}
             paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
             multiline={false}
+            topSlot={
+              replyTarget ? (
+                <View style={styles.replyComposerCard}>
+                  <View style={styles.replyComposerBody}>
+                    <Text style={styles.replyComposerLabel} numberOfLines={1}>
+                      Replying to {replyTarget.user?.name || 'User'}
+                    </Text>
+                    <Text style={styles.replyComposerText} numberOfLines={1}>
+                      {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setReplyTarget(null)}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}
+                  >
+                    <Feather name="x" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ) : null
+            }
           />
         ) : null}
       </KeyboardAvoidingView>
@@ -774,5 +852,37 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'center',
     alignItems: 'stretch',
     paddingBottom: 0,
+  },
+  replyComposerCard: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  replyComposerBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  replyComposerLabel: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  replyComposerText: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  replyComposerClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })

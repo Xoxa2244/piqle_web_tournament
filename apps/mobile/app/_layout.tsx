@@ -57,8 +57,11 @@ const RootNavigator = () => {
         <Stack.Screen name="clubs/[id]/events" />
         <Stack.Screen name="chats/direct/[threadId]/index" />
         <Stack.Screen name="chats/club/[clubId]/index" />
+        <Stack.Screen name="chats/club/[clubId]/thread/[rootMessageId]" />
         <Stack.Screen name="chats/event/tournament/[tournamentId]/index" />
+        <Stack.Screen name="chats/event/tournament/[tournamentId]/thread/[rootMessageId]" />
         <Stack.Screen name="chats/event/division/[divisionId]/index" />
+        <Stack.Screen name="chats/event/division/[divisionId]/thread/[rootMessageId]" />
       </Stack>
     </>
   )

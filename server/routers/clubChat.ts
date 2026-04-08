@@ -9,6 +9,55 @@ const isMissingDbRelation = (err: any, relationName: string) => {
   return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
 }
 
+const clubChatUserSelect = {
+  id: true,
+  name: true,
+  image: true,
+} as const
+
+const clubChatReplyPreviewSelect = {
+  id: true,
+  userId: true,
+  text: true,
+  deletedAt: true,
+  createdAt: true,
+  user: {
+    select: clubChatUserSelect,
+  },
+} as const
+
+const mapClubChatMessage = (m: any, currentUserId?: string, latestReadAt?: Date | null) => ({
+  id: m.id,
+  clubId: m.clubId,
+  userId: m.userId,
+  text: m.deletedAt ? null : m.text,
+  isDeleted: Boolean(m.deletedAt),
+  parentMessageId: m.parentMessageId ?? null,
+  replyToMessageId: m.replyToMessageId ?? null,
+  replyToMessage: m.replyToMessage
+    ? {
+        id: m.replyToMessage.id,
+        userId: m.replyToMessage.userId,
+        text: m.replyToMessage.deletedAt ? null : m.replyToMessage.text,
+        isDeleted: Boolean(m.replyToMessage.deletedAt),
+        createdAt: m.replyToMessage.createdAt,
+        user: m.replyToMessage.user,
+      }
+    : null,
+  deletedAt: m.deletedAt,
+  deletedByUserId: m.deletedByUserId,
+  createdAt: m.createdAt,
+  deliveryStatus:
+    currentUserId && m.userId === currentUserId
+      ? latestReadAt && new Date(m.createdAt) <= latestReadAt
+        ? 'read'
+        : 'delivered'
+      : undefined,
+  likeCount: m._count?.likes ?? 0,
+  viewerHasLiked: Boolean(m.likes?.length),
+  user: m.user,
+})
+
 export const clubChatRouter = createTRPCRouter({
   list: protectedProcedure
     .input(
@@ -65,11 +114,10 @@ export const clubChatRouter = createTRPCRouter({
         take: limit,
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: clubChatUserSelect,
+          },
+          replyToMessage: {
+            select: clubChatReplyPreviewSelect,
           },
           likes: {
             where: { userId },
@@ -98,25 +146,91 @@ export const clubChatRouter = createTRPCRouter({
       // Return chronologically (oldest -> newest) for chat UI.
       const ordered = raw.slice().reverse()
 
-      return ordered.map((m) => ({
-        id: m.id,
-        clubId: m.clubId,
-        userId: m.userId,
-        text: m.deletedAt ? null : m.text,
-        isDeleted: Boolean(m.deletedAt),
-        deletedAt: m.deletedAt,
-        deletedByUserId: m.deletedByUserId,
-        createdAt: m.createdAt,
-        deliveryStatus:
-          m.userId === userId
-            ? latestReadAt && new Date(m.createdAt) <= latestReadAt
-              ? 'read'
-              : 'delivered'
-            : undefined,
-        likeCount: m._count.likes,
-        viewerHasLiked: m.likes.length > 0,
-        user: m.user,
-      }))
+      return ordered.map((m) => mapClubChatMessage(m, userId, latestReadAt))
+    }),
+
+  listThread: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string(),
+        rootMessageId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const clubId = input.clubId
+
+      const [club, follower, admin, rootMessage] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubChatMessage.findUnique({
+          where: { id: input.rootMessageId },
+          select: { id: true, clubId: true, parentMessageId: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to view the chat' })
+      }
+      if (!rootMessage || rootMessage.clubId !== clubId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
+      const normalizedRootId = rootMessage.parentMessageId ?? rootMessage.id
+
+      const raw = await ctx.prisma.clubChatMessage.findMany({
+        where: {
+          clubId,
+          OR: [{ id: normalizedRootId }, { parentMessageId: normalizedRootId }],
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: {
+            select: clubChatUserSelect,
+          },
+          replyToMessage: {
+            select: clubChatReplyPreviewSelect,
+          },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
+        },
+      })
+
+      const latestReadByOthers = await ctx.prisma.clubChatReadState.findFirst({
+        where: {
+          clubId,
+          userId: { not: userId },
+        },
+        orderBy: {
+          lastReadAt: 'desc',
+        },
+        select: {
+          lastReadAt: true,
+        },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
+
+      return {
+        rootMessageId: normalizedRootId,
+        messages: raw.map((message) => mapClubChatMessage(message, userId, latestReadAt)),
+      }
     }),
 
   markRead: protectedProcedure
@@ -210,6 +324,7 @@ export const clubChatRouter = createTRPCRouter({
       z.object({
         clubId: z.string(),
         text: z.string().min(1).max(1000),
+        replyToMessageId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -223,7 +338,7 @@ export const clubChatRouter = createTRPCRouter({
       const now = new Date()
       const minuteAgo = new Date(now.getTime() - 60 * 1000)
 
-      const [club, follower, admin, lastMessage, messagesLastMinute] = await Promise.all([
+      const [club, follower, admin, lastMessage, messagesLastMinute, replyTarget] = await Promise.all([
         ctx.prisma.club.findUnique({
           where: { id: clubId },
           select: { id: true },
@@ -244,6 +359,23 @@ export const clubChatRouter = createTRPCRouter({
         ctx.prisma.clubChatMessage.count({
           where: { clubId, userId, createdAt: { gte: minuteAgo } },
         }),
+        input.replyToMessageId
+          ? ctx.prisma.clubChatMessage.findUnique({
+              where: { id: input.replyToMessageId },
+              select: {
+                id: true,
+                clubId: true,
+                parentMessageId: true,
+                deletedAt: true,
+                userId: true,
+                text: true,
+                createdAt: true,
+                user: {
+                  select: clubChatUserSelect,
+                },
+              },
+            })
+          : Promise.resolve(null),
       ])
 
       if (!club) {
@@ -265,6 +397,14 @@ export const clubChatRouter = createTRPCRouter({
 
       if (!follower && !admin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to post messages' })
+      }
+      if (input.replyToMessageId) {
+        if (!replyTarget || replyTarget.clubId !== clubId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
+        }
+        if (replyTarget.deletedAt) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
+        }
       }
 
       const isAdmin = Boolean(admin)
@@ -301,14 +441,15 @@ export const clubChatRouter = createTRPCRouter({
           clubId: input.clubId,
           userId,
           text: sanitized,
+          parentMessageId: replyTarget ? replyTarget.parentMessageId ?? replyTarget.id : null,
+          replyToMessageId: replyTarget ? replyTarget.id : null,
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: clubChatUserSelect,
+          },
+          replyToMessage: {
+            select: clubChatReplyPreviewSelect,
           },
         },
       })
@@ -329,19 +470,18 @@ export const clubChatRouter = createTRPCRouter({
       pushToUsers(recipientIds, { type: 'invalidate', keys: ['club.listMyChatClubs'] })
 
       return {
-        id: message.id,
-        clubId: message.clubId,
-        userId: message.userId,
+        ...mapClubChatMessage(
+          {
+            ...message,
+            likes: [],
+            _count: { likes: 0 },
+          },
+          userId,
+          null,
+        ),
         text: message.text,
-        wasFiltered,
-        isDeleted: false,
-        deletedAt: null,
-        deletedByUserId: null,
         deliveryStatus: 'delivered' as const,
-        likeCount: 0,
-        viewerHasLiked: false,
-        createdAt: message.createdAt,
-        user: message.user,
+        wasFiltered,
       }
     }),
 

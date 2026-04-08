@@ -15,10 +15,37 @@ type ChatMembership = {
   reason?: string
 }
 
+const chatUserSelect = {
+  id: true,
+  name: true,
+  image: true,
+} as const
+
+const chatReplyPreviewSelect = {
+  id: true,
+  userId: true,
+  text: true,
+  deletedAt: true,
+  createdAt: true,
+  user: {
+    select: chatUserSelect,
+  },
+} as const
+
 const mapMessage = (m: {
   id: string
   userId: string
   text: string
+  parentMessageId?: string | null
+  replyToMessageId?: string | null
+  replyToMessage?: {
+    id: string
+    userId: string
+    text: string
+    deletedAt: Date | null
+    createdAt: Date
+    user: { id: string; name: string | null; image: string | null }
+  } | null
   deletedAt: Date | null
   deletedByUserId: string | null
   createdAt: Date
@@ -30,6 +57,18 @@ const mapMessage = (m: {
   userId: m.userId,
   text: m.deletedAt ? null : m.text,
   isDeleted: Boolean(m.deletedAt),
+  parentMessageId: m.parentMessageId ?? null,
+  replyToMessageId: m.replyToMessageId ?? null,
+  replyToMessage: m.replyToMessage
+    ? {
+        id: m.replyToMessage.id,
+        userId: m.replyToMessage.userId,
+        text: m.replyToMessage.deletedAt ? null : m.replyToMessage.text,
+        isDeleted: Boolean(m.replyToMessage.deletedAt),
+        createdAt: m.replyToMessage.createdAt,
+        user: m.replyToMessage.user,
+      }
+    : null,
   deletedAt: m.deletedAt,
   deletedByUserId: m.deletedByUserId,
   createdAt: m.createdAt,
@@ -676,11 +715,10 @@ export const tournamentChatRouter = createTRPCRouter({
         take: limit,
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
           },
           likes: {
             where: { userId },
@@ -705,11 +743,74 @@ export const tournamentChatRouter = createTRPCRouter({
       return raw.slice().reverse().map((message) => mapMessage(message, userId, latestReadAt))
     }),
 
+  listTournamentThread: protectedProcedure
+    .input(
+      z.object({
+        tournamentId: z.string(),
+        rootMessageId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const membership = await getTournamentMembership(ctx.prisma, userId, input.tournamentId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      const rootMessage = await ctx.prisma.tournamentChatMessage.findUnique({
+        where: { id: input.rootMessageId },
+        select: { id: true, tournamentId: true, parentMessageId: true },
+      })
+      if (!rootMessage || rootMessage.tournamentId !== input.tournamentId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
+      const normalizedRootId = rootMessage.parentMessageId ?? rootMessage.id
+
+      const raw = await ctx.prisma.tournamentChatMessage.findMany({
+        where: {
+          tournamentId: input.tournamentId,
+          OR: [{ id: normalizedRootId }, { parentMessageId: normalizedRootId }],
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: {
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
+          },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
+        },
+      })
+
+      const latestReadByOthers = await ctx.prisma.tournamentChatReadState.findFirst({
+        where: {
+          tournamentId: input.tournamentId,
+          userId: { not: userId },
+        },
+        orderBy: { lastReadAt: 'desc' },
+        select: { lastReadAt: true },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
+
+      return {
+        rootMessageId: normalizedRootId,
+        messages: raw.map((message) => mapMessage(message, userId, latestReadAt)),
+      }
+    }),
+
   sendTournament: protectedProcedure
     .input(
       z.object({
         tournamentId: z.string(),
         text: z.string().min(1).max(1000),
+        replyToMessageId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -721,7 +822,7 @@ export const tournamentChatRouter = createTRPCRouter({
 
       const now = new Date()
       const minuteAgo = new Date(now.getTime() - 60 * 1000)
-      const [lastMessage, messagesLastMinute] = await Promise.all([
+      const [lastMessage, messagesLastMinute, replyTarget] = await Promise.all([
         ctx.prisma.tournamentChatMessage.findFirst({
           where: {
             tournamentId: input.tournamentId,
@@ -737,7 +838,32 @@ export const tournamentChatRouter = createTRPCRouter({
             createdAt: { gte: minuteAgo },
           },
         }),
+        input.replyToMessageId
+          ? ctx.prisma.tournamentChatMessage.findUnique({
+              where: { id: input.replyToMessageId },
+              select: {
+                id: true,
+                tournamentId: true,
+                parentMessageId: true,
+                deletedAt: true,
+                userId: true,
+                text: true,
+                createdAt: true,
+                user: {
+                  select: chatUserSelect,
+                },
+              },
+            })
+          : Promise.resolve(null),
       ])
+      if (input.replyToMessageId) {
+        if (!replyTarget || replyTarget.tournamentId !== input.tournamentId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
+        }
+        if (replyTarget.deletedAt) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
+        }
+      }
 
       const { sanitized, wasFiltered } = await sanitizeAndRateLimit({
         text: input.text,
@@ -751,14 +877,15 @@ export const tournamentChatRouter = createTRPCRouter({
           tournamentId: input.tournamentId,
           userId,
           text: sanitized,
+          parentMessageId: replyTarget ? replyTarget.parentMessageId ?? replyTarget.id : null,
+          replyToMessageId: replyTarget ? replyTarget.id : null,
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
           },
         },
       })
@@ -792,7 +919,15 @@ export const tournamentChatRouter = createTRPCRouter({
       pushToUsers(Array.from(new Set(recipientIds)), { type: 'invalidate', keys: ['tournamentChat.listMyEventChats'] })
 
       return {
-        ...mapMessage(message),
+        ...mapMessage(
+          {
+            ...message,
+            likes: [],
+            _count: { likes: 0 },
+          },
+          userId,
+          null,
+        ),
         text: message.text,
         deliveryStatus: 'delivered' as const,
         wasFiltered,
@@ -859,11 +994,10 @@ export const tournamentChatRouter = createTRPCRouter({
         take: limit,
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
           },
           likes: {
             where: { userId },
@@ -887,11 +1021,74 @@ export const tournamentChatRouter = createTRPCRouter({
       return raw.slice().reverse().map((message) => mapMessage(message, userId, latestReadAt))
     }),
 
+  listDivisionThread: protectedProcedure
+    .input(
+      z.object({
+        divisionId: z.string(),
+        rootMessageId: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+      const membership = await getDivisionMembership(ctx.prisma, userId, input.divisionId)
+      if (!membership.canView) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: membership.reason || 'No access' })
+      }
+
+      const rootMessage = await ctx.prisma.divisionChatMessage.findUnique({
+        where: { id: input.rootMessageId },
+        select: { id: true, divisionId: true, parentMessageId: true },
+      })
+      if (!rootMessage || rootMessage.divisionId !== input.divisionId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Thread not found' })
+      }
+      const normalizedRootId = rootMessage.parentMessageId ?? rootMessage.id
+
+      const raw = await ctx.prisma.divisionChatMessage.findMany({
+        where: {
+          divisionId: input.divisionId,
+          OR: [{ id: normalizedRootId }, { parentMessageId: normalizedRootId }],
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: {
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
+          },
+          likes: {
+            where: { userId },
+            select: { id: true },
+          },
+          _count: {
+            select: { likes: true },
+          },
+        },
+      })
+
+      const latestReadByOthers = await ctx.prisma.divisionChatReadState.findFirst({
+        where: {
+          divisionId: input.divisionId,
+          userId: { not: userId },
+        },
+        orderBy: { lastReadAt: 'desc' },
+        select: { lastReadAt: true },
+      })
+      const latestReadAt = latestReadByOthers?.lastReadAt ? new Date(latestReadByOthers.lastReadAt) : null
+
+      return {
+        rootMessageId: normalizedRootId,
+        messages: raw.map((message) => mapMessage(message, userId, latestReadAt)),
+      }
+    }),
+
   sendDivision: protectedProcedure
     .input(
       z.object({
         divisionId: z.string(),
         text: z.string().min(1).max(1000),
+        replyToMessageId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -903,7 +1100,7 @@ export const tournamentChatRouter = createTRPCRouter({
 
       const now = new Date()
       const minuteAgo = new Date(now.getTime() - 60 * 1000)
-      const [lastMessage, messagesLastMinute] = await Promise.all([
+      const [lastMessage, messagesLastMinute, replyTarget] = await Promise.all([
         ctx.prisma.divisionChatMessage.findFirst({
           where: {
             divisionId: input.divisionId,
@@ -919,7 +1116,32 @@ export const tournamentChatRouter = createTRPCRouter({
             createdAt: { gte: minuteAgo },
           },
         }),
+        input.replyToMessageId
+          ? ctx.prisma.divisionChatMessage.findUnique({
+              where: { id: input.replyToMessageId },
+              select: {
+                id: true,
+                divisionId: true,
+                parentMessageId: true,
+                deletedAt: true,
+                userId: true,
+                text: true,
+                createdAt: true,
+                user: {
+                  select: chatUserSelect,
+                },
+              },
+            })
+          : Promise.resolve(null),
       ])
+      if (input.replyToMessageId) {
+        if (!replyTarget || replyTarget.divisionId !== input.divisionId) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Reply target not found' })
+        }
+        if (replyTarget.deletedAt) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot reply to a deleted message' })
+        }
+      }
 
       const { sanitized, wasFiltered } = await sanitizeAndRateLimit({
         text: input.text,
@@ -933,14 +1155,15 @@ export const tournamentChatRouter = createTRPCRouter({
           divisionId: input.divisionId,
           userId,
           text: sanitized,
+          parentMessageId: replyTarget ? replyTarget.parentMessageId ?? replyTarget.id : null,
+          replyToMessageId: replyTarget ? replyTarget.id : null,
         },
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: chatUserSelect,
+          },
+          replyToMessage: {
+            select: chatReplyPreviewSelect,
           },
         },
       })
@@ -980,7 +1203,15 @@ export const tournamentChatRouter = createTRPCRouter({
       }
 
       return {
-        ...mapMessage(message),
+        ...mapMessage(
+          {
+            ...message,
+            likes: [],
+            _count: { likes: 0 },
+          },
+          userId,
+          null,
+        ),
         text: message.text,
         deliveryStatus: 'delivered' as const,
         wasFiltered,

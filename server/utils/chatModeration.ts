@@ -13,6 +13,12 @@ const HARD_BLOCK_PATTERNS: RegExp[] = [
   /pendej[oa]s?\b/gi,
   /coñ[oa]s?\b/gi,
   /joder(?:es|se|te|os)?\b/gi,
+  /gilipollas\b/gi,
+  /maric[oó]n(?:es)?\b/gi,
+  /ching(?:a|as|an|ar|ado|ada|ados|adas)\b/gi,
+  /culer[oa]s?\b/gi,
+  /cojones\b/gi,
+  /hostia[s]?\b/gi,
 ]
 
 function ensureChatDictionariesLoaded() {

@@ -12,6 +12,16 @@ export type ChatMessage = {
   text: string | null
   isDeleted: boolean
   createdAt: string | Date
+  parentMessageId?: string | null
+  replyToMessageId?: string | null
+  replyToMessage?: {
+    id: string
+    userId: string
+    text: string | null
+    isDeleted: boolean
+    createdAt: string | Date
+    user?: ChatMessageUser
+  } | null
   user?: ChatMessageUser
   deliveryStatus?: 'sent' | 'delivered' | 'read'
   likeCount?: number

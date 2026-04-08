@@ -386,17 +386,25 @@ model ClubChatMessage {
   clubId          String    @map("club_id")
   userId          String    @map("user_id")
   text            String
+  parentMessageId String?   @map("parent_message_id")
+  replyToMessageId String?  @map("reply_to_message_id")
   deletedAt       DateTime? @map("deleted_at")
   deletedByUserId String?   @map("deleted_by_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes ClubChatLike[]
+  club            Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentMessage   ClubChatMessage?  @relation("ClubChatThreadParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies         ClubChatMessage[] @relation("ClubChatThreadParent")
+  replyToMessage  ClubChatMessage?  @relation("ClubChatReplyTarget", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replyMentions   ClubChatMessage[] @relation("ClubChatReplyTarget")
+  likes           ClubChatLike[]
 
   @@index([clubId, createdAt])
+  @@index([clubId, parentMessageId, createdAt])
   @@index([userId])
+  @@index([replyToMessageId])
   @@map("club_chat_messages")
 }
 
@@ -421,17 +429,25 @@ model TournamentChatMessage {
   tournamentId    String    @map("tournament_id")
   userId          String    @map("user_id")
   text            String
+  parentMessageId String?   @map("parent_message_id")
+  replyToMessageId String?  @map("reply_to_message_id")
   deletedAt       DateTime? @map("deleted_at")
   deletedByUserId String?   @map("deleted_by_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes      TournamentChatLike[]
+  tournament      Tournament             @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentMessage   TournamentChatMessage? @relation("TournamentChatThreadParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies         TournamentChatMessage[] @relation("TournamentChatThreadParent")
+  replyToMessage  TournamentChatMessage? @relation("TournamentChatReplyTarget", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replyMentions   TournamentChatMessage[] @relation("TournamentChatReplyTarget")
+  likes           TournamentChatLike[]
 
   @@index([tournamentId, createdAt])
+  @@index([tournamentId, parentMessageId, createdAt])
   @@index([userId])
+  @@index([replyToMessageId])
   @@map("tournament_chat_messages")
 }
 
@@ -456,17 +472,25 @@ model DivisionChatMessage {
   divisionId      String    @map("division_id")
   userId          String    @map("user_id")
   text            String
+  parentMessageId String?   @map("parent_message_id")
+  replyToMessageId String?  @map("reply_to_message_id")
   deletedAt       DateTime? @map("deleted_at")
   deletedByUserId String?   @map("deleted_by_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  likes    DivisionChatLike[]
+  division        Division             @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentMessage   DivisionChatMessage? @relation("DivisionChatThreadParent", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  replies         DivisionChatMessage[] @relation("DivisionChatThreadParent")
+  replyToMessage  DivisionChatMessage? @relation("DivisionChatReplyTarget", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replyMentions   DivisionChatMessage[] @relation("DivisionChatReplyTarget")
+  likes           DivisionChatLike[]
 
   @@index([divisionId, createdAt])
+  @@index([divisionId, parentMessageId, createdAt])
   @@index([userId])
+  @@index([replyToMessageId])
   @@map("division_chat_messages")
 }
 

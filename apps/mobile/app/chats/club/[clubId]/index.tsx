@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 
+import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
@@ -45,6 +46,7 @@ export default function ClubChatScreen() {
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
   const [clubFeedbackOpen, setClubFeedbackOpen] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
@@ -63,29 +65,6 @@ export default function ClubChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
-  const handleSend = useCallback(() => {
-    const text = draft.trim()
-    if (!text) return
-
-    const now = Date.now()
-    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
-      toast.error('Slow down a bit.')
-      return
-    }
-    if (
-      lastSentTextRef.current &&
-      lastSentTextRef.current === text &&
-      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
-    ) {
-      toast.error('Duplicate message.')
-      return
-    }
-
-    lastSendAtRef.current = now
-    lastSentTextRef.current = text
-    lastSentTextAtRef.current = now
-    sendMessage.mutate({ clubId, text })
-  }, [clubId, draft, sendMessage, toast])
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, {
     enabled: isAuthenticated,
     ...chatRealtimeQueryOptions,
@@ -119,17 +98,31 @@ export default function ClubChatScreen() {
     },
   })
   const sendMessage = trpc.clubChat.send.useMutation({
-    onMutate: ({ text }: { text: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !clubId || !user?.id) return null
 
       const createdAt = new Date()
       const optimisticId = `optimistic-${clubId}-${createdAt.getTime()}`
+      const resolvedReplyTarget =
+        replyTarget && replyToMessageId === replyTarget.id ? replyTarget : null
       const optimisticMessage = {
         id: optimisticId,
         clubId,
         userId: user.id,
         text: trimmed,
+        parentMessageId: resolvedReplyTarget ? resolvedReplyTarget.parentMessageId ?? resolvedReplyTarget.id : null,
+        replyToMessageId: resolvedReplyTarget ? resolvedReplyTarget.id : null,
+        replyToMessage: resolvedReplyTarget
+          ? {
+              id: resolvedReplyTarget.id,
+              userId: resolvedReplyTarget.userId,
+              text: resolvedReplyTarget.text,
+              isDeleted: resolvedReplyTarget.isDeleted,
+              createdAt: resolvedReplyTarget.createdAt,
+              user: resolvedReplyTarget.user,
+            }
+          : null,
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
@@ -146,6 +139,7 @@ export default function ClubChatScreen() {
       const previousClubs = ((utils.club.listMyChatClubs.getData(undefined) ?? []) as any[]).slice()
 
       setDraft('')
+      setReplyTarget(null)
       setOptimisticMessages((current) => [...current, optimisticMessage])
       utils.club.listMyChatClubs.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((club) =>
@@ -254,6 +248,30 @@ export default function ClubChatScreen() {
       toast.error(error.message || 'Failed to like message')
     },
   })
+
+  const handleSend = useCallback(() => {
+    const text = draft.trim()
+    if (!text) return
+
+    const now = Date.now()
+    if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+      toast.error('Slow down a bit.')
+      return
+    }
+    if (
+      lastSentTextRef.current &&
+      lastSentTextRef.current === text &&
+      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
+    ) {
+      toast.error('Duplicate message.')
+      return
+    }
+
+    lastSendAtRef.current = now
+    lastSentTextRef.current = text
+    lastSentTextAtRef.current = now
+    sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
+  }, [clubId, draft, replyTarget?.id, sendMessage, toast])
 
   useEffect(() => {
     initialScrollDoneRef.current = false
@@ -372,6 +390,17 @@ export default function ClubChatScreen() {
               onToggleLike={(m) => {
                 likeMessage.mutate({ messageId: m.id })
               }}
+              onRequestReply={(m) => setReplyTarget(m)}
+              onPressRepliesSummary={(m) => {
+                router.push({
+                  pathname: '/chats/club/[clubId]/thread/[rootMessageId]',
+                  params: {
+                    clubId,
+                    rootMessageId: m.id,
+                    name: clubDisplayName,
+                  },
+                })
+              }}
               onPressAvatar={(m) => {
                 if (!m.userId) return
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
@@ -381,6 +410,7 @@ export default function ClubChatScreen() {
               }
               onRequestDelete={(m) => setDeleteTargetId(m.id)}
               deleteDisabled={deleteMessage.isPending}
+              longPressMenuEnabled
             />
           )}
           {showClubFeedbackPrompt ? (
@@ -404,6 +434,27 @@ export default function ClubChatScreen() {
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}
+          topSlot={
+            replyTarget ? (
+              <View style={styles.replyComposerCard}>
+                <View style={styles.replyComposerBody}>
+                  <Text style={styles.replyComposerLabel} numberOfLines={1}>
+                    Replying to {replyTarget.user?.name || 'User'}
+                  </Text>
+                  <Text style={styles.replyComposerText} numberOfLines={1}>
+                    {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setReplyTarget(null)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}
+                >
+                  <Feather name="x" size={16} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ) : null
+          }
         />
       </KeyboardAvoidingView>
 
@@ -526,5 +577,37 @@ const createStyles = (colors: ThemePalette) =>
     height: 28,
     borderRadius: 14,
     backgroundColor: colors.surface,
+  },
+  replyComposerCard: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  replyComposerBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  replyComposerLabel: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  replyComposerText: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  replyComposerClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   })
