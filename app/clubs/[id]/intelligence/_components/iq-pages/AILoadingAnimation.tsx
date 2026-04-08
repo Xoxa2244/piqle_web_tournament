@@ -123,7 +123,7 @@ export function AILoadingAnimation({ onComplete, progress: externalProgress, sta
     return () => clearInterval(interval);
   }, []);
 
-  const progress = externalProgress !== undefined ? externalProgress : ((currentStage + 1) / stages.length) * 100;
+  const progress = Math.min(externalProgress !== undefined ? externalProgress : ((currentStage + 1) / stages.length) * 100, 100);
 
   return (
     <div className="flex flex-col gap-5 max-w-4xl mx-auto">

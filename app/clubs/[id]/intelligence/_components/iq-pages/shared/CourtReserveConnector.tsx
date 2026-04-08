@@ -387,7 +387,7 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
               {/* Syncing — Brain Animation + Phase Info */}
               {(connStatus === 'syncing' || isSyncing) && (() => {
                 const progress = ('lastSyncResult' in status ? status.lastSyncResult : null) as any
-                const percent = progress?.percent || 0
+                const percent = Math.min(progress?.percent || 0, 100)
                 const statusText = progress?.status || 'Syncing...'
                 const nextRetry = progress?.nextRetryAt ? new Date(progress.nextRetryAt) : null
                 const isPaused = nextRetry && nextRetry > new Date()

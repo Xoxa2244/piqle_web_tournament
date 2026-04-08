@@ -210,7 +210,9 @@ async function syncMembersWithProgress(
 
     // Get cumulative count from DB for accurate progress (accounts for previous chunks)
     const totalSynced = await prisma.clubFollower.count({ where: { clubId } })
-    const percent = Math.round(10 + (totalSynced / Math.max(totalCount, 1)) * 60)
+    // Update totalCount if actual synced exceeds API estimate (prevents >100%)
+    if (totalSynced > totalCount) totalCount = totalSynced
+    const percent = Math.min(70, Math.round(10 + (totalSynced / Math.max(totalCount, 1)) * 60))
     await prisma.clubConnector.update({
       where: { id: connectorId },
       data: { lastSyncResult: { phase: 'members', percent, status: `Syncing members... ${totalSynced.toLocaleString()} / ${totalCount.toLocaleString()}`, membersSynced: totalSynced, membersTotal: totalCount, courtsDone: true } as any },
@@ -711,9 +713,10 @@ export async function runCourtReserveSync(
       // If members not done — return partial result, cron will continue
       if (!membersChunk.done) {
       const followerCount = await prisma.clubFollower.count({ where: { clubId } })
-      // Use totalCount from API, fallback to previous value or followerCount
-      const totalCount = membersChunk.totalCount || (connector.lastSyncResult as any)?.membersTotal || followerCount
-      const percent = Math.round(10 + (followerCount / Math.max(totalCount, 1)) * 60)
+      // Use max of API estimate and actual count — prevents >100% display
+      const apiEstimate = membersChunk.totalCount || (connector.lastSyncResult as any)?.membersTotal || followerCount
+      const totalCount = Math.max(apiEstimate, followerCount)
+      const percent = Math.min(70, Math.round(10 + (followerCount / Math.max(totalCount, 1)) * 60))
       await prisma.clubConnector.update({
         where: { id: connectorId },
         data: {
