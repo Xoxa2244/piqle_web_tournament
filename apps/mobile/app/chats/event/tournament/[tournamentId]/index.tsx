@@ -62,9 +62,12 @@ export default function TournamentChatScreen() {
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
+  const messageOffsetsRef = useRef(new Map<string, number>())
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
@@ -83,6 +86,13 @@ export default function TournamentChatScreen() {
     initialScrollDoneRef.current = false
   }, [activeDivisionId])
 
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+    },
+    []
+  )
+
   useEffect(() => {
     if (skipThreadTopicFadeRef.current) {
       skipThreadTopicFadeRef.current = false
@@ -100,6 +110,21 @@ export default function TournamentChatScreen() {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated })
     })
+  }, [])
+  const handleMessageLayout = useCallback((messageId: string, y: number) => {
+    messageOffsetsRef.current.set(messageId, y)
+  }, [])
+  const scrollToMessage = useCallback((messageId: string) => {
+    const y = messageOffsetsRef.current.get(messageId)
+    if (y == null) return false
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: true })
+    setHighlightedMessageId(messageId)
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) => (current === messageId ? null : current))
+      highlightTimeoutRef.current = null
+    }, 1400)
+    return true
   }, [])
 
   const eventChatsQuery = trpc.tournamentChat.listMyEventChats.useQuery(undefined, {
@@ -323,38 +348,70 @@ export default function TournamentChatScreen() {
     },
   })
   const deleteMessage = trpc.tournamentChat.deleteTournament.useMutation({
-    onSuccess: (_data: any, variables: { messageId: string }) => {
+    onMutate: ({ messageId }: { messageId: string }) => {
+      const deletedAt = new Date()
       utils.tournamentChat.listTournament.setData({ tournamentId, limit: 100 }, (current: any[] | undefined) =>
-        (current ?? []).map((message) =>
-          message.id === variables.messageId
-            ? {
-                ...message,
+        (current ?? []).map((message) => {
+          if (message.id === messageId) {
+            return {
+              ...message,
+              text: null,
+              isDeleted: true,
+              deletedAt,
+              deletedByUserId: user?.id ?? null,
+            }
+          }
+          if (message.replyToMessageId === messageId && message.replyToMessage) {
+            return {
+              ...message,
+              replyToMessage: {
+                ...message.replyToMessage,
                 text: null,
                 isDeleted: true,
-                deletedAt: new Date(),
-                deletedByUserId: user?.id ?? null,
-              }
-            : message
-        )
+                deletedAt,
+              },
+            }
+          }
+          return message
+        })
       )
+    },
+    onSuccess: () => {
+      /* optimistic state already applied */
     },
   })
   const deleteDivisionMessage = trpc.tournamentChat.deleteDivision.useMutation({
-    onSuccess: (_data: any, variables: { messageId: string }) => {
+    onMutate: ({ messageId }: { messageId: string }) => {
       if (!activeDivisionId) return
+      const deletedAt = new Date()
       utils.tournamentChat.listDivision.setData({ divisionId: activeDivisionId, limit: 100 }, (current: any[] | undefined) =>
-        (current ?? []).map((message) =>
-          message.id === variables.messageId
-            ? {
-                ...message,
+        (current ?? []).map((message) => {
+          if (message.id === messageId) {
+            return {
+              ...message,
+              text: null,
+              isDeleted: true,
+              deletedAt,
+              deletedByUserId: user?.id ?? null,
+            }
+          }
+          if (message.replyToMessageId === messageId && message.replyToMessage) {
+            return {
+              ...message,
+              replyToMessage: {
+                ...message.replyToMessage,
                 text: null,
                 isDeleted: true,
-                deletedAt: new Date(),
-                deletedByUserId: user?.id ?? null,
-              }
-            : message
-        )
+                deletedAt,
+              },
+            }
+          }
+          return message
+        })
       )
+    },
+    onSuccess: () => {
+      /* optimistic state already applied */
     },
   })
   const likeTournamentMessage = trpc.tournamentChat.likeTournamentMessage.useMutation({
@@ -686,6 +743,32 @@ export default function TournamentChatScreen() {
                     },
                   })
                 }}
+                onPressReplyTarget={(message, targetMessageId) => {
+                  if (scrollToMessage(targetMessageId)) return
+                  if (activeDivisionId) {
+                    router.push({
+                      pathname: '/chats/event/division/[divisionId]/thread/[rootMessageId]',
+                      params: {
+                        divisionId: activeDivisionId,
+                        rootMessageId: message.parentMessageId ?? message.id,
+                        tournamentId,
+                        title: activeDivision?.name || 'Division chat',
+                        eventTitle: title,
+                      },
+                    })
+                    return
+                  }
+                  router.push({
+                    pathname: '/chats/event/tournament/[tournamentId]/thread/[rootMessageId]',
+                    params: {
+                      tournamentId,
+                      rootMessageId: message.parentMessageId ?? message.id,
+                      title,
+                    },
+                  })
+                }}
+                onMessageLayout={handleMessageLayout}
+                highlightedMessageId={highlightedMessageId}
                 onPressAvatar={(m) => {
                   if (!m.userId) return
                   router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
@@ -755,11 +838,14 @@ export default function TournamentChatScreen() {
             }
             onCancel={() => setDeleteTargetId(null)}
             onConfirm={() => {
-              if (!deleteTargetId) return
-              const run = activeDivisionId
-                ? deleteDivisionMessage.mutateAsync({ messageId: deleteTargetId })
-                : deleteMessage.mutateAsync({ messageId: deleteTargetId })
-              void run.then(() => setDeleteTargetId(null)).catch(() => setDeleteTargetId(null))
+              const messageId = deleteTargetId
+              setDeleteTargetId(null)
+              if (!messageId) return
+              if (activeDivisionId) {
+                deleteDivisionMessage.mutate({ messageId })
+                return
+              }
+              deleteMessage.mutate({ messageId })
             }}
             confirmLoading={activeDivisionId ? deleteDivisionMessage.isPending : deleteMessage.isPending}
           />

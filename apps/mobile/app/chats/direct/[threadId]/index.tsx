@@ -198,20 +198,40 @@ export default function DirectChatScreen() {
     },
   })
   const deleteMessage = trpc.directChat.delete.useMutation({
-    onSuccess: (_data: any, variables: { messageId: string }) => {
-      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) =>
-        (current ?? []).map((message) =>
-          message.id === variables.messageId
+    onMutate: async ({ messageId }: { messageId: string }) => {
+      await utils.directChat.list.cancel({ threadId, limit: 100 })
+
+      let nextLastMessage: any = null
+      utils.directChat.list.setData({ threadId, limit: 100 }, (current: any[] | undefined) => {
+        const nextList = (current ?? []).filter((message) => message.id !== messageId)
+        const last = nextList[nextList.length - 1] ?? null
+        nextLastMessage = last
+        return nextList
+      })
+
+      utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
+        (current ?? []).map((chat) =>
+          chat.id === threadId
             ? {
-                ...message,
-                text: null,
-                isDeleted: true,
-                deletedAt: new Date(),
-                deletedByUserId: user?.id ?? null,
+                ...chat,
+                lastMessage: nextLastMessage
+                  ? {
+                      id: nextLastMessage.id,
+                      text: nextLastMessage.text,
+                      isDeleted: Boolean(nextLastMessage.isDeleted),
+                      createdAt: nextLastMessage.createdAt,
+                      userId: nextLastMessage.userId,
+                      userName: nextLastMessage.user?.name ?? chat.lastMessage?.userName ?? null,
+                    }
+                  : null,
+                updatedAt: nextLastMessage?.createdAt ?? chat.updatedAt,
               }
-            : message
+            : chat
         )
       )
+    },
+    onSuccess: () => {
+      /* optimistic state already applied */
     },
     onError: (error: any) => toast.error(error.message || 'Failed to delete message'),
   })
@@ -660,11 +680,10 @@ export default function DirectChatScreen() {
             confirmLabel={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
             onCancel={() => setDeleteTargetId(null)}
             onConfirm={() => {
-              if (!deleteTargetId) return
-              void deleteMessage
-                .mutateAsync({ messageId: deleteTargetId })
-                .then(() => setDeleteTargetId(null))
-                .catch(() => setDeleteTargetId(null))
+              const messageId = deleteTargetId
+              setDeleteTargetId(null)
+              if (!messageId) return
+              deleteMessage.mutate({ messageId })
             }}
             confirmLoading={deleteMessage.isPending}
           />

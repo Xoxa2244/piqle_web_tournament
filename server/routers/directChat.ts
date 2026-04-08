@@ -651,13 +651,20 @@ export const directChatRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Not allowed to delete this message' })
       }
 
-      await ctx.prisma.directChatMessage.update({
+      await ctx.prisma.directChatMessage.delete({
         where: { id: input.messageId },
-        data: {
-          deletedAt: new Date(),
-          deletedByUserId: userId,
-        },
       })
+
+      const thread = await ctx.prisma.directChatThread.findUnique({
+        where: { id: message.threadId },
+        select: { participantAId: true, participantBId: true },
+      })
+      if (thread) {
+        pushToUsers(
+          [thread.participantAId, thread.participantBId].filter((id) => id !== userId),
+          { type: 'invalidate', keys: ['directChat.listMyChats', 'directChat.list'] }
+        )
+      }
 
       return { success: true }
     }),

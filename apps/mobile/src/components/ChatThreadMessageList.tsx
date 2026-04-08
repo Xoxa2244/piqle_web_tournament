@@ -53,15 +53,7 @@ type DisplayMessageEntry = {
   threadRootId: string
 }
 
-type DisplaySummaryEntry = {
-  type: 'summary'
-  id: string
-  rootMessage: ChatMessage
-  totalReplies: number
-  hiddenReplies: number
-}
-
-type DisplayEntry = DisplayMessageEntry | DisplaySummaryEntry
+type DisplayEntry = DisplayMessageEntry
 
 async function playLongPressHaptic() {
   try {
@@ -207,6 +199,9 @@ type Props = {
   replyPreviewLimit?: number
   threadRootMessageId?: string | null
   longPressMenuEnabled?: boolean
+  onMessageLayout?: (messageId: string, y: number) => void
+  onPressReplyTarget?: (message: ChatMessage, targetMessageId: string) => void
+  highlightedMessageId?: string | null
 }
 
 export function ChatThreadMessageList({
@@ -224,15 +219,20 @@ export function ChatThreadMessageList({
   replyPreviewLimit = 3,
   threadRootMessageId,
   longPressMenuEnabled = false,
+  onMessageLayout,
+  onPressReplyTarget,
+  highlightedMessageId,
 }: Props) {
   const { colors, theme } = useAppTheme()
   const toast = useToast()
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
   const lastTapAtRef = useRef(0)
   const lastTapMessageIdRef = useRef<string | null>(null)
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [likeAnimationTickByMessageId, setLikeAnimationTickByMessageId] = useState<Record<string, number>>({})
   const [animatingLikeMessageIds, setAnimatingLikeMessageIds] = useState<Record<string, true>>({})
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null)
+  const [pendingDeleteTarget, setPendingDeleteTarget] = useState<ChatMessage | null>(null)
 
   const messageById = useMemo(() => {
     const map = new Map<string, ChatMessage>()
@@ -244,7 +244,8 @@ export function ChatThreadMessageList({
 
   const displayEntries = useMemo<DisplayEntry[]>(() => {
     const repliesByRoot = new Map<string, ChatMessage[]>()
-    const roots: ChatMessage[] = []
+    const sortByCreatedAt = (left: ChatMessage, right: ChatMessage) =>
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
 
     for (const message of messages) {
       if (threadRootMessageId) {
@@ -254,15 +255,16 @@ export function ChatThreadMessageList({
         const current = repliesByRoot.get(message.parentMessageId) ?? []
         current.push(message)
         repliesByRoot.set(message.parentMessageId, current)
-      } else {
-        roots.push(message)
       }
     }
 
     if (threadRootMessageId) {
       const rootMessage = messageById.get(threadRootMessageId)
       if (!rootMessage) return []
-      const replies = messages.filter((message) => message.parentMessageId === threadRootMessageId)
+      const replies = messages
+        .filter((message) => message.parentMessageId === threadRootMessageId)
+        .slice()
+        .sort(sortByCreatedAt)
       return [
         { type: 'message', id: rootMessage.id, message: rootMessage, level: 0, threadRootId: threadRootMessageId },
         ...replies.map(
@@ -278,42 +280,29 @@ export function ChatThreadMessageList({
       ]
     }
 
+    const orderedMessages = messages.slice().sort(sortByCreatedAt)
     const entries: DisplayEntry[] = []
-    for (const rootMessage of roots) {
+    for (const message of orderedMessages) {
       entries.push({
         type: 'message',
-        id: rootMessage.id,
-        message: rootMessage,
+        id: message.id,
+        message,
         level: 0,
-        threadRootId: rootMessage.id,
+        threadRootId: message.parentMessageId ?? message.id,
       })
-      const replies = repliesByRoot.get(rootMessage.id) ?? []
-      for (const reply of replies.slice(0, replyPreviewLimit)) {
-        entries.push({
-          type: 'message',
-          id: reply.id,
-          message: reply,
-          level: 1,
-          threadRootId: rootMessage.id,
-        })
-      }
-      if (replies.length > replyPreviewLimit) {
-        entries.push({
-          type: 'summary',
-          id: `summary-${rootMessage.id}`,
-          rootMessage,
-          totalReplies: replies.length,
-          hiddenReplies: replies.length - replyPreviewLimit,
-        })
-      }
     }
     return entries
-  }, [messageById, messages, replyPreviewLimit, threadRootMessageId])
+  }, [messageById, messages, threadRootMessageId])
 
-  const renderedMessageEntries = useMemo(
-    () => displayEntries.filter((entry): entry is DisplayMessageEntry => entry.type === 'message'),
-    [displayEntries]
-  )
+  const renderedMessageEntries = displayEntries
+  const replyCountByRootId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const message of messages) {
+      if (!message.parentMessageId) continue
+      map.set(message.parentMessageId, (map.get(message.parentMessageId) ?? 0) + 1)
+    }
+    return map
+  }, [messages])
 
   const findNeighborMessageEntry = useCallback(
     (messageId: string) => {
@@ -421,17 +410,25 @@ export function ChatThreadMessageList({
         (message.replyToMessageId ? messageById.get(message.replyToMessageId) ?? null : null)
       if (!replyTarget) return null
       return (
-        <View style={[styles.replyContext, isMine && styles.replyContextMine]}>
+        <Pressable
+          onPress={() => onPressReplyTarget?.(message, replyTarget.id)}
+          disabled={!onPressReplyTarget}
+          style={({ pressed }) => [
+            styles.replyContext,
+            isMine && styles.replyContextMine,
+            pressed && onPressReplyTarget ? styles.replyContextPressed : null,
+          ]}
+        >
           <Text style={styles.replyContextAuthor} numberOfLines={1}>
             {replyTarget.user?.name || 'User'}
           </Text>
           <Text style={styles.replyContextText} numberOfLines={1}>
             {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
           </Text>
-        </View>
+        </Pressable>
       )
     },
-    [messageById, styles]
+    [messageById, onPressReplyTarget, styles]
   )
 
   const renderMessageBubble = useCallback(
@@ -451,6 +448,7 @@ export function ChatThreadMessageList({
       const likeCountValue = Math.max(0, Number(m.likeCount ?? 0))
       const isLikeAnimating = Boolean(animatingLikeMessageIds[m.id])
       const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked || isLikeAnimating)
+      const replyCount = threadRootMessageId ? 0 : replyCountByRootId.get(m.id) ?? 0
       const rowStyles = [
         styles.row,
         isMine ? styles.rowMine : styles.rowOther,
@@ -459,7 +457,13 @@ export function ChatThreadMessageList({
       ]
 
       return (
-        <View key={m.id} style={rowStyles}>
+        <View
+          key={m.id}
+          style={[rowStyles, highlightedMessageId === m.id ? styles.rowHighlighted : null]}
+          onLayout={(event) => {
+            onMessageLayout?.(m.id, event.nativeEvent.layout.y)
+          }}
+        >
           {!isMine && showOtherAvatars ? (
             showAvatar ? (
               <Pressable
@@ -482,6 +486,10 @@ export function ChatThreadMessageList({
               if (!onToggleLike || likeDisabled || m.isDeleted) return
               const now = Date.now()
               if (lastTapMessageIdRef.current === m.id && now - lastTapAtRef.current <= LIKE_DOUBLE_TAP_MS) {
+                if (singleTapTimerRef.current) {
+                  clearTimeout(singleTapTimerRef.current)
+                  singleTapTimerRef.current = null
+                }
                 lastTapMessageIdRef.current = null
                 lastTapAtRef.current = 0
                 tryLike(m)
@@ -489,6 +497,15 @@ export function ChatThreadMessageList({
               }
               lastTapMessageIdRef.current = m.id
               lastTapAtRef.current = now
+              if (!threadRootMessageId && entry.level === 1 && onPressRepliesSummary) {
+                if (singleTapTimerRef.current) {
+                  clearTimeout(singleTapTimerRef.current)
+                }
+                singleTapTimerRef.current = setTimeout(() => {
+                  singleTapTimerRef.current = null
+                  onPressRepliesSummary(messageById.get(entry.threadRootId) ?? m)
+                }, LIKE_DOUBLE_TAP_MS + 16)
+              }
             }}
             onLongPress={() => handleLongPress(m)}
             style={({ pressed }) => [
@@ -514,10 +531,9 @@ export function ChatThreadMessageList({
                 </Text>
               </Pressable>
             ) : null}
-            {entry.level === 1 ? renderReplyContext(m, isMine) : null}
+            {m.replyToMessageId ? renderReplyContext(m, isMine) : null}
             {renderMessageText(m.isDeleted ? 'Message removed' : m.text || '', isMine)}
             <View style={styles.metaRow}>
-              {!isMine ? <Text style={styles.time}>{formatChatTime(m.createdAt)}</Text> : null}
               {!isMine && showLikeChip ? (
                 <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
                   <LikeChipIcon
@@ -541,6 +557,20 @@ export function ChatThreadMessageList({
                   ) : null}
                 </View>
               ) : null}
+              {!isMine && replyCount > 0 ? (
+                <Pressable
+                  onPress={() => onPressRepliesSummary?.(m)}
+                  disabled={!onPressRepliesSummary}
+                  style={({ pressed }) => [
+                    styles.replyCountChip,
+                    pressed && onPressRepliesSummary ? styles.replyCountChipPressed : null,
+                  ]}
+                >
+                  <Text style={styles.replyCountText}>{replyCount}</Text>
+                  <MaterialCommunityIcons name="reply" size={12} color={colors.text} />
+                </Pressable>
+              ) : null}
+              {!isMine ? <Text style={styles.time}>{formatChatTime(m.createdAt)}</Text> : null}
               {isMine ? (
                 <>
                   {showLikeChip ? (
@@ -565,6 +595,19 @@ export function ChatThreadMessageList({
                         </Text>
                       ) : null}
                     </View>
+                  ) : null}
+                  {replyCount > 0 ? (
+                    <Pressable
+                      onPress={() => onPressRepliesSummary?.(m)}
+                      disabled={!onPressRepliesSummary}
+                      style={({ pressed }) => [
+                        styles.replyCountChip,
+                        pressed && onPressRepliesSummary ? styles.replyCountChipPressed : null,
+                      ]}
+                    >
+                      <Text style={styles.replyCountText}>{replyCount}</Text>
+                      <MaterialCommunityIcons name="reply" size={12} color={colors.text} />
+                    </Pressable>
                   ) : null}
                   <View style={styles.statusWrap}>
                     {m.deliveryStatus === 'read' ? (
@@ -597,16 +640,21 @@ export function ChatThreadMessageList({
       currentUserId,
       deleteDisabled,
       findNeighborMessageEntry,
+      highlightedMessageId,
       handleLongPress,
       likeAnimationTickByMessageId,
       likeDisabled,
       longPressMenuEnabled,
+      messageById,
+      onMessageLayout,
       onPressAvatar,
+      onPressRepliesSummary,
       onToggleLike,
       renderMessageText,
       renderReplyContext,
       showOtherAvatars,
       styles,
+      threadRootMessageId,
       tryLike,
     ]
   )
@@ -638,38 +686,30 @@ export function ChatThreadMessageList({
   const yesterdayKey = toLocalYmd(yesterday)
 
   for (const entry of displayEntries) {
-    if (entry.type === 'message') {
-      const d = entry.message.createdAt ? new Date(entry.message.createdAt) : new Date()
-      const key = toLocalYmd(d)
-      if (key !== currentDateKey) {
-        currentDateKey = key
-        rendered.push(
-          <View key={`date-${key}-${dateSectionIndex++}`} style={styles.datePillWrap}>
-            <View style={styles.datePill}>
-              <Text style={styles.datePillText}>
-                {key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatDate(d) || ''}
-              </Text>
-            </View>
+    const d = entry.message.createdAt ? new Date(entry.message.createdAt) : new Date()
+    const key = toLocalYmd(d)
+    if (key !== currentDateKey) {
+      currentDateKey = key
+      rendered.push(
+        <View key={`date-${key}-${dateSectionIndex++}`} style={styles.datePillWrap}>
+          <View style={styles.datePill}>
+            <Text style={styles.datePillText}>
+              {key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatDate(d) || ''}
+            </Text>
           </View>
-        )
-      }
-      rendered.push(renderMessageBubble(entry))
-      continue
+        </View>
+      )
     }
-
-    rendered.push(
-      <Pressable
-        key={entry.id}
-        onPress={() => onPressRepliesSummary?.(entry.rootMessage)}
-        disabled={!onPressRepliesSummary}
-        style={({ pressed }) => [styles.replySummaryRow, pressed && onPressRepliesSummary ? styles.replySummaryPressed : null]}
-      >
-        <Text style={styles.replySummaryText}>
-          View {entry.totalReplies} repl{entry.totalReplies === 1 ? 'y' : 'ies'}
-        </Text>
-      </Pressable>
-    )
+    rendered.push(renderMessageBubble(entry))
   }
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current)
+      }
+    }
+  }, [])
 
   return (
     <>
@@ -678,6 +718,11 @@ export function ChatThreadMessageList({
       <AppBottomSheet
         open={Boolean(menuTarget)}
         onClose={() => setMenuTarget(null)}
+        onDismissed={() => {
+          if (!pendingDeleteTarget) return
+          onRequestDelete(pendingDeleteTarget)
+          setPendingDeleteTarget(null)
+        }}
         title="Message actions"
         titleBelow={menuTarget ? renderSelectedMessagePreview(menuTarget) : null}
       >
@@ -734,8 +779,8 @@ export function ChatThreadMessageList({
             <Pressable
               onPress={() => {
                 const target = menuTarget
+                setPendingDeleteTarget(target)
                 setMenuTarget(null)
-                onRequestDelete(target)
               }}
               style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
             >
@@ -774,6 +819,10 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: 8,
+    },
+    rowHighlighted: {
+      borderRadius: 18,
+      backgroundColor: theme === 'dark' ? 'rgba(117, 230, 109, 0.08)' : 'rgba(117, 230, 109, 0.14)',
     },
     rowMine: {
       justifyContent: 'flex-end',
@@ -892,6 +941,9 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       marginBottom: 7,
       gap: 1,
     },
+    replyContextPressed: {
+      opacity: 0.82,
+    },
     replyContextMine: {
       borderLeftColor: theme === 'dark' ? colors.white : colors.primary,
     },
@@ -937,6 +989,26 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       alignItems: 'center',
       alignSelf: 'flex-end',
       gap: 4,
+    },
+    replyCountChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      marginRight: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 999,
+      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+    },
+    replyCountChipPressed: {
+      opacity: 0.72,
+    },
+    replyCountText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text,
     },
     statusWrap: {
       flexDirection: 'row',

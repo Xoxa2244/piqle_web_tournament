@@ -38,8 +38,11 @@ export default function ClubChatThreadScreen() {
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const messageOffsetsRef = useRef(new Map<string, number>())
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
@@ -55,6 +58,21 @@ export default function ClubChatThreadScreen() {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated })
     })
+  }, [])
+  const handleMessageLayout = useCallback((messageId: string, y: number) => {
+    messageOffsetsRef.current.set(messageId, y)
+  }, [])
+  const scrollToMessage = useCallback((messageId: string) => {
+    const y = messageOffsetsRef.current.get(messageId)
+    if (y == null) return false
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: true })
+    setHighlightedMessageId(messageId)
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) => (current === messageId ? null : current))
+      highlightTimeoutRef.current = null
+    }, 1400)
+    return true
   }, [])
 
   const threadQuery = trpc.clubChat.listThread.useQuery(
@@ -135,21 +153,37 @@ export default function ClubChatThreadScreen() {
   })
 
   const deleteMessage = trpc.clubChat.delete.useMutation({
-    onSuccess: (_data: any, variables: { messageId: string }) => {
+    onMutate: ({ messageId }: { messageId: string }) => {
+      const deletedAt = new Date()
       utils.clubChat.listThread.setData({ clubId, rootMessageId }, (current: any) => {
-        const list = ((current?.messages ?? []) as any[]).map((message) =>
-          message.id === variables.messageId
-            ? {
-                ...message,
+        const list = ((current?.messages ?? []) as any[]).map((message) => {
+          if (message.id === messageId) {
+            return {
+              ...message,
+              text: null,
+              isDeleted: true,
+              deletedAt,
+              deletedByUserId: user?.id ?? null,
+            }
+          }
+          if (message.replyToMessageId === messageId && message.replyToMessage) {
+            return {
+              ...message,
+              replyToMessage: {
+                ...message.replyToMessage,
                 text: null,
                 isDeleted: true,
-                deletedAt: new Date(),
-                deletedByUserId: user?.id ?? null,
-              }
-            : message
-        )
+                deletedAt,
+              },
+            }
+          }
+          return message
+        })
         return { rootMessageId: current?.rootMessageId ?? rootMessageId, messages: list }
       })
+    },
+    onSuccess: () => {
+      /* optimistic state already applied */
     },
   })
 
@@ -224,6 +258,13 @@ export default function ClubChatThreadScreen() {
   useEffect(() => {
     initialScrollDoneRef.current = false
   }, [clubId, rootMessageId])
+
+  useEffect(
+    () => () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+    },
+    []
+  )
 
   useEffect(() => {
     if (!clubId || !isAuthenticated) return
@@ -301,6 +342,11 @@ export default function ClubChatThreadScreen() {
               threadRootMessageId={threadQuery.data?.rootMessageId ?? rootMessageId}
               onToggleLike={(m) => likeMessage.mutate({ messageId: m.id })}
               onRequestReply={(m) => setReplyTarget(m)}
+              onPressReplyTarget={(_message, targetMessageId) => {
+                void scrollToMessage(targetMessageId)
+              }}
+              onMessageLayout={handleMessageLayout}
+              highlightedMessageId={highlightedMessageId}
               onPressAvatar={(m) => {
                 if (!m.userId) return
                 router.push({ pathname: '/profile/[id]', params: { id: m.userId } })
@@ -354,8 +400,10 @@ export default function ClubChatThreadScreen() {
             confirmLabel={deleteMessage.isPending ? 'Deleting…' : 'Delete'}
             onCancel={() => setDeleteTargetId(null)}
             onConfirm={() => {
-              if (!deleteTargetId) return
-              void deleteMessage.mutateAsync({ messageId: deleteTargetId }).then(() => setDeleteTargetId(null)).catch(() => setDeleteTargetId(null))
+              const messageId = deleteTargetId
+              setDeleteTargetId(null)
+              if (!messageId) return
+              deleteMessage.mutate({ messageId })
             }}
             confirmLoading={deleteMessage.isPending}
           />
