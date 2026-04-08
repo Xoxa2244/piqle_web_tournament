@@ -78,6 +78,26 @@ export function getMentionDisplayText(token: string, displayName?: string | null
   return normalizedName ? `@${normalizedName}` : `@${fallback || parsed.handle}`
 }
 
+export function formatMentionsForPreview(text: string, candidates: MentionCandidate[] = []): string {
+  const candidateByHandle = new Map<string, MentionCandidate>()
+  const candidateById = new Map<string, MentionCandidate>()
+  for (const candidate of candidates) {
+    candidateById.set(candidate.id, candidate)
+    candidateByHandle.set(candidate.handle.toLowerCase(), candidate)
+    candidateByHandle.set(buildMentionHandle(candidate.name).toLowerCase(), candidate)
+  }
+
+  return String(text ?? '').replace(/@[^\s@~]+(?:~[^\s@]+)?/g, (token) => {
+    const parsed = parseMentionToken(token)
+    if (!parsed) return token
+    const candidate =
+      (parsed.userId ? candidateById.get(parsed.userId) : null) ??
+      candidateByHandle.get(parsed.handle.toLowerCase()) ??
+      null
+    return getMentionDisplayText(token, candidate?.name)
+  })
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

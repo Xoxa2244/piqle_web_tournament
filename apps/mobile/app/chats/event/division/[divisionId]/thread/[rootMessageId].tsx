@@ -17,6 +17,7 @@ import {
   buildMentionHandle,
   encodeMentionsForSend,
   findActiveMentionQuery,
+  formatMentionsForPreview,
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../../src/lib/chatMentions'
@@ -454,7 +455,7 @@ export default function DivisionThreadScreen() {
                         Replying to {replyTarget.user?.name || 'User'}
                       </Text>
                       <Text style={styles.replyComposerText} numberOfLines={1}>
-                        {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                        {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
                       </Text>
                     </View>
                     <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}>

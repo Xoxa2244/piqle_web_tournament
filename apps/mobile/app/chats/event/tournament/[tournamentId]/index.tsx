@@ -27,6 +27,7 @@ import {
   buildMentionHandle,
   encodeMentionsForSend,
   findActiveMentionQuery,
+  formatMentionsForPreview,
   messageMentionsHandle,
   toMentionCandidate,
 } from '../../../../../src/lib/chatMentions'
@@ -892,7 +893,7 @@ export default function TournamentChatScreen() {
                           Replying to {replyTarget.user?.name || 'User'}
                         </Text>
                         <Text style={styles.replyComposerText} numberOfLines={1}>
-                          {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+                          {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
                         </Text>
                       </View>
                       <Pressable

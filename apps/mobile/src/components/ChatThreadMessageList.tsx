@@ -7,7 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
-import { buildMentionHandle, getMentionDisplayText, parseMentionToken, type MentionCandidate } from '../lib/chatMentions'
+import {
+  buildMentionHandle,
+  formatMentionsForPreview,
+  getMentionDisplayText,
+  parseMentionToken,
+  type MentionCandidate,
+} from '../lib/chatMentions'
 import { formatChatTime, toLocalYmd } from '../lib/chatMessages'
 import { formatDate } from '../lib/formatters'
 import { radius, spacing, type AppTheme, type ThemePalette } from '../lib/theme'
@@ -492,12 +498,12 @@ export function ChatThreadMessageList({
             {replyTarget.user?.name || 'User'}
           </Text>
           <Text style={styles.replyContextText} numberOfLines={1}>
-            {replyTarget.isDeleted ? 'Message removed' : replyTarget.text || ''}
+            {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
           </Text>
         </Pressable>
       )
     },
-    [messageById, onPressReplyTarget, styles]
+    [mentionCandidates, messageById, onPressReplyTarget, styles]
   )
 
   const renderMessageBubble = useCallback(
@@ -1005,7 +1011,7 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     },
     authorTagText: {
       fontSize: 10,
-      fontWeight: '800',
+      fontWeight: '500',
       color: colors.primary,
     },
     body: {
