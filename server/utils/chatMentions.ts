@@ -2,7 +2,9 @@ export function buildMentionHandle(name: string | null | undefined): string {
   const source = String(name ?? '').trim()
   if (!source) return 'user'
   const collapsed = source.replace(/\s+/g, '_')
-  const cleaned = collapsed.replace(/[^\p{L}\p{N}_.-]/gu, '')
+  const cleaned = Array.from(collapsed)
+    .filter((char) => /[A-Za-z0-9_.-]/.test(char) || char.toLowerCase() !== char.toUpperCase())
+    .join('')
   return cleaned || 'user'
 }
 
