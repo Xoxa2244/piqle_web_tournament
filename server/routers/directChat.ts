@@ -662,7 +662,7 @@ export const directChatRouter = createTRPCRouter({
       if (thread) {
         pushToUsers(
           [thread.participantAId, thread.participantBId].filter((id) => id !== userId),
-          { type: 'invalidate', keys: ['directChat.listMyChats', 'directChat.list'] }
+          { type: 'invalidate', keys: ['directChat.listMyChats'] }
         )
       }
 
