@@ -417,7 +417,18 @@ export default function ClubChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={clubName}
-      topBarRightSlot={null}
+      topBarRightSlot={
+        <Pressable
+          onPress={() => router.push({ pathname: '/chats/club/[clubId]/members', params: { clubId, name: clubDisplayName } })}
+          style={({ pressed }) => [
+            styles.topBarIconButton,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            pressed && styles.topBarIconButtonPressed,
+          ]}
+        >
+          <Feather name="users" size={18} color={colors.text} />
+        </Pressable>
+      }
       onTopBarTitlePress={() => {
         if (!clubId) return
         router.push(`/clubs/${clubId}`)
@@ -695,6 +706,18 @@ const createStyles = (colors: ThemePalette) =>
     height: 28,
     borderRadius: 14,
     backgroundColor: colors.surface,
+  },
+  topBarIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  topBarIconButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.96 }],
   },
   composerTopStack: {
     gap: 10,

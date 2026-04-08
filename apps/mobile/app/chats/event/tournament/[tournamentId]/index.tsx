@@ -724,7 +724,27 @@ export default function TournamentChatScreen() {
       scroll={false}
       contentStyle={styles.screen}
       topBarTitle={title}
-      topBarRightSlot={null}
+      topBarRightSlot={
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/chats/event/tournament/[tournamentId]/members',
+              params: {
+                tournamentId,
+                title,
+                divisionId: activeDivisionId ?? undefined,
+              },
+            })
+          }
+          style={({ pressed }) => [
+            styles.topBarIconButton,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            pressed && styles.topBarIconButtonPressed,
+          ]}
+        >
+          <Feather name="users" size={18} color={colors.text} />
+        </Pressable>
+      }
       onTopBarTitlePress={() => {
         if (!tournamentId) return
         router.push(`/tournaments/${tournamentId}`)
@@ -1001,6 +1021,18 @@ const createStyles = (colors: ThemePalette) =>
     justifyContent: 'center',
     alignItems: 'stretch',
     paddingBottom: 0,
+  },
+  topBarIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  topBarIconButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.96 }],
   },
   composerTopStack: {
     gap: 10,
