@@ -22,7 +22,6 @@ import { EmptyState, Screen, SurfaceCard } from '../../../../../src/components/u
 
 const CLUB_COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
-const CLIENT_DUPLICATE_GUARD_MS = 10_000
 
 export default function ClubChatThreadScreen() {
   const { colors } = useAppTheme()
@@ -46,8 +45,6 @@ export default function ClubChatThreadScreen() {
   const nextMessageOrderRef = useRef(0)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
-  const lastSentTextRef = useRef('')
-  const lastSentTextAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const myChatClubsQuery = trpc.club.listMyChatClubs.useQuery(undefined, { enabled: isAuthenticated })
@@ -220,18 +217,7 @@ export default function ClubChatThreadScreen() {
       toast.error('Slow down a bit.')
       return
     }
-    if (
-      lastSentTextRef.current &&
-      lastSentTextRef.current === text &&
-      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
-    ) {
-      toast.error('Duplicate message.')
-      return
-    }
-
     lastSendAtRef.current = now
-    lastSentTextRef.current = text
-    lastSentTextAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: targetId })
   }, [clubId, draft, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
 

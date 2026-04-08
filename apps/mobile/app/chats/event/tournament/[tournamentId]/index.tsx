@@ -37,7 +37,6 @@ import { useToast } from '../../../../../src/providers/ToastProvider'
 /** Как в клубном чате: `CLUB_COMPOSER_IDLE_BOTTOM_EXTRA` */
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
-const CLIENT_DUPLICATE_GUARD_MS = 10_000
 
 export default function TournamentChatScreen() {
   const { colors } = useAppTheme()
@@ -72,8 +71,6 @@ export default function TournamentChatScreen() {
   const tournamentLikeMutationSeqRef = useRef<Record<string, number>>({})
   const divisionLikeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
-  const lastSentTextRef = useRef('')
-  const lastSentTextAtRef = useRef(0)
   const threadContentOpacity = useRef(new Animated.Value(1)).current
   const skipThreadTopicFadeRef = useRef(true)
 
@@ -479,18 +476,7 @@ export default function TournamentChatScreen() {
       toast.error('Slow down a bit.')
       return
     }
-    if (
-      lastSentTextRef.current &&
-      lastSentTextRef.current === text &&
-      now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS
-    ) {
-      toast.error('Duplicate message.')
-      return
-    }
-
     lastSendAtRef.current = now
-    lastSentTextRef.current = text
-    lastSentTextAtRef.current = now
     if (activeDivisionId) {
       sendDivisionMessage.mutate({ divisionId: activeDivisionId, text, replyToMessageId: replyTarget?.id })
       return

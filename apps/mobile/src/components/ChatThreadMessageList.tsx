@@ -631,6 +631,7 @@ export function ChatThreadMessageList({
 
   const rendered: any[] = []
   let currentDateKey = ''
+  let dateSectionIndex = 0
   const todayKey = toLocalYmd(new Date())
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
@@ -643,7 +644,7 @@ export function ChatThreadMessageList({
       if (key !== currentDateKey) {
         currentDateKey = key
         rendered.push(
-          <View key={`date-${key}`} style={styles.datePillWrap}>
+          <View key={`date-${key}-${dateSectionIndex++}`} style={styles.datePillWrap}>
             <View style={styles.datePill}>
               <Text style={styles.datePillText}>
                 {key === todayKey ? 'Today' : key === yesterdayKey ? 'Yesterday' : formatDate(d) || ''}

@@ -22,7 +22,6 @@ import { EmptyState, LoadingBlock, Screen } from '../../../../../../src/componen
 
 const COMPOSER_IDLE_BOTTOM_EXTRA = 24
 const CLIENT_SEND_COOLDOWN_MS = 400
-const CLIENT_DUPLICATE_GUARD_MS = 10_000
 
 export default function TournamentThreadScreen() {
   const { colors } = useAppTheme()
@@ -46,8 +45,6 @@ export default function TournamentThreadScreen() {
   const nextMessageOrderRef = useRef(0)
   const likeMutationSeqRef = useRef<Record<string, number>>({})
   const lastSendAtRef = useRef(0)
-  const lastSentTextRef = useRef('')
-  const lastSentTextAtRef = useRef(0)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const permissionsQuery = trpc.tournamentChat.getPermissions.useQuery(
@@ -150,13 +147,7 @@ export default function TournamentThreadScreen() {
       toast.error('Slow down a bit.')
       return
     }
-    if (lastSentTextRef.current && lastSentTextRef.current === text && now - lastSentTextAtRef.current < CLIENT_DUPLICATE_GUARD_MS) {
-      toast.error('Duplicate message.')
-      return
-    }
     lastSendAtRef.current = now
-    lastSentTextRef.current = text
-    lastSentTextAtRef.current = now
     sendMessage.mutate({ tournamentId, text, replyToMessageId: targetId })
   }, [draft, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast, tournamentId])
 

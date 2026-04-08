@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
-import { normalizeTextForSpam, sanitizeChatText } from '../utils/chatModeration'
+import { sanitizeChatText } from '../utils/chatModeration'
 import { pushToUsers } from '@/lib/realtime'
 
 const isMissingDbRelation = (err: any, relationName: string) => {
@@ -415,10 +415,6 @@ export const clubChatRouter = createTRPCRouter({
         const delta = now.getTime() - new Date(lastMessage.createdAt).getTime()
         if (delta < cooldownMs) {
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Slow down a bit.' })
-        }
-
-        if (normalizeTextForSpam(lastMessage.text) === normalizeTextForSpam(trimmed)) {
-          throw new TRPCError({ code: 'CONFLICT', message: 'Duplicate message.' })
         }
       }
 

@@ -4,7 +4,11 @@ import { ActivityIndicator, LogBox, Text, View } from 'react-native'
 
 /** Отмена fetch (новый refetch, уход с экрана) — не баг API; RN всё равно шумит в логах. */
 if (__DEV__) {
-  LogBox.ignoreLogs(['TRPCClientError: Aborted'])
+  LogBox.ignoreLogs([
+    'TRPCClientError: Aborted',
+    'TRPCClientError: Duplicate message.',
+    'TRPCClientError: Slow down a bit.',
+  ])
 }
 
 import { AppProviders } from '../src/providers/AppProviders'
