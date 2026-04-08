@@ -3,14 +3,26 @@ import type { Session } from 'next-auth'
 
 import { prisma } from './prisma'
 
-const MOBILE_TOKEN_VERSION = 1
+const MOBILE_TOKEN_VERSION = 2
 const MOBILE_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60
+
+type MobileTokenUser = {
+  id: string
+  email: string
+  name?: string | null
+  image?: string | null
+  isActive?: boolean
+}
 
 type MobileTokenPayload = {
   v: number
   sub: string
   iat: number
   exp: number
+  email?: string
+  name?: string | null
+  image?: string | null
+  isActive?: boolean
 }
 
 const getMobileAuthSecret = () => {
@@ -36,13 +48,20 @@ const isSignatureValid = (value: string, signature: string) => {
   return crypto.timingSafeEqual(actualBuffer, expectedBuffer)
 }
 
-export const createMobileAccessToken = (userId: string, ttlSeconds = MOBILE_TOKEN_TTL_SECONDS) => {
+export const createMobileAccessToken = (
+  user: MobileTokenUser,
+  ttlSeconds = MOBILE_TOKEN_TTL_SECONDS
+) => {
   const now = Math.floor(Date.now() / 1000)
   const payload: MobileTokenPayload = {
     v: MOBILE_TOKEN_VERSION,
-    sub: userId,
+    sub: user.id,
     iat: now,
     exp: now + ttlSeconds,
+    email: user.email,
+    name: user.name ?? null,
+    image: user.image ?? null,
+    isActive: typeof user.isActive === 'boolean' ? user.isActive : true,
   }
 
   const encodedPayload = encodeBase64Url(JSON.stringify(payload))
@@ -57,7 +76,7 @@ export const verifyMobileAccessToken = (token: string): MobileTokenPayload | nul
     if (!isSignatureValid(encodedPayload, signature)) return null
 
     const payload = JSON.parse(decodeBase64Url(encodedPayload)) as MobileTokenPayload
-    if (payload.v !== MOBILE_TOKEN_VERSION) return null
+    if (payload.v !== 1 && payload.v !== MOBILE_TOKEN_VERSION) return null
     if (!payload.sub || typeof payload.sub !== 'string') return null
     if (!payload.exp || payload.exp * 1000 <= Date.now()) return null
     return payload
@@ -69,6 +88,19 @@ export const verifyMobileAccessToken = (token: string): MobileTokenPayload | nul
 export const getSessionFromMobileToken = async (token: string): Promise<Session | null> => {
   const payload = verifyMobileAccessToken(token)
   if (!payload) return null
+
+  if (typeof payload.email === 'string' && payload.email.trim()) {
+    return {
+      user: {
+        id: payload.sub,
+        email: payload.email,
+        name: payload.name ?? null,
+        image: payload.image ?? null,
+        isActive: typeof payload.isActive === 'boolean' ? payload.isActive : true,
+      },
+      expires: new Date(payload.exp * 1000).toISOString(),
+    }
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: payload.sub },

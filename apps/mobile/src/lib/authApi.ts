@@ -44,6 +44,21 @@ type StripeAccountLinkResponse = {
   url: string
 }
 
+export class AuthApiError extends Error {
+  readonly status: number
+  readonly code: string | null
+
+  constructor(message: string, status: number, code?: string | null) {
+    super(message)
+    this.name = 'AuthApiError'
+    this.status = status
+    this.code = code ?? null
+  }
+}
+
+export const isAuthApiErrorStatus = (error: unknown, statuses: number[]) =>
+  error instanceof AuthApiError && statuses.includes(error.status)
+
 const looksLikeHtml = (value: string) => /^\s*</.test(value)
 
 const parseJson = async <T>(response: Response, path: string): Promise<T> => {
@@ -82,7 +97,11 @@ const requestJson = async <T>(path: string, init: RequestInit): Promise<T> => {
 
   const payload = await parseJson<any>(response, path)
   if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || 'Request failed')
+    throw new AuthApiError(
+      payload?.message || payload?.error || 'Request failed',
+      response.status,
+      typeof payload?.error === 'string' ? payload.error : null
+    )
   }
 
   return payload as T

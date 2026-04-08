@@ -53,7 +53,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const token = createMobileAccessToken(user.id)
+    const token = createMobileAccessToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image,
+      isActive: user.isActive,
+    })
 
     return NextResponse.json({
       token,

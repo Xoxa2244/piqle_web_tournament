@@ -36,7 +36,7 @@ function MobileForegroundSync() {
 
 function useMobileRealtimeSync() {
   const utils = trpc.useUtils()
-  const { token } = useAuth()
+  const { token, clearSession } = useAuth()
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
@@ -157,6 +157,7 @@ function useMobileRealtimeSync() {
         if (response.status === 401 || response.status === 403) {
           shouldReconnect = false
           setConnected(false)
+          void clearSession()
           return
         }
 
@@ -184,7 +185,7 @@ function useMobileRealtimeSync() {
       if (reconnectTimer) clearTimeout(reconnectTimer)
       abortController?.abort()
     }
-  }, [token, utils])
+  }, [clearSession, token, utils])
 
   return { connected, enabled: Boolean(token) }
 }
@@ -200,7 +201,7 @@ const MobileRealtimeConnectionLayer = ({ children }: PropsWithChildren) => {
 }
 
 const TrpcLayer = ({ children }: PropsWithChildren) => {
-  const { token } = useAuth()
+  const { token, clearSession } = useAuth()
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -231,6 +232,13 @@ const TrpcLayer = ({ children }: PropsWithChildren) => {
       links: [
         httpLink({
           url: buildApiUrl('/api/trpc'),
+          async fetch(url, options) {
+            const response = await globalThis.fetch(url, options)
+            if (response.status === 401 || response.status === 403) {
+              void clearSession()
+            }
+            return response
+          },
           async headers() {
             const authToken = getClientAuthToken()
             return authToken ? { authorization: `Bearer ${authToken}` } : {}

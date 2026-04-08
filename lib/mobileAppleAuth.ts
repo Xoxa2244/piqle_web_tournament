@@ -258,7 +258,13 @@ export const exchangeAppleIdentityTokenForMobileSession = async (
   })
 
   return {
-    token: createMobileAccessToken(user.id),
+    token: createMobileAccessToken({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image,
+      isActive: user.isActive,
+    }),
     user: {
       id: user.id,
       email: user.email,

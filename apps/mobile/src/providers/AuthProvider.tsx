@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import * as AppleAuthentication from 'expo-apple-authentication'
 import { Platform, TurboModuleRegistry } from 'react-native'
 
-import { authApi, type SignUpInput } from '../lib/authApi'
+import { authApi, isAuthApiErrorStatus, type SignUpInput } from '../lib/authApi'
 import { authStorage, type MobileUser, type StoredAuthSession } from '../lib/authStorage'
 
 type GoogleSignInModule = typeof import('@react-native-google-signin/google-signin')
@@ -170,6 +170,7 @@ type AuthContextValue = {
   resetPassword: (email: string, code: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   signInWithApple: () => Promise<void>
+  clearSession: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -179,24 +180,57 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const [isReady, setIsReady] = useState(false)
   const [session, setSession] = useState<StoredAuthSession | null>(null)
 
+  const applySession = useCallback(async (nextSession: StoredAuthSession) => {
+    await authStorage.save(nextSession)
+    setSession(nextSession)
+  }, [])
+
+  const clearSession = useCallback(async () => {
+    await authStorage.clear()
+    setSession(null)
+  }, [])
+
   useEffect(() => {
     let isMounted = true
-    authStorage.load()
-      .then((stored) => {
+
+    ;(async () => {
+      try {
+        const stored = await authStorage.load()
         if (!isMounted) return
-        setSession(stored)
-        setIsReady(true)
-      })
-      .catch(() => {
+
+        if (!stored?.token) {
+          setSession(null)
+          setIsReady(true)
+          return
+        }
+
+        try {
+          const validatedSession = await authApi.getMobileSession(stored.token)
+          if (!isMounted) return
+          await applySession(validatedSession)
+        } catch (error) {
+          if (!isMounted) return
+
+          if (isAuthApiErrorStatus(error, [401, 403])) {
+            await clearSession()
+          } else {
+            setSession(stored)
+          }
+        }
+      } catch {
         if (!isMounted) return
         setSession(null)
-        setIsReady(true)
-      })
+      } finally {
+        if (isMounted) {
+          setIsReady(true)
+        }
+      }
+    })()
 
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [applySession, clearSession])
 
   const value = useMemo<AuthContextValue>(() => ({
     isReady,
@@ -204,13 +238,11 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     user: session?.user ?? null,
     async signIn(email: string, password: string) {
       const nextSession = await authApi.signIn(email, password)
-      await authStorage.save(nextSession)
-      setSession(nextSession)
+      await applySession(nextSession)
     },
     async signUp(input: SignUpInput) {
       const nextSession = await authApi.signUp(input)
-      await authStorage.save(nextSession)
-      setSession(nextSession)
+      await applySession(nextSession)
     },
     async requestCode(email: string) {
       const response = await authApi.requestCode(email)
@@ -223,8 +255,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     async resetPassword(email: string, code: string, password: string) {
       await authApi.resetPassword({ email, code, password })
       const nextSession = await authApi.signIn(email, password)
-      await authStorage.save(nextSession)
-      setSession(nextSession)
+      await applySession(nextSession)
     },
     async signInWithGoogle() {
       console.log('[Google Sign-In] Starting sign-in flow')
@@ -265,8 +296,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
           userId: nextSession.user.id,
           email: nextSession.user.email,
         })
-        await authStorage.save(nextSession)
-        setSession(nextSession)
+        await applySession(nextSession)
       } catch (error) {
         console.error('[Google Sign-In] Native sign-in failed', {
           code: getGoogleErrorCode(error),
@@ -315,12 +345,12 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
           lastName: credential.fullName?.familyName ?? null,
         })
 
-        await authStorage.save(nextSession)
-        setSession(nextSession)
+        await applySession(nextSession)
       } catch (error) {
         throw normalizeAppleSignInError(error)
       }
     },
+    clearSession,
     async signOut() {
       const googleSignIn = await loadGoogleSignInModule()
 
@@ -332,10 +362,9 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         }
       }
 
-      await authStorage.clear()
-      setSession(null)
+      await clearSession()
     },
-  }), [isReady, session])
+  }), [applySession, clearSession, isReady, session])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -23,13 +23,17 @@ export async function GET(req: NextRequest) {
   }
 
   const session = await getServerSession(authOptions)
-  const userId = session?.user?.id ? String(session.user.id) : null
-
-  if (!userId) {
+  if (!session?.user?.id || !session.user.email) {
     return redirectWithError(redirectUri, 'google_auth_failed')
   }
 
-  const token = createMobileAccessToken(userId)
+  const token = createMobileAccessToken({
+    id: String(session.user.id),
+    email: session.user.email,
+    name: session.user.name ?? null,
+    image: session.user.image ?? null,
+    isActive: typeof session.user.isActive === 'boolean' ? session.user.isActive : true,
+  })
   const target = new URL(redirectUri)
   target.searchParams.set('token', token)
 
