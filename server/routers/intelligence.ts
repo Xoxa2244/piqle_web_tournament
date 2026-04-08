@@ -1722,16 +1722,19 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       try {
-        // Get only club members who have at least 1 booking (skip dormant — 10K+ members with 0 bookings)
-        const activeUserIds = await ctx.prisma.$queryRawUnsafe<Array<{ userId?: string; userid?: string }>>(`
-          SELECT DISTINCT b."userId"
-          FROM play_session_bookings b
-          JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE ps."clubId" = $1 AND b.status = 'CONFIRMED'
-        `, input.clubId)
+        // Get only club members who have at least 1 confirmed booking.
+        // Use Prisma instead of raw SQL to avoid production type/operator mismatches.
+        const activeUserIds = await ctx.prisma.playSessionBooking.findMany({
+          where: {
+            status: 'CONFIRMED',
+            playSession: { clubId: input.clubId },
+          },
+          select: { userId: true },
+          distinct: ['userId'],
+        })
         const activeSet = new Set(
           activeUserIds
-            .map(r => r.userId ?? r.userid)
+            .map(r => r.userId)
             .filter((id): id is string => !!id)
         )
 
