@@ -636,7 +636,7 @@ export default function TournamentChatScreen() {
     }
     sendMessage.mutate({ tournamentId, text, replyToMessageId: replyTarget?.id })
   }, [activeDivisionId, draft, mentionCandidates, replyTarget?.id, sendDivisionMessage, sendMessage, toast, tournamentId])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!text.trim()) return
       if (activeDivisionId) {
@@ -801,25 +801,46 @@ export default function TournamentChatScreen() {
       contentStyle={styles.screen}
       topBarTitle={title}
       topBarRightSlot={
-        <Pressable
-          onPress={() =>
-            router.push({
-              pathname: '/chats/event/tournament/[tournamentId]/members',
-              params: {
-                tournamentId,
-                title,
-                divisionId: activeDivisionId ?? undefined,
-              },
-            })
-          }
-          style={({ pressed }) => [
-            styles.topBarIconButton,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            pressed && styles.topBarIconButtonPressed,
-          ]}
-        >
-          <Feather name="users" size={18} color={colors.text} />
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: '/chats/event/tournament/[tournamentId]/media',
+                params: {
+                  tournamentId,
+                  title,
+                  divisionId: activeDivisionId ?? undefined,
+                },
+              })
+            }
+            style={({ pressed }) => [
+              styles.topBarIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.topBarIconButtonPressed,
+            ]}
+          >
+            <Feather name="image" size={18} color={colors.text} />
+          </Pressable>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: '/chats/event/tournament/[tournamentId]/members',
+                params: {
+                  tournamentId,
+                  title,
+                  divisionId: activeDivisionId ?? undefined,
+                },
+              })
+            }
+            style={({ pressed }) => [
+              styles.topBarIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.topBarIconButtonPressed,
+            ]}
+          >
+            <Feather name="users" size={18} color={colors.text} />
+          </Pressable>
+        </View>
       }
       onTopBarTitlePress={() => {
         if (!tournamentId) return
@@ -944,7 +965,7 @@ export default function TournamentChatScreen() {
             sendDisabled={
               draft.trim().length === 0
             }
-            leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
+            leadingSlot={<ChatLocationAction onSendText={handleSendAttachment} />}
             paddingHorizontal={16}
             paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
             multiline={false}
@@ -1110,6 +1131,11 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   topBarIconButtonPressed: {
     opacity: 0.92,

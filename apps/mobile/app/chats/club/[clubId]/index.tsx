@@ -398,7 +398,7 @@ export default function ClubChatScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
   }, [clubId, draft, mentionCandidates, replyTarget?.id, sendMessage, toast])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!clubId || !text.trim()) return
       sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
@@ -497,16 +497,28 @@ export default function ClubChatScreen() {
       contentStyle={styles.screen}
       topBarTitle={clubName}
       topBarRightSlot={
-        <Pressable
-          onPress={() => router.push({ pathname: '/chats/club/[clubId]/members', params: { clubId, name: clubDisplayName } })}
-          style={({ pressed }) => [
-            styles.topBarIconButton,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            pressed && styles.topBarIconButtonPressed,
-          ]}
-        >
-          <Feather name="users" size={18} color={colors.text} />
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/chats/club/[clubId]/media', params: { clubId, name: clubDisplayName } })}
+            style={({ pressed }) => [
+              styles.topBarIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.topBarIconButtonPressed,
+            ]}
+          >
+            <Feather name="image" size={18} color={colors.text} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push({ pathname: '/chats/club/[clubId]/members', params: { clubId, name: clubDisplayName } })}
+            style={({ pressed }) => [
+              styles.topBarIconButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.topBarIconButtonPressed,
+            ]}
+          >
+            <Feather name="users" size={18} color={colors.text} />
+          </Pressable>
+        </View>
       }
       onTopBarTitlePress={() => {
         if (!clubId) return
@@ -618,7 +630,7 @@ export default function ClubChatScreen() {
           placeholder="Message club..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
-          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
+          leadingSlot={<ChatLocationAction onSendText={handleSendAttachment} />}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}
@@ -799,6 +811,11 @@ const createStyles = (colors: ThemePalette) =>
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   topBarIconButtonPressed: {
     opacity: 0.92,

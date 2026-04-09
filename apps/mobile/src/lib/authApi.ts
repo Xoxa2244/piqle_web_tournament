@@ -35,6 +35,21 @@ type AvatarUploadResponse = {
   url: string
 }
 
+type ChatAttachmentUploadInput = {
+  uri: string
+  fileName?: string | null
+  mimeType?: string | null
+  kind: 'image' | 'file'
+}
+
+type ChatAttachmentUploadResponse = {
+  url: string
+  fileName: string
+  mimeType: string
+  size: number
+  kind: 'image' | 'file'
+}
+
 type StripeConnectStatusResponse = {
   hasAccount: boolean
   payoutsActive: boolean
@@ -191,6 +206,30 @@ export const authApi = {
     const payload = await parseJson<AvatarUploadResponse & { message?: string; error?: string }>(response, path)
     if (!response.ok) {
       throw new Error(payload?.message || payload?.error || 'Failed to upload avatar')
+    }
+    return payload
+  },
+
+  async uploadChatAttachment(token: string, input: ChatAttachmentUploadInput) {
+    const formData = new FormData()
+    formData.append('kind', input.kind)
+    formData.append('file', {
+      uri: input.uri,
+      type: input.mimeType || (input.kind === 'image' ? 'image/jpeg' : 'application/octet-stream'),
+      name: input.fileName || `${input.kind}-${Date.now()}`,
+    } as any)
+
+    const path = '/api/mobile/upload-chat-attachment'
+    const response = await fetch(buildApiUrl(path), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    const payload = await parseJson<ChatAttachmentUploadResponse & { message?: string; error?: string }>(response, path)
+    if (!response.ok) {
+      throw new Error(payload?.message || payload?.error || 'Failed to upload attachment')
     }
     return payload
   },

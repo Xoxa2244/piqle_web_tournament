@@ -278,7 +278,7 @@ export default function TournamentThreadScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ tournamentId, text, replyToMessageId: targetId })
   }, [draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast, tournamentId])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!tournamentId || !text.trim()) return
       const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
@@ -492,7 +492,7 @@ export default function TournamentThreadScreen() {
           placeholder="Reply..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
-          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
+          leadingSlot={<ChatLocationAction onSendText={handleSendAttachment} />}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
           multiline={false}

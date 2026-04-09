@@ -283,7 +283,7 @@ export default function DivisionThreadScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ divisionId, text, replyToMessageId: targetId })
   }, [divisionId, draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!divisionId || !text.trim()) return
       const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
@@ -497,7 +497,7 @@ export default function DivisionThreadScreen() {
           placeholder="Reply..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
-          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
+          leadingSlot={<ChatLocationAction onSendText={handleSendAttachment} />}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
           multiline={false}

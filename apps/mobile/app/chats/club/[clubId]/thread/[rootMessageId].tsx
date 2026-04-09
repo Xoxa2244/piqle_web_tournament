@@ -380,7 +380,7 @@ export default function ClubChatThreadScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: targetId })
   }, [clubId, draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!clubId || !text.trim()) return
       const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
@@ -523,7 +523,7 @@ export default function ClubChatThreadScreen() {
           placeholder="Reply..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
-          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
+          leadingSlot={<ChatLocationAction onSendText={handleSendAttachment} />}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}

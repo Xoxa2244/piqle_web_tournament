@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import {
@@ -15,8 +15,11 @@ import {
 } from '../lib/chatMentions'
 import { formatChatTime, toLocalYmd } from '../lib/chatMessages'
 import {
+  formatFileSize,
   getChatSpecialPreviewText,
   getExternalLocationUrl,
+  parseFileMessageText,
+  parseImageMessageText,
   parseLocationMessageText,
 } from '../lib/chatSpecialMessages'
 import { formatDate } from '../lib/formatters'
@@ -181,6 +184,8 @@ export function ChatThreadMessageList({
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null)
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<ChatMessage | null>(null)
   const [previewLocation, setPreviewLocation] = useState<ReturnType<typeof parseLocationMessageText> | null>(null)
+  const [previewImage, setPreviewImage] = useState<ReturnType<typeof parseImageMessageText> | null>(null)
+  const [previewFile, setPreviewFile] = useState<ReturnType<typeof parseFileMessageText> | null>(null)
 
   const messageById = useMemo(() => {
     const map = new Map<string, ChatMessage>()
@@ -329,6 +334,49 @@ export function ChatThreadMessageList({
           </Pressable>
         )
       }
+      const imagePayload = parseImageMessageText(rawText)
+      if (imagePayload) {
+        return (
+          <Pressable
+            onPress={() => setPreviewImage(imagePayload)}
+            style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
+          >
+            <Image source={{ uri: imagePayload.url }} style={styles.attachmentImagePreview} resizeMode="cover" />
+            <View style={styles.locationBody}>
+              <View style={styles.locationTitleRow}>
+                <Feather name="image" size={14} color={colors.primary} />
+                <Text style={[styles.locationTitle, isMine && styles.bodyMine]} numberOfLines={1}>
+                  {imagePayload.fileName || 'Photo'}
+                </Text>
+              </View>
+              <Text style={styles.locationAddress} numberOfLines={1}>
+                {formatFileSize(imagePayload.size) || 'Tap to view'}
+              </Text>
+            </View>
+          </Pressable>
+        )
+      }
+      const filePayload = parseFileMessageText(rawText)
+      if (filePayload) {
+        return (
+          <Pressable
+            onPress={() => setPreviewFile(filePayload)}
+            style={({ pressed }) => [styles.fileCard, pressed && styles.locationCardPressed]}
+          >
+            <View style={styles.fileIconWrap}>
+              <Feather name="file-text" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.fileBody}>
+              <Text style={[styles.fileTitle, isMine && styles.bodyMine]} numberOfLines={1}>
+                {filePayload.fileName}
+              </Text>
+              <Text style={styles.fileMeta} numberOfLines={1}>
+                {[filePayload.mimeType, formatFileSize(filePayload.size)].filter(Boolean).join(' · ') || 'Tap to open'}
+              </Text>
+            </View>
+          </Pressable>
+        )
+      }
       const parts = rawText.split(INLINE_TOKEN_PATTERN).filter(Boolean)
       if (parts.length === 1) {
         const single = parts[0] ?? rawText
@@ -412,10 +460,16 @@ export function ChatThreadMessageList({
   const handleCopy = useCallback(
     async (message: ChatMessage) => {
       const locationPayload = parseLocationMessageText(message.text)
+      const imagePayload = parseImageMessageText(message.text)
+      const filePayload = parseFileMessageText(message.text)
       const text = locationPayload
         ? [locationPayload.title, locationPayload.address, `${locationPayload.latitude}, ${locationPayload.longitude}`]
             .filter(Boolean)
             .join('\n')
+        : imagePayload
+        ? imagePayload.url
+        : filePayload
+        ? [filePayload.fileName, filePayload.url].filter(Boolean).join('\n')
         : (message.text ?? '').trim()
       if (!text) return
       try {
@@ -884,6 +938,76 @@ export function ChatThreadMessageList({
           </View>
         ) : null}
       </AppBottomSheet>
+
+      <AppBottomSheet
+        open={Boolean(previewImage)}
+        onClose={() => setPreviewImage(null)}
+        title={previewImage?.fileName || 'Photo'}
+        subtitle={previewImage ? formatFileSize(previewImage.size) || 'Shared photo' : undefined}
+        bottomPaddingExtra={8}
+        footer={
+          previewImage ? (
+            <AppConfirmActions
+              intent="positive"
+              cancelLabel="Close"
+              confirmLabel="Open"
+              onCancel={() => setPreviewImage(null)}
+              onConfirm={() => {
+                const next = previewImage
+                if (!next) return
+                void Linking.openURL(next.url).finally(() => setPreviewImage(null))
+              }}
+            />
+          ) : null
+        }
+      >
+        {previewImage ? (
+          <View style={styles.imageSheetWrap}>
+            <Image source={{ uri: previewImage.url }} style={styles.imageSheetImage} resizeMode="contain" />
+          </View>
+        ) : null}
+      </AppBottomSheet>
+
+      <AppBottomSheet
+        open={Boolean(previewFile)}
+        onClose={() => setPreviewFile(null)}
+        title={previewFile?.fileName || 'File'}
+        subtitle={
+          previewFile
+            ? [previewFile.mimeType, formatFileSize(previewFile.size)].filter(Boolean).join(' · ')
+            : undefined
+        }
+        bottomPaddingExtra={8}
+        footer={
+          previewFile ? (
+            <AppConfirmActions
+              intent="positive"
+              cancelLabel="Close"
+              confirmLabel="Open file"
+              onCancel={() => setPreviewFile(null)}
+              onConfirm={() => {
+                const next = previewFile
+                if (!next) return
+                void Linking.openURL(next.url).finally(() => setPreviewFile(null))
+              }}
+            />
+          ) : null
+        }
+      >
+        {previewFile ? (
+          <View style={styles.fileSheetCard}>
+            <View style={styles.fileSheetIconWrap}>
+              <Feather name="file-text" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.fileSheetBody}>
+              <Text style={styles.fileSheetTitle}>{previewFile.fileName}</Text>
+              <Text style={styles.fileSheetMeta}>
+                {[previewFile.mimeType, formatFileSize(previewFile.size)].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </AppBottomSheet>
     </>
   )
 }
@@ -1089,6 +1213,11 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       paddingVertical: 10,
       gap: 4,
     },
+    attachmentImagePreview: {
+      width: '100%',
+      height: 168,
+      backgroundColor: colors.surfaceMuted,
+    },
     locationTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1106,6 +1235,42 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       fontSize: 12,
       lineHeight: 17,
     },
+    fileCard: {
+      marginTop: 2,
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      padding: 12,
+    },
+    fileIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primaryGhost,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.primaryBorder,
+    },
+    fileBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: 3,
+    },
+    fileTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    fileMeta: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
     locationSheetMapWrap: {
       height: 400,
       overflow: 'hidden',
@@ -1114,6 +1279,53 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
       marginBottom: spacing.sm,
+    },
+    imageSheetWrap: {
+      height: 420,
+      borderRadius: 18,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceMuted,
+      marginBottom: spacing.sm,
+    },
+    imageSheetImage: {
+      width: '100%',
+      height: '100%',
+    },
+    fileSheetCard: {
+      marginBottom: spacing.sm,
+      borderRadius: 18,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      padding: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    fileSheetIconWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primaryGhost,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.primaryBorder,
+    },
+    fileSheetBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: 4,
+    },
+    fileSheetTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    fileSheetMeta: {
+      color: colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
     },
     mentionText: {
       color: colors.primary,

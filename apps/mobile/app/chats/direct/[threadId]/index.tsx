@@ -367,7 +367,7 @@ export default function DirectChatScreen() {
     lastSentTextAtRef.current = now
     sendMessage.mutate({ threadId, text })
   }, [draft, sendMessage, threadId, toast])
-  const handleShareLocation = useCallback(
+  const handleSendAttachment = useCallback(
     (text: string) => {
       if (!threadId || !text.trim()) return
       const now = Date.now()
@@ -487,16 +487,28 @@ export default function DirectChatScreen() {
         </Pressable>
       }
       topBarRightSlot={
-        <Pressable
-          onPress={() => setMenuOpen(true)}
-          style={({ pressed }) => [
-            styles.menuButton,
-            { backgroundColor: colors.surface, borderColor: colors.border },
-            pressed && styles.menuButtonPressed,
-          ]}
-        >
-          <Feather name="more-vertical" size={18} color={colors.text} />
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/chats/direct/[threadId]/media', params: { threadId, title: displayName } })}
+            style={({ pressed }) => [
+              styles.menuButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.menuButtonPressed,
+            ]}
+          >
+            <Feather name="image" size={18} color={colors.text} />
+          </Pressable>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            style={({ pressed }) => [
+              styles.menuButton,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && styles.menuButtonPressed,
+            ]}
+          >
+            <Feather name="more-vertical" size={18} color={colors.text} />
+          </Pressable>
+        </View>
       }
     >
       {messagesQuery.error ? (
@@ -570,7 +582,7 @@ export default function DirectChatScreen() {
           onSend={handleSend}
           sendDisabled={messagingBlocked || draft.trim().length === 0}
           editable={!messagingBlocked}
-          leadingSlot={<ChatLocationAction disabled={messagingBlocked} onShareLocation={handleShareLocation} />}
+          leadingSlot={<ChatLocationAction disabled={messagingBlocked} onSendText={handleSendAttachment} />}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
@@ -747,6 +759,11 @@ const createStyles = (colors: ThemePalette) =>
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    topBarActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
     },
     menuButtonPressed: {
       opacity: 0.88,
