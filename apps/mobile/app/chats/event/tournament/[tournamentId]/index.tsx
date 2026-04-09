@@ -17,6 +17,7 @@ import { AppBottomSheet, AppConfirmActions } from '../../../../../src/components
 import { AuthRequiredCard } from '../../../../../src/components/AuthRequiredCard'
 import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoading'
 import { ChatComposer } from '../../../../../src/components/ChatComposer'
+import { ChatLocationAction } from '../../../../../src/components/ChatLocationAction'
 import { ChatMentionAnchorIndicator } from '../../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../../src/components/ChatMentionPicker'
 import { ChatScrollToBottomButton } from '../../../../../src/components/ChatScrollToBottomButton'
@@ -36,6 +37,7 @@ import {
   getTournamentMentionMessageIds,
   buildTournamentMentionNotificationId,
 } from '../../../../../src/lib/chatMentionNotifications'
+import { getChatSpecialPreviewText } from '../../../../../src/lib/chatSpecialMessages'
 import { PageLayout } from '../../../../../src/components/navigation/PageLayout'
 import { UnreadIndicatorDot } from '../../../../../src/components/UnreadIndicatorDot'
 import { ActionButton, EmptyState, LoadingBlock, Screen } from '../../../../../src/components/ui'
@@ -634,6 +636,17 @@ export default function TournamentChatScreen() {
     }
     sendMessage.mutate({ tournamentId, text, replyToMessageId: replyTarget?.id })
   }, [activeDivisionId, draft, mentionCandidates, replyTarget?.id, sendDivisionMessage, sendMessage, toast, tournamentId])
+  const handleShareLocation = useCallback(
+    (text: string) => {
+      if (!text.trim()) return
+      if (activeDivisionId) {
+        sendDivisionMessage.mutate({ divisionId: activeDivisionId, text, replyToMessageId: replyTarget?.id })
+        return
+      }
+      sendMessage.mutate({ tournamentId, text, replyToMessageId: replyTarget?.id })
+    },
+    [activeDivisionId, replyTarget?.id, sendDivisionMessage, sendMessage, tournamentId]
+  )
 
   const permission = permissionsQuery.data?.tournament
   const activeDivisionPermission = activeDivisionId ? permissionsQuery.data?.divisions?.[0] : null
@@ -931,6 +944,7 @@ export default function TournamentChatScreen() {
             sendDisabled={
               draft.trim().length === 0
             }
+            leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
             paddingHorizontal={16}
             paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
             multiline={false}
@@ -956,7 +970,10 @@ export default function TournamentChatScreen() {
                           Replying to {replyTarget.user?.name || 'User'}
                         </Text>
                         <Text style={styles.replyComposerText} numberOfLines={1}>
-                          {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
+                          {replyTarget.isDeleted
+                            ? 'Message removed'
+                            : getChatSpecialPreviewText(replyTarget.text) ??
+                              formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
                         </Text>
                       </View>
                       <Pressable

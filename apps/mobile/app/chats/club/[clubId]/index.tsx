@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { ChatLocationAction } from '../../../../src/components/ChatLocationAction'
 import { ChatMentionAnchorIndicator } from '../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../src/components/ChatMentionPicker'
 import { ChatScrollToBottomButton } from '../../../../src/components/ChatScrollToBottomButton'
@@ -26,6 +27,7 @@ import {
   buildClubMentionNotificationId,
   getClubMentionMessageIds,
 } from '../../../../src/lib/chatMentionNotifications'
+import { getChatSpecialPreviewText } from '../../../../src/lib/chatSpecialMessages'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, Screen, SurfaceCard } from '../../../../src/components/ui'
@@ -396,6 +398,13 @@ export default function ClubChatScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
   }, [clubId, draft, mentionCandidates, replyTarget?.id, sendMessage, toast])
+  const handleShareLocation = useCallback(
+    (text: string) => {
+      if (!clubId || !text.trim()) return
+      sendMessage.mutate({ clubId, text, replyToMessageId: replyTarget?.id })
+    },
+    [clubId, replyTarget?.id, sendMessage]
+  )
 
   useEffect(() => {
     initialScrollDoneRef.current = false
@@ -609,6 +618,7 @@ export default function ClubChatScreen() {
           placeholder="Message club..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
+          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : CLUB_COMPOSER_IDLE_BOTTOM_EXTRA)}
@@ -634,7 +644,10 @@ export default function ClubChatScreen() {
                         Replying to {replyTarget.user?.name || 'User'}
                       </Text>
                       <Text style={styles.replyComposerText} numberOfLines={1}>
-                        {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
+                        {replyTarget.isDeleted
+                          ? 'Message removed'
+                          : getChatSpecialPreviewText(replyTarget.text) ??
+                            formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
                       </Text>
                     </View>
                     <Pressable

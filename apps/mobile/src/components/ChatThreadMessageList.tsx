@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import {
@@ -14,6 +14,12 @@ import {
   type MentionCandidate,
 } from '../lib/chatMentions'
 import { formatChatTime, toLocalYmd } from '../lib/chatMessages'
+import {
+  getChatSpecialPreviewText,
+  getExternalLocationUrl,
+  getLocationStaticMapUrl,
+  parseLocationMessageText,
+} from '../lib/chatSpecialMessages'
 import { formatDate } from '../lib/formatters'
 import { radius, spacing, type AppTheme, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
@@ -292,6 +298,44 @@ export function ChatThreadMessageList({
 
   const renderMessageText = useCallback(
     (rawText: string, isMine: boolean) => {
+      const locationPayload = parseLocationMessageText(rawText)
+      if (locationPayload) {
+        const mapUrl = getLocationStaticMapUrl(locationPayload)
+        return (
+          <Pressable
+            onPress={async () => {
+              const externalUrl = getExternalLocationUrl(locationPayload)
+              try {
+                const supported = await Linking.canOpenURL(externalUrl)
+                if (supported) {
+                  await Linking.openURL(externalUrl)
+                  return
+                }
+              } catch {
+                // fallback below
+              }
+              await Linking.openURL(
+                `https://www.google.com/maps/search/?api=1&query=${locationPayload.latitude},${locationPayload.longitude}`
+              )
+            }}
+            style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
+          >
+            <Image source={{ uri: mapUrl }} style={styles.locationPreview} resizeMode="cover" />
+            <View style={styles.locationBody}>
+              <View style={styles.locationTitleRow}>
+                <Feather name="map-pin" size={14} color={colors.primary} />
+                <Text style={[styles.locationTitle, isMine && styles.bodyMine]} numberOfLines={1}>
+                  {locationPayload.title}
+                </Text>
+              </View>
+              <Text style={styles.locationAddress} numberOfLines={2}>
+                {locationPayload.address ||
+                  `${locationPayload.latitude.toFixed(5)}, ${locationPayload.longitude.toFixed(5)}`}
+              </Text>
+            </View>
+          </Pressable>
+        )
+      }
       const parts = rawText.split(INLINE_TOKEN_PATTERN).filter(Boolean)
       if (parts.length === 1) {
         const single = parts[0] ?? rawText
@@ -369,12 +413,17 @@ export function ChatThreadMessageList({
         </View>
       )
     },
-    [mentionByHandle, mentionById, onPressMentionUser, styles]
+    [colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles]
   )
 
   const handleCopy = useCallback(
     async (message: ChatMessage) => {
-      const text = (message.text ?? '').trim()
+      const locationPayload = parseLocationMessageText(message.text)
+      const text = locationPayload
+        ? [locationPayload.title, locationPayload.address, `${locationPayload.latitude}, ${locationPayload.longitude}`]
+            .filter(Boolean)
+            .join('\n')
+        : (message.text ?? '').trim()
       if (!text) return
       try {
         await Clipboard.setStringAsync(text)
@@ -418,7 +467,10 @@ export function ChatThreadMessageList({
             {replyTarget.user?.name || 'User'}
           </Text>
           <Text style={styles.replyContextText} numberOfLines={1}>
-            {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
+            {replyTarget.isDeleted
+              ? 'Message removed'
+              : getChatSpecialPreviewText(replyTarget.text) ??
+                formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
           </Text>
         </Pressable>
       )
@@ -965,6 +1017,44 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     linkTextPressed: {
       backgroundColor: theme === 'dark' ? 'rgba(117, 230, 109, 0.2)' : 'rgba(117, 230, 109, 0.18)',
       borderRadius: 8,
+    },
+    locationCard: {
+      marginTop: 2,
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    locationCardPressed: {
+      opacity: 0.9,
+    },
+    locationPreview: {
+      width: '100%',
+      height: 116,
+      backgroundColor: colors.surfaceMuted,
+    },
+    locationBody: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 4,
+    },
+    locationTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    locationTitle: {
+      flex: 1,
+      minWidth: 0,
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    locationAddress: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
     },
     mentionText: {
       color: colors.primary,

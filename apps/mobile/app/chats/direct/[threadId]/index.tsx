@@ -6,6 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { ChatLocationAction } from '../../../../src/components/ChatLocationAction'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { ChatScrollToBottomButton } from '../../../../src/components/ChatScrollToBottomButton'
 import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMessageList'
@@ -366,6 +367,21 @@ export default function DirectChatScreen() {
     lastSentTextAtRef.current = now
     sendMessage.mutate({ threadId, text })
   }, [draft, sendMessage, threadId, toast])
+  const handleShareLocation = useCallback(
+    (text: string) => {
+      if (!threadId || !text.trim()) return
+      const now = Date.now()
+      if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
+        toast.error('Slow down a bit.')
+        return
+      }
+      lastSendAtRef.current = now
+      lastSentTextRef.current = ''
+      lastSentTextAtRef.current = 0
+      sendMessage.mutate({ threadId, text })
+    },
+    [sendMessage, threadId, toast]
+  )
 
   useEffect(() => {
     if (!threadId || !isAuthenticated) return
@@ -554,6 +570,7 @@ export default function DirectChatScreen() {
           onSend={handleSend}
           sendDisabled={messagingBlocked || draft.trim().length === 0}
           editable={!messagingBlocked}
+          leadingSlot={<ChatLocationAction disabled={messagingBlocked} onShareLocation={handleShareLocation} />}
           multiline={false}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}

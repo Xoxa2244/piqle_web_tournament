@@ -17,6 +17,7 @@ import { SwipeDismissNotificationRow } from '../../src/components/SwipeDismissNo
 import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFade } from '../../src/components/ui'
 import { buildWebUrl } from '../../src/lib/config'
 import { buildMentionCountMaps } from '../../src/lib/chatMentionNotifications'
+import { getChatSpecialPreviewText } from '../../src/lib/chatSpecialMessages'
 import { useChatRealtimeQueryOptions, useRealtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
@@ -462,7 +463,7 @@ export default function ChatsTab() {
                           : ''
                       const subtitle =
                         chat.lastMessage && !chat.lastMessage.isDeleted && chat.lastMessage.text
-                          ? `${lastMessagePrefix}${chat.lastMessage.text}`
+                          ? `${lastMessagePrefix}${getChatSpecialPreviewText(chat.lastMessage.text) ?? chat.lastMessage.text}`
                           : chat.lastMessage?.isDeleted
                           ? 'Message removed'
                           : chat.otherUser?.city || 'Personal chat'

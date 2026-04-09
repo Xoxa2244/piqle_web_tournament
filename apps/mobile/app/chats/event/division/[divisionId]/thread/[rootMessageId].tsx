@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../../../src/components/AuthRequiredCard'
 import { ChatComposer } from '../../../../../../src/components/ChatComposer'
+import { ChatLocationAction } from '../../../../../../src/components/ChatLocationAction'
 import { ChatMentionAnchorIndicator } from '../../../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../../../src/components/ChatMentionPicker'
 import { ChatScrollToBottomButton } from '../../../../../../src/components/ChatScrollToBottomButton'
@@ -24,6 +25,7 @@ import {
   buildDivisionMentionNotificationId,
   getDivisionMentionMessageIds,
 } from '../../../../../../src/lib/chatMentionNotifications'
+import { getChatSpecialPreviewText } from '../../../../../../src/lib/chatSpecialMessages'
 import { useMessageThreadRealtimeQueryOptions, useRealtimeAwareQueryOptions } from '../../../../../../src/lib/realtimePoll'
 import { trpc } from '../../../../../../src/lib/trpc'
 import { spacing, type ThemePalette } from '../../../../../../src/lib/theme'
@@ -281,6 +283,15 @@ export default function DivisionThreadScreen() {
     lastSendAtRef.current = now
     sendMessage.mutate({ divisionId, text, replyToMessageId: targetId })
   }, [divisionId, draft, mentionCandidates, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage, toast])
+  const handleShareLocation = useCallback(
+    (text: string) => {
+      if (!divisionId || !text.trim()) return
+      const targetId = replyTarget?.id ?? rootMessage?.id ?? rootMessageId
+      if (!targetId) return
+      sendMessage.mutate({ divisionId, text, replyToMessageId: targetId })
+    },
+    [divisionId, replyTarget?.id, rootMessage?.id, rootMessageId, sendMessage]
+  )
 
   const deleteMessage = trpc.tournamentChat.deleteDivision.useMutation({
     onMutate: ({ messageId }: { messageId: string }) => {
@@ -486,6 +497,7 @@ export default function DivisionThreadScreen() {
           placeholder="Reply..."
           onSend={handleSend}
           sendDisabled={draft.trim().length === 0}
+          leadingSlot={<ChatLocationAction onShareLocation={handleShareLocation} />}
           paddingHorizontal={16}
           paddingBottom={16 + (keyboardVisible ? 0 : COMPOSER_IDLE_BOTTOM_EXTRA)}
           multiline={false}
@@ -511,7 +523,10 @@ export default function DivisionThreadScreen() {
                         Replying to {replyTarget.user?.name || 'User'}
                       </Text>
                       <Text style={styles.replyComposerText} numberOfLines={1}>
-                        {replyTarget.isDeleted ? 'Message removed' : formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
+                        {replyTarget.isDeleted
+                          ? 'Message removed'
+                          : getChatSpecialPreviewText(replyTarget.text) ??
+                            formatMentionsForPreview(replyTarget.text || '', mentionCandidates)}
                       </Text>
                     </View>
                     <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}>

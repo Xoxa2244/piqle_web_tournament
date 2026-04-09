@@ -29,6 +29,7 @@ export type ChatComposerProps = {
   onBlur?: TextInputProps['onBlur']
   topSlot?: ReactNode
   bottomSlot?: ReactNode
+  leadingSlot?: ReactNode
 }
 
 export const ChatComposer = ({
@@ -50,6 +51,7 @@ export const ChatComposer = ({
   onBlur,
   topSlot,
   bottomSlot,
+  leadingSlot,
 }: ChatComposerProps) => {
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -84,6 +86,7 @@ export const ChatComposer = ({
     <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal }]}>
       {topSlot ? <View style={styles.topSlot}>{topSlot}</View> : null}
       <View style={styles.row}>
+        {leadingSlot ? <View style={styles.leadingSlot}>{leadingSlot}</View> : null}
         <TextInput
           value={value}
           onChangeText={(nextValue) => onChangeText(nextValue.slice(0, maxLength))}
@@ -139,6 +142,9 @@ const createStyles = (colors: ThemePalette) =>
   },
   topSlot: {
     marginBottom: 10,
+  },
+  leadingSlot: {
+    flexShrink: 0,
   },
   bottomSlot: {
     marginTop: 10,
