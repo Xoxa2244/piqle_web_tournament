@@ -37,6 +37,7 @@ import {
   parseLocationMessageText,
 } from '../lib/chatSpecialMessages'
 import { formatDate } from '../lib/formatters'
+import { getCachedImageUri, warmImageCache } from '../lib/imageCache'
 import { radius, spacing, type AppTheme, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { useToast } from '../providers/ToastProvider'
@@ -201,6 +202,7 @@ export function ChatThreadMessageList({
   const [previewImage, setPreviewImage] = useState<ReturnType<typeof parseImageMessageText> | null>(null)
   const [previewFile, setPreviewFile] = useState<ReturnType<typeof parseFileMessageText> | null>(null)
   const [savingPreviewImage, setSavingPreviewImage] = useState(false)
+  const [cachedPreviewImageUri, setCachedPreviewImageUri] = useState<string | null>(null)
   const previewImageTranslateY = useRef(new Animated.Value(0)).current
   const lastPreviewImageCloseAtRef = useRef(0)
 
@@ -240,9 +242,14 @@ export function ChatThreadMessageList({
   useEffect(() => {
     if (!previewImage) {
       previewImageTranslateY.setValue(0)
+      setCachedPreviewImageUri(null)
       return
     }
     previewImageTranslateY.setValue(0)
+    void warmImageCache([previewImage.url])
+    void getCachedImageUri(previewImage.url).then((cachedUri) => {
+      setCachedPreviewImageUri(cachedUri)
+    })
   }, [previewImage, previewImageTranslateY])
 
   const previewImagePanResponder = useMemo(
@@ -1089,7 +1096,11 @@ export function ChatThreadMessageList({
                 showsVerticalScrollIndicator={false}
               >
                 <View style={styles.fullscreenImageTouchLayer}>
-                  <Image source={{ uri: previewImage.url }} style={styles.fullscreenImage} resizeMode="contain" />
+                  <Image
+                    source={{ uri: cachedPreviewImageUri || previewImage.url, cache: 'force-cache' }}
+                    style={styles.fullscreenImage}
+                    resizeMode="contain"
+                  />
                 </View>
               </ScrollView>
             ) : null}

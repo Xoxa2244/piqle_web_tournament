@@ -15,7 +15,7 @@ export default function ClubChatMediaScreen() {
   const queryOptions = useMessageThreadRealtimeQueryOptions()
 
   const messagesQuery = trpc.clubChat.list.useQuery(
-    { clubId, limit: 300 },
+    { clubId, limit: 200 },
     { enabled: Boolean(clubId) && isAuthenticated, ...queryOptions }
   )
 

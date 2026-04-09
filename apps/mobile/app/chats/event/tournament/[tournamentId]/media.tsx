@@ -16,11 +16,11 @@ export default function TournamentChatMediaScreen() {
   const queryOptions = useMessageThreadRealtimeQueryOptions()
 
   const tournamentMessagesQuery = trpc.tournamentChat.listTournament.useQuery(
-    { tournamentId, limit: 300 },
+    { tournamentId, limit: 200 },
     { enabled: Boolean(tournamentId) && isAuthenticated && !divisionId, ...queryOptions }
   )
   const divisionMessagesQuery = trpc.tournamentChat.listDivision.useQuery(
-    { divisionId: divisionId || '', limit: 300 },
+    { divisionId: divisionId || '', limit: 200 },
     { enabled: Boolean(divisionId) && isAuthenticated, ...queryOptions }
   )
 

@@ -20,6 +20,7 @@ import {
 import type { ChatMessage } from '../lib/chatMessages'
 import { formatChatTime } from '../lib/chatMessages'
 import { formatDate } from '../lib/formatters'
+import { getCachedImageUri, warmImageCache } from '../lib/imageCache'
 import { formatFileSize, parseFileMessageText, parseImageMessageText } from '../lib/chatSpecialMessages'
 import { spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
@@ -47,11 +48,13 @@ export function ChatAttachmentGalleryScreen({
   const [activeTab, setActiveTab] = useState<GalleryTab>('media')
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [savingPreviewImage, setSavingPreviewImage] = useState(false)
-  const [viewerPagerScrollEnabled, setViewerPagerScrollEnabled] = useState(true)
+  const [cachedPreviewUris, setCachedPreviewUris] = useState<Record<string, string>>({})
   const lastViewerCloseAtRef = useRef(0)
   const viewerTranslateY = useRef(new Animated.Value(0)).current
   const viewerPagerRef = useRef<ScrollView | null>(null)
   const screenWidth = Dimensions.get('window').width
+  const currentZoomScaleRef = useRef(1)
+  const [viewerSession, setViewerSession] = useState(0)
 
   const imageItems = useMemo(
     () =>
@@ -90,6 +93,7 @@ export function ChatAttachmentGalleryScreen({
 
   useEffect(() => {
     viewerTranslateY.setValue(0)
+    currentZoomScaleRef.current = 1
     if (previewIndex === null) return
     requestAnimationFrame(() => {
       viewerPagerRef.current?.scrollTo({
@@ -99,6 +103,22 @@ export function ChatAttachmentGalleryScreen({
       })
     })
   }, [previewIndex, screenWidth, viewerTranslateY])
+
+  useEffect(() => {
+    if (previewIndex === null) return
+    const urls = [
+      imageItems[previewIndex - 1]?.url,
+      imageItems[previewIndex]?.url,
+      imageItems[previewIndex + 1]?.url,
+    ].filter(Boolean) as string[]
+    void warmImageCache(urls)
+    urls.forEach((url) => {
+      void Image.prefetch(url)
+      void getCachedImageUri(url).then((cachedUri) => {
+        setCachedPreviewUris((current) => (current[url] === cachedUri ? current : { ...current, [url]: cachedUri }))
+      })
+    })
+  }, [imageItems, previewIndex])
 
   const handleSavePreviewImage = useCallback(async () => {
     const next = previewImage
@@ -126,6 +146,7 @@ export function ChatAttachmentGalleryScreen({
     if (!animated) {
       viewerTranslateY.setValue(0)
       setPreviewIndex(null)
+      setViewerSession((current) => current + 1)
       return
     }
     Animated.timing(viewerTranslateY, {
@@ -135,25 +156,22 @@ export function ChatAttachmentGalleryScreen({
     }).start(() => {
       viewerTranslateY.setValue(0)
       setPreviewIndex(null)
+      setViewerSession((current) => current + 1)
     })
   }, [viewerTranslateY])
 
   const viewerPanResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 12,
         onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 12,
+          currentZoomScaleRef.current <= 1.01 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) &&
+          Math.abs(gestureState.dy) > 12,
         onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: () => {
-          setViewerPagerScrollEnabled(false)
-        },
         onPanResponderMove: (_, gestureState) => {
           viewerTranslateY.setValue(gestureState.dy)
         },
         onPanResponderRelease: (_, gestureState) => {
-          setViewerPagerScrollEnabled(true)
           if (Math.abs(gestureState.dy) > 120) {
             closeViewer(gestureState.dy < 0 ? -1 : 1)
             return
@@ -161,15 +179,14 @@ export function ChatAttachmentGalleryScreen({
           Animated.spring(viewerTranslateY, {
             toValue: 0,
             useNativeDriver: true,
-            bounciness: 6,
+            bounciness: 4,
           }).start()
         },
         onPanResponderTerminate: () => {
-          setViewerPagerScrollEnabled(true)
           Animated.spring(viewerTranslateY, {
             toValue: 0,
             useNativeDriver: true,
-            bounciness: 6,
+            bounciness: 4,
           }).start()
         },
       }),
@@ -379,7 +396,7 @@ export function ChatAttachmentGalleryScreen({
             <Pressable
               key={item.id}
               onPress={() => {
-                void Linking.openURL(item.url)
+                handleOpenExternalLink(item.url)
               }}
               style={({ pressed }) => [styles.fileCard, pressed && styles.fileCardPressed]}
             >
@@ -430,35 +447,51 @@ export function ChatAttachmentGalleryScreen({
 
             <View style={styles.viewerImageFrame}>
               {previewImage ? (
-                <View style={styles.viewerImageGestureLayer}>
+                <Animated.View style={[styles.viewerImageAnimatedWrap, { transform: [{ translateY: viewerTranslateY }] }]} {...viewerPanResponder.panHandlers}>
                   <ScrollView
                     ref={viewerPagerRef}
                     horizontal
                     pagingEnabled
                     bounces={false}
-                    disableScrollViewPanResponder
-                    scrollEnabled={viewerPagerScrollEnabled}
                     showsHorizontalScrollIndicator={false}
-                    style={styles.viewerPager}
                     onMomentumScrollEnd={(event) => {
                       const nextIndex = Math.round(event.nativeEvent.contentOffset.x / screenWidth)
                       if (nextIndex !== previewIndex && nextIndex >= 0 && nextIndex < imageItems.length) {
+                        currentZoomScaleRef.current = 1
                         setPreviewIndex(nextIndex)
                       }
                     }}
                   >
                     {imageItems.map((item) => (
-                      <View key={item.id} style={[styles.viewerPage, { width: screenWidth }]}>
-                        <Animated.View
-                          style={[styles.viewerPageImageWrap, previewIndex === imageItems.findIndex((candidate) => candidate.id === item.id) ? { transform: [{ translateY: viewerTranslateY }] } : null]}
-                          {...viewerPanResponder.panHandlers}
+                      <View key={`${item.id}-${viewerSession}`} style={[styles.viewerPage, { width: screenWidth }]}>
+                        <ScrollView
+                          style={styles.viewerZoomScroll}
+                          contentContainerStyle={styles.viewerZoomContent}
+                          maximumZoomScale={4}
+                          minimumZoomScale={1}
+                          pinchGestureEnabled
+                          bouncesZoom
+                          centerContent
+                          showsHorizontalScrollIndicator={false}
+                          showsVerticalScrollIndicator={false}
+                          onScroll={(event) => {
+                            const nextScale = Number(event.nativeEvent.zoomScale ?? 1)
+                            if (Number.isFinite(nextScale)) currentZoomScaleRef.current = nextScale
+                          }}
+                          scrollEventThrottle={16}
                         >
-                          <Image source={{ uri: item.url }} style={styles.viewerImage} resizeMode="contain" />
-                        </Animated.View>
+                          <View style={styles.viewerPageImageWrap}>
+                            <Image
+                              source={{ uri: cachedPreviewUris[item.url] || item.url, cache: 'force-cache' }}
+                              style={styles.viewerImage}
+                              resizeMode="contain"
+                            />
+                          </View>
+                        </ScrollView>
                       </View>
                     ))}
                   </ScrollView>
-                </View>
+                </Animated.View>
               ) : null}
             </View>
           </View>
@@ -648,9 +681,6 @@ const createStyles = (colors: ThemePalette) =>
       minHeight: 520,
       flex: 1,
     },
-    viewerPager: {
-      flex: 1,
-    },
     viewerImage: {
       width: '100%',
       height: '100%',
@@ -659,6 +689,18 @@ const createStyles = (colors: ThemePalette) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    viewerZoomScroll: {
+      width: '100%',
+      height: '100%',
+    },
+    viewerZoomContent: {
+      flexGrow: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewerImageAnimatedWrap: {
+      flex: 1,
     },
     viewerPageImageWrap: {
       width: '100%',
