@@ -1,8 +1,9 @@
 'use client'
 import { useState, useRef } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
+import { trpc } from "@/lib/trpc";
 import {
-  Users, Search, Heart, Clock,
+  Users, Search, Heart, Clock, Check, Loader2,
   CalendarDays, DollarSign, Mail,
   Smartphone, ArrowUpRight, ArrowDownRight, UserPlus,
   Target, LayoutGrid, List,
@@ -599,6 +600,17 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
         </div>
       </div>
 
+      {/* Save filtered members as Cohort */}
+      {(filterRisk !== 'all' || filterTrend !== 'all' || filterValue !== 'all' || filterActivity !== 'all' || filterMembership !== 'all') && filtered.length > 0 && (
+        <SaveAsCohortButton clubId={clubId!} memberIds={filtered.map(m => m.id).filter(Boolean) as string[]} filterDescription={[
+          filterRisk !== 'all' ? `Risk: ${filterRisk}` : '',
+          filterTrend !== 'all' ? `Trend: ${filterTrend}` : '',
+          filterValue !== 'all' ? `Value: ${filterValue}` : '',
+          filterActivity !== 'all' ? `Activity: ${filterActivity}` : '',
+          filterMembership !== 'all' ? `Membership: ${filterMembership}` : '',
+        ].filter(Boolean).join(', ')} count={filtered.length} />
+      )}
+
       {/* Member Grid */}
       {viewMode === "grid" ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -838,4 +850,42 @@ export function MembersIQ({ memberHealthData, memberGrowthData, isLoading: exter
       </>)}
     </motion.div>
   );
+}
+
+// ── Save filtered members as Cohort ──
+function SaveAsCohortButton({ clubId, memberIds, filterDescription, count }: {
+  clubId: string; memberIds: string[]; filterDescription: string; count: number
+}) {
+  const [saved, setSaved] = useState(false)
+  const createMutation = trpc.intelligence.createCohort.useMutation({
+    onSuccess: () => setSaved(true),
+  })
+
+  if (saved) {
+    return (
+      <div className="flex items-center gap-2 text-xs px-4 py-2 rounded-xl" style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981' }}>
+        <Check className="w-3.5 h-3.5" /> Cohort saved!
+      </div>
+    )
+  }
+
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: -5 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ scale: 1.02 }}
+      onClick={() => createMutation.mutate({
+        clubId,
+        name: `Members: ${filterDescription}`,
+        description: `Auto-created from Members filter: ${filterDescription}`,
+        filters: [{ field: 'userId', op: 'in' as const, value: memberIds }],
+      })}
+      disabled={createMutation.isPending}
+      className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
+      style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600, border: 'none', cursor: 'pointer' }}
+    >
+      {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
+      Save as Cohort ({count} members)
+    </motion.button>
+  )
 }
