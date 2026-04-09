@@ -1,9 +1,23 @@
 import * as Clipboard from 'expo-clipboard'
+import * as FileSystem from 'expo-file-system/legacy'
 import * as Haptics from 'expo-haptics'
+import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  Animated,
+  Image,
+  Linking,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import {
@@ -186,6 +200,85 @@ export function ChatThreadMessageList({
   const [previewLocation, setPreviewLocation] = useState<ReturnType<typeof parseLocationMessageText> | null>(null)
   const [previewImage, setPreviewImage] = useState<ReturnType<typeof parseImageMessageText> | null>(null)
   const [previewFile, setPreviewFile] = useState<ReturnType<typeof parseFileMessageText> | null>(null)
+  const [savingPreviewImage, setSavingPreviewImage] = useState(false)
+  const previewImageTranslateY = useRef(new Animated.Value(0)).current
+  const lastPreviewImageCloseAtRef = useRef(0)
+
+  const closePreviewImage = useCallback((direction: -1 | 1 = 1, animated = true) => {
+    lastPreviewImageCloseAtRef.current = Date.now()
+    if (animated) {
+      previewImageTranslateY.setValue(220 * direction)
+    }
+    setPreviewImage(null)
+    requestAnimationFrame(() => {
+      previewImageTranslateY.setValue(0)
+    })
+  }, [previewImageTranslateY])
+
+  const savePreviewImage = useCallback(async () => {
+    const next = previewImage
+    if (!next?.url || savingPreviewImage) return
+    try {
+      setSavingPreviewImage(true)
+      const permission = await MediaLibrary.requestPermissionsAsync()
+      if (permission.status !== 'granted') {
+        toast.error('Please allow photo access to save images.')
+        return
+      }
+      const extensionGuess = next.mimeType?.includes('png') ? 'png' : 'jpg'
+      const targetUri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory}piqle-save-${Date.now()}.${extensionGuess}`
+      const download = await FileSystem.downloadAsync(next.url, targetUri)
+      await MediaLibrary.saveToLibraryAsync(download.uri)
+      toast.success('Saved to your photos', 'Saved')
+    } catch {
+      toast.error('Could not save photo.')
+    } finally {
+      setSavingPreviewImage(false)
+    }
+  }, [previewImage, savingPreviewImage, toast])
+
+  useEffect(() => {
+    if (!previewImage) {
+      previewImageTranslateY.setValue(0)
+      return
+    }
+    previewImageTranslateY.setValue(0)
+  }, [previewImage, previewImageTranslateY])
+
+  const previewImagePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 8,
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 8,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderMove: (_, gestureState) => {
+          previewImageTranslateY.setValue(gestureState.dy)
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (Math.abs(gestureState.dy) > 120 || Math.abs(gestureState.vy) > 1.1) {
+            closePreviewImage(gestureState.dy < 0 ? -1 : 1)
+            return
+          }
+          Animated.parallel([
+            Animated.spring(previewImageTranslateY, {
+              toValue: 0,
+              useNativeDriver: true,
+              bounciness: 6,
+            }),
+          ]).start()
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(previewImageTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start()
+        },
+      }),
+    [closePreviewImage, previewImageTranslateY]
+  )
 
   const messageById = useMemo(() => {
     const map = new Map<string, ChatMessage>()
@@ -304,6 +397,13 @@ export function ChatThreadMessageList({
 
   const renderMessageText = useCallback(
     (rawText: string, isMine: boolean) => {
+      if (rawText === 'Message removed') {
+        return (
+          <Text style={[styles.body, isMine && styles.bodyMine]} numberOfLines={1}>
+            Message removed
+          </Text>
+        )
+      }
       const locationPayload = parseLocationMessageText(rawText)
       if (locationPayload) {
         return (
@@ -336,23 +436,27 @@ export function ChatThreadMessageList({
       }
       const imagePayload = parseImageMessageText(rawText)
       if (imagePayload) {
+        const aspectRatio =
+          imagePayload.width && imagePayload.height && imagePayload.height > 0
+            ? imagePayload.width / imagePayload.height
+            : 1
         return (
           <Pressable
-            onPress={() => setPreviewImage(imagePayload)}
-            style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
+            onPress={() => {
+              if (Date.now() - lastPreviewImageCloseAtRef.current < 280) return
+              setPreviewImage(imagePayload)
+            }}
+            style={({ pressed }) => [styles.imageMessageCard, pressed && styles.locationCardPressed]}
           >
-            <Image source={{ uri: imagePayload.url }} style={styles.attachmentImagePreview} resizeMode="cover" />
-            <View style={styles.locationBody}>
-              <View style={styles.locationTitleRow}>
-                <Feather name="image" size={14} color={colors.primary} />
-                <Text style={[styles.locationTitle, isMine && styles.bodyMine]} numberOfLines={1}>
-                  {imagePayload.fileName || 'Photo'}
-                </Text>
-              </View>
-              <Text style={styles.locationAddress} numberOfLines={1}>
-                {formatFileSize(imagePayload.size) || 'Tap to view'}
-              </Text>
-            </View>
+            <Image
+              source={{ uri: imagePayload.url }}
+              style={[
+                styles.attachmentImagePreview,
+                { aspectRatio },
+                aspectRatio < 0.82 ? styles.attachmentImagePortrait : null,
+              ]}
+              resizeMode="contain"
+            />
           </Pressable>
         )
       }
@@ -757,6 +861,10 @@ export function ChatThreadMessageList({
   const renderSelectedMessagePreview = useCallback(
     (message: ChatMessage) => {
       const isMine = Boolean(currentUserId && message.userId === currentUserId)
+      const specialPreview = message.isDeleted
+        ? 'Message removed'
+        : getChatSpecialPreviewText(message.text) ??
+          (message.text ?? '').trim()
       return (
         <View style={[styles.previewBubble, isMine ? styles.bubbleMine : styles.bubbleOther]}>
           {!isMine ? (
@@ -765,11 +873,13 @@ export function ChatThreadMessageList({
             </Text>
           ) : null}
           {renderReplyContext(message, isMine)}
-          {renderMessageText(message.isDeleted ? 'Message removed' : message.text || '', isMine)}
+          <Text style={[styles.body, isMine && styles.bodyMine]} numberOfLines={2}>
+            {specialPreview}
+          </Text>
         </View>
       )
     },
-    [currentUserId, renderMessageText, renderReplyContext, styles]
+    [currentUserId, renderReplyContext, styles]
   )
 
   const rendered: any[] = []
@@ -939,34 +1049,53 @@ export function ChatThreadMessageList({
         ) : null}
       </AppBottomSheet>
 
-      <AppBottomSheet
-        open={Boolean(previewImage)}
-        onClose={() => setPreviewImage(null)}
-        title={previewImage?.fileName || 'Photo'}
-        subtitle={previewImage ? formatFileSize(previewImage.size) || 'Shared photo' : undefined}
-        bottomPaddingExtra={8}
-        footer={
-          previewImage ? (
-            <AppConfirmActions
-              intent="positive"
-              cancelLabel="Close"
-              confirmLabel="Open"
-              onCancel={() => setPreviewImage(null)}
-              onConfirm={() => {
-                const next = previewImage
-                if (!next) return
-                void Linking.openURL(next.url).finally(() => setPreviewImage(null))
-              }}
-            />
-          ) : null
-        }
-      >
-        {previewImage ? (
-          <View style={styles.imageSheetWrap}>
-            <Image source={{ uri: previewImage.url }} style={styles.imageSheetImage} resizeMode="contain" />
-          </View>
-        ) : null}
-      </AppBottomSheet>
+      <Modal visible={Boolean(previewImage)} transparent animationType="fade" onRequestClose={closePreviewImage}>
+        <View style={styles.fullscreenImageBackdrop}>
+          <Pressable
+            onPress={() => closePreviewImage(1, false)}
+            style={({ pressed }) => [styles.fullscreenImageCloseButton, pressed && styles.fullscreenImageSaveButtonPressed]}
+          >
+            <Feather name="x" size={20} color="#fff" />
+          </Pressable>
+          <Pressable
+            onPress={() => void savePreviewImage()}
+            style={({ pressed }) => [
+              styles.fullscreenImageSaveButton,
+              pressed && styles.fullscreenImageSaveButtonPressed,
+            ]}
+          >
+            {savingPreviewImage ? (
+              <Animated.View>
+                <Feather name="loader" size={18} color="#fff" />
+              </Animated.View>
+            ) : (
+              <Feather name="download" size={18} color="#fff" />
+            )}
+          </Pressable>
+          <Animated.View
+            style={[styles.fullscreenImageWrap, { transform: [{ translateY: previewImageTranslateY }] }]}
+            {...previewImagePanResponder.panHandlers}
+          >
+            {previewImage ? (
+              <ScrollView
+                style={styles.fullscreenImageScroll}
+                contentContainerStyle={styles.fullscreenImageScrollContent}
+                maximumZoomScale={4}
+                minimumZoomScale={1}
+                pinchGestureEnabled
+                bouncesZoom
+                centerContent
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.fullscreenImageTouchLayer}>
+                  <Image source={{ uri: previewImage.url }} style={styles.fullscreenImage} resizeMode="contain" />
+                </View>
+              </ScrollView>
+            ) : null}
+          </Animated.View>
+        </View>
+      </Modal>
 
       <AppBottomSheet
         open={Boolean(previewFile)}
@@ -1213,10 +1342,24 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       paddingVertical: 10,
       gap: 4,
     },
+    imageMessageCard: {
+      marginTop: 2,
+      borderRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceMuted,
+      maxWidth: 240,
+      alignSelf: 'flex-start',
+    },
     attachmentImagePreview: {
       width: '100%',
-      height: 168,
+      minWidth: 158,
+      maxWidth: 240,
+      maxHeight: 300,
       backgroundColor: colors.surfaceMuted,
+    },
+    attachmentImagePortrait: {
+      minWidth: 170,
+      maxHeight: 320,
     },
     locationTitleRow: {
       flexDirection: 'row',
@@ -1280,14 +1423,62 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       backgroundColor: colors.surfaceMuted,
       marginBottom: spacing.sm,
     },
-    imageSheetWrap: {
-      height: 420,
-      borderRadius: 18,
-      overflow: 'hidden',
-      backgroundColor: colors.surfaceMuted,
-      marginBottom: spacing.sm,
+    fullscreenImageBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.96)',
     },
-    imageSheetImage: {
+    fullscreenImageWrap: {
+      flex: 1,
+    },
+    fullscreenImageSaveButton: {
+      position: 'absolute',
+      top: 56,
+      right: 18,
+      zIndex: 5,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.14)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.18)',
+    },
+    fullscreenImageCloseButton: {
+      position: 'absolute',
+      top: 56,
+      left: 18,
+      zIndex: 5,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.14)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.18)',
+    },
+    fullscreenImageSaveButtonPressed: {
+      opacity: 0.82,
+    },
+    fullscreenImageScroll: {
+      flex: 1,
+    },
+    fullscreenImageScrollContent: {
+      flexGrow: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 24,
+    },
+    fullscreenImageTouchLayer: {
+      width: '100%',
+      minHeight: 520,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 1,
+    },
+    fullscreenImage: {
       width: '100%',
       height: '100%',
     },

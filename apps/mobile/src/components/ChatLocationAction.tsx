@@ -1,8 +1,9 @@
 import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location'
 import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { authApi } from '../lib/authApi'
@@ -34,6 +35,48 @@ type PhotoGridItem =
   | { type: 'camera'; id: 'camera' }
   | ({ type: 'photo' } & RecentPhotoAsset)
 
+const PHOTO_GRID_GAP = 8
+const PHOTO_GRID_COLUMNS = 3
+const PHOTO_TILE_WIDTH = '31%'
+
+const AttachmentPhotoTile = memo(function AttachmentPhotoTile({
+  item,
+  colors,
+  styles,
+  uploadingKey,
+  onOpenCamera,
+  onOpenPhoto,
+}: {
+  item: PhotoGridItem
+  colors: ThemePalette
+  styles: ReturnType<typeof createStyles>
+  uploadingKey: string | null
+  onOpenCamera: () => void
+  onOpenPhoto: (item: RecentPhotoAsset) => void
+}) {
+  if (item.type === 'camera') {
+    return (
+      <Pressable onPress={onOpenCamera} style={({ pressed }) => [styles.cameraTile, pressed && styles.photoTilePressed]}>
+        <View style={styles.cameraTileIconWrap}>
+          <Feather name="camera" size={22} color={colors.primary} />
+        </View>
+        <Text style={styles.cameraTileText}>Camera</Text>
+      </Pressable>
+    )
+  }
+
+  return (
+    <Pressable onPress={() => onOpenPhoto(item)} style={({ pressed }) => [styles.photoTile, pressed && styles.photoTilePressed]}>
+      <Image source={{ uri: item.uri }} style={styles.photoImage} resizeMode="cover" />
+      {uploadingKey === item.sourceUri ? (
+        <View style={styles.photoUploadingOverlay}>
+          <ActivityIndicator color={colors.white} />
+        </View>
+      ) : null}
+    </Pressable>
+  )
+})
+
 export function ChatLocationAction({
   disabled,
   onSendText,
@@ -47,18 +90,36 @@ export function ChatLocationAction({
   const toast = useToast()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [locationPickerOpen, setLocationPickerOpen] = useState(false)
+  const [pendingLocationPickerOpen, setPendingLocationPickerOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<AttachmentTab>('photos')
   const [loadingPhotos, setLoadingPhotos] = useState(false)
   const [photoPermissionDenied, setPhotoPermissionDenied] = useState(false)
   const [recentPhotos, setRecentPhotos] = useState<RecentPhotoAsset[]>([])
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
+  const [sendingPendingPhoto, setSendingPendingPhoto] = useState(false)
+  const [pendingPhoto, setPendingPhoto] = useState<{
+    uri: string
+    fileName?: string | null
+    mimeType?: string | null
+    width?: number
+    height?: number
+  } | null>(null)
   const [photoCursor, setPhotoCursor] = useState<string | null>(null)
   const [hasMorePhotos, setHasMorePhotos] = useState(true)
   const [loadingMorePhotos, setLoadingMorePhotos] = useState(false)
+  const [locationMapOrigin, setLocationMapOrigin] = useState<{ latitude: number; longitude: number }>({
+    latitude: 40.7128,
+    longitude: -74.006,
+  })
   const [locationPreviewCenter, setLocationPreviewCenter] = useState<{ latitude: number; longitude: number }>({
     latitude: 40.7128,
     longitude: -74.006,
   })
+  const [locationPreviewTitle, setLocationPreviewTitle] = useState('Pinned location')
+  const [locationPreviewAddress, setLocationPreviewAddress] = useState<string | null>(null)
+  const [resolvingLocationPreview, setResolvingLocationPreview] = useState(false)
+  const [locationReady, setLocationReady] = useState(false)
+  const locationSeededRef = useRef(false)
 
   const loadRecentPhotos = useCallback(async (after?: string | null, append = false) => {
     try {
@@ -132,15 +193,73 @@ export function ChatLocationAction({
 
   useEffect(() => {
     if (!sheetOpen || activeTab !== 'location') return
+    setLocationReady(false)
+    locationSeededRef.current = false
     void (async () => {
       try {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
-        void permission
+        const permission = await Location.requestForegroundPermissionsAsync()
+        if (permission.status === Location.PermissionStatus.GRANTED) {
+          const current = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          })
+          const next = {
+            latitude: current.coords.latitude,
+            longitude: current.coords.longitude,
+          }
+          if (!locationSeededRef.current) {
+            setLocationMapOrigin(next)
+            setLocationPreviewCenter(next)
+            locationSeededRef.current = true
+          }
+        }
       } catch {
         // ignore
+      } finally {
+        setLocationReady(true)
       }
     })()
   }, [activeTab, sheetOpen])
+
+  useEffect(() => {
+    if (!sheetOpen || activeTab !== 'location') return
+    let cancelled = false
+    const timeout = setTimeout(() => {
+      setResolvingLocationPreview(true)
+      void (async () => {
+        try {
+          const result = await Location.reverseGeocodeAsync(locationPreviewCenter)
+          if (cancelled) return
+          const first = result?.[0]
+          const title =
+            [first?.name, first?.street].filter(Boolean).join(', ') ||
+            first?.district ||
+            first?.city ||
+            first?.region ||
+            'Pinned location'
+          const address =
+            [first?.street, first?.city, first?.region, first?.postalCode, first?.country]
+              .filter(Boolean)
+              .join(', ') || null
+          setLocationPreviewTitle(title)
+          setLocationPreviewAddress(address)
+        } catch {
+          if (!cancelled) {
+            setLocationPreviewTitle('Pinned location')
+            setLocationPreviewAddress(
+              `${locationPreviewCenter.latitude.toFixed(5)}, ${locationPreviewCenter.longitude.toFixed(5)}`
+            )
+          }
+        } finally {
+          if (!cancelled) setResolvingLocationPreview(false)
+        }
+      })()
+    }, 220)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [activeTab, locationPreviewCenter, sheetOpen])
 
   const uploadPhoto = useCallback(
     async (asset: { uri: string; fileName?: string | null; mimeType?: string | null; width?: number; height?: number }) => {
@@ -184,20 +303,20 @@ export function ChatLocationAction({
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.92,
+      quality: 0.8,
       allowsEditing: false,
     })
     if (picked.canceled || !picked.assets?.length) return
     const asset = picked.assets[0]
     if (!asset?.uri) return
-    await uploadPhoto({
+    setPendingPhoto({
       uri: asset.uri,
       fileName: asset.fileName,
       mimeType: asset.mimeType,
       width: asset.width,
       height: asset.height,
     })
-  }, [toast, uploadPhoto])
+  }, [toast])
 
   const handleOpenCamera = useCallback(async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync()
@@ -208,20 +327,20 @@ export function ChatLocationAction({
     const captured = await ImagePicker.launchCameraAsync({
       cameraType: ImagePicker.CameraType.back,
       mediaTypes: ['images'],
-      quality: 0.92,
+      quality: 0.78,
       allowsEditing: false,
     })
     if (captured.canceled || !captured.assets?.length) return
     const asset = captured.assets[0]
     if (!asset?.uri) return
-    await uploadPhoto({
+    setPendingPhoto({
       uri: asset.uri,
       fileName: asset.fileName,
       mimeType: asset.mimeType,
       width: asset.width,
       height: asset.height,
     })
-  }, [toast, uploadPhoto])
+  }, [toast])
 
   const handlePickFile = useCallback(async () => {
     if (!token) {
@@ -266,40 +385,25 @@ export function ChatLocationAction({
   )
 
   const renderPhotoTile = useCallback(
-    ({ item }: { item: PhotoGridItem }) => {
-      if (item.type === 'camera') {
-        return (
-          <Pressable onPress={() => void handleOpenCamera()} style={({ pressed }) => [styles.cameraTile, pressed && styles.photoTilePressed]}>
-            <View style={styles.cameraTileIconWrap}>
-              <Feather name="camera" size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.cameraTileText}>Camera</Text>
-          </Pressable>
-        )
-      }
-      return (
-      <Pressable
-        onPress={() =>
-          void uploadPhoto({
-            uri: item.sourceUri,
-            fileName: item.fileName,
+    ({ item }: { item: PhotoGridItem }) => (
+      <AttachmentPhotoTile
+        item={item}
+        colors={colors}
+        styles={styles}
+        uploadingKey={uploadingKey}
+        onOpenCamera={() => void handleOpenCamera()}
+        onOpenPhoto={(photo) =>
+          setPendingPhoto({
+            uri: photo.sourceUri,
+            fileName: photo.fileName,
             mimeType: 'image/jpeg',
-            width: item.width,
-            height: item.height,
+            width: photo.width,
+            height: photo.height,
           })
         }
-        style={({ pressed }) => [styles.photoTile, pressed && styles.photoTilePressed]}
-      >
-        <Image source={{ uri: item.uri }} style={styles.photoImage} resizeMode="cover" />
-        {uploadingKey === item.sourceUri ? (
-          <View style={styles.photoUploadingOverlay}>
-            <ActivityIndicator color={colors.white} />
-          </View>
-        ) : null}
-      </Pressable>
-      )
-    },
-    [colors.primary, colors.white, handleOpenCamera, styles, uploadingKey, uploadPhoto]
+      />
+    ),
+    [colors, handleOpenCamera, styles, uploadingKey]
   )
 
   const handleLoadMorePhotos = useCallback(() => {
@@ -342,11 +446,20 @@ export function ChatLocationAction({
 
       <AppBottomSheet
         open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => {
+          setSheetOpen(false)
+          setPendingPhoto(null)
+        }}
+        onDismissed={() => {
+          if (!pendingLocationPickerOpen) return
+          setPendingLocationPickerOpen(false)
+          setLocationPickerOpen(true)
+        }}
         bottomPaddingExtra={10}
         maxHeight="93%"
       >
-        <View style={styles.tabBar}>
+        {!pendingPhoto ? (
+          <View style={styles.tabBar}>
           <Pressable
             onPress={() => setActiveTab('photos')}
             style={({ pressed }) => [
@@ -355,7 +468,7 @@ export function ChatLocationAction({
               pressed && styles.tabChipPressed,
             ]}
           >
-            <Feather name="image" size={16} color={activeTab === 'photos' ? colors.primary : colors.textMuted} />
+            <Feather name="image" size={16} color={activeTab === 'photos' ? colors.white : colors.textMuted} />
             <Text style={[styles.tabChipText, activeTab === 'photos' && styles.tabChipTextActive]}>Photos</Text>
           </Pressable>
           <Pressable
@@ -366,7 +479,7 @@ export function ChatLocationAction({
               pressed && styles.tabChipPressed,
             ]}
           >
-            <Feather name="map-pin" size={16} color={activeTab === 'location' ? colors.primary : colors.textMuted} />
+            <Feather name="map-pin" size={16} color={activeTab === 'location' ? colors.white : colors.textMuted} />
             <Text style={[styles.tabChipText, activeTab === 'location' && styles.tabChipTextActive]}>Location</Text>
           </Pressable>
           <Pressable
@@ -377,12 +490,55 @@ export function ChatLocationAction({
               pressed && styles.tabChipPressed,
             ]}
           >
-            <Feather name="file-text" size={16} color={activeTab === 'files' ? colors.primary : colors.textMuted} />
+            <Feather name="file-text" size={16} color={activeTab === 'files' ? colors.white : colors.textMuted} />
             <Text style={[styles.tabChipText, activeTab === 'files' && styles.tabChipTextActive]}>Files</Text>
           </Pressable>
-        </View>
+          </View>
+        ) : null}
 
-        {activeTab === 'photos' ? (
+        {pendingPhoto ? (
+          <View style={styles.pendingPhotoWrap}>
+            <Image source={{ uri: pendingPhoto.uri }} style={styles.pendingPhotoImage} resizeMode="contain" />
+            <View style={styles.pendingPhotoActions}>
+              <Pressable
+                disabled={sendingPendingPhoto}
+                onPress={() => setPendingPhoto(null)}
+                style={({ pressed }) => [
+                  styles.pendingActionButton,
+                  sendingPendingPhoto && styles.pendingActionButtonDisabled,
+                  pressed && styles.pendingActionButtonPressed,
+                ]}
+              >
+                <Text style={styles.pendingActionText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                disabled={sendingPendingPhoto}
+                onPress={() => {
+                  const next = pendingPhoto
+                  setSendingPendingPhoto(true)
+                  void uploadPhoto(next).finally(() => {
+                    setSendingPendingPhoto(false)
+                    setPendingPhoto(null)
+                  })
+                }}
+                style={({ pressed }) => [
+                  styles.pendingActionButton,
+                  styles.pendingActionButtonPrimary,
+                  sendingPendingPhoto && styles.pendingActionButtonDisabled,
+                  pressed && styles.pendingActionButtonPressed,
+                ]}
+              >
+                {sendingPendingPhoto ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={[styles.pendingActionText, styles.pendingActionTextPrimary]}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {!pendingPhoto && activeTab === 'photos' ? (
           <View style={styles.sectionBody}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Recent photos</Text>
@@ -414,10 +570,21 @@ export function ChatLocationAction({
                   columnWrapperStyle={styles.photoRow}
                   contentContainerStyle={styles.photoGrid}
                   renderItem={renderPhotoTile}
+                  initialNumToRender={12}
+                  maxToRenderPerBatch={12}
+                  updateCellsBatchingPeriod={40}
+                  windowSize={7}
+                  removeClippedSubviews
                   showsVerticalScrollIndicator={false}
                   nestedScrollEnabled
                   onEndReachedThreshold={0.45}
                   onEndReached={handleLoadMorePhotos}
+                  getItemLayout={(_, index) => {
+                    const row = Math.floor(index / PHOTO_GRID_COLUMNS)
+                    const length = 110
+                    const offset = row * (length + PHOTO_GRID_GAP)
+                    return { index, length, offset }
+                  }}
                   ListFooterComponent={
                     loadingMorePhotos ? (
                       <View style={styles.photoListFooter}>
@@ -437,32 +604,65 @@ export function ChatLocationAction({
           </View>
         ) : null}
 
-        {activeTab === 'location' ? (
+        {!pendingPhoto && activeTab === 'location' ? (
           <View style={styles.sectionBody}>
             <View style={styles.locationInlineMapWrap}>
-              <LocationMapSurface
-                latitude={locationPreviewCenter.latitude}
-                longitude={locationPreviewCenter.longitude}
-                dark={false}
-                interactive
-                centerPin
-                onMessage={handleLocationPreviewMessage}
-              />
+              {locationReady ? (
+                <LocationMapSurface
+                  latitude={locationMapOrigin.latitude}
+                  longitude={locationMapOrigin.longitude}
+                  dark={false}
+                  interactive
+                  centerPin
+                  onMessage={handleLocationPreviewMessage}
+                />
+              ) : (
+                <View style={styles.locationLoadingBlock}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              )}
             </View>
-            <Pressable
-              onPress={() => {
-                setSheetOpen(false)
-                setLocationPickerOpen(true)
-              }}
-              style={({ pressed }) => [styles.primaryCard, pressed && styles.primaryCardPressed]}
-            >
-              <Feather name="map-pin" size={18} color={colors.primary} />
-              <Text style={styles.primaryCardText}>Open full map picker</Text>
-            </Pressable>
+            <View style={styles.locationInlineMeta}>
+              <View style={styles.locationInlineMetaBody}>
+                <View style={styles.locationInlineTitleSlot}>
+                  <Text style={styles.locationInlineTitle} numberOfLines={1}>
+                    {locationPreviewTitle}
+                  </Text>
+                </View>
+                <View style={styles.locationInlineAddressSlot}>
+                  <Text style={styles.locationInlineAddress} numberOfLines={2}>
+                    {locationPreviewAddress ||
+                      `${locationPreviewCenter.latitude.toFixed(5)}, ${locationPreviewCenter.longitude.toFixed(5)}`}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.locationMetaSpinnerSlot}>
+                {resolvingLocationPreview ? <ActivityIndicator size="small" color={colors.textMuted} /> : null}
+              </View>
+            </View>
+            <View style={styles.locationActionsRow}>
+              <Pressable
+                onPress={() => {
+                  onSendText(
+                    buildLocationMessageText({
+                      latitude: locationPreviewCenter.latitude,
+                      longitude: locationPreviewCenter.longitude,
+                      title: locationPreviewTitle,
+                      address: locationPreviewAddress,
+                    })
+                  )
+                  setSheetOpen(false)
+                }}
+                style={({ pressed }) => [styles.primaryCard, styles.locationActionHalf, pressed && styles.primaryCardPressed]}
+              >
+                <Feather name="send" size={18} color={colors.primary} />
+                <Text style={styles.primaryCardText}>Share</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
-        {activeTab === 'files' ? (
+        {!pendingPhoto && activeTab === 'files' ? (
           <View style={styles.sectionBody}>
             <View style={styles.infoCard}>
               <Text style={styles.infoTitle}>Send a file</Text>
@@ -494,6 +694,7 @@ export function ChatLocationAction({
           setLocationPickerOpen(false)
         }}
       />
+
     </>
   )
 }
@@ -564,20 +765,22 @@ const createStyles = (colors: ThemePalette) =>
       gap: 8,
     },
     photoTile: {
-      flex: 1,
+      width: PHOTO_TILE_WIDTH,
       aspectRatio: 1,
+      minHeight: 102,
       borderRadius: 16,
       overflow: 'hidden',
       backgroundColor: colors.surfaceMuted,
     },
     cameraTile: {
-      flex: 1,
+      width: PHOTO_TILE_WIDTH,
       aspectRatio: 1,
+      minHeight: 102,
       borderRadius: 16,
       overflow: 'hidden',
-      backgroundColor: colors.primaryGhost,
+      backgroundColor: colors.surfaceMuted,
       borderWidth: 1,
-      borderColor: colors.primaryBorder,
+      borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
@@ -588,7 +791,7 @@ const createStyles = (colors: ThemePalette) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surface,
+      backgroundColor: colors.secondary,
     },
     cameraTileText: {
       color: colors.primary,
@@ -671,6 +874,60 @@ const createStyles = (colors: ThemePalette) =>
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
+      position: 'relative',
+    },
+    locationLoadingBlock: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+    },
+    locationInlineMeta: {
+      borderRadius: radius.lg,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      minHeight: 78,
+    },
+    locationMetaSpinnerSlot: {
+      width: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    locationInlineMetaBody: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 52,
+    },
+    locationInlineTitleSlot: {
+      minHeight: 18,
+      justifyContent: 'center',
+      marginBottom: 4,
+    },
+    locationInlineAddressSlot: {
+      minHeight: 34,
+    },
+    locationInlineTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    locationInlineAddress: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    locationActionsRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    locationActionHalf: {
+      flex: 1,
     },
     tabChip: {
       flex: 1,
@@ -681,13 +938,13 @@ const createStyles = (colors: ThemePalette) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: 'transparent',
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
     },
     tabChipActive: {
-      backgroundColor: colors.primaryGhost,
-      borderColor: colors.primaryBorder,
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     tabChipPressed: {
       opacity: 0.84,
@@ -698,6 +955,48 @@ const createStyles = (colors: ThemePalette) =>
       fontWeight: '600',
     },
     tabChipTextActive: {
+      color: colors.white,
+    },
+    pendingPhotoWrap: {
+      gap: spacing.md,
+      paddingBottom: spacing.xs,
+    },
+    pendingPhotoImage: {
+      width: '100%',
+      height: 520,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceMuted,
+    },
+    pendingPhotoActions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    pendingActionButton: {
+      flex: 1,
+      minHeight: 52,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    pendingActionButtonPrimary: {
+      backgroundColor: colors.primaryGhost,
+      borderColor: colors.primaryBorder,
+    },
+    pendingActionButtonPressed: {
+      opacity: 0.86,
+    },
+    pendingActionButtonDisabled: {
+      opacity: 0.72,
+    },
+    pendingActionText: {
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    pendingActionTextPrimary: {
       color: colors.primary,
     },
   })

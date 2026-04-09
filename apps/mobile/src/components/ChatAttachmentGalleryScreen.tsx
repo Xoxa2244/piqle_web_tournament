@@ -1,16 +1,34 @@
+import * as FileSystem from 'expo-file-system/legacy'
+import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
-import { useMemo, useState } from 'react'
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Linking,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
+import { formatChatTime } from '../lib/chatMessages'
+import { formatDate } from '../lib/formatters'
 import { formatFileSize, parseFileMessageText, parseImageMessageText } from '../lib/chatSpecialMessages'
 import { spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
-import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
+import { useToast } from '../providers/ToastProvider'
 import { PageLayout } from './navigation/PageLayout'
 import { EmptyState, LoadingBlock } from './ui'
 
-type GalleryTab = 'media' | 'files'
+type GalleryTab = 'media' | 'files' | 'links'
+const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s]+)/gi
 
 export function ChatAttachmentGalleryScreen({
   title,
@@ -24,13 +42,16 @@ export function ChatAttachmentGalleryScreen({
   error?: string | null
 }) {
   const { colors } = useAppTheme()
+  const toast = useToast()
   const styles = useMemo(() => createStyles(colors), [colors])
   const [activeTab, setActiveTab] = useState<GalleryTab>('media')
-  const [previewImage, setPreviewImage] = useState<{
-    url: string
-    fileName: string
-    size: number | null
-  } | null>(null)
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const [savingPreviewImage, setSavingPreviewImage] = useState(false)
+  const [viewerPagerScrollEnabled, setViewerPagerScrollEnabled] = useState(true)
+  const lastViewerCloseAtRef = useRef(0)
+  const viewerTranslateY = useRef(new Animated.Value(0)).current
+  const viewerPagerRef = useRef<ScrollView | null>(null)
+  const screenWidth = Dimensions.get('window').width
 
   const imageItems = useMemo(
     () =>
@@ -43,11 +64,142 @@ export function ChatAttachmentGalleryScreen({
             url: image.url,
             fileName: image.fileName || 'Photo',
             size: image.size ?? null,
+            authorName: message.user?.name || 'User',
+            createdAt: message.createdAt,
           }
         })
-        .filter(Boolean) as { id: string; url: string; fileName: string; size: number | null }[],
+        .filter(Boolean) as {
+        id: string
+        url: string
+        fileName: string
+        size: number | null
+        authorName: string
+        createdAt: string
+      }[],
     [messages]
   )
+
+  const previewImage = previewIndex !== null ? imageItems[previewIndex] ?? null : null
+  const imageRows = useMemo(() => {
+    const rows: typeof imageItems[] = []
+    for (let index = 0; index < imageItems.length; index += 3) {
+      rows.push(imageItems.slice(index, index + 3))
+    }
+    return rows
+  }, [imageItems])
+
+  useEffect(() => {
+    viewerTranslateY.setValue(0)
+    if (previewIndex === null) return
+    requestAnimationFrame(() => {
+      viewerPagerRef.current?.scrollTo({
+        x: previewIndex * screenWidth,
+        y: 0,
+        animated: false,
+      })
+    })
+  }, [previewIndex, screenWidth, viewerTranslateY])
+
+  const handleSavePreviewImage = useCallback(async () => {
+    const next = previewImage
+    if (!next?.url || savingPreviewImage) return
+    try {
+      setSavingPreviewImage(true)
+      const permission = await MediaLibrary.requestPermissionsAsync()
+      if (permission.status !== 'granted') {
+        toast.error('Please allow photo access to save images.')
+        return
+      }
+      const targetUri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory}piqle-gallery-${Date.now()}.jpg`
+      const download = await FileSystem.downloadAsync(next.url, targetUri)
+      await MediaLibrary.saveToLibraryAsync(download.uri)
+      toast.success('Saved to your photos', 'Saved')
+    } catch {
+      toast.error('Could not save photo.')
+    } finally {
+      setSavingPreviewImage(false)
+    }
+  }, [previewImage, savingPreviewImage, toast])
+
+  const closeViewer = useCallback((direction: -1 | 1 = 1, animated = true) => {
+    lastViewerCloseAtRef.current = Date.now()
+    if (!animated) {
+      viewerTranslateY.setValue(0)
+      setPreviewIndex(null)
+      return
+    }
+    Animated.timing(viewerTranslateY, {
+      toValue: 220 * direction,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      viewerTranslateY.setValue(0)
+      setPreviewIndex(null)
+    })
+  }, [viewerTranslateY])
+
+  const viewerPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 12,
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 12,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          setViewerPagerScrollEnabled(false)
+        },
+        onPanResponderMove: (_, gestureState) => {
+          viewerTranslateY.setValue(gestureState.dy)
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          setViewerPagerScrollEnabled(true)
+          if (Math.abs(gestureState.dy) > 120) {
+            closeViewer(gestureState.dy < 0 ? -1 : 1)
+            return
+          }
+          Animated.spring(viewerTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start()
+        },
+        onPanResponderTerminate: () => {
+          setViewerPagerScrollEnabled(true)
+          Animated.spring(viewerTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 6,
+          }).start()
+        },
+      }),
+    [closeViewer, viewerTranslateY]
+  )
+
+  const handleOpenExternalLink = useCallback((url: string) => {
+    Alert.alert(
+      'Open external link?',
+      'This link will open outside Piqle. External websites may be unsafe. Continue only if you trust the source.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: async () => {
+            try {
+              const supported = await Linking.canOpenURL(url)
+              if (!supported) {
+                Alert.alert('Cannot open link', 'This link could not be opened on this device.')
+                return
+              }
+              await Linking.openURL(url)
+            } catch {
+              Alert.alert('Cannot open link', 'This link could not be opened on this device.')
+            }
+          },
+        },
+      ]
+    )
+  }, [])
 
   const fileItems = useMemo(
     () =>
@@ -73,6 +225,43 @@ export function ChatAttachmentGalleryScreen({
     [messages]
   )
 
+  const linkItems = useMemo(
+    () =>
+      messages.flatMap((message) => {
+        const messageText = String(message.text ?? '')
+        if (
+          parseImageMessageText(messageText) ||
+          parseFileMessageText(messageText) ||
+          messageText.startsWith('[loc]')
+        ) {
+          return []
+        }
+        const found: {
+          id: string
+          url: string
+          label: string
+          authorName: string
+          createdAt: string
+        }[] = []
+        const regex = new RegExp(LINK_PATTERN.source, 'gi')
+        let match: RegExpExecArray | null
+        let index = 0
+        while ((match = regex.exec(messageText)) !== null) {
+          const label = String(match[1] || '')
+          found.push({
+            id: `${message.id}-${index}`,
+            url: /^https?:\/\//i.test(label) ? label : `https://${label}`,
+            label,
+            authorName: message.user?.name || 'User',
+            createdAt: message.createdAt,
+          })
+          index += 1
+        }
+        return found
+      }),
+    [messages]
+  )
+
   return (
     <PageLayout
       topBarTitle={title}
@@ -89,6 +278,7 @@ export function ChatAttachmentGalleryScreen({
             pressed && styles.tabChipPressed,
           ]}
         >
+          <Feather name="image" size={15} color={activeTab === 'media' ? colors.white : colors.textMuted} />
           <Text style={[styles.tabText, activeTab === 'media' && styles.tabTextActive]}>Media</Text>
         </Pressable>
         <Pressable
@@ -99,7 +289,19 @@ export function ChatAttachmentGalleryScreen({
             pressed && styles.tabChipPressed,
           ]}
         >
+          <Feather name="file-text" size={15} color={activeTab === 'files' ? colors.white : colors.textMuted} />
           <Text style={[styles.tabText, activeTab === 'files' && styles.tabTextActive]}>Files</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab('links')}
+          style={({ pressed }) => [
+            styles.tabChip,
+            activeTab === 'links' && styles.tabChipActive,
+            pressed && styles.tabChipPressed,
+          ]}
+        >
+          <Feather name="link" size={15} color={activeTab === 'links' ? colors.white : colors.textMuted} />
+          <Text style={[styles.tabText, activeTab === 'links' && styles.tabTextActive]}>Links</Text>
         </Pressable>
       </View>
 
@@ -116,18 +318,30 @@ export function ChatAttachmentGalleryScreen({
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
-            {imageItems.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => setPreviewImage(item)}
-                style={({ pressed }) => [styles.imageTile, pressed && styles.imageTilePressed]}
-              >
-                <Image source={{ uri: item.url }} style={styles.imageTileImage} resizeMode="cover" />
-              </Pressable>
+            {imageRows.map((row, rowIndex) => (
+              <View key={`row-${rowIndex}`} style={styles.gridRow}>
+                {row.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => {
+                      if (Date.now() - lastViewerCloseAtRef.current < 900) return
+                      setPreviewIndex(imageItems.findIndex((candidate) => candidate.id === item.id))
+                    }}
+                    style={({ pressed }) => [styles.imageTile, pressed && styles.imageTilePressed]}
+                  >
+                    <Image source={{ uri: item.url }} style={styles.imageTileImage} resizeMode="cover" />
+                  </Pressable>
+                ))}
+                {row.length < 3
+                  ? Array.from({ length: 3 - row.length }).map((_, spacerIndex) => (
+                      <View key={`spacer-${rowIndex}-${spacerIndex}`} style={styles.imageTileSpacer} />
+                    ))
+                  : null}
+              </View>
             ))}
           </ScrollView>
         )
-      ) : fileItems.length === 0 ? (
+      ) : activeTab === 'files' ? fileItems.length === 0 ? (
         <View style={styles.stateWrap}>
           <EmptyState title="No files yet" body="Documents shared in this chat will appear here." />
         </View>
@@ -137,7 +351,7 @@ export function ChatAttachmentGalleryScreen({
             <Pressable
               key={item.id}
               onPress={() => {
-                void Linking.openURL(item.url)
+                handleOpenExternalLink(item.url)
               }}
               style={({ pressed }) => [styles.fileCard, pressed && styles.fileCardPressed]}
             >
@@ -155,36 +369,101 @@ export function ChatAttachmentGalleryScreen({
             </Pressable>
           ))}
         </ScrollView>
+      ) : linkItems.length === 0 ? (
+        <View style={styles.stateWrap}>
+          <EmptyState title="No links yet" body="Links shared in this chat will appear here." />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.fileList} showsVerticalScrollIndicator={false}>
+          {linkItems.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => {
+                void Linking.openURL(item.url)
+              }}
+              style={({ pressed }) => [styles.fileCard, pressed && styles.fileCardPressed]}
+            >
+              <View style={styles.fileIconWrap}>
+                <Feather name="link-2" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.fileBody}>
+                <Text style={styles.fileTitle} numberOfLines={1}>
+                  {item.label}
+                </Text>
+                <Text style={styles.fileMeta} numberOfLines={1}>
+                  {`${item.authorName} · ${formatDate(new Date(item.createdAt)) || ''} ${formatChatTime(item.createdAt)}`.trim()}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
       )}
 
-      <AppBottomSheet
-        open={Boolean(previewImage)}
-        onClose={() => setPreviewImage(null)}
-        title={previewImage?.fileName || 'Photo'}
-        subtitle={previewImage ? formatFileSize(previewImage.size) || 'Shared photo' : undefined}
-        bottomPaddingExtra={8}
-        footer={
-          previewImage ? (
-            <AppConfirmActions
-              intent="positive"
-              cancelLabel="Close"
-              confirmLabel="Open"
-              onCancel={() => setPreviewImage(null)}
-              onConfirm={() => {
-                const next = previewImage
-                if (!next) return
-                void Linking.openURL(next.url).finally(() => setPreviewImage(null))
-              }}
-            />
-          ) : null
-        }
-      >
-        {previewImage ? (
-          <View style={styles.previewWrap}>
-            <Image source={{ uri: previewImage.url }} style={styles.previewImage} resizeMode="contain" />
+      <Modal visible={previewIndex !== null} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => closeViewer()}>
+        <View style={styles.viewerBackdrop}>
+          <View style={styles.viewerFrame}>
+            <View style={styles.viewerTopBar}>
+              <Pressable
+                onPress={() => closeViewer(1, false)}
+                style={({ pressed }) => [styles.viewerTopIcon, pressed && styles.viewerTopIconPressed]}
+              >
+                <Feather name="x" size={20} color="#fff" />
+              </Pressable>
+              <View style={styles.viewerMeta}>
+                <Text style={styles.viewerAuthor} numberOfLines={1}>
+                  {previewImage?.authorName || ''}
+                </Text>
+                <Text style={styles.viewerDate} numberOfLines={1}>
+                  {previewImage ? `${formatDate(new Date(previewImage.createdAt)) || ''} ${formatChatTime(previewImage.createdAt)}`.trim() : ''}
+                </Text>
+                <Text style={styles.viewerCounter}>
+                  {previewIndex !== null ? `${previewIndex + 1} / ${imageItems.length}` : ''}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => void handleSavePreviewImage()}
+                style={({ pressed }) => [styles.viewerTopIcon, pressed && styles.viewerTopIconPressed]}
+              >
+                <Feather name={savingPreviewImage ? 'loader' : 'download'} size={20} color="#fff" />
+              </Pressable>
+            </View>
+
+            <View style={styles.viewerImageFrame}>
+              {previewImage ? (
+                <View style={styles.viewerImageGestureLayer}>
+                  <ScrollView
+                    ref={viewerPagerRef}
+                    horizontal
+                    pagingEnabled
+                    bounces={false}
+                    disableScrollViewPanResponder
+                    scrollEnabled={viewerPagerScrollEnabled}
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.viewerPager}
+                    onMomentumScrollEnd={(event) => {
+                      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / screenWidth)
+                      if (nextIndex !== previewIndex && nextIndex >= 0 && nextIndex < imageItems.length) {
+                        setPreviewIndex(nextIndex)
+                      }
+                    }}
+                  >
+                    {imageItems.map((item) => (
+                      <View key={item.id} style={[styles.viewerPage, { width: screenWidth }]}>
+                        <Animated.View
+                          style={[styles.viewerPageImageWrap, previewIndex === imageItems.findIndex((candidate) => candidate.id === item.id) ? { transform: [{ translateY: viewerTranslateY }] } : null]}
+                          {...viewerPanResponder.panHandlers}
+                        >
+                          <Image source={{ uri: item.url }} style={styles.viewerImage} resizeMode="contain" />
+                        </Animated.View>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+            </View>
           </View>
-        ) : null}
-      </AppBottomSheet>
+        </View>
+      </Modal>
     </PageLayout>
   )
 }
@@ -204,28 +483,32 @@ const createStyles = (colors: ThemePalette) =>
     },
     tabChip: {
       flex: 1,
-      minHeight: 40,
+      minHeight: 42,
       borderRadius: 999,
+      paddingHorizontal: 10,
+      gap: 6,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: 'transparent',
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
     },
     tabChipActive: {
-      backgroundColor: colors.primaryGhost,
-      borderColor: colors.primaryBorder,
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     tabChipPressed: {
       opacity: 0.84,
     },
     tabText: {
       color: colors.textMuted,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
+      lineHeight: 16,
     },
     tabTextActive: {
-      color: colors.primary,
+      color: colors.white,
     },
     stateWrap: {
       flex: 1,
@@ -236,17 +519,23 @@ const createStyles = (colors: ThemePalette) =>
       fontSize: 14,
     },
     grid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
       paddingBottom: spacing.xxl,
+      gap: 8,
+    },
+    gridRow: {
+      flexDirection: 'row',
+      gap: 8,
     },
     imageTile: {
-      width: '31%',
+      flex: 1,
       aspectRatio: 1,
       borderRadius: 14,
       overflow: 'hidden',
       backgroundColor: colors.surfaceMuted,
+    },
+    imageTileSpacer: {
+      flex: 1,
+      aspectRatio: 1,
     },
     imageTilePressed: {
       opacity: 0.9,
@@ -297,15 +586,84 @@ const createStyles = (colors: ThemePalette) =>
       fontSize: 12,
       lineHeight: 17,
     },
-    previewWrap: {
-      height: 440,
-      borderRadius: 18,
-      overflow: 'hidden',
-      backgroundColor: colors.surfaceMuted,
-      marginBottom: spacing.sm,
+    viewerBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.97)',
     },
-    previewImage: {
+    viewerFrame: {
+      flex: 1,
+    },
+    viewerTopBar: {
+      paddingTop: 54,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    viewerTopIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.18)',
+    },
+    viewerTopIconPressed: {
+      opacity: 0.82,
+    },
+    viewerMeta: {
+      flex: 1,
+      minWidth: 0,
+      alignItems: 'center',
+    },
+    viewerCounter: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '700',
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    viewerAuthor: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    viewerDate: {
+      color: 'rgba(255,255,255,0.72)',
+      fontSize: 12,
+      marginTop: 2,
+      textAlign: 'center',
+    },
+    viewerImageFrame: {
+      width: '100%',
+      minHeight: 520,
+      flex: 1,
+    },
+    viewerImageGestureLayer: {
+      width: '100%',
+      minHeight: 520,
+      flex: 1,
+    },
+    viewerPager: {
+      flex: 1,
+    },
+    viewerImage: {
       width: '100%',
       height: '100%',
+    },
+    viewerPage: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    viewerPageImageWrap: {
+      width: '100%',
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   })
