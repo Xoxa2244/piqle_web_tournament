@@ -9,117 +9,17 @@ import {
   Text,
   View,
 } from 'react-native'
-import { WebView } from 'react-native-webview'
 
 import type { ChatLocationMessagePayload } from '../lib/chatSpecialMessages'
 import { spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
+import { LocationMapSurface } from './LocationMapSurface'
 
 const DEFAULT_LOCATION = {
   latitude: 40.7128,
   longitude: -74.006,
 }
-
-const buildPickerHtml = (latitude: number, longitude: number, dark: boolean) => `
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      crossorigin=""
-    />
-    <style>
-      html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: ${dark ? '#111111' : '#f3f4f6'}; }
-      .center-pin {
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        width: 28px;
-        height: 28px;
-        margin-left: -14px;
-        margin-top: -28px;
-        z-index: 9999;
-        pointer-events: none;
-        transform: translateY(-6px);
-      }
-      .pin-dot {
-        position: absolute;
-        left: 8px;
-        top: 0;
-        width: 12px;
-        height: 12px;
-        border-radius: 6px;
-        background: #22c55e;
-        border: 2px solid white;
-        box-shadow: 0 3px 10px rgba(0,0,0,.25);
-      }
-      .pin-stem {
-        position: absolute;
-        left: 13px;
-        top: 11px;
-        width: 2px;
-        height: 13px;
-        border-radius: 2px;
-        background: #22c55e;
-      }
-      .leaflet-control-attribution { display: none !important; }
-      .leaflet-control-zoom a { color: #111 !important; }
-    </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <div class="center-pin">
-      <div class="pin-dot"></div>
-      <div class="pin-stem"></div>
-    </div>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script>
-      (function () {
-        var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([${latitude}, ${longitude}], 16);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19
-        }).addTo(map);
-
-        function send(type, payload) {
-          try {
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload }));
-          } catch (e) {}
-        }
-
-        function publishCenter() {
-          var center = map.getCenter();
-          send('center', {
-            latitude: center.lat,
-            longitude: center.lng,
-            zoom: map.getZoom()
-          });
-        }
-
-        map.whenReady(function () {
-          publishCenter();
-          send('ready', {});
-        });
-
-        map.on('moveend', publishCenter);
-        map.on('zoomend', publishCenter);
-
-        window.addEventListener('message', function (event) {
-          try {
-            var data = JSON.parse(event.data || '{}');
-            if (data.type === 'setCenter') {
-              map.setView([data.latitude, data.longitude], data.zoom || 16, { animate: true });
-            }
-          } catch (e) {}
-        });
-      })();
-    </script>
-  </body>
-</html>
-`
 
 export function LocationPickerSheet({
   open,
@@ -264,13 +164,6 @@ export function LocationPickerSheet({
     }
   }, [])
 
-  const webSource = useMemo(
-    () => ({
-      html: buildPickerHtml(initialCenter.latitude, initialCenter.longitude, theme === 'dark'),
-    }),
-    [initialCenter.latitude, initialCenter.longitude, theme]
-  )
-
   return (
     <AppBottomSheet
       open={open}
@@ -300,17 +193,14 @@ export function LocationPickerSheet({
       }
     >
       <View style={styles.mapWrap}>
-        <WebView
+        <LocationMapSurface
           key={`${initialCenter.latitude}-${initialCenter.longitude}-${theme}`}
-          source={webSource}
-          originWhitelist={['*']}
+          latitude={initialCenter.latitude}
+          longitude={initialCenter.longitude}
+          dark={theme === 'dark'}
+          interactive
+          centerPin
           onMessage={handleWebMessage}
-          javaScriptEnabled
-          domStorageEnabled
-          scrollEnabled={false}
-          bounces={false}
-          mixedContentMode="compatibility"
-          style={styles.webView}
         />
         {!mapReady ? (
           <View style={styles.loadingCover}>
@@ -362,10 +252,6 @@ const createStyles = (colors: ThemePalette) =>
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
-    },
-    webView: {
-      flex: 1,
-      backgroundColor: 'transparent',
     },
     loadingCover: {
       position: 'absolute',

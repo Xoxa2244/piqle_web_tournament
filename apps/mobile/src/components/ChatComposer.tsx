@@ -138,7 +138,7 @@ const createStyles = (colors: ThemePalette) =>
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
   },
   topSlot: {
     marginBottom: 10,
@@ -153,7 +153,7 @@ const createStyles = (colors: ThemePalette) =>
     flex: 1,
     height: 44,
     borderRadius: radius.pill,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 0,
     backgroundColor: colors.surfaceMuted,
     color: colors.text,

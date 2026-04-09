@@ -32,7 +32,7 @@ export function ChatLocationAction({
           pressed && !disabled && styles.plusButtonPressed,
         ]}
       >
-        <Feather name="plus" size={18} color={colors.text} />
+        <Feather name="paperclip" size={17} color={colors.text} />
       </Pressable>
 
       <AppBottomSheet
@@ -77,9 +77,9 @@ export function ChatLocationAction({
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({
     plusButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.surfaceMuted,

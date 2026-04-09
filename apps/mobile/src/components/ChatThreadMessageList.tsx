@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
 import {
@@ -17,14 +17,14 @@ import { formatChatTime, toLocalYmd } from '../lib/chatMessages'
 import {
   getChatSpecialPreviewText,
   getExternalLocationUrl,
-  getLocationStaticMapUrl,
   parseLocationMessageText,
 } from '../lib/chatSpecialMessages'
 import { formatDate } from '../lib/formatters'
 import { radius, spacing, type AppTheme, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { useToast } from '../providers/ToastProvider'
-import { AppBottomSheet } from './AppBottomSheet'
+import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
+import { LocationMapSurface } from './LocationMapSurface'
 import { RemoteUserAvatar } from './RemoteUserAvatar'
 
 const AVATAR = 32
@@ -180,6 +180,7 @@ export function ChatThreadMessageList({
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [menuTarget, setMenuTarget] = useState<ChatMessage | null>(null)
   const [pendingDeleteTarget, setPendingDeleteTarget] = useState<ChatMessage | null>(null)
+  const [previewLocation, setPreviewLocation] = useState<ReturnType<typeof parseLocationMessageText> | null>(null)
 
   const messageById = useMemo(() => {
     const map = new Map<string, ChatMessage>()
@@ -300,27 +301,19 @@ export function ChatThreadMessageList({
     (rawText: string, isMine: boolean) => {
       const locationPayload = parseLocationMessageText(rawText)
       if (locationPayload) {
-        const mapUrl = getLocationStaticMapUrl(locationPayload)
         return (
           <Pressable
-            onPress={async () => {
-              const externalUrl = getExternalLocationUrl(locationPayload)
-              try {
-                const supported = await Linking.canOpenURL(externalUrl)
-                if (supported) {
-                  await Linking.openURL(externalUrl)
-                  return
-                }
-              } catch {
-                // fallback below
-              }
-              await Linking.openURL(
-                `https://www.google.com/maps/search/?api=1&query=${locationPayload.latitude},${locationPayload.longitude}`
-              )
-            }}
+            onPress={() => setPreviewLocation(locationPayload)}
             style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
           >
-            <Image source={{ uri: mapUrl }} style={styles.locationPreview} resizeMode="cover" />
+            <View style={styles.locationPreviewWrap}>
+              <LocationMapSurface
+                latitude={locationPayload.latitude}
+                longitude={locationPayload.longitude}
+                dark={theme === 'dark'}
+              />
+              <View pointerEvents="none" style={styles.locationPreviewOverlay} />
+            </View>
             <View style={styles.locationBody}>
               <View style={styles.locationTitleRow}>
                 <Feather name="map-pin" size={14} color={colors.primary} />
@@ -413,7 +406,7 @@ export function ChatThreadMessageList({
         </View>
       )
     },
-    [colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles]
+    [colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles, theme]
   )
 
   const handleCopy = useCallback(
@@ -838,6 +831,59 @@ export function ChatThreadMessageList({
           ) : null}
         </View>
       </AppBottomSheet>
+
+      <AppBottomSheet
+        open={Boolean(previewLocation)}
+        onClose={() => setPreviewLocation(null)}
+        title={previewLocation?.title || 'Pinned location'}
+        subtitle={
+          previewLocation
+            ? previewLocation.address ||
+              `${previewLocation.latitude.toFixed(5)}, ${previewLocation.longitude.toFixed(5)}`
+            : undefined
+        }
+        bottomPaddingExtra={8}
+        footer={
+          previewLocation ? (
+            <AppConfirmActions
+              intent="positive"
+              cancelLabel="Close"
+              confirmLabel="Open in maps"
+              onCancel={() => setPreviewLocation(null)}
+              onConfirm={() => {
+                const next = previewLocation
+                if (!next) return
+                void (async () => {
+                  const externalUrl = getExternalLocationUrl(next)
+                  try {
+                    const supported = await Linking.canOpenURL(externalUrl)
+                    if (supported) {
+                      await Linking.openURL(externalUrl)
+                    } else {
+                      await Linking.openURL(
+                        `https://www.google.com/maps/search/?api=1&query=${next.latitude},${next.longitude}`
+                      )
+                    }
+                  } finally {
+                    setPreviewLocation(null)
+                  }
+                })()
+              }}
+            />
+          ) : null
+        }
+      >
+        {previewLocation ? (
+          <View style={styles.locationSheetMapWrap}>
+            <LocationMapSurface
+              latitude={previewLocation.latitude}
+              longitude={previewLocation.longitude}
+              dark={theme === 'dark'}
+              interactive
+            />
+          </View>
+        ) : null}
+      </AppBottomSheet>
     </>
   )
 }
@@ -1029,10 +1075,14 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     locationCardPressed: {
       opacity: 0.9,
     },
-    locationPreview: {
+    locationPreviewWrap: {
       width: '100%',
       height: 116,
       backgroundColor: colors.surfaceMuted,
+    },
+    locationPreviewOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'transparent',
     },
     locationBody: {
       paddingHorizontal: 12,
@@ -1055,6 +1105,15 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       color: colors.textMuted,
       fontSize: 12,
       lineHeight: 17,
+    },
+    locationSheetMapWrap: {
+      height: 400,
+      overflow: 'hidden',
+      borderRadius: 18,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      marginBottom: spacing.sm,
     },
     mentionText: {
       color: colors.primary,
