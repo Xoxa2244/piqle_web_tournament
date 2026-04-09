@@ -33,6 +33,7 @@ export type AppBottomSheetProps = PropsWithChildren<{
   footer?: ReactNode
   /** Доп. отступ снизу внутри панели (до safe area). */
   bottomPaddingExtra?: number
+  maxHeight?: number | string
   /** Вызывается после завершения анимации закрытия (удобно для цепочки шторок без двух Modal одновременно). */
   onDismissed?: () => void
 }>
@@ -49,6 +50,7 @@ export function AppBottomSheet({
   children,
   footer,
   bottomPaddingExtra = 0,
+  maxHeight = '88%',
   onDismissed,
 }: AppBottomSheetProps) {
   const { colors } = useAppTheme()
@@ -159,6 +161,7 @@ export function AppBottomSheet({
             {
               marginBottom: keyboardOffset,
               paddingBottom: padBottom,
+              maxHeight,
               transform: [{ translateY: sheetY }],
             },
           ]}
@@ -194,7 +197,6 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     borderTopRightRadius: radius.xl,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    maxHeight: '88%',
   },
   handle: {
     alignSelf: 'center',

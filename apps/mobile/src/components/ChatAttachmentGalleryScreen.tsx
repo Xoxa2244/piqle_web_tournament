@@ -7,9 +7,8 @@ import { formatFileSize, parseFileMessageText, parseImageMessageText } from '../
 import { spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
-import { EmptyState } from './EmptyState'
-import { LoadingBlock } from './LoadingBlock'
 import { PageLayout } from './navigation/PageLayout'
+import { EmptyState, LoadingBlock } from './ui'
 
 type GalleryTab = 'media' | 'files'
 

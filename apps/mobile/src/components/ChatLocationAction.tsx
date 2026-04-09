@@ -17,16 +17,22 @@ import { useAppTheme } from '../providers/ThemeProvider'
 import { useToast } from '../providers/ToastProvider'
 import { AppBottomSheet } from './AppBottomSheet'
 import { LocationPickerSheet } from './LocationPickerSheet'
+import { LocationMapSurface } from './LocationMapSurface'
 
 type AttachmentTab = 'photos' | 'location' | 'files'
 
 type RecentPhotoAsset = {
   id: string
   uri: string
+  sourceUri: string
   width: number
   height: number
   fileName?: string | null
 }
+
+type PhotoGridItem =
+  | { type: 'camera'; id: 'camera' }
+  | ({ type: 'photo' } & RecentPhotoAsset)
 
 export function ChatLocationAction({
   disabled,
@@ -46,35 +52,76 @@ export function ChatLocationAction({
   const [photoPermissionDenied, setPhotoPermissionDenied] = useState(false)
   const [recentPhotos, setRecentPhotos] = useState<RecentPhotoAsset[]>([])
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
+  const [photoCursor, setPhotoCursor] = useState<string | null>(null)
+  const [hasMorePhotos, setHasMorePhotos] = useState(true)
+  const [loadingMorePhotos, setLoadingMorePhotos] = useState(false)
+  const [locationPreviewCenter, setLocationPreviewCenter] = useState<{ latitude: number; longitude: number }>({
+    latitude: 40.7128,
+    longitude: -74.006,
+  })
 
-  const loadRecentPhotos = useCallback(async () => {
+  const loadRecentPhotos = useCallback(async (after?: string | null, append = false) => {
     try {
-      setLoadingPhotos(true)
+      if (append) {
+        setLoadingMorePhotos(true)
+      } else {
+        setLoadingPhotos(true)
+      }
       const permission = await MediaLibrary.requestPermissionsAsync()
       const granted = permission.status === 'granted'
       setPhotoPermissionDenied(!granted)
       if (!granted) {
         setRecentPhotos([])
+        setPhotoCursor(null)
+        setHasMorePhotos(false)
         return
       }
       const result = await MediaLibrary.getAssetsAsync({
         mediaType: MediaLibrary.MediaType.photo,
-        first: 18,
+        first: 24,
         sortBy: ['creationTime'],
+        after: after || undefined,
       })
-      setRecentPhotos(
-        (result.assets ?? []).map((asset) => ({
-          id: asset.id,
-          uri: asset.uri,
-          width: asset.width ?? 0,
-          height: asset.height ?? 0,
-          fileName: asset.filename ?? null,
-        }))
+      const assets = await Promise.all(
+        (result.assets ?? []).map(async (asset) => {
+          try {
+            const info = await MediaLibrary.getAssetInfoAsync(asset.id)
+            const resolvedUri = info.localUri || asset.uri
+            return {
+              id: asset.id,
+              uri: resolvedUri,
+              sourceUri: resolvedUri,
+              width: asset.width ?? 0,
+              height: asset.height ?? 0,
+              fileName: asset.filename ?? null,
+            } satisfies RecentPhotoAsset
+          } catch {
+            return {
+              id: asset.id,
+              uri: asset.uri,
+              sourceUri: asset.uri,
+              width: asset.width ?? 0,
+              height: asset.height ?? 0,
+              fileName: asset.filename ?? null,
+            } satisfies RecentPhotoAsset
+          }
+        })
       )
+      setRecentPhotos((current) => (append ? [...current, ...assets] : assets))
+      setPhotoCursor(result.endCursor ?? null)
+      setHasMorePhotos(Boolean(result.hasNextPage))
     } catch {
-      setRecentPhotos([])
+      if (!append) {
+        setRecentPhotos([])
+        setPhotoCursor(null)
+        setHasMorePhotos(false)
+      }
     } finally {
-      setLoadingPhotos(false)
+      if (append) {
+        setLoadingMorePhotos(false)
+      } else {
+        setLoadingPhotos(false)
+      }
     }
   }, [])
 
@@ -82,6 +129,18 @@ export function ChatLocationAction({
     if (!sheetOpen || activeTab !== 'photos') return
     void loadRecentPhotos()
   }, [activeTab, loadRecentPhotos, sheetOpen])
+
+  useEffect(() => {
+    if (!sheetOpen || activeTab !== 'location') return
+    void (async () => {
+      try {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        void permission
+      } catch {
+        // ignore
+      }
+    })()
+  }, [activeTab, sheetOpen])
 
   const uploadPhoto = useCallback(
     async (asset: { uri: string; fileName?: string | null; mimeType?: string | null; width?: number; height?: number }) => {
@@ -140,6 +199,30 @@ export function ChatLocationAction({
     })
   }, [toast, uploadPhoto])
 
+  const handleOpenCamera = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+    if (!permission.granted) {
+      toast.error('Please allow camera access to take a photo.')
+      return
+    }
+    const captured = await ImagePicker.launchCameraAsync({
+      cameraType: ImagePicker.CameraType.back,
+      mediaTypes: ['images'],
+      quality: 0.92,
+      allowsEditing: false,
+    })
+    if (captured.canceled || !captured.assets?.length) return
+    const asset = captured.assets[0]
+    if (!asset?.uri) return
+    await uploadPhoto({
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+    })
+  }, [toast, uploadPhoto])
+
   const handlePickFile = useCallback(async () => {
     if (!token) {
       toast.error('You need to sign in before sending files.')
@@ -177,12 +260,28 @@ export function ChatLocationAction({
     }
   }, [onSendText, toast, token])
 
+  const photoGridItems = useMemo<PhotoGridItem[]>(
+    () => [{ type: 'camera', id: 'camera' }, ...recentPhotos.map((item) => ({ ...item, type: 'photo' as const }))],
+    [recentPhotos]
+  )
+
   const renderPhotoTile = useCallback(
-    ({ item }: { item: RecentPhotoAsset }) => (
+    ({ item }: { item: PhotoGridItem }) => {
+      if (item.type === 'camera') {
+        return (
+          <Pressable onPress={() => void handleOpenCamera()} style={({ pressed }) => [styles.cameraTile, pressed && styles.photoTilePressed]}>
+            <View style={styles.cameraTileIconWrap}>
+              <Feather name="camera" size={22} color={colors.primary} />
+            </View>
+            <Text style={styles.cameraTileText}>Camera</Text>
+          </Pressable>
+        )
+      }
+      return (
       <Pressable
         onPress={() =>
           void uploadPhoto({
-            uri: item.uri,
+            uri: item.sourceUri,
             fileName: item.fileName,
             mimeType: 'image/jpeg',
             width: item.width,
@@ -192,15 +291,37 @@ export function ChatLocationAction({
         style={({ pressed }) => [styles.photoTile, pressed && styles.photoTilePressed]}
       >
         <Image source={{ uri: item.uri }} style={styles.photoImage} resizeMode="cover" />
-        {uploadingKey === item.uri ? (
+        {uploadingKey === item.sourceUri ? (
           <View style={styles.photoUploadingOverlay}>
             <ActivityIndicator color={colors.white} />
           </View>
         ) : null}
       </Pressable>
-    ),
-    [colors.white, styles, uploadingKey, uploadPhoto]
+      )
+    },
+    [colors.primary, colors.white, handleOpenCamera, styles, uploadingKey, uploadPhoto]
   )
+
+  const handleLoadMorePhotos = useCallback(() => {
+    if (loadingMorePhotos || loadingPhotos || !hasMorePhotos || !photoCursor) return
+    void loadRecentPhotos(photoCursor, true)
+  }, [hasMorePhotos, loadRecentPhotos, loadingMorePhotos, loadingPhotos, photoCursor])
+
+  const handleLocationPreviewMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data || '{}') as {
+        type?: string
+        payload?: { latitude?: number; longitude?: number }
+      }
+      if (data.type !== 'center' || !data.payload) return
+      const latitude = Number(data.payload.latitude)
+      const longitude = Number(data.payload.longitude)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+      setLocationPreviewCenter({ latitude, longitude })
+    } catch {
+      // ignore malformed web messages
+    }
+  }, [])
 
   return (
     <>
@@ -222,101 +343,9 @@ export function ChatLocationAction({
       <AppBottomSheet
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        title="Attach"
-        subtitle={
-          activeTab === 'photos'
-            ? 'Choose a recent photo or open your full gallery.'
-            : activeTab === 'location'
-            ? 'Share your current location or pick any place on the map.'
-            : 'Send a document or another file from your device.'
-        }
-        bottomPaddingExtra={6}
+        bottomPaddingExtra={10}
+        maxHeight="93%"
       >
-        {activeTab === 'photos' ? (
-          <View style={styles.sectionBody}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Recent photos</Text>
-              <Pressable
-                onPress={() => void handlePickAnyPhoto()}
-                style={({ pressed }) => [styles.inlineActionChip, pressed && styles.inlineActionChipPressed]}
-              >
-                <Text style={styles.inlineActionChipText}>All photos</Text>
-              </Pressable>
-            </View>
-            {photoPermissionDenied ? (
-              <View style={styles.infoCard}>
-                <Text style={styles.infoTitle}>No photo access</Text>
-                <Text style={styles.infoText}>
-                  Allow access to show recent photos here, or use All photos to pick manually.
-                </Text>
-              </View>
-            ) : loadingPhotos ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={styles.loadingText}>Loading recent photos…</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={recentPhotos}
-                keyExtractor={(item) => item.id}
-                numColumns={3}
-                columnWrapperStyle={styles.photoRow}
-                contentContainerStyle={styles.photoGrid}
-                renderItem={renderPhotoTile}
-                ListEmptyComponent={
-                  <View style={styles.infoCard}>
-                    <Text style={styles.infoTitle}>No recent photos</Text>
-                    <Text style={styles.infoText}>Use All photos to choose any image from your gallery.</Text>
-                  </View>
-                }
-              />
-            )}
-          </View>
-        ) : null}
-
-        {activeTab === 'location' ? (
-          <View style={styles.sectionBody}>
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>Share a place</Text>
-              <Text style={styles.infoText}>
-                Open the map picker, move the pin, and send your current location or any place you choose.
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => {
-                setSheetOpen(false)
-                setLocationPickerOpen(true)
-              }}
-              style={({ pressed }) => [styles.primaryCard, pressed && styles.primaryCardPressed]}
-            >
-              <Feather name="map-pin" size={18} color={colors.primary} />
-              <Text style={styles.primaryCardText}>Open map picker</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {activeTab === 'files' ? (
-          <View style={styles.sectionBody}>
-            <View style={styles.infoCard}>
-              <Text style={styles.infoTitle}>Send a file</Text>
-              <Text style={styles.infoText}>
-                Choose a PDF, document, text file, or another file from your device.
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => void handlePickFile()}
-              style={({ pressed }) => [styles.primaryCard, pressed && styles.primaryCardPressed]}
-            >
-              {uploadingKey ? (
-                <ActivityIndicator color={colors.primary} />
-              ) : (
-                <Feather name="file-text" size={18} color={colors.primary} />
-              )}
-              <Text style={styles.primaryCardText}>Choose file</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
         <View style={styles.tabBar}>
           <Pressable
             onPress={() => setActiveTab('photos')}
@@ -352,6 +381,109 @@ export function ChatLocationAction({
             <Text style={[styles.tabChipText, activeTab === 'files' && styles.tabChipTextActive]}>Files</Text>
           </Pressable>
         </View>
+
+        {activeTab === 'photos' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Recent photos</Text>
+              <Pressable
+                onPress={() => void handlePickAnyPhoto()}
+                style={({ pressed }) => [styles.inlineActionChip, pressed && styles.inlineActionChipPressed]}
+              >
+                <Text style={styles.inlineActionChipText}>All photos</Text>
+              </Pressable>
+            </View>
+            {photoPermissionDenied ? (
+              <View style={styles.infoCard}>
+                <Text style={styles.infoTitle}>No photo access</Text>
+                <Text style={styles.infoText}>
+                  Allow access to show recent photos here, or use All photos to pick manually.
+                </Text>
+              </View>
+            ) : loadingPhotos ? (
+              <View style={styles.loadingBlock}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.loadingText}>Loading recent photos…</Text>
+              </View>
+            ) : (
+              <View style={styles.photoListWrap}>
+                <FlatList
+                  data={photoGridItems}
+                  keyExtractor={(item) => item.id}
+                  numColumns={3}
+                  columnWrapperStyle={styles.photoRow}
+                  contentContainerStyle={styles.photoGrid}
+                  renderItem={renderPhotoTile}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  onEndReachedThreshold={0.45}
+                  onEndReached={handleLoadMorePhotos}
+                  ListFooterComponent={
+                    loadingMorePhotos ? (
+                      <View style={styles.photoListFooter}>
+                        <ActivityIndicator color={colors.primary} />
+                      </View>
+                    ) : null
+                  }
+                  ListEmptyComponent={
+                    <View style={styles.infoCard}>
+                      <Text style={styles.infoTitle}>No recent photos</Text>
+                      <Text style={styles.infoText}>Use All photos to choose any image from your gallery.</Text>
+                    </View>
+                  }
+                />
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {activeTab === 'location' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.locationInlineMapWrap}>
+              <LocationMapSurface
+                latitude={locationPreviewCenter.latitude}
+                longitude={locationPreviewCenter.longitude}
+                dark={false}
+                interactive
+                centerPin
+                onMessage={handleLocationPreviewMessage}
+              />
+            </View>
+            <Pressable
+              onPress={() => {
+                setSheetOpen(false)
+                setLocationPickerOpen(true)
+              }}
+              style={({ pressed }) => [styles.primaryCard, pressed && styles.primaryCardPressed]}
+            >
+              <Feather name="map-pin" size={18} color={colors.primary} />
+              <Text style={styles.primaryCardText}>Open full map picker</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {activeTab === 'files' ? (
+          <View style={styles.sectionBody}>
+            <View style={styles.infoCard}>
+              <Text style={styles.infoTitle}>Send a file</Text>
+              <Text style={styles.infoText}>
+                Choose a PDF, document, text file, or another file from your device.
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => void handlePickFile()}
+              style={({ pressed }) => [styles.primaryCard, pressed && styles.primaryCardPressed]}
+            >
+              {uploadingKey ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Feather name="file-text" size={18} color={colors.primary} />
+              )}
+              <Text style={styles.primaryCardText}>Choose file</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
       </AppBottomSheet>
 
       <LocationPickerSheet
@@ -388,6 +520,14 @@ const createStyles = (colors: ThemePalette) =>
     sectionBody: {
       minHeight: 250,
       gap: spacing.md,
+    },
+    photoListFooter: {
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    photoListWrap: {
+      height: 380,
     },
     sectionHeaderRow: {
       flexDirection: 'row',
@@ -429,6 +569,31 @@ const createStyles = (colors: ThemePalette) =>
       borderRadius: 16,
       overflow: 'hidden',
       backgroundColor: colors.surfaceMuted,
+    },
+    cameraTile: {
+      flex: 1,
+      aspectRatio: 1,
+      borderRadius: 16,
+      overflow: 'hidden',
+      backgroundColor: colors.primaryGhost,
+      borderWidth: 1,
+      borderColor: colors.primaryBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    cameraTileIconWrap: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    cameraTileText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
     },
     photoTilePressed: {
       opacity: 0.88,
@@ -493,11 +658,19 @@ const createStyles = (colors: ThemePalette) =>
       fontWeight: '500',
     },
     tabBar: {
-      marginTop: spacing.md,
-      marginBottom: spacing.xs,
+      marginTop: spacing.sm,
+      marginBottom: spacing.md,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+    },
+    locationInlineMapWrap: {
+      height: 360,
+      borderRadius: 18,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
     },
     tabChip: {
       flex: 1,
