@@ -778,9 +778,7 @@ const createStyles = (colors: ThemePalette) =>
       minHeight: 102,
       borderRadius: 16,
       overflow: 'hidden',
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: 1,
-      borderColor: colors.border,
+      backgroundColor: colors.secondary,
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
@@ -982,8 +980,8 @@ const createStyles = (colors: ThemePalette) =>
       borderColor: colors.border,
     },
     pendingActionButtonPrimary: {
-      backgroundColor: colors.primaryGhost,
-      borderColor: colors.primaryBorder,
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     pendingActionButtonPressed: {
       opacity: 0.86,
@@ -997,6 +995,6 @@ const createStyles = (colors: ThemePalette) =>
       fontWeight: '600',
     },
     pendingActionTextPrimary: {
-      color: colors.primary,
+      color: colors.white,
     },
   })

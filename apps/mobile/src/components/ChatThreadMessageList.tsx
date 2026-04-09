@@ -664,6 +664,9 @@ export function ChatThreadMessageList({
       const likeCountValue = Math.max(0, Number(m.likeCount ?? 0))
       const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked)
       const replyCount = threadRootMessageId ? 0 : replyCountByRootId.get(m.id) ?? 0
+      const hasLocationCard = Boolean(!m.isDeleted && parseLocationMessageText(m.text))
+      const hasImageCard = Boolean(!m.isDeleted && parseImageMessageText(m.text))
+      const hasTransparentBubble = hasLocationCard || hasImageCard
       const rowStyles = [
         styles.row,
         isMine ? styles.rowMine : styles.rowOther,
@@ -726,6 +729,7 @@ export function ChatThreadMessageList({
               styles.bubble,
               entry.level === 1 ? styles.bubbleReply : null,
               isMine ? styles.bubbleMine : styles.bubbleOther,
+              hasTransparentBubble ? styles.bubbleTransparent : null,
               sameAuthorAsPrev ? (isMine ? styles.bubbleMineGroupedTop : styles.bubbleOtherGroupedTop) : null,
               sameAuthorAsNext ? (isMine ? styles.bubbleMineGroupedBottom : styles.bubbleOtherGroupedBottom) : null,
               pressed &&
@@ -1227,6 +1231,13 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       maxWidth: '76%',
       paddingHorizontal: 12,
       paddingVertical: 9,
+    },
+    bubbleTransparent: {
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      shadowOpacity: 0,
+      elevation: 0,
     },
     bubbleMine: {
       borderBottomRightRadius: 6,
