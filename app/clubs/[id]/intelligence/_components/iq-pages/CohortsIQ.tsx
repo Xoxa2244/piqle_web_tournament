@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'motion/react'
-import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2 } from 'lucide-react'
+import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2 } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 
@@ -51,6 +51,7 @@ export default function CohortsIQ() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null)
+  const [campaignCohort, setCampaignCohort] = useState<{ id: string; name: string; filters: any } | null>(null)
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
   const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
@@ -177,14 +178,24 @@ export default function CohortsIQ() {
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
                   <Users className="w-5 h-5 text-white" />
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
-                  className="p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500/10"
-                  style={{ color: 'var(--t4)' }}
-                  title="Delete cohort"
-                >
-                  <Trash2 className="w-4 h-4 hover:text-red-400" />
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
+                    className="p-1.5 rounded-lg transition-all hover:bg-violet-500/10"
+                    style={{ color: '#8B5CF6' }}
+                    title="Launch campaign"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
+                    className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
+                    style={{ color: 'var(--t4)' }}
+                    title="Delete cohort"
+                  >
+                    <Trash2 className="w-4 h-4 hover:text-red-400" />
+                  </button>
+                </div>
               </div>
               <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
               {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
@@ -215,7 +226,161 @@ export default function CohortsIQ() {
           )}
         </div>
       )}
+
+      {/* Quick Campaign Modal */}
+      {campaignCohort && (
+        <QuickCampaignModal clubId={clubId} cohort={campaignCohort} onClose={() => setCampaignCohort(null)} />
+      )}
     </motion.div>
+  )
+}
+
+// ── Quick Campaign Modal (Launch Campaign from Cohort) ──
+function QuickCampaignModal({ clubId, cohort, onClose }: { clubId: string; cohort: { id: string; name: string; filters: any }; onClose: () => void }) {
+  const [subject, setSubject] = useState(`Message for ${cohort.name}`)
+  const [body, setBody] = useState('')
+  const [channel, setChannel] = useState<'email' | 'sms' | 'both'>('email')
+  const [generating, setGenerating] = useState(false)
+  const [sent, setSent] = useState<{ sent: number; skipped: number; errors: number } | null>(null)
+
+  // Load cohort members
+  const { data: membersData, isLoading } = trpc.intelligence.getCohortMembers.useQuery(
+    { clubId, cohortId: cohort.id },
+    { enabled: !!cohort.id },
+  )
+  const members = membersData?.members || []
+
+  // AI generate message
+  const generateMutation = trpc.intelligence.generateCohortCampaign.useMutation({
+    onSuccess: (data: any) => {
+      if (data.subject) setSubject(data.subject)
+      if (data.body) setBody(data.body)
+      setGenerating(false)
+    },
+    onError: () => setGenerating(false),
+  })
+
+  const handleGenerate = () => {
+    setGenerating(true)
+    generateMutation.mutate({ clubId, cohortId: cohort.id })
+  }
+
+  // Send campaign
+  const sendMutation = trpc.intelligence.sendOutreachMessage.useMutation({
+    onSuccess: () => {},
+  })
+
+  const handleSend = async () => {
+    let sentCount = 0, skippedCount = 0, errCount = 0
+    for (const m of members) {
+      if (!m.email) { skippedCount++; continue }
+      try {
+        await sendMutation.mutateAsync({
+          clubId,
+          userId: m.id,
+          type: 'CAMPAIGN',
+          channel,
+          subject,
+          body,
+        } as any)
+        sentCount++
+      } catch {
+        errCount++
+      }
+    }
+    setSent({ sent: sentCount, skipped: skippedCount, errors: errCount })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-6"
+        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+            <Send className="w-5 h-5 inline mr-2" style={{ color: '#8B5CF6' }} />
+            Campaign: {cohort.name}
+          </h2>
+          <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
+        </div>
+
+        {sent ? (
+          <div className="text-center py-8">
+            <div className="text-3xl mb-3">✅</div>
+            <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Campaign Sent!</p>
+            <p className="text-sm" style={{ color: 'var(--t3)' }}>
+              {sent.sent} sent, {sent.skipped} skipped, {sent.errors} errors
+            </p>
+            <button onClick={onClose} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}>Close</button>
+          </div>
+        ) : (
+          <>
+            {/* Audience */}
+            <div className="p-3 rounded-xl mb-4" style={{ background: 'var(--subtle)' }}>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                <span className="text-sm" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+                  {isLoading ? '...' : members.length} recipients
+                </span>
+              </div>
+            </div>
+
+            {/* Channel */}
+            <div className="flex gap-2 mb-4">
+              {(['email', 'sms', 'both'] as const).map(ch => (
+                <button key={ch} onClick={() => setChannel(ch)}
+                  className="flex-1 py-2 rounded-xl text-xs capitalize transition-all"
+                  style={{
+                    background: channel === ch ? 'rgba(139,92,246,0.15)' : 'var(--subtle)',
+                    color: channel === ch ? '#8B5CF6' : 'var(--t3)',
+                    fontWeight: channel === ch ? 700 : 500,
+                    border: channel === ch ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
+                  }}>
+                  {ch === 'both' ? 'Email + SMS' : ch.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Subject */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
+                <button onClick={handleGenerate} disabled={generating}
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg"
+                  style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600 }}>
+                  {generating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  AI Generate
+                </button>
+              </div>
+              <input value={subject} onChange={e => setSubject(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+            </div>
+
+            {/* Body */}
+            <div className="mb-4">
+              <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
+              <textarea value={body} onChange={e => setBody(e.target.value)} rows={4}
+                placeholder="Write your message or click AI Generate..."
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }} />
+            </div>
+
+            {/* Send */}
+            <button onClick={handleSend}
+              disabled={!subject.trim() || !body.trim() || members.length === 0 || sendMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
+              {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              Send to {members.length} member{members.length > 1 ? 's' : ''}
+            </button>
+          </>
+        )}
+      </motion.div>
+    </div>
   )
 }
 
