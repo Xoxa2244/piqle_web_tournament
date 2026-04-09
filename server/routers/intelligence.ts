@@ -103,6 +103,18 @@ export function buildCohortWhereClause(filters: CohortFilter[]): string {
         const dayNum = dayMap[String(f.value)] ?? 0
         return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
       }
+      case 'frequency': {
+        // Sessions per month — players who play at least N times/month
+        const freqVal = Number(f.value)
+        const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
+      }
+      case 'recency': {
+        // Days since last visit — players who visited within/after N days
+        const recVal = Number(f.value)
+        const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
+      }
       case 'userId':
         // Direct user ID filter (used for "cohort from session")
         if (f.op === 'in' && Array.isArray(f.value)) {
@@ -4884,5 +4896,187 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           lastSyncAt: connector.lastSyncAt?.toISOString() || null,
         } : null,
       }
+    }),
+
+  // ── Event Marketing Pipeline ──
+  // "Fill This Session" — generate audience + AI message + preview in one call
+  generateEventCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string(),
+      maxRecipients: z.number().int().min(1).max(50).default(20),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // 1. Load session details
+      const session = await ctx.prisma.playSession.findUnique({
+        where: { id: input.sessionId },
+        include: {
+          bookings: { where: { status: 'CONFIRMED' }, include: { user: { select: { id: true, name: true, email: true } } } },
+          clubCourt: { select: { name: true } },
+        },
+      })
+      if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
+
+      const spotsLeft = (session.maxPlayers || 8) - session.bookings.length
+      if (spotsLeft <= 0) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Session is already full' })
+
+      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+
+      // 2. Get slot filler recommendations (reuse existing scoring)
+      const bookedUserIds = new Set(session.bookings.map(b => b.userId))
+      const ninetyDaysAgo = new Date()
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
+      const candidates: any[] = await ctx.prisma.$queryRawUnsafe(`
+        SELECT u.id, u.name, u.email, u.phone,
+          COUNT(DISTINCT psb."sessionId")::int as total_bookings,
+          (CURRENT_DATE - MAX(ps.date)::date)::int as days_since_last,
+          COUNT(*) FILTER (WHERE ps.format::text = $2)::int as format_match,
+          COUNT(*) FILTER (WHERE ps."skillLevel"::text = $3)::int as skill_match
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        JOIN play_session_bookings psb ON psb."userId" = u.id AND psb.status = 'CONFIRMED'
+        JOIN play_sessions ps ON ps.id = psb."sessionId" AND ps."clubId" = $1
+        WHERE cf.club_id = $1
+          AND u.id NOT IN (${Array.from(bookedUserIds).map((_, i) => `$${i + 5}`).join(',') || "''"})
+          AND psb."bookedAt" >= $4
+        GROUP BY u.id, u.name, u.email, u.phone
+        ORDER BY format_match DESC, skill_match DESC, days_since_last ASC
+        LIMIT $${bookedUserIds.size + 5}
+      `, input.clubId, session.format || '', session.skillLevel || 'ALL_LEVELS', ninetyDaysAgo, ...Array.from(bookedUserIds), input.maxRecipients)
+
+      // 3. Build partner-aware social proof per candidate
+      const { getFrequentPartnerIds } = await import('@/lib/ai/partners')
+      const confirmedNames = session.bookings.map(b => b.user?.name?.split(' ')[0]).filter(Boolean)
+
+      const audience = await Promise.all(candidates.map(async (c) => {
+        let socialProof = ''
+        try {
+          const partnerIds = await getFrequentPartnerIds(ctx.prisma as any, c.id, input.clubId, 3)
+          const partnerBooked = session.bookings.filter(b => partnerIds.includes(b.userId)).map(b => b.user?.name?.split(' ')[0]).filter(Boolean)
+          if (partnerBooked.length > 0) {
+            socialProof = `Your partner ${partnerBooked[0]} is already signed up!`
+          } else if (confirmedNames.length > 0) {
+            socialProof = `${confirmedNames.slice(0, 3).join(', ')} and others are playing.`
+          }
+        } catch {}
+        return {
+          id: c.id,
+          name: c.name || c.email?.split('@')[0] || 'Player',
+          email: c.email,
+          phone: c.phone,
+          totalBookings: c.total_bookings,
+          daysSinceLast: c.days_since_last,
+          formatMatch: c.format_match,
+          socialProof,
+        }
+      }))
+
+      // 4. Generate AI message
+      const sessionDate = session.date instanceof Date
+        ? session.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+        : String(session.date)
+      const sessionTime = `${session.startTime || ''} - ${session.endTime || ''}`
+      const formatLabel = (session.format || 'Session').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+
+      const subject = `${formatLabel} ${sessionDate} — ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left`
+      const body = `Join us for ${formatLabel} at ${club?.name || 'the club'} on ${sessionDate}, ${sessionTime}. ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} remaining!`
+      const bookingUrl = `https://app.iqsport.ai/clubs/${input.clubId}/intelligence/sessions`
+
+      return {
+        session: {
+          id: session.id,
+          title: session.title || formatLabel,
+          date: sessionDate,
+          time: sessionTime,
+          court: session.clubCourt?.name || null,
+          spotsLeft,
+          registered: session.bookings.length,
+          maxPlayers: session.maxPlayers,
+        },
+        audience,
+        message: { subject, body, bookingUrl },
+        clubName: club?.name || '',
+      }
+    }),
+
+  // Send event campaign to selected recipients
+  sendEventCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string(),
+      recipientIds: z.array(z.string()).min(1).max(50),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+      channel: z.enum(['email', 'sms', 'both']).default('email'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+      const session = await ctx.prisma.playSession.findUnique({
+        where: { id: input.sessionId },
+        select: { title: true, date: true, startTime: true, endTime: true, maxPlayers: true, format: true },
+      })
+      if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
+
+      const recipients = await ctx.prisma.user.findMany({
+        where: { id: { in: input.recipientIds } },
+        select: { id: true, name: true, email: true, phone: true },
+      })
+
+      const { sendSlotFillerInviteEmail } = await import('@/lib/email')
+      const { checkAntiSpam } = await import('@/lib/ai/anti-spam')
+
+      let sent = 0, skipped = 0, errors = 0
+      const spotsLeft = (session.maxPlayers || 8) - await ctx.prisma.playSessionBooking.count({ where: { sessionId: input.sessionId, status: 'CONFIRMED' } })
+      const sessionDate = session.date instanceof Date
+        ? session.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : String(session.date)
+
+      for (const user of recipients) {
+        // Anti-spam check
+        const spamCheck = await checkAntiSpam({
+          prisma: ctx.prisma, userId: user.id, clubId: input.clubId,
+          type: 'SLOT_FILLER', sessionId: input.sessionId,
+        })
+        if (!spamCheck.allowed) { skipped++; continue }
+
+        try {
+          if (input.channel !== 'sms' && user.email) {
+            await sendSlotFillerInviteEmail({
+              to: user.email,
+              memberName: user.name || user.email.split('@')[0],
+              clubName: club?.name || 'Your Club',
+              sessionTitle: session.title || 'Session',
+              sessionDate,
+              sessionTime: `${session.startTime} - ${session.endTime}`,
+              spotsLeft,
+              bookingUrl: `https://app.iqsport.ai/clubs/${input.clubId}/intelligence/sessions`,
+              customSubject: input.subject,
+              customMessage: input.body,
+            })
+          }
+
+          // Log
+          await ctx.prisma.aIRecommendationLog.create({
+            data: {
+              clubId: input.clubId, userId: user.id, type: 'SLOT_FILLER',
+              channel: input.channel, sessionId: input.sessionId,
+              variantId: 'event_campaign_manual', status: 'sent',
+              reasoning: { source: 'event_marketing_pipeline', subject: input.subject } as any,
+            },
+          }).catch(() => {})
+
+          sent++
+        } catch (err: any) {
+          console.error(`[EventCampaign] Failed for ${user.email}:`, err.message)
+          errors++
+        }
+      }
+
+      return { sent, skipped, errors, total: recipients.length }
     }),
 })

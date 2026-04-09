@@ -19,6 +19,8 @@ const FILTER_FIELDS = [
     { label: 'Monday', value: 'Monday' }, { label: 'Tuesday', value: 'Tuesday' }, { label: 'Wednesday', value: 'Wednesday' },
     { label: 'Thursday', value: 'Thursday' }, { label: 'Friday', value: 'Friday' }, { label: 'Saturday', value: 'Saturday' }, { label: 'Sunday', value: 'Sunday' },
   ] },
+  { key: 'frequency', label: 'Sessions/Month', type: 'number' as const, ops: ['gte', 'lte', 'eq'] },
+  { key: 'recency', label: 'Days Since Last Visit', type: 'number' as const, ops: ['lte', 'gte'] },
   { key: 'membershipType', label: 'Membership Type', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'membershipStatus', label: 'Membership Status', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'skillLevel', label: 'Skill Level', type: 'text' as const, ops: ['contains', 'eq'] },

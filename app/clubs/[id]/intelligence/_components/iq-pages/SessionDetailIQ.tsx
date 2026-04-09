@@ -3,7 +3,7 @@ import React, { useState, useMemo } from "react"
 import { motion } from "motion/react"
 import {
   ArrowLeft, Users, Clock, MapPin, CalendarDays, Target,
-  Zap, UserPlus, Check, Loader2, AlertTriangle,
+  Zap, UserPlus, Check, Loader2, AlertTriangle, Send, Mail, X,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
@@ -253,6 +253,11 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
         </div>
       </div>
 
+      {/* Fill This Session — Event Marketing Pipeline */}
+      {spotsLeft > 0 && (
+        <FillSessionButton clubId={clubId} sessionId={session.id} spotsLeft={spotsLeft} />
+      )}
+
       {/* Section 4: Session Insights */}
       <div className="rounded-2xl p-5" style={cardStyle}>
         <div className="flex items-center gap-2 mb-3">
@@ -305,5 +310,188 @@ function CreateCohortButton({ clubId, sessionId, playerCount }: { clubId: string
       {mutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
       Create Cohort ({playerCount})
     </button>
+  )
+}
+
+// ── Fill This Session — Event Marketing Pipeline ──
+function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; sessionId: string; spotsLeft: number }) {
+  const [open, setOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [sent, setSent] = useState<{ sent: number; skipped: number; errors: number } | null>(null)
+
+  const generateMutation = trpc.intelligence.generateEventCampaign.useMutation({
+    onSuccess: (data) => {
+      setSubject(data.message.subject)
+      setBody(data.message.body)
+      setSelectedIds(new Set(data.audience.map(a => a.id)))
+    },
+  })
+
+  const sendMutation = trpc.intelligence.sendEventCampaign.useMutation({
+    onSuccess: (result) => setSent(result),
+  })
+
+  const handleOpen = () => {
+    setOpen(true)
+    setSent(null)
+    generateMutation.mutate({ clubId, sessionId, maxRecipients: 20 })
+  }
+
+  const toggleRecipient = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const handleSend = () => {
+    sendMutation.mutate({
+      clubId, sessionId,
+      recipientIds: Array.from(selectedIds),
+      subject, body, channel: 'email',
+    })
+  }
+
+  const audience = generateMutation.data?.audience || []
+  const sessionInfo = generateMutation.data?.session
+
+  return (
+    <>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={handleOpen}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm text-white"
+        style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700, boxShadow: '0 4px 20px rgba(139,92,246,0.3)' }}
+      >
+        <Send className="w-4 h-4" /> Fill This Session ({spotsLeft} spots)
+      </motion.button>
+
+      {/* Modal */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-6"
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                <Send className="w-5 h-5 inline mr-2" style={{ color: '#8B5CF6' }} />
+                Fill This Session
+              </h2>
+              <button onClick={() => setOpen(false)} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
+            </div>
+
+            {generateMutation.isPending ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#8B5CF6' }} />
+                <p className="text-sm" style={{ color: 'var(--t3)' }}>Finding best candidates...</p>
+              </div>
+            ) : sent ? (
+              <div className="text-center py-8">
+                <div className="text-3xl mb-3">✅</div>
+                <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Campaign Sent!</p>
+                <p className="text-sm" style={{ color: 'var(--t3)' }}>
+                  {sent.sent} sent, {sent.skipped} skipped, {sent.errors} errors
+                </p>
+                <button onClick={() => setOpen(false)} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}>
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Session info */}
+                {sessionInfo && (
+                  <div className="p-3 rounded-xl mb-4" style={{ background: 'var(--subtle)' }}>
+                    <div className="text-sm" style={{ fontWeight: 600, color: 'var(--heading)' }}>{sessionInfo.title}</div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                      {sessionInfo.date} · {sessionInfo.time} {sessionInfo.court ? `· ${sessionInfo.court}` : ''}
+                      <span className="ml-2" style={{ color: '#8B5CF6', fontWeight: 700 }}>{sessionInfo.spotsLeft} spots left</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Message */}
+                <div className="mb-4">
+                  <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
+                  <input
+                    value={subject} onChange={e => setSubject(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
+                  <textarea
+                    value={body} onChange={e => setBody(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                    style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                  />
+                </div>
+
+                {/* Audience */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs" style={{ fontWeight: 600, color: 'var(--t2)' }}>
+                      Recipients ({selectedIds.size} of {audience.length})
+                    </label>
+                    <button
+                      onClick={() => setSelectedIds(selectedIds.size === audience.length ? new Set() : new Set(audience.map(a => a.id)))}
+                      className="text-[10px]" style={{ color: '#8B5CF6', fontWeight: 600 }}
+                    >
+                      {selectedIds.size === audience.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                    {audience.map(a => (
+                      <div
+                        key={a.id}
+                        onClick={() => toggleRecipient(a.id)}
+                        className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all"
+                        style={{ background: selectedIds.has(a.id) ? 'rgba(139,92,246,0.08)' : 'transparent' }}
+                      >
+                        <div className="w-4 h-4 rounded border flex items-center justify-center shrink-0" style={{
+                          borderColor: selectedIds.has(a.id) ? '#8B5CF6' : 'var(--card-border)',
+                          background: selectedIds.has(a.id) ? '#8B5CF6' : 'transparent',
+                        }}>
+                          {selectedIds.has(a.id) && <Check className="w-2.5 h-2.5 text-white" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs" style={{ fontWeight: 600, color: 'var(--t1)' }}>{a.name}</span>
+                          {a.socialProof && (
+                            <span className="text-[10px] ml-2" style={{ color: '#8B5CF6' }}>{a.socialProof}</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] shrink-0" style={{ color: 'var(--t4)' }}>
+                          {a.formatMatch > 0 ? '🎯' : ''} {a.totalBookings} sessions
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Send */}
+                <button
+                  onClick={handleSend}
+                  disabled={selectedIds.size === 0 || sendMutation.isPending || !subject.trim()}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+                >
+                  {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                  Send to {selectedIds.size} player{selectedIds.size > 1 ? 's' : ''}
+                </button>
+              </>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </>
   )
 }
