@@ -1,4 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system/legacy'
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import * as MediaLibrary from 'expo-media-library'
@@ -38,6 +41,92 @@ type PhotoGridItem =
 const PHOTO_GRID_GAP = 8
 const PHOTO_GRID_COLUMNS = 3
 const PHOTO_TILE_WIDTH = '31%'
+const CHAT_PHOTO_MAX_BYTES = 1_500_000
+const CHAT_PHOTO_MAX_DIMENSION = 1600
+const CHAT_PHOTO_QUALITY_STEPS = [0.82, 0.72, 0.62, 0.52, 0.42]
+
+type PendingPhotoAsset = {
+  uri: string
+  fileName?: string | null
+  mimeType?: string | null
+  width?: number
+  height?: number
+}
+
+async function getFileSize(uri: string) {
+  try {
+    const info = await FileSystem.getInfoAsync(uri)
+    return Number(info.exists ? info.size ?? 0 : 0)
+  } catch {
+    return 0
+  }
+}
+
+async function compressPhotoForChatUpload(asset: PendingPhotoAsset) {
+  const originalWidth = Number(asset.width ?? 0)
+  const originalHeight = Number(asset.height ?? 0)
+  const originalSize = await getFileSize(asset.uri)
+  const maxDimension = Math.max(originalWidth, originalHeight)
+  const needsResize = maxDimension > CHAT_PHOTO_MAX_DIMENSION
+  const mimeType = String(asset.mimeType ?? '').toLowerCase()
+  const needsFormatChange = mimeType !== 'image/jpeg' && mimeType !== 'image/jpg'
+
+  if (!needsResize && !needsFormatChange && originalSize > 0 && originalSize <= CHAT_PHOTO_MAX_BYTES) {
+    return {
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType || 'image/jpeg',
+      width: asset.width ?? null,
+      height: asset.height ?? null,
+      size: originalSize,
+    }
+  }
+
+  const resizeAction =
+    needsResize && originalWidth > 0 && originalHeight > 0
+      ? [
+          {
+            resize:
+              originalWidth >= originalHeight
+                ? { width: CHAT_PHOTO_MAX_DIMENSION }
+                : { height: CHAT_PHOTO_MAX_DIMENSION },
+          } as const,
+        ]
+      : []
+
+  let lastResult: {
+    uri: string
+    width: number | null
+    height: number | null
+    size: number
+  } | null = null
+
+  for (const quality of CHAT_PHOTO_QUALITY_STEPS) {
+    const result = await manipulateAsync(asset.uri, resizeAction, {
+      compress: quality,
+      format: SaveFormat.JPEG,
+    })
+    const size = await getFileSize(result.uri)
+    lastResult = {
+      uri: result.uri,
+      width: result.width ?? null,
+      height: result.height ?? null,
+      size,
+    }
+    if (size > 0 && size <= CHAT_PHOTO_MAX_BYTES) {
+      break
+    }
+  }
+
+  return {
+    uri: lastResult?.uri ?? asset.uri,
+    fileName: (asset.fileName || `chat-photo-${Date.now()}`).replace(/\.[^.]+$/, '.jpg'),
+    mimeType: 'image/jpeg',
+    width: lastResult?.width ?? asset.width ?? null,
+    height: lastResult?.height ?? asset.height ?? null,
+    size: lastResult?.size ?? originalSize,
+  }
+}
 
 const AttachmentPhotoTile = memo(function AttachmentPhotoTile({
   item,
@@ -97,13 +186,7 @@ export function ChatLocationAction({
   const [recentPhotos, setRecentPhotos] = useState<RecentPhotoAsset[]>([])
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
   const [sendingPendingPhoto, setSendingPendingPhoto] = useState(false)
-  const [pendingPhoto, setPendingPhoto] = useState<{
-    uri: string
-    fileName?: string | null
-    mimeType?: string | null
-    width?: number
-    height?: number
-  } | null>(null)
+  const [pendingPhoto, setPendingPhoto] = useState<PendingPhotoAsset | null>(null)
   const [photoCursor, setPhotoCursor] = useState<string | null>(null)
   const [hasMorePhotos, setHasMorePhotos] = useState(true)
   const [loadingMorePhotos, setLoadingMorePhotos] = useState(false)
@@ -262,18 +345,19 @@ export function ChatLocationAction({
   }, [activeTab, locationPreviewCenter, sheetOpen])
 
   const uploadPhoto = useCallback(
-    async (asset: { uri: string; fileName?: string | null; mimeType?: string | null; width?: number; height?: number }) => {
+    async (asset: PendingPhotoAsset) => {
       if (!token) {
         toast.error('You need to sign in before sending attachments.')
         return
       }
       try {
         setUploadingKey(asset.uri)
+        const preparedAsset = await compressPhotoForChatUpload(asset)
         const upload = await authApi.uploadChatAttachment(token, {
           kind: 'image',
-          uri: asset.uri,
-          fileName: asset.fileName,
-          mimeType: asset.mimeType || 'image/jpeg',
+          uri: preparedAsset.uri,
+          fileName: preparedAsset.fileName,
+          mimeType: preparedAsset.mimeType || 'image/jpeg',
         })
         onSendText(
           buildImageMessageText({
@@ -281,8 +365,8 @@ export function ChatLocationAction({
             fileName: upload.fileName,
             mimeType: upload.mimeType,
             size: upload.size,
-            width: asset.width ?? null,
-            height: asset.height ?? null,
+            width: preparedAsset.width ?? null,
+            height: preparedAsset.height ?? null,
           })
         )
         setSheetOpen(false)

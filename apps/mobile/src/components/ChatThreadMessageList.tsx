@@ -203,6 +203,7 @@ export function ChatThreadMessageList({
   const [previewFile, setPreviewFile] = useState<ReturnType<typeof parseFileMessageText> | null>(null)
   const [savingPreviewImage, setSavingPreviewImage] = useState(false)
   const [cachedPreviewImageUri, setCachedPreviewImageUri] = useState<string | null>(null)
+  const [cachedInlineImageUris, setCachedInlineImageUris] = useState<Record<string, string>>({})
   const previewImageTranslateY = useRef(new Animated.Value(0)).current
   const lastPreviewImageCloseAtRef = useRef(0)
 
@@ -251,6 +252,35 @@ export function ChatThreadMessageList({
       setCachedPreviewImageUri(cachedUri)
     })
   }, [previewImage, previewImageTranslateY])
+
+  const inlineImageUrls = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          messages
+            .map((message) => parseImageMessageText(message.text)?.url)
+            .filter((url): url is string => Boolean(url))
+        )
+      ),
+    [messages]
+  )
+
+  useEffect(() => {
+    if (inlineImageUrls.length === 0) return
+    let cancelled = false
+
+    void warmImageCache(inlineImageUrls)
+    inlineImageUrls.forEach((url) => {
+      void getCachedImageUri(url).then((cachedUri) => {
+        if (cancelled) return
+        setCachedInlineImageUris((current) => (current[url] === cachedUri ? current : { ...current, [url]: cachedUri }))
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [inlineImageUrls])
 
   const previewImagePanResponder = useMemo(
     () =>
@@ -447,6 +477,7 @@ export function ChatThreadMessageList({
           imagePayload.width && imagePayload.height && imagePayload.height > 0
             ? imagePayload.width / imagePayload.height
             : 1
+        const imageUri = cachedInlineImageUris[imagePayload.url] || imagePayload.url
         return (
           <Pressable
             onPress={() => {
@@ -456,13 +487,15 @@ export function ChatThreadMessageList({
             style={({ pressed }) => [styles.imageMessageCard, pressed && styles.locationCardPressed]}
           >
             <Image
-              source={{ uri: imagePayload.url }}
+              source={{ uri: imageUri, cache: 'force-cache' }}
               style={[
                 styles.attachmentImagePreview,
                 { aspectRatio },
                 aspectRatio < 0.82 ? styles.attachmentImagePortrait : null,
               ]}
               resizeMode="contain"
+              resizeMethod="resize"
+              fadeDuration={80}
             />
           </Pressable>
         )
@@ -565,7 +598,7 @@ export function ChatThreadMessageList({
         </View>
       )
     },
-    [colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles, theme]
+    [cachedInlineImageUris, colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles, theme]
   )
 
   const handleCopy = useCallback(
