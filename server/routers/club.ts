@@ -593,6 +593,14 @@ export const clubRouter = createTRPCRouter({
               imageUrl: true,
               imageWidth: true,
               imageHeight: true,
+              locationLatitude: true,
+              locationLongitude: true,
+              locationTitle: true,
+              locationAddress: true,
+              fileUrl: true,
+              fileName: true,
+              fileMimeType: true,
+              fileSize: true,
               createdAt: true,
               updatedAt: true,
               createdByUser: {
@@ -1119,6 +1127,14 @@ export const clubRouter = createTRPCRouter({
         imageUrl: z.string().url().optional(),
         imageWidth: z.number().int().positive().max(10000).nullable().optional(),
         imageHeight: z.number().int().positive().max(10000).nullable().optional(),
+        locationLatitude: z.number().finite().nullable().optional(),
+        locationLongitude: z.number().finite().nullable().optional(),
+        locationTitle: z.string().max(200).nullable().optional(),
+        locationAddress: z.string().max(400).nullable().optional(),
+        fileUrl: z.string().url().optional(),
+        fileName: z.string().max(240).nullable().optional(),
+        fileMimeType: z.string().max(120).nullable().optional(),
+        fileSize: z.number().int().nonnegative().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1146,6 +1162,14 @@ export const clubRouter = createTRPCRouter({
           imageUrl: input.imageUrl?.trim() || null,
           imageWidth: input.imageWidth ?? null,
           imageHeight: input.imageHeight ?? null,
+          locationLatitude: input.locationLatitude ?? null,
+          locationLongitude: input.locationLongitude ?? null,
+          locationTitle: input.locationTitle?.trim() || null,
+          locationAddress: input.locationAddress?.trim() || null,
+          fileUrl: input.fileUrl?.trim() || null,
+          fileName: input.fileName?.trim() || null,
+          fileMimeType: input.fileMimeType?.trim() || null,
+          fileSize: input.fileSize ?? null,
           createdByUserId: userId,
         },
         include: {
@@ -1172,7 +1196,17 @@ export const clubRouter = createTRPCRouter({
         imageUrl: z.string().url().optional(),
         imageWidth: z.number().int().positive().max(10000).nullable().optional(),
         imageHeight: z.number().int().positive().max(10000).nullable().optional(),
+        locationLatitude: z.number().finite().nullable().optional(),
+        locationLongitude: z.number().finite().nullable().optional(),
+        locationTitle: z.string().max(200).nullable().optional(),
+        locationAddress: z.string().max(400).nullable().optional(),
+        fileUrl: z.string().url().optional(),
+        fileName: z.string().max(240).nullable().optional(),
+        fileMimeType: z.string().max(120).nullable().optional(),
+        fileSize: z.number().int().nonnegative().nullable().optional(),
         removeImage: z.boolean().optional(),
+        removeLocation: z.boolean().optional(),
+        removeFile: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1202,6 +1236,14 @@ export const clubRouter = createTRPCRouter({
           imageUrl: input.removeImage ? null : input.imageUrl?.trim() || null,
           imageWidth: input.removeImage ? null : input.imageWidth ?? null,
           imageHeight: input.removeImage ? null : input.imageHeight ?? null,
+          locationLatitude: input.removeLocation ? null : input.locationLatitude ?? null,
+          locationLongitude: input.removeLocation ? null : input.locationLongitude ?? null,
+          locationTitle: input.removeLocation ? null : input.locationTitle?.trim() || null,
+          locationAddress: input.removeLocation ? null : input.locationAddress?.trim() || null,
+          fileUrl: input.removeFile ? null : input.fileUrl?.trim() || null,
+          fileName: input.removeFile ? null : input.fileName?.trim() || null,
+          fileMimeType: input.removeFile ? null : input.fileMimeType?.trim() || null,
+          fileSize: input.removeFile ? null : input.fileSize ?? null,
         },
         include: {
           createdByUser: {

@@ -40,6 +40,7 @@ import {
   parseYmd,
   buildEventsByDay,
 } from '../../../src/lib/clubCalendar'
+import { formatFileSize, getExternalLocationUrl } from '../../../src/lib/chatSpecialMessages'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { authApi } from '../../../src/lib/authApi'
 import { trpc } from '../../../src/lib/trpc'
@@ -55,7 +56,7 @@ type AnnouncementComposerState =
   | { mode: 'create'; draft: ClubAnnouncementDraft }
   | { mode: 'edit'; announcementId: string; draft: ClubAnnouncementDraft }
 
-const EMPTY_ANNOUNCEMENT_DRAFT: ClubAnnouncementDraft = { title: '', body: '', image: null }
+const EMPTY_ANNOUNCEMENT_DRAFT: ClubAnnouncementDraft = { title: '', body: '', image: null, location: null, file: null }
 
 const getAnnouncementImageAspectRatio = (width?: number | null, height?: number | null) => {
   const safeWidth = Number(width ?? 0)
@@ -280,6 +281,10 @@ export default function ClubDetailScreen() {
       let imageUrl: string | undefined
       let imageWidth: number | null | undefined
       let imageHeight: number | null | undefined
+      let fileUrl: string | undefined
+      let fileName: string | null | undefined
+      let fileMimeType: string | null | undefined
+      let fileSize: number | null | undefined
 
       if (currentComposer.draft.image) {
         if (currentComposer.draft.image.remoteUrl) {
@@ -303,6 +308,30 @@ export default function ClubDetailScreen() {
         }
       }
 
+      if (currentComposer.draft.file) {
+        if (currentComposer.draft.file.remoteUrl) {
+          fileUrl = currentComposer.draft.file.remoteUrl
+          fileName = currentComposer.draft.file.fileName
+          fileMimeType = currentComposer.draft.file.mimeType ?? null
+          fileSize = currentComposer.draft.file.size ?? null
+        } else {
+          if (!token || !currentComposer.draft.file.uri) {
+            toast.error('You need to sign in before uploading files.')
+            return
+          }
+          const upload = await authApi.uploadChatAttachment(token, {
+            kind: 'file',
+            uri: currentComposer.draft.file.uri,
+            fileName: currentComposer.draft.file.fileName,
+            mimeType: currentComposer.draft.file.mimeType || 'application/octet-stream',
+          })
+          fileUrl = upload.url
+          fileName = upload.fileName
+          fileMimeType = upload.mimeType
+          fileSize = upload.size
+        }
+      }
+
       if (currentComposer.mode === 'edit') {
         await updateAnnouncement.mutateAsync({
           clubId,
@@ -312,7 +341,17 @@ export default function ClubDetailScreen() {
           imageUrl,
           imageWidth,
           imageHeight,
+          locationLatitude: currentComposer.draft.location?.latitude ?? null,
+          locationLongitude: currentComposer.draft.location?.longitude ?? null,
+          locationTitle: currentComposer.draft.location?.title ?? null,
+          locationAddress: currentComposer.draft.location?.address ?? null,
+          fileUrl,
+          fileName,
+          fileMimeType,
+          fileSize,
           removeImage: !currentComposer.draft.image,
+          removeLocation: !currentComposer.draft.location,
+          removeFile: !currentComposer.draft.file,
         })
       } else {
         await createAnnouncement.mutateAsync({
@@ -322,6 +361,14 @@ export default function ClubDetailScreen() {
           imageUrl,
           imageWidth,
           imageHeight,
+          locationLatitude: currentComposer.draft.location?.latitude ?? null,
+          locationLongitude: currentComposer.draft.location?.longitude ?? null,
+          locationTitle: currentComposer.draft.location?.title ?? null,
+          locationAddress: currentComposer.draft.location?.address ?? null,
+          fileUrl,
+          fileName,
+          fileMimeType,
+          fileSize,
         })
       }
 
@@ -407,6 +454,21 @@ export default function ClubDetailScreen() {
       ]
     )
   }, [])
+  const handleOpenAnnouncementLocation = useCallback(
+    (announcement: any) => {
+      const latitude = Number(announcement.locationLatitude)
+      const longitude = Number(announcement.locationLongitude)
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+      const locationUrl = getExternalLocationUrl({
+        latitude,
+        longitude,
+        title: String(announcement.locationTitle ?? '').trim() || 'Pinned location',
+        address: String(announcement.locationAddress ?? '').trim() || null,
+      })
+      handleOpenExternalLink(locationUrl, () => Linking.openURL(locationUrl))
+    },
+    [handleOpenExternalLink]
+  )
 
   useEffect(() => {
     const nextTab = params.tab
@@ -1465,6 +1527,45 @@ export default function ClubDetailScreen() {
                           />
                         </Pressable>
                       ) : null}
+                      {announcement.locationLatitude != null && announcement.locationLongitude != null ? (
+                        <Pressable
+                          onPress={() => handleOpenAnnouncementLocation(announcement)}
+                          style={({ pressed }) => [styles.announcementLocationCard, pressed && styles.announcementImagePressed]}
+                        >
+                          <View style={styles.announcementLocationIconWrap}>
+                            <Feather name="map-pin" size={16} color={colors.primary} />
+                          </View>
+                          <View style={styles.announcementLocationBody}>
+                            <Text style={styles.announcementLocationTitle} numberOfLines={1}>
+                              {announcement.locationTitle || 'Pinned location'}
+                            </Text>
+                            <Text style={styles.announcementLocationAddress} numberOfLines={2}>
+                              {announcement.locationAddress ||
+                                `${Number(announcement.locationLatitude).toFixed(5)}, ${Number(announcement.locationLongitude).toFixed(5)}`}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      ) : null}
+                      {announcement.fileUrl && announcement.fileName ? (
+                        <Pressable
+                          onPress={() =>
+                            handleOpenExternalLink(String(announcement.fileUrl), () => Linking.openURL(String(announcement.fileUrl)))
+                          }
+                          style={({ pressed }) => [styles.announcementFileCard, pressed && styles.announcementImagePressed]}
+                        >
+                          <View style={styles.announcementFileIconWrap}>
+                            <Feather name="file-text" size={18} color={colors.primary} />
+                          </View>
+                          <View style={styles.announcementFileBody}>
+                            <Text style={styles.announcementFileName} numberOfLines={1}>
+                              {announcement.fileName}
+                            </Text>
+                            <Text style={styles.announcementFileMeta} numberOfLines={1}>
+                              {[announcement.fileMimeType, formatFileSize(announcement.fileSize)].filter(Boolean).join(' · ') || 'File'}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      ) : null}
                       <LinkifiedText
                         text={announcement.body}
                         textStyle={styles.body}
@@ -1521,6 +1622,24 @@ export default function ClubDetailScreen() {
                                             remoteUrl: announcement.imageUrl,
                                           }
                                         : null,
+                                      location:
+                                        announcement.locationLatitude != null && announcement.locationLongitude != null
+                                          ? {
+                                              latitude: Number(announcement.locationLatitude),
+                                              longitude: Number(announcement.locationLongitude),
+                                              title: announcement.locationTitle || 'Pinned location',
+                                              address: announcement.locationAddress || null,
+                                            }
+                                          : null,
+                                      file:
+                                        announcement.fileUrl && announcement.fileName
+                                          ? {
+                                              remoteUrl: announcement.fileUrl,
+                                              fileName: announcement.fileName,
+                                              mimeType: announcement.fileMimeType ?? null,
+                                              size: announcement.fileSize ?? null,
+                                            }
+                                          : null,
                                     },
                                   })
                                 }}
@@ -2456,6 +2575,77 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   announcementImage: {
     width: '100%',
     backgroundColor: colors.surfaceMuted,
+  },
+  announcementLocationCard: {
+    marginBottom: spacing.sm,
+    minHeight: 72,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  announcementLocationIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: colors.primaryGhost,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementLocationBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  announcementLocationTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  announcementLocationAddress: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  announcementFileCard: {
+    marginBottom: spacing.sm,
+    minHeight: 72,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  announcementFileIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: colors.primaryGhost,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementFileBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  announcementFileName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  announcementFileMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   smallMeta: {
     marginTop: spacing.sm,
