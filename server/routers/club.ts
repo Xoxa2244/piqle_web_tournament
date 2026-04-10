@@ -2084,27 +2084,46 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'This is not an admin invite' })
       }
 
+      // Verify user exists in DB (NextAuth session may have stale ID)
+      const userExists = await ctx.prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
+      if (!userExists) {
+        // Try to find user by invite email instead
+        const userByEmail = invite.inviteeEmail
+          ? await ctx.prisma.user.findUnique({ where: { email: invite.inviteeEmail }, select: { id: true } })
+          : null
+        if (userByEmail) {
+          // Use the existing user matched by email
+          console.log(`[Invite] Session userId ${userId} not in DB, falling back to email-matched userId ${userByEmail.id}`)
+          // @ts-ignore - reassign to correct userId
+          var effectiveUserId = userByEmail.id
+        } else {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'User account not found. Please sign in again and retry.' })
+        }
+      } else {
+        var effectiveUserId = userId
+      }
+
       // All-or-nothing: create admin + follower + mark accepted in transaction
       const role = invite.role!
       await ctx.prisma.$transaction(async (tx) => {
         // Create ClubAdmin
         await tx.clubAdmin.upsert({
-          where: { clubId_userId: { clubId: invite.clubId, userId } },
+          where: { clubId_userId: { clubId: invite.clubId, userId: effectiveUserId } },
           update: { role },
-          create: { clubId: invite.clubId, userId, role },
+          create: { clubId: invite.clubId, userId: effectiveUserId, role },
         })
 
         // Also make them a club follower
         await tx.clubFollower.upsert({
-          where: { clubId_userId: { clubId: invite.clubId, userId } },
+          where: { clubId_userId: { clubId: invite.clubId, userId: effectiveUserId } },
           update: {},
-          create: { clubId: invite.clubId, userId },
+          create: { clubId: invite.clubId, userId: effectiveUserId },
         })
 
         // Mark invite as accepted LAST (so retry works if above fails)
         await tx.clubInvite.update({
           where: { token: input.token },
-          data: { acceptedAt: new Date(), inviteeUserId: userId },
+          data: { acceptedAt: new Date(), inviteeUserId: effectiveUserId },
         })
       })
 
