@@ -26,6 +26,7 @@ import { EntityImage } from '../../../src/components/EntityImage'
 import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
 import { RatingStarIcon } from '../../../src/components/icons/RatingStarIcon'
+import { LinkifiedText } from '../../../src/components/LinkifiedText'
 import { PickleRefreshScrollView } from '../../../src/components/PickleRefreshScrollView'
 import { RemoteUserAvatar } from '../../../src/components/RemoteUserAvatar'
 import { BackCircleButton } from '../../../src/components/navigation/BackCircleButton'
@@ -323,6 +324,23 @@ export default function ClubDetailScreen() {
   const bookingUrl =
     bookingUrlRaw && !/^https?:\/\//i.test(bookingUrlRaw) ? `https://${bookingUrlRaw}` : bookingUrlRaw
   const canBook = Boolean(bookingUrl)
+  const handleOpenExternalLink = useCallback((url: string, open: () => Promise<void>) => {
+    Alert.alert(
+      'Open external link?',
+      'This link will open outside Piqle. External websites may be unsafe. Continue only if you trust the source.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open',
+          onPress: () => {
+            void open().catch(() => {
+              Alert.alert('Cannot open link', 'This link could not be opened on this device.')
+            })
+          },
+        },
+      ]
+    )
+  }, [])
 
   useEffect(() => {
     const nextTab = params.tab
@@ -1366,7 +1384,11 @@ export default function ClubDetailScreen() {
                       {announcement.title ? (
                         <Text style={styles.announcementTitle}>{announcement.title}</Text>
                       ) : null}
-                      <Text style={styles.body}>{announcement.body}</Text>
+                      <LinkifiedText
+                        text={announcement.body}
+                        textStyle={styles.body}
+                        onBeforeOpen={handleOpenExternalLink}
+                      />
                       <View style={styles.announcementMetaRow}>
                         <View style={styles.announcementMetaLeft}>
                           <Text style={styles.smallMeta}>
