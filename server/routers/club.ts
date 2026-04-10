@@ -590,6 +590,9 @@ export const clubRouter = createTRPCRouter({
               id: true,
               title: true,
               body: true,
+              imageUrl: true,
+              imageWidth: true,
+              imageHeight: true,
               createdAt: true,
               updatedAt: true,
               createdByUser: {
@@ -1113,6 +1116,9 @@ export const clubRouter = createTRPCRouter({
         clubId: z.string(),
         title: z.string().max(120).optional(),
         body: z.string().min(1).max(4000),
+        imageUrl: z.string().url().optional(),
+        imageWidth: z.number().int().positive().max(10000).nullable().optional(),
+        imageHeight: z.number().int().positive().max(10000).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1137,6 +1143,9 @@ export const clubRouter = createTRPCRouter({
           clubId: input.clubId,
           title: input.title?.trim() || null,
           body: input.body.trim(),
+          imageUrl: input.imageUrl?.trim() || null,
+          imageWidth: input.imageWidth ?? null,
+          imageHeight: input.imageHeight ?? null,
           createdByUserId: userId,
         },
         include: {
@@ -1160,6 +1169,10 @@ export const clubRouter = createTRPCRouter({
         announcementId: z.string(),
         title: z.string().max(120).optional(),
         body: z.string().min(1).max(4000),
+        imageUrl: z.string().url().optional(),
+        imageWidth: z.number().int().positive().max(10000).nullable().optional(),
+        imageHeight: z.number().int().positive().max(10000).nullable().optional(),
+        removeImage: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1186,6 +1199,9 @@ export const clubRouter = createTRPCRouter({
         data: {
           title: input.title?.trim() || null,
           body: input.body.trim(),
+          imageUrl: input.removeImage ? null : input.imageUrl?.trim() || null,
+          imageWidth: input.removeImage ? null : input.imageWidth ?? null,
+          imageHeight: input.removeImage ? null : input.imageHeight ?? null,
         },
         include: {
           createdByUser: {

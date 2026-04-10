@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Linking, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 
@@ -21,7 +21,7 @@ import {
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
 import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
-import { ClubAnnouncementComposerSheet } from '../../../src/components/ClubAnnouncementComposerSheet'
+import { ClubAnnouncementComposerSheet, type ClubAnnouncementDraft } from '../../../src/components/ClubAnnouncementComposerSheet'
 import { EntityImage } from '../../../src/components/EntityImage'
 import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
@@ -41,6 +41,7 @@ import {
   buildEventsByDay,
 } from '../../../src/lib/clubCalendar'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
+import { authApi } from '../../../src/lib/authApi'
 import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
@@ -49,17 +50,21 @@ import { useToast } from '../../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
 
-type AnnouncementDraft = {
-  title: string
-  body: string
-}
-
 type AnnouncementComposerState =
   | null
-  | { mode: 'create'; draft: AnnouncementDraft }
-  | { mode: 'edit'; announcementId: string; draft: AnnouncementDraft }
+  | { mode: 'create'; draft: ClubAnnouncementDraft }
+  | { mode: 'edit'; announcementId: string; draft: ClubAnnouncementDraft }
 
-const EMPTY_ANNOUNCEMENT_DRAFT: AnnouncementDraft = { title: '', body: '' }
+const EMPTY_ANNOUNCEMENT_DRAFT: ClubAnnouncementDraft = { title: '', body: '', image: null }
+
+const getAnnouncementImageAspectRatio = (width?: number | null, height?: number | null) => {
+  const safeWidth = Number(width ?? 0)
+  const safeHeight = Number(height ?? 0)
+  if (safeWidth > 0 && safeHeight > 0) {
+    return Math.min(Math.max(safeWidth / safeHeight, 0.8), 1.8)
+  }
+  return 1.25
+}
 
 export default function ClubDetailScreen() {
   const params = useLocalSearchParams<{ id: string; tab?: string }>()
@@ -133,14 +138,12 @@ export default function ClubDetailScreen() {
       await utils.club.get.invalidate({ id: clubId })
       toast.success('Announcement published.')
     },
-    onError: (e) => toast.error(e.message || 'Failed to post'),
   })
   const updateAnnouncement = trpc.club.updateAnnouncement.useMutation({
     onSuccess: async () => {
       await utils.club.get.invalidate({ id: clubId })
       toast.success('Announcement updated.')
     },
-    onError: (e) => toast.error(e.message || 'Failed to update'),
   })
   const deleteAnnouncement = trpc.club.deleteAnnouncement.useMutation({
     onSuccess: async () => {
@@ -249,6 +252,8 @@ export default function ClubDetailScreen() {
   })
 
   const [announcementComposer, setAnnouncementComposer] = useState<AnnouncementComposerState>(null)
+  const [announcementPreviewImage, setAnnouncementPreviewImage] = useState<string | null>(null)
+  const [announcementSubmitBusy, setAnnouncementSubmitBusy] = useState(false)
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
   const [clubShareSheetOpen, setClubShareSheetOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
@@ -266,6 +271,67 @@ export default function ClubDetailScreen() {
   const closeAnnouncementComposer = useCallback(() => {
     setAnnouncementComposer(null)
   }, [])
+  const handleSubmitAnnouncement = useCallback(async () => {
+    const currentComposer = announcementComposer
+    if (!currentComposer?.draft.body.trim()) return
+
+    try {
+      setAnnouncementSubmitBusy(true)
+      let imageUrl: string | undefined
+      let imageWidth: number | null | undefined
+      let imageHeight: number | null | undefined
+
+      if (currentComposer.draft.image) {
+        if (currentComposer.draft.image.remoteUrl) {
+          imageUrl = currentComposer.draft.image.remoteUrl
+          imageWidth = currentComposer.draft.image.width ?? null
+          imageHeight = currentComposer.draft.image.height ?? null
+        } else {
+          if (!token) {
+            toast.error('You need to sign in before uploading images.')
+            return
+          }
+          const upload = await authApi.uploadChatAttachment(token, {
+            kind: 'image',
+            uri: currentComposer.draft.image.uri,
+            fileName: currentComposer.draft.image.fileName,
+            mimeType: currentComposer.draft.image.mimeType || 'image/jpeg',
+          })
+          imageUrl = upload.url
+          imageWidth = currentComposer.draft.image.width ?? null
+          imageHeight = currentComposer.draft.image.height ?? null
+        }
+      }
+
+      if (currentComposer.mode === 'edit') {
+        await updateAnnouncement.mutateAsync({
+          clubId,
+          announcementId: currentComposer.announcementId,
+          title: currentComposer.draft.title.trim() || undefined,
+          body: currentComposer.draft.body.trim(),
+          imageUrl,
+          imageWidth,
+          imageHeight,
+          removeImage: !currentComposer.draft.image,
+        })
+      } else {
+        await createAnnouncement.mutateAsync({
+          clubId,
+          title: currentComposer.draft.title.trim() || undefined,
+          body: currentComposer.draft.body.trim(),
+          imageUrl,
+          imageWidth,
+          imageHeight,
+        })
+      }
+
+      closeAnnouncementComposer()
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save announcement')
+    } finally {
+      setAnnouncementSubmitBusy(false)
+    }
+  }, [announcementComposer, clubId, closeAnnouncementComposer, createAnnouncement, toast, token, updateAnnouncement])
 
   const pendingAfterMemberClose = useRef<
     | { kind: 'kick'; target: { userId: string; name: string } }
@@ -1384,6 +1450,21 @@ export default function ClubDetailScreen() {
                       {announcement.title ? (
                         <Text style={styles.announcementTitle}>{announcement.title}</Text>
                       ) : null}
+                      {announcement.imageUrl ? (
+                        <Pressable
+                          onPress={() => setAnnouncementPreviewImage(announcement.imageUrl)}
+                          style={({ pressed }) => [styles.announcementImageWrap, pressed && styles.announcementImagePressed]}
+                        >
+                          <Image
+                            source={{ uri: announcement.imageUrl, cache: 'force-cache' }}
+                            style={[
+                              styles.announcementImage,
+                              { aspectRatio: getAnnouncementImageAspectRatio(announcement.imageWidth, announcement.imageHeight) },
+                            ]}
+                            resizeMode="cover"
+                          />
+                        </Pressable>
+                      ) : null}
                       <LinkifiedText
                         text={announcement.body}
                         textStyle={styles.body}
@@ -1429,7 +1510,18 @@ export default function ClubDetailScreen() {
                                   setAnnouncementComposer({
                                     mode: 'edit',
                                     announcementId: announcement.id,
-                                    draft: { title: announcement.title ?? '', body: announcement.body },
+                                    draft: {
+                                      title: announcement.title ?? '',
+                                      body: announcement.body,
+                                      image: announcement.imageUrl
+                                        ? {
+                                            uri: announcement.imageUrl,
+                                            width: announcement.imageWidth ?? null,
+                                            height: announcement.imageHeight ?? null,
+                                            remoteUrl: announcement.imageUrl,
+                                          }
+                                        : null,
+                                    },
                                   })
                                 }}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
@@ -1590,44 +1682,27 @@ export default function ClubDetailScreen() {
         }}
         onClose={closeAnnouncementComposer}
         onSubmit={() => {
-          if (announcementComposer?.mode === 'edit') {
-            if (!announcementComposer.draft.body.trim()) return
-            updateAnnouncement.mutate(
-              {
-                clubId,
-                announcementId: announcementComposer.announcementId,
-                title: announcementComposer.draft.title.trim() || undefined,
-                body: announcementComposer.draft.body.trim(),
-              },
-              {
-                onSuccess: () => {
-                  closeAnnouncementComposer()
-                },
-              }
-            )
-            return
-          }
-          if (!announcementComposer?.draft.body.trim()) return
-          createAnnouncement.mutate(
-            {
-              clubId,
-              title: announcementComposer?.draft.title.trim() || undefined,
-              body: announcementComposer.draft.body.trim(),
-            },
-            {
-              onSuccess: () => {
-                closeAnnouncementComposer()
-              },
-            }
-          )
+          void handleSubmitAnnouncement()
         }}
-        submitLoading={announcementComposerMode === 'edit' ? updateAnnouncement.isPending : createAnnouncement.isPending}
+        submitLoading={announcementSubmitBusy || updateAnnouncement.isPending || createAnnouncement.isPending}
         submitDisabled={
           announcementComposerMode === 'edit'
-            ? updateAnnouncement.isPending || !announcementComposer?.draft.body.trim()
-            : createAnnouncement.isPending || !announcementComposer?.draft.body.trim()
+            ? (announcementSubmitBusy || updateAnnouncement.isPending || createAnnouncement.isPending) || !announcementComposer?.draft.body.trim()
+            : (announcementSubmitBusy || createAnnouncement.isPending || updateAnnouncement.isPending) || !announcementComposer?.draft.body.trim()
         }
       />
+      <Modal
+        visible={Boolean(announcementPreviewImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAnnouncementPreviewImage(null)}
+      >
+        <Pressable style={styles.announcementPreviewBackdrop} onPress={() => setAnnouncementPreviewImage(null)}>
+          {announcementPreviewImage ? (
+            <Image source={{ uri: announcementPreviewImage, cache: 'force-cache' }} style={styles.announcementPreviewImage} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
       <FeedbackRatingModal
         open={clubFeedbackOpen}
         onClose={() => setClubFeedbackOpen(false)}
@@ -2369,6 +2444,19 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     fontSize: 20,
     marginBottom: spacing.sm,
   },
+  announcementImageWrap: {
+    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceMuted,
+  },
+  announcementImagePressed: {
+    opacity: 0.94,
+  },
+  announcementImage: {
+    width: '100%',
+    backgroundColor: colors.surfaceMuted,
+  },
   smallMeta: {
     marginTop: spacing.sm,
     color: colors.textMuted,
@@ -2467,6 +2555,17 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   },
   announcementActionBtnPressed: {
     opacity: 0.8,
+  },
+  announcementPreviewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  announcementPreviewImage: {
+    width: '100%',
+    height: '100%',
   },
   emptyShell: {
     paddingVertical: spacing.xl,

@@ -350,6 +350,9 @@ model ClubAnnouncement {
   clubId          String   @map("club_id")
   title           String?
   body            String
+  imageUrl        String?  @map("image_url")
+  imageWidth      Int?     @map("image_width")
+  imageHeight     Int?     @map("image_height")
   createdByUserId String?  @map("created_by_user_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
