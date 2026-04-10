@@ -2,6 +2,8 @@ import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 import { appRouter } from '@/server/routers/_app'
 import { createTRPCContext } from '@/server/trpc'
 
+export const maxDuration = 300 // 5 min for sync operations
+
 const handler = (req: Request) =>
   fetchRequestHandler({
     endpoint: '/api/trpc',

@@ -1,0 +1,620 @@
+'use client'
+import { useState, useRef, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Puzzle, Users, Clock, MapPin, Star, Zap, Send, Check,
+  ChevronDown, Filter, ArrowUpRight, CalendarDays, Target,
+  Sparkles, AlertCircle, CheckCircle2, X, Mail, Smartphone, Bell,
+} from "lucide-react";
+import { SmsComingSoon } from './shared/SmsBadge'
+import { useTheme } from "../IQThemeProvider";
+import { EmptyStateIQ } from "./EmptyStateIQ";
+
+/* --- Mock Data --- */
+const emptySlots = [
+  {
+    id: "slot-1",
+    court: "Court 1",
+    sport: "Pickleball",
+    date: "Tomorrow",
+    time: "9:00 AM",
+    duration: "90 min",
+    format: "Open Play",
+    spotsNeeded: 4,
+    spotsTotal: 8,
+    pricePerPlayer: 15,
+    matches: [
+      { id: "m1", name: "Emma Wilson", rating: 3.2, matchScore: 97, lastPlayed: "2 days ago", preferredTime: "Morning", status: "available", avatar: "EW", phone: "+1 (555) 234-5678", email: "emma.w@email.com" },
+      { id: "m2", name: "Jake Rodriguez", rating: 3.0, matchScore: 94, lastPlayed: "4 days ago", preferredTime: "Morning", status: "available", avatar: "JR", phone: "+1 (555) 345-6789", email: "jake.r@email.com" },
+      { id: "m3", name: "Lisa Kim", rating: 3.4, matchScore: 91, lastPlayed: "1 day ago", preferredTime: "Anytime", status: "available", avatar: "LK", phone: "+1 (555) 456-7890", email: "lisa.k@email.com" },
+      { id: "m4", name: "Mike Chen", rating: 2.8, matchScore: 88, lastPlayed: "5 days ago", preferredTime: "Morning", status: "tentative", avatar: "MC", phone: "+1 (555) 567-8901", email: "mike.c@email.com" },
+      { id: "m5", name: "Sarah Davis", rating: 3.1, matchScore: 85, lastPlayed: "3 days ago", preferredTime: "Afternoon", status: "available", avatar: "SD", phone: "+1 (555) 678-9012", email: "sarah.d@email.com" },
+      { id: "m6", name: "Tom Brown", rating: 3.3, matchScore: 82, lastPlayed: "1 week ago", preferredTime: "Morning", status: "available", avatar: "TB", phone: "+1 (555) 789-0123", email: "tom.b@email.com" },
+    ],
+  },
+  {
+    id: "slot-2",
+    court: "Court 3",
+    sport: "Padel",
+    date: "Tomorrow",
+    time: "11:00 AM",
+    duration: "60 min",
+    format: "Doubles",
+    spotsNeeded: 2,
+    spotsTotal: 4,
+    pricePerPlayer: 25,
+    matches: [
+      { id: "m7", name: "Anna Martinez", rating: 3.5, matchScore: 96, lastPlayed: "1 day ago", preferredTime: "Late Morning", status: "available", avatar: "AM", phone: "+1 (555) 890-1234", email: "anna.m@email.com" },
+      { id: "m8", name: "Chris Lee", rating: 3.6, matchScore: 93, lastPlayed: "3 days ago", preferredTime: "Morning", status: "available", avatar: "CL", phone: "+1 (555) 901-2345", email: "chris.l@email.com" },
+      { id: "m9", name: "Diana Park", rating: 3.3, matchScore: 89, lastPlayed: "2 days ago", preferredTime: "Anytime", status: "tentative", avatar: "DP", phone: "+1 (555) 012-3456", email: "diana.p@email.com" },
+    ],
+  },
+  {
+    id: "slot-3",
+    court: "Court 2",
+    sport: "Pickleball",
+    date: "Wed, Mar 19",
+    time: "6:00 PM",
+    duration: "90 min",
+    format: "Round Robin",
+    spotsNeeded: 6,
+    spotsTotal: 12,
+    pricePerPlayer: 18,
+    matches: [
+      { id: "m10", name: "Ryan Foster", rating: 2.8, matchScore: 92, lastPlayed: "4 days ago", preferredTime: "Evening", status: "available", avatar: "RF", phone: "+1 (555) 123-4567", email: "ryan.f@email.com" },
+      { id: "m11", name: "Kelly Wright", rating: 3.0, matchScore: 90, lastPlayed: "2 days ago", preferredTime: "Evening", status: "available", avatar: "KW", phone: "+1 (555) 234-5670", email: "kelly.w@email.com" },
+      { id: "m12", name: "Brandon Hall", rating: 2.6, matchScore: 87, lastPlayed: "6 days ago", preferredTime: "Anytime", status: "available", avatar: "BH", phone: "+1 (555) 345-6701", email: "brandon.h@email.com" },
+      { id: "m13", name: "Megan Scott", rating: 2.9, matchScore: 84, lastPlayed: "1 day ago", preferredTime: "Evening", status: "available", avatar: "MS", phone: "+1 (555) 456-7012", email: "megan.s@email.com" },
+    ],
+  },
+];
+
+/* --- Build stable slot list from dashboard data (NOT from recommendations) --- */
+function buildSlotsFromDashboard(dashboardData: any): typeof emptySlots {
+  const problematic = dashboardData?.sessions?.problematicSessions || [];
+  const slots: typeof emptySlots = [];
+
+  for (const sess of problematic) {
+    const occ = sess.occupancyPercent ?? 0;
+    if (occ >= 80) continue; // only show truly underfilled
+    slots.push({
+      id: sess.id,
+      court: sess.courtName || 'Court',
+      sport: 'Pickleball',
+      date: sess.date || '',
+      time: sess.startTime || '',
+      duration: '90 min',
+      format: (sess.format || 'Open Play').replace(/_/g, ' '),
+      spotsNeeded: Math.max(0, (sess.maxPlayers || 8) - (sess.confirmedCount || 0)),
+      spotsTotal: sess.maxPlayers || 8,
+      pricePerPlayer: 15,
+      matches: [], // matches come from recommendations, loaded per-slot
+    });
+  }
+
+  return slots;
+}
+
+/* --- Map recommendations to player matches for the selected slot --- */
+function mapRecommendationsToMatches(recommendations: any): typeof emptySlots[0]['matches'] {
+  if (!recommendations?.recommendations?.length) return [];
+  const initials = (name: string) => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+  return recommendations.recommendations.slice(0, 8).map((r: any) => ({
+    id: r.member?.id || r.memberId || `m-${Math.random()}`,
+    name: r.member?.name || 'Unknown',
+    rating: r.member?.duprRating ?? 3.0,
+    matchScore: Math.round(r.score ?? 80),
+    lastPlayed: r.member?.lastPlayedDaysAgo != null ? `${r.member.lastPlayedDaysAgo}d ago` : 'Unknown',
+    preferredTime: r.factors?.preferredTimeMatch ? 'Matched' : 'Flexible',
+    status: (r.score ?? 0) >= 70 ? 'available' as const : 'tentative' as const,
+    avatar: initials(r.member?.name || 'XX'),
+    phone: '',
+    email: r.member?.email || '',
+  }));
+}
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl p-5 ${className}`} style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}>
+      {children}
+    </div>
+  );
+}
+
+function MatchScoreBadge({ score }: { score: number }) {
+  const color = score >= 90 ? "#10B981" : score >= 80 ? "#F59E0B" : "#8B5CF6";
+  return (
+    <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: `${color}20`, border: `1px solid ${color}30` }}>
+      <Target className="w-3 h-3" style={{ color }} />
+      <span className="text-[11px]" style={{ color, fontWeight: 700 }}>{score}%</span>
+    </div>
+  );
+}
+
+/* ============================================= */
+/*            SLOT FILLER PAGE                    */
+/* ============================================= */
+export function SlotFillerIQ({ dashboardData, recommendations, isLoading: externalLoading, loadingRecs, sendInvites, clubId, onSelectSession, selectedSessionId, aiProfiles, heatmapData }: { dashboardData?: any; recommendations?: any; isLoading?: boolean; loadingRecs?: boolean; sendInvites?: any; clubId?: string; onSelectSession?: (id: string) => void; selectedSessionId?: string | null; aiProfiles?: Record<string, any>; heatmapData?: any } = {}) {
+  const isFrequentPlayersFallback = recommendations?.source === 'frequent_players';
+  const { isDark } = useTheme();
+  const isDemo = typeof window !== 'undefined' && (window.location.search.includes('demo=true') || window.location.hostname === 'demo.iqsport.ai');
+
+  // Build slot list from dashboard data (stable — does NOT depend on recommendations)
+  const dashboardSlots = useMemo(() => buildSlotsFromDashboard(dashboardData), [dashboardData]);
+  const displaySlots = dashboardSlots.length > 0 ? dashboardSlots : [];
+
+  // Player matches come from recommendations (only for the selected slot)
+  const currentMatches = useMemo(() => mapRecommendationsToMatches(recommendations), [recommendations]);
+  // Check if recommendations are for the currently selected slot
+  const recsMatchSelectedSlot = recommendations?.session?.id === selectedSessionId;
+
+  // Use selectedSessionId from parent as source of truth, fallback to first slot
+  const effectiveSlot = selectedSessionId || displaySlots[0]?.id || '';
+  const [sentInvites, setSentInvites] = useState<Record<string, string>>({}); // "playerId" -> "email"|"sms"
+  const [showSuccess, setShowSuccess] = useState(false);
+  const ref = useRef(null);
+
+  // Build activeSlot: use stable slot info from dashboard, overlay matches only if recs are for this slot
+  const baseSlot = displaySlots.find((s) => s.id === effectiveSlot) || displaySlots[0] || null;
+  const activeSlot = baseSlot ? {
+    ...baseSlot,
+    matches: recsMatchSelectedSlot ? currentMatches : [],
+  } : null;
+  // Detect when we're loading recommendations for a DIFFERENT slot than what's displayed
+  const isLoadingNewSlot = !!loadingRecs || (!!selectedSessionId && !recsMatchSelectedSlot);
+
+  /* --- Loading state --- */
+  if (externalLoading) {
+    return (
+      <div className="space-y-6 max-w-[1400px] mx-auto animate-pulse">
+        <div className="h-8 rounded-lg w-48" style={{ background: "var(--subtle)" }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="rounded-2xl p-5 space-y-3" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl" style={{ background: "var(--subtle)" }} />
+                <div className="space-y-2 flex-1">
+                  <div className="h-5 rounded w-12" style={{ background: "var(--subtle)" }} />
+                  <div className="h-3 rounded w-20" style={{ background: "var(--subtle)" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="space-y-3">
+            {[1,2,3].map(i => (
+              <div key={i} className="rounded-2xl p-4 h-28" style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)" }} />
+            ))}
+          </div>
+          <div className="lg:col-span-2 space-y-2">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="rounded-xl p-3 h-14" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* --- No data at all --- */
+  if (!dashboardData && !heatmapData && !externalLoading) {
+    return <EmptyStateIQ icon={Zap} title="No session data" description="Import session and booking data to see court utilization and fill recommendations." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
+  }
+
+  const hasSlots = displaySlots.length > 0;
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="space-y-6 max-w-[1400px] mx-auto"
+    >
+      {/* Success Toast */}
+      <AnimatePresence>
+        {showSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: -20, x: "-50%" }}
+            className="fixed top-20 left-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-xl"
+            style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.25)", backdropFilter: "blur(12px)" }}
+          >
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="text-sm text-emerald-300" style={{ fontWeight: 600 }}>Invitations sent successfully!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Court Optimizer</h1>
+            <span className="px-2 py-0.5 text-[9px] tracking-wider uppercase rounded-lg" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15))", color: "#A78BFA", fontWeight: 700, border: "1px solid rgba(139,92,246,0.2)" }}>
+              AI Powered
+            </span>
+          </div>
+          <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Court utilization heatmap and AI-powered slot filling</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-xs" style={{ color: "var(--t3)" }}>Total Spots Available</div>
+            <div className="text-emerald-400" style={{ fontSize: "20px", fontWeight: 800 }}>
+              {displaySlots.length > 0 ? displaySlots.reduce((sum, s) => sum + s.spotsNeeded, 0) : "--"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {hasSlots && activeSlot && (<>
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Underfilled Sessions", value: displaySlots.length > 0 ? displaySlots.length.toString() : "--", icon: CalendarDays, gradient: "from-red-500 to-orange-500", desc: "Below 80% capacity" },
+          { label: "Spots to Fill", value: displaySlots.length > 0 ? displaySlots.reduce((s, sl) => s + sl.spotsNeeded, 0).toString() : "--", icon: Users, gradient: "from-amber-500 to-yellow-500", desc: "Across all sessions" },
+          { label: isFrequentPlayersFallback ? "Suggested" : "AI Matches", value: activeSlot?.matches?.length ? activeSlot.matches.length.toString() : recsMatchSelectedSlot ? "0" : "—", icon: Sparkles, gradient: "from-violet-500 to-purple-600", desc: activeSlot?.matches?.length ? `For ${activeSlot.court}` : "Select a session" },
+          { label: "Avg Fill Rate", value: displaySlots.length > 0 ? `${Math.round(displaySlots.reduce((s, slot) => s + ((slot.spotsTotal - slot.spotsNeeded) / Math.max(slot.spotsTotal, 1)) * 100, 0) / displaySlots.length)}%` : "--", icon: Target, gradient: "from-emerald-500 to-green-500", desc: "Underfilled sessions only" },
+        ].map((kpi, i) => {
+          const Icon = kpi.icon;
+          return (
+            <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+              <Card>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
+                    <Icon className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                    <div className="text-[11px]" style={{ color: "var(--t3)" }}>{kpi.label}</div>
+                  </div>
+                </div>
+                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>{kpi.desc}</div>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      </>)}
+
+      {/* Occupancy Heatmap — always visible */}
+      {heatmapData?.heatmap && (
+        <Card>
+          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Court Occupancy Heatmap</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 60, textAlign: 'left', fontSize: 11, color: 'var(--t4)', fontWeight: 600 }}></th>
+                  {heatmapData.timeSlots.map((t: string) => (
+                    <th key={t} style={{ textAlign: 'center', fontSize: 11, color: 'var(--t4)', fontWeight: 600, padding: '4px 2px' }}>{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heatmapData.heatmap.map((row: any) => (
+                  <tr key={row.day}>
+                    <td style={{ fontSize: 12, fontWeight: 600, color: 'var(--t2)', padding: '4px 0' }}>{row.day}</td>
+                    {row.slots.map((slot: any) => {
+                      const v = slot.value;
+                      const bg = v >= 70 ? 'rgba(239,68,68,0.4)' : v >= 50 ? 'rgba(139,92,246,0.4)' : v >= 30 ? 'rgba(6,182,212,0.3)' : v > 0 ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.03)';
+                      const color = v >= 50 ? '#fff' : v > 0 ? 'var(--t2)' : 'var(--t5)';
+                      return (
+                        <td key={slot.time} style={{ textAlign: 'center', padding: 6, borderRadius: 6, background: bg, fontSize: 11, fontWeight: 600, color, minWidth: 48 }}>
+                          {v}%
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex items-center gap-4 mt-3 text-[10px]" style={{ color: 'var(--t4)' }}>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--card-border)' }} /> Low</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(6,182,212,0.3)' }} /> Med</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(139,92,246,0.4)' }} /> High</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 3, background: 'rgba(239,68,68,0.4)' }} /> Peak</span>
+          </div>
+        </Card>
+      )}
+
+      {/* Underfilled Sessions List */}
+      {!hasSlots && (
+        <Card>
+          <div className="text-center py-8">
+            <Zap className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--t4)" }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--heading)" }}>No underfilled sessions right now</div>
+            <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>All upcoming sessions are above 80% capacity. Check back later or review the heatmap above for utilization patterns.</div>
+          </div>
+        </Card>
+      )}
+
+      {hasSlots && activeSlot && (<>
+      {/* Main Content */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Slot List */}
+        <div className="space-y-3">
+          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Empty Slots</h3>
+          {displaySlots.map((slot) => {
+            const active = slot.id === effectiveSlot;
+            return (
+              <motion.div
+                key={slot.id}
+                whileHover={{ scale: 1.01 }}
+                onClick={() => { if (onSelectSession) onSelectSession(slot.id); }}
+                className="cursor-pointer rounded-2xl p-4 transition-all"
+                style={{
+                  background: active ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "var(--card-bg)",
+                  border: active ? "1px solid rgba(139,92,246,0.25)" : "1px solid var(--card-border)",
+                  backdropFilter: "var(--glass-blur)",
+                  boxShadow: active ? "0 4px 20px rgba(139,92,246,0.1)" : "var(--card-shadow)",
+                }}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+                      <span className="text-sm" style={{ fontWeight: 700, color: "var(--heading)" }}>{slot.court}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--badge-bg)", color: "var(--t3)" }}>{slot.sport}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 text-[11px]" style={{ color: "var(--t3)" }}>
+                      <span className="flex items-center gap-1"><CalendarDays className="w-3 h-3" />{slot.date}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{slot.time}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-red-400" style={{ fontSize: "16px", fontWeight: 800 }}>{slot.spotsNeeded}</div>
+                    <div className="text-[9px]" style={{ color: "var(--t4)" }}>spots needed</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-lg" style={{ background: "var(--subtle)", color: "var(--t3)" }}>{slot.format}</span>
+                    <span className="text-[10px]" style={{ color: "var(--t4)" }}>{slot.duration}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-violet-400" />
+                    <span className="text-[10px] text-violet-400" style={{ fontWeight: 600 }}>{slot.matches.length} matches</span>
+                  </div>
+                </div>
+
+                {/* Fill bar */}
+                <div className="mt-3">
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        background: "linear-gradient(90deg, #8B5CF6, #06B6D4)",
+                        width: `${((slot.spotsTotal - slot.spotsNeeded) / slot.spotsTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[9px] mt-1" style={{ color: "var(--t4)" }}>
+                    <span>{slot.spotsTotal - slot.spotsNeeded}/{slot.spotsTotal} filled</span>
+                    <span>${slot.spotsNeeded * slot.pricePerPlayer} at stake</span>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Player Matches */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>
+                {isFrequentPlayersFallback ? 'Suggested Players' : 'AI-Matched Players'} for {activeSlot.court}
+              </h3>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--t4)" }}>
+                {isFrequentPlayersFallback
+                  ? `Players who frequently play this format/time • ${activeSlot.time}, ${activeSlot.date}`
+                  : `Ranked by compatibility score • ${activeSlot.time}, ${activeSlot.date}`}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                // Real invite sending via sendInvites mutation
+                if (sendInvites && activeSlot.matches.length > 0 && selectedSessionId) {
+                  sendInvites.mutate({
+                    sessionId: selectedSessionId,
+                    clubId,
+                    candidates: activeSlot.matches
+                      .filter((p: any) => !sentInvites[p.id])
+                      .map((p: any) => ({
+                        memberId: p.id,
+                        channel: 'email' as const,
+                        customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}. ${activeSlot.spotsNeeded} spots left!`,
+                      })),
+                  }, {
+                    onSuccess: () => {
+                      const newInvites = { ...sentInvites };
+                      activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
+                      setSentInvites(newInvites);
+                      setShowSuccess(true);
+                      setTimeout(() => setShowSuccess(false), 3000);
+                    },
+                  });
+                } else {
+                  // Fallback: just update UI (no mutation available)
+                  const newInvites = { ...sentInvites };
+                  activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
+                  setSentInvites(newInvites);
+                  setShowSuccess(true);
+                  setTimeout(() => setShowSuccess(false), 3000);
+                }
+              }}
+              disabled={activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-all"
+              style={{ background: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)", opacity: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 1 : 0.5 }}
+            >
+              <Send className="w-3.5 h-3.5" />
+              {activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 'Invite All via Email' : 'All Invited ✓'}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {isLoadingNewSlot && (
+              <div className="space-y-2 animate-pulse">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                    <div className="w-10 h-10 rounded-full" style={{ background: "var(--card-border)" }} />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 rounded w-32" style={{ background: "var(--card-border)" }} />
+                      <div className="h-3 rounded w-48" style={{ background: "var(--card-border)" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!isLoadingNewSlot && activeSlot.matches.length === 0 && (
+              <div className="text-center py-8 text-sm" style={{ color: "var(--t3)" }}>
+                {selectedSessionId ? 'No matching players found. Add more members or booking data to improve recommendations.' : 'Click a slot to load player recommendations'}
+              </div>
+            )}
+            {!isLoadingNewSlot && activeSlot.matches.map((player, i) => {
+              const isSent = !!sentInvites[player.id];
+              return (
+                <motion.div
+                  key={player.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.06 }}
+                  className="flex items-center justify-between p-3 rounded-xl"
+                  style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    {/* Avatar */}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-[11px] text-white shrink-0"
+                      style={{
+                        background: isSent
+                          ? "linear-gradient(135deg, #10B981, #059669)"
+                          : "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {player.avatar}
+                    </div>
+
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs" style={{ fontWeight: 600, color: "var(--heading)" }}>{player.name}</span>
+                        {player.status === "tentative" && !isSent && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400" style={{ fontWeight: 600 }}>Tentative</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 text-[10px]" style={{ color: "var(--t3)" }}>
+                        <span className="flex items-center gap-1">
+                          <Star className="w-3 h-3" style={{ color: "#F59E0B" }} />
+                          {player.rating}
+                        </span>
+                        <span>Last: {player.lastPlayed}</span>
+                        <span>{player.preferredTime}</span>
+                      </div>
+                      {aiProfiles?.[player.id]?.slotFillerProfile && (
+                        <div className="mt-1 text-[10px] leading-snug truncate" style={{ color: "var(--t4)" }}>
+                          <Sparkles className="w-2.5 h-2.5 inline mr-0.5" style={{ color: "#A78BFA" }} />
+                          {aiProfiles[player.id].slotFillerProfile}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Match Score */}
+                    <MatchScoreBadge score={player.matchScore} />
+
+                    {/* Invite Buttons or Sent Badge */}
+                    {isSent ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
+                        <Check className="w-3 h-3" />
+                        Sent via {sentInvites[player.id]}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            if (sendInvites && selectedSessionId) {
+                              sendInvites.mutate({
+                                sessionId: selectedSessionId, clubId,
+                                candidates: [{ memberId: player.id, channel: 'email' as const, customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}.` }],
+                              }, { onSuccess: () => setSentInvites((prev) => ({ ...prev, [player.id]: "email" })) });
+                            } else {
+                              setSentInvites((prev) => ({ ...prev, [player.id]: "email" }));
+                            }
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                          style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
+                        >
+                          <Mail className="w-3 h-3" />
+                          Email
+                        </button>
+                        <button
+                          className="dummy-unused"
+                          style={{ display: 'none' }}
+                        >SMS</button>
+                        <SmsComingSoon />
+                        <span
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
+                          style={{ color: "var(--t4)", fontWeight: 500 }}
+                        >
+                          <Bell className="w-3 h-3" />
+                          Push
+                          <span className="text-[9px] ml-0.5" style={{ opacity: 0.6 }}>soon</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Revenue Impact */}
+          <Card className="!p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}>
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-xs" style={{ fontWeight: 700, color: "var(--heading)" }}>Session Impact</h4>
+                <p className="text-[11px]" style={{ color: "var(--t3)" }}>
+                  Filling this slot adds <span className="text-emerald-400" style={{ fontWeight: 700 }}>{activeSlot?.spotsNeeded || 0} players</span> to court utilization
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px]" style={{ color: "var(--t4)" }}>Fill rate for this slot type</div>
+                {(() => {
+                  const slotFillPct = activeSlot ? Math.round(((activeSlot.spotsTotal - activeSlot.spotsNeeded) / activeSlot.spotsTotal) * 100) : 0;
+                  return (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--subtle)" }}>
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: "linear-gradient(90deg, #10B981, #06B6D4)", width: `${slotFillPct}%` }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${slotFillPct}%` }}
+                          transition={{ duration: 1, delay: 0.3 }}
+                        />
+                      </div>
+                      <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{slotFillPct}%</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+      </>)}
+    </motion.div>
+  );
+}

@@ -18,7 +18,7 @@ import { generateRecurringStartDates, parseYmdToUtc } from '@/lib/recurrence'
 import { ENABLE_RECURRING_DRAFTS } from '@/lib/features'
 import { toUtcIsoFromLocalInput } from '@/lib/timezone'
 import { cn } from '@/lib/utils'
-import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, MapPin, Users, Megaphone, Plus, MessageCircle, Send, Trash2, Share2, Copy, Mail, QrCode, Ban, UserMinus, X, Layers, Pencil, Zap } from 'lucide-react'
 import Image from 'next/image'
 import QRCode from 'react-qr-code'
 import TournamentModal from '@/components/TournamentModal'
@@ -497,6 +497,12 @@ export default function ClubDetailPage() {
 
               {club.isAdmin ? (
                 <>
+                  <Link href={`/clubs/${clubId}/intelligence`}>
+                    <Button variant="default" size="sm" title="Club Intelligence" className="gap-1.5">
+                      <Zap className="h-4 w-4" />
+                      Intelligence
+                    </Button>
+                  </Link>
                   <Button
                     variant="outline"
                     size="icon"

@@ -53,6 +53,8 @@ export default function ProfilePage() {
     gender: '' as 'M' | 'F' | 'X' | '',
     city: '',
     duprLink: '',
+    phone: '',
+    smsOptIn: false,
   })
 
   // Initialize form data when profile loads
@@ -63,6 +65,8 @@ export default function ProfilePage() {
         gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
+        phone: profile.phone || '',
+        smsOptIn: profile.smsOptIn || false,
       })
       setAvatarPreview(null)
       setAvatarError(false)
@@ -218,6 +222,8 @@ export default function ProfilePage() {
         gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
+        phone: profile.phone || '',
+        smsOptIn: profile.smsOptIn || false,
       })
       setIsEditing(true)
     }
@@ -230,6 +236,8 @@ export default function ProfilePage() {
       city: formData.city || undefined,
       duprLink: formData.duprLink || undefined,
       image: avatarPreview || undefined,
+      phone: formData.phone,
+      smsOptIn: formData.smsOptIn,
     })
   }
 
@@ -240,6 +248,8 @@ export default function ProfilePage() {
         gender: profile.gender || '',
         city: profile.city || '',
         duprLink: profile.duprLink || '',
+        phone: profile.phone || '',
+        smsOptIn: profile.smsOptIn || false,
       })
       setAvatarPreview(null)
     }
@@ -627,6 +637,50 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* SMS Notifications */}
+            <div className="border-t pt-4 mt-4">
+              <Label>SMS Notifications</Label>
+              {isEditing ? (
+                <div className="mt-2 space-y-3">
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+1 (555) 123-4567"
+                  />
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.smsOptIn}
+                      onChange={(e) => setFormData({ ...formData, smsOptIn: e.target.checked })}
+                      disabled={!formData.phone}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                    />
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      I agree to receive recurring automated SMS notifications from IQSport about my club
+                      activity including booking reminders, session invites, and event updates.
+                      Message frequency: 2-8 msgs/month. Msg &amp; data rates may apply.
+                      Reply STOP to opt out anytime.{' '}
+                      <a href="/sms-terms" target="_blank" className="text-blue-600 underline">SMS Terms</a>
+                      {' · '}
+                      <a href="/privacy" target="_blank" className="text-blue-600 underline">Privacy Policy</a>
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <div className="mt-1 text-sm text-gray-600">
+                  {profile?.phone ? (
+                    <span>
+                      {profile.phone} — {profile.smsOptIn ? '✓ Opted in' : 'Not opted in'}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">No phone number. Edit profile to add.</span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Action Buttons */}

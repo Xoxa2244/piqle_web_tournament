@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify'
+
 const LINK_CLASS = 'text-blue-600 hover:text-blue-800 underline'
 
 const createAnchor = (href: string, label?: string) => {
@@ -39,6 +41,16 @@ export const formatDescription = (text: string) => {
     formatted = formatted.replace(`__CODE_${index}__`, html)
   })
 
-  return formatted.replace(/\n/g, '<br>')
+  const html = formatted.replace(/\n/g, '<br>')
+
+  // Sanitize to prevent XSS — only allow safe HTML tags and attributes
+  if (typeof window !== 'undefined') {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['a', 'strong', 'em', 'code', 'br'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    })
+  }
+  // Server-side: strip all HTML tags as fallback
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
 }
 

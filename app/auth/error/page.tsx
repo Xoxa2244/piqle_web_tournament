@@ -11,6 +11,8 @@ const errorMessages: Record<string, string> = {
     'This email is already linked to a Google account. Please sign in with Google.',
   EMAIL_PASSWORD_NOT_SET: 'This account does not have a password. Please sign up.',
   EMAIL_PASSWORD_INVALID: 'Invalid email or password.',
+  OAuthCallback: 'Google sign-in failed. Please try again or use email sign-in.',
+  OAuthSignin: 'Could not start Google sign-in. Please try again.',
   AccessDenied: 'Access denied. Please try again.',
   Configuration: 'Authentication is not configured correctly.',
   Default: 'Unable to sign in. Please try again.',

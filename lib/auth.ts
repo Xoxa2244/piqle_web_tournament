@@ -32,11 +32,11 @@ if (!process.env.NEXTAUTH_SECRET) {
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
+  session: { strategy: 'jwt' },
   debug: true,
-  useSecureCookies: process.env.NODE_ENV === 'production',
   logger: {
     error(code, metadata) {
-      console.error('[NextAuth Error]', code, metadata)
+      console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
     },
     warn(code) {
       console.warn('[NextAuth Warn]', code)
@@ -49,7 +49,8 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      // Allow linking Google account to an existing user with the same verified email.
+      // Allow linking Google to existing user created by CourtReserve sync
+      // Safe because Google verifies email ownership
       allowDangerousEmailAccountLinking: true,
     }),
     EmailProvider({
@@ -191,9 +192,28 @@ export const authOptions: NextAuthOptions = {
       }
       return token
     },
-    async signIn({ user }) {
-      if (user?.id) {
-        await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
+    async signIn({ user, account }) {
+      try {
+        if (user?.id) {
+          await linkPlayersToUserByEmail(String(user.id), user.email ?? null)
+
+          // Ensure emailVerified is set for OAuth users (Google etc.)
+          // Without this, returning OAuth users may get OAuthAccountNotLinked errors
+          if (account?.provider === 'google' && user.email) {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: String(user.id) },
+              select: { emailVerified: true },
+            })
+            if (dbUser && !dbUser.emailVerified) {
+              await prisma.user.update({
+                where: { id: String(user.id) },
+                data: { emailVerified: new Date() },
+              })
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[NextAuth] signIn callback error (non-fatal):', err)
       }
       return true
     },
@@ -227,10 +247,6 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
-  },
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 }
 

@@ -28,6 +28,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+vercel.env
 
 # vercel
 .vercel
@@ -38,3 +39,5 @@ next-env.d.ts
 
 # prisma
 /prisma/migrations/
+data/
+.mcp.json

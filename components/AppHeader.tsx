@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Image from 'next/image'
-import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle } from 'lucide-react'
+import { User as UserIcon, Search, Plus, LogOut, Menu, X, ChevronDown, Bell, MessageCircle, Zap } from 'lucide-react'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { trpc } from '@/lib/trpc'
+import { useBrand } from '@/components/BrandProvider'
 
 type RealtimeEvent = { type: 'invalidate'; keys: string[] }
 import { formatDescription } from '@/lib/formatDescription'
@@ -17,6 +18,8 @@ import { toast } from '@/components/ui/use-toast'
 export default function AppHeader() {
   const router = useRouter()
   const { data: session, status } = useSession()
+  const brand = useBrand()
+  const isIQSport = brand.key === 'iqsport'
   const [avatarError, setAvatarError] = useState(false)
   const [logoError, setLogoError] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -150,37 +153,33 @@ export default function AppHeader() {
           <div className="flex items-center h-16">
             {/* Part 1 - Left: Logo + Nav links, fixed spacing */}
             <div className="flex items-center gap-6 flex-shrink-0">
-              <Link href="/" className="flex items-center">
+              <Link href={isIQSport ? '/clubs' : '/'} className="flex items-center">
                 {!logoError ? (
                   <img
-                    src="/Logo.svg"
-                    alt="Piqle"
+                    src={brand.logo}
+                    alt={brand.name}
                     className="h-8 w-auto object-contain"
                     onError={() => setLogoError(true)}
                   />
                 ) : (
-                  <span className="text-2xl font-bold text-lime-600">PIQLE</span>
+                  <span className={`text-2xl font-bold ${brand.fallbackColorClass}`}>{brand.fallbackText}</span>
                 )}
               </Link>
               <nav className="hidden lg:flex items-center gap-6">
-                <Link
-                  href="/clubs"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Clubs
-                </Link>
-                <Link
-                  href="/players"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Players
-                </Link>
-                <Link
-                  href="/admin"
-                  className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
-                >
-                  Tournament Management
-                </Link>
+                {brand.navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`text-sm font-medium transition-colors ${
+                      item.colorClass
+                        ? `inline-flex items-center gap-1.5 ${item.colorClass}`
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {item.icon === 'Zap' && <Zap className="h-3.5 w-3.5" />}
+                    {item.label}
+                  </Link>
+                ))}
               </nav>
             </div>
 
@@ -189,15 +188,15 @@ export default function AppHeader() {
 
             {/* Part 2 - Right: Create, Search, Username, Logout (desktop) / Burger (mobile) */}
             <div className="flex items-center flex-shrink-0 gap-2 lg:gap-0">
-              <Link href={isLoggedIn ? '/admin/new' : '/auth/signin'}>
+              <Link href={isLoggedIn ? brand.ctaHref : '/auth/signin'}>
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
                   <Plus className="h-4 w-4" />
-                  Create New Tournament
+                  {brand.ctaLabel}
                 </Button>
               </Link>
 
-              {/* Search - desktop: icon that expands to input on click */}
-              <div ref={searchRef} className="relative hidden lg:flex items-center ml-6">
+              {/* Search - desktop: icon that expands to input on click (Piqle only) */}
+              {brand.showTournamentSearch && <div ref={searchRef} className="relative hidden lg:flex items-center ml-6">
                 <div className="flex items-center overflow-hidden">
                   {searchExpanded ? (
                     <div className="relative flex items-center w-[280px] animate-in fade-in duration-200">
@@ -269,7 +268,7 @@ export default function AppHeader() {
                     )}
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* Notifications (desktop) */}
               {isLoggedIn ? (
@@ -333,8 +332,8 @@ export default function AppHeader() {
                 </div>
               ) : null}
 
-              {/* Chats - icon with unread badge (desktop), right of notifications */}
-              {isLoggedIn ? (
+              {/* Chats - icon with unread badge (desktop), right of notifications — Piqle only */}
+              {isLoggedIn && !isIQSport ? (
                 <Link
                   href="/chats"
                   className="hidden lg:flex relative p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-200 ml-1"
@@ -431,7 +430,8 @@ export default function AppHeader() {
                 {/* Burger dropdown panel */}
                 {burgerOpen && (
                   <div className="absolute right-0 top-full mt-1 w-[min(320px,100vw-2rem)] bg-white border border-gray-200 rounded-lg shadow-xl py-3 z-50 flex flex-col gap-1">
-                    {/* Search in burger */}
+                    {/* Search in burger (Piqle only) */}
+                    {brand.showTournamentSearch && (
                     <div className="px-3 pb-3 border-b border-gray-100">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -482,20 +482,25 @@ export default function AppHeader() {
                         </div>
                       )}
                     </div>
-                    <Link
-                      href="/admin"
-                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-                      onClick={() => setBurgerOpen(false)}
-                    >
-                      Tournament Management
-                    </Link>
-                    <Link
-                      href="/clubs"
-                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-                      onClick={() => setBurgerOpen(false)}
-                    >
-                      Clubs
-                    </Link>
+                    )}
+                    {/* Dynamic nav items from brand config */}
+                    {brand.navItems.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`px-4 py-2.5 hover:bg-gray-50 text-sm font-medium ${
+                          item.colorClass
+                            ? `flex items-center gap-1.5 ${item.colorClass}`
+                            : 'text-gray-700'
+                        }`}
+                        onClick={() => setBurgerOpen(false)}
+                      >
+                        {item.icon === 'Zap' && <Zap className="h-3.5 w-3.5" />}
+                        {item.label}
+                      </Link>
+                    ))}
+                    {/* Chats link (Piqle only) */}
+                    {!isIQSport && (
                     <Link
                       href="/chats"
                       className="flex items-center justify-between px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
@@ -508,13 +513,7 @@ export default function AppHeader() {
                         </span>
                       ) : null}
                     </Link>
-                    <Link
-                      href="/players"
-                      className="px-4 py-2.5 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-                      onClick={() => setBurgerOpen(false)}
-                    >
-                      Players
-                    </Link>
+                    )}
                     {isLoggedIn ? (
                       <>
                         <Link

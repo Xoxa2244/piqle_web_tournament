@@ -49,7 +49,7 @@ function buildParticipantAddedEmailHtml(args: {
   const { baseUrl, signupLink, playerName, playerEmail, tournament } = args
   const title = tournament?.title ?? 'Tournament'
   const tournamentLink = tournament?.id ? `${baseUrl}/?open=${tournament.id}` : baseUrl
-  const logoUrl = `${baseUrl}/Logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const imageUrl = tournament?.image ?? `${baseUrl}/tournament-placeholder.png`
   const entryFee =
     tournament?.entryFee != null && Number(tournament.entryFee) > 0
@@ -72,7 +72,7 @@ function buildParticipantAddedEmailHtml(args: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Added to ${escapeHtml(title)} on Piqle</title>
+  <title>Added to ${escapeHtml(title)} on IQSport</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
@@ -554,7 +554,7 @@ export const playerRouter = createTRPCRouter({
         tournament: player.tournament ?? null,
       })
 
-      await sendHtmlEmail(email, `You're invited to ${tournamentTitle} on Piqle`, html)
+      await sendHtmlEmail(email, `You're invited to ${tournamentTitle} on IQSport`, html)
 
       return { ok: true }
     }),

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getBrandFromHostname, BRANDS } from "@/lib/brand"
 
 export async function middleware(req: NextRequest) {
   // Basic Auth for dev is disabled for now.
@@ -8,18 +9,77 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Проверяем наличие cookie с сессией только для админских маршрутов
+  // Clear stale session cookies on OAuth errors to prevent login loops.
+  // Without this, a leftover JWT from a previous domain/session causes
+  // OAuthAccountNotLinked errors that users can't fix without clearing cookies.
+  if (req.nextUrl.pathname === '/auth/signin' && req.nextUrl.searchParams.get('error') === 'OAuthAccountNotLinked') {
+    const url = req.nextUrl.clone()
+    url.searchParams.delete('error')
+    const response = NextResponse.redirect(url)
+    response.cookies.delete('__Secure-next-auth.session-token')
+    response.cookies.delete('next-auth.session-token')
+    response.cookies.delete('__Secure-next-auth.callback-url')
+    response.cookies.delete('next-auth.callback-url')
+    response.cookies.delete('__Secure-next-auth.csrf-token')
+    response.cookies.delete('next-auth.csrf-token')
+    return response
+  }
+
+  // ── Brand detection ──
+  const host = req.headers.get('host') || ''
+  const brandKey = getBrandFromHostname(host)
+  const brand = BRANDS[brandKey]
+
+  // Block tournament-related routes on IQSport domain
+  if (brandKey === 'iqsport') {
+    const pathname = req.nextUrl.pathname
+
+    // demo.iqsport.ai → redirect root to intelligence dashboard with demo mode
+    if (host.startsWith('demo.')) {
+      if (pathname === '/' || pathname === '/clubs') {
+        return NextResponse.redirect(new URL('/clubs/demo-club/intelligence?demo=true', req.url))
+      }
+      // Auto-append ?demo=true for intelligence routes
+      if ((pathname.includes('/intelligence') || pathname === '/onboarding') && !req.nextUrl.searchParams.has('demo')) {
+        const url = req.nextUrl.clone()
+        url.searchParams.set('demo', 'true')
+        return NextResponse.redirect(url)
+      }
+    }
+
+    // Block hidden routes → redirect to /clubs
+    for (const pattern of brand.hiddenRoutePatterns) {
+      if (pattern.test(pathname)) {
+        return NextResponse.redirect(new URL('/clubs', req.url))
+      }
+    }
+  }
+
+  // Проверяем наличие cookie с сессией
   // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
   const correctCookieName = process.env.NODE_ENV === 'production'
     ? '__Secure-next-auth.session-token'
     : 'next-auth.session-token'
-  
+
   const oldCookieName = process.env.NODE_ENV === 'production'
     ? '_Secure-next-auth.session-token' // Старая cookie с одним подчеркиванием
     : null
 
   const sessionToken = req.cookies.get(correctCookieName)
   const oldCookie = oldCookieName ? req.cookies.get(oldCookieName) : null
+
+  // IQSport root redirect (needs cookie check above)
+  if (brandKey === 'iqsport' && !host.startsWith('demo.')) {
+    const pathname = req.nextUrl.pathname
+    if (pathname === '/' || pathname === '/onboarding') {
+      const hasSession = !!sessionToken || !!oldCookie
+      if (hasSession) {
+        return NextResponse.redirect(new URL('/clubs', req.url))
+      } else {
+        return NextResponse.redirect(new URL('/auth/signin?callbackUrl=/clubs', req.url))
+      }
+    }
+  }
 
   // Debug logging
   if (req.nextUrl.pathname.startsWith('/admin')) {
@@ -30,8 +90,15 @@ export async function middleware(req: NextRequest) {
     console.log('[Middleware] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
   }
 
+  // Set x-brand header for server components
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-brand', brandKey)
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  })
+
   // Если есть старая cookie, удаляем её
-  const response = NextResponse.next()
   if (oldCookie && oldCookieName) {
     response.cookies.delete(oldCookieName)
   }
@@ -50,10 +117,9 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admin/:path*', 
-    '/api/protected/:path*', 
+    '/admin/:path*',
+    '/api/protected/:path*',
     '/api/auth/:path*',
     '/((?!api|_next/static|_next/image|favicon.ico).*)' // Match all routes except API, static files, and Next.js internals
   ]
 }
-

@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import AppHeader from '@/components/AppHeader'
+import { useBrand } from '@/components/BrandProvider'
 
 const EMBED_PATH_REGEX = /^\/scoreboard\/[^/]+\/embed$/
 
@@ -11,10 +12,12 @@ export default function LayoutWithOptionalHeader({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const brand = useBrand()
   const isEmbed = pathname ? EMBED_PATH_REGEX.test(pathname) : false
   const isChatsPage = pathname === '/chats'
+  const isIQ = brand.key === 'iqsport'
 
-  if (isEmbed) {
+  if (isEmbed || isIQ) {
     return <main className="min-h-screen">{children}</main>
   }
 

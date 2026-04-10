@@ -1,0 +1,649 @@
+openapi: 3.0.3
+info:
+  title: IQSport Intelligence API
+  version: "1.0"
+  description: |
+    API for external systems (booking platforms, CRMs) to push data into the IQSport Intelligence module.
+
+    ## Authentication
+    All endpoints require Bearer token authentication: `Authorization: Bearer {keyId}:{secret}`
+
+    API keys are issued manually. Contact support to get your partner credentials.
+
+    ## Rate Limiting
+    Default: 60 requests per minute per API key. Contact us to increase limits.
+
+    ## Idempotency
+    All POST endpoints require an `Idempotency-Key` header (UUID v4).
+    Duplicate requests with the same key return the cached response for 24 hours.
+
+    ## Data Flow
+    1. Upsert courts (optional)
+    2. Upsert members
+    3. Upsert sessions (reference courts by externalCourtId)
+    4. Upsert bookings (reference sessions and members by external IDs)
+    5. Regenerate embeddings (triggers AI analysis)
+
+    Or use the `/import` endpoint to do all steps at once.
+
+servers:
+  - url: https://app.iqsport.ai/api/v1/partners/intelligence
+    description: Production
+  - url: https://demo.iqsport.ai/api/v1/partners/intelligence
+    description: Demo
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "Format: {keyId}:{secret}"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    Court:
+      type: object
+      required: [externalCourtId, name]
+      properties:
+        externalCourtId:
+          type: string
+          description: Your system's ID for this court
+        name:
+          type: string
+        courtType:
+          type: string
+          description: e.g. "pickleball", "tennis", "padel"
+        isIndoor:
+          type: boolean
+          default: false
+        isActive:
+          type: boolean
+          default: true
+
+    Member:
+      type: object
+      required: [externalMemberId, email, name]
+      properties:
+        externalMemberId:
+          type: string
+          description: Your system's ID for this member
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        gender:
+          type: string
+          enum: [M, F, X]
+          description: "M = male, F = female, X = other"
+        city:
+          type: string
+        duprRatingSingles:
+          type: number
+          minimum: 0
+          maximum: 8
+        duprRatingDoubles:
+          type: number
+          minimum: 0
+          maximum: 8
+        preferredDays:
+          type: array
+          items:
+            type: string
+        preferredFormats:
+          type: array
+          items:
+            type: string
+        skillLevel:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED, ALL_LEVELS]
+
+    Session:
+      type: object
+      required: [externalSessionId, date, startTime, endTime]
+      properties:
+        externalSessionId:
+          type: string
+        externalCourtId:
+          type: string
+          description: Must match a previously upserted court
+        date:
+          type: string
+          format: date
+          example: "2026-03-23"
+        startTime:
+          type: string
+          example: "09:00"
+        endTime:
+          type: string
+          example: "10:30"
+        title:
+          type: string
+        format:
+          type: string
+          enum: [OPEN_PLAY, CLINIC, DRILL, LEAGUE_PLAY, SOCIAL]
+          default: OPEN_PLAY
+        skillLevel:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED, ALL_LEVELS]
+          default: ALL_LEVELS
+        maxPlayers:
+          type: integer
+          minimum: 1
+          default: 8
+        pricePerSlot:
+          type: number
+          minimum: 0
+        registeredCount:
+          type: integer
+        status:
+          type: string
+          enum: [SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED]
+          default: SCHEDULED
+
+    Booking:
+      type: object
+      required: [externalSessionId, externalMemberId]
+      properties:
+        externalBookingId:
+          type: string
+        externalSessionId:
+          type: string
+          description: Must match a previously upserted session
+        externalMemberId:
+          type: string
+          description: Must match a previously upserted member
+        status:
+          type: string
+          enum: [CONFIRMED, CANCELLED, NO_SHOW]
+          default: CONFIRMED
+        bookedAt:
+          type: string
+          format: date-time
+
+paths:
+  /courts/upsert:
+    post:
+      summary: Upsert courts
+      description: Create or update courts. Max 100 per request.
+      tags: [Courts]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId, courts]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                courts:
+                  type: array
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/Court'
+      responses:
+        '200':
+          description: Results for each court
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        externalCourtId:
+                          type: string
+                        internalCourtId:
+                          type: string
+                        status:
+                          type: string
+                          enum: [created, updated]
+                        error:
+                          type: string
+        '403':
+          description: Partner does not have access to this club
+
+  /courts:
+    get:
+      summary: List courts
+      tags: [Courts]
+      parameters:
+        - name: clubId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of courts
+
+  /members/upsert:
+    post:
+      summary: Upsert members
+      description: |
+        Create or update members. Max 200 per request.
+
+        Member matching priority:
+        1. ExternalIdMapping — if this external ID was seen before
+        2. Email match — if email matches existing user
+        3. Create new user
+      tags: [Members]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId, members]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                members:
+                  type: array
+                  maxItems: 200
+                  items:
+                    $ref: '#/components/schemas/Member'
+      responses:
+        '200':
+          description: Results for each member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        externalMemberId:
+                          type: string
+                        internalUserId:
+                          type: string
+                        status:
+                          type: string
+                          enum: [created, updated, matched]
+                        error:
+                          type: string
+
+  /members:
+    get:
+      summary: List members
+      tags: [Members]
+      parameters:
+        - name: clubId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name or email
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated list of members
+
+  /sessions/upsert:
+    post:
+      summary: Upsert sessions
+      description: Create or update play sessions. Max 500 per request.
+      tags: [Sessions]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId, sessions]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                sessions:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/Session'
+      responses:
+        '200':
+          description: Results for each session
+
+  /sessions:
+    get:
+      summary: List sessions
+      tags: [Sessions]
+      parameters:
+        - name: clubId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated list of sessions
+
+  /bookings/upsert:
+    post:
+      summary: Upsert bookings
+      description: Create or update bookings. Max 500 per request. Sessions and members must be upserted first.
+      tags: [Bookings]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId, bookings]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                bookings:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/Booking'
+      responses:
+        '200':
+          description: Results for each booking
+
+  /bookings:
+    get:
+      summary: List bookings
+      tags: [Bookings]
+      parameters:
+        - name: clubId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionId
+          in: query
+          schema:
+            type: string
+        - name: memberId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [CONFIRMED, CANCELLED, NO_SHOW]
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated list of bookings
+
+  /import:
+    post:
+      summary: Full import
+      description: |
+        Import all data in a single call. Processes in order: courts, members, sessions, bookings.
+        This is a convenience endpoint — you can also use individual upsert endpoints.
+      tags: [Import]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                courts:
+                  type: array
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/Court'
+                members:
+                  type: array
+                  maxItems: 200
+                  items:
+                    $ref: '#/components/schemas/Member'
+                sessions:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/Session'
+                bookings:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/Booking'
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      courts:
+                        type: object
+                        properties:
+                          created: { type: integer }
+                          updated: { type: integer }
+                          errors: { type: integer }
+                      members:
+                        type: object
+                        properties:
+                          created: { type: integer }
+                          updated: { type: integer }
+                          matched: { type: integer }
+                          errors: { type: integer }
+                      sessions:
+                        type: object
+                      bookings:
+                        type: object
+                      totalErrors:
+                        type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entity: { type: string }
+                        externalId: { type: string }
+                        error: { type: string }
+
+  /embeddings/regenerate:
+    post:
+      summary: Regenerate AI embeddings
+      description: |
+        Regenerates vector embeddings for all club data. This enables the AI Advisor
+        to answer questions about sessions, members, and trends.
+
+        Call this after importing data to update the AI analysis.
+        May take up to 5 minutes for large datasets.
+      tags: [AI]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clubId]
+              properties:
+                clubId:
+                  type: string
+                  format: uuid
+                fullReindex:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Embedding generation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embeddingsCreated:
+                    type: integer
+                  chunksGenerated:
+                    type: integer
+                  sessionsProcessed:
+                    type: integer
+                  playersProcessed:
+                    type: integer
+                  batchId:
+                    type: string
+
+tags:
+  - name: Courts
+    description: Manage club courts/venues
+  - name: Members
+    description: Manage club members
+  - name: Sessions
+    description: Manage play sessions
+  - name: Bookings
+    description: Manage session bookings
+  - name: Import
+    description: Bulk data import
+  - name: AI
+    description: AI features (embeddings, recommendations)

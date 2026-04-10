@@ -25,6 +25,7 @@ const signupSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   password: z.string().min(8),
+  smsConsent: z.boolean().optional().default(false),
 })
 
 export async function POST(req: NextRequest) {
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
           name,
           passwordHash,
           emailVerified: new Date(),
+          ...(payload.smsConsent ? { smsOptIn: true } : {}),
         },
       })
     } else {
@@ -111,6 +113,7 @@ export async function POST(req: NextRequest) {
           name,
           passwordHash,
           emailVerified: new Date(),
+          smsOptIn: payload.smsConsent,
         },
       })
       userId = createdUser.id
@@ -120,6 +123,13 @@ export async function POST(req: NextRequest) {
 
     if (userId) {
       await linkPlayersToUserByEmail(userId, email)
+      // Send welcome email (fire and forget)
+      try {
+        const { sendWelcomeEmail } = await import('@/lib/transactional-emails')
+        await sendWelcomeEmail({ to: email, firstName: name.split(' ')[0] || 'there' })
+      } catch (err) {
+        console.error('[Signup] Welcome email failed:', err)
+      }
     }
 
     return NextResponse.json({ ok: true })

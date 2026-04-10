@@ -1,13 +1,17 @@
 'use client'
 
-import { signIn } from "next-auth/react"
+import { signIn, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { useBrand } from "@/components/BrandProvider"
 
 export default function SignInClient() {
+  const brand = useBrand()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const { data: session, status } = useSession()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -19,6 +23,14 @@ export default function SignInClient() {
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
+  const [smsConsent, setSmsConsent] = useState(false)
+
+  // Redirect to callbackUrl if already authenticated
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      router.replace(callbackUrl)
+    }
+  }, [status, session, callbackUrl, router])
 
   useEffect(() => {
     const modeParam = searchParams.get('mode')
@@ -120,6 +132,7 @@ export default function SignInClient() {
           firstName,
           lastName,
           password,
+          smsConsent,
         }),
       })
 
@@ -161,15 +174,33 @@ export default function SignInClient() {
     }
   }
 
+  const smsConsentBlock = (
+    <div className="flex items-start gap-2 p-3 rounded-lg border border-gray-200 bg-gray-50">
+      <input
+        type="checkbox"
+        id="sms-consent"
+        checked={smsConsent}
+        onChange={(e) => setSmsConsent(e.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <label htmlFor="sms-consent" className="text-xs text-gray-600 leading-relaxed">
+        I agree to receive recurring automated SMS notifications from IQSport about my club activity including booking reminders, session invites, and event updates. Message frequency: 2-8 msgs/month. Msg&amp;data rates may apply. Reply STOP to opt out anytime.{' '}
+        <a href="https://iqsport.ai/sms-terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">SMS Terms</a>
+        {' · '}
+        <a href="https://iqsport.ai/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Privacy Policy</a>
+      </label>
+    </div>
+  )
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
         <div>
           <h2 className="text-3xl font-bold text-center text-gray-900">
-            Sign in to Piqle
+            Sign in to {brand.name}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Tournament Management System
+            {brand.tagline}
           </p>
         </div>
 
@@ -298,6 +329,8 @@ export default function SignInClient() {
                 />
               </div>
 
+              {smsConsentBlock}
+
               <Button
                 type="submit"
                 disabled={!email || isSending}
@@ -391,6 +424,8 @@ export default function SignInClient() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
+
+              {smsConsentBlock}
 
               <Button
                 type="submit"

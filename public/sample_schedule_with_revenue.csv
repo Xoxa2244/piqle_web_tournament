@@ -1,0 +1,64 @@
+date,start_time,end_time,court,format,skill_level,registered,capacity,price,players
+2025-02-03,07:00,09:00,Court 1,Open Play,Intermediate,6,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen
+2025-02-03,07:00,09:00,Court 2,Drill,Advanced,4,6,25,Pro Guy;Top Player;Sarah Lee;Tom Wilson
+2025-02-03,09:30,11:30,Court 1,Open Play,All Levels,8,8,15,John Smith;Jane Doe;Mike Brown;Amy Chen;Bob Jones;Lisa Park;Dave Kim;New Player
+2025-02-03,09:30,11:30,Court 2,Clinic,Beginner,3,8,30,New Player;Fresh Start;First Timer
+2025-02-03,17:00,19:00,Court 1,Social,All Levels,5,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe
+2025-02-03,17:00,19:00,Court 2,Open Play,Intermediate,2,8,15,John Smith;Mike Brown
+2025-02-04,07:00,09:00,Court 1,Open Play,Intermediate,7,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Bob Jones
+2025-02-04,07:00,09:00,Court 2,Drill,Advanced,5,6,25,Pro Guy;Top Player;Sarah Lee;Tom Wilson;Ace Hitter
+2025-02-04,09:30,11:30,Court 1,Open Play,All Levels,4,8,15,Lisa Park;Dave Kim;New Player;Fresh Start
+2025-02-04,17:00,19:00,Court 1,Social,All Levels,3,12,10,Amy Chen;Bob Jones;Lisa Park
+2025-02-04,17:00,19:00,Court 2,Round Robin,Advanced,6,8,20,Pro Guy;Top Player;Sarah Lee;Tom Wilson;Ace Hitter;John Smith
+2025-02-05,07:00,09:00,Court 1,Open Play,Intermediate,5,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Amy Chen
+2025-02-05,07:00,09:00,Court 2,Clinic,Beginner,2,8,30,First Timer;New Player
+2025-02-05,09:30,11:30,Court 1,Open Play,All Levels,7,8,15,John Smith;Jane Doe;Mike Brown;Amy Chen;Bob Jones;Lisa Park;Dave Kim
+2025-02-05,17:00,19:00,Court 1,Open Play,Intermediate,3,8,15,Tom Wilson;Sarah Lee;Mike Brown
+2025-02-05,17:00,19:00,Court 2,League Play,Advanced,4,4,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee
+2025-02-06,07:00,09:00,Court 1,Open Play,Intermediate,6,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen
+2025-02-06,07:00,09:00,Court 2,Drill,Advanced,3,6,25,Pro Guy;Top Player;Ace Hitter
+2025-02-06,09:30,11:30,Court 1,Open Play,All Levels,5,8,15,Bob Jones;Lisa Park;Dave Kim;New Player;Fresh Start
+2025-02-06,17:00,19:00,Court 1,Social,All Levels,7,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe;Mike Brown;New Player
+2025-02-06,17:00,19:00,Court 2,Open Play,Intermediate,1,8,15,John Smith
+2025-02-07,07:00,09:00,Court 1,Open Play,Intermediate,8,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Bob Jones;Lisa Park
+2025-02-07,07:00,09:00,Court 2,Drill,Advanced,6,6,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee;Tom Wilson;John Smith
+2025-02-07,09:30,11:30,Court 1,Open Play,All Levels,6,8,15,Dave Kim;New Player;Fresh Start;First Timer;Amy Chen;Bob Jones
+2025-02-07,17:00,19:00,Court 1,Round Robin,Advanced,4,8,20,Pro Guy;Top Player;Ace Hitter;Tom Wilson
+2025-02-07,17:00,19:00,Court 2,Open Play,Intermediate,3,8,15,Jane Doe;Mike Brown;Sarah Lee
+2025-02-08,09:00,12:00,Court 1,Open Play,All Levels,10,16,12,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Bob Jones;Lisa Park;Dave Kim;New Player
+2025-02-08,09:00,12:00,Court 2,League Play,Advanced,4,4,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee
+2025-02-08,13:00,15:00,Court 1,Social,All Levels,8,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe;Mike Brown;New Player;Fresh Start
+2025-02-08,13:00,15:00,Court 2,Clinic,Beginner,5,8,30,First Timer;New Player;Fresh Start;Beginner Bob;Learn Lucy
+2025-02-09,09:00,12:00,Court 1,Open Play,All Levels,6,16,12,John Smith;Jane Doe;Mike Brown;Amy Chen;Bob Jones;Lisa Park
+2025-02-09,09:00,12:00,Court 2,Round Robin,Advanced,7,8,20,Pro Guy;Top Player;Ace Hitter;Sarah Lee;Tom Wilson;John Smith;Mike Brown
+2025-02-10,07:00,09:00,Court 1,Open Play,Intermediate,4,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee
+2025-02-10,07:00,09:00,Court 2,Drill,Advanced,5,6,25,Pro Guy;Top Player;Ace Hitter;Tom Wilson;Sarah Lee
+2025-02-10,09:30,11:30,Court 1,Open Play,All Levels,3,8,15,Bob Jones;Lisa Park;Dave Kim
+2025-02-10,17:00,19:00,Court 1,Social,All Levels,2,12,10,Amy Chen;Bob Jones
+2025-02-10,17:00,19:00,Court 2,Open Play,Intermediate,5,8,15,John Smith;Jane Doe;Mike Brown;Tom Wilson;Sarah Lee
+2025-02-11,07:00,09:00,Court 1,Open Play,Intermediate,7,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Bob Jones
+2025-02-11,07:00,09:00,Court 2,Drill,Advanced,4,6,25,Pro Guy;Top Player;Ace Hitter;Tom Wilson
+2025-02-11,09:30,11:30,Court 1,Open Play,All Levels,6,8,15,Lisa Park;Dave Kim;New Player;Fresh Start;Amy Chen;Bob Jones
+2025-02-11,17:00,19:00,Court 1,Open Play,Intermediate,3,8,15,Jane Doe;Mike Brown;Sarah Lee
+2025-02-11,17:00,19:00,Court 2,League Play,Advanced,4,4,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee
+2025-02-12,07:00,09:00,Court 1,Open Play,Intermediate,5,8,15,John Smith;Jane Doe;Mike Brown;Tom Wilson;Amy Chen
+2025-02-12,07:00,09:00,Court 2,Clinic,Beginner,4,8,30,New Player;Fresh Start;First Timer;Beginner Bob
+2025-02-12,09:30,11:30,Court 1,Open Play,All Levels,8,8,15,John Smith;Jane Doe;Mike Brown;Amy Chen;Bob Jones;Lisa Park;Dave Kim;New Player
+2025-02-12,17:00,19:00,Court 1,Social,All Levels,6,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe;Mike Brown
+2025-02-12,17:00,19:00,Court 2,Open Play,Intermediate,2,8,15,Tom Wilson;Sarah Lee
+2025-02-13,07:00,09:00,Court 1,Open Play,Intermediate,7,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Lisa Park
+2025-02-13,07:00,09:00,Court 2,Drill,Advanced,6,6,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee;Tom Wilson;John Smith
+2025-02-13,09:30,11:30,Court 1,Open Play,All Levels,5,8,15,Bob Jones;Dave Kim;New Player;Fresh Start;First Timer
+2025-02-13,17:00,19:00,Court 1,Round Robin,Advanced,8,8,20,Pro Guy;Top Player;Ace Hitter;Sarah Lee;Tom Wilson;John Smith;Mike Brown;Jane Doe
+2025-02-13,17:00,19:00,Court 2,Open Play,Intermediate,4,8,15,Amy Chen;Bob Jones;Lisa Park;Dave Kim
+2025-02-14,07:00,09:00,Court 1,Open Play,Intermediate,6,8,15,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen
+2025-02-14,07:00,09:00,Court 2,Drill,Advanced,3,6,25,Pro Guy;Top Player;Ace Hitter
+2025-02-14,09:30,11:30,Court 1,Open Play,All Levels,4,8,15,Bob Jones;Lisa Park;Dave Kim;New Player
+2025-02-14,17:00,19:00,Court 1,Social,All Levels,9,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe;Mike Brown;New Player;Fresh Start;First Timer
+2025-02-14,17:00,19:00,Court 2,Open Play,Intermediate,1,8,15,John Smith
+2025-02-15,09:00,12:00,Court 1,Open Play,All Levels,12,16,12,John Smith;Jane Doe;Mike Brown;Sarah Lee;Tom Wilson;Amy Chen;Bob Jones;Lisa Park;Dave Kim;New Player;Fresh Start;First Timer
+2025-02-15,09:00,12:00,Court 2,League Play,Advanced,4,4,25,Pro Guy;Top Player;Ace Hitter;Sarah Lee
+2025-02-15,13:00,15:00,Court 1,Social,All Levels,10,12,10,Amy Chen;Bob Jones;Lisa Park;Dave Kim;Jane Doe;Mike Brown;New Player;Fresh Start;First Timer;Beginner Bob
+2025-02-15,13:00,15:00,Court 2,Clinic,Beginner,6,8,30,First Timer;New Player;Fresh Start;Beginner Bob;Learn Lucy;Try Hard
+2025-02-16,09:00,12:00,Court 1,Open Play,All Levels,8,16,12,John Smith;Jane Doe;Mike Brown;Amy Chen;Bob Jones;Lisa Park;Dave Kim;Tom Wilson
+2025-02-16,09:00,12:00,Court 2,Round Robin,Advanced,8,8,20,Pro Guy;Top Player;Ace Hitter;Sarah Lee;Tom Wilson;John Smith;Mike Brown;Jane Doe
