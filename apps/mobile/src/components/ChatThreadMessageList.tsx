@@ -1,7 +1,9 @@
 import * as Clipboard from 'expo-clipboard'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Haptics from 'expo-haptics'
+import * as IntentLauncher from 'expo-intent-launcher'
 import * as MediaLibrary from 'expo-media-library'
+import * as Sharing from 'expo-sharing'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,6 +14,7 @@ import {
   Linking,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -202,6 +205,7 @@ export function ChatThreadMessageList({
   const [previewImage, setPreviewImage] = useState<ReturnType<typeof parseImageMessageText> | null>(null)
   const [previewFile, setPreviewFile] = useState<ReturnType<typeof parseFileMessageText> | null>(null)
   const [savingPreviewImage, setSavingPreviewImage] = useState(false)
+  const [openingPreviewFile, setOpeningPreviewFile] = useState(false)
   const [cachedPreviewImageUri, setCachedPreviewImageUri] = useState<string | null>(null)
   const [cachedInlineImageUris, setCachedInlineImageUris] = useState<Record<string, string>>({})
   const previewImageTranslateY = useRef(new Animated.Value(0)).current
@@ -239,6 +243,84 @@ export function ChatThreadMessageList({
       setSavingPreviewImage(false)
     }
   }, [previewImage, savingPreviewImage, toast])
+
+  const openPreviewFile = useCallback(async () => {
+    const next = previewFile
+    if (!next?.url || openingPreviewFile) return
+
+    const inferExtensionFromMimeType = (mimeType: string | null | undefined) => {
+      const normalized = String(mimeType ?? '').trim().toLowerCase()
+      if (!normalized) return ''
+      const directMap: Record<string, string> = {
+        'application/pdf': 'pdf',
+        'application/zip': 'zip',
+        'application/json': 'json',
+        'application/msword': 'doc',
+        'application/vnd.ms-excel': 'xls',
+        'application/vnd.ms-powerpoint': 'ppt',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+        'text/plain': 'txt',
+        'text/csv': 'csv',
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'audio/mpeg': 'mp3',
+        'video/mp4': 'mp4',
+      }
+      if (directMap[normalized]) return directMap[normalized]
+      const [, subtype = ''] = normalized.split('/')
+      return subtype.split(';')[0]?.trim() || ''
+    }
+
+    const sanitizeLocalFileName = (value: string) =>
+      value
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ')
+        .replace(/^-+|-+$/g, '') || 'file'
+
+    const ensureExtension = (value: string, mimeType: string | null | undefined) => {
+      const trimmed = value.trim()
+      if (/\.[A-Za-z0-9]{1,8}$/.test(trimmed)) return trimmed
+      const extension = inferExtensionFromMimeType(mimeType)
+      return extension ? `${trimmed}.${extension}` : trimmed
+    }
+
+    try {
+      setOpeningPreviewFile(true)
+      const safeName = sanitizeLocalFileName(ensureExtension(next.fileName || 'file', next.mimeType))
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory
+      if (!baseDir) throw new Error('No writable cache directory.')
+      const targetUri = `${baseDir}piqle-open-${Date.now()}-${safeName}`
+      const download = await FileSystem.downloadAsync(next.url, targetUri)
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(download.uri)
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          type: next.mimeType || '*/*',
+          flags: 1,
+        })
+      } else if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(download.uri, {
+          mimeType: next.mimeType || undefined,
+          dialogTitle: next.fileName || 'Open file',
+        })
+      } else {
+        const supported = await Linking.canOpenURL(download.uri)
+        if (!supported) {
+          throw new Error('Unsupported file type.')
+        }
+        await Linking.openURL(download.uri)
+      }
+      setPreviewFile(null)
+    } catch {
+      toast.error('Could not open file.')
+    } finally {
+      setOpeningPreviewFile(false)
+    }
+  }, [openingPreviewFile, previewFile, toast])
 
   useEffect(() => {
     if (!previewImage) {
@@ -511,8 +593,8 @@ export function ChatThreadMessageList({
               <Feather name="file-text" size={18} color={colors.primary} />
             </View>
             <View style={styles.fileBody}>
-              <Text style={[styles.fileTitle, isMine && styles.bodyMine]} numberOfLines={1}>
-                {filePayload.fileName}
+              <Text style={[styles.fileTitle, isMine && styles.bodyMine]} numberOfLines={2}>
+                {filePayload.fileName || 'File'}
               </Text>
               <Text style={styles.fileMeta} numberOfLines={1}>
                 {[filePayload.mimeType, formatFileSize(filePayload.size)].filter(Boolean).join(' · ') || 'Tap to open'}
@@ -699,7 +781,8 @@ export function ChatThreadMessageList({
       const replyCount = threadRootMessageId ? 0 : replyCountByRootId.get(m.id) ?? 0
       const hasLocationCard = Boolean(!m.isDeleted && parseLocationMessageText(m.text))
       const hasImageCard = Boolean(!m.isDeleted && parseImageMessageText(m.text))
-      const hasTransparentBubble = hasLocationCard || hasImageCard
+      const hasFileCard = Boolean(!m.isDeleted && parseFileMessageText(m.text))
+      const hasTransparentBubble = hasLocationCard || hasImageCard || hasFileCard
       const rowStyles = [
         styles.row,
         isMine ? styles.rowMine : styles.rowOther,
@@ -1160,13 +1243,12 @@ export function ChatThreadMessageList({
             <AppConfirmActions
               intent="positive"
               cancelLabel="Close"
-              confirmLabel="Open file"
+              confirmLabel={openingPreviewFile ? 'Opening…' : 'Open file'}
               onCancel={() => setPreviewFile(null)}
               onConfirm={() => {
-                const next = previewFile
-                if (!next) return
-                void Linking.openURL(next.url).finally(() => setPreviewFile(null))
+                void openPreviewFile()
               }}
+              confirmLoading={openingPreviewFile}
             />
           ) : null
         }
@@ -1443,6 +1525,9 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       alignItems: 'center',
       gap: 10,
       padding: 12,
+      minWidth: 220,
+      maxWidth: 272,
+      alignSelf: 'flex-start',
     },
     fileIconWrap: {
       width: 38,
@@ -1456,13 +1541,14 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     },
     fileBody: {
       flex: 1,
-      minWidth: 0,
+      minWidth: 140,
       gap: 3,
     },
     fileTitle: {
       color: colors.text,
       fontSize: 14,
       fontWeight: '700',
+      flexShrink: 1,
     },
     fileMeta: {
       color: colors.textMuted,

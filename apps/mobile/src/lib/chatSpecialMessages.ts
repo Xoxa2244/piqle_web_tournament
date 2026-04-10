@@ -41,6 +41,18 @@ function decodeFileName(value: string | null | undefined, fallback: string): str
   }
 }
 
+function getFileNameFromUrl(url: string | null | undefined, fallback: string): string {
+  const raw = String(url ?? '').trim()
+  if (!raw) return fallback
+  try {
+    const withoutQuery = raw.split('?')[0]?.split('#')[0] || raw
+    const lastSegment = withoutQuery.split('/').filter(Boolean).pop() || ''
+    return decodeFileName(lastSegment, fallback)
+  } catch {
+    return fallback
+  }
+}
+
 export function buildLocationMessageText(payload: ChatLocationMessagePayload): string {
   const normalized = {
     latitude: roundCoord(payload.latitude),
@@ -119,9 +131,13 @@ export function parseFileMessageText(text: string | null | undefined): ChatFileM
     const parsed = JSON.parse(json) as Partial<ChatFileMessagePayload>
     const url = String(parsed.url ?? '').trim()
     if (!url) return null
+    const resolvedFileName = decodeFileName(
+      parsed.fileName,
+      getFileNameFromUrl(url, 'File')
+    )
     return {
       url,
-      fileName: decodeFileName(parsed.fileName, 'File'),
+      fileName: resolvedFileName,
       mimeType: String(parsed.mimeType ?? '').trim() || 'application/octet-stream',
       size: Number.isFinite(Number(parsed.size)) ? Number(parsed.size) : null,
     }
