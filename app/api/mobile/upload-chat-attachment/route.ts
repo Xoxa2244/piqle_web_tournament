@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
+import sharp from 'sharp'
 
 import { getSessionFromMobileToken } from '@/lib/mobileAuth'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const CHAT_ATTACHMENTS_BUCKET = 'chat-attachments'
+const CHAT_IMAGE_MAX_DIMENSION = 1600
+const CHAT_IMAGE_QUALITY = 80
+const OPTIMIZABLE_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+])
 
 const getBearerToken = (req: NextRequest) => {
   const header = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -28,6 +40,62 @@ const sanitizeFilePart = (value: string) =>
     .trim()
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'file'
+
+async function prepareUploadPayload({
+  file,
+  kind,
+  buffer,
+  baseName,
+  originalExtension,
+}: {
+  file: File
+  kind: 'image' | 'file'
+  buffer: Buffer
+  baseName: string
+  originalExtension: string
+}) {
+  if (kind !== 'image' || !OPTIMIZABLE_IMAGE_TYPES.has(file.type.toLowerCase())) {
+    return {
+      buffer,
+      contentType: file.type || undefined,
+      extension: originalExtension,
+      fileName: file.name || `${baseName}.${originalExtension}`,
+      size: file.size,
+    }
+  }
+
+  try {
+    const optimized = await sharp(buffer, { limitInputPixels: 40_000_000 })
+      .rotate()
+      .resize({
+        width: CHAT_IMAGE_MAX_DIMENSION,
+        height: CHAT_IMAGE_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({
+        quality: CHAT_IMAGE_QUALITY,
+        mozjpeg: true,
+      })
+      .toBuffer()
+
+    return {
+      buffer: optimized,
+      contentType: 'image/jpeg',
+      extension: 'jpg',
+      fileName: `${baseName}.jpg`,
+      size: optimized.byteLength,
+    }
+  } catch {
+    return {
+      buffer,
+      contentType: file.type || undefined,
+      extension: originalExtension,
+      fileName: file.name || `${baseName}.${originalExtension}`,
+      size: file.size,
+    }
+  }
+}
 
 export async function POST(req: NextRequest) {
   const token = getBearerToken(req)
@@ -73,13 +141,20 @@ export async function POST(req: NextRequest) {
 
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
-  const extension = sanitizeFilePart(file.name.split('.').pop() || (kind === 'image' ? 'jpg' : 'bin'))
   const baseName = sanitizeFilePart(file.name.replace(/\.[^.]+$/, ''))
-  const objectPath = `${session.user.id}/${kind}/${Date.now()}-${baseName}.${extension}`
+  const originalExtension = sanitizeFilePart(file.name.split('.').pop() || (kind === 'image' ? 'jpg' : 'bin'))
+  const prepared = await prepareUploadPayload({
+    file,
+    kind,
+    buffer,
+    baseName,
+    originalExtension,
+  })
+  const objectPath = `${session.user.id}/${kind}/${Date.now()}-${baseName}.${prepared.extension}`
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(CHAT_ATTACHMENTS_BUCKET)
-    .upload(objectPath, buffer, { contentType: file.type || undefined, upsert: false })
+    .upload(objectPath, prepared.buffer, { contentType: prepared.contentType, upsert: false })
 
   if (uploadError) {
     return NextResponse.json(
@@ -91,9 +166,9 @@ export async function POST(req: NextRequest) {
   const { data: publicUrlData } = supabaseAdmin.storage.from(CHAT_ATTACHMENTS_BUCKET).getPublicUrl(objectPath)
   return NextResponse.json({
     url: publicUrlData.publicUrl,
-    fileName: file.name || `${baseName}.${extension}`,
-    mimeType: file.type || (kind === 'image' ? 'image/jpeg' : 'application/octet-stream'),
-    size: file.size,
+    fileName: prepared.fileName,
+    mimeType: prepared.contentType || (kind === 'image' ? 'image/jpeg' : 'application/octet-stream'),
+    size: prepared.size,
     kind,
   })
 }
