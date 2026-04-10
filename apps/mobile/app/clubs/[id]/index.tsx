@@ -21,6 +21,7 @@ import {
 } from '../../../src/components/ui'
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
 import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
+import { ClubAnnouncementComposerSheet } from '../../../src/components/ClubAnnouncementComposerSheet'
 import { EntityImage } from '../../../src/components/EntityImage'
 import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
@@ -46,6 +47,18 @@ import { useAppTheme } from '../../../src/providers/ThemeProvider'
 import { useToast } from '../../../src/providers/ToastProvider'
 import { usePullToRefresh } from '../../../src/hooks/usePullToRefresh'
 import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntityMissing'
+
+type AnnouncementDraft = {
+  title: string
+  body: string
+}
+
+type AnnouncementComposerState =
+  | null
+  | { mode: 'create'; draft: AnnouncementDraft }
+  | { mode: 'edit'; announcementId: string; draft: AnnouncementDraft }
+
+const EMPTY_ANNOUNCEMENT_DRAFT: AnnouncementDraft = { title: '', body: '' }
 
 export default function ClubDetailScreen() {
   const params = useLocalSearchParams<{ id: string; tab?: string }>()
@@ -135,6 +148,47 @@ export default function ClubDetailScreen() {
     },
     onError: (e) => toast.error(e.message || 'Failed to delete'),
   })
+  const likeAnnouncement = trpc.club.likeAnnouncement.useMutation({
+    onMutate: async ({ announcementId }) => {
+      const previousClub = utils.club.get.getData({ id: clubId })
+      utils.club.get.setData({ id: clubId }, (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          announcements: (current.announcements ?? []).map((announcement: any) => {
+            if (announcement.id !== announcementId) return announcement
+            const previousLikeCount = Number(announcement.likeCount ?? 0)
+            const previousViewerHasLiked = Boolean(announcement.viewerHasLiked)
+            return {
+              ...announcement,
+              likeCount: previousViewerHasLiked ? Math.max(0, previousLikeCount - 1) : previousLikeCount + 1,
+              viewerHasLiked: !previousViewerHasLiked,
+            }
+          }),
+        }
+      })
+      return { previousClub }
+    },
+    onError: (e, _input, context) => {
+      if (context?.previousClub) {
+        utils.club.get.setData({ id: clubId }, context.previousClub)
+      }
+      toast.error(e.message || 'Failed to update like')
+    },
+    onSuccess: (data) => {
+      utils.club.get.setData({ id: clubId }, (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          announcements: (current.announcements ?? []).map((announcement: any) =>
+            announcement.id === data.announcementId
+              ? { ...announcement, likeCount: data.likeCount, viewerHasLiked: data.viewerHasLiked }
+              : announcement
+          ),
+        }
+      })
+    },
+  })
   const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -193,10 +247,7 @@ export default function ClubDetailScreen() {
     },
   })
 
-  const [showNewPostForm, setShowNewPostForm] = useState(false)
-  const [announcementForm, setAnnouncementForm] = useState({ title: '', body: '' })
-  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null)
-  const [editingAnnouncementForm, setEditingAnnouncementForm] = useState({ title: '', body: '' })
+  const [announcementComposer, setAnnouncementComposer] = useState<AnnouncementComposerState>(null)
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
   const [clubShareSheetOpen, setClubShareSheetOpen] = useState(false)
   const [announcementToDelete, setAnnouncementToDelete] = useState<string | null>(null)
@@ -211,6 +262,9 @@ export default function ClubDetailScreen() {
   const [banReason, setBanReason] = useState('')
   const [clubDescriptionExpanded, setClubDescriptionExpanded] = useState(false)
   const [clubDescriptionExpandable, setClubDescriptionExpandable] = useState(false)
+  const closeAnnouncementComposer = useCallback(() => {
+    setAnnouncementComposer(null)
+  }, [])
 
   const pendingAfterMemberClose = useRef<
     | { kind: 'kick'; target: { userId: string; name: string } }
@@ -1036,6 +1090,9 @@ export default function ClubDetailScreen() {
       </View>
     ) : null
 
+  const announcementComposerMode = announcementComposer?.mode ?? null
+  const announcementComposerOpen = tab === 'feed' && club?.isAdmin && Boolean(announcementComposer)
+
   const clubSheets = (
     <>
       <AppBottomSheet
@@ -1117,9 +1174,8 @@ export default function ClubDetailScreen() {
                 {
                   onSuccess: () => {
                     setAnnouncementToDelete(null)
-                    if (editingAnnouncementId === aid) {
-                      setEditingAnnouncementId(null)
-                      setEditingAnnouncementForm({ title: '', body: '' })
+                    if (announcementComposer?.mode === 'edit' && announcementComposer.announcementId === aid) {
+                      closeAnnouncementComposer()
                     }
                   },
                 }
@@ -1281,6 +1337,8 @@ export default function ClubDetailScreen() {
         showsVerticalScrollIndicator={false}
         refreshing={pullToRefresh.refreshing}
         onRefresh={pullToRefresh.onRefresh}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         bounces
       >
         {clubInfoBlock}
@@ -1291,137 +1349,66 @@ export default function ClubDetailScreen() {
         {tab === 'feed' ? (
           <View style={styles.tabContent}>
             {club.isAdmin ? (
-              showNewPostForm ? (
-                <SurfaceCard tone="soft" style={styles.card}>
-                  <Text style={styles.postFormLabel}>Post announcement</Text>
-                  <InputField
-                    value={announcementForm.title}
-                    onChangeText={(v) => setAnnouncementForm((p) => ({ ...p, title: v }))}
-                    placeholder="Title (optional)"
-                    containerStyle={styles.postFormField}
-                  />
-                  <InputField
-                    value={announcementForm.body}
-                    onChangeText={(v) => setAnnouncementForm((p) => ({ ...p, body: v }))}
-                    placeholder="Message *"
-                    multiline
-                    containerStyle={styles.postFormField}
-                  />
-                  <View style={styles.postFormActions}>
-                    <Pressable
-                      onPress={() => {
-                        setShowNewPostForm(false)
-                        setAnnouncementForm({ title: '', body: '' })
-                      }}
-                      style={({ pressed }) => [styles.postFormButton, styles.postFormButtonSecondary, pressed && styles.postFormButtonPressed]}
-                    >
-                      <Text style={styles.postFormButtonSecondaryText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        if (!announcementForm.body.trim()) return
-                        createAnnouncement.mutate(
-                          { clubId, title: announcementForm.title.trim() || undefined, body: announcementForm.body.trim() },
-                          {
-                            onSuccess: () => {
-                              setAnnouncementForm({ title: '', body: '' })
-                              setShowNewPostForm(false)
-                            },
-                          }
-                        )
-                      }}
-                      disabled={createAnnouncement.isPending || !announcementForm.body.trim()}
-                      style={({ pressed }) => [styles.postFormButton, pressed && styles.postFormButtonPressed]}
-                    >
-                      <Text style={styles.postFormButtonText}>
-                        {createAnnouncement.isPending ? 'Posting…' : 'Post'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </SurfaceCard>
-              ) : (
                 <Pressable
-                  onPress={() => setShowNewPostForm(true)}
+                  onPress={() => setAnnouncementComposer({ mode: 'create', draft: { ...EMPTY_ANNOUNCEMENT_DRAFT } })}
+                  disabled={announcementComposerOpen}
                   style={({ pressed }) => [styles.createPostButton, pressed && styles.createPostButtonPressed]}
                 >
                   <Feather name="plus" size={20} color={colors.primary} />
                   <Text style={styles.createPostButtonText}>Create new post</Text>
                 </Pressable>
-              )
             ) : null}
             {club.announcements.length > 0 ? (
               <View style={{ gap: 12 }}>
                 {club.announcements.map((announcement) => (
                   <SurfaceCard key={announcement.id} tone="soft" style={styles.card}>
-                    {editingAnnouncementId === announcement.id && club.isAdmin ? (
-                      <View style={styles.editForm}>
-                        <InputField
-                          value={editingAnnouncementForm.title}
-                          onChangeText={(v) => setEditingAnnouncementForm((p) => ({ ...p, title: v }))}
-                          placeholder="Title (optional)"
-                          containerStyle={styles.postFormField}
-                        />
-                        <InputField
-                          value={editingAnnouncementForm.body}
-                          onChangeText={(v) => setEditingAnnouncementForm((p) => ({ ...p, body: v }))}
-                          placeholder="Message *"
-                          multiline
-                          containerStyle={styles.postFormField}
-                        />
-                        <View style={styles.editFormActions}>
-                          <Pressable
-                            onPress={() => {
-                              setEditingAnnouncementId(null)
-                              setEditingAnnouncementForm({ title: '', body: '' })
-                            }}
-                            style={({ pressed }) => [styles.editFormBtn, styles.editFormBtnCancel, pressed && styles.editFormBtnPressed]}
-                          >
-                            <Text style={styles.editFormBtnCancelText}>Cancel</Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => {
-                              if (!editingAnnouncementForm.body.trim()) return
-                              updateAnnouncement.mutate(
-                                {
-                                  clubId,
-                                  announcementId: announcement.id,
-                                  title: editingAnnouncementForm.title.trim() || undefined,
-                                  body: editingAnnouncementForm.body.trim(),
-                                },
-                                {
-                                  onSuccess: () => {
-                                    setEditingAnnouncementId(null)
-                                    setEditingAnnouncementForm({ title: '', body: '' })
-                                  },
-                                }
-                              )
-                            }}
-                            disabled={updateAnnouncement.isPending || !editingAnnouncementForm.body.trim()}
-                            style={({ pressed }) => [styles.editFormBtn, styles.editFormBtnSave, pressed && styles.editFormBtnPressed]}
-                          >
-                            <Text style={styles.editFormBtnSaveText}>
-                              {updateAnnouncement.isPending ? 'Saving…' : 'Save'}
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : (
-                      <>
-                        {announcement.title ? (
-                          <Text style={styles.announcementTitle}>{announcement.title}</Text>
-                        ) : null}
-                        <Text style={styles.body}>{announcement.body}</Text>
-                        <View style={styles.announcementMetaRow}>
+                    <>
+                      {announcement.title ? (
+                        <Text style={styles.announcementTitle}>{announcement.title}</Text>
+                      ) : null}
+                      <Text style={styles.body}>{announcement.body}</Text>
+                      <View style={styles.announcementMetaRow}>
+                        <View style={styles.announcementMetaLeft}>
                           <Text style={styles.smallMeta}>
                             Posted {formatDateTime(announcement.createdAt)}
                             {announcement.createdByUser?.name ? ` · ${announcement.createdByUser.name}` : ''}
                           </Text>
+                        </View>
+                        <View style={styles.announcementActions}>
+                          {(club.isFollowing || club.isAdmin) ? (
+                            <Pressable
+                              onPress={() => likeAnnouncement.mutate({ clubId, announcementId: announcement.id })}
+                              disabled={likeAnnouncement.isPending}
+                              style={({ pressed }) => [
+                                styles.announcementLikeBtn,
+                                announcement.viewerHasLiked && styles.announcementLikeBtnActive,
+                                pressed && styles.announcementActionBtnPressed,
+                              ]}
+                            >
+                              <Feather
+                                name={announcement.viewerHasLiked ? 'heart' : 'heart'}
+                                size={14}
+                                color={announcement.viewerHasLiked ? colors.white : colors.textMuted}
+                              />
+                              <Text
+                                style={[
+                                  styles.announcementLikeText,
+                                  announcement.viewerHasLiked && styles.announcementLikeTextActive,
+                                ]}
+                              >
+                                {Math.max(0, Number(announcement.likeCount ?? 0))}
+                              </Text>
+                            </Pressable>
+                          ) : null}
                           {club.isAdmin ? (
-                            <View style={styles.announcementActions}>
+                            <>
                               <Pressable
                                 onPress={() => {
-                                  setEditingAnnouncementId(announcement.id)
-                                  setEditingAnnouncementForm({ title: announcement.title ?? '', body: announcement.body })
+                                  setAnnouncementComposer({
+                                    mode: 'edit',
+                                    announcementId: announcement.id,
+                                    draft: { title: announcement.title ?? '', body: announcement.body },
+                                  })
                                 }}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
                               >
@@ -1434,11 +1421,11 @@ export default function ClubDetailScreen() {
                               >
                                 <Feather name="trash-2" size={16} color={colors.danger} />
                               </Pressable>
-                            </View>
+                            </>
                           ) : null}
                         </View>
-                      </>
-                    )}
+                      </View>
+                    </>
                   </SurfaceCard>
                 ))}
               </View>
@@ -1565,6 +1552,60 @@ export default function ClubDetailScreen() {
         {membersTabContent}
         </SegmentedContentFade>
       </PickleRefreshScrollView>
+      <ClubAnnouncementComposerSheet
+        open={announcementComposerOpen}
+        mode={announcementComposerMode === 'edit' ? 'edit' : 'create'}
+        draft={announcementComposer?.draft ?? EMPTY_ANNOUNCEMENT_DRAFT}
+        onChangeDraft={(updater) => {
+          setAnnouncementComposer((current) =>
+            current
+              ? {
+                  ...current,
+                  draft: updater(current.draft),
+                }
+              : current
+          )
+        }}
+        onClose={closeAnnouncementComposer}
+        onSubmit={() => {
+          if (announcementComposer?.mode === 'edit') {
+            if (!announcementComposer.draft.body.trim()) return
+            updateAnnouncement.mutate(
+              {
+                clubId,
+                announcementId: announcementComposer.announcementId,
+                title: announcementComposer.draft.title.trim() || undefined,
+                body: announcementComposer.draft.body.trim(),
+              },
+              {
+                onSuccess: () => {
+                  closeAnnouncementComposer()
+                },
+              }
+            )
+            return
+          }
+          if (!announcementComposer?.draft.body.trim()) return
+          createAnnouncement.mutate(
+            {
+              clubId,
+              title: announcementComposer?.draft.title.trim() || undefined,
+              body: announcementComposer.draft.body.trim(),
+            },
+            {
+              onSuccess: () => {
+                closeAnnouncementComposer()
+              },
+            }
+          )
+        }}
+        submitLoading={announcementComposerMode === 'edit' ? updateAnnouncement.isPending : createAnnouncement.isPending}
+        submitDisabled={
+          announcementComposerMode === 'edit'
+            ? updateAnnouncement.isPending || !announcementComposer?.draft.body.trim()
+            : createAnnouncement.isPending || !announcementComposer?.draft.body.trim()
+        }
+      />
       <FeedbackRatingModal
         open={clubFeedbackOpen}
         onClose={() => setClubFeedbackOpen(false)}
@@ -2311,43 +2352,6 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
   },
-  postFormLabel: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 15,
-    marginBottom: spacing.sm,
-  },
-  postFormField: {
-    marginBottom: spacing.sm,
-  },
-  postFormActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: spacing.sm,
-  },
-  postFormButton: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  postFormButtonSecondary: {
-    backgroundColor: colors.surfaceMuted,
-  },
-  postFormButtonPressed: {
-    opacity: 0.9,
-  },
-  postFormButtonText: {
-    color: colors.white,
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  postFormButtonSecondaryText: {
-    color: colors.text,
-    fontWeight: '600',
-    fontSize: 15,
-  },
   createPostButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2407,9 +2411,34 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     marginTop: spacing.sm,
     gap: 8,
   },
+  announcementMetaLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
   announcementActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
+  },
+  announcementLikeBtn: {
+    minHeight: 28,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  announcementLikeBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  announcementLikeText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  announcementLikeTextActive: {
+    color: colors.white,
   },
   announcementActionBtn: {
     padding: 6,

@@ -34,6 +34,7 @@ model User {
   clubFollows                    ClubFollower[]
   clubAdminRoles                 ClubAdmin[]
   clubAnnouncementsCreated       ClubAnnouncement[]        @relation("ClubAnnouncementCreatedBy")
+  clubAnnouncementLikes          ClubAnnouncementLike[]
   clubBookingRequestsCreated     ClubBookingRequest[]      @relation("ClubBookingRequestRequestedBy")
   clubChatMessages               ClubChatMessage[]
   clubChatLikes                  ClubChatLike[]
@@ -355,9 +356,26 @@ model ClubAnnouncement {
 
   club          Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
   createdByUser User? @relation("ClubAnnouncementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  likes         ClubAnnouncementLike[]
 
   @@index([clubId, createdAt])
   @@map("club_announcements")
+}
+
+model ClubAnnouncementLike {
+  id             String            @id @default(uuid())
+  announcementId String            @map("announcement_id")
+  userId         String            @map("user_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  announcement ClubAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId, updatedAt])
+  @@index([announcementId, createdAt])
+  @@map("club_announcement_likes")
 }
 
 model ClubBookingRequest {

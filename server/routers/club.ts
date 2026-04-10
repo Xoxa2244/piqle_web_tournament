@@ -599,6 +599,19 @@ export const clubRouter = createTRPCRouter({
                   image: true,
                 },
               },
+              likes:
+                userId === DUMMY_USER_ID
+                  ? false
+                  : {
+                      where: { userId },
+                      select: { id: true },
+                      take: 1,
+                    },
+              _count: {
+                select: {
+                  likes: true,
+                },
+              },
             },
           },
         },
@@ -775,9 +788,15 @@ export const clubRouter = createTRPCRouter({
       ])
 
       const membersCount = club._count.followers + (creatorInFollowers ? 0 : 1)
+      const announcements = club.announcements.map((announcement) => ({
+        ...announcement,
+        likeCount: announcement._count?.likes ?? 0,
+        viewerHasLiked: Boolean(announcement.likes?.length),
+      }))
 
       return {
         ...club,
+        announcements,
         tournaments,
         followersCount: membersCount,
         isFollowing: !isBanned && club.followers.length > 0 && userId !== DUMMY_USER_ID,
@@ -1205,6 +1224,74 @@ export const clubRouter = createTRPCRouter({
 
       await ctx.prisma.clubAnnouncement.delete({ where: { id: input.announcementId } })
       return { success: true }
+    }),
+
+  likeAnnouncement: protectedProcedure
+    .input(z.object({ clubId: z.string(), announcementId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const [club, announcement, follower, admin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAnnouncement.findUnique({
+          where: { id: input.announcementId },
+          select: { id: true, clubId: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+      if (!announcement || announcement.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Announcement not found' })
+      }
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to like posts' })
+      }
+
+      const existingLike = await ctx.prisma.clubAnnouncementLike.findUnique({
+        where: {
+          announcementId_userId: {
+            announcementId: input.announcementId,
+            userId,
+          },
+        },
+        select: { id: true },
+      })
+
+      if (existingLike) {
+        await ctx.prisma.clubAnnouncementLike.delete({
+          where: { id: existingLike.id },
+        })
+      } else {
+        await ctx.prisma.clubAnnouncementLike.create({
+          data: {
+            announcementId: input.announcementId,
+            userId,
+          },
+        })
+      }
+
+      const likeCount = await ctx.prisma.clubAnnouncementLike.count({
+        where: { announcementId: input.announcementId },
+      })
+
+      return {
+        announcementId: input.announcementId,
+        likeCount,
+        viewerHasLiked: !existingLike,
+      }
     }),
 
   createBookingRequest: publicProcedure
