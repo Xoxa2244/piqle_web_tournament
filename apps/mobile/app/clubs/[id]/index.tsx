@@ -459,15 +459,39 @@ export default function ClubDetailScreen() {
       const latitude = Number(announcement.locationLatitude)
       const longitude = Number(announcement.locationLongitude)
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
-      const locationUrl = getExternalLocationUrl({
+      const next = {
         latitude,
         longitude,
         title: String(announcement.locationTitle ?? '').trim() || 'Pinned location',
         address: String(announcement.locationAddress ?? '').trim() || null,
-      })
-      handleOpenExternalLink(locationUrl, () => Linking.openURL(locationUrl))
+      }
+      Alert.alert(
+        next.title,
+        next.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open in maps',
+            onPress: () => {
+              void (async () => {
+                try {
+                  const externalUrl = getExternalLocationUrl(next)
+                  const supported = await Linking.canOpenURL(externalUrl)
+                  if (supported) {
+                    await Linking.openURL(externalUrl)
+                  } else {
+                    await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`)
+                  }
+                } catch {
+                  Alert.alert('Cannot open map', 'This location could not be opened on this device.')
+                }
+              })()
+            },
+          },
+        ]
+      )
     },
-    [handleOpenExternalLink]
+    []
   )
 
   useEffect(() => {
