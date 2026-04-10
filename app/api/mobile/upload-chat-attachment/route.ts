@@ -41,25 +41,37 @@ const sanitizeFilePart = (value: string) =>
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'file'
 
+const decodeFileName = (value: string) => {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return ''
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
 async function prepareUploadPayload({
   file,
   kind,
   buffer,
   baseName,
   originalExtension,
+  decodedFileName,
 }: {
   file: File
   kind: 'image' | 'file'
   buffer: Buffer
   baseName: string
   originalExtension: string
+  decodedFileName: string
 }) {
   if (kind !== 'image' || !OPTIMIZABLE_IMAGE_TYPES.has(file.type.toLowerCase())) {
     return {
       buffer,
       contentType: file.type || undefined,
       extension: originalExtension,
-      fileName: file.name || `${baseName}.${originalExtension}`,
+      fileName: decodedFileName || `${baseName}.${originalExtension}`,
       size: file.size,
     }
   }
@@ -91,7 +103,7 @@ async function prepareUploadPayload({
       buffer,
       contentType: file.type || undefined,
       extension: originalExtension,
-      fileName: file.name || `${baseName}.${originalExtension}`,
+      fileName: decodedFileName || `${baseName}.${originalExtension}`,
       size: file.size,
     }
   }
@@ -141,14 +153,16 @@ export async function POST(req: NextRequest) {
 
   const arrayBuffer = await file.arrayBuffer()
   const buffer = Buffer.from(arrayBuffer)
-  const baseName = sanitizeFilePart(file.name.replace(/\.[^.]+$/, ''))
-  const originalExtension = sanitizeFilePart(file.name.split('.').pop() || (kind === 'image' ? 'jpg' : 'bin'))
+  const decodedFileName = decodeFileName(file.name)
+  const baseName = sanitizeFilePart(decodedFileName.replace(/\.[^.]+$/, ''))
+  const originalExtension = sanitizeFilePart(decodedFileName.split('.').pop() || (kind === 'image' ? 'jpg' : 'bin'))
   const prepared = await prepareUploadPayload({
     file,
     kind,
     buffer,
     baseName,
     originalExtension,
+    decodedFileName,
   })
   const objectPath = `${session.user.id}/${kind}/${Date.now()}-${baseName}.${prepared.extension}`
 

@@ -31,6 +31,16 @@ function roundCoord(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000
 }
 
+function decodeFileName(value: string | null | undefined, fallback: string): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return fallback
+  try {
+    return decodeURIComponent(raw) || fallback
+  } catch {
+    return raw || fallback
+  }
+}
+
 export function buildLocationMessageText(payload: ChatLocationMessagePayload): string {
   const normalized = {
     latitude: roundCoord(payload.latitude),
@@ -44,7 +54,7 @@ export function buildLocationMessageText(payload: ChatLocationMessagePayload): s
 export function buildImageMessageText(payload: ChatImageMessagePayload): string {
   const normalized = {
     url: String(payload.url ?? '').trim(),
-    fileName: String(payload.fileName ?? '').trim() || 'Photo',
+    fileName: decodeFileName(payload.fileName, 'Photo'),
     mimeType: String(payload.mimeType ?? '').trim() || 'image/jpeg',
     width: Number.isFinite(Number(payload.width)) ? Number(payload.width) : null,
     height: Number.isFinite(Number(payload.height)) ? Number(payload.height) : null,
@@ -56,7 +66,7 @@ export function buildImageMessageText(payload: ChatImageMessagePayload): string 
 export function buildFileMessageText(payload: ChatFileMessagePayload): string {
   const normalized = {
     url: String(payload.url ?? '').trim(),
-    fileName: String(payload.fileName ?? '').trim() || 'File',
+    fileName: decodeFileName(payload.fileName, 'File'),
     mimeType: String(payload.mimeType ?? '').trim() || 'application/octet-stream',
     size: Number.isFinite(Number(payload.size)) ? Number(payload.size) : null,
   }
@@ -90,7 +100,7 @@ export function parseImageMessageText(text: string | null | undefined): ChatImag
     if (!url) return null
     return {
       url,
-      fileName: String(parsed.fileName ?? '').trim() || 'Photo',
+      fileName: decodeFileName(parsed.fileName, 'Photo'),
       mimeType: String(parsed.mimeType ?? '').trim() || 'image/jpeg',
       width: Number.isFinite(Number(parsed.width)) ? Number(parsed.width) : null,
       height: Number.isFinite(Number(parsed.height)) ? Number(parsed.height) : null,
@@ -111,7 +121,7 @@ export function parseFileMessageText(text: string | null | undefined): ChatFileM
     if (!url) return null
     return {
       url,
-      fileName: String(parsed.fileName ?? '').trim() || 'File',
+      fileName: decodeFileName(parsed.fileName, 'File'),
       mimeType: String(parsed.mimeType ?? '').trim() || 'application/octet-stream',
       size: Number.isFinite(Number(parsed.size)) ? Number(parsed.size) : null,
     }
