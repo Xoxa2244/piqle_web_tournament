@@ -515,7 +515,7 @@ export function ChatThreadMessageList({
   )
 
   const renderMessageText = useCallback(
-    (rawText: string, isMine: boolean) => {
+    (rawText: string, isMine: boolean, message?: ChatMessage) => {
       if (rawText === 'Message removed') {
         return (
           <Text style={[styles.body, isMine && styles.bodyMine]} numberOfLines={1}>
@@ -528,6 +528,10 @@ export function ChatThreadMessageList({
         return (
           <Pressable
             onPress={() => setPreviewLocation(locationPayload)}
+            delayLongPress={LONG_PRESS_MS}
+            onLongPress={() => {
+              if (message) handleLongPress(message)
+            }}
             style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
           >
             <View style={styles.locationPreviewWrap}>
@@ -566,6 +570,10 @@ export function ChatThreadMessageList({
               if (Date.now() - lastPreviewImageCloseAtRef.current < 280) return
               setPreviewImage(imagePayload)
             }}
+            delayLongPress={LONG_PRESS_MS}
+            onLongPress={() => {
+              if (message) handleLongPress(message)
+            }}
             style={({ pressed }) => [styles.imageMessageCard, pressed && styles.locationCardPressed]}
           >
             <Image
@@ -587,6 +595,10 @@ export function ChatThreadMessageList({
         return (
           <Pressable
             onPress={() => setPreviewFile(filePayload)}
+            delayLongPress={LONG_PRESS_MS}
+            onLongPress={() => {
+              if (message) handleLongPress(message)
+            }}
             style={({ pressed }) => [styles.fileCard, pressed && styles.locationCardPressed]}
           >
             <View style={styles.fileIconWrap}>
@@ -680,7 +692,7 @@ export function ChatThreadMessageList({
         </View>
       )
     },
-    [cachedInlineImageUris, colors.primary, mentionByHandle, mentionById, onPressMentionUser, styles, theme]
+    [cachedInlineImageUris, colors.primary, handleLongPress, mentionByHandle, mentionById, onPressMentionUser, styles, theme]
   )
 
   const handleCopy = useCallback(
@@ -877,7 +889,7 @@ export function ChatThreadMessageList({
               </Pressable>
             ) : null}
             {m.replyToMessageId ? renderReplyContext(m, isMine) : null}
-            {renderMessageText(m.isDeleted ? 'Message removed' : m.text || '', isMine)}
+            {renderMessageText(m.isDeleted ? 'Message removed' : m.text || '', isMine, m)}
             <View style={styles.metaRow}>
               {!isMine && showLikeChip ? (
                 <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
