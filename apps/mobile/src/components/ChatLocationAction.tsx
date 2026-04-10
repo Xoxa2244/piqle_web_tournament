@@ -1,7 +1,5 @@
 import * as DocumentPicker from 'expo-document-picker'
-import * as DocumentPicker from 'expo-document-picker'
 import * as FileSystem from 'expo-file-system/legacy'
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import * as MediaLibrary from 'expo-media-library'
@@ -63,6 +61,17 @@ async function getFileSize(uri: string) {
 }
 
 async function compressPhotoForChatUpload(asset: PendingPhotoAsset) {
+  let manipulateAsync: ((uri: string, actions?: any[], saveOptions?: any) => Promise<any>) | null = null
+  let saveFormatJpeg: string | null = null
+  try {
+    const imageManipulator = await import('expo-image-manipulator')
+    manipulateAsync = imageManipulator.manipulateAsync
+    saveFormatJpeg = imageManipulator.SaveFormat.JPEG
+  } catch {
+    manipulateAsync = null
+    saveFormatJpeg = null
+  }
+
   const originalWidth = Number(asset.width ?? 0)
   const originalHeight = Number(asset.height ?? 0)
   const originalSize = await getFileSize(asset.uri)
@@ -70,6 +79,17 @@ async function compressPhotoForChatUpload(asset: PendingPhotoAsset) {
   const needsResize = maxDimension > CHAT_PHOTO_MAX_DIMENSION
   const mimeType = String(asset.mimeType ?? '').toLowerCase()
   const needsFormatChange = mimeType !== 'image/jpeg' && mimeType !== 'image/jpg'
+
+  if (!manipulateAsync || !saveFormatJpeg) {
+    return {
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType || 'image/jpeg',
+      width: asset.width ?? null,
+      height: asset.height ?? null,
+      size: originalSize,
+    }
+  }
 
   if (!needsResize && !needsFormatChange && originalSize > 0 && originalSize <= CHAT_PHOTO_MAX_BYTES) {
     return {
@@ -104,7 +124,7 @@ async function compressPhotoForChatUpload(asset: PendingPhotoAsset) {
   for (const quality of CHAT_PHOTO_QUALITY_STEPS) {
     const result = await manipulateAsync(asset.uri, resizeAction, {
       compress: quality,
-      format: SaveFormat.JPEG,
+      format: saveFormatJpeg,
     })
     const size = await getFileSize(result.uri)
     lastResult = {

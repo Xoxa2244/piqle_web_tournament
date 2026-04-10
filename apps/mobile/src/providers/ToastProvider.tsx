@@ -11,6 +11,7 @@ import {
 } from 'react'
 import {
   Animated,
+  Modal,
   PanResponder,
   Platform,
   Pressable,
@@ -347,14 +348,16 @@ export function ToastProvider({ children }: PropsWithChildren) {
             </View>
           </FullWindowOverlay>
         ) : (
-          <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-            <ToastView
-              key={toast.id}
-              toast={toast}
-              dismissSignal={dismissSignal}
-              onDismissed={onDismissed}
-            />
-          </View>
+          <Modal transparent visible animationType="none" statusBarTranslucent onRequestClose={hide}>
+            <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+              <ToastView
+                key={toast.id}
+                toast={toast}
+                dismissSignal={dismissSignal}
+                onDismissed={onDismissed}
+              />
+            </View>
+          </Modal>
         )
       ) : null}
     </ToastContext.Provider>
