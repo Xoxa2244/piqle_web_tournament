@@ -662,6 +662,7 @@ model DirectChatMessage {
   threadId        String    @map("thread_id")
   userId          String    @map("user_id")
   text            String
+  replyToMessageId String?   @map("reply_to_message_id")
   deletedAt       DateTime? @map("deleted_at")
   deletedByUserId String?   @map("deleted_by_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -669,10 +670,13 @@ model DirectChatMessage {
 
   thread DirectChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyToMessage DirectChatMessage? @relation("DirectChatReplyTarget", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies DirectChatMessage[] @relation("DirectChatReplyTarget")
   likes  DirectChatLike[]
 
   @@index([threadId, createdAt])
   @@index([userId, createdAt])
+  @@index([replyToMessageId])
   @@map("direct_chat_messages")
 }
 

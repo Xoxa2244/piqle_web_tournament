@@ -13,6 +13,7 @@ import { ChatThreadMessageList } from '../../../../src/components/ChatThreadMess
 import { ChatThreadRoot } from '../../../../src/components/ChatThreadRoot'
 import { RemoteUserAvatar } from '../../../../src/components/RemoteUserAvatar'
 import { mergeMessagesByStableLiveOrder, type ChatMessage } from '../../../../src/lib/chatMessages'
+import { getChatSpecialPreviewText } from '../../../../src/lib/chatSpecialMessages'
 import { PageLayout } from '../../../../src/components/navigation/PageLayout'
 import { ActionButton, EmptyState, InputField, Screen, SurfaceCard } from '../../../../src/components/ui'
 import {
@@ -68,6 +69,8 @@ export default function DirectChatScreen() {
   const utils = trpc.useUtils()
   const [draft, setDraft] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
@@ -77,6 +80,8 @@ export default function DirectChatScreen() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const messageOffsetsRef = useRef(new Map<string, number>())
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialScrollDoneRef = useRef(false)
   const messageOrderRef = useRef(new Map<string, number>())
   const nextMessageOrderRef = useRef(0)
@@ -110,17 +115,30 @@ export default function DirectChatScreen() {
     },
   })
   const sendMessage = trpc.directChat.send.useMutation({
-    onMutate: ({ text }: { text: string }) => {
+    onMutate: ({ text, replyToMessageId }: { text: string; replyToMessageId?: string }) => {
       const trimmed = text.trim()
       if (!trimmed || !threadId || !user?.id) return null
 
       const createdAt = new Date()
       const optimisticId = `optimistic-${threadId}-${createdAt.getTime()}`
+      const resolvedReplyTarget =
+        replyTarget && replyToMessageId === replyTarget.id ? replyTarget : null
       const optimisticMessage = {
         id: optimisticId,
         threadId,
         userId: user.id,
         text: trimmed,
+        replyToMessageId: resolvedReplyTarget ? resolvedReplyTarget.id : null,
+        replyToMessage: resolvedReplyTarget
+          ? {
+              id: resolvedReplyTarget.id,
+              userId: resolvedReplyTarget.userId,
+              text: resolvedReplyTarget.isDeleted ? null : resolvedReplyTarget.text,
+              isDeleted: resolvedReplyTarget.isDeleted,
+              createdAt: resolvedReplyTarget.createdAt,
+              user: resolvedReplyTarget.user,
+            }
+          : null,
         isDeleted: false,
         deletedAt: null,
         deletedByUserId: null,
@@ -169,6 +187,7 @@ export default function DirectChatScreen() {
         if (list.some((message) => message.id === data.id)) return list
         return [...list, data]
       })
+      setReplyTarget(null)
       utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((chat) =>
           chat.id === threadId
@@ -338,6 +357,21 @@ export default function DirectChatScreen() {
       scrollRef.current?.scrollToEnd({ animated })
     })
   }, [])
+  const handleMessageLayout = useCallback((messageId: string, y: number) => {
+    messageOffsetsRef.current.set(messageId, y)
+  }, [])
+  const scrollToMessage = useCallback((messageId: string) => {
+    const y = messageOffsetsRef.current.get(messageId)
+    if (y == null) return false
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 96), animated: true })
+    setHighlightedMessageId(messageId)
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedMessageId((current) => (current === messageId ? null : current))
+      highlightTimeoutRef.current = null
+    }, 1400)
+    return true
+  }, [])
   const handleThreadScroll = useCallback((event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
     const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
@@ -365,8 +399,8 @@ export default function DirectChatScreen() {
     lastSendAtRef.current = now
     lastSentTextRef.current = text
     lastSentTextAtRef.current = now
-    sendMessage.mutate({ threadId, text })
-  }, [draft, sendMessage, threadId, toast])
+    sendMessage.mutate({ threadId, text, replyToMessageId: replyTarget?.id })
+  }, [draft, replyTarget?.id, sendMessage, threadId, toast])
   const handleSendAttachment = useCallback(
     (text: string) => {
       if (!threadId || !text.trim()) return
@@ -378,9 +412,9 @@ export default function DirectChatScreen() {
       lastSendAtRef.current = now
       lastSentTextRef.current = ''
       lastSentTextAtRef.current = 0
-      sendMessage.mutate({ threadId, text })
+      sendMessage.mutate({ threadId, text, replyToMessageId: replyTarget?.id })
     },
-    [sendMessage, threadId, toast]
+    [replyTarget?.id, sendMessage, threadId, toast]
   )
 
   useEffect(() => {
@@ -409,6 +443,14 @@ export default function DirectChatScreen() {
       didShow.remove()
     }
   }, [scrollToBottom])
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const messages = useMemo(() => {
     const serverMessages = (messagesQuery.data ?? []) as ChatMessage[]
@@ -545,10 +587,16 @@ export default function DirectChatScreen() {
               onToggleLike={(m) => {
                 likeMessage.mutate({ messageId: m.id })
               }}
+              onRequestReply={(m) => setReplyTarget(m)}
               onPressAvatar={() => {
                 if (!otherUserId) return
                 router.push({ pathname: '/profile/[id]', params: { id: otherUserId } })
               }}
+              onPressReplyTarget={(_message, targetMessageId) => {
+                scrollToMessage(targetMessageId)
+              }}
+              onMessageLayout={handleMessageLayout}
+              highlightedMessageId={highlightedMessageId}
               canDelete={(message) => Boolean(user?.id && message.userId === user.id) && !message.isDeleted}
               onRequestDelete={(message) => setDeleteTargetId(message.id)}
               deleteDisabled={deleteMessage.isPending}
@@ -582,6 +630,23 @@ export default function DirectChatScreen() {
           onSend={handleSend}
           sendDisabled={messagingBlocked || draft.trim().length === 0}
           editable={!messagingBlocked}
+          topSlot={replyTarget ? (
+            <View style={styles.replyComposerCard}>
+              <View style={styles.replyComposerBody}>
+                <Text style={styles.replyComposerLabel} numberOfLines={1}>
+                  Replying to {replyTarget.user?.name || 'User'}
+                </Text>
+                <Text style={styles.replyComposerText} numberOfLines={1}>
+                  {replyTarget.isDeleted
+                    ? 'Message removed'
+                    : (getChatSpecialPreviewText(replyTarget.text) ?? replyTarget.text?.trim() ?? 'Message')}
+                </Text>
+              </View>
+              <Pressable onPress={() => setReplyTarget(null)} hitSlop={8} style={({ pressed }) => [styles.replyComposerClose, pressed && { opacity: 0.72 }]}>
+                <Feather name="x" size={16} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ) : null}
           leadingSlot={<ChatLocationAction disabled={messagingBlocked} onSendText={handleSendAttachment} />}
           multiline={false}
           paddingHorizontal={16}
@@ -751,6 +816,44 @@ const createStyles = (colors: ThemePalette) =>
     error: {
       color: colors.danger,
       fontSize: 13,
+    },
+    replyComposerCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    replyComposerBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+    },
+    replyComposerLabel: {
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 14,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    replyComposerText: {
+      color: colors.text,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '600',
+    },
+    replyComposerClose: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     menuButton: {
       width: 36,

@@ -15,6 +15,54 @@ const sortParticipantIds = (left: string, right: string) => {
   return left < right ? [left, right] : [right, left]
 }
 
+const directChatUserSelect = {
+  id: true,
+  name: true,
+  image: true,
+} as const
+
+const directChatReplyPreviewSelect = {
+  id: true,
+  userId: true,
+  text: true,
+  deletedAt: true,
+  createdAt: true,
+  user: {
+    select: directChatUserSelect,
+  },
+} as const
+
+const mapDirectChatMessage = (m: any, currentUserId?: string, latestReadAt?: Date | null) => ({
+  id: m.id,
+  threadId: m.threadId,
+  userId: m.userId,
+  text: m.deletedAt ? null : m.text,
+  isDeleted: Boolean(m.deletedAt),
+  replyToMessageId: m.replyToMessageId ?? null,
+  replyToMessage: m.replyToMessage
+    ? {
+        id: m.replyToMessage.id,
+        userId: m.replyToMessage.userId,
+        text: m.replyToMessage.deletedAt ? null : m.replyToMessage.text,
+        isDeleted: Boolean(m.replyToMessage.deletedAt),
+        createdAt: m.replyToMessage.createdAt,
+        user: m.replyToMessage.user,
+      }
+    : null,
+  deletedAt: m.deletedAt,
+  deletedByUserId: m.deletedByUserId,
+  createdAt: m.createdAt,
+  deliveryStatus:
+    currentUserId && m.userId === currentUserId
+      ? latestReadAt && new Date(m.createdAt) <= latestReadAt
+        ? 'read'
+        : 'delivered'
+      : undefined,
+  likeCount: m._count?.likes ?? 0,
+  viewerHasLiked: Boolean(m.likes?.length),
+  user: m.user,
+})
+
 async function getThreadForUser(prisma: any, threadId: string, userId: string) {
   const thread = await prisma.directChatThread.findUnique({
     where: { id: threadId },
@@ -370,11 +418,10 @@ export const directChatRouter = createTRPCRouter({
         take: limit,
         include: {
           user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
+            select: directChatUserSelect,
+          },
+          replyToMessage: {
+            select: directChatReplyPreviewSelect,
           },
           likes: {
             where: { userId },
@@ -386,25 +433,7 @@ export const directChatRouter = createTRPCRouter({
         },
       })
 
-      return raw.slice().reverse().map((message) => ({
-        id: message.id,
-        threadId: message.threadId,
-        userId: message.userId,
-        text: message.deletedAt ? null : message.text,
-        isDeleted: Boolean(message.deletedAt),
-        deletedAt: message.deletedAt,
-        deletedByUserId: message.deletedByUserId,
-        createdAt: message.createdAt,
-        deliveryStatus:
-          message.userId === userId
-            ? otherLastReadAt && new Date(message.createdAt) <= otherLastReadAt
-              ? 'read'
-              : 'delivered'
-            : undefined,
-        likeCount: message._count.likes,
-        viewerHasLiked: message.likes.length > 0,
-        user: message.user,
-      }))
+      return raw.slice().reverse().map((message) => mapDirectChatMessage(message, userId, otherLastReadAt))
     }),
 
   markRead: protectedProcedure
@@ -456,6 +485,7 @@ export const directChatRouter = createTRPCRouter({
       z.object({
         threadId: z.string(),
         text: z.string().min(1).max(1000),
+        replyToMessageId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -467,6 +497,18 @@ export const directChatRouter = createTRPCRouter({
 
       const thread = await getThreadForUser(ctx.prisma, input.threadId, userId)
       const otherUserId = thread.participantAId === userId ? thread.participantBId : thread.participantAId
+      const replyTarget = input.replyToMessageId
+        ? await ctx.prisma.directChatMessage.findUnique({
+            where: { id: input.replyToMessageId },
+            select: {
+              threadId: true,
+              ...directChatReplyPreviewSelect,
+            },
+          })
+        : null
+      if (input.replyToMessageId && (!replyTarget || replyTarget.threadId !== input.threadId)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Reply target not found' })
+      }
       const blockState = await getDirectBlockState(ctx.prisma, userId, otherUserId)
       if (blockState.blockedByMe || blockState.blockedByOther) {
         throw new TRPCError({
@@ -520,14 +562,14 @@ export const directChatRouter = createTRPCRouter({
             threadId: input.threadId,
             userId,
             text: sanitized,
+            replyToMessageId: replyTarget ? replyTarget.id : null,
           },
           include: {
             user: {
-              select: {
-                id: true,
-                name: true,
-                image: true,
-              },
+              select: directChatUserSelect,
+            },
+            replyToMessage: {
+              select: directChatReplyPreviewSelect,
             },
           },
         })
@@ -548,6 +590,17 @@ export const directChatRouter = createTRPCRouter({
         threadId: message.threadId,
         userId: message.userId,
         text: message.text,
+        replyToMessageId: message.replyToMessageId ?? null,
+        replyToMessage: message.replyToMessage
+          ? {
+              id: message.replyToMessage.id,
+              userId: message.replyToMessage.userId,
+              text: message.replyToMessage.deletedAt ? null : message.replyToMessage.text,
+              isDeleted: Boolean(message.replyToMessage.deletedAt),
+              createdAt: message.replyToMessage.createdAt,
+              user: message.replyToMessage.user,
+            }
+          : null,
         wasFiltered,
         isDeleted: false,
         deletedAt: null,
