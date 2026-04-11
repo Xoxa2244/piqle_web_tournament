@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 
 import { AppBottomSheet, AppConfirmActions } from '../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../src/components/AuthRequiredCard'
-import { ChatComposer } from '../../../../src/components/ChatComposer'
+import { ChatComposer, type ChatComposerHandle } from '../../../../src/components/ChatComposer'
 import { ChatLocationAction } from '../../../../src/components/ChatLocationAction'
 import { ChatScreenLoading } from '../../../../src/components/ChatScreenLoading'
 import { ChatScrollToBottomButton } from '../../../../src/components/ChatScrollToBottomButton'
@@ -80,6 +80,7 @@ export default function DirectChatScreen() {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
   const scrollRef = useRef<ScrollView>(null)
+  const composerRef = useRef<ChatComposerHandle>(null)
   const messageOffsetsRef = useRef(new Map<string, number>())
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialScrollDoneRef = useRef(false)
@@ -122,7 +123,11 @@ export default function DirectChatScreen() {
       const createdAt = new Date()
       const optimisticId = `optimistic-${threadId}-${createdAt.getTime()}`
       const resolvedReplyTarget =
-        replyTarget && replyToMessageId === replyTarget.id ? replyTarget : null
+        (replyToMessageId
+          ? ((messagesQuery.data ?? []) as ChatMessage[]).find((message) => message.id === replyToMessageId) ??
+            optimisticMessages.find((message) => message.id === replyToMessageId) ??
+            null
+          : null) as ChatMessage | null
       const optimisticMessage = {
         id: optimisticId,
         threadId,
@@ -187,7 +192,6 @@ export default function DirectChatScreen() {
         if (list.some((message) => message.id === data.id)) return list
         return [...list, data]
       })
-      setReplyTarget(null)
       utils.directChat.listMyChats.setData(undefined, (current: any[] | undefined) =>
         (current ?? []).map((chat) =>
           chat.id === threadId
@@ -381,6 +385,7 @@ export default function DirectChatScreen() {
   const handleSend = useCallback(() => {
     const text = draft.trim()
     if (!text) return
+    const replyToMessageId = replyTarget?.id
 
     const now = Date.now()
     if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
@@ -399,11 +404,13 @@ export default function DirectChatScreen() {
     lastSendAtRef.current = now
     lastSentTextRef.current = text
     lastSentTextAtRef.current = now
-    sendMessage.mutate({ threadId, text, replyToMessageId: replyTarget?.id })
+    setReplyTarget(null)
+    sendMessage.mutate({ threadId, text, replyToMessageId })
   }, [draft, replyTarget?.id, sendMessage, threadId, toast])
   const handleSendAttachment = useCallback(
     (text: string) => {
       if (!threadId || !text.trim()) return
+      const replyToMessageId = replyTarget?.id
       const now = Date.now()
       if (now - lastSendAtRef.current < CLIENT_SEND_COOLDOWN_MS) {
         toast.error('Slow down a bit.')
@@ -412,7 +419,8 @@ export default function DirectChatScreen() {
       lastSendAtRef.current = now
       lastSentTextRef.current = ''
       lastSentTextAtRef.current = 0
-      sendMessage.mutate({ threadId, text, replyToMessageId: replyTarget?.id })
+      setReplyTarget(null)
+      sendMessage.mutate({ threadId, text, replyToMessageId })
     },
     [replyTarget?.id, sendMessage, threadId, toast]
   )
@@ -587,7 +595,12 @@ export default function DirectChatScreen() {
               onToggleLike={(m) => {
                 likeMessage.mutate({ messageId: m.id })
               }}
-              onRequestReply={(m) => setReplyTarget(m)}
+              onRequestReply={(m) => {
+                setReplyTarget(m)
+                requestAnimationFrame(() => {
+                  composerRef.current?.focus()
+                })
+              }}
               onPressAvatar={() => {
                 if (!otherUserId) return
                 router.push({ pathname: '/profile/[id]', params: { id: otherUserId } })
@@ -624,6 +637,7 @@ export default function DirectChatScreen() {
         ) : null}
 
         <ChatComposer
+          ref={composerRef}
           value={messagingBlocked ? blockedComposerText : draft}
           onChangeText={setDraft}
           placeholder={messagingBlocked ? blockedComposerText : 'Message...'}

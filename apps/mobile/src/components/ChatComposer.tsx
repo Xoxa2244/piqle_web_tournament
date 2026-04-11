@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -32,31 +32,39 @@ export type ChatComposerProps = {
   leadingSlot?: ReactNode
 }
 
-export const ChatComposer = ({
-  value,
-  onChangeText,
-  placeholder,
-  onSend,
-  sendDisabled = false,
-  editable = true,
-  maxLength = 1000,
-  paddingBottom = 16,
-  paddingHorizontal = 0,
-  safeAreaBottom = false,
-  androidKeyboardInset = 0,
-  multiline = false,
-  returnKeyType,
-  onSubmitEditing,
-  onFocus,
-  onBlur,
-  topSlot,
-  bottomSlot,
-  leadingSlot,
-}: ChatComposerProps) => {
+export type ChatComposerHandle = {
+  focus: () => void
+}
+
+export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
+  {
+    value,
+    onChangeText,
+    placeholder,
+    onSend,
+    sendDisabled = false,
+    editable = true,
+    maxLength = 1000,
+    paddingBottom = 16,
+    paddingHorizontal = 0,
+    safeAreaBottom = false,
+    androidKeyboardInset = 0,
+    multiline = false,
+    returnKeyType,
+    onSubmitEditing,
+    onFocus,
+    onBlur,
+    topSlot,
+    bottomSlot,
+    leadingSlot,
+  }: ChatComposerProps,
+  ref
+) {
   const { colors, theme } = useAppTheme()
   const styles = useMemo(() => createStyles(colors), [colors])
   const insets = useSafeAreaInsets()
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0)
+  const inputRef = useRef<TextInput>(null)
 
   useEffect(() => {
     if (Platform.OS !== 'android') return
@@ -71,6 +79,16 @@ export const ChatComposer = ({
       hide.remove()
     }
   }, [])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => {
+        inputRef.current?.focus()
+      },
+    }),
+    []
+  )
 
   const androidBottomInset =
     Platform.OS === 'android'
@@ -88,6 +106,7 @@ export const ChatComposer = ({
       <View style={styles.row}>
         {leadingSlot ? <View style={styles.leadingSlot}>{leadingSlot}</View> : null}
         <TextInput
+          ref={inputRef}
           value={value}
           onChangeText={(nextValue) => onChangeText(nextValue.slice(0, maxLength))}
           placeholder={placeholder}
@@ -125,7 +144,7 @@ export const ChatComposer = ({
       {bottomSlot ? <View style={styles.bottomSlot}>{bottomSlot}</View> : null}
     </View>
   )
-}
+})
 
 const createStyles = (colors: ThemePalette) =>
   StyleSheet.create({

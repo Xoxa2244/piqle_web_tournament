@@ -16,7 +16,7 @@ import { Feather } from '@expo/vector-icons'
 import { AppBottomSheet, AppConfirmActions } from '../../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../../src/components/AuthRequiredCard'
 import { ChatScreenLoading } from '../../../../../src/components/ChatScreenLoading'
-import { ChatComposer } from '../../../../../src/components/ChatComposer'
+import { ChatComposer, type ChatComposerHandle } from '../../../../../src/components/ChatComposer'
 import { ChatLocationAction } from '../../../../../src/components/ChatLocationAction'
 import { ChatMentionAnchorIndicator } from '../../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../../src/components/ChatMentionPicker'
@@ -86,6 +86,7 @@ export default function TournamentChatScreen() {
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
+  const composerRef = useRef<ChatComposerHandle>(null)
   const keyboardVerticalOffset = useChatKeyboardVerticalOffset('tabPageLayout')
   const [keyboardVisible, setKeyboardVisible] = useState(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
@@ -885,7 +886,12 @@ export default function TournamentChatScreen() {
                   }
                   likeTournamentMessage.mutate({ messageId: m.id })
                 }}
-                onRequestReply={(m) => setReplyTarget(m)}
+                onRequestReply={(m) => {
+                  setReplyTarget(m)
+                  requestAnimationFrame(() => {
+                    composerRef.current?.focus()
+                  })
+                }}
                 onPressRepliesSummary={(m) => {
                   if (activeDivisionId) {
                     router.push({
@@ -958,6 +964,7 @@ export default function TournamentChatScreen() {
 
         {canPost ? (
           <ChatComposer
+            ref={composerRef}
             value={draft}
             onChangeText={setDraft}
             placeholder={`Message ${activeDivision ? activeDivision.name : 'General Chat'}...`}

@@ -5,7 +5,7 @@ import { Feather } from '@expo/vector-icons'
 
 import { AppBottomSheet, AppConfirmActions } from '../../../../../../src/components/AppBottomSheet'
 import { AuthRequiredCard } from '../../../../../../src/components/AuthRequiredCard'
-import { ChatComposer } from '../../../../../../src/components/ChatComposer'
+import { ChatComposer, type ChatComposerHandle } from '../../../../../../src/components/ChatComposer'
 import { ChatLocationAction } from '../../../../../../src/components/ChatLocationAction'
 import { ChatMentionAnchorIndicator } from '../../../../../../src/components/ChatMentionAnchorIndicator'
 import { ChatMentionPicker } from '../../../../../../src/components/ChatMentionPicker'
@@ -59,6 +59,7 @@ export default function DivisionThreadScreen() {
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([])
+  const composerRef = useRef<ChatComposerHandle>(null)
   const scrollRef = useRef<ScrollView>(null)
   const messageOffsetsRef = useRef(new Map<string, number>())
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -468,7 +469,12 @@ export default function DivisionThreadScreen() {
               currentUserId={user?.id}
               threadRootMessageId={threadQuery.data?.rootMessageId ?? rootMessageId}
               onToggleLike={(m) => likeMessage.mutate({ messageId: m.id })}
-              onRequestReply={(m) => setReplyTarget(m)}
+              onRequestReply={(m) => {
+                setReplyTarget(m)
+                requestAnimationFrame(() => {
+                  composerRef.current?.focus()
+                })
+              }}
               onPressReplyTarget={(_message, targetMessageId) => {
                 void scrollToMessage(targetMessageId)
               }}
@@ -492,6 +498,7 @@ export default function DivisionThreadScreen() {
         <ChatScrollToBottomButton visible={showScrollToBottom} onPress={() => scrollToBottom(true)} />
 
         <ChatComposer
+          ref={composerRef}
           value={draft}
           onChangeText={setDraft}
           placeholder="Reply..."
