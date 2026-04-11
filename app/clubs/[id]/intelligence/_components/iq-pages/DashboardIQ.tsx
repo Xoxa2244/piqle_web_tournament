@@ -270,6 +270,7 @@ type DashboardIQProps = {
   settingsData?: any; // from useIntelligenceSettings — contains goals[]
   isLoading?: boolean;
   clubId?: string;
+  isDemo?: boolean;
 };
 
 type PeriodData = {
@@ -461,7 +462,7 @@ function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[
   );
 }
 
-export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, settingsData, isLoading: externalLoading, clubId: propClubId }: DashboardIQProps = {}) {
+export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrowthData, uploadHistoryData, settingsData, isLoading: externalLoading, clubId: propClubId, isDemo = false }: DashboardIQProps = {}) {
   const { isDark } = useTheme();
   const { data: session } = useSession();
   const userName = session?.user?.name?.split(' ')[0] || session?.user?.email?.split('@')[0] || 'there';
@@ -504,7 +505,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Internal period query — re-fetches when period changes (replaces prop data)
   const periodQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, ...periodDates },
-    { enabled: !!clubId && !externalLoading },
+    { enabled: !!clubId && !externalLoading && !isDemo },
   );
   // Use period-specific data if available, fall back to passed prop
   const activeDashboardData = periodQuery.data ?? dashboardData;
@@ -535,17 +536,17 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   const compQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, ...compDates },
-    { enabled: !!clubId && !externalLoading },
+    { enabled: !!clubId && !externalLoading && !isDemo },
   );
 
   // Calendar mode — Period A (independent from main period tabs)
   const calAQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, dateFrom: calAFrom, dateTo: calATo },
-    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId },
+    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo },
   );
   const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
     { clubId: clubId! },
-    { enabled: !!clubId },
+    { enabled: !!clubId && !isDemo },
   );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
@@ -728,7 +729,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const hasUploads = !!uploadHistoryData?.uploads?.length;
 
   // Connector status for Quick Start + empty state
-  const connectorStatusQuery = trpc.connectors.getStatus.useQuery({ clubId }, { enabled: !!clubId });
+  const connectorStatusQuery = trpc.connectors.getStatus.useQuery({ clubId }, { enabled: !!clubId && !isDemo });
   const isConnected = connectorStatusQuery.data?.connected;
 
   const quickStartSteps = [

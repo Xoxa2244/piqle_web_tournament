@@ -11,6 +11,7 @@ import {
 } from "recharts"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
+import { useSearchParams } from "next/navigation"
 
 interface PlayerProfileIQProps {
   userId: string
@@ -109,7 +110,9 @@ function PatternCard({ title, icon: Icon, items }: { title: string; icon: any; i
 
 export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps) {
   const { isDark } = useTheme()
-  const { data, isLoading } = trpc.intelligence.getPlayerProfile.useQuery({ userId, clubId })
+  const searchParams = useSearchParams()
+  const isDemo = searchParams.get('demo') === 'true'
+  const { data, isLoading } = trpc.intelligence.getPlayerProfile.useQuery({ userId, clubId }, { enabled: !isDemo })
 
   if (isLoading) {
     return (
@@ -333,9 +336,11 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
 
 // ── Frequent Partners Card ──
 function FrequentPartnersCard({ userId, clubId }: { userId: string; clubId: string }) {
+  const searchParams2 = useSearchParams()
+  const isDemo2 = searchParams2.get('demo') === 'true'
   const { data: partners, isLoading } = trpc.intelligence.getFrequentPartners.useQuery(
     { userId, clubId },
-    { enabled: !!userId },
+    { enabled: !!userId && !isDemo2 },
   )
 
   if (isLoading || !partners || partners.length === 0) return null
