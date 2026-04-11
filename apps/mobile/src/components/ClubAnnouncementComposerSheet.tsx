@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Image, Keyboard, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import {
@@ -37,6 +37,13 @@ export type ClubAnnouncementDraft = {
     mimeType?: string | null
     size?: number | null
   } | null
+  poll: {
+    title: string
+    options: {
+      id?: string | null
+      text: string
+    }[]
+  } | null
 }
 
 type Props = {
@@ -61,14 +68,38 @@ type RecentPhotoAsset = {
 
 type PhotoGridItem = { type: 'camera'; id: 'camera' } | ({ type: 'photo' } & RecentPhotoAsset)
 type LocationCenter = { latitude: number; longitude: number }
+type PollDraftOption = {
+  id: string
+  text: string
+}
+type PollDraft = {
+  title: string
+  options: PollDraftOption[]
+}
 
 const PHOTO_GRID_GAP = 8
 const PHOTO_GRID_COLUMNS = 3
 const PHOTO_TILE_WIDTH = '31%'
+const TITLE_MAX_LENGTH = 120
+const MESSAGE_MAX_LENGTH = 2000
+const POLL_TITLE_MAX_LENGTH = 120
+const POLL_OPTION_MAX_LENGTH = 120
+const POLL_OPTION_MIN_COUNT = 2
+const POLL_OPTION_MAX_COUNT = 10
 const DEFAULT_LOCATION: LocationCenter = {
   latitude: 40.7128,
   longitude: -74.006,
 }
+
+const createPollOptionId = () => `poll-option-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const createEmptyPollDraft = (): PollDraft => ({
+  title: '',
+  options: [
+    { id: createPollOptionId(), text: '' },
+    { id: createPollOptionId(), text: '' },
+  ],
+})
 
 const PhotoTile = memo(function PhotoTile({
   item,
@@ -114,7 +145,7 @@ export function ClubAnnouncementComposerSheet({
   const { colors, theme } = useAppTheme()
   const toast = useToast()
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
-  const [composerView, setComposerView] = useState<'form' | 'photos' | 'location'>('form')
+  const [composerView, setComposerView] = useState<'form' | 'photos' | 'location' | 'poll'>('form')
   const [recentPhotos, setRecentPhotos] = useState<RecentPhotoAsset[]>([])
   const [photoPermissionDenied, setPhotoPermissionDenied] = useState(false)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
@@ -128,14 +159,40 @@ export function ClubAnnouncementComposerSheet({
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false)
   const [locationTitle, setLocationTitle] = useState('Pinned location')
   const [locationAddress, setLocationAddress] = useState<string | null>(null)
+  const [pollDraft, setPollDraft] = useState<PollDraft | null>(null)
+  const [pollAttempted, setPollAttempted] = useState(false)
+  const [pollError, setPollError] = useState<string | null>(null)
   const [submitAttempted, setSubmitAttempted] = useState(false)
+  const lastMessageLimitToastAt = useRef(0)
 
   useEffect(() => {
     if (!open) {
       setComposerView('form')
       setSubmitAttempted(false)
+      setPollAttempted(false)
+      setPollError(null)
+      setPollDraft(null)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open || composerView !== 'poll') return
+    setPollAttempted(false)
+    setPollError(null)
+    setPollDraft((current) => {
+      if (current) return current
+      if (draft.poll) {
+        return {
+          title: draft.poll.title,
+          options: draft.poll.options.map((option) => ({
+            id: String(option.id ?? createPollOptionId()),
+            text: option.text,
+          })),
+        }
+      }
+      return createEmptyPollDraft()
+    })
+  }, [composerView, draft.poll, open])
 
   useEffect(() => {
     if (!open || composerView !== 'location') return
@@ -325,6 +382,129 @@ export function ClubAnnouncementComposerSheet({
     [recentPhotos],
   )
   const isMessageMissing = submitAttempted && !draft.body.trim()
+  const messageLength = draft.body.length
+  const isMessageAtLimit = messageLength >= MESSAGE_MAX_LENGTH
+  const normalizedPollDraft = pollDraft
+    ? {
+        title: pollDraft.title.trim(),
+        options: pollDraft.options.map((option) => ({
+          id: option.id,
+          text: option.text.trim(),
+        })),
+      }
+    : null
+  const pollOptionCount = normalizedPollDraft?.options.filter((option) => option.text.length > 0).length ?? 0
+  const isPollTitleMissing = pollAttempted && composerView === 'poll' && !normalizedPollDraft?.title
+  const isPollOptionMissing = pollAttempted && composerView === 'poll' && pollOptionCount < POLL_OPTION_MIN_COUNT
+
+  const updatePollDraft = useCallback((updater: (current: PollDraft) => PollDraft) => {
+    setPollDraft((current) => {
+      const next = updater(current ?? createEmptyPollDraft())
+      return next
+    })
+  }, [])
+
+  const handleChangeBody = useCallback(
+    (value: string) => {
+      if (value.length > MESSAGE_MAX_LENGTH) {
+        const now = Date.now()
+        if (now - lastMessageLimitToastAt.current > 1200) {
+          lastMessageLimitToastAt.current = now
+          toast.error(`Message can be up to ${MESSAGE_MAX_LENGTH} characters.`)
+        }
+        onChangeDraft((current) => ({ ...current, body: value.slice(0, MESSAGE_MAX_LENGTH) }))
+        return
+      }
+      onChangeDraft((current) => ({ ...current, body: value }))
+    },
+    [onChangeDraft, toast],
+  )
+
+  const handleOpenPollEditor = useCallback(() => {
+    Keyboard.dismiss()
+    setPollAttempted(false)
+    setPollError(null)
+    setComposerView('poll')
+  }, [])
+
+  const handlePollOptionTextChange = useCallback((optionId: string, value: string) => {
+    updatePollDraft((current) => ({
+      ...current,
+      options: current.options.map((option) => (option.id === optionId ? { ...option, text: value } : option)),
+    }))
+  }, [updatePollDraft])
+
+  const handleAddPollOption = useCallback(() => {
+    updatePollDraft((current) => {
+      if (current.options.length >= POLL_OPTION_MAX_COUNT) return current
+      return {
+        ...current,
+        options: [...current.options, { id: createPollOptionId(), text: '' }],
+      }
+    })
+  }, [updatePollDraft])
+
+  const handleRemovePollOption = useCallback((optionId: string) => {
+    updatePollDraft((current) => {
+      if (current.options.length <= POLL_OPTION_MIN_COUNT) return current
+      return {
+        ...current,
+        options: current.options.filter((option) => option.id !== optionId),
+      }
+    })
+  }, [updatePollDraft])
+
+  const handleAttachPoll = useCallback(() => {
+    const nextPoll = normalizedPollDraft
+      ? {
+          title: normalizedPollDraft.title,
+          options: normalizedPollDraft.options.filter((option) => option.text.length > 0),
+        }
+      : null
+    const validOptions = nextPoll?.options ?? []
+    const fail = (message: string) => {
+      setPollAttempted(true)
+      setPollError(message)
+      toast.error(message)
+    }
+
+    if (!nextPoll?.title) {
+      fail('Add a poll title.')
+      return
+    }
+    if (validOptions.length < POLL_OPTION_MIN_COUNT) {
+      fail('Add at least two answers.')
+      return
+    }
+    if (validOptions.length > POLL_OPTION_MAX_COUNT) {
+      fail(`A poll can have at most ${POLL_OPTION_MAX_COUNT} answers.`)
+      return
+    }
+    if (validOptions.some((option) => !option.text)) {
+      fail('Fill in every answer before attaching the poll.')
+      return
+    }
+
+    onChangeDraft((current) => ({
+      ...current,
+      poll: {
+        title: nextPoll.title,
+        options: validOptions.map((option) => ({
+          id: option.id,
+          text: option.text,
+        })),
+      },
+    }))
+    setComposerView('form')
+  }, [normalizedPollDraft, onChangeDraft, toast])
+
+  const handleRemovePoll = useCallback(() => {
+    onChangeDraft((current) => ({ ...current, poll: null }))
+    setPollDraft(null)
+    setPollAttempted(false)
+    setPollError(null)
+    setComposerView('form')
+  }, [onChangeDraft])
 
   const handleOpenCamera = useCallback(async () => {
     Keyboard.dismiss()
@@ -483,6 +663,18 @@ export function ClubAnnouncementComposerSheet({
                 setComposerView('form')
               }}
             />
+          ) : composerView === 'poll' ? (
+            <AppConfirmActions
+              intent="positive"
+              cancelLabel="Back"
+              confirmLabel={draft.poll ? 'Save poll' : 'Add poll'}
+              onCancel={() => {
+                setPollAttempted(false)
+                setPollError(null)
+                setComposerView('form')
+              }}
+              onConfirm={handleAttachPoll}
+            />
           ) : (
             <View style={styles.photoFooter}>
               <Pressable
@@ -495,10 +687,10 @@ export function ClubAnnouncementComposerSheet({
             </View>
           )
         }
-      >
-        {composerView === 'form' ? (
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
+        >
+          {composerView === 'form' ? (
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.formScrollContent}
@@ -508,14 +700,19 @@ export function ClubAnnouncementComposerSheet({
               onChangeText={(value) => onChangeDraft((current) => ({ ...current, title: value }))}
               placeholder="Title (optional)"
               containerStyle={styles.field}
+              maxLength={TITLE_MAX_LENGTH}
             />
+            <Text style={styles.titleHelper}>Keep titles under {TITLE_MAX_LENGTH} characters.</Text>
             <InputField
               value={draft.body}
-              onChangeText={(value) => onChangeDraft((current) => ({ ...current, body: value }))}
+              onChangeText={handleChangeBody}
               placeholder="Message *"
               multiline
               containerStyle={[styles.field, isMessageMissing && styles.messageFieldErrorShell]}
             />
+            <Text style={[styles.messageHelper, isMessageAtLimit && styles.messageHelperWarning]}>
+              {messageLength} / {MESSAGE_MAX_LENGTH} characters
+            </Text>
             {isMessageMissing ? <Text style={styles.fieldError}>Add a short message before posting.</Text> : null}
 
             <View style={styles.actionRow}>
@@ -558,6 +755,19 @@ export function ClubAnnouncementComposerSheet({
                   {draft.file ? 'File ✓' : 'File'}
                 </Text>
               </Pressable>
+              <Pressable
+                onPress={handleOpenPollEditor}
+                style={({ pressed }) => [
+                  styles.actionChip,
+                  draft.poll && styles.actionChipActive,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Feather name="bar-chart-2" size={15} color={draft.poll ? colors.white : colors.primary} />
+                <Text style={[styles.actionChipText, draft.poll && styles.actionChipTextActive]}>
+                  {draft.poll ? 'Poll ✓' : 'Poll'}
+                </Text>
+              </Pressable>
             </View>
 
             {draft.image ? (
@@ -569,6 +779,51 @@ export function ClubAnnouncementComposerSheet({
                 >
                   <Feather name="x" size={16} color={colors.white} />
                 </Pressable>
+              </View>
+            ) : null}
+
+            {draft.poll ? (
+              <View style={styles.pollPreviewWrap}>
+                <View style={styles.pollPreviewHeader}>
+                  <View style={styles.pollPreviewHeaderLeft}>
+                    <View style={styles.pollPreviewIconWrap}>
+                      <Feather name="bar-chart-2" size={15} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.pollPreviewTitle} numberOfLines={2}>
+                        {draft.poll.title}
+                      </Text>
+                      <Text style={styles.pollPreviewMeta}>
+                        {draft.poll.options.filter((option) => option.text.trim()).length} answer
+                        {draft.poll.options.filter((option) => option.text.trim()).length === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() => onChangeDraft((current) => ({ ...current, poll: null }))}
+                    style={({ pressed }) => [styles.pollRemoveButton, pressed && styles.buttonPressed]}
+                  >
+                    <Feather name="x" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={styles.pollPreviewOptions}>
+                  {draft.poll.options
+                    .filter((option) => option.text.trim())
+                    .slice(0, 4)
+                    .map((option) => (
+                      <View key={option.id} style={styles.pollPreviewOption}>
+                        <Text style={styles.pollPreviewOptionDot}>•</Text>
+                        <Text style={styles.pollPreviewOptionText} numberOfLines={1}>
+                          {option.text}
+                        </Text>
+                      </View>
+                    ))}
+                  {draft.poll.options.filter((option) => option.text.trim()).length > 4 ? (
+                    <Text style={styles.pollPreviewMore}>
+                      +{draft.poll.options.filter((option) => option.text.trim()).length - 4} more
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ) : null}
 
@@ -628,6 +883,104 @@ export function ClubAnnouncementComposerSheet({
               </View>
             ) : null}
           </ScrollView>
+        ) : composerView === 'poll' ? (
+          <View style={styles.pollSheetBody}>
+            <View style={styles.photoSheetHeader}>
+              <Pressable
+                onPress={() => {
+                  setPollAttempted(false)
+                  setPollError(null)
+                  setComposerView('form')
+                }}
+                style={({ pressed }) => [styles.inlineActionChip, pressed && styles.inlineActionChipPressed]}
+              >
+                <Text style={styles.inlineActionChipText}>Back</Text>
+              </Pressable>
+              <Text style={styles.photoSheetTitle}>Poll</Text>
+              <Pressable
+                onPress={handleRemovePoll}
+                style={({ pressed }) => [styles.inlineActionChip, pressed && styles.inlineActionChipPressed]}
+              >
+                <Text style={styles.inlineActionChipText}>Remove</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pollEditorScrollContent}
+            >
+              <InputField
+                value={pollDraft?.title ?? ''}
+                onChangeText={(value) => {
+                  setPollError(null)
+                  setPollAttempted(false)
+                  updatePollDraft((current) => ({ ...current, title: value }))
+                }}
+                placeholder="Poll title *"
+                containerStyle={[
+                  styles.field,
+                  isPollTitleMissing && styles.messageFieldErrorShell,
+                ]}
+                maxLength={POLL_TITLE_MAX_LENGTH}
+              />
+              <Text style={styles.pollHelper}>Poll title is required.</Text>
+              {isPollTitleMissing ? <Text style={styles.fieldError}>Add a poll title.</Text> : null}
+
+              <View style={styles.pollOptionsBlock}>
+                {(pollDraft?.options ?? []).map((option, index) => {
+                  const isEmpty = pollAttempted && composerView === 'poll' && !option.text.trim()
+                  return (
+                    <View key={option.id} style={styles.pollOptionWrap}>
+                      <InputField
+                        value={option.text}
+                        onChangeText={(value) => {
+                          setPollError(null)
+                          setPollAttempted(false)
+                          handlePollOptionTextChange(option.id, value)
+                        }}
+                        placeholder={`Answer ${index + 1} *`}
+                        containerStyle={[
+                          styles.field,
+                          isEmpty && styles.messageFieldErrorShell,
+                        ]}
+                        maxLength={POLL_OPTION_MAX_LENGTH}
+                      />
+                      {isEmpty ? <Text style={styles.fieldError}>Fill this answer in.</Text> : null}
+                      {(pollDraft?.options.length ?? 0) > POLL_OPTION_MIN_COUNT ? (
+                        <Pressable
+                          onPress={() => handleRemovePollOption(option.id)}
+                          style={({ pressed }) => [styles.removeOptionButton, pressed && styles.buttonPressed]}
+                        >
+                          <Feather name="x" size={16} color={colors.textMuted} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  )
+                })}
+              </View>
+
+              <Pressable
+                onPress={handleAddPollOption}
+                disabled={(pollDraft?.options.length ?? 0) >= POLL_OPTION_MAX_COUNT}
+                style={({ pressed }) => [
+                  styles.addPollOptionButton,
+                  (pollDraft?.options.length ?? 0) >= POLL_OPTION_MAX_COUNT && styles.addPollOptionButtonDisabled,
+                  pressed && styles.addPollOptionButtonPressed,
+                ]}
+              >
+                <Feather name="plus" size={16} color={colors.primary} />
+                <Text style={styles.addPollOptionText}>Add answer</Text>
+              </Pressable>
+
+              <Text style={[styles.pollHelper, isPollOptionMissing && styles.pollHelperError]}>
+                {(pollDraft?.options.filter((option) => option.text.trim()).length ?? 0)}/{POLL_OPTION_MAX_COUNT} answers
+                and at least {POLL_OPTION_MIN_COUNT} are required.
+              </Text>
+              {pollError ? <Text style={styles.fieldError}>{pollError}</Text> : null}
+            </ScrollView>
+          </View>
         ) : composerView === 'location' ? (
           <View style={styles.locationSheetBody}>
             <View style={styles.photoSheetHeader}>
@@ -762,6 +1115,24 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
   StyleSheet.create({
     field: {
       marginBottom: spacing.sm,
+    },
+    titleHelper: {
+      marginTop: -2,
+      marginBottom: spacing.sm,
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    messageHelper: {
+      marginTop: -2,
+      marginBottom: spacing.sm,
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    messageHelperWarning: {
+      color: colors.danger,
+      fontWeight: '700',
     },
     messageFieldErrorShell: {
       borderColor: colors.danger,
@@ -942,6 +1313,9 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     buttonPressed: {
       opacity: 0.9,
     },
+    pollSheetBody: {
+      gap: spacing.md,
+    },
     photoSheetBody: {
       gap: spacing.md,
     },
@@ -975,6 +1349,60 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     inlineActionChipGhost: {
       width: 48,
       height: 28,
+    },
+    pollEditorScrollContent: {
+      paddingBottom: 4,
+    },
+    pollOptionsBlock: {
+      gap: 10,
+      marginBottom: spacing.sm,
+    },
+    pollOptionWrap: {
+      position: 'relative',
+    },
+    removeOptionButton: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceMuted,
+    },
+    addPollOptionButton: {
+      minHeight: 42,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryGhost,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      marginBottom: spacing.sm,
+    },
+    addPollOptionButtonDisabled: {
+      opacity: 0.5,
+    },
+    addPollOptionButtonPressed: {
+      opacity: 0.84,
+    },
+    addPollOptionText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    pollHelper: {
+      color: colors.textMuted,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    pollHelperError: {
+      color: colors.danger,
+      fontWeight: '700',
     },
     locationSheetBody: {
       gap: spacing.md,
@@ -1040,6 +1468,85 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
       color: colors.textMuted,
       fontSize: 12,
       lineHeight: 18,
+    },
+    pollPreviewWrap: {
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 10,
+      marginBottom: spacing.sm,
+    },
+    pollPreviewHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    pollPreviewHeaderLeft: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    pollPreviewIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.primaryGhost,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 1,
+    },
+    pollPreviewTitle: {
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: '700',
+    },
+    pollPreviewMeta: {
+      marginTop: 2,
+      color: colors.textMuted,
+      fontSize: 12,
+      fontWeight: '500',
+    },
+    pollRemoveButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    pollPreviewOptions: {
+      gap: 6,
+    },
+    pollPreviewOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    pollPreviewOptionDot: {
+      color: colors.primary,
+      fontSize: 18,
+      lineHeight: 18,
+      marginTop: -1,
+    },
+    pollPreviewOptionText: {
+      flex: 1,
+      minWidth: 0,
+      color: colors.text,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    pollPreviewMore: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 2,
     },
     photoListWrap: {
       height: 380,

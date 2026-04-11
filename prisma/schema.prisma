@@ -35,6 +35,7 @@ model User {
   clubAdminRoles                 ClubAdmin[]
   clubAnnouncementsCreated       ClubAnnouncement[]        @relation("ClubAnnouncementCreatedBy")
   clubAnnouncementLikes          ClubAnnouncementLike[]
+  clubAnnouncementPollVotes      ClubAnnouncementPollVote[]
   clubBookingRequestsCreated     ClubBookingRequest[]      @relation("ClubBookingRequestRequestedBy")
   clubChatMessages               ClubChatMessage[]
   clubChatLikes                  ClubChatLike[]
@@ -368,6 +369,7 @@ model ClubAnnouncement {
   club          Club  @relation(fields: [clubId], references: [id], onDelete: Cascade)
   createdByUser User? @relation("ClubAnnouncementCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   likes         ClubAnnouncementLike[]
+  poll          ClubAnnouncementPoll?
 
   @@index([clubId, createdAt])
   @@map("club_announcements")
@@ -375,7 +377,7 @@ model ClubAnnouncement {
 
 model ClubAnnouncementLike {
   id             String            @id @default(uuid())
-  announcementId String            @map("announcement_id")
+  announcementId String            @map("announcement_id") @db.Uuid
   userId         String            @map("user_id")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
@@ -387,6 +389,52 @@ model ClubAnnouncementLike {
   @@index([userId, updatedAt])
   @@index([announcementId, createdAt])
   @@map("club_announcement_likes")
+}
+
+model ClubAnnouncementPoll {
+  id             String                      @id @default(uuid())
+  announcementId String                      @unique @map("announcement_id") @db.Uuid
+  title          String
+  createdAt      DateTime                    @default(now()) @map("created_at")
+  updatedAt      DateTime                    @updatedAt @map("updated_at")
+
+  announcement   ClubAnnouncement            @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  options        ClubAnnouncementPollOption[]
+  votes          ClubAnnouncementPollVote[]
+
+  @@map("club_announcement_polls")
+}
+
+model ClubAnnouncementPollOption {
+  id        String                    @id @default(uuid())
+  pollId    String                    @map("poll_id") @db.Uuid
+  text      String
+  sortOrder Int                       @default(0) @map("sort_order")
+  createdAt DateTime                  @default(now()) @map("created_at")
+  updatedAt DateTime                  @updatedAt @map("updated_at")
+
+  poll      ClubAnnouncementPoll      @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes     ClubAnnouncementPollVote[]
+
+  @@index([pollId, sortOrder])
+  @@map("club_announcement_poll_options")
+}
+
+model ClubAnnouncementPollVote {
+  id        String                    @id @default(uuid())
+  pollId    String                    @map("poll_id") @db.Uuid
+  optionId  String                    @map("option_id") @db.Uuid
+  userId    String                    @map("user_id")
+  createdAt DateTime                  @default(now()) @map("created_at")
+  updatedAt DateTime                  @updatedAt @map("updated_at")
+
+  poll      ClubAnnouncementPoll      @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option    ClubAnnouncementPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([pollId, optionId])
+  @@map("club_announcement_poll_votes")
 }
 
 model ClubBookingRequest {

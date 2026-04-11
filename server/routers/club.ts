@@ -5,6 +5,10 @@ import { getTeamSlotCount } from '../utils/teamSlots'
 import { pushToUsers } from '@/lib/realtime'
 
 const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
+const POLL_TITLE_MAX_LENGTH = 120
+const POLL_OPTION_MAX_LENGTH = 120
+const POLL_OPTION_MIN_COUNT = 2
+const POLL_OPTION_MAX_COUNT = 10
 
 const isMissingDbRelation = (err: any, relationName: string) => {
   const msg = String(err?.message ?? '').toLowerCase()
@@ -31,6 +35,135 @@ const maskEmail = (email: string | null | undefined) => {
     return `${localMasked}@${domainMasked}.${tld}`
   } catch {
     return null
+  }
+}
+
+type AnnouncementPollOptionInput = {
+  id?: string | null
+  text: string
+}
+
+type AnnouncementPollInput = {
+  title: string
+  options: AnnouncementPollOptionInput[]
+}
+
+const normalizePollOptions = (options: AnnouncementPollOptionInput[]) =>
+  options
+    .map((option, index) => ({
+      id: String(option.id ?? '').trim() || null,
+      text: String(option.text ?? '').trim(),
+      sortOrder: index,
+    }))
+    .filter((option) => Boolean(option.text))
+
+const validatePollInput = (title: string | null | undefined, options: AnnouncementPollOptionInput[] | null | undefined) => {
+  const normalizedTitle = String(title ?? '').trim()
+  const normalizedOptions = normalizePollOptions(options ?? [])
+  if (!normalizedTitle) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Poll title is required' })
+  }
+  if (normalizedOptions.length < POLL_OPTION_MIN_COUNT) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Add at least two answers' })
+  }
+  if (normalizedOptions.length > POLL_OPTION_MAX_COUNT) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'A poll can have at most ten answers' })
+  }
+  return {
+    title: normalizedTitle.slice(0, POLL_TITLE_MAX_LENGTH),
+    options: normalizedOptions.map((option) => ({
+      ...option,
+      text: option.text.slice(0, POLL_OPTION_MAX_LENGTH),
+    })),
+  }
+}
+
+const parsePollInput = (poll: AnnouncementPollInput | null | undefined) => {
+  if (!poll) return null
+  return validatePollInput(poll.title, poll.options)
+}
+
+const reconcileAnnouncementPoll = async (
+  tx: any,
+  announcementId: string,
+  pollInput: AnnouncementPollInput | null | undefined,
+  removePoll = false,
+) => {
+  if (removePoll) {
+    const existingPoll = await tx.clubAnnouncementPoll.findUnique({
+      where: { announcementId },
+      select: { id: true },
+    })
+    if (existingPoll) {
+      await tx.clubAnnouncementPoll.delete({ where: { id: existingPoll.id } })
+    }
+    return
+  }
+
+  const normalized = parsePollInput(pollInput)
+  if (!normalized) return
+
+  const existingPoll = await tx.clubAnnouncementPoll.findUnique({
+    where: { announcementId },
+    select: { id: true },
+  })
+
+  if (!existingPoll) {
+    await tx.clubAnnouncementPoll.create({
+      data: {
+        announcementId,
+        title: normalized.title,
+        options: {
+          create: normalized.options.map((option) => ({
+            text: option.text,
+            sortOrder: option.sortOrder,
+          })),
+        },
+      },
+    })
+    return
+  }
+
+  await tx.clubAnnouncementPoll.update({
+    where: { id: existingPoll.id },
+    data: { title: normalized.title },
+  })
+
+  const existingOptions = await tx.clubAnnouncementPollOption.findMany({
+    where: { pollId: existingPoll.id },
+    select: { id: true },
+  })
+  const existingOptionIds = new Set(existingOptions.map((option) => option.id))
+  const keptOptionIds = new Set<string>()
+
+  for (const option of normalized.options) {
+    if (option.id && existingOptionIds.has(option.id)) {
+      keptOptionIds.add(option.id)
+      await tx.clubAnnouncementPollOption.update({
+        where: { id: option.id },
+        data: {
+          text: option.text,
+          sortOrder: option.sortOrder,
+        },
+      })
+    } else {
+      const created = await tx.clubAnnouncementPollOption.create({
+        data: {
+          pollId: existingPoll.id,
+          text: option.text,
+          sortOrder: option.sortOrder,
+        },
+        select: { id: true },
+      })
+      keptOptionIds.add(created.id)
+    }
+  }
+
+  const removedOptionIds = [...existingOptionIds].filter((id) => !keptOptionIds.has(id))
+  if (removedOptionIds.length > 0) {
+    await tx.clubAnnouncementPollOption.deleteMany({
+      where: { id: { in: removedOptionIds } },
+    })
   }
 }
 
@@ -601,6 +734,31 @@ export const clubRouter = createTRPCRouter({
               fileName: true,
               fileMimeType: true,
               fileSize: true,
+              poll: {
+                select: {
+                  id: true,
+                  title: true,
+                  votes:
+                    userId === DUMMY_USER_ID
+                      ? false
+                      : {
+                          where: { userId },
+                          select: { optionId: true },
+                          take: 1,
+                        },
+                  options: {
+                    orderBy: { sortOrder: 'asc' },
+                    select: {
+                      id: true,
+                      text: true,
+                      sortOrder: true,
+                      _count: {
+                        select: { votes: true },
+                      },
+                    },
+                  },
+                },
+              },
               createdAt: true,
               updatedAt: true,
               createdByUser: {
@@ -803,6 +961,23 @@ export const clubRouter = createTRPCRouter({
         ...announcement,
         likeCount: announcement._count?.likes ?? 0,
         viewerHasLiked: Boolean(announcement.likes?.length),
+        poll: announcement.poll
+          ? {
+              id: announcement.poll.id,
+              title: announcement.poll.title,
+              viewerOptionId: announcement.poll.votes?.[0]?.optionId ?? null,
+              totalVotes: announcement.poll.options.reduce(
+                (sum, option) => sum + Number(option._count?.votes ?? 0),
+                0
+              ),
+              options: announcement.poll.options.map((option) => ({
+                id: option.id,
+                text: option.text,
+                sortOrder: option.sortOrder,
+                voteCount: Number(option._count?.votes ?? 0),
+              })),
+            }
+          : null,
       }))
 
       return {
@@ -1123,7 +1298,7 @@ export const clubRouter = createTRPCRouter({
       z.object({
         clubId: z.string(),
         title: z.string().max(120).optional(),
-        body: z.string().min(1).max(4000),
+        body: z.string().min(1).max(2000),
         imageUrl: z.string().url().optional(),
         imageWidth: z.number().int().positive().max(10000).nullable().optional(),
         imageHeight: z.number().int().positive().max(10000).nullable().optional(),
@@ -1135,6 +1310,21 @@ export const clubRouter = createTRPCRouter({
         fileName: z.string().max(240).nullable().optional(),
         fileMimeType: z.string().max(120).nullable().optional(),
         fileSize: z.number().int().nonnegative().nullable().optional(),
+        poll: z
+          .object({
+            title: z.string().max(POLL_TITLE_MAX_LENGTH),
+            options: z
+              .array(
+                z.object({
+                  id: z.string().optional(),
+                  text: z.string().max(POLL_OPTION_MAX_LENGTH),
+                })
+              )
+              .min(POLL_OPTION_MIN_COUNT)
+              .max(POLL_OPTION_MAX_COUNT),
+          })
+          .nullable()
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1154,33 +1344,42 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can post announcements' })
       }
 
-      const announcement = await ctx.prisma.clubAnnouncement.create({
-        data: {
-          clubId: input.clubId,
-          title: input.title?.trim() || null,
-          body: input.body.trim(),
-          imageUrl: input.imageUrl?.trim() || null,
-          imageWidth: input.imageWidth ?? null,
-          imageHeight: input.imageHeight ?? null,
-          locationLatitude: input.locationLatitude ?? null,
-          locationLongitude: input.locationLongitude ?? null,
-          locationTitle: input.locationTitle?.trim() || null,
-          locationAddress: input.locationAddress?.trim() || null,
-          fileUrl: input.fileUrl?.trim() || null,
-          fileName: input.fileName?.trim() || null,
-          fileMimeType: input.fileMimeType?.trim() || null,
-          fileSize: input.fileSize ?? null,
-          createdByUserId: userId,
-        },
-        include: {
-          createdByUser: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
+      const announcement = await ctx.prisma.$transaction(async (tx) => {
+        const created = await tx.clubAnnouncement.create({
+          data: {
+            clubId: input.clubId,
+            title: input.title?.trim() || null,
+            body: input.body.trim(),
+            imageUrl: input.imageUrl?.trim() || null,
+            imageWidth: input.imageWidth ?? null,
+            imageHeight: input.imageHeight ?? null,
+            locationLatitude: input.locationLatitude ?? null,
+            locationLongitude: input.locationLongitude ?? null,
+            locationTitle: input.locationTitle?.trim() || null,
+            locationAddress: input.locationAddress?.trim() || null,
+            fileUrl: input.fileUrl?.trim() || null,
+            fileName: input.fileName?.trim() || null,
+            fileMimeType: input.fileMimeType?.trim() || null,
+            fileSize: input.fileSize ?? null,
+            createdByUserId: userId,
+          },
+          select: { id: true },
+        })
+
+        await reconcileAnnouncementPoll(tx, created.id, input.poll)
+
+        return tx.clubAnnouncement.findUnique({
+          where: { id: created.id },
+          include: {
+            createdByUser: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
             },
           },
-        },
+        })
       })
 
       return announcement
@@ -1192,7 +1391,7 @@ export const clubRouter = createTRPCRouter({
         clubId: z.string(),
         announcementId: z.string(),
         title: z.string().max(120).optional(),
-        body: z.string().min(1).max(4000),
+        body: z.string().min(1).max(2000),
         imageUrl: z.string().url().optional(),
         imageWidth: z.number().int().positive().max(10000).nullable().optional(),
         imageHeight: z.number().int().positive().max(10000).nullable().optional(),
@@ -1207,6 +1406,22 @@ export const clubRouter = createTRPCRouter({
         removeImage: z.boolean().optional(),
         removeLocation: z.boolean().optional(),
         removeFile: z.boolean().optional(),
+        removePoll: z.boolean().optional(),
+        poll: z
+          .object({
+            title: z.string().max(POLL_TITLE_MAX_LENGTH),
+            options: z
+              .array(
+                z.object({
+                  id: z.string().optional(),
+                  text: z.string().max(POLL_OPTION_MAX_LENGTH),
+                })
+              )
+              .min(POLL_OPTION_MIN_COUNT)
+              .max(POLL_OPTION_MAX_COUNT),
+          })
+          .nullable()
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1228,32 +1443,41 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Announcement not found' })
       }
 
-      const updated = await ctx.prisma.clubAnnouncement.update({
-        where: { id: input.announcementId },
-        data: {
-          title: input.title?.trim() || null,
-          body: input.body.trim(),
-          imageUrl: input.removeImage ? null : input.imageUrl?.trim() || null,
-          imageWidth: input.removeImage ? null : input.imageWidth ?? null,
-          imageHeight: input.removeImage ? null : input.imageHeight ?? null,
-          locationLatitude: input.removeLocation ? null : input.locationLatitude ?? null,
-          locationLongitude: input.removeLocation ? null : input.locationLongitude ?? null,
-          locationTitle: input.removeLocation ? null : input.locationTitle?.trim() || null,
-          locationAddress: input.removeLocation ? null : input.locationAddress?.trim() || null,
-          fileUrl: input.removeFile ? null : input.fileUrl?.trim() || null,
-          fileName: input.removeFile ? null : input.fileName?.trim() || null,
-          fileMimeType: input.removeFile ? null : input.fileMimeType?.trim() || null,
-          fileSize: input.removeFile ? null : input.fileSize ?? null,
-        },
-        include: {
-          createdByUser: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
+      const updated = await ctx.prisma.$transaction(async (tx) => {
+        const result = await tx.clubAnnouncement.update({
+          where: { id: input.announcementId },
+          data: {
+            title: input.title?.trim() || null,
+            body: input.body.trim(),
+            imageUrl: input.removeImage ? null : input.imageUrl?.trim() || null,
+            imageWidth: input.removeImage ? null : input.imageWidth ?? null,
+            imageHeight: input.removeImage ? null : input.imageHeight ?? null,
+            locationLatitude: input.removeLocation ? null : input.locationLatitude ?? null,
+            locationLongitude: input.removeLocation ? null : input.locationLongitude ?? null,
+            locationTitle: input.removeLocation ? null : input.locationTitle?.trim() || null,
+            locationAddress: input.removeLocation ? null : input.locationAddress?.trim() || null,
+            fileUrl: input.removeFile ? null : input.fileUrl?.trim() || null,
+            fileName: input.removeFile ? null : input.fileName?.trim() || null,
+            fileMimeType: input.removeFile ? null : input.fileMimeType?.trim() || null,
+            fileSize: input.removeFile ? null : input.fileSize ?? null,
+          },
+          select: { id: true },
+        })
+
+        await reconcileAnnouncementPoll(tx, result.id, input.poll, input.removePoll)
+
+        return tx.clubAnnouncement.findUnique({
+          where: { id: result.id },
+          include: {
+            createdByUser: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
             },
           },
-        },
+        })
       })
 
       return updated
@@ -1349,6 +1573,122 @@ export const clubRouter = createTRPCRouter({
         announcementId: input.announcementId,
         likeCount,
         viewerHasLiked: !existingLike,
+      }
+    }),
+
+  voteAnnouncementPoll: protectedProcedure
+    .input(z.object({ clubId: z.string(), announcementId: z.string(), optionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.session.user.id
+
+      const [club, announcement, follower, admin] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAnnouncement.findUnique({
+          where: { id: input.announcementId },
+          select: { id: true, clubId: true },
+        }),
+        ctx.prisma.clubFollower.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId } },
+          select: { id: true },
+        }),
+        ctx.prisma.clubAdmin.findUnique({
+          where: { clubId_userId: { clubId: input.clubId, userId } },
+          select: { id: true },
+        }),
+      ])
+
+      if (!club) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      }
+      if (!announcement || announcement.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Announcement not found' })
+      }
+      if (!follower && !admin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Join this club to vote in polls' })
+      }
+
+      const poll = await ctx.prisma.clubAnnouncementPoll.findUnique({
+        where: { announcementId: input.announcementId },
+        select: {
+          id: true,
+          announcementId: true,
+          options: {
+            select: {
+              id: true,
+              text: true,
+              sortOrder: true,
+            },
+            orderBy: { sortOrder: 'asc' },
+          },
+        },
+      })
+
+      if (!poll) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Poll not found' })
+      }
+
+      const selectedOption = await ctx.prisma.clubAnnouncementPollOption.findFirst({
+        where: { id: input.optionId, pollId: poll.id },
+        select: { id: true },
+      })
+
+      if (!selectedOption) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Poll option not found' })
+      }
+
+      await ctx.prisma.$transaction(async (tx) => {
+        await tx.clubAnnouncementPollVote.upsert({
+          where: { pollId_userId: { pollId: poll.id, userId } },
+          create: {
+            pollId: poll.id,
+            optionId: selectedOption.id,
+            userId,
+          },
+          update: {
+            optionId: selectedOption.id,
+          },
+        })
+      })
+
+      const refreshed = await ctx.prisma.clubAnnouncementPoll.findUnique({
+        where: { announcementId: input.announcementId },
+        select: {
+          id: true,
+          title: true,
+          votes: {
+            where: { userId },
+            select: { optionId: true },
+            take: 1,
+          },
+          options: {
+            orderBy: { sortOrder: 'asc' },
+            select: {
+              id: true,
+              text: true,
+              sortOrder: true,
+              _count: {
+                select: { votes: true },
+              },
+            },
+          },
+        },
+      })
+
+      return {
+        announcementId: input.announcementId,
+        pollId: poll.id,
+        viewerOptionId: refreshed?.votes?.[0]?.optionId ?? selectedOption.id,
+        totalVotes: refreshed?.options.reduce((sum, option) => sum + Number(option._count?.votes ?? 0), 0) ?? 0,
+        options:
+          refreshed?.options.map((option) => ({
+            id: option.id,
+            text: option.text,
+            sortOrder: option.sortOrder,
+            voteCount: Number(option._count?.votes ?? 0),
+          })) ?? [],
       }
     }),
 

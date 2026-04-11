@@ -285,6 +285,7 @@ export const InputField = ({
   keyboardType,
   returnKeyType,
   onSubmitEditing,
+  maxLength,
   appearance = 'field',
   onFocus: onFocusProp,
   onBlur: onBlurProp,
@@ -304,6 +305,7 @@ export const InputField = ({
   keyboardType?: TextInputProps['keyboardType']
   returnKeyType?: TextInputProps['returnKeyType']
   onSubmitEditing?: TextInputProps['onSubmitEditing']
+  maxLength?: number
   /** `search` — строка поиска (SearchField): подсветка при фокусе как у остальных поисков */
   appearance?: 'field' | 'search'
   onFocus?: TextInputProps['onFocus']
@@ -345,6 +347,7 @@ export const InputField = ({
         keyboardAppearance={keyboardAppearanceForTheme(theme)}
         returnKeyType={returnKeyType}
         onSubmitEditing={onSubmitEditing}
+        maxLength={maxLength}
         style={[styles.input, multiline && styles.inputMultiline]}
         textAlignVertical={multiline ? 'top' : 'center'}
         onFocus={(e) => {
@@ -774,5 +777,4 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
 export { SegmentedControl } from './SegmentedControl'
 export type { SegmentedOption } from './SegmentedControl'
 export { SegmentedContentFade } from './SegmentedContentFade'
-
 

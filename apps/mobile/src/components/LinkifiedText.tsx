@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Linking, StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native'
+import { Linking, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native'
 
 import { useAppTheme } from '../providers/ThemeProvider'
 
@@ -13,11 +13,13 @@ export function LinkifiedText({
   text,
   textStyle,
   linkStyle,
+  containerStyle,
   onBeforeOpen,
 }: {
   text: string
   textStyle?: StyleProp<TextStyle>
   linkStyle?: StyleProp<TextStyle>
+  containerStyle?: StyleProp<ViewStyle>
   onBeforeOpen?: (url: string, open: () => Promise<void>) => void
 }) {
   const { colors } = useAppTheme()
@@ -62,33 +64,35 @@ export function LinkifiedText({
   }, [text])
 
   return (
-    <Text style={textStyle}>
-      {segments.map((segment, index) =>
-        segment.type === 'text' ? (
-          <Text key={`text-${index}`} style={textStyle}>
-            {segment.value}
-          </Text>
-        ) : (
-          <Text
-            key={`link-${index}`}
-            style={[styles.link, linkStyle]}
-            suppressHighlighting
-            onPress={() => {
-              const open = async () => {
-                await Linking.openURL(segment.url)
-              }
-              if (onBeforeOpen) {
-                onBeforeOpen(segment.url, open)
-                return
-              }
-              void open()
-            }}
-          >
-            {segment.value}
-          </Text>
-        )
-      )}
-    </Text>
+    <View style={containerStyle}>
+      <Text style={textStyle}>
+        {segments.map((segment, index) =>
+          segment.type === 'text' ? (
+            <Text key={`text-${index}`} style={textStyle}>
+              {segment.value}
+            </Text>
+          ) : (
+            <Text
+              key={`link-${index}`}
+              style={[styles.link, linkStyle]}
+              suppressHighlighting
+              onPress={() => {
+                const open = async () => {
+                  await Linking.openURL(segment.url)
+                }
+                if (onBeforeOpen) {
+                  onBeforeOpen(segment.url, open)
+                  return
+                }
+                void open()
+              }}
+            >
+              {segment.value}
+            </Text>
+          ),
+        )}
+      </Text>
+    </View>
   )
 }
 

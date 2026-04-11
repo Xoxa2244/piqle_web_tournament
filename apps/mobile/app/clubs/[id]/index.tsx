@@ -22,6 +22,7 @@ import {
 import { AppBottomSheet, AppConfirmActions } from '../../../src/components/AppBottomSheet'
 import { ClubTournamentCard } from '../../../src/components/ClubTournamentCard'
 import { ClubAnnouncementComposerSheet, type ClubAnnouncementDraft } from '../../../src/components/ClubAnnouncementComposerSheet'
+import { ClubAnnouncementPollCard } from '../../../src/components/ClubAnnouncementPollCard'
 import { EntityImage } from '../../../src/components/EntityImage'
 import { FeedbackEntityContextCard } from '../../../src/components/FeedbackEntityContextCard'
 import { FeedbackRatingModal } from '../../../src/components/FeedbackRatingModal'
@@ -54,9 +55,16 @@ import { useToastWhenEntityMissing } from '../../../src/hooks/useToastWhenEntity
 type AnnouncementComposerState =
   | null
   | { mode: 'create'; draft: ClubAnnouncementDraft }
-  | { mode: 'edit'; announcementId: string; draft: ClubAnnouncementDraft }
+  | { mode: 'edit'; announcementId: string; originalPollId: string | null; draft: ClubAnnouncementDraft }
 
-const EMPTY_ANNOUNCEMENT_DRAFT: ClubAnnouncementDraft = { title: '', body: '', image: null, location: null, file: null }
+const EMPTY_ANNOUNCEMENT_DRAFT: ClubAnnouncementDraft = {
+  title: '',
+  body: '',
+  image: null,
+  location: null,
+  file: null,
+  poll: null,
+}
 
 const getAnnouncementImageAspectRatio = (width?: number | null, height?: number | null) => {
   const safeWidth = Number(width ?? 0)
@@ -66,6 +74,46 @@ const getAnnouncementImageAspectRatio = (width?: number | null, height?: number 
   }
   return 1.25
 }
+
+const getAnnouncementDraftFromAnnouncement = (announcement: any): ClubAnnouncementDraft => ({
+  title: announcement.title ?? '',
+  body: announcement.body,
+  image: announcement.imageUrl
+    ? {
+        uri: announcement.imageUrl,
+        width: announcement.imageWidth ?? null,
+        height: announcement.imageHeight ?? null,
+        remoteUrl: announcement.imageUrl,
+      }
+    : null,
+  location:
+    announcement.locationLatitude != null && announcement.locationLongitude != null
+      ? {
+          latitude: Number(announcement.locationLatitude),
+          longitude: Number(announcement.locationLongitude),
+          title: announcement.locationTitle || 'Pinned location',
+          address: announcement.locationAddress || null,
+        }
+      : null,
+  file:
+    announcement.fileUrl && announcement.fileName
+      ? {
+          remoteUrl: announcement.fileUrl,
+          fileName: announcement.fileName,
+          mimeType: announcement.fileMimeType ?? null,
+          size: announcement.fileSize ?? null,
+        }
+      : null,
+  poll: announcement.poll
+    ? {
+        title: String(announcement.poll.title ?? ''),
+        options: (announcement.poll.options ?? []).map((option: any) => ({
+          id: String(option.id ?? ''),
+          text: String(option.text ?? ''),
+        })),
+      }
+    : null,
+})
 
 export default function ClubDetailScreen() {
   const params = useLocalSearchParams<{ id: string; tab?: string }>()
@@ -194,6 +242,71 @@ export default function ClubDetailScreen() {
       })
     },
   })
+  const voteAnnouncementPoll = trpc.club.voteAnnouncementPoll.useMutation({
+    onMutate: async ({ announcementId, optionId }) => {
+      const previousClub = utils.club.get.getData({ id: clubId })
+      utils.club.get.setData({ id: clubId }, (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          announcements: (current.announcements ?? []).map((announcement: any) => {
+            if (announcement.id !== announcementId || !announcement.poll) return announcement
+            const previousOptionId = announcement.poll.viewerOptionId ?? null
+            const nextTotalVotes = Number(announcement.poll.totalVotes ?? 0) + (previousOptionId ? 0 : 1)
+            const nextOptions = (announcement.poll.options ?? []).map((option: any) => {
+              let voteCount = Number(option.voteCount ?? 0)
+              if (previousOptionId && option.id === previousOptionId && previousOptionId !== optionId) {
+                voteCount = Math.max(0, voteCount - 1)
+              }
+              if (option.id === optionId && previousOptionId !== optionId) {
+                voteCount += 1
+              }
+              return { ...option, voteCount }
+            })
+            return {
+              ...announcement,
+              poll: {
+                ...announcement.poll,
+                viewerOptionId: optionId,
+                totalVotes: nextTotalVotes,
+                options: nextOptions,
+              },
+            }
+          }),
+        }
+      })
+      return { previousClub }
+    },
+    onError: (e, _input, context) => {
+      if (context?.previousClub) {
+        utils.club.get.setData({ id: clubId }, context.previousClub)
+      }
+      toast.error(e.message || 'Failed to update vote')
+    },
+    onSuccess: (data) => {
+      utils.club.get.setData({ id: clubId }, (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          announcements: (current.announcements ?? []).map((announcement: any) =>
+            announcement.id === data.announcementId
+              ? {
+                  ...announcement,
+                  poll: announcement.poll
+                    ? {
+                        ...announcement.poll,
+                        viewerOptionId: data.viewerOptionId,
+                        totalVotes: data.totalVotes,
+                        options: data.options,
+                      }
+                    : announcement.poll,
+                }
+              : announcement,
+          ),
+        }
+      })
+    },
+  })
   const approveJoinRequest = trpc.club.approveJoinRequest.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -275,6 +388,21 @@ export default function ClubDetailScreen() {
   const handleSubmitAnnouncement = useCallback(async () => {
     const currentComposer = announcementComposer
     if (!currentComposer?.draft.body.trim()) return
+    const normalizedTitle = currentComposer.draft.title.trim().slice(0, 120) || undefined
+    const originalPollId = currentComposer.mode === 'edit' ? currentComposer.originalPollId : null
+    const normalizedPoll =
+      currentComposer.draft.poll && currentComposer.draft.poll.title.trim()
+        ? {
+            title: currentComposer.draft.poll.title.trim().slice(0, 120),
+            options: currentComposer.draft.poll.options
+              .map((option) => ({
+                id: String(option.id ?? '').trim() || undefined,
+                text: String(option.text ?? '').trim().slice(0, 120),
+              }))
+              .filter((option) => Boolean(option.text)),
+          }
+        : null
+    const removePoll = Boolean(originalPollId && !currentComposer.draft.poll)
 
     try {
       setAnnouncementSubmitBusy(true)
@@ -336,7 +464,7 @@ export default function ClubDetailScreen() {
         await updateAnnouncement.mutateAsync({
           clubId,
           announcementId: currentComposer.announcementId,
-          title: currentComposer.draft.title.trim() || undefined,
+          title: normalizedTitle,
           body: currentComposer.draft.body.trim(),
           imageUrl,
           imageWidth,
@@ -352,11 +480,13 @@ export default function ClubDetailScreen() {
           removeImage: !currentComposer.draft.image,
           removeLocation: !currentComposer.draft.location,
           removeFile: !currentComposer.draft.file,
+          removePoll,
+          poll: normalizedPoll,
         })
       } else {
         await createAnnouncement.mutateAsync({
           clubId,
-          title: currentComposer.draft.title.trim() || undefined,
+          title: normalizedTitle,
           body: currentComposer.draft.body.trim(),
           imageUrl,
           imageWidth,
@@ -369,6 +499,7 @@ export default function ClubDetailScreen() {
           fileName,
           fileMimeType,
           fileSize,
+          poll: normalizedPoll,
         })
       }
 
@@ -1542,6 +1673,24 @@ export default function ClubDetailScreen() {
                         onBeforeOpen={handleOpenExternalLink}
                         containerStyle={styles.announcementBodyWrap}
                       />
+                      {announcement.poll ? (
+                        <View style={styles.announcementPollWrap}>
+                          <ClubAnnouncementPollCard
+                            poll={announcement.poll}
+                            onVote={
+                              club.isFollowing || club.isAdmin
+                                ? (optionId) =>
+                                    voteAnnouncementPoll.mutate({
+                                      clubId,
+                                      announcementId: announcement.id,
+                                      optionId,
+                                    })
+                                : undefined
+                            }
+                            loading={voteAnnouncementPoll.isPending}
+                          />
+                        </View>
+                      ) : null}
                       {announcement.imageUrl ? (
                         <Pressable
                           onPress={() => setAnnouncementPreviewImage(announcement.imageUrl)}
@@ -1636,36 +1785,8 @@ export default function ClubDetailScreen() {
                                   setAnnouncementComposer({
                                     mode: 'edit',
                                     announcementId: announcement.id,
-                                    draft: {
-                                      title: announcement.title ?? '',
-                                      body: announcement.body,
-                                      image: announcement.imageUrl
-                                        ? {
-                                            uri: announcement.imageUrl,
-                                            width: announcement.imageWidth ?? null,
-                                            height: announcement.imageHeight ?? null,
-                                            remoteUrl: announcement.imageUrl,
-                                          }
-                                        : null,
-                                      location:
-                                        announcement.locationLatitude != null && announcement.locationLongitude != null
-                                          ? {
-                                              latitude: Number(announcement.locationLatitude),
-                                              longitude: Number(announcement.locationLongitude),
-                                              title: announcement.locationTitle || 'Pinned location',
-                                              address: announcement.locationAddress || null,
-                                            }
-                                          : null,
-                                      file:
-                                        announcement.fileUrl && announcement.fileName
-                                          ? {
-                                              remoteUrl: announcement.fileUrl,
-                                              fileName: announcement.fileName,
-                                              mimeType: announcement.fileMimeType ?? null,
-                                              size: announcement.fileSize ?? null,
-                                            }
-                                          : null,
-                                    },
+                                    originalPollId: announcement.poll?.id ?? null,
+                                    draft: getAnnouncementDraftFromAnnouncement(announcement),
                                   })
                                 }}
                                 style={({ pressed }) => [styles.announcementActionBtn, pressed && styles.announcementActionBtnPressed]}
@@ -2581,11 +2702,14 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
   announcementBodyWrap: {
     marginBottom: spacing.sm,
   },
+  announcementPollWrap: {
+    marginBottom: spacing.sm,
+  },
   announcementTitle: {
     color: colors.text,
     fontWeight: '700',
     fontSize: 20,
-    marginBottom: spacing.sm,
+    marginBottom: 4,
   },
   announcementImageWrap: {
     marginBottom: spacing.sm,
