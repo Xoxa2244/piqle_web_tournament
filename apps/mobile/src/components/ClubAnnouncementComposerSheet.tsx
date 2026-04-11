@@ -11,6 +11,7 @@ import {
   type ChatLocationMessagePayload,
 } from '../lib/chatSpecialMessages'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
+import { compressImageLikeChat } from '../lib/imageCompression'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { useToast } from '../providers/ToastProvider'
 
@@ -518,14 +519,21 @@ export function ClubAnnouncementComposerSheet({
     if (captured.canceled || !captured.assets?.length) return
     const asset = captured.assets[0]
     if (!asset?.uri) return
+    const compressed = await compressImageLikeChat({
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+    })
     onChangeDraft((current) => ({
       ...current,
       image: {
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
+        uri: compressed.uri,
+        width: compressed.width ?? asset.width ?? null,
+        height: compressed.height ?? asset.height ?? null,
+        fileName: compressed.fileName ?? asset.fileName ?? null,
+        mimeType: compressed.mimeType ?? asset.mimeType ?? null,
         remoteUrl: null,
       },
     }))
@@ -544,14 +552,21 @@ export function ClubAnnouncementComposerSheet({
     if (picked.canceled || !picked.assets?.length) return
     const asset = picked.assets[0]
     if (!asset?.uri) return
+    const compressed = await compressImageLikeChat({
+      uri: asset.uri,
+      fileName: asset.fileName,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+    })
     onChangeDraft((current) => ({
       ...current,
       image: {
-        uri: asset.uri,
-        width: asset.width,
-        height: asset.height,
-        fileName: asset.fileName,
-        mimeType: asset.mimeType,
+        uri: compressed.uri,
+        width: compressed.width ?? asset.width ?? null,
+        height: compressed.height ?? asset.height ?? null,
+        fileName: compressed.fileName ?? asset.fileName ?? null,
+        mimeType: compressed.mimeType ?? asset.mimeType ?? null,
         remoteUrl: null,
       },
     }))
@@ -593,18 +608,27 @@ export function ClubAnnouncementComposerSheet({
         styles={styles}
         onOpenCamera={() => void handleOpenCamera()}
         onOpenPhoto={(photo) => {
-          onChangeDraft((current) => ({
-            ...current,
-            image: {
+          void (async () => {
+            const compressed = await compressImageLikeChat({
               uri: photo.sourceUri,
-              width: photo.width,
-              height: photo.height,
               fileName: photo.fileName,
               mimeType: 'image/jpeg',
-              remoteUrl: null,
-            },
-          }))
-          setComposerView('form')
+              width: photo.width,
+              height: photo.height,
+            })
+            onChangeDraft((current) => ({
+              ...current,
+              image: {
+                uri: compressed.uri,
+                width: compressed.width ?? photo.width ?? null,
+                height: compressed.height ?? photo.height ?? null,
+                fileName: compressed.fileName ?? photo.fileName ?? null,
+                mimeType: compressed.mimeType ?? 'image/jpeg',
+                remoteUrl: null,
+              },
+            }))
+            setComposerView('form')
+          })()
         }}
       />
     ),
