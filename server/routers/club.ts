@@ -129,11 +129,11 @@ const reconcileAnnouncementPoll = async (
     data: { title: normalized.title },
   })
 
-  const existingOptions = await tx.clubAnnouncementPollOption.findMany({
+  const existingOptions: { id: string }[] = await tx.clubAnnouncementPollOption.findMany({
     where: { pollId: existingPoll.id },
     select: { id: true },
   })
-  const existingOptionIds = new Set(existingOptions.map((option) => option.id))
+  const existingOptionIds = new Set<string>(existingOptions.map((option) => option.id))
   const keptOptionIds = new Set<string>()
 
   for (const option of normalized.options) {
