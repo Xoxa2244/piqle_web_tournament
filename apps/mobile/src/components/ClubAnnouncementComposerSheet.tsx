@@ -396,7 +396,6 @@ export function ClubAnnouncementComposerSheet({
   const pollOptionCount = normalizedPollDraft?.options.filter((option) => option.text.length > 0).length ?? 0
   const isPollTitleMissing = pollAttempted && composerView === 'poll' && !normalizedPollDraft?.title
   const isPollOptionMissing = pollAttempted && composerView === 'poll' && pollOptionCount < POLL_OPTION_MIN_COUNT
-
   const updatePollDraft = useCallback((updater: (current: PollDraft) => PollDraft) => {
     setPollDraft((current) => {
       const next = updater(current ?? createEmptyPollDraft())
@@ -715,7 +714,12 @@ export function ClubAnnouncementComposerSheet({
             </Text>
             {isMessageMissing ? <Text style={styles.fieldError}>Add a short message before posting.</Text> : null}
 
-            <View style={styles.actionRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.actionRow}
+              keyboardShouldPersistTaps="handled"
+            >
               <Pressable
                 onPress={() => setComposerView('photos')}
                 style={({ pressed }) => [
@@ -743,19 +747,6 @@ export function ClubAnnouncementComposerSheet({
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => void handlePickFile()}
-                style={({ pressed }) => [
-                  styles.actionChip,
-                  draft.file && styles.actionChipActive,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Feather name="file-text" size={15} color={draft.file ? colors.white : colors.primary} />
-                <Text style={[styles.actionChipText, draft.file && styles.actionChipTextActive]}>
-                  {draft.file ? 'File ✓' : 'File'}
-                </Text>
-              </Pressable>
-              <Pressable
                 onPress={handleOpenPollEditor}
                 style={({ pressed }) => [
                   styles.actionChip,
@@ -768,7 +759,20 @@ export function ClubAnnouncementComposerSheet({
                   {draft.poll ? 'Poll ✓' : 'Poll'}
                 </Text>
               </Pressable>
-            </View>
+              <Pressable
+                onPress={() => void handlePickFile()}
+                style={({ pressed }) => [
+                  styles.actionChip,
+                  draft.file && styles.actionChipActive,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Feather name="file-text" size={15} color={draft.file ? colors.white : colors.primary} />
+                <Text style={[styles.actionChipText, draft.file && styles.actionChipTextActive]}>
+                  {draft.file ? 'File ✓' : 'File'}
+                </Text>
+              </Pressable>
+            </ScrollView>
 
             {draft.image ? (
               <View style={styles.imagePreviewWrap}>
@@ -897,12 +901,7 @@ export function ClubAnnouncementComposerSheet({
                 <Text style={styles.inlineActionChipText}>Back</Text>
               </Pressable>
               <Text style={styles.photoSheetTitle}>Poll</Text>
-              <Pressable
-                onPress={handleRemovePoll}
-                style={({ pressed }) => [styles.inlineActionChip, pressed && styles.inlineActionChipPressed]}
-              >
-                <Text style={styles.inlineActionChipText}>Remove</Text>
-              </Pressable>
+              <View style={styles.inlineActionChipGhost} />
             </View>
 
             <ScrollView
@@ -925,8 +924,8 @@ export function ClubAnnouncementComposerSheet({
                 ]}
                 maxLength={POLL_TITLE_MAX_LENGTH}
               />
-              <Text style={styles.pollHelper}>Poll title is required.</Text>
-              {isPollTitleMissing ? <Text style={styles.fieldError}>Add a poll title.</Text> : null}
+              <Text style={styles.pollHelper}>Poll title is required</Text>
+              {isPollTitleMissing ? <Text style={[styles.fieldError, styles.pollErrorSpacing]}>Add a poll title</Text> : null}
 
               <View style={styles.pollOptionsBlock}>
                 {(pollDraft?.options ?? []).map((option, index) => {
@@ -976,7 +975,7 @@ export function ClubAnnouncementComposerSheet({
 
               <Text style={[styles.pollHelper, isPollOptionMissing && styles.pollHelperError]}>
                 {(pollDraft?.options.filter((option) => option.text.trim()).length ?? 0)}/{POLL_OPTION_MAX_COUNT} answers
-                and at least {POLL_OPTION_MIN_COUNT} are required.
+                and at least {POLL_OPTION_MIN_COUNT} are required
               </Text>
               {pollError ? <Text style={styles.fieldError}>{pollError}</Text> : null}
             </ScrollView>
@@ -1158,11 +1157,11 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     },
     actionRow: {
       flexDirection: 'row',
-      gap: 10,
+      gap: 6,
       marginBottom: spacing.sm,
+      paddingRight: 2,
     },
     actionChip: {
-      flex: 1,
       minHeight: 36,
       borderRadius: 999,
       borderWidth: 1,
@@ -1173,6 +1172,7 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
       justifyContent: 'center',
       gap: 8,
       paddingHorizontal: 12,
+      flexShrink: 0,
     },
     actionChipActive: {
       borderColor: colors.primary,
@@ -1354,8 +1354,8 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
       paddingBottom: 4,
     },
     pollOptionsBlock: {
-      gap: 10,
-      marginBottom: spacing.sm,
+      gap: 4,
+      marginBottom: 8,
     },
     pollOptionWrap: {
       position: 'relative',
@@ -1399,10 +1399,14 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
       color: colors.textMuted,
       fontSize: 11,
       lineHeight: 15,
+      marginBottom: 4,
     },
     pollHelperError: {
       color: colors.danger,
       fontWeight: '700',
+    },
+    pollErrorSpacing: {
+      marginBottom: 4,
     },
     locationSheetBody: {
       gap: spacing.md,

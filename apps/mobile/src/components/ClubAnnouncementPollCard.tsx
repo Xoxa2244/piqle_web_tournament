@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons'
-import { memo, useMemo } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { memo, useCallback, useMemo, useRef } from 'react'
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
+import { useToast } from '../providers/ToastProvider'
 import { SurfaceCard } from './ui'
 
 export type ClubAnnouncementPollOption = {
@@ -32,9 +33,22 @@ export const ClubAnnouncementPollCard = memo(function ClubAnnouncementPollCard({
   loading = false,
 }: Props) {
   const { colors } = useAppTheme()
+  const toast = useToast()
   const styles = useMemo(() => createStyles(colors), [colors])
+  const shakeAnim = useRef(new Animated.Value(0)).current
 
   const maxVotes = poll.options.reduce((max, option) => Math.max(max, Number(option.voteCount ?? 0)), 0)
+  const isLocked = poll.viewerOptionId != null
+  const shakeSelectedOption = useCallback(() => {
+    shakeAnim.stopAnimation()
+    shakeAnim.setValue(0)
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: -1, duration: 70, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 1, duration: 70, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -0.6, duration: 60, easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 60, easing: Easing.linear, useNativeDriver: true }),
+    ]).start()
+  }, [shakeAnim])
 
   return (
     <SurfaceCard padded={false} tone="soft" style={styles.card}>
@@ -58,50 +72,71 @@ export const ClubAnnouncementPollCard = memo(function ClubAnnouncementPollCard({
           const percent = poll.totalVotes > 0 ? Math.round((voteCount / poll.totalVotes) * 100) : 0
           const isSelected = poll.viewerOptionId === option.id
           const isLeader = maxVotes > 0 && voteCount === maxVotes
-          const isInteractive = Boolean(onVote)
+          const isInteractive = Boolean(onVote) && !loading
+          const selectedOffset = shakeAnim.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: [-6, 0, 6],
+          })
 
           return (
             <Pressable
               key={option.id}
-              onPress={() => onVote?.(option.id)}
-              disabled={!isInteractive || loading}
+              onPress={() => {
+                if (!onVote || loading) return
+                if (isLocked && poll.viewerOptionId !== option.id) {
+                  toast.error('You can’t change your vote.')
+                  shakeSelectedOption()
+                  return
+                }
+                if (isLocked && poll.viewerOptionId === option.id) return
+                onVote(option.id)
+              }}
+              disabled={loading}
               style={({ pressed }) => [
                 styles.option,
                 isSelected && styles.optionSelected,
                 isLeader && styles.optionLeader,
                 pressed && isInteractive && !loading && styles.optionPressed,
+                isLocked && styles.optionLocked,
               ]}
             >
-              <View
-                pointerEvents="none"
+              <Animated.View
                 style={[
-                  styles.optionFill,
-                  {
-                    width: `${poll.totalVotes > 0 ? Math.max(percent, 4) : 0}%`,
-                    backgroundColor: isLeader
-                      ? colors.successSoft
-                      : isSelected
-                      ? colors.primaryGhost
-                      : colors.surfaceMuted,
-                  },
+                  styles.optionInner,
+                  isSelected && { transform: [{ translateX: selectedOffset }] },
                 ]}
-              />
-              <View style={styles.optionContent}>
-                <View style={styles.optionTextWrap}>
-                  <Text style={styles.optionText} numberOfLines={2}>
-                    {option.text}
-                  </Text>
-                  {isSelected ? (
-                    <Text style={styles.optionSelectedLabel} numberOfLines={1}>
-                      Your vote
+              >
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.optionFill,
+                    {
+                      width: `${poll.totalVotes > 0 ? Math.max(percent, 4) : 0}%`,
+                      backgroundColor: isSelected
+                        ? 'transparent'
+                        : isLeader
+                        ? colors.successSoft
+                        : colors.surfaceMuted,
+                    },
+                  ]}
+                />
+                <View style={styles.optionContent}>
+                  <View style={styles.optionTextWrap}>
+                    <Text style={styles.optionText} numberOfLines={2}>
+                      {option.text}
                     </Text>
-                  ) : null}
+                    {isSelected ? (
+                      <Text style={styles.optionSelectedLabel} numberOfLines={1}>
+                        Your vote
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.optionStats}>
+                    <Text style={styles.optionCount}>{voteCount}</Text>
+                    <Text style={[styles.optionPercent, isLeader && styles.optionPercentLeader]}>{percent}%</Text>
+                  </View>
                 </View>
-                <View style={styles.optionStats}>
-                  <Text style={styles.optionCount}>{voteCount}</Text>
-                  <Text style={[styles.optionPercent, isLeader && styles.optionPercentLeader]}>{percent}%</Text>
-                </View>
-              </View>
+              </Animated.View>
             </Pressable>
           )
         })}
@@ -163,13 +198,16 @@ const createStyles = (colors: ThemePalette) =>
     },
     optionLeader: {
       borderColor: colors.success,
-      backgroundColor: colors.successSoft,
     },
     optionSelected: {
       borderColor: colors.primary,
+      backgroundColor: colors.successSoft,
     },
     optionPressed: {
       opacity: 0.85,
+    },
+    optionLocked: {
+      opacity: 1,
     },
     optionFill: {
       position: 'absolute',
@@ -178,6 +216,10 @@ const createStyles = (colors: ThemePalette) =>
       bottom: 0,
       borderRadius: radius.md,
       opacity: 0.55,
+    },
+    optionInner: {
+      width: '100%',
+      position: 'relative',
     },
     optionContent: {
       flexDirection: 'row',

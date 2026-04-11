@@ -1639,19 +1639,26 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Poll option not found' })
       }
 
-      await ctx.prisma.$transaction(async (tx) => {
-        await tx.clubAnnouncementPollVote.upsert({
-          where: { pollId_userId: { pollId: poll.id, userId } },
-          create: {
-            pollId: poll.id,
-            optionId: selectedOption.id,
-            userId,
-          },
-          update: {
-            optionId: selectedOption.id,
-          },
-        })
+      const existingVote = await ctx.prisma.clubAnnouncementPollVote.findUnique({
+        where: { pollId_userId: { pollId: poll.id, userId } },
+        select: { optionId: true },
       })
+
+      if (existingVote && existingVote.optionId !== selectedOption.id) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'You have already voted in this poll' })
+      }
+
+      if (!existingVote) {
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.clubAnnouncementPollVote.create({
+            data: {
+              pollId: poll.id,
+              optionId: selectedOption.id,
+              userId,
+            },
+          })
+        })
+      }
 
       const refreshed = await ctx.prisma.clubAnnouncementPoll.findUnique({
         where: { announcementId: input.announcementId },
