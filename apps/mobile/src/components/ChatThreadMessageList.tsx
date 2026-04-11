@@ -1,9 +1,7 @@
 import * as Clipboard from 'expo-clipboard'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as Haptics from 'expo-haptics'
-import * as IntentLauncher from 'expo-intent-launcher'
 import * as MediaLibrary from 'expo-media-library'
-import * as Sharing from 'expo-sharing'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -20,6 +18,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Share,
 } from 'react-native'
 
 import type { ChatMessage } from '../lib/chatMessages'
@@ -295,18 +294,8 @@ export function ChatThreadMessageList({
       if (!baseDir) throw new Error('No writable cache directory.')
       const targetUri = `${baseDir}piqle-open-${Date.now()}-${safeName}`
       const download = await FileSystem.downloadAsync(next.url, targetUri)
-      if (Platform.OS === 'android') {
-        const contentUri = await FileSystem.getContentUriAsync(download.uri)
-        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-          data: contentUri,
-          type: next.mimeType || '*/*',
-          flags: 1,
-        })
-      } else if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(download.uri, {
-          mimeType: next.mimeType || undefined,
-          dialogTitle: next.fileName || 'Open file',
-        })
+      if (Platform.OS === 'ios') {
+        await Share.share({ url: download.uri, title: next.fileName || 'Open file' })
       } else {
         const supported = await Linking.canOpenURL(download.uri)
         if (!supported) {

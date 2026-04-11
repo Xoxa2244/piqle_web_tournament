@@ -27,6 +27,7 @@ export type AppBottomSheetProps = PropsWithChildren<{
   open: boolean
   onClose: () => void
   title?: string
+  titleAction?: ReactNode
   titleBelow?: ReactNode
   subtitle?: string
   /** Нижняя зона под кнопками (по умолчанию компактно). */
@@ -45,6 +46,7 @@ export function AppBottomSheet({
   open,
   onClose,
   title,
+  titleAction,
   titleBelow,
   subtitle,
   children,
@@ -174,6 +176,7 @@ export function AppBottomSheet({
                 {titleBelow ? <View style={styles.titleBelow}>{titleBelow}</View> : null}
                 {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
               </View>
+              {titleAction ? <View style={styles.titleAction}>{titleAction}</View> : null}
             </View>
           ) : subtitle ? (
             <Text style={styles.subtitle}>{subtitle}</Text>
@@ -216,6 +219,10 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  titleAction: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+  },
   titleBelow: {
     marginTop: spacing.sm,
   },
@@ -251,9 +258,9 @@ export function AppConfirmActions({
   confirmLoading,
   intent = 'destructive',
 }: {
-  cancelLabel: string
+  cancelLabel?: string
   confirmLabel: string
-  onCancel: () => void
+  onCancel?: () => void
   onConfirm: () => void
   confirmLoading?: boolean
   intent?: AppConfirmIntent
@@ -261,9 +268,11 @@ export function AppConfirmActions({
   const confirmVariant = intent === 'positive' ? 'primary' : 'neutral'
   return (
     <View style={confirmStyles.row}>
-      <View style={confirmStyles.btn}>
-        <ActionButton label={cancelLabel} variant="outline" onPress={onCancel} />
-      </View>
+      {cancelLabel && onCancel ? (
+        <View style={confirmStyles.btn}>
+          <ActionButton label={cancelLabel} variant="outline" onPress={onCancel} />
+        </View>
+      ) : null}
       <View style={confirmStyles.btn}>
         <ActionButton
           label={confirmLabel}

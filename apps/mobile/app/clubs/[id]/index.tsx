@@ -1536,6 +1536,12 @@ export default function ClubDetailScreen() {
                       {announcement.title ? (
                         <Text style={styles.announcementTitle}>{announcement.title}</Text>
                       ) : null}
+                      <LinkifiedText
+                        text={announcement.body}
+                        textStyle={styles.body}
+                        onBeforeOpen={handleOpenExternalLink}
+                        containerStyle={styles.announcementBodyWrap}
+                      />
                       {announcement.imageUrl ? (
                         <Pressable
                           onPress={() => setAnnouncementPreviewImage(announcement.imageUrl)}
@@ -1590,15 +1596,10 @@ export default function ClubDetailScreen() {
                           </View>
                         </Pressable>
                       ) : null}
-                      <LinkifiedText
-                        text={announcement.body}
-                        textStyle={styles.body}
-                        onBeforeOpen={handleOpenExternalLink}
-                      />
                       <View style={styles.announcementMetaRow}>
                         <View style={styles.announcementMetaLeft}>
                           <Text style={styles.smallMeta}>
-                            Posted {formatDateTime(announcement.createdAt)}
+                            {formatDateTime(announcement.createdAt)}
                             {announcement.createdByUser?.name ? ` · ${announcement.createdByUser.name}` : ''}
                           </Text>
                         </View>
@@ -1828,11 +1829,7 @@ export default function ClubDetailScreen() {
           void handleSubmitAnnouncement()
         }}
         submitLoading={announcementSubmitBusy || updateAnnouncement.isPending || createAnnouncement.isPending}
-        submitDisabled={
-          announcementComposerMode === 'edit'
-            ? (announcementSubmitBusy || updateAnnouncement.isPending || createAnnouncement.isPending) || !announcementComposer?.draft.body.trim()
-            : (announcementSubmitBusy || createAnnouncement.isPending || updateAnnouncement.isPending) || !announcementComposer?.draft.body.trim()
-        }
+        submitDisabled={announcementSubmitBusy || updateAnnouncement.isPending || createAnnouncement.isPending}
       />
       <Modal
         visible={Boolean(announcementPreviewImage)}
@@ -2581,6 +2578,9 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
+  announcementBodyWrap: {
+    marginBottom: spacing.sm,
+  },
   announcementTitle: {
     color: colors.text,
     fontWeight: '700',
@@ -2601,7 +2601,7 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   announcementLocationCard: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     minHeight: 72,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -2637,7 +2637,7 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     lineHeight: 17,
   },
   announcementFileCard: {
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     minHeight: 72,
     borderRadius: radius.lg,
     borderWidth: 1,
