@@ -159,7 +159,7 @@ const reconcileAnnouncementPoll = async (
     }
   }
 
-  const removedOptionIds = [...existingOptionIds].filter((id) => !keptOptionIds.has(id))
+  const removedOptionIds = Array.from(existingOptionIds).filter((id) => !keptOptionIds.has(id))
   if (removedOptionIds.length > 0) {
     await tx.clubAnnouncementPollOption.deleteMany({
       where: { id: { in: removedOptionIds } },
