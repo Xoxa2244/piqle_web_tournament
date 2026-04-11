@@ -165,6 +165,18 @@ export function ClubAnnouncementComposerSheet({
   const [pollError, setPollError] = useState<string | null>(null)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const lastMessageLimitToastAt = useRef(0)
+  const formScrollRef = useRef<ScrollView | null>(null)
+
+  const scrollFormTo = useCallback((y: number) => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        formScrollRef.current?.scrollTo({
+          y,
+          animated: true,
+        })
+      }, 120)
+    })
+  }, [])
 
   useEffect(() => {
     if (!open) {
@@ -649,8 +661,10 @@ export function ClubAnnouncementComposerSheet({
             <Feather name="x" size={18} color={colors.text} />
           </Pressable>
         }
-        maxHeight="84%"
+        maxHeight="83%"
         bottomPaddingExtra={8}
+        keyboardOffsetCompensation={8}
+        topGapExtra={14}
         footer={
           composerView === 'form' ? (
             <AppConfirmActions
@@ -712,206 +726,212 @@ export function ClubAnnouncementComposerSheet({
         }
         >
           {composerView === 'form' ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.formScrollContent}
-          >
-            <InputField
-              value={draft.title}
-              onChangeText={(value) => onChangeDraft((current) => ({ ...current, title: value }))}
-              placeholder="Title (optional)"
-              containerStyle={styles.field}
-              maxLength={TITLE_MAX_LENGTH}
-            />
-            <Text style={styles.titleHelper}>Keep titles under {TITLE_MAX_LENGTH} characters.</Text>
-            <InputField
-              value={draft.body}
-              onChangeText={handleChangeBody}
-              placeholder="Message *"
-              multiline
-              containerStyle={[styles.field, isMessageMissing && styles.messageFieldErrorShell]}
-            />
-            <Text style={[styles.messageHelper, isMessageAtLimit && styles.messageHelperWarning]}>
-              {messageLength} / {MESSAGE_MAX_LENGTH} characters
-            </Text>
-            {isMessageMissing ? <Text style={styles.fieldError}>Add a short message before posting.</Text> : null}
+            <View style={styles.formComposerBody}>
+              <ScrollView
+                ref={formScrollRef}
+                style={styles.formScroll}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.formScrollContent}
+              >
+                <InputField
+                  value={draft.title}
+                  onChangeText={(value) => onChangeDraft((current) => ({ ...current, title: value }))}
+                  placeholder="Title (optional)"
+                  containerStyle={styles.field}
+                  maxLength={TITLE_MAX_LENGTH}
+                  onFocus={() => scrollFormTo(20)}
+                />
+                <Text style={styles.titleHelper}>Keep titles under {TITLE_MAX_LENGTH} characters.</Text>
+                <InputField
+                  value={draft.body}
+                  onChangeText={handleChangeBody}
+                  placeholder="Message *"
+                  multiline
+                  containerStyle={[styles.field, isMessageMissing && styles.messageFieldErrorShell]}
+                  onFocus={() => scrollFormTo(88)}
+                />
+                <Text style={[styles.messageHelper, isMessageAtLimit && styles.messageHelperWarning]}>
+                  {messageLength} / {MESSAGE_MAX_LENGTH} characters
+                </Text>
+                {isMessageMissing ? <Text style={styles.fieldError}>Add a short message before posting.</Text> : null}
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.actionRow}
-              keyboardShouldPersistTaps="handled"
-            >
-              <Pressable
-                onPress={() => setComposerView('photos')}
-                style={({ pressed }) => [
-                  styles.actionChip,
-                  draft.image && styles.actionChipActive,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Feather name="image" size={15} color={draft.image ? colors.white : colors.primary} />
-                <Text style={[styles.actionChipText, draft.image && styles.actionChipTextActive]}>
-                  {draft.image ? 'Photo ✓' : 'Photo'}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setComposerView('location')}
-                style={({ pressed }) => [
-                  styles.actionChip,
-                  draft.location && styles.actionChipActive,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Feather name="map-pin" size={15} color={draft.location ? colors.white : colors.primary} />
-                <Text style={[styles.actionChipText, draft.location && styles.actionChipTextActive]}>
-                  {draft.location ? 'Location ✓' : 'Location'}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleOpenPollEditor}
-                style={({ pressed }) => [
-                  styles.actionChip,
-                  draft.poll && styles.actionChipActive,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Feather name="bar-chart-2" size={15} color={draft.poll ? colors.white : colors.primary} />
-                <Text style={[styles.actionChipText, draft.poll && styles.actionChipTextActive]}>
-                  {draft.poll ? 'Poll ✓' : 'Poll'}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handlePickFile()}
-                style={({ pressed }) => [
-                  styles.actionChip,
-                  draft.file && styles.actionChipActive,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Feather name="file-text" size={15} color={draft.file ? colors.white : colors.primary} />
-                <Text style={[styles.actionChipText, draft.file && styles.actionChipTextActive]}>
-                  {draft.file ? 'File ✓' : 'File'}
-                </Text>
-              </Pressable>
-            </ScrollView>
-
-            {draft.image ? (
-              <View style={styles.imagePreviewWrap}>
-                <Image source={{ uri: draft.image.uri }} style={styles.imagePreview} resizeMode="cover" />
-                <Pressable
-                  onPress={() => onChangeDraft((current) => ({ ...current, image: null }))}
-                  style={({ pressed }) => [styles.removeOverlayButton, pressed && styles.buttonPressed]}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.actionRow}
+                  keyboardShouldPersistTaps="handled"
                 >
-                  <Feather name="x" size={16} color={colors.white} />
-                </Pressable>
-              </View>
-            ) : null}
+                  <Pressable
+                    onPress={() => setComposerView('photos')}
+                    style={({ pressed }) => [
+                      styles.actionChip,
+                      draft.image && styles.actionChipActive,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Feather name="image" size={15} color={draft.image ? colors.white : colors.primary} />
+                    <Text style={[styles.actionChipText, draft.image && styles.actionChipTextActive]}>
+                      {draft.image ? 'Photo ✓' : 'Photo'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setComposerView('location')}
+                    style={({ pressed }) => [
+                      styles.actionChip,
+                      draft.location && styles.actionChipActive,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Feather name="map-pin" size={15} color={draft.location ? colors.white : colors.primary} />
+                    <Text style={[styles.actionChipText, draft.location && styles.actionChipTextActive]}>
+                      {draft.location ? 'Location ✓' : 'Location'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleOpenPollEditor}
+                    style={({ pressed }) => [
+                      styles.actionChip,
+                      draft.poll && styles.actionChipActive,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Feather name="bar-chart-2" size={15} color={draft.poll ? colors.white : colors.primary} />
+                    <Text style={[styles.actionChipText, draft.poll && styles.actionChipTextActive]}>
+                      {draft.poll ? 'Poll ✓' : 'Poll'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => void handlePickFile()}
+                    style={({ pressed }) => [
+                      styles.actionChip,
+                      draft.file && styles.actionChipActive,
+                      pressed && styles.buttonPressed,
+                    ]}
+                  >
+                    <Feather name="file-text" size={15} color={draft.file ? colors.white : colors.primary} />
+                    <Text style={[styles.actionChipText, draft.file && styles.actionChipTextActive]}>
+                      {draft.file ? 'File ✓' : 'File'}
+                    </Text>
+                  </Pressable>
+                </ScrollView>
 
-            {draft.poll ? (
-              <View style={styles.pollPreviewWrap}>
-                <View style={styles.pollPreviewHeader}>
-                  <View style={styles.pollPreviewHeaderLeft}>
-                    <View style={styles.pollPreviewIconWrap}>
-                      <Feather name="bar-chart-2" size={15} color={colors.primary} />
+                {draft.image ? (
+                  <View style={styles.imagePreviewWrap}>
+                    <Image source={{ uri: draft.image.uri }} style={styles.imagePreview} resizeMode="cover" />
+                    <Pressable
+                      onPress={() => onChangeDraft((current) => ({ ...current, image: null }))}
+                      style={({ pressed }) => [styles.removeOverlayButton, pressed && styles.buttonPressed]}
+                    >
+                      <Feather name="x" size={16} color={colors.white} />
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {draft.poll ? (
+                  <View style={styles.pollPreviewWrap}>
+                    <View style={styles.pollPreviewHeader}>
+                      <View style={styles.pollPreviewHeaderLeft}>
+                        <View style={styles.pollPreviewIconWrap}>
+                          <Feather name="bar-chart-2" size={15} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.pollPreviewTitle} numberOfLines={2}>
+                            {draft.poll.title}
+                          </Text>
+                          <Text style={styles.pollPreviewMeta}>
+                            {draft.poll.options.filter((option) => option.text.trim()).length} answer
+                            {draft.poll.options.filter((option) => option.text.trim()).length === 1 ? '' : 's'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Pressable
+                        onPress={() => onChangeDraft((current) => ({ ...current, poll: null }))}
+                        style={({ pressed }) => [styles.pollRemoveButton, pressed && styles.buttonPressed]}
+                      >
+                        <Feather name="x" size={16} color={colors.textMuted} />
+                      </Pressable>
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.pollPreviewTitle} numberOfLines={2}>
-                        {draft.poll.title}
-                      </Text>
-                      <Text style={styles.pollPreviewMeta}>
-                        {draft.poll.options.filter((option) => option.text.trim()).length} answer
-                        {draft.poll.options.filter((option) => option.text.trim()).length === 1 ? '' : 's'}
-                      </Text>
+                    <View style={styles.pollPreviewOptions}>
+                      {draft.poll.options
+                        .filter((option) => option.text.trim())
+                        .slice(0, 4)
+                        .map((option) => (
+                          <View key={option.id} style={styles.pollPreviewOption}>
+                            <Text style={styles.pollPreviewOptionDot}>•</Text>
+                            <Text style={styles.pollPreviewOptionText} numberOfLines={1}>
+                              {option.text}
+                            </Text>
+                          </View>
+                        ))}
+                      {draft.poll.options.filter((option) => option.text.trim()).length > 4 ? (
+                        <Text style={styles.pollPreviewMore}>
+                          +{draft.poll.options.filter((option) => option.text.trim()).length - 4} more
+                        </Text>
+                      ) : null}
                     </View>
                   </View>
-                  <Pressable
-                    onPress={() => onChangeDraft((current) => ({ ...current, poll: null }))}
-                    style={({ pressed }) => [styles.pollRemoveButton, pressed && styles.buttonPressed]}
-                  >
-                    <Feather name="x" size={16} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-                <View style={styles.pollPreviewOptions}>
-                  {draft.poll.options
-                    .filter((option) => option.text.trim())
-                    .slice(0, 4)
-                    .map((option) => (
-                      <View key={option.id} style={styles.pollPreviewOption}>
-                        <Text style={styles.pollPreviewOptionDot}>•</Text>
-                        <Text style={styles.pollPreviewOptionText} numberOfLines={1}>
-                          {option.text}
+                ) : null}
+
+                {draft.location ? (
+                  <View style={styles.locationPreviewWrap}>
+                    <View style={styles.locationPreviewMapWrap}>
+                      <LocationMapSurface
+                        latitude={draft.location.latitude}
+                        longitude={draft.location.longitude}
+                        dark={theme === 'dark'}
+                        centerPin={false}
+                        interactive={false}
+                      />
+                      <View style={styles.locationPreviewOverlay} pointerEvents="none">
+                        <Feather name="map-pin" size={18} color={colors.white} />
+                        <Text style={styles.locationPreviewOverlayText}>Map preview</Text>
+                      </View>
+                    </View>
+                    <View style={styles.locationPreviewBody}>
+                      <Text style={styles.locationPreviewTitle} numberOfLines={1}>
+                        {draft.location.title}
+                      </Text>
+                      <Text style={styles.locationPreviewAddress} numberOfLines={2}>
+                        {draft.location.address || `${draft.location.latitude.toFixed(5)}, ${draft.location.longitude.toFixed(5)}`}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => onChangeDraft((current) => ({ ...current, location: null }))}
+                      style={({ pressed }) => [styles.removeOverlayButton, pressed && styles.buttonPressed]}
+                    >
+                      <Feather name="x" size={16} color={colors.white} />
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {draft.file ? (
+                  <View style={styles.filePreviewWrap}>
+                    <View style={styles.filePreviewLeft}>
+                      <View style={styles.fileIconWrap}>
+                        <Feather name="file-text" size={18} color={colors.primary} />
+                      </View>
+                      <View style={styles.fileMeta}>
+                        <Text style={styles.fileName} numberOfLines={1}>
+                          {draft.file.fileName}
+                        </Text>
+                        <Text style={styles.fileSize} numberOfLines={1}>
+                          {[draft.file.mimeType, formatFileSize(draft.file.size)].filter(Boolean).join(' · ') || 'File'}
                         </Text>
                       </View>
-                    ))}
-                  {draft.poll.options.filter((option) => option.text.trim()).length > 4 ? (
-                    <Text style={styles.pollPreviewMore}>
-                      +{draft.poll.options.filter((option) => option.text.trim()).length - 4} more
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-
-            {draft.location ? (
-              <View style={styles.locationPreviewWrap}>
-                <View style={styles.locationPreviewMapWrap}>
-                  <LocationMapSurface
-                    latitude={draft.location.latitude}
-                    longitude={draft.location.longitude}
-                    dark={theme === 'dark'}
-                    centerPin={false}
-                    interactive={false}
-                  />
-                  <View style={styles.locationPreviewOverlay} pointerEvents="none">
-                    <Feather name="map-pin" size={18} color={colors.white} />
-                    <Text style={styles.locationPreviewOverlayText}>Map preview</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => onChangeDraft((current) => ({ ...current, file: null }))}
+                      style={({ pressed }) => [styles.fileRemoveButton, pressed && styles.buttonPressed]}
+                    >
+                      <Feather name="x" size={16} color={colors.textMuted} />
+                    </Pressable>
                   </View>
-                </View>
-                <View style={styles.locationPreviewBody}>
-                  <Text style={styles.locationPreviewTitle} numberOfLines={1}>
-                    {draft.location.title}
-                  </Text>
-                  <Text style={styles.locationPreviewAddress} numberOfLines={2}>
-                    {draft.location.address || `${draft.location.latitude.toFixed(5)}, ${draft.location.longitude.toFixed(5)}`}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => onChangeDraft((current) => ({ ...current, location: null }))}
-                  style={({ pressed }) => [styles.removeOverlayButton, pressed && styles.buttonPressed]}
-                >
-                  <Feather name="x" size={16} color={colors.white} />
-                </Pressable>
-              </View>
-            ) : null}
-
-            {draft.file ? (
-              <View style={styles.filePreviewWrap}>
-                <View style={styles.filePreviewLeft}>
-                  <View style={styles.fileIconWrap}>
-                    <Feather name="file-text" size={18} color={colors.primary} />
-                  </View>
-                  <View style={styles.fileMeta}>
-                    <Text style={styles.fileName} numberOfLines={1}>
-                      {draft.file.fileName}
-                    </Text>
-                    <Text style={styles.fileSize} numberOfLines={1}>
-                      {[draft.file.mimeType, formatFileSize(draft.file.size)].filter(Boolean).join(' · ') || 'File'}
-                    </Text>
-                  </View>
-                </View>
-                <Pressable
-                  onPress={() => onChangeDraft((current) => ({ ...current, file: null }))}
-                  style={({ pressed }) => [styles.fileRemoveButton, pressed && styles.buttonPressed]}
-                >
-                  <Feather name="x" size={16} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            ) : null}
-          </ScrollView>
-        ) : composerView === 'poll' ? (
+                ) : null}
+              </ScrollView>
+            </View>
+          ) : composerView === 'poll' ? (
           <View style={styles.pollSheetBody}>
             <View style={styles.photoSheetHeader}>
               <Pressable
@@ -1661,6 +1681,15 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     },
     photoFooter: {
       alignItems: 'flex-end',
+    },
+    formComposerBody: {
+      width: '100%',
+      minHeight: 300,
+      flexShrink: 1,
+    },
+    formScroll: {
+      maxHeight: 340,
+      width: '100%',
     },
     formScrollContent: {
       paddingBottom: spacing.lg,

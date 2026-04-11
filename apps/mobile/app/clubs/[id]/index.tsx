@@ -1,9 +1,11 @@
 import * as Clipboard from 'expo-clipboard'
+import * as FileSystem from 'expo-file-system/legacy'
 import * as Haptics from 'expo-haptics'
+import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
 import QRCode from 'react-native-qrcode-svg'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Image, Linking, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 
@@ -44,6 +46,7 @@ import {
 import { formatFileSize, getExternalLocationUrl } from '../../../src/lib/chatSpecialMessages'
 import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
 import { authApi } from '../../../src/lib/authApi'
+import { getCachedImageUri, warmImageCache } from '../../../src/lib/imageCache'
 import { trpc } from '../../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../../src/lib/theme'
 import { useAuth } from '../../../src/providers/AuthProvider'
@@ -367,6 +370,8 @@ export default function ClubDetailScreen() {
 
   const [announcementComposer, setAnnouncementComposer] = useState<AnnouncementComposerState>(null)
   const [announcementPreviewImage, setAnnouncementPreviewImage] = useState<string | null>(null)
+  const [cachedAnnouncementPreviewImageUri, setCachedAnnouncementPreviewImageUri] = useState<string | null>(null)
+  const [savingAnnouncementPreviewImage, setSavingAnnouncementPreviewImage] = useState(false)
   const [announcementSubmitBusy, setAnnouncementSubmitBusy] = useState(false)
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
   const [clubShareSheetOpen, setClubShareSheetOpen] = useState(false)
@@ -385,6 +390,42 @@ export default function ClubDetailScreen() {
   const closeAnnouncementComposer = useCallback(() => {
     setAnnouncementComposer(null)
   }, [])
+  useEffect(() => {
+    if (!announcementPreviewImage) {
+      setCachedAnnouncementPreviewImageUri(null)
+      return
+    }
+    let cancelled = false
+    void warmImageCache([announcementPreviewImage])
+    void getCachedImageUri(announcementPreviewImage).then((cachedUri) => {
+      if (!cancelled) {
+        setCachedAnnouncementPreviewImageUri(cachedUri)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [announcementPreviewImage])
+  const handleSaveAnnouncementPreviewImage = useCallback(async () => {
+    const next = announcementPreviewImage
+    if (!next || savingAnnouncementPreviewImage) return
+    try {
+      setSavingAnnouncementPreviewImage(true)
+      const permission = await MediaLibrary.requestPermissionsAsync()
+      if (permission.status !== 'granted') {
+        toast.error('Please allow photo access to save images.')
+        return
+      }
+      const targetUri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory}piqle-club-preview-${Date.now()}.jpg`
+      const download = await FileSystem.downloadAsync(next, targetUri)
+      await MediaLibrary.saveToLibraryAsync(download.uri)
+      toast.success('Saved to your photos', 'Saved')
+    } catch {
+      toast.error('Could not save photo.')
+    } finally {
+      setSavingAnnouncementPreviewImage(false)
+    }
+  }, [announcementPreviewImage, savingAnnouncementPreviewImage, toast])
   const handleSubmitAnnouncement = useCallback(async () => {
     const currentComposer = announcementComposer
     if (!currentComposer?.draft.body.trim()) return
@@ -1958,11 +1999,46 @@ export default function ClubDetailScreen() {
         animationType="fade"
         onRequestClose={() => setAnnouncementPreviewImage(null)}
       >
-        <Pressable style={styles.announcementPreviewBackdrop} onPress={() => setAnnouncementPreviewImage(null)}>
-          {announcementPreviewImage ? (
-            <Image source={{ uri: announcementPreviewImage, cache: 'force-cache' }} style={styles.announcementPreviewImage} resizeMode="contain" />
-          ) : null}
-        </Pressable>
+        <View style={styles.announcementPreviewBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAnnouncementPreviewImage(null)} />
+          <Pressable
+            onPress={() => setAnnouncementPreviewImage(null)}
+            style={({ pressed }) => [styles.announcementPreviewCloseButton, pressed && styles.announcementPreviewButtonPressed]}
+          >
+            <Feather name="x" size={20} color="#fff" />
+          </Pressable>
+          <Pressable
+            onPress={() => void handleSaveAnnouncementPreviewImage()}
+            style={({ pressed }) => [styles.announcementPreviewSaveButton, pressed && styles.announcementPreviewButtonPressed]}
+          >
+            {savingAnnouncementPreviewImage ? (
+              <Feather name="loader" size={18} color="#fff" />
+            ) : (
+              <Feather name="download" size={18} color="#fff" />
+            )}
+          </Pressable>
+          <ScrollView
+            style={styles.announcementPreviewScroll}
+            contentContainerStyle={styles.announcementPreviewScrollContent}
+            maximumZoomScale={4}
+            minimumZoomScale={1}
+            pinchGestureEnabled
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            bouncesZoom
+            centerContent
+          >
+            {announcementPreviewImage ? (
+              <View style={styles.announcementPreviewImageFrame}>
+                <Image
+                  source={{ uri: cachedAnnouncementPreviewImageUri || announcementPreviewImage, cache: 'force-cache' }}
+                  style={styles.announcementPreviewImage}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : null}
+          </ScrollView>
+        </View>
       </Modal>
       <FeedbackRatingModal
         open={clubFeedbackOpen}
@@ -2900,6 +2976,50 @@ const createStyles = (colors: ThemePalette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
+  },
+  announcementPreviewCloseButton: {
+    position: 'absolute',
+    top: 56,
+    left: 18,
+    zIndex: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  announcementPreviewSaveButton: {
+    position: 'absolute',
+    top: 56,
+    right: 18,
+    zIndex: 2,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  announcementPreviewButtonPressed: {
+    opacity: 0.8,
+  },
+  announcementPreviewScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  announcementPreviewScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementPreviewImageFrame: {
+    width: '100%',
+    height: '100%',
   },
   announcementPreviewImage: {
     width: '100%',

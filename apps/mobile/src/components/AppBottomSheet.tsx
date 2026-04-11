@@ -35,6 +35,8 @@ export type AppBottomSheetProps = PropsWithChildren<{
   /** Доп. отступ снизу внутри панели (до safe area). */
   bottomPaddingExtra?: number
   maxHeight?: number | string
+  keyboardOffsetCompensation?: number
+  topGapExtra?: number
   /** Вызывается после завершения анимации закрытия (удобно для цепочки шторок без двух Modal одновременно). */
   onDismissed?: () => void
 }>
@@ -53,6 +55,8 @@ export function AppBottomSheet({
   footer,
   bottomPaddingExtra = 0,
   maxHeight = '88%',
+  keyboardOffsetCompensation = 0,
+  topGapExtra = 0,
   onDismissed,
 }: AppBottomSheetProps) {
   const { colors } = useAppTheme()
@@ -78,7 +82,7 @@ export function AppBottomSheet({
 
     const onKeyboardFrame = (event: any) => {
       const keyboardHeight = Number(event?.endCoordinates?.height ?? 0)
-      const nextOffset = Math.max(0, keyboardHeight - insets.bottom)
+      const nextOffset = Math.max(0, keyboardHeight - insets.bottom - keyboardOffsetCompensation)
       animateKeyboardOffset(nextOffset, Number(event?.duration ?? 260))
     }
 
@@ -99,7 +103,7 @@ export function AppBottomSheet({
       showSub.remove()
       hideSub.remove()
     }
-  }, [insets.bottom, keyboardOffset])
+  }, [insets.bottom, keyboardOffset, keyboardOffsetCompensation])
 
   useEffect(() => {
     if (open) {
@@ -162,6 +166,7 @@ export function AppBottomSheet({
             styles.sheet,
             {
               marginBottom: keyboardOffset,
+              marginTop: insets.top + topGapExtra,
               paddingBottom: padBottom,
               maxHeight,
               transform: [{ translateY: sheetY }],
