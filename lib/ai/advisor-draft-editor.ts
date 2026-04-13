@@ -122,7 +122,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
     return {
       kind: 'create_campaign',
       title: `Update campaign audience: ${audience.name}`,
-      summary: `${state.currentCampaign.channel.toUpperCase()} outreach for ${audience.count || state.currentCampaign.audienceCount || 0} members`,
+      summary: `${state.currentCampaign.channel.toUpperCase()} ${state.currentCampaign.execution.mode === 'send_now' ? 'outreach' : 'draft'} for ${audience.count || state.currentCampaign.audienceCount || 0} members`,
       requiresApproval: true,
       audience,
       campaign: {
@@ -131,6 +131,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
         subject: state.currentCampaign.subject,
         body: state.currentCampaign.body,
         smsBody: state.currentCampaign.smsBody,
+        execution: state.currentCampaign.execution,
       },
     }
   }
@@ -171,12 +172,74 @@ function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationS
     changed = true
   }
 
+  if (containsAny(lower, [
+    /\b(send now|launch now|go ahead|approve and send|send it)\b/,
+    /\b(отправь сейчас|запускай|запусти сейчас)\b/,
+  ])) {
+    campaign.execution = {
+      ...campaign.execution,
+      mode: 'send_now',
+    }
+    changed = true
+  } else if (containsAny(lower, [
+    /\b(save as draft|keep as draft|draft only|don'?t send|do not send|hold for now|preview only)\b/,
+    /\b(сохрани как черновик|оставь как черновик|не отправляй|только черновик)\b/,
+  ])) {
+    campaign.execution = {
+      ...campaign.execution,
+      mode: 'save_draft',
+    }
+    changed = true
+  }
+
+  if (containsAny(lower, [
+    /\b(only members with email|email only recipients|exclude members without email|only reachable by email)\b/,
+    /\b(только с email|убери без email|исключи без email)\b/,
+  ])) {
+    campaign.execution = {
+      ...campaign.execution,
+      recipientRules: {
+        ...campaign.execution.recipientRules,
+        requireEmail: true,
+      },
+    }
+    changed = true
+  }
+
+  if (containsAny(lower, [
+    /\b(only members with phone|exclude members without phone|phone only recipients)\b/,
+    /\b(только с телефоном|убери без телефона|исключи без телефона)\b/,
+  ])) {
+    campaign.execution = {
+      ...campaign.execution,
+      recipientRules: {
+        ...campaign.execution.recipientRules,
+        requirePhone: true,
+      },
+    }
+    changed = true
+  }
+
+  if (containsAny(lower, [
+    /\b(sms opt-?ins only|opt-?ins only|only opted in members)\b/,
+    /\b(только sms opt-?in|только с согласием на sms|только opt-?in)\b/,
+  ])) {
+    campaign.execution = {
+      ...campaign.execution,
+      recipientRules: {
+        ...campaign.execution.recipientRules,
+        smsOptInOnly: true,
+      },
+    }
+    changed = true
+  }
+
   if (!changed) return null
 
   return {
     kind: 'create_campaign',
     title: `Update campaign draft: ${state.currentAudience.name}`,
-    summary: `${campaign.channel.toUpperCase()} outreach for ${state.currentAudience.count || state.currentCampaign.audienceCount || 0} members`,
+    summary: `${campaign.channel.toUpperCase()} ${campaign.execution.mode === 'send_now' ? 'outreach' : 'draft'} for ${state.currentAudience.count || state.currentCampaign.audienceCount || 0} members`,
     requiresApproval: true,
     audience: state.currentAudience,
     campaign: {
@@ -185,6 +248,7 @@ function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationS
       subject: campaign.subject,
       body: campaign.body,
       smsBody: campaign.smsBody,
+      execution: campaign.execution,
     },
   }
 }
@@ -207,6 +271,12 @@ Rules:
 - For "SMS only", set channel=sms and provide smsBody.
 - For "email only", set channel=email.
 - For "both", set channel=both.
+- Preserve campaign.execution unless the user clearly changes send timing or recipient restrictions.
+- For "send now", set campaign.execution.mode=send_now.
+- For "save as draft" or "don't send yet", set campaign.execution.mode=save_draft.
+- For "only members with email", set recipientRules.requireEmail=true.
+- For "only members with phone", set recipientRules.requirePhone=true.
+- For "SMS opt-ins only", set recipientRules.smsOptInOnly=true.
 - If this is not clearly an edit of the active draft, return {"handled":false}.`
 
 const EDIT_COPY: Record<'en' | 'ru' | 'es', {

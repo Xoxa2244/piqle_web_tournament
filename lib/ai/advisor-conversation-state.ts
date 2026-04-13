@@ -129,8 +129,15 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
 
   if (state.currentCampaign) {
     parts.push(`Active campaign draft: ${state.currentCampaign.type} via ${state.currentCampaign.channel}`)
+    parts.push(`Campaign delivery mode: ${state.currentCampaign.execution.mode}`)
     if (state.currentCampaign.audienceName) parts.push(`Campaign audience: ${state.currentCampaign.audienceName}`)
     if (typeof state.currentCampaign.audienceCount === 'number') parts.push(`Campaign audience count: ${state.currentCampaign.audienceCount}`)
+    const ruleParts = [
+      state.currentCampaign.execution.recipientRules?.requireEmail ? 'require email' : null,
+      state.currentCampaign.execution.recipientRules?.requirePhone ? 'require phone' : null,
+      state.currentCampaign.execution.recipientRules?.smsOptInOnly ? 'SMS opt-in only' : null,
+    ].filter(Boolean)
+    if (ruleParts.length > 0) parts.push(`Campaign recipient rules: ${ruleParts.join(', ')}`)
     if (state.currentCampaign.subject) parts.push(`Campaign subject: ${state.currentCampaign.subject}`)
     parts.push(`Campaign body preview: ${state.currentCampaign.body.slice(0, 280)}`)
   }

@@ -145,6 +145,16 @@ function withSuggested(text: string, suggestions: string[]) {
   return `${text}\n\n<suggested>\n${suggestions.join('\n')}\n</suggested>`
 }
 
+function buildCampaignReadyText(
+  copy: ReturnType<typeof getAdvisorActionCopy>,
+  count: number,
+  name: string,
+  mode: 'save_draft' | 'send_now',
+) {
+  if (mode === 'send_now') return copy.campaignReady(count, name)
+  return copy.campaignDraftReady(count, name)
+}
+
 function isCampaignOnlyFollowUp(message: string) {
   const lower = message.toLowerCase()
   const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
@@ -353,6 +363,7 @@ export async function POST(req: Request) {
 
       const campaignType = plan.campaignType || 'REACTIVATION'
       const channel = plan.channel || 'email'
+      const deliveryMode = plan.deliveryMode || 'save_draft'
       const generated = await caller.intelligence.generateCampaignMessage({
         clubId,
         campaignType,
@@ -366,7 +377,7 @@ export async function POST(req: Request) {
       const action: AdvisorAction = {
         kind: 'create_campaign',
         title: `Launch ${campaignType.replace(/_/g, ' ').toLowerCase()} campaign`,
-        summary: `${channel.toUpperCase()} outreach for ${audienceDraft.count || 0} members`,
+        summary: `${channel.toUpperCase()} ${deliveryMode === 'send_now' ? 'outreach' : 'draft'} for ${audienceDraft.count || 0} members`,
         requiresApproval: true,
         audience: audienceDraft,
         campaign: {
@@ -375,12 +386,15 @@ export async function POST(req: Request) {
           subject: generated.subject,
           body: generated.body,
           smsBody: generated.smsBody || undefined,
+          execution: {
+            mode: deliveryMode,
+          },
         },
       }
 
       assistantState = buildAdvisorConversationStateFromAction(action)
       assistantMessage = withSuggested(
-        `${copy.campaignReady(audienceDraft.count || 0, audienceDraft.name)}\n\n${buildAdvisorActionTag(action)}`,
+        `${buildCampaignReadyText(copy, audienceDraft.count || 0, audienceDraft.name, deliveryMode)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_campaign,
       )
     }

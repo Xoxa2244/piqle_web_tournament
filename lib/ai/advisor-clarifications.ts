@@ -2,7 +2,7 @@ import 'server-only'
 
 import { z } from 'zod'
 import type { SupportedLanguage } from '@/lib/ai/llm/language'
-import { advisorCampaignTypeEnum, advisorChannelEnum } from './advisor-actions'
+import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } from './advisor-actions'
 import type { AdvisorIntentPlan } from './advisor-action-planner'
 import type { AdvisorConversationState } from './advisor-conversation-state'
 
@@ -15,6 +15,7 @@ export const advisorPendingClarificationSchema = z.object({
   audienceText: z.string().max(500).optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
   channel: advisorChannelEnum.optional(),
+  deliveryMode: advisorDeliveryModeEnum.optional(),
   usePreviousCohort: z.boolean().optional(),
 })
 
@@ -184,6 +185,7 @@ export function maybeStartAdvisorClarification(opts: {
       originalMessage: message,
       campaignType: plan.campaignType,
       channel: explicitChannel || undefined,
+      deliveryMode: plan.deliveryMode,
     }, copy.needAudienceMode, copy.audienceModeOptions)
   }
 
@@ -196,6 +198,7 @@ export function maybeStartAdvisorClarification(opts: {
       originalMessage: message,
       campaignType: plan.campaignType,
       channel: explicitChannel || undefined,
+      deliveryMode: plan.deliveryMode,
     }, copy.needAudienceForCampaign, copy.audienceOptions)
   }
 
@@ -208,6 +211,7 @@ export function maybeStartAdvisorClarification(opts: {
       originalMessage: message,
       audienceText: usesCurrentAudience ? undefined : (plan.audienceText || message),
       campaignType: plan.campaignType,
+      deliveryMode: plan.deliveryMode,
       usePreviousCohort: usesCurrentAudience,
     }, copy.needChannel, copy.channelOptions)
   }
@@ -243,6 +247,7 @@ export function resolveAdvisorClarification(opts: {
         audienceText: pending.usePreviousCohort ? undefined : pending.audienceText,
         campaignType: pending.campaignType,
         channel: explicitChannel,
+        deliveryMode: pending.deliveryMode,
       },
     }
   }
@@ -255,6 +260,7 @@ export function resolveAdvisorClarification(opts: {
           usePreviousCohort: true,
           campaignType: pending.campaignType,
           channel: pending.channel,
+          deliveryMode: pending.deliveryMode,
         },
       }
     }
@@ -288,6 +294,7 @@ export function resolveAdvisorClarification(opts: {
         audienceText: message,
         campaignType: pending.campaignType,
         channel: pending.channel,
+        deliveryMode: pending.deliveryMode,
       },
     }
   }
@@ -300,6 +307,7 @@ export function resolveAdvisorClarification(opts: {
           usePreviousCohort: true,
           campaignType: pending.campaignType,
           channel: pending.channel,
+          deliveryMode: pending.deliveryMode,
         },
       }
     }
@@ -336,6 +344,7 @@ export function resolveAdvisorClarification(opts: {
           originalMessage: pending.originalMessage,
           audienceText: message,
           campaignType: pending.campaignType,
+          deliveryMode: pending.deliveryMode,
           usePreviousCohort: false,
         }, copy.needChannel, copy.channelOptions),
       }
@@ -348,6 +357,7 @@ export function resolveAdvisorClarification(opts: {
         audienceText: message,
         campaignType: pending.campaignType,
         channel: pending.channel || explicitChannel || undefined,
+        deliveryMode: pending.deliveryMode,
       },
     }
   }

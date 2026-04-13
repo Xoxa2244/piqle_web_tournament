@@ -180,6 +180,7 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
   const where = buildCohortWhereClause(filters)
   return prisma.$queryRawUnsafe(`
     SELECT u.id, u.name, u.email, u.gender, u.city, u.phone,
+           u.sms_opt_in as "smsOptIn",
            u.date_of_birth as "dateOfBirth",
            CASE WHEN u.date_of_birth IS NOT NULL
              THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
@@ -197,6 +198,24 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
     ORDER BY u.name ASC
     LIMIT 500
   `, clubId)
+}
+
+function applyAdvisorRecipientRules(
+  members: Array<{ id: string; email?: string | null; phone?: string | null; smsOptIn?: boolean | null }>,
+  rules?: {
+    requireEmail?: boolean
+    requirePhone?: boolean
+    smsOptInOnly?: boolean
+  } | null,
+) {
+  if (!rules) return members
+
+  return members.filter((member) => {
+    if (rules.requireEmail && !member.email) return false
+    if (rules.requirePhone && !member.phone) return false
+    if (rules.smsOptInOnly && !member.smsOptIn) return false
+    return true
+  })
 }
 
 const COHORT_PARSE_SYSTEM = `You convert natural language cohort descriptions into JSON filter arrays.
@@ -328,13 +347,18 @@ async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
 
   const users = await prisma.user.findMany({
     where: { id: { in: input.memberIds } },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
 
   let sent = 0
   let failed = 0
   let skipped = 0
+  let emailSent = 0
+  let smsSent = 0
   const results: { userId: string; status: string; channel: string; messageId?: string }[] = []
+  const shouldSendEmail = input.channel === 'email' || input.channel === 'both'
+  const shouldSendSms = input.channel === 'sms' || input.channel === 'both'
+  const sendSmsFn = shouldSendSms ? (await import('@/lib/sms')).sendSms : null
 
   for (const user of users) {
     const memberName = user.name?.split(' ')[0] || 'there'
@@ -343,33 +367,66 @@ async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
 
     const emailSubject = input.subject ? interpolate(input.subject) : `Message from ${club.name}`
     const emailBody = interpolate(input.body)
-    const smsText = input.smsBody ? interpolate(input.smsBody) : undefined
+    const smsText = input.smsBody
+      ? interpolate(input.smsBody)
+      : ((input.channel === 'sms' || input.channel === 'both') ? interpolate(input.body).slice(0, 300) : undefined)
 
     let channelSent = false
+    let emailDelivered = false
+    let smsDelivered = false
+    let emailSkipped = false
+    let smsSkipped = false
     let externalMessageId: string | null = null
 
-    if ((input.channel === 'email' || input.channel === 'both') && user.email) {
-      try {
-        const { sendOutreachEmail } = await import('@/lib/email')
-        const result = await sendOutreachEmail({
-          to: user.email,
-          subject: emailSubject,
-          body: emailBody,
-          clubName: club.name,
-          bookingUrl,
-        })
-        channelSent = true
-        externalMessageId = result.messageId || null
-      } catch (err) {
-        log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
+    if (shouldSendEmail) {
+      if (user.email) {
+        try {
+          const { sendOutreachEmail } = await import('@/lib/email')
+          const result = await sendOutreachEmail({
+            to: user.email,
+            subject: emailSubject,
+            body: emailBody,
+            clubName: club.name,
+            bookingUrl,
+          })
+          channelSent = true
+          emailDelivered = true
+          emailSent += 1
+          externalMessageId = result.messageId || null
+        } catch (err) {
+          log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
+        }
+      } else {
+        emailSkipped = true
       }
     }
 
-    if ((input.channel === 'sms' || input.channel === 'both') && smsText) {
-      // SMS not yet implemented — skip silently
+    if (shouldSendSms) {
+      if (smsText && user.phone && user.smsOptIn && sendSmsFn) {
+        try {
+          const result = await sendSmsFn({
+            to: user.phone,
+            body: smsText,
+          })
+          channelSent = true
+          smsDelivered = true
+          smsSent += 1
+          externalMessageId = externalMessageId || result.sid || null
+        } catch (err) {
+          log.error(`[createCampaign] SMS failed for ${user.id}:`, (err as Error).message)
+        }
+      } else {
+        smsSkipped = true
+      }
     }
 
-    const status = channelSent ? 'sent' : (!user.email && (input.channel === 'email' || input.channel === 'both') ? 'skipped' : 'failed')
+    const status = channelSent
+      ? 'sent'
+      : input.channel === 'email'
+        ? (emailSkipped ? 'skipped' : 'failed')
+        : input.channel === 'sms'
+          ? (smsSkipped ? 'skipped' : 'failed')
+          : (emailSkipped && smsSkipped ? 'skipped' : 'failed')
 
     try {
       await prisma.aIRecommendationLog.create({
@@ -385,6 +442,8 @@ async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
             source: 'manual_campaign',
             subject: emailSubject,
             bodyPreview: emailBody.slice(0, 200),
+            emailDelivered,
+            smsDelivered,
           },
           status,
         },
@@ -402,12 +461,12 @@ async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
 
   if (sent > 0) {
     import('@/lib/stripe-usage').then(({ reportUsage }) => {
-      if (input.channel === 'email' || input.channel === 'both') reportUsage(input.clubId, 'email', sent)
-      if (input.channel === 'sms' || input.channel === 'both') reportUsage(input.clubId, 'sms', sent)
+      if (emailSent > 0) reportUsage(input.clubId, 'email', emailSent)
+      if (smsSent > 0) reportUsage(input.clubId, 'sms', smsSent)
     }).catch(() => {})
   }
 
-  return { sent, failed, skipped, results }
+  return { sent, failed, skipped, emailSent, smsSent, results }
 }
 
 export const intelligenceRouter = createTRPCRouter({
@@ -4146,10 +4205,34 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       const members = await queryCohortMembers(ctx.prisma, input.clubId, audience.filters as CohortFilter[])
-      const memberIds = members.map((member: any) => member.id).filter(Boolean)
+      const eligibleMembers = applyAdvisorRecipientRules(
+        members,
+        input.action.campaign.execution.recipientRules,
+      )
+      const memberIds = eligibleMembers.map((member: any) => member.id).filter(Boolean)
+      const excludedByRules = Math.max(0, members.length - memberIds.length)
 
       if (memberIds.length === 0) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This action has no matching members to message.' })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: excludedByRules > 0
+            ? 'No members match the current delivery rules for this action.'
+            : 'This action has no matching members to message.',
+        })
+      }
+
+      if (input.action.campaign.execution.mode === 'save_draft') {
+        return {
+          ok: true,
+          kind: 'create_campaign' as const,
+          cohortId,
+          cohortName,
+          memberCount: memberIds.length,
+          audienceCount: members.length,
+          excludedByRules,
+          deliveryMode: 'save_draft' as const,
+          savedAsDraft: true,
+        }
       }
 
       await enforceCampaignUsageLimits(input.clubId, input.action.campaign.channel, memberIds.length)
@@ -4169,6 +4252,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         cohortId,
         cohortName,
         memberCount: memberIds.length,
+        audienceCount: members.length,
+        excludedByRules,
+        deliveryMode: 'send_now' as const,
         ...result,
       }
     }),

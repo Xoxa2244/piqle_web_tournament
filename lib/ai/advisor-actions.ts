@@ -10,6 +10,16 @@ export const advisorCampaignTypeEnum = z.enum([
 ])
 
 export const advisorChannelEnum = z.enum(['email', 'sms', 'both'])
+export const advisorDeliveryModeEnum = z.enum(['save_draft', 'send_now'])
+export const advisorRecipientRulesSchema = z.object({
+  requireEmail: z.boolean().optional(),
+  requirePhone: z.boolean().optional(),
+  smsOptInOnly: z.boolean().optional(),
+})
+export const advisorCampaignExecutionSchema = z.object({
+  mode: advisorDeliveryModeEnum.default('save_draft'),
+  recipientRules: advisorRecipientRulesSchema.optional(),
+})
 
 export const cohortFilterSchema = z.object({
   field: z.string(),
@@ -31,6 +41,7 @@ export const advisorCampaignDraftSchema = z.object({
   subject: z.string().max(100).optional(),
   body: z.string().min(1).max(2000),
   smsBody: z.string().max(500).optional(),
+  execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
 })
 
 export const advisorActionSchema = z.discriminatedUnion('kind', [

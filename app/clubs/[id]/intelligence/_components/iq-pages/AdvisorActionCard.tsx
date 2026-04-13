@@ -21,6 +21,23 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
     return 'Email'
   }, [action])
 
+  const deliveryModeLabel = useMemo(() => {
+    if (action.kind !== 'create_campaign') return null
+    return action.campaign.execution.mode === 'send_now' ? 'Send Now' : 'Save Draft'
+  }, [action])
+
+  const recipientRuleLabels = useMemo(() => {
+    if (action.kind !== 'create_campaign') return []
+    const rules = action.campaign.execution.recipientRules
+    if (!rules) return []
+
+    return [
+      rules.requireEmail ? 'Require email' : null,
+      rules.requirePhone ? 'Require phone' : null,
+      rules.smsOptInOnly ? 'SMS opt-in only' : null,
+    ].filter(Boolean) as string[]
+  }, [action])
+
   const audienceCount = action.kind === 'create_cohort'
     ? action.cohort.count ?? 0
     : action.audience.count ?? 0
@@ -101,10 +118,26 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {channelLabel}
             </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {deliveryModeLabel}
+            </div>
             {action.campaign.subject && (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)' }}>
                 <strong style={{ color: 'var(--heading)' }}>Subject:</strong> {action.campaign.subject}
               </p>
+            )}
+            {recipientRuleLabels.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {recipientRuleLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-1 rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         ) : (
@@ -145,11 +178,15 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
-              : `Campaign sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}`}
+              : result.savedAsDraft
+                ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
+                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`}
           </div>
         ) : (
           <div className="text-xs" style={{ color: 'var(--t3)' }}>
-            Approval is required before the platform makes this change.
+            {action.kind === 'create_campaign' && action.campaign.execution.mode === 'save_draft'
+              ? 'Approval is required before the platform saves this campaign draft.'
+              : 'Approval is required before the platform makes this change.'}
           </div>
         )}
 
@@ -165,7 +202,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           }}
         >
           {executeAction.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-          {isDone ? 'Approved' : 'Approve'}
+          {isDone
+            ? 'Approved'
+            : action.kind === 'create_campaign'
+              ? (action.campaign.execution.mode === 'save_draft' ? 'Save Draft' : 'Send Now')
+              : 'Approve'}
         </button>
       </div>
 
