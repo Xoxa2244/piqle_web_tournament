@@ -14,6 +14,7 @@ import type {
   NormalizedMembershipStatus,
   NormalizedMembershipType,
 } from "@/types/intelligence"
+import type { AgentPolicyScenario } from "@/lib/ai/agent-policy-simulator"
 
 // ── Types ──
 interface AgentLog {
@@ -492,6 +493,17 @@ function actionLabel(action: string) {
     case "checkIn": return "Check-in"
     default: return action
   }
+}
+
+function buildAdvisorPolicyPrompt(scenario: AgentPolicyScenario) {
+  const actionName = actionLabel(scenario.action).toLowerCase()
+  const base = `Update the club autopilot policy so ${actionName} can run in auto mode. Keep the current confidence and recipient limits unless a safer tweak is needed, and explain what would still remain blocked or review-only.`
+
+  if (scenario.requiresLiveMode) {
+    return `${base} Also note that the club is still in test mode, so include the live-mode change needed for this to actually auto-run.`
+  }
+
+  return base
 }
 
 function normalizeSimulationOutcome(
@@ -1166,11 +1178,11 @@ export function AgentIQ({
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </Link>
                     <Link
-                      href={`/clubs/${clubId}/intelligence/advisor`}
+                      href={`/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(buildAdvisorPolicyPrompt(scenario))}`}
                       className="inline-flex items-center gap-1 text-xs font-medium"
                       style={{ color: "#10B981" }}
                     >
-                      Ask Advisor to apply
+                      Apply in Advisor
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>

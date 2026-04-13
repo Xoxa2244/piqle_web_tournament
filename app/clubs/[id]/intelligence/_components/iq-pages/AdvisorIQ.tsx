@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { motion, AnimatePresence } from "motion/react";
@@ -559,6 +560,7 @@ function AdvisorClarificationCard({
 /* ============================================= */
 export function AdvisorIQ({ clubId }: { clubId: string }) {
   const { isDark } = useTheme();
+  const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -570,6 +572,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const convIdRef = useRef<string | null>(null);
   const pendingConvIdRef = useRef<string | null>(null);
   const loadFromDbRef = useRef(false);
+  const appliedPromptRef = useRef<string | null>(null);
   convIdRef.current = conversationId;
 
   // Build transport (memoized on clubId)
@@ -627,6 +630,19 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
+
+  useEffect(() => {
+    const prompt = searchParams.get('prompt');
+    if (!prompt) return;
+    if (appliedPromptRef.current === prompt) return;
+
+    appliedPromptRef.current = prompt;
+    setInputValue(prompt);
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, [searchParams]);
 
   // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
