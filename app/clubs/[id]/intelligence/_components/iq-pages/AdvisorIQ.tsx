@@ -7,7 +7,7 @@ import {
     Brain, Send, Sparkles, TrendingUp, Users, CalendarDays,
     DollarSign, Target, Lightbulb, BarChart3, Clock, Zap,
     MessageSquare, ChevronRight, Mic, Paperclip, RotateCcw,
-    ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2, CheckCircle2,
+    ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2, CheckCircle2, Mail,
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
@@ -112,6 +112,188 @@ function classifySuggestionChip(text: string) {
   }
 
   return { tone: "default" as const, icon: Sparkles };
+}
+
+type PendingClarification = {
+  action: 'create_cohort' | 'draft_campaign' | 'fill_session' | 'reactivate_members'
+  field: 'audience' | 'audience_mode' | 'channel' | 'schedule' | 'session'
+  question: string
+  options: string[]
+  sessionOptions?: Array<{
+    id: string
+    title: string
+    date: string
+    startTime: string
+    endTime?: string | null
+    court?: string | null
+    format?: string | null
+    spotsRemaining?: number
+  }>
+}
+
+function getPendingClarification(metadata: unknown): PendingClarification | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const advisorState = (metadata as any).advisorState;
+  const pending = advisorState?.pendingClarification;
+  if (!pending || typeof pending !== 'object') return null;
+  if (typeof pending.question !== 'string' || !Array.isArray(pending.options)) return null;
+  return pending as PendingClarification;
+}
+
+function getClarificationDraft(field: PendingClarification['field']) {
+  if (field === 'audience' || field === 'audience_mode') return 'Target members who ';
+  if (field === 'schedule') return 'Send it ';
+  if (field === 'session') return 'Fill the ';
+  return '';
+}
+
+function getClarificationOptionUi(field: PendingClarification['field'], option: string) {
+  const lower = option.toLowerCase();
+
+  if (field === 'channel') {
+    if (lower.includes('sms')) return { icon: Send, tone: 'choice' as const };
+    if (lower.includes('email')) return { icon: Mail, tone: 'primary' as const };
+  }
+
+  if (field === 'schedule' || /\b(today|tomorrow|friday|tuesday|tonight|\d{1,2}(:\d{2})?\s*(am|pm))\b/.test(lower)) {
+    return { icon: CalendarDays, tone: 'choice' as const };
+  }
+
+  if (field === 'audience' || field === 'audience_mode') {
+    if (lower.includes('current audience') || lower.includes('текущ') || lower.includes('actual')) {
+      return { icon: CheckCircle2, tone: 'primary' as const };
+    }
+    return { icon: Users, tone: 'default' as const };
+  }
+
+  if (field === 'session') {
+    return { icon: CalendarDays, tone: 'default' as const };
+  }
+
+  return { icon: Sparkles, tone: 'default' as const };
+}
+
+function getClarificationOptionStyles(tone: 'primary' | 'choice' | 'default') {
+  if (tone === 'primary') {
+    return {
+      background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))",
+      border: "1px solid rgba(139,92,246,0.28)",
+      color: "var(--heading)",
+    };
+  }
+  if (tone === 'choice') {
+    return {
+      background: "rgba(6,182,212,0.08)",
+      border: "1px solid rgba(6,182,212,0.22)",
+      color: "var(--t2)",
+    };
+  }
+  return {
+    background: "rgba(139,92,246,0.08)",
+    border: "1px solid rgba(139,92,246,0.2)",
+    color: "var(--t2)",
+  };
+}
+
+function AdvisorClarificationCard({
+  pending,
+  onSelect,
+  onDraft,
+}: {
+  pending: PendingClarification
+  onSelect: (value: string) => void
+  onDraft: (value: string) => void
+}) {
+  const draftSeed = getClarificationDraft(pending.field);
+
+  return (
+    <div
+      className="mt-3 rounded-2xl p-4"
+      style={{
+        background: "rgba(6,182,212,0.06)",
+        border: "1px solid rgba(6,182,212,0.18)",
+      }}
+    >
+      <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: "#06B6D4", fontWeight: 700 }}>
+        Agent Question
+      </div>
+      <div className="text-sm mt-1" style={{ fontWeight: 700, color: "var(--heading)" }}>
+        {pending.question}
+      </div>
+      <p className="text-xs mt-2" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+        Pick a quick answer below or type your own custom instruction.
+      </p>
+
+      {pending.field === 'session' && pending.sessionOptions?.length ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+          {pending.sessionOptions.map((session) => (
+            <button
+              key={session.id}
+              onClick={() => onSelect(`${session.date} ${session.startTime} ${session.title}`)}
+              className="text-left rounded-xl p-3 transition-all hover:scale-[1.01]"
+              style={{
+                background: "var(--subtle)",
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <div className="flex items-center gap-2 text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>
+                <CalendarDays className="w-3.5 h-3.5" />
+                Session option
+              </div>
+              <div className="text-sm mt-2" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                {session.title}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                {session.date} · {session.startTime}{session.endTime ? `-${session.endTime}` : ''}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--t2)" }}>
+                {[session.court, session.format, typeof session.spotsRemaining === 'number' ? `${session.spotsRemaining} spots left` : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {pending.options.map((option) => {
+            const optionUi = getClarificationOptionUi(pending.field, option);
+            const OptionIcon = optionUi.icon;
+            return (
+              <button
+                key={option}
+                onClick={() => onSelect(option)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all hover:scale-[1.02]"
+                style={{
+                  ...getClarificationOptionStyles(optionUi.tone),
+                  fontWeight: 600,
+                }}
+              >
+                <OptionIcon className="w-3.5 h-3.5" />
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 mt-3">
+        <button
+          onClick={() => onDraft(draftSeed)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{
+            background: "rgba(148,163,184,0.08)",
+            border: "1px solid rgba(148,163,184,0.18)",
+            color: "var(--t2)",
+            fontWeight: 600,
+          }}
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          Type custom answer
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ============================================= */
@@ -398,6 +580,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               const text = getMessageText(msg);
               const action = msg.role === 'assistant' ? extractAdvisorAction(text) : null;
               const actionState = action ? getAdvisorActionRuntimeState((msg as any).metadata) : null;
+              const pendingClarification = msg.role === 'assistant'
+                ? getPendingClarification((msg as any).metadata)
+                : null;
               const textWithoutAction = msg.role === 'assistant' ? stripAdvisorAction(text) : text;
               // Debug: log message structure
               if (typeof window !== 'undefined') {
@@ -464,8 +649,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                       />
                     )}
 
+                    {msg.role === "assistant" && pendingClarification && isLastAssistant && !isBusy && (
+                      <AdvisorClarificationCard
+                        pending={pendingClarification}
+                        onSelect={handleSend}
+                        onDraft={draftIntoComposer}
+                      />
+                    )}
+
                     {/* Suggested follow-up questions */}
-                    {suggestions.length > 0 && msg.role === "assistant" && isLastAssistant && !isBusy && (
+                    {suggestions.length > 0 && msg.role === "assistant" && isLastAssistant && !isBusy && !pendingClarification && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {suggestions.map((q, qi) => (
                           (() => {
