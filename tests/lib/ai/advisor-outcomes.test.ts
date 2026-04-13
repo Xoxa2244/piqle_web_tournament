@@ -32,6 +32,30 @@ const createCampaignAction: AdvisorAction = {
   },
 }
 
+const trialFollowUpAction: AdvisorAction = {
+  kind: 'trial_follow_up',
+  title: 'Prepare trial follow-up',
+  summary: 'EMAIL draft for 6 eligible trial members',
+  requiresApproval: true,
+  lifecycle: {
+    lifecycle: 'trial_follow_up',
+    campaignType: 'RETENTION_BOOST',
+    label: 'Trial members with no first booking',
+    channel: 'email',
+    candidateCount: 6,
+    subject: 'Ready for your first game?',
+    message: 'Hi {{name}}, your trial is active at {{club}} and we would love to help you book your first session.',
+    execution: {
+      mode: 'send_later',
+      scheduledFor: '2026-04-14T16:00:00.000Z',
+      timeZone: 'America/Los_Angeles',
+    },
+    candidates: [
+      { memberId: 'trial-1', name: 'Avery', score: 96, daysSinceSignal: 3, membershipStatus: 'trial', topReason: 'Joined 3 days ago and has not booked yet.' },
+    ],
+  },
+}
+
 describe('advisor outcomes', () => {
   it('reads the resolved advisor action from metadata', () => {
     expect(
@@ -84,5 +108,24 @@ describe('advisor outcomes', () => {
         advisorState: state,
       })?.summary,
     ).toContain('Campaign sent to 6 members')
+  })
+
+  it('stores native membership lifecycle outcomes in advisor memory', () => {
+    const baseState = buildAdvisorConversationStateFromAction(trialFollowUpAction, '2026-04-13T18:00:00.000Z')
+    const outcome = buildAdvisorOutcomeMemory(
+      trialFollowUpAction,
+      {
+        kind: 'trial_follow_up',
+        deliveryMode: 'send_later',
+        scheduledLabel: 'Tue, Apr 14, 9:00 AM PDT',
+        memberCount: 4,
+      },
+      '2026-04-13T18:20:00.000Z',
+    )
+
+    const state = withAdvisorOutcome(baseState, outcome, '2026-04-13T18:20:00.000Z')
+
+    expect(state.latestOutcome?.summary).toContain('Trial follow-up scheduled')
+    expect(buildAdvisorStatePrompt(state)).toContain('Latest completed outcome: Trial follow-up scheduled')
   })
 })

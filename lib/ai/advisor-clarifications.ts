@@ -176,7 +176,15 @@ export function maybeStartAdvisorClarification(opts: {
   const { message, plan, state, language, timeZone } = opts
   const copy = getCopy(language)
 
-  if (plan.action === 'none' || plan.action === 'fill_session' || plan.action === 'reactivate_members' || plan.action === 'update_contact_policy' || plan.action === 'update_autonomy_policy') return null
+  if (
+    plan.action === 'none' ||
+    plan.action === 'fill_session' ||
+    plan.action === 'reactivate_members' ||
+    plan.action === 'trial_follow_up' ||
+    plan.action === 'renewal_reactivation' ||
+    plan.action === 'update_contact_policy' ||
+    plan.action === 'update_autonomy_policy'
+  ) return null
 
   if (plan.action === 'create_cohort') {
     if (hasMeaningfulAudienceDescription(plan.audienceText || message)) return null

@@ -4,8 +4,10 @@ import { z } from 'zod'
 import {
   advisorCampaignDraftSchema,
   advisorCohortDraftSchema,
+  advisorRenewalReactivationDraftSchema,
   advisorReactivationDraftSchema,
   advisorSessionDraftSchema,
+  advisorTrialFollowUpDraftSchema,
   extractAdvisorAction,
   type AdvisorAction,
 } from './advisor-actions'
@@ -26,11 +28,12 @@ export const advisorConversationStateSchema = z.object({
   currentCampaign: advisorActiveCampaignSchema.optional(),
   currentSession: advisorSessionDraftSchema.optional(),
   currentReactivation: advisorReactivationDraftSchema.optional(),
+  currentMembershipLifecycle: z.union([advisorTrialFollowUpDraftSchema, advisorRenewalReactivationDraftSchema]).optional(),
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
   currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
   latestOutcome: advisorOutcomeMemorySchema.optional(),
   recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy', 'update_autonomy_policy']).optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'update_contact_policy', 'update_autonomy_policy']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -88,6 +91,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'reactivate_members') {
     return finalizeAdvisorConversationState({
       currentReactivation: action.reactivation,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    })
+  }
+
+  if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
+    return finalizeAdvisorConversationState({
+      currentMembershipLifecycle: action.lifecycle,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -247,6 +259,26 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
       .map((candidate) => `${candidate.name} (${candidate.daysSinceLastActivity}d inactive)`)
     if (sampleCandidates.length > 0) parts.push(`Reactivation candidates: ${sampleCandidates.join(', ')}`)
     parts.push(`Reactivation note preview: ${state.currentReactivation.message.slice(0, 220)}`)
+  }
+
+  if (state.currentMembershipLifecycle) {
+    parts.push(`Active membership flow: ${state.currentMembershipLifecycle.label}`)
+    parts.push(`Lifecycle channel: ${state.currentMembershipLifecycle.channel}`)
+    parts.push(`Lifecycle delivery mode: ${state.currentMembershipLifecycle.execution.mode}`)
+    if (state.currentMembershipLifecycle.execution.mode === 'send_later' && state.currentMembershipLifecycle.execution.scheduledFor) {
+      parts.push(
+        `Lifecycle scheduled for: ${formatAdvisorScheduledLabel(
+          state.currentMembershipLifecycle.execution.scheduledFor,
+          state.currentMembershipLifecycle.execution.timeZone,
+        )}`,
+      )
+    }
+    parts.push(`Lifecycle candidate count: ${state.currentMembershipLifecycle.candidateCount}`)
+    const lifecycleCandidates = state.currentMembershipLifecycle.candidates
+      .slice(0, 3)
+      .map((candidate) => `${candidate.name} (${candidate.membershipStatus}, ${candidate.daysSinceSignal}d)`)
+    if (lifecycleCandidates.length > 0) parts.push(`Lifecycle candidates: ${lifecycleCandidates.join(', ')}`)
+    parts.push(`Lifecycle message preview: ${state.currentMembershipLifecycle.message.slice(0, 220)}`)
   }
 
   if (state.currentContactPolicy) {

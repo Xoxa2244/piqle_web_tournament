@@ -364,6 +364,7 @@ type ManualCampaignInput = {
   body: string
   smsBody?: string
   sessionId?: string
+  source?: string
 }
 
 async function enforceCampaignUsageLimits(
@@ -439,7 +440,7 @@ async function enforceCampaignUsageLimits(
 async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
   return sendCampaignNow(prisma, {
     ...input,
-    source: 'manual_campaign',
+    source: input.source || 'manual_campaign',
   })
 }
 
@@ -4353,6 +4354,160 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           inactivityDays: reactivationAction.reactivation.inactivityDays,
           candidateCount: eligibleCandidates.length,
           channel: reactivationAction.reactivation.channel,
+          ...sendResult,
+          skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
+          guardrails: guardrails.summary,
+        })
+      }
+
+      if (input.action.kind === 'trial_follow_up' || input.action.kind === 'renewal_reactivation') {
+        const lifecycleAction = input.action
+        const clubContext = await ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        })
+        const guardrails = await evaluateAdvisorContactGuardrails({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          type: lifecycleAction.lifecycle.campaignType,
+          requestedChannel: lifecycleAction.lifecycle.channel,
+          candidates: lifecycleAction.lifecycle.candidates.map((candidate) => ({ memberId: candidate.memberId })),
+          timeZone: lifecycleAction.lifecycle.execution.timeZone || null,
+          automationSettings: clubContext?.automationSettings,
+          now: lifecycleAction.lifecycle.execution.mode === 'send_later' && lifecycleAction.lifecycle.execution.scheduledFor
+            ? new Date(lifecycleAction.lifecycle.execution.scheduledFor)
+            : new Date(),
+        })
+        const eligibleRecipients = lifecycleAction.lifecycle.candidates
+          .map((candidate) => {
+            const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+            if (!eligible) return null
+            return {
+              memberId: candidate.memberId,
+              channel: candidate.channel || eligible.channel,
+            }
+          })
+          .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
+        const memberIds = eligibleRecipients.map((recipient) => recipient.memberId)
+
+        if (lifecycleAction.lifecycle.execution.mode === 'save_draft') {
+          return persistAdvisorOutcome({
+            ok: true,
+            kind: lifecycleAction.kind,
+            lifecycle: lifecycleAction.lifecycle.lifecycle,
+            label: lifecycleAction.lifecycle.label,
+            memberCount: memberIds.length,
+            candidateCount: lifecycleAction.lifecycle.candidates.length,
+            channel: lifecycleAction.lifecycle.channel,
+            guardrails: guardrails.summary,
+            deliveryMode: 'save_draft' as const,
+            savedAsDraft: true,
+          })
+        }
+
+        await enforceCampaignUsageLimits(
+          input.clubId,
+          lifecycleAction.lifecycle.channel,
+          memberIds.length,
+          guardrails.summary.deliveryBreakdown,
+        )
+
+        if (lifecycleAction.lifecycle.execution.mode === 'send_later') {
+          const scheduledFor = lifecycleAction.lifecycle.execution.scheduledFor
+          if (!scheduledFor) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Scheduled lifecycle outreach needs a send time before it can be approved.',
+            })
+          }
+
+          const timeZone = lifecycleAction.lifecycle.execution.timeZone || 'America/New_York'
+          if (eligibleRecipients.length === 0) {
+            return persistAdvisorOutcome({
+              ok: true,
+              kind: lifecycleAction.kind,
+              lifecycle: lifecycleAction.lifecycle.lifecycle,
+              label: lifecycleAction.lifecycle.label,
+              memberCount: 0,
+              candidateCount: lifecycleAction.lifecycle.candidates.length,
+              channel: lifecycleAction.lifecycle.channel,
+              guardrails: guardrails.summary,
+              deliveryMode: 'send_later' as const,
+              scheduled: 0,
+              scheduledFor,
+              timeZone,
+              scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+            })
+          }
+
+          const scheduled = await scheduleCampaignSend(ctx.prisma, {
+            clubId: input.clubId,
+            type: lifecycleAction.lifecycle.campaignType,
+            channel: lifecycleAction.lifecycle.channel,
+            memberIds,
+            recipients: eligibleRecipients,
+            subject: lifecycleAction.lifecycle.subject,
+            body: lifecycleAction.lifecycle.message,
+            smsBody: lifecycleAction.lifecycle.smsBody,
+            scheduledFor,
+            timeZone,
+            source: lifecycleAction.kind,
+          })
+
+          return persistAdvisorOutcome({
+            ok: true,
+            kind: lifecycleAction.kind,
+            lifecycle: lifecycleAction.lifecycle.lifecycle,
+            label: lifecycleAction.lifecycle.label,
+            memberCount: memberIds.length,
+            candidateCount: lifecycleAction.lifecycle.candidates.length,
+            channel: lifecycleAction.lifecycle.channel,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_later' as const,
+            scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+            ...scheduled,
+          })
+        }
+
+        if (eligibleRecipients.length === 0) {
+          return persistAdvisorOutcome({
+            ok: true,
+            kind: lifecycleAction.kind,
+            lifecycle: lifecycleAction.lifecycle.lifecycle,
+            label: lifecycleAction.lifecycle.label,
+            memberCount: 0,
+            candidateCount: lifecycleAction.lifecycle.candidates.length,
+            channel: lifecycleAction.lifecycle.channel,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            emailSent: 0,
+            smsSent: 0,
+          })
+        }
+
+        const sendResult = await runCreateCampaign(ctx.prisma, {
+          clubId: input.clubId,
+          type: lifecycleAction.lifecycle.campaignType,
+          channel: lifecycleAction.lifecycle.channel,
+          memberIds,
+          recipients: eligibleRecipients,
+          subject: lifecycleAction.lifecycle.subject,
+          body: lifecycleAction.lifecycle.message,
+          smsBody: lifecycleAction.lifecycle.smsBody,
+          source: lifecycleAction.kind,
+        })
+
+        return persistAdvisorOutcome({
+          ok: true,
+          kind: lifecycleAction.kind,
+          lifecycle: lifecycleAction.lifecycle.lifecycle,
+          label: lifecycleAction.lifecycle.label,
+          memberCount: memberIds.length,
+          candidateCount: lifecycleAction.lifecycle.candidates.length,
+          channel: lifecycleAction.lifecycle.channel,
           ...sendResult,
           skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
           guardrails: guardrails.summary,

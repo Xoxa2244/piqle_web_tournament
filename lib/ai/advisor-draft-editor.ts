@@ -17,6 +17,7 @@ const advisorEditResultSchema = z.object({
 type AudienceFilter = z.infer<typeof cohortFilterSchema>
 type FillSessionAction = Extract<AdvisorAction, { kind: 'fill_session' }>
 type ReactivationAction = Extract<AdvisorAction, { kind: 'reactivate_members' }>
+type MembershipLifecycleAction = Extract<AdvisorAction, { kind: 'trial_follow_up' | 'renewal_reactivation' }>
 
 function cleanJson(text: string) {
   return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
@@ -50,13 +51,20 @@ function getActiveFillSessionAction(lastAction: AdvisorAction | null | undefined
   return lastAction?.kind === 'fill_session' ? lastAction : null
 }
 
+function getActiveMembershipLifecycleAction(lastAction: AdvisorAction | null | undefined): MembershipLifecycleAction | null {
+  return lastAction?.kind === 'trial_follow_up' || lastAction?.kind === 'renewal_reactivation'
+    ? lastAction
+    : null
+}
+
 function isLikelyEditRequest(
   message: string,
   state: AdvisorConversationState | null,
   activeFillSession: FillSessionAction | null,
   activeReactivation: ReactivationAction | null,
+  activeMembershipLifecycle: MembershipLifecycleAction | null,
 ) {
-  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation) return false
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle) return false
 
   const lower = message.toLowerCase()
   const explicitEdit = containsAny(lower, [
@@ -67,6 +75,7 @@ function isLikelyEditRequest(
     /\b(schedule|scheduled|later|send now|save as draft)\b/,
     /\b(top\s+\d{1,2}|best\s+\d{1,2}|another session|different session|other session)\b/,
     /\b(inactive\s+\d{1,3}\s*days|\d{1,3}\+?\s*day inactive|reactivat|win[- ]?back)\b/,
+    /\b(trial|renewal|first[- ]?play|first booking|expired membership|suspended membership)\b/,
   ]) || containsAny(lower, [
     /\b(короче|длиннее|измени|исправь|обнови|убери|добавь|оставь|только)\b/,
     /\b(другую сессию|другой слот|топ-\d{1,2}|топ \d{1,2})\b/,
@@ -449,6 +458,117 @@ function applyHeuristicReactivationEdit(
   return nextAction
 }
 
+function applyHeuristicMembershipLifecycleEdit(
+  message: string,
+  currentAction: MembershipLifecycleAction | null,
+  timeZone?: string | null,
+): AdvisorAction | null {
+  if (!currentAction) return null
+
+  const lower = message.toLowerCase()
+  const nextAction = (
+    currentAction.kind === 'trial_follow_up'
+      ? {
+          ...currentAction,
+          lifecycle: {
+            ...currentAction.lifecycle,
+            execution: { ...currentAction.lifecycle.execution },
+            candidates: [...currentAction.lifecycle.candidates],
+          },
+        }
+      : {
+          ...currentAction,
+          lifecycle: {
+            ...currentAction.lifecycle,
+            execution: { ...currentAction.lifecycle.execution },
+            candidates: [...currentAction.lifecycle.candidates],
+          },
+        }
+  ) as MembershipLifecycleAction
+  let changed = false
+
+  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/, /\b(только sms|только смс|переключи на sms)\b/])) {
+    nextAction.lifecycle.channel = 'sms'
+    nextAction.lifecycle.message = truncateText(nextAction.lifecycle.message, 160)
+    nextAction.lifecycle.smsBody = truncateText(nextAction.lifecycle.smsBody || nextAction.lifecycle.message, 160)
+    changed = true
+  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/, /\b(только email|переключи на email)\b/])) {
+    nextAction.lifecycle.channel = 'email'
+    changed = true
+  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/, /\b(оба канала|и email и sms)\b/])) {
+    nextAction.lifecycle.channel = 'both'
+    nextAction.lifecycle.smsBody = truncateText(nextAction.lifecycle.smsBody || nextAction.lifecycle.message, 160)
+    changed = true
+  }
+
+  const candidateLimit = extractCandidateLimit(message)
+  if (candidateLimit && candidateLimit !== nextAction.lifecycle.candidateCount) {
+    nextAction.lifecycle.candidateCount = candidateLimit
+    nextAction.lifecycle.candidates = nextAction.lifecycle.candidates.slice(0, candidateLimit)
+    changed = true
+  }
+
+  if (containsAny(lower, [
+    /\b(send now|launch now|go ahead|approve and send|send it)\b/,
+    /\b(отправь сейчас|запускай|запусти сейчас)\b/,
+  ])) {
+    nextAction.lifecycle.execution = {
+      ...nextAction.lifecycle.execution,
+      mode: 'send_now',
+      scheduledFor: undefined,
+    }
+    changed = true
+  } else if (containsAny(lower, [
+    /\b(save as draft|keep as draft|draft only|don'?t send|do not send|hold for now|preview only)\b/,
+    /\b(сохрани как черновик|оставь как черновик|не отправляй|только черновик)\b/,
+  ])) {
+    nextAction.lifecycle.execution = {
+      ...nextAction.lifecycle.execution,
+      mode: 'save_draft',
+      scheduledFor: undefined,
+    }
+    changed = true
+  }
+
+  if (containsAdvisorSchedulingIntent(message)) {
+    const scheduled = parseAdvisorScheduledSend({
+      message,
+      timeZone: timeZone || nextAction.lifecycle.execution.timeZone,
+    })
+    if (scheduled) {
+      nextAction.lifecycle.execution = {
+        ...nextAction.lifecycle.execution,
+        mode: 'send_later',
+        scheduledFor: scheduled.scheduledFor,
+        timeZone: scheduled.timeZone,
+      }
+      changed = true
+    } else if (containsAny(lower, [/\b(send later|schedule|scheduled|later|tomorrow|tonight|next)\b/])) {
+      nextAction.lifecycle.execution = {
+        ...nextAction.lifecycle.execution,
+        mode: 'send_later',
+      }
+      changed = true
+    }
+  }
+
+  if (!changed) return null
+  if (nextAction.lifecycle.execution.mode === 'send_later' && !nextAction.lifecycle.execution.scheduledFor) return null
+
+  const flowLabel = currentAction.kind === 'trial_follow_up' ? 'Trial follow-up' : 'Renewal outreach'
+  const modeLabel = nextAction.lifecycle.execution.mode === 'send_now'
+    ? 'outreach'
+    : nextAction.lifecycle.execution.mode === 'send_later'
+      ? 'scheduled outreach'
+      : 'draft'
+  nextAction.title = currentAction.kind === 'trial_follow_up'
+    ? 'Prepare trial follow-up'
+    : 'Prepare renewal outreach'
+  nextAction.summary = `${nextAction.lifecycle.channel.toUpperCase()} ${modeLabel} for ${nextAction.lifecycle.candidateCount} ${flowLabel.toLowerCase()} members`
+
+  return nextAction
+}
+
 const EDITOR_SYSTEM = `You revise the active working draft inside IQSport's AI Advisor.
 
 Return ONLY valid JSON:
@@ -481,13 +601,15 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
   campaignUpdated: (name: string, count: number) => string
   fillSessionUpdated: (title: string, count: number) => string
   reactivationUpdated: (title: string, count: number) => string
-  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members', string[]>
+  membershipUpdated: (title: string, count: number) => string
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation', string[]>
 }> = {
   en: {
     audienceUpdated: (name, count) => `I updated the active audience "${name}" and it now targets ${count} matching members. Review the draft below and approve when you're ready.`,
     campaignUpdated: (name, count) => `I updated the active campaign for the audience "${name}" with ${count} matching members. Review the revised draft below and approve when you're ready.`,
     fillSessionUpdated: (title, count) => `I updated the active session fill draft for "${title}" with ${count} target players. Review the invite below and approve when you're ready.`,
     reactivationUpdated: (title, count) => `I updated the active reactivation draft for "${title}" with ${count} inactive members. Review the win-back message below and approve when you're ready.`,
+    membershipUpdated: (title, count) => `I updated the active membership flow "${title}" with ${count} candidates. Review the revised draft below and approve when you're ready.`,
     suggestions: {
       create_cohort: [
         'Draft a campaign for this audience',
@@ -509,6 +631,16 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Only top 5 members',
         'Target 30+ day inactive members',
       ],
+      trial_follow_up: [
+        'Use SMS instead',
+        'Only top 3 trial members',
+        'Schedule this for tomorrow at 6pm',
+      ],
+      renewal_reactivation: [
+        'Use SMS instead',
+        'Only top 5 renewal candidates',
+        'Schedule this for tomorrow at 9am',
+      ],
     },
   },
   ru: {
@@ -516,6 +648,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
     campaignUpdated: (name, count) => `Я обновил активную кампанию для аудитории "${name}" на ${count} участников. Проверь обновленный черновик ниже и подтверди отправку.`,
     fillSessionUpdated: (title, count) => `Я обновил активный черновик заполнения для "${title}" на ${count} игроков. Проверь приглашение ниже и подтверди, когда будешь готов.`,
     reactivationUpdated: (title, count) => `Я обновил активный черновик реактивации для "${title}" на ${count} неактивных участников. Проверь win-back сообщение ниже и подтверди, когда будешь готов.`,
+    membershipUpdated: (title, count) => `Я обновил активный membership-flow "${title}" на ${count} кандидатов. Проверь обновленный черновик ниже и подтверди, когда будешь готов.`,
     suggestions: {
       create_cohort: [
         'Подготовь кампанию для этой аудитории',
@@ -537,6 +670,16 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Оставь только топ-5',
         'Возьми тех, кто не играл 30+ дней',
       ],
+      trial_follow_up: [
+        'Переключи на SMS',
+        'Оставь только топ-3 trial-участников',
+        'Запланируй это на завтра в 18:00',
+      ],
+      renewal_reactivation: [
+        'Переключи на SMS',
+        'Оставь только топ-5 renewal-кандидатов',
+        'Запланируй это на завтра в 9 утра',
+      ],
     },
   },
   es: {
@@ -544,6 +687,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
     campaignUpdated: (name, count) => `Actualicé la campaña activa para la audiencia "${name}" con ${count} miembros. Revisa el borrador actualizado abajo y apruébalo cuando quieras.`,
     fillSessionUpdated: (title, count) => `Actualicé el borrador activo para llenar "${title}" con ${count} jugadores objetivo. Revisa la invitación abajo y apruébala cuando quieras.`,
     reactivationUpdated: (title, count) => `Actualicé el borrador activo de reactivación para "${title}" con ${count} miembros inactivos. Revisa el mensaje abajo y apruébalo cuando quieras.`,
+    membershipUpdated: (title, count) => `Actualicé el flujo activo "${title}" con ${count} candidatos. Revisa el borrador abajo y apruébalo cuando quieras.`,
     suggestions: {
       create_cohort: [
         'Prepara una campaña para esta audiencia',
@@ -565,6 +709,16 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Solo los mejores 5 miembros',
         'Apunta a quienes llevan 30+ días inactivos',
       ],
+      trial_follow_up: [
+        'Usa SMS en su lugar',
+        'Solo los mejores 3 trial members',
+        'Programa esto para mañana a las 6pm',
+      ],
+      renewal_reactivation: [
+        'Usa SMS en su lugar',
+        'Solo los mejores 5 candidatos',
+        'Programa esto para mañana a las 9am',
+      ],
     },
   },
 }
@@ -584,15 +738,19 @@ export async function maybeEditAdvisorDraft(opts: {
   const { message, state, lastAction, sessions, timeZone } = opts
   const activeFillSession = getActiveFillSessionAction(lastAction)
   const activeReactivation = getActiveReactivationAction(lastAction)
+  const activeMembershipLifecycle = getActiveMembershipLifecycleAction(lastAction)
 
-  if (!isLikelyEditRequest(message, state, activeFillSession, activeReactivation)) return null
-  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation) return null
+  if (!isLikelyEditRequest(message, state, activeFillSession, activeReactivation, activeMembershipLifecycle)) return null
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle) return null
 
   const heuristicFillSessionEdit = applyHeuristicFillSessionEdit(message, activeFillSession, sessions)
   if (heuristicFillSessionEdit) return heuristicFillSessionEdit
 
   const heuristicReactivationEdit = applyHeuristicReactivationEdit(message, activeReactivation)
   if (heuristicReactivationEdit) return heuristicReactivationEdit
+
+  const heuristicMembershipLifecycleEdit = applyHeuristicMembershipLifecycleEdit(message, activeMembershipLifecycle, timeZone)
+  if (heuristicMembershipLifecycleEdit) return heuristicMembershipLifecycleEdit
 
   if (!state?.currentAudience && !state?.currentCampaign) return null
 

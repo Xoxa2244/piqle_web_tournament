@@ -13,6 +13,7 @@ export const advisorCampaignTypeEnum = z.enum([
 
 export const advisorChannelEnum = z.enum(['email', 'sms', 'both'])
 export const advisorDeliveryModeEnum = z.enum(['save_draft', 'send_now', 'send_later'])
+export const advisorMembershipLifecycleKindEnum = z.enum(['trial_follow_up', 'renewal_reactivation'])
 export const advisorGuardrailReasonSchema = z.object({
   code: z.string().min(1).max(80),
   label: z.string().min(1).max(160),
@@ -137,6 +138,38 @@ export const advisorReactivationDraftSchema = z.object({
   guardrails: advisorContactGuardrailsSchema.optional(),
 })
 
+export const advisorMembershipLifecycleCandidateSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  score: z.number().int().min(0).max(100),
+  daysSinceSignal: z.number().int().nonnegative(),
+  membershipStatus: z.string().min(1).max(40),
+  topReason: z.string().min(1).max(240),
+  channel: advisorChannelEnum.optional(),
+})
+
+const advisorMembershipLifecycleDraftBaseSchema = z.object({
+  label: z.string().min(1).max(140),
+  channel: advisorChannelEnum,
+  candidateCount: z.number().int().positive(),
+  subject: z.string().max(100).optional(),
+  message: z.string().min(1).max(600),
+  smsBody: z.string().max(500).optional(),
+  execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
+  candidates: z.array(advisorMembershipLifecycleCandidateSchema).min(1).max(25),
+  guardrails: advisorContactGuardrailsSchema.optional(),
+})
+
+export const advisorTrialFollowUpDraftSchema = advisorMembershipLifecycleDraftBaseSchema.extend({
+  lifecycle: z.literal('trial_follow_up'),
+  campaignType: z.literal('RETENTION_BOOST'),
+})
+
+export const advisorRenewalReactivationDraftSchema = advisorMembershipLifecycleDraftBaseSchema.extend({
+  lifecycle: z.literal('renewal_reactivation'),
+  campaignType: z.literal('REACTIVATION'),
+})
+
 export const advisorActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('create_cohort'),
@@ -171,6 +204,24 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     summary: z.string().max(240).optional(),
     requiresApproval: z.boolean().default(true),
     reactivation: advisorReactivationDraftSchema,
+    signals: advisorPerformanceSignalSchema.optional(),
+    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('trial_follow_up'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    lifecycle: advisorTrialFollowUpDraftSchema,
+    signals: advisorPerformanceSignalSchema.optional(),
+    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('renewal_reactivation'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    lifecycle: advisorRenewalReactivationDraftSchema,
     signals: advisorPerformanceSignalSchema.optional(),
     defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
   }),

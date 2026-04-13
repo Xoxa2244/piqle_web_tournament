@@ -62,6 +62,11 @@ import {
   resolveAdvisorSlotSession,
   type AdvisorSlotSessionOption,
 } from '@/lib/ai/advisor-slot-filler'
+import {
+  getAdvisorMembershipLifecycleCandidates,
+  getAdvisorMembershipLifecycleMeta,
+  type AdvisorMembershipLifecycleKind,
+} from '@/lib/ai/advisor-membership-lifecycle'
 import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
 
 async function getSessionFromRequest(req: Request) {
@@ -314,6 +319,9 @@ function buildAdvisorAdaptiveDefaultsApplied(opts: {
 type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
 type AdvisorContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
 type AdvisorAutonomyPolicyAction = Extract<AdvisorAction, { kind: 'update_autonomy_policy' }>
+type AdvisorTrialFollowUpAction = Extract<AdvisorAction, { kind: 'trial_follow_up' }>
+type AdvisorRenewalReactivationAction = Extract<AdvisorAction, { kind: 'renewal_reactivation' }>
+type AdvisorMembershipLifecycleAction = AdvisorTrialFollowUpAction | AdvisorRenewalReactivationAction
 
 async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter[]) {
   const where = buildCohortWhereClause(filters)
@@ -364,6 +372,21 @@ function buildCampaignSummary(
       ? 'scheduled outreach'
       : 'draft'
   return `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible member${eligibleCount === 1 ? '' : 's'}`
+}
+
+function buildMembershipLifecycleSummary(
+  kind: AdvisorMembershipLifecycleKind,
+  channel: AdvisorMembershipLifecycleAction['lifecycle']['channel'],
+  mode: AdvisorMembershipLifecycleAction['lifecycle']['execution']['mode'],
+  eligibleCount: number,
+) {
+  const modeLabel = mode === 'send_now'
+    ? 'outreach'
+    : mode === 'send_later'
+      ? 'scheduled outreach'
+      : 'draft'
+  const flowLabel = kind === 'trial_follow_up' ? 'trial follow-up' : 'renewal outreach'
+  return `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible ${flowLabel} member${eligibleCount === 1 ? '' : 's'}`
 }
 
 async function hydrateAdvisorCampaignAction(opts: {
@@ -421,6 +444,86 @@ async function hydrateAdvisorCampaignAction(opts: {
     action,
     audienceCount: members.length,
     excludedByRules,
+    guardrails: guardrails.summary,
+  }
+}
+
+async function hydrateAdvisorMembershipLifecycleAction(opts: {
+  clubId: string
+  action: AdvisorMembershipLifecycleAction
+  timeZone?: string | null
+  automationSettings?: unknown
+}) {
+  const guardrails = await evaluateAdvisorContactGuardrails({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.lifecycle.campaignType,
+    requestedChannel: opts.action.lifecycle.channel,
+    candidates: opts.action.lifecycle.candidates.map((candidate) => ({ memberId: candidate.memberId })),
+    timeZone: opts.action.lifecycle.execution.timeZone || opts.timeZone,
+    automationSettings: opts.automationSettings,
+    now: opts.action.lifecycle.execution.mode === 'send_later' && opts.action.lifecycle.execution.scheduledFor
+      ? new Date(opts.action.lifecycle.execution.scheduledFor)
+      : new Date(),
+  })
+  const candidates = opts.action.lifecycle.candidates
+    .map((candidate) => {
+      const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+      if (!eligible) return null
+      return {
+        ...candidate,
+        channel: eligible.channel,
+      }
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => !!candidate)
+
+  const signals = await buildAdvisorPerformanceSignalForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.lifecycle.campaignType,
+    requestedChannel: opts.action.lifecycle.channel,
+    advisorOutcomeKind: opts.action.kind,
+    days: 30,
+  }).catch(() => null)
+
+  const action = (
+    opts.action.kind === 'trial_follow_up'
+      ? {
+          ...opts.action,
+          summary: buildMembershipLifecycleSummary(
+            opts.action.lifecycle.lifecycle,
+            opts.action.lifecycle.channel,
+            opts.action.lifecycle.execution.mode,
+            guardrails.summary.eligibleCount,
+          ),
+          lifecycle: {
+            ...opts.action.lifecycle,
+            candidateCount: candidates.length,
+            candidates,
+            guardrails: guardrails.summary,
+          },
+          signals: signals || undefined,
+        }
+      : {
+          ...opts.action,
+          summary: buildMembershipLifecycleSummary(
+            opts.action.lifecycle.lifecycle,
+            opts.action.lifecycle.channel,
+            opts.action.lifecycle.execution.mode,
+            guardrails.summary.eligibleCount,
+          ),
+          lifecycle: {
+            ...opts.action.lifecycle,
+            candidateCount: candidates.length,
+            candidates,
+            guardrails: guardrails.summary,
+          },
+          signals: signals || undefined,
+        }
+  ) as AdvisorMembershipLifecycleAction
+
+  return {
+    action,
     guardrails: guardrails.summary,
   }
 }
@@ -499,6 +602,24 @@ function getReactivationCopy(language: SupportedLanguage | string) {
     empty: (label: string) => `I couldn't find strong reactivation candidates in "${label}" right now.`,
     ready: (count: number, label: string) => `I found ${count} reactivation candidates in "${label}". Review the win-back message below, then approve to send it.`,
     suggestions: ['Use SMS instead', 'Only top 5 members', 'Target 30+ day inactive members'],
+  }
+}
+
+function getMembershipLifecycleCopy(language: SupportedLanguage | string, kind: AdvisorMembershipLifecycleKind) {
+  const locale = language === 'ru' || language === 'es' ? language : 'en'
+  const actionCopy = getAdvisorActionCopy(locale)
+  if (kind === 'trial_follow_up') {
+    return {
+      empty: actionCopy.trialEmpty,
+      ready: actionCopy.trialReady,
+      suggestions: actionCopy.suggestions.trial_follow_up,
+    }
+  }
+
+  return {
+    empty: actionCopy.renewalEmpty,
+    ready: actionCopy.renewalReady,
+    suggestions: actionCopy.suggestions.renewal_reactivation,
   }
 }
 
@@ -863,11 +984,169 @@ async function buildReactivationAssistantResponse(opts: {
   }
 }
 
+async function buildMembershipLifecycleAssistantResponse(opts: {
+  caller: ReturnType<typeof appRouter.createCaller>
+  clubId: string
+  language: SupportedLanguage
+  state: AdvisorConversationState | null
+  kind: AdvisorMembershipLifecycleKind
+  deliveryMode?: AdvisorIntentPlan['deliveryMode']
+  channel?: AdvisorMembershipLifecycleAction['lifecycle']['channel']
+  candidateLimit?: number
+  defaultsApplied?: AdvisorAdaptiveDefaultsApplied
+  timeZone?: string | null
+  automationSettings?: unknown
+  scheduledFor?: string
+  planTimeZone?: string
+}) {
+  const { caller, clubId, language, state, kind } = opts
+  const meta = getAdvisorMembershipLifecycleMeta(kind)
+  const lifecycleCopy = getMembershipLifecycleCopy(language, kind)
+  const channel = opts.channel || 'email'
+  const deliveryMode = opts.deliveryMode || 'save_draft'
+  const candidateLimit = Math.min(Math.max(opts.candidateLimit || (kind === 'trial_follow_up' ? 5 : 8), 1), 25)
+  const candidates = await getAdvisorMembershipLifecycleCandidates({
+    prisma,
+    clubId,
+    kind,
+    limit: candidateLimit,
+  })
+
+  if (candidates.length === 0) {
+    const assistantState: AdvisorConversationState = {
+      ...(state || {}),
+      latestOutcome: state?.latestOutcome,
+      recentOutcomes: state?.recentOutcomes || [],
+      currentMembershipLifecycle: undefined,
+      lastActionKind: kind,
+      lastActionTitle: meta.title,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return {
+      assistantState,
+      assistantMessage: withSuggested(lifecycleCopy.empty(meta.label), lifecycleCopy.suggestions),
+    }
+  }
+
+  const scheduledSend = deliveryMode === 'send_later' && opts.scheduledFor
+    ? {
+        scheduledFor: opts.scheduledFor,
+        timeZone: opts.planTimeZone || opts.timeZone || 'America/Los_Angeles',
+        label: formatAdvisorScheduledLabel(opts.scheduledFor, opts.planTimeZone || opts.timeZone || 'America/Los_Angeles'),
+      }
+    : null
+
+  const generated = await caller.intelligence.generateCampaignMessage({
+    clubId,
+    campaignType: meta.campaignType,
+    channel,
+    audienceCount: candidates.length,
+    context: {
+      riskSegment: meta.label,
+    },
+  })
+
+  const messagePreview = channel === 'email'
+    ? truncateAdvisorText(generated.body, 500)
+    : truncateAdvisorText(generated.smsBody || generated.body, 160)
+
+  const baseAction: AdvisorMembershipLifecycleAction = kind === 'trial_follow_up'
+    ? {
+        kind: 'trial_follow_up',
+        title: meta.title,
+        summary: '',
+        requiresApproval: true,
+        lifecycle: {
+          lifecycle: 'trial_follow_up',
+          campaignType: 'RETENTION_BOOST',
+          label: meta.label,
+          channel,
+          candidateCount: candidates.length,
+          subject: generated.subject,
+          message: messagePreview,
+          smsBody: generated.smsBody || undefined,
+          execution: {
+            mode: deliveryMode,
+            ...(scheduledSend ? {
+              scheduledFor: scheduledSend.scheduledFor,
+              timeZone: scheduledSend.timeZone,
+            } : {}),
+          },
+          candidates,
+        },
+        defaultsApplied: opts.defaultsApplied,
+      }
+    : {
+        kind: 'renewal_reactivation',
+        title: meta.title,
+        summary: '',
+        requiresApproval: true,
+        lifecycle: {
+          lifecycle: 'renewal_reactivation',
+          campaignType: 'REACTIVATION',
+          label: meta.label,
+          channel,
+          candidateCount: candidates.length,
+          subject: generated.subject,
+          message: messagePreview,
+          smsBody: generated.smsBody || undefined,
+          execution: {
+            mode: deliveryMode,
+            ...(scheduledSend ? {
+              scheduledFor: scheduledSend.scheduledFor,
+              timeZone: scheduledSend.timeZone,
+            } : {}),
+          },
+          candidates,
+        },
+        defaultsApplied: opts.defaultsApplied,
+      }
+
+  const hydrated = await hydrateAdvisorMembershipLifecycleAction({
+    clubId,
+    action: baseAction,
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+  })
+  const guardrailNote = formatAdvisorGuardrailDigest(hydrated.guardrails)
+
+  return {
+    assistantState: buildAdvisorConversationStateFromAction(hydrated.action),
+    assistantMessage: withSuggested(
+      `${lifecycleCopy.ready(hydrated.action.lifecycle.candidateCount, meta.label)}${guardrailNote ? `\n\n${guardrailNote}` : ''}\n\n${buildAdvisorActionTag(hydrated.action)}`,
+      lifecycleCopy.suggestions,
+    ),
+    action: hydrated.action,
+  }
+}
+
 function isCampaignOnlyFollowUp(message: string) {
   const lower = message.toLowerCase()
   const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
   const hasAudienceHint = /\b(audience|segment|cohort|group|list|players?|members?|this|that|those|them|inactive|morning|evening|weekday|weekend|beginner|intermediate|competitive|women|men|\d+\+)\b/.test(lower)
   return hasCampaignVerb && !hasAudienceHint
+}
+
+function getSuggestionKeyForPlanAction(action: AdvisorIntentPlan['action']) {
+  switch (action) {
+    case 'create_cohort':
+      return 'create_cohort' as const
+    case 'fill_session':
+      return 'fill_session' as const
+    case 'reactivate_members':
+      return 'reactivate_members' as const
+    case 'trial_follow_up':
+      return 'trial_follow_up' as const
+    case 'renewal_reactivation':
+      return 'renewal_reactivation' as const
+    case 'update_contact_policy':
+      return 'update_contact_policy' as const
+    case 'update_autonomy_policy':
+      return 'update_autonomy_policy' as const
+    default:
+      return 'create_campaign' as const
+  }
 }
 
 async function applyAdvisorAdaptiveDefaults(opts: {
@@ -889,6 +1168,10 @@ async function applyAdvisorAdaptiveDefaults(opts: {
     ? 'SLOT_FILLER'
     : opts.plan.action === 'reactivate_members'
       ? 'REACTIVATION'
+      : opts.plan.action === 'trial_follow_up'
+        ? 'RETENTION_BOOST'
+        : opts.plan.action === 'renewal_reactivation'
+          ? 'REACTIVATION'
       : opts.plan.campaignType || 'REACTIVATION'
 
   const defaults = await resolveAdvisorAdaptiveDefaultsForAction({
@@ -906,7 +1189,7 @@ async function applyAdvisorAdaptiveDefaults(opts: {
   }
 
   if (
-    nextPlan.action === 'draft_campaign' &&
+    (nextPlan.action === 'draft_campaign' || nextPlan.action === 'trial_follow_up' || nextPlan.action === 'renewal_reactivation') &&
     nextPlan.deliveryMode === 'send_later' &&
     !nextPlan.scheduledFor &&
     defaults?.scheduledSend
@@ -916,7 +1199,7 @@ async function applyAdvisorAdaptiveDefaults(opts: {
   }
 
   const appliedScheduledSend = (
-    nextPlan.action === 'draft_campaign' &&
+    (nextPlan.action === 'draft_campaign' || nextPlan.action === 'trial_follow_up' || nextPlan.action === 'renewal_reactivation') &&
     nextPlan.deliveryMode === 'send_later' &&
     !opts.plan.scheduledFor &&
     defaults?.scheduledSend
@@ -1061,22 +1344,11 @@ export async function POST(req: Request) {
       defaultsApplied = adaptiveDefaults.defaultsApplied
     }
 
-    if (!access.isAdmin) {
-      if (plan.action !== 'none') {
-        const suggestionKey = plan.action === 'create_cohort'
-          ? 'create_cohort'
-          : plan.action === 'fill_session'
-            ? 'fill_session'
-            : plan.action === 'reactivate_members'
-              ? 'reactivate_members'
-            : plan.action === 'update_contact_policy'
-              ? 'update_contact_policy'
-            : plan.action === 'update_autonomy_policy'
-              ? 'update_autonomy_policy'
-            : 'create_campaign'
-        assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[suggestionKey])
-      }
-    } else {
+      if (!access.isAdmin) {
+        if (plan.action !== 'none') {
+          assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[getSuggestionKeyForPlanAction(plan.action)])
+        }
+      } else {
       if (!assistantMessage && !hadPendingClarification) {
         const editedContactPolicy = memory.state?.currentContactPolicy
           ? updateAdvisorContactPolicyFromMessage({
@@ -1192,6 +1464,28 @@ export async function POST(req: Request) {
                 buildAdvisorActionTag(hydratedCampaign.action),
               ].filter(Boolean).join('\n\n'),
               editCopy.suggestions.create_campaign,
+            )
+          } else if (editedAction.kind === 'trial_follow_up' || editedAction.kind === 'renewal_reactivation') {
+            const hydratedLifecycle = await hydrateAdvisorMembershipLifecycleAction({
+              clubId,
+              action: editedAction,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
+            })
+            const editCopy = getAdvisorEditCopy(language)
+            const lifecycleMeta = getAdvisorMembershipLifecycleMeta(editedAction.lifecycle.lifecycle)
+            const guardrailNote = formatAdvisorGuardrailDigest(hydratedLifecycle.guardrails)
+            assistantState = buildAdvisorConversationStateFromAction(hydratedLifecycle.action)
+            assistantMessage = withSuggested(
+              [
+                editCopy.membershipUpdated(
+                  lifecycleMeta.label,
+                  hydratedLifecycle.action.lifecycle.candidateCount,
+                ),
+                guardrailNote,
+                buildAdvisorActionTag(hydratedLifecycle.action),
+              ].filter(Boolean).join('\n\n'),
+              editCopy.suggestions[editedAction.kind],
             )
           } else if (editedAction.kind === 'update_contact_policy') {
             assistantState = buildAdvisorConversationStateFromAction(editedAction)
@@ -1371,6 +1665,44 @@ export async function POST(req: Request) {
 
       assistantState = reactivationResponse.assistantState
       assistantMessage = reactivationResponse.assistantMessage
+    } else if (plan.action === 'trial_follow_up') {
+      const lifecycleResponse = await buildMembershipLifecycleAssistantResponse({
+        caller,
+        clubId,
+        language,
+        state: memory.state,
+        kind: 'trial_follow_up',
+        deliveryMode: plan.deliveryMode,
+        scheduledFor: plan.scheduledFor,
+        planTimeZone: plan.timeZone,
+        channel: plan.channel,
+        candidateLimit: plan.candidateLimit,
+        defaultsApplied,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
+      })
+
+      assistantState = lifecycleResponse.assistantState
+      assistantMessage = lifecycleResponse.assistantMessage
+    } else if (plan.action === 'renewal_reactivation') {
+      const lifecycleResponse = await buildMembershipLifecycleAssistantResponse({
+        caller,
+        clubId,
+        language,
+        state: memory.state,
+        kind: 'renewal_reactivation',
+        deliveryMode: plan.deliveryMode,
+        scheduledFor: plan.scheduledFor,
+        planTimeZone: plan.timeZone,
+        channel: plan.channel,
+        candidateLimit: plan.candidateLimit,
+        defaultsApplied,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
+      })
+
+      assistantState = lifecycleResponse.assistantState
+      assistantMessage = lifecycleResponse.assistantMessage
     } else if (plan.action === 'update_contact_policy') {
       const contactPolicyCopy = getContactPolicyCopy(language)
       const currentPolicy = resolveAdvisorContactPolicy({

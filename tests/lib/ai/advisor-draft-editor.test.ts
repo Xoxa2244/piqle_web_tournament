@@ -93,6 +93,41 @@ const reactivationState = {
   updatedAt: '2026-04-12T16:00:00.000Z',
 }
 
+const trialFollowUpAction: AdvisorAction = {
+  kind: 'trial_follow_up',
+  title: 'Prepare trial follow-up',
+  summary: 'EMAIL draft for 6 trial follow-up members',
+  requiresApproval: true,
+  lifecycle: {
+    lifecycle: 'trial_follow_up',
+    campaignType: 'RETENTION_BOOST',
+    label: 'Trial members with no first booking',
+    channel: 'email',
+    candidateCount: 6,
+    subject: 'Ready for your first game?',
+    message: 'Hi {{name}}, your trial is active at {{club}} and we would love to help you lock in your first booking this week.',
+    execution: {
+      mode: 'save_draft',
+    },
+    candidates: [
+      { memberId: 'trial-1', name: 'Avery', score: 96, daysSinceSignal: 3, membershipStatus: 'trial', topReason: 'Joined 3 days ago and has not booked yet.' },
+      { memberId: 'trial-2', name: 'Blake', score: 92, daysSinceSignal: 4, membershipStatus: 'trial', topReason: 'Joined 4 days ago and has not booked yet.' },
+      { memberId: 'trial-3', name: 'Casey', score: 89, daysSinceSignal: 5, membershipStatus: 'trial', topReason: 'Joined 5 days ago and has not booked yet.' },
+      { memberId: 'trial-4', name: 'Devon', score: 85, daysSinceSignal: 6, membershipStatus: 'trial', topReason: 'Joined 6 days ago and has not booked yet.' },
+      { memberId: 'trial-5', name: 'Emerson', score: 82, daysSinceSignal: 7, membershipStatus: 'trial', topReason: 'Joined 7 days ago and has not booked yet.' },
+      { memberId: 'trial-6', name: 'Finley', score: 78, daysSinceSignal: 8, membershipStatus: 'trial', topReason: 'Joined 8 days ago and has not booked yet.' },
+    ],
+  },
+}
+
+const trialFollowUpState = {
+  currentMembershipLifecycle: trialFollowUpAction.lifecycle,
+  recentOutcomes: [],
+  lastActionKind: 'trial_follow_up' as const,
+  lastActionTitle: trialFollowUpAction.title,
+  updatedAt: '2026-04-12T16:00:00.000Z',
+}
+
 describe('advisor draft editor for fill session drafts', () => {
   it('switches the active fill session draft to SMS', async () => {
     const edited = await maybeEditAdvisorDraft({
@@ -172,5 +207,50 @@ describe('advisor draft editor for reactivation drafts', () => {
     const reactivationDraft = edited as Extract<AdvisorAction, { kind: 'reactivate_members' }>
     expect(reactivationDraft.reactivation.inactivityDays).toBe(30)
     expect(reactivationDraft.reactivation.segmentLabel).toContain('30+')
+  })
+})
+
+describe('advisor draft editor for membership lifecycle drafts', () => {
+  it('switches the active trial follow-up draft to SMS', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Use SMS instead',
+      state: trialFollowUpState,
+      lastAction: trialFollowUpAction,
+      sessions: [...sessions],
+    })
+
+    expect(edited?.kind).toBe('trial_follow_up')
+    const lifecycleDraft = edited as Extract<AdvisorAction, { kind: 'trial_follow_up' }>
+    expect(lifecycleDraft.lifecycle.channel).toBe('sms')
+    expect(lifecycleDraft.lifecycle.smsBody).toBeTruthy()
+  })
+
+  it('reduces the active trial follow-up draft to the top 3 members', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Only keep the top 3 trial members',
+      state: trialFollowUpState,
+      lastAction: trialFollowUpAction,
+      sessions: [...sessions],
+    })
+
+    expect(edited?.kind).toBe('trial_follow_up')
+    const lifecycleDraft = edited as Extract<AdvisorAction, { kind: 'trial_follow_up' }>
+    expect(lifecycleDraft.lifecycle.candidateCount).toBe(3)
+    expect(lifecycleDraft.lifecycle.candidates).toHaveLength(3)
+  })
+
+  it('schedules the trial follow-up draft when asked', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Schedule this for tomorrow at 6pm',
+      state: trialFollowUpState,
+      lastAction: trialFollowUpAction,
+      sessions: [...sessions],
+      timeZone: 'America/Los_Angeles',
+    })
+
+    expect(edited?.kind).toBe('trial_follow_up')
+    const lifecycleDraft = edited as Extract<AdvisorAction, { kind: 'trial_follow_up' }>
+    expect(lifecycleDraft.lifecycle.execution.mode).toBe('send_later')
+    expect(lifecycleDraft.lifecycle.execution.scheduledFor).toBeTruthy()
   })
 })

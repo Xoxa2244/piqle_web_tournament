@@ -7,6 +7,8 @@ export const advisorOutcomeMemorySchema = z.object({
     'create_campaign',
     'fill_session',
     'reactivate_members',
+    'trial_follow_up',
+    'renewal_reactivation',
     'update_contact_policy',
     'update_autonomy_policy',
   ]),
@@ -77,6 +79,34 @@ export function buildAdvisorOutcomeMemory(
       kind: action.kind,
       title: action.title,
       summary: `Reactivation completed for ${result?.segmentLabel || action.reactivation.segmentLabel}: ${result?.sent || 0} sent, ${result?.skipped || 0} skipped.`,
+      occurredAt,
+    }
+  }
+
+  if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
+    const flowLabel = action.kind === 'trial_follow_up' ? 'Trial follow-up' : 'Renewal outreach'
+    if (result?.savedAsDraft) {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: `${flowLabel} draft saved for ${result?.memberCount || 0} eligible members.`,
+        occurredAt,
+      }
+    }
+
+    if (result?.deliveryMode === 'send_later') {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: `${flowLabel} scheduled for ${result?.scheduledLabel || 'later'} with ${result?.memberCount || 0} eligible members.`,
+        occurredAt,
+      }
+    }
+
+    return {
+      kind: action.kind,
+      title: action.title,
+      summary: `${flowLabel} sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
       occurredAt,
     }
   }
