@@ -9,6 +9,7 @@ type ResolveSlotSessionOptions = {
   message: string
   sessions: AdvisorSlotSessionOption[]
   currentSession?: AdvisorSlotSessionOption | null
+  now?: Date
 }
 
 type ResolveSlotSessionResult = {
@@ -120,11 +121,11 @@ function sessionTimeMatches(session: AdvisorSlotSessionOption, hints: string[]) 
   })
 }
 
-function getRelativeDayLabel(session: AdvisorSlotSessionOption) {
+function getRelativeDayLabel(session: AdvisorSlotSessionOption, now?: Date) {
   const date = parseSessionDate(session.date)
   if (!date) return ''
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const baseNow = now || new Date()
+  const today = new Date(baseNow.getFullYear(), baseNow.getMonth(), baseNow.getDate())
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000)
   if (diffDays === 0) return 'today'
@@ -132,11 +133,11 @@ function getRelativeDayLabel(session: AdvisorSlotSessionOption) {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date).toLowerCase()
 }
 
-function scoreSessionMatch(message: string, session: AdvisorSlotSessionOption) {
+function scoreSessionMatch(message: string, session: AdvisorSlotSessionOption, now?: Date) {
   const lower = message.toLowerCase()
   let score = 0
 
-  const relativeDay = getRelativeDayLabel(session)
+  const relativeDay = getRelativeDayLabel(session, now)
   if (relativeDay && lower.includes(relativeDay)) score += 6
 
   const weekday = parseSessionDate(session.date)
@@ -164,7 +165,7 @@ function scoreSessionMatch(message: string, session: AdvisorSlotSessionOption) {
 }
 
 export function resolveAdvisorSlotSession(opts: ResolveSlotSessionOptions): ResolveSlotSessionResult {
-  const { message, sessions, currentSession } = opts
+  const { message, sessions, currentSession, now } = opts
   if (sessions.length === 0) return { session: null, reason: 'unresolved' }
 
   const ordinal = resolveOrdinalSelection(message, sessions)
@@ -189,7 +190,7 @@ export function resolveAdvisorSlotSession(opts: ResolveSlotSessionOptions): Reso
   }
 
   const scored = sessions
-    .map((session) => ({ session, score: scoreSessionMatch(message, session) }))
+    .map((session) => ({ session, score: scoreSessionMatch(message, session, now) }))
     .sort((a, b) => b.score - a.score)
 
   const top = scored[0]

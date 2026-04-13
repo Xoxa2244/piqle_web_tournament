@@ -36,12 +36,15 @@ const sessions = [
   },
 ] as const
 
+const now = new Date('2026-04-12T16:00:00.000Z')
+
 describe('advisor slot filler session resolution', () => {
   it('reuses the current session when the user says this session', () => {
     const result = resolveAdvisorSlotSession({
       message: 'Fill this session with SMS invites',
       sessions: [...sessions],
       currentSession: sessions[0],
+      now,
     })
 
     expect(result.session?.id).toBe('session-1')
@@ -50,8 +53,9 @@ describe('advisor slot filler session resolution', () => {
 
   it('matches a session from time and skill hints', () => {
     const result = resolveAdvisorSlotSession({
-      message: 'Fill Monday 6pm beginner session',
+      message: "Fill tomorrow's 6pm beginner session",
       sessions: [...sessions],
+      now,
     })
 
     expect(result.session?.id).toBe('session-1')
@@ -62,6 +66,7 @@ describe('advisor slot filler session resolution', () => {
     const result = resolveAdvisorSlotSession({
       message: 'Fill the most underfilled session this week',
       sessions: [...sessions],
+      now,
     })
 
     expect(result.session?.id).toBe('session-2')
@@ -76,5 +81,22 @@ describe('advisor slot filler session resolution', () => {
     expect(label).toContain('6:00 PM')
     expect(options).toHaveLength(2)
     expect(options[0]).toContain('spots left')
+  })
+
+  it('understands today when the base time is fixed', () => {
+    const result = resolveAdvisorSlotSession({
+      message: 'Fill today 6pm beginner session',
+      sessions: [
+        {
+          ...sessions[0],
+          id: 'session-today',
+          date: '2026-04-12',
+        },
+        sessions[1],
+      ],
+      now,
+    })
+
+    expect(result.session?.id).toBe('session-today')
   })
 })
