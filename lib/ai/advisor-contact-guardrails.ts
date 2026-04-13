@@ -4,7 +4,13 @@ import { formatAdvisorScheduledLabel } from './advisor-scheduling'
 import { checkAntiSpam } from './anti-spam'
 import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
 
-type GuardrailInviteType = 'SLOT_FILLER' | 'REACTIVATION'
+type GuardrailInviteType =
+  | 'SLOT_FILLER'
+  | 'REACTIVATION'
+  | 'EVENT_INVITE'
+  | 'CHECK_IN'
+  | 'RETENTION_BOOST'
+  | 'NEW_MEMBER_WELCOME'
 type GuardrailChannel = 'email' | 'sms' | 'both'
 
 type CandidateInput = {

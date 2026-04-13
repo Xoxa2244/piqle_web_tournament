@@ -7,7 +7,13 @@
  * don't trigger cross-type cooldown but DO count toward frequency caps.
  */
 
-type InviteType = 'SLOT_FILLER' | 'REACTIVATION' | 'EVENT_INVITE' | 'CHECK_IN' | 'RETENTION_BOOST'
+type InviteType =
+  | 'SLOT_FILLER'
+  | 'REACTIVATION'
+  | 'EVENT_INVITE'
+  | 'CHECK_IN'
+  | 'RETENTION_BOOST'
+  | 'NEW_MEMBER_WELCOME'
 type PlayerPersona = 'COMPETITIVE' | 'SOCIAL' | 'IMPROVER' | 'CASUAL' | 'TEAM_PLAYER'
 
 interface SpamCheckInput {

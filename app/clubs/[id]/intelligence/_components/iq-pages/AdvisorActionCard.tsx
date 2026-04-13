@@ -76,11 +76,16 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       : isFillSession
         ? action.outreach.candidateCount ?? 0
         : action.reactivation.candidateCount ?? 0
-  const contactGuardrails = isFillSession
-    ? action.outreach.guardrails
-    : isReactivation
-      ? action.reactivation.guardrails
-      : null
+  const contactGuardrails = isCampaign
+    ? action.campaign.guardrails
+    : isFillSession
+      ? action.outreach.guardrails
+      : isReactivation
+        ? action.reactivation.guardrails
+        : null
+  const recipientRuleExcludedCount = isCampaign && contactGuardrails
+    ? Math.max(0, targetCount - contactGuardrails.eligibleCount - contactGuardrails.excludedCount)
+    : 0
 
   const handleApprove = () => {
     executeAction.mutate(
@@ -176,6 +181,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {deliveryModeLabel}
             </div>
+            {contactGuardrails && (
+              <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                {contactGuardrails.eligibleCount} eligible now · {recipientRuleExcludedCount + contactGuardrails.excludedCount} excluded
+              </div>
+            )}
             {scheduledLabel && (
               <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
                 {scheduledLabel}
@@ -296,14 +306,19 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         </div>
       )}
 
-      {contactGuardrails && (contactGuardrails.excludedCount > 0 || contactGuardrails.warnings.length > 0) && (
+      {contactGuardrails && (contactGuardrails.excludedCount > 0 || contactGuardrails.warnings.length > 0 || recipientRuleExcludedCount > 0) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: '#F59E0B', fontWeight: 700 }}>
             Contact Guardrails
           </div>
           <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
-            Eligible now: {contactGuardrails.eligibleCount}. Excluded: {contactGuardrails.excludedCount}.
+            Eligible now: {contactGuardrails.eligibleCount}. Excluded by guardrails: {contactGuardrails.excludedCount}.
           </div>
+          {recipientRuleExcludedCount > 0 && (
+            <div className="text-xs mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+              Excluded by recipient rules: {recipientRuleExcludedCount}.
+            </div>
+          )}
           {contactGuardrails.deliveryBreakdown && (
             <div className="text-xs mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
               Delivery mix: {contactGuardrails.deliveryBreakdown.email} email, {contactGuardrails.deliveryBreakdown.sms} SMS, {contactGuardrails.deliveryBreakdown.both} email+SMS.
@@ -344,10 +359,10 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               : result.kind === 'reactivate_members'
                 ? `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.savedAsDraft
-                ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
+                ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
                 : result.deliveryMode === 'send_later'
-                  ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
-                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`}
+                  ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
+                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`}
           </div>
         ) : (
           <div className="text-xs" style={{ color: 'var(--t3)' }}>

@@ -36,6 +36,7 @@ import {
   resolveAdvisorSlotSession,
   type AdvisorSlotSessionOption,
 } from '@/lib/ai/advisor-slot-filler'
+import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -180,6 +181,109 @@ function buildCampaignReadyText(
   if (mode === 'send_now') return copy.campaignReady(count, name)
   if (mode === 'send_later') return copy.campaignScheduledReady(count, name, scheduledLabel || 'the selected time')
   return copy.campaignDraftReady(count, name)
+}
+
+type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
+
+async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter[]) {
+  const where = buildCohortWhereClause(filters)
+  return prisma.$queryRawUnsafe<Array<{
+    id: string
+    name: string | null
+    email: string | null
+    phone: string | null
+    smsOptIn: boolean | null
+  }>>(`
+    SELECT u.id, u.name, u.email, u.phone, u.sms_opt_in as "smsOptIn"
+    FROM club_followers cf
+    JOIN users u ON u.id = cf.user_id
+    JOIN (
+      SELECT DISTINCT psb."userId"
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+    ) active ON active."userId" = u.id
+    WHERE cf.club_id = $1 AND ${where}
+    ORDER BY u.name ASC
+    LIMIT 500
+  `, clubId)
+}
+
+function applyAdvisorCampaignRecipientRules(
+  members: Array<{ id: string; email?: string | null; phone?: string | null; smsOptIn?: boolean | null }>,
+  rules?: AdvisorCampaignAction['campaign']['execution']['recipientRules'],
+) {
+  if (!rules) return members
+
+  return members.filter((member) => {
+    if (rules.requireEmail && !member.email) return false
+    if (rules.requirePhone && !member.phone) return false
+    if (rules.smsOptInOnly && !member.smsOptIn) return false
+    return true
+  })
+}
+
+function buildCampaignSummary(
+  channel: AdvisorCampaignAction['campaign']['channel'],
+  mode: AdvisorCampaignAction['campaign']['execution']['mode'],
+  eligibleCount: number,
+) {
+  const modeLabel = mode === 'send_now'
+    ? 'outreach'
+    : mode === 'send_later'
+      ? 'scheduled outreach'
+      : 'draft'
+  return `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible member${eligibleCount === 1 ? '' : 's'}`
+}
+
+async function hydrateAdvisorCampaignAction(opts: {
+  clubId: string
+  action: AdvisorCampaignAction
+  timeZone?: string | null
+  automationSettings?: unknown
+}) {
+  const members = await queryAdvisorAudienceMembers(opts.clubId, opts.action.audience.filters as CohortFilter[])
+  const ruleEligibleMembers = applyAdvisorCampaignRecipientRules(
+    members,
+    opts.action.campaign.execution.recipientRules,
+  )
+  const guardrails = await evaluateAdvisorContactGuardrails({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.campaign.type,
+    requestedChannel: opts.action.campaign.channel,
+    candidates: ruleEligibleMembers.map((member) => ({ memberId: member.id })),
+    timeZone: opts.action.campaign.execution.timeZone || opts.timeZone,
+    automationSettings: opts.automationSettings,
+    now: opts.action.campaign.execution.mode === 'send_later' && opts.action.campaign.execution.scheduledFor
+      ? new Date(opts.action.campaign.execution.scheduledFor)
+      : new Date(),
+  })
+  const excludedByRules = Math.max(0, members.length - ruleEligibleMembers.length)
+
+  const action: AdvisorCampaignAction = {
+    ...opts.action,
+    summary: buildCampaignSummary(
+      opts.action.campaign.channel,
+      opts.action.campaign.execution.mode,
+      guardrails.summary.eligibleCount,
+    ),
+    audience: {
+      ...opts.action.audience,
+      count: members.length,
+    },
+    campaign: {
+      ...opts.action.campaign,
+      guardrails: guardrails.summary,
+    },
+  }
+
+  return {
+    action,
+    audienceCount: members.length,
+    excludedByRules,
+    guardrails: guardrails.summary,
+  }
 }
 
 function getSlotFillerCopy(language: SupportedLanguage | string) {
@@ -718,18 +822,36 @@ export async function POST(req: Request) {
 
             assistantState = editedResponse.assistantState
             assistantMessage = editedResponse.assistantMessage
+          } else if (editedAction.kind === 'create_campaign') {
+            const hydratedCampaign = await hydrateAdvisorCampaignAction({
+              clubId,
+              action: editedAction,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
+            })
+            const editCopy = getAdvisorEditCopy(language)
+            const guardrailNote = formatAdvisorGuardrailDigest(hydratedCampaign.guardrails)
+            const ruleNote = hydratedCampaign.excludedByRules > 0
+              ? `${hydratedCampaign.excludedByRules} member${hydratedCampaign.excludedByRules === 1 ? '' : 's'} excluded by recipient rules.`
+              : ''
+            assistantState = buildAdvisorConversationStateFromAction(hydratedCampaign.action)
+            assistantMessage = withSuggested(
+              [
+                editCopy.campaignUpdated(
+                  hydratedCampaign.action.audience.name,
+                  hydratedCampaign.action.audience.count || 0,
+                ),
+                [ruleNote, guardrailNote].filter(Boolean).join(' ').trim(),
+                buildAdvisorActionTag(hydratedCampaign.action),
+              ].filter(Boolean).join('\n\n'),
+              editCopy.suggestions.create_campaign,
+            )
           } else {
             const editCopy = getAdvisorEditCopy(language)
             assistantState = buildAdvisorConversationStateFromAction(editedAction)
-            const audienceName = editedAction.kind === 'create_campaign'
-              ? editedAction.audience.name
-              : editedAction.cohort.name
-            const audienceCount = editedAction.kind === 'create_campaign'
-              ? editedAction.audience.count || 0
-              : editedAction.cohort.count || 0
-            const editText = editedAction.kind === 'create_campaign'
-              ? editCopy.campaignUpdated(audienceName, audienceCount)
-              : editCopy.audienceUpdated(audienceName, audienceCount)
+            const audienceName = editedAction.cohort.name
+            const audienceCount = editedAction.cohort.count || 0
+            const editText = editCopy.audienceUpdated(audienceName, audienceCount)
 
             assistantMessage = withSuggested(
               `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
@@ -942,7 +1064,7 @@ export async function POST(req: Request) {
         },
       })
 
-      const action: AdvisorAction = {
+      const baseAction: AdvisorCampaignAction = {
         kind: 'create_campaign',
         title: `Launch ${campaignType.replace(/_/g, ' ').toLowerCase()} campaign`,
         summary: `${channel.toUpperCase()} ${deliveryMode === 'send_now' ? 'outreach' : deliveryMode === 'send_later' ? 'scheduled outreach' : 'draft'} for ${audienceDraft.count || 0} members`,
@@ -965,10 +1087,30 @@ export async function POST(req: Request) {
           },
         },
       }
+      const hydratedCampaign = await hydrateAdvisorCampaignAction({
+        clubId,
+        action: baseAction,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
+      })
+      const guardrailNote = formatAdvisorGuardrailDigest(hydratedCampaign.guardrails)
+      const ruleNote = hydratedCampaign.excludedByRules > 0
+        ? `${hydratedCampaign.excludedByRules} member${hydratedCampaign.excludedByRules === 1 ? '' : 's'} excluded by recipient rules.`
+        : ''
 
-      assistantState = buildAdvisorConversationStateFromAction(action)
+      assistantState = buildAdvisorConversationStateFromAction(hydratedCampaign.action)
       assistantMessage = withSuggested(
-        `${buildCampaignReadyText(copy, audienceDraft.count || 0, audienceDraft.name, deliveryMode, scheduledSend?.label)}\n\n${buildAdvisorActionTag(action)}`,
+        [
+          buildCampaignReadyText(
+            copy,
+            hydratedCampaign.guardrails.eligibleCount,
+            hydratedCampaign.action.audience.name,
+            deliveryMode,
+            scheduledSend?.label,
+          ),
+          [ruleNote, guardrailNote].filter(Boolean).join(' ').trim(),
+          buildAdvisorActionTag(hydratedCampaign.action),
+        ].filter(Boolean).join('\n\n'),
         copy.suggestions.create_campaign,
       )
     }

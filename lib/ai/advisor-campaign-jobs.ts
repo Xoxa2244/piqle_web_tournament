@@ -1,6 +1,7 @@
 import { sendOutreachEmail } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { reportUsage } from '@/lib/stripe-usage'
+import { evaluateAdvisorContactGuardrails } from './advisor-contact-guardrails'
 
 type CampaignChannel = 'email' | 'sms' | 'both'
 type CampaignType =
@@ -22,6 +23,7 @@ type CampaignUser = {
 type CampaignClub = {
   id: string
   name: string
+  automationSettings?: unknown
 }
 
 type CampaignDraftInput = {
@@ -29,6 +31,10 @@ type CampaignDraftInput = {
   type: CampaignType
   channel: CampaignChannel
   memberIds: string[]
+  recipients?: Array<{
+    memberId: string
+    channel: CampaignChannel
+  }>
   subject?: string
   body: string
   smsBody?: string
@@ -149,14 +155,18 @@ async function deliverCampaignToUser(opts: {
 }
 
 async function getCampaignContext(prisma: any, input: CampaignDraftInput) {
+  const recipientMemberIds = Array.from(
+    new Set((input.recipients || []).map((recipient) => recipient.memberId).filter(Boolean)),
+  )
+  const userIds = recipientMemberIds.length > 0 ? recipientMemberIds : input.memberIds
   const club = await prisma.club.findUnique({
     where: { id: input.clubId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, automationSettings: true },
   })
   if (!club) throw new Error('Club not found')
 
   const users = await prisma.user.findMany({
-    where: { id: { in: input.memberIds } },
+    where: { id: { in: userIds } },
     select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
 
@@ -165,6 +175,9 @@ async function getCampaignContext(prisma: any, input: CampaignDraftInput) {
 
 export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
   const { club, users } = await getCampaignContext(prisma, input)
+  const recipientChannelByUserId = new Map(
+    (input.recipients || []).map((recipient) => [recipient.memberId, recipient.channel]),
+  )
 
   let sent = 0
   let failed = 0
@@ -174,10 +187,11 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
   const results: { userId: string; status: string; channel: CampaignChannel; messageId?: string }[] = []
 
   for (const user of users) {
+    const resolvedChannel = recipientChannelByUserId.get(user.id) || input.channel
     const delivery = await deliverCampaignToUser({
       club,
       user,
-      channel: input.channel,
+      channel: resolvedChannel,
       subject: input.subject,
       body: input.body,
       smsBody: input.smsBody,
@@ -188,7 +202,7 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
         clubId: input.clubId,
         userId: user.id,
         type: input.type,
-        channel: input.channel,
+        channel: resolvedChannel,
         sessionId: input.sessionId || null,
         externalMessageId: delivery.externalMessageId,
         variantId: input.type,
@@ -218,7 +232,7 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
     results.push({
       userId: user.id,
       status: delivery.status,
-      channel: input.channel,
+      channel: resolvedChannel,
       messageId: delivery.externalMessageId || undefined,
     })
   }
@@ -234,6 +248,9 @@ export async function scheduleCampaignSend(prisma: any, input: CampaignDraftInpu
   timeZone: string
 }) {
   const { users } = await getCampaignContext(prisma, input)
+  const recipientChannelByUserId = new Map(
+    (input.recipients || []).map((recipient) => [recipient.memberId, recipient.channel]),
+  )
   if (users.length === 0) {
     return {
       scheduled: 0,
@@ -247,7 +264,7 @@ export async function scheduleCampaignSend(prisma: any, input: CampaignDraftInpu
       clubId: input.clubId,
       userId: user.id,
       type: input.type,
-      channel: input.channel,
+      channel: recipientChannelByUserId.get(user.id) || input.channel,
       sessionId: input.sessionId || null,
       variantId: input.type,
       status: 'scheduled',
@@ -302,7 +319,7 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
         select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
       },
       club: {
-        select: { id: true, name: true },
+        select: { id: true, name: true, automationSettings: true },
       },
     },
     orderBy: { createdAt: 'asc' },
@@ -327,10 +344,39 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
     const reasoning = (log.reasoning || {}) as Record<string, any>
 
     try {
+      const guardrails = await evaluateAdvisorContactGuardrails({
+        prisma,
+        clubId: log.clubId,
+        type: log.type as CampaignType,
+        requestedChannel: (log.channel || 'email') as CampaignChannel,
+        candidates: [{ memberId: log.userId }],
+        sessionId: log.sessionId || null,
+        timeZone: typeof reasoning.timeZone === 'string' ? reasoning.timeZone : null,
+        automationSettings: log.club.automationSettings,
+        now: new Date(),
+      })
+
+      if (guardrails.eligibleCandidates.length === 0) {
+        skipped += 1
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: {
+            status: 'skipped',
+            reasoning: {
+              ...reasoning,
+              processedAt: new Date().toISOString(),
+              guardrails: guardrails.summary,
+            },
+          },
+        })
+        continue
+      }
+
+      const resolvedChannel = guardrails.eligibleCandidates[0]?.channel || (log.channel || 'email')
       const delivery = await deliverCampaignToUser({
         club: log.club,
         user: log.user,
-        channel: (log.channel || 'email') as CampaignChannel,
+        channel: resolvedChannel as CampaignChannel,
         subject: typeof reasoning.subject === 'string' ? reasoning.subject : undefined,
         body: typeof reasoning.body === 'string' ? reasoning.body : '',
         smsBody: typeof reasoning.smsBody === 'string' ? reasoning.smsBody : undefined,
@@ -341,12 +387,14 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
         where: { id: log.id },
         data: {
           status: delivery.status,
+          channel: resolvedChannel,
           externalMessageId: delivery.externalMessageId,
           reasoning: {
             ...reasoning,
             processedAt: new Date().toISOString(),
             emailDelivered: delivery.emailDelivered,
             smsDelivered: delivery.smsDelivered,
+            guardrails: guardrails.summary,
           },
         },
       })

@@ -61,6 +61,7 @@ export const advisorCampaignDraftSchema = z.object({
   body: z.string().min(1).max(2000),
   smsBody: z.string().max(500).optional(),
   execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
+  guardrails: advisorContactGuardrailsSchema.optional(),
 })
 
 export const advisorSessionDraftSchema = z.object({

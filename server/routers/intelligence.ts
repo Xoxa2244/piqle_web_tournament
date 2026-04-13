@@ -277,13 +277,26 @@ type ManualCampaignInput = {
   type: 'CHECK_IN' | 'RETENTION_BOOST' | 'REACTIVATION' | 'SLOT_FILLER' | 'EVENT_INVITE' | 'NEW_MEMBER_WELCOME'
   channel: 'email' | 'sms' | 'both'
   memberIds: string[]
+  recipients?: Array<{
+    memberId: string
+    channel: 'email' | 'sms' | 'both'
+  }>
   subject?: string
   body: string
   smsBody?: string
   sessionId?: string
 }
 
-async function enforceCampaignUsageLimits(clubId: string, channel: ManualCampaignInput['channel'], recipientCount: number) {
+async function enforceCampaignUsageLimits(
+  clubId: string,
+  channel: ManualCampaignInput['channel'],
+  recipientCount: number,
+  deliveryBreakdown?: {
+    email: number
+    sms: number
+    both: number
+  } | null,
+) {
   const { checkUsageLimit } = await import('@/lib/subscription')
 
   const campaignCheck = await checkUsageLimit(clubId, 'campaigns')
@@ -301,7 +314,9 @@ async function enforceCampaignUsageLimits(clubId: string, channel: ManualCampaig
     })
   }
 
-  const emailCount = (channel === 'email' || channel === 'both') ? recipientCount : 0
+  const emailCount = deliveryBreakdown
+    ? deliveryBreakdown.email + deliveryBreakdown.both
+    : (channel === 'email' || channel === 'both') ? recipientCount : 0
   if (emailCount > 0) {
     const emailCheck = await checkUsageLimit(clubId, 'emails', emailCount)
     if (!emailCheck.allowed) {
@@ -320,7 +335,9 @@ async function enforceCampaignUsageLimits(clubId: string, channel: ManualCampaig
     }
   }
 
-  const smsCount = (channel === 'sms' || channel === 'both') ? recipientCount : 0
+  const smsCount = deliveryBreakdown
+    ? deliveryBreakdown.sms + deliveryBreakdown.both
+    : (channel === 'sms' || channel === 'both') ? recipientCount : 0
   if (smsCount > 0) {
     const smsCheck = await checkUsageLimit(clubId, 'sms', smsCount)
     if (!smsCheck.allowed) {
@@ -4199,10 +4216,38 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         members,
         input.action.campaign.execution.recipientRules,
       )
-      const memberIds = eligibleMembers.map((member: any) => member.id).filter(Boolean)
-      const excludedByRules = Math.max(0, members.length - memberIds.length)
+      const clubContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const guardrails = await evaluateAdvisorContactGuardrails({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        type: input.action.campaign.type,
+        requestedChannel: input.action.campaign.channel,
+        candidates: eligibleMembers.map((member: any) => ({ memberId: member.id })).filter((candidate: any) => !!candidate.memberId),
+        sessionId: null,
+        timeZone: input.action.campaign.execution.timeZone || null,
+        automationSettings: clubContext?.automationSettings,
+        now: input.action.campaign.execution.mode === 'send_later' && input.action.campaign.execution.scheduledFor
+          ? new Date(input.action.campaign.execution.scheduledFor)
+          : new Date(),
+      })
+      const recipients = eligibleMembers
+        .map((member: any) => {
+          const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === member.id)
+          if (!eligible) return null
+          return {
+            memberId: member.id,
+            channel: eligible.channel,
+          }
+        })
+        .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
+      const memberIds = recipients.map((recipient) => recipient.memberId)
+      const excludedByRules = Math.max(0, members.length - eligibleMembers.length)
+      const excludedByGuardrails = guardrails.summary.excludedCount
 
-      if (memberIds.length === 0) {
+      if (eligibleMembers.length === 0) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: excludedByRules > 0
@@ -4220,12 +4265,19 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           memberCount: memberIds.length,
           audienceCount: members.length,
           excludedByRules,
+          excludedByGuardrails,
+          guardrails: guardrails.summary,
           deliveryMode: 'save_draft' as const,
           savedAsDraft: true,
         }
       }
 
-      await enforceCampaignUsageLimits(input.clubId, input.action.campaign.channel, memberIds.length)
+      await enforceCampaignUsageLimits(
+        input.clubId,
+        input.action.campaign.channel,
+        memberIds.length,
+        guardrails.summary.deliveryBreakdown,
+      )
       if (input.action.campaign.execution.mode === 'send_later') {
         const scheduledFor = input.action.campaign.execution.scheduledFor
         if (!scheduledFor) {
@@ -4236,11 +4288,31 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
 
         const timeZone = input.action.campaign.execution.timeZone || 'America/New_York'
+        if (recipients.length === 0) {
+          return {
+            ok: true,
+            kind: 'create_campaign' as const,
+            cohortId,
+            cohortName,
+            memberCount: 0,
+            audienceCount: members.length,
+            excludedByRules,
+            excludedByGuardrails,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_later' as const,
+            scheduled: 0,
+            scheduledFor,
+            timeZone,
+            scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+          }
+        }
+
         const scheduled = await scheduleCampaignSend(ctx.prisma, {
           clubId: input.clubId,
           type: input.action.campaign.type,
           channel: input.action.campaign.channel,
           memberIds,
+          recipients,
           subject: input.action.campaign.subject,
           body: input.action.campaign.body,
           smsBody: input.action.campaign.smsBody,
@@ -4257,9 +4329,31 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           memberCount: memberIds.length,
           audienceCount: members.length,
           excludedByRules,
+          excludedByGuardrails,
+          guardrails: guardrails.summary,
           deliveryMode: 'send_later' as const,
           scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
           ...scheduled,
+        }
+      }
+
+      if (recipients.length === 0) {
+        return {
+          ok: true,
+          kind: 'create_campaign' as const,
+          cohortId,
+          cohortName,
+          memberCount: 0,
+          audienceCount: members.length,
+          excludedByRules,
+          excludedByGuardrails,
+          guardrails: guardrails.summary,
+          deliveryMode: 'send_now' as const,
+          sent: 0,
+          failed: 0,
+          skipped: excludedByGuardrails,
+          emailSent: 0,
+          smsSent: 0,
         }
       }
 
@@ -4268,6 +4362,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         type: input.action.campaign.type,
         channel: input.action.campaign.channel,
         memberIds,
+        recipients,
         subject: input.action.campaign.subject,
         body: input.action.campaign.body,
         smsBody: input.action.campaign.smsBody,
@@ -4281,8 +4376,11 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         memberCount: memberIds.length,
         audienceCount: members.length,
         excludedByRules,
+        excludedByGuardrails,
+        guardrails: guardrails.summary,
         deliveryMode: 'send_now' as const,
         ...result,
+        skipped: (result.skipped || 0) + excludedByGuardrails,
       }
     }),
 
