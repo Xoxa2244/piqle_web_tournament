@@ -1,5 +1,3 @@
-import 'server-only'
-
 import { sendOutreachEmail } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { reportUsage } from '@/lib/stripe-usage'
