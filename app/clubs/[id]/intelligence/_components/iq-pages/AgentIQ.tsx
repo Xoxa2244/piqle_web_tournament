@@ -43,6 +43,8 @@ interface PendingAction {
   sequenceStep?: number | null
 }
 
+type AutopilotOutcome = "auto" | "pending" | "blocked" | "other"
+
 interface AgentIQProps {
   clubId: string
   activity?: {
@@ -198,6 +200,56 @@ function getPrimaryReason(reasons?: string[]) {
   return reasons[0]
 }
 
+function resolveAutopilotOutcome(log: AgentLog): AutopilotOutcome {
+  if (log.triggerOutcome === "auto" || log.triggerOutcome === "pending" || log.triggerOutcome === "blocked") {
+    return log.triggerOutcome
+  }
+
+  if (log.status === "blocked") return "blocked"
+  if (log.status === "pending") return "pending"
+  if (log.autoApproved) return "auto"
+  return "other"
+}
+
+function incrementCounter(map: Map<string, number>, key?: string | null) {
+  if (!key) return
+  map.set(key, (map.get(key) || 0) + 1)
+}
+
+function topEntries(map: Map<string, number>, limit = 3) {
+  return Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }))
+}
+
+function buildAutopilotSummary(logs: AgentLog[]) {
+  const counts = { auto: 0, pending: 0, blocked: 0, other: 0 }
+  const sourceCounts = new Map<string, number>()
+  const blockedReasons = new Map<string, number>()
+  const reviewReasons = new Map<string, number>()
+
+  for (const log of logs) {
+    const outcome = resolveAutopilotOutcome(log)
+    counts[outcome] += 1
+
+    incrementCounter(sourceCounts, log.triggerSource)
+
+    const reason = getPrimaryReason(log.triggerReasons)
+    if (outcome === "blocked") incrementCounter(blockedReasons, reason)
+    if (outcome === "pending") incrementCounter(reviewReasons, reason)
+  }
+
+  const mostActiveSource = topEntries(sourceCounts, 1)[0] || null
+
+  return {
+    counts,
+    mostActiveSource,
+    topBlockedReasons: topEntries(blockedReasons),
+    topReviewReasons: topEntries(reviewReasons),
+  }
+}
+
 // ── Component ──
 export function AgentIQ({
   clubId,
@@ -217,6 +269,7 @@ export function AgentIQ({
   const stats = activity?.stats
   const logs = activity?.logs || []
   const pendingActions = pending || []
+  const autopilotSummary = buildAutopilotSummary(logs)
 
   const handleApprove = (actionId: string) => {
     setProcessingId(actionId)
@@ -343,6 +396,147 @@ export function AgentIQ({
             </Card>
           )
         })}
+      </motion.div>
+
+      {/* ── Autopilot Summary ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+      >
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+                <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                  Autopilot Summary
+                </h2>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                How the agent is routing actions across auto-run, review, and blocked states.
+              </p>
+            </div>
+            {autopilotSummary.mostActiveSource && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px]" style={{ color: "var(--t4)" }}>
+                  Most active trigger
+                </span>
+                <TriggerSourceBadge source={autopilotSummary.mostActiveSource.label} />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            {[
+              {
+                label: "Auto-run",
+                value: autopilotSummary.counts.auto,
+                note: "Executed without manual review",
+                color: "#10B981",
+              },
+              {
+                label: "Needs review",
+                value: autopilotSummary.counts.pending,
+                note: "Waiting on human approval",
+                color: "#F59E0B",
+              },
+              {
+                label: "Blocked",
+                value: autopilotSummary.counts.blocked,
+                note: "Stopped by autonomy or policy",
+                color: "#EF4444",
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl p-3"
+                style={{
+                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                  border: "1px solid var(--card-border)",
+                }}
+              >
+                <div className="text-[11px] font-medium" style={{ color: item.color }}>
+                  {item.label}
+                </div>
+                <div className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "var(--heading)" }}>
+                  {item.value}
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: "var(--t4)" }}>
+                  {item.note}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div
+              className="rounded-xl p-3"
+              style={{
+                background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="w-4 h-4" style={{ color: "#EF4444" }} />
+                <div className="text-sm font-medium" style={{ color: "var(--heading)" }}>
+                  Top Blocking Reasons
+                </div>
+              </div>
+              {autopilotSummary.topBlockedReasons.length === 0 ? (
+                <div className="text-xs" style={{ color: "var(--t4)" }}>
+                  No blocked actions in the last 7 days.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {autopilotSummary.topBlockedReasons.map((entry) => (
+                    <div key={entry.label} className="flex items-start justify-between gap-3">
+                      <div className="text-xs" style={{ color: "var(--t3)" }}>
+                        {entry.label}
+                      </div>
+                      <div className="text-xs font-semibold tabular-nums" style={{ color: "#EF4444" }}>
+                        {entry.count}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div
+              className="rounded-xl p-3"
+              style={{
+                background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4" style={{ color: "#F59E0B" }} />
+                <div className="text-sm font-medium" style={{ color: "var(--heading)" }}>
+                  Top Review Reasons
+                </div>
+              </div>
+              {autopilotSummary.topReviewReasons.length === 0 ? (
+                <div className="text-xs" style={{ color: "var(--t4)" }}>
+                  No manual-review bottlenecks in the current 7-day window.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {autopilotSummary.topReviewReasons.map((entry) => (
+                    <div key={entry.label} className="flex items-start justify-between gap-3">
+                      <div className="text-xs" style={{ color: "var(--t3)" }}>
+                        {entry.label}
+                      </div>
+                      <div className="text-xs font-semibold tabular-nums" style={{ color: "#F59E0B" }}>
+                        {entry.count}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
       </motion.div>
 
       {/* ── Pending Actions Queue ── */}
