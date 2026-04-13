@@ -3,6 +3,8 @@
  */
 
 import { z } from 'zod'
+import { agentAutonomyPolicySchema } from './agent-autonomy'
+import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 
 // ── Shared enums ──
 
@@ -83,6 +85,11 @@ export const intelligenceSettingsSchema = z.object({
     maxMessagesPerWeek: z.number().int().min(1).max(7),
     tone: z.enum(COMMUNICATION_TONES),
   }),
+  agentLive: z.boolean().optional(),
+  autoApproveThreshold: z.number().int().min(0).max(100).optional(),
+  notificationEmail: z.string().email().optional(),
+  contactPolicy: advisorContactPolicyDraftSchema.omit({ changes: true }).optional(),
+  autonomyPolicy: agentAutonomyPolicySchema.optional(),
   goals: z.array(z.enum(CLUB_GOALS)).min(1),
   onboardingCompletedAt: z.string().nullable(),
   onboardingVersion: z.number().int(),

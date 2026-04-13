@@ -12,6 +12,7 @@
 
 import { cronLogger as log } from '@/lib/logger'
 import { isAgentLive } from '@/lib/ai/agent-utils'
+import { evaluateAgentAutonomy } from '@/lib/ai/agent-autonomy'
 
 export interface EventResult {
   clubId: string
@@ -38,6 +39,11 @@ export async function detectEventsForClub(
   const fortyEightHours = new Date(now.getTime() + 48 * 60 * 60 * 1000)
 
   const live = await isAgentLive(prisma, clubId)
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { automationSettings: true },
+  }).catch(() => null)
+  const automationSettings = club?.automationSettings
   let actionsTaken = 0
 
   // 1. Recent cancellations → slot filler opportunity
@@ -87,6 +93,16 @@ export async function detectEventsForClub(
   // Act on underfilled sessions (slot filler autopilot)
   if (live && underfilled.length > 0) {
     for (const session of underfilled.slice(0, 5)) {
+      const slotDecision = evaluateAgentAutonomy({
+        action: 'slotFiller',
+        automationSettings,
+        liveMode: live,
+        confidence: 75,
+        recipientCount: 5,
+        membershipSignal: 'weak',
+      })
+      if (slotDecision.outcome === 'blocked') continue
+
       const recentInvites = await prisma.aIRecommendationLog.count({
         where: {
           clubId,
@@ -112,7 +128,8 @@ export async function detectEventsForClub(
             maxPlayers: session.maxPlayers,
             occupancy: Math.round(Number(session.confirmed) / session.maxPlayers * 100),
             confidence: 75,
-            autoApproved: false,
+            autoApproved: slotDecision.outcome === 'auto',
+            autonomy: slotDecision,
           },
         },
       }).catch(() => {})
@@ -123,6 +140,16 @@ export async function detectEventsForClub(
   // Act on new members (onboarding)
   if (live && newMembers.length > 0) {
     for (const member of newMembers) {
+      const welcomeDecision = evaluateAgentAutonomy({
+        action: 'welcome',
+        automationSettings,
+        liveMode: live,
+        confidence: 95,
+        recipientCount: 1,
+        membershipSignal: 'weak',
+      })
+      if (welcomeDecision.outcome === 'blocked') continue
+
       const alreadyWelcomed = await prisma.aIRecommendationLog.count({
         where: {
           clubId,
@@ -131,6 +158,27 @@ export async function detectEventsForClub(
         },
       })
       if (alreadyWelcomed > 0) continue
+
+      if (welcomeDecision.outcome === 'pending') {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId,
+            userId: member.userId,
+            type: 'NEW_MEMBER_WELCOME',
+            channel: 'email',
+            status: 'pending',
+            reasoning: {
+              source: 'event_detection',
+              confidence: 95,
+              autoApproved: false,
+              autonomy: welcomeDecision,
+              memberName: member.name,
+            },
+          },
+        }).catch(() => {})
+        actionsTaken++
+        continue
+      }
 
       try {
         const { sendOutreachEmail } = await import('@/lib/email')
@@ -157,6 +205,7 @@ export async function detectEventsForClub(
               source: 'event_detection',
               confidence: 95,
               autoApproved: true,
+              autonomy: welcomeDecision,
               memberName: member.name,
             },
           },

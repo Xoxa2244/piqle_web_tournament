@@ -6,7 +6,8 @@
  * - "lastminute": find sessions starting in 2-6 hours, urgent invites (every 2h)
  *
  * Uses existing slot filler scoring, anti-spam, email/SMS infrastructure.
- * Dry run by default — no messages sent unless agentLive=true AND dryRun=false.
+ * Dry run by default — auto-send only happens when the club is live, the run is not dry,
+ * and autonomy policy allows slot filler to execute automatically.
  */
 
 import { PrismaClient } from '@prisma/client'
@@ -15,6 +16,7 @@ import { checkAntiSpam } from './anti-spam'
 import { getFrequentPartnerIds } from './partners'
 import { sendSlotFillerInviteEmail } from '../email'
 import { inferPreferencesFromBookings } from './inferred-preferences'
+import { evaluateAgentAutonomy } from './agent-autonomy'
 import type { MemberData, UserPlayPreferenceData, BookingHistory, PlaySessionData } from '../../types/intelligence'
 
 export type SlotFillerMode = 'tomorrow' | 'lastminute'
@@ -68,11 +70,11 @@ export async function runSlotFillerAutomation(
   for (const club of clubs) {
     const settings = (club.automationSettings as any)?.intelligence || {}
     const isLive = settings.agentLive === true
-    const effectiveDryRun = dryRun || !isLive
 
     try {
       const result = await processClub(prisma, club, mode, {
-        dryRun: effectiveDryRun,
+        dryRun,
+        liveMode: isLive,
         maxCandidatesPerSession,
         minScore,
       })
@@ -94,11 +96,11 @@ export async function runSlotFillerAutomation(
 
 async function processClub(
   prisma: PrismaClient,
-  club: { id: string; name: string },
+  club: { id: string; name: string; automationSettings?: unknown },
   mode: SlotFillerMode,
-  options: { dryRun: boolean; maxCandidatesPerSession: number; minScore: number },
+  options: { dryRun: boolean; liveMode: boolean; maxCandidatesPerSession: number; minScore: number },
 ): Promise<ClubResult> {
-  const { dryRun, maxCandidatesPerSession, minScore } = options
+  const { dryRun, liveMode, maxCandidatesPerSession, minScore } = options
   const now = new Date()
 
   // Find target sessions based on mode
@@ -180,6 +182,18 @@ async function processClub(
 
     result.candidatesFound += topCandidates.length
 
+    const averageScore = topCandidates.length > 0
+      ? Math.round(topCandidates.reduce((sum, rec) => sum + rec.score, 0) / topCandidates.length)
+      : null
+    const autonomyDecision = evaluateAgentAutonomy({
+      action: 'slotFiller',
+      automationSettings: club.automationSettings,
+      liveMode: liveMode && !dryRun,
+      confidence: averageScore,
+      recipientCount: topCandidates.length,
+      membershipSignal: 'weak',
+    })
+
     const sessionResult: SessionResult = {
       sessionId: session.id,
       sessionTitle: session.title || 'Session',
@@ -218,8 +232,14 @@ async function processClub(
         ? `${socialProof} Join the group!`
         : `${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left for ${session.title}. Don't miss out!`
 
+      const deliveryStatus = autonomyDecision.outcome === 'blocked'
+        ? 'blocked'
+        : autonomyDecision.outcome === 'pending'
+          ? 'pending'
+          : 'sent'
+
       // Send or log
-      if (!dryRun && rec.member.email) {
+      if (deliveryStatus === 'sent' && rec.member.email) {
         try {
           await sendSlotFillerInviteEmail({
             to: rec.member.email,
@@ -249,20 +269,26 @@ async function processClub(
           sessionId: session.id,
           score: rec.score,
           variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
-          status: dryRun ? 'pending' : 'sent',
+          status: deliveryStatus,
           reasoning: {
             mode,
             score: rec.score,
             estimatedLikelihood: rec.estimatedLikelihood,
             spotsLeft,
             socialProof: socialProof || null,
-            dryRun,
+            dryRun: deliveryStatus !== 'sent',
+            autonomy: autonomyDecision,
           } as any,
         },
       }).catch(() => {})
 
-      sessionResult.invitesSent++
-      result.messagesSent++
+      if (deliveryStatus === 'sent') {
+        sessionResult.invitesSent++
+        result.messagesSent++
+      } else {
+        sessionResult.invitesSkipped++
+        result.messagesSkipped++
+      }
     }
 
     result.details.push(sessionResult)

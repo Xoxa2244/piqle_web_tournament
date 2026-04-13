@@ -67,6 +67,48 @@ function describeAgentAction(type: string, reasoning: any): string {
   }
 }
 
+function buildApprovedAgentMessage(opts: {
+  type: string
+  clubName: string
+  clubId: string
+  memberName?: string | null
+  reasoning?: any
+}) {
+  const firstName = opts.memberName?.split(' ')[0] || 'there'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+
+  if (opts.type === 'NEW_MEMBER_WELCOME') {
+    return {
+      subject: `Welcome to ${opts.clubName}!`,
+      body: `Hey ${firstName}!\n\nWelcome to ${opts.clubName}. We're excited to have you in the club and we'd love to see you on court soon.`,
+      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+    }
+  }
+
+  if (opts.type === 'SLOT_FILLER') {
+    const sessionTitle = opts.reasoning?.sessionTitle || 'an upcoming session'
+    return {
+      subject: `${opts.clubName} — spot open in ${sessionTitle}`,
+      body: `Hey ${firstName}!\n\nA spot just opened in ${sessionTitle}. If you want in, now is a great time to jump on it.`,
+      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/intelligence/sessions`,
+    }
+  }
+
+  if (opts.type === 'CHECK_IN') {
+    return {
+      subject: opts.reasoning?.originalSubject || `${opts.clubName} — checking in`,
+      body: `Hey ${firstName}!\n\nJust checking in from ${opts.clubName}. We'd love to help you get back into a good rhythm on court.`,
+      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+    }
+  }
+
+  return {
+    subject: opts.reasoning?.originalSubject || `${opts.clubName} — we'd love to see you back!`,
+    body: `Hey ${firstName}!\n\nWe noticed it's been a while, and we'd love to have you back at ${opts.clubName}.`,
+    bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+  }
+}
+
 // ── Cohort filter helpers ──
 export interface CohortFilter {
   field: string
@@ -4505,13 +4547,19 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       // Send email
       if (action.user?.email) {
         const { sendOutreachEmail } = await import('@/lib/email')
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+        const emailPayload = buildApprovedAgentMessage({
+          type: action.type,
+          clubName: action.club.name,
+          clubId: action.clubId,
+          memberName: action.user.name,
+          reasoning: action.reasoning as any,
+        })
         await sendOutreachEmail({
           to: action.user.email,
-          subject: `${action.club.name} — We'd love to see you back!`,
-          body: `Hey ${action.user.name?.split(' ')[0] || 'there'}!\n\nWe noticed it's been a while. We'd love to have you back!`,
+          subject: emailPayload.subject,
+          body: emailPayload.body,
           clubName: action.club.name,
-          bookingUrl: `${baseUrl}/clubs/${action.clubId}/play`,
+          bookingUrl: emailPayload.bookingUrl,
         })
       }
       await ctx.prisma.aIRecommendationLog.update({

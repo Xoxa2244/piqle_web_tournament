@@ -23,6 +23,7 @@ import { selectBestVariant } from './variant-optimizer'
 import { processSequences, hasActiveSequence, getSequenceType } from './sequence-runner'
 import { generateSequenceMessage, generateSequenceMessageVariants } from './sequence-messages'
 import { interpolateVariant, type MessageGenerationContext } from './llm/message-generator'
+import { evaluateAgentAutonomy, mapOutreachTypeToAutonomyAction } from './agent-autonomy'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -826,7 +827,44 @@ export async function runHealthCampaign(
       autoApproveThreshold,
     )
 
-    if (!confidence.autoApproved && !dryRun) {
+    const autonomyAction = mapOutreachTypeToAutonomyAction(outreachType)
+    const autonomyDecision = autonomyAction
+      ? evaluateAgentAutonomy({
+          action: autonomyAction,
+          automationSettings: rawSettings,
+          liveMode: !dryRun,
+          confidence: confidence.score,
+          recipientCount: 1,
+          membershipSignal: member.membershipType || member.membershipStatus ? 'strong' : 'missing',
+        })
+      : null
+
+    if (autonomyDecision?.outcome === 'blocked') {
+      try {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId,
+            userId: member.memberId,
+            type: outreachType,
+            channel: settings.channel,
+            status: 'blocked',
+            reasoning: {
+              confidence: confidence.score,
+              autoApproved: false,
+              reasons: confidence.reasons,
+              autonomy: autonomyDecision,
+              transition: `${prevRisk} → ${newRisk}`,
+              healthScore: member.healthScore,
+            },
+          },
+        })
+      } catch { /* non-critical */ }
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `${outreachType.toLowerCase()} blocked`, status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
+
+    if ((autonomyDecision?.outcome === 'pending') || (!confidence.autoApproved && !dryRun)) {
       // Queue for morning digest — don't send, just log as pending
       try {
         await prisma.aIRecommendationLog.create({
@@ -840,13 +878,15 @@ export async function runHealthCampaign(
               confidence: confidence.score,
               autoApproved: false,
               reasons: confidence.reasons,
+              autonomy: autonomyDecision,
               transition: `${prevRisk} → ${newRisk}`,
               healthScore: member.healthScore,
             },
           },
         })
       } catch { /* non-critical */ }
-      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (confidence ${confidence.score}%)`, status: 'skipped' })
+      const queueReason = autonomyDecision?.reasons?.[0] || `confidence ${confidence.score}%`
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (${queueReason})`, status: 'skipped' })
       messagesSkipped++
       continue
     }
@@ -958,6 +998,7 @@ export async function runHealthCampaign(
             confidence: confidence.score,
             autoApproved: confidence.autoApproved,
             confidenceReasons: confidence.reasons,
+            autonomy: autonomyDecision,
             optimizerReason,
             sequenceType: getSequenceType(newRisk),
             originalSubject: variant.emailSubject,

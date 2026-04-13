@@ -508,6 +508,22 @@ export interface ClubIntelligenceSettings {
     maxMessagesPerWeek: number
     tone: CommunicationTone
   }
+  agentLive?: boolean
+  autoApproveThreshold?: number
+  notificationEmail?: string
+  contactPolicy?: {
+    quietHours: { startHour: number; endHour: number }
+    recentBookingLookbackDays: number
+    max24h: number
+    max7d: number
+    cooldownHours: number
+  }
+  autonomyPolicy?: Record<string, {
+    mode?: 'off' | 'approve' | 'auto'
+    minConfidenceAuto?: number
+    maxRecipientsAuto?: number
+    requireMembershipSignal?: boolean
+  }>
   goals: ClubGoal[]
   onboardingCompletedAt: string | null
   onboardingVersion: number
