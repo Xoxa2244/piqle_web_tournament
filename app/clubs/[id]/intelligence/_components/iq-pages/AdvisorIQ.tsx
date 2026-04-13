@@ -12,6 +12,7 @@ import {
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
 import { extractAdvisorAction, stripAdvisorAction } from "@/lib/ai/advisor-actions";
+import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
 
 /* --- Suggested Prompts --- */
 const suggestedPrompts = [
@@ -200,8 +201,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             id: m.id,
             role: m.role as 'user' | 'assistant',
             parts: [{ type: 'text' as const, text: m.content }],
-            createdAt: new Date(m.createdAt),
-          }))
+              createdAt: new Date(m.createdAt),
+              metadata: m.metadata ?? undefined,
+            }))
       );
       setConversationId(convId);
       setActiveConvId(convId);
@@ -238,29 +240,30 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       });
 
       if (response.ok) {
-        const payload = await response.json();
-        if (payload?.handled) {
+              const payload = await response.json();
+              if (payload?.handled) {
           const nextConvId = payload.conversationId || convIdRef.current;
           if (nextConvId) {
             setConversationId(nextConvId);
             setActiveConvId(nextConvId);
           }
 
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: 'user',
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: 'user',
               parts: [{ type: 'text' as const, text: msg }],
               createdAt: new Date(),
             },
-            {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-              createdAt: new Date(),
-            },
-          ]);
+                  {
+                    id: payload.assistantMessageId || crypto.randomUUID(),
+                    role: 'assistant',
+                    parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+                    createdAt: new Date(),
+                    metadata: payload.assistantMetadata ?? undefined,
+                  },
+                ]);
           refreshConversations();
           return;
         }
@@ -394,6 +397,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             {messages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
               const action = msg.role === 'assistant' ? extractAdvisorAction(text) : null;
+              const actionState = action ? getAdvisorActionRuntimeState((msg as any).metadata) : null;
               const textWithoutAction = msg.role === 'assistant' ? stripAdvisorAction(text) : text;
               // Debug: log message structure
               if (typeof window !== 'undefined') {
@@ -451,7 +455,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                     )}
 
                     {msg.role === "assistant" && action && (
-                      <AdvisorActionCard clubId={clubId} action={action} onDraftPrompt={draftIntoComposer} />
+                      <AdvisorActionCard
+                        clubId={clubId}
+                        messageId={String(msg.id)}
+                        action={action}
+                        actionState={actionState}
+                        onDraftPrompt={draftIntoComposer}
+                      />
                     )}
 
                     {/* Suggested follow-up questions */}

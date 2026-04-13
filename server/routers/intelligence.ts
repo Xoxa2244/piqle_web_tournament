@@ -19,7 +19,8 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
-import { advisorActionSchema } from '@/lib/ai/advisor-actions'
+import { advisorActionSchema, extractAdvisorAction } from '@/lib/ai/advisor-actions'
+import { withAdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import {
   scheduleCampaignSend,
   sendCampaignNow,
@@ -4503,6 +4504,81 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         deliveryMode: 'send_now' as const,
         ...result,
         skipped: (result.skipped || 0) + excludedByGuardrails,
+      }
+    }),
+
+  updateAdvisorActionState: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      messageId: z.string().uuid(),
+      disposition: z.enum(['declined', 'snoozed']),
+      snoozeHours: z.number().int().min(1).max(168).default(24),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const message = await ctx.prisma.aIMessage.findUnique({
+        where: { id: input.messageId },
+        select: {
+          id: true,
+          role: true,
+          content: true,
+          metadata: true,
+          conversation: {
+            select: {
+              clubId: true,
+              userId: true,
+            },
+          },
+        },
+      })
+
+      if (!message || message.role !== 'assistant') {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Advisor draft not found.',
+        })
+      }
+
+      if (message.conversation.clubId !== input.clubId || message.conversation.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You do not have access to update this advisor draft.',
+        })
+      }
+
+      const action = extractAdvisorAction(message.content)
+      if (!action) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This message does not contain an actionable advisor draft.',
+        })
+      }
+
+      const updatedAt = new Date()
+      const snoozedUntil = input.disposition === 'snoozed'
+        ? new Date(updatedAt.getTime() + input.snoozeHours * 60 * 60 * 1000).toISOString()
+        : undefined
+
+      const metadata = withAdvisorActionRuntimeState(
+        message.metadata,
+        {
+          status: input.disposition,
+          ...(snoozedUntil ? { snoozedUntil } : {}),
+          updatedAt: updatedAt.toISOString(),
+        },
+      )
+
+      await ctx.prisma.aIMessage.update({
+        where: { id: input.messageId },
+        data: { metadata: metadata as any },
+      })
+
+      return {
+        ok: true,
+        status: input.disposition,
+        snoozedUntil,
+        actionKind: action.kind,
       }
     }),
 

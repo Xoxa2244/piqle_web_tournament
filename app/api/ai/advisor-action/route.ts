@@ -7,6 +7,9 @@ import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
 import { buildAdvisorActionTag, extractAdvisorAction, type AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
 import {
+  isAdvisorActionHidden,
+} from '@/lib/ai/advisor-action-state'
+import {
   formatAdvisorAutonomyPolicyDigest,
   resolveAdvisorAutonomyPolicy,
   updateAdvisorAutonomyPolicyFromMessage,
@@ -137,10 +140,11 @@ async function getLastAdvisorAction(conversationId: string): Promise<AdvisorActi
     where: { conversationId, role: 'assistant' },
     orderBy: { createdAt: 'desc' },
     take: 10,
-    select: { content: true },
+    select: { content: true, metadata: true },
   })
 
   for (const message of priorMessages) {
+    if (isAdvisorActionHidden(message.metadata)) continue
     const action = extractAdvisorAction(message.content)
     if (action) return action
   }
@@ -160,6 +164,7 @@ async function getAdvisorConversationMemory(conversationId: string) {
   for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
     const message = priorMessages[index]
     if (message.role !== 'assistant') continue
+    if (isAdvisorActionHidden(message.metadata)) continue
     const action = extractAdvisorAction(message.content)
     if (action) {
       lastAction = action
@@ -181,6 +186,58 @@ function truncateAdvisorText(text: string, maxChars: number) {
   const trimmed = text.trim()
   if (trimmed.length <= maxChars) return trimmed
   return `${trimmed.slice(0, Math.max(0, maxChars - 1)).trim()}…`
+}
+
+async function persistAdvisorExchange(opts: {
+  conversationId: string
+  userMessage: string
+  assistantMessage: string
+  titleSource: string
+  language: SupportedLanguage
+  assistantState?: AdvisorConversationState | null
+  action?: AdvisorAction | null
+}) {
+  await prisma.aIMessage.create({
+    data: {
+      conversationId: opts.conversationId,
+      role: 'user',
+      content: opts.userMessage,
+      metadata: {},
+    },
+  })
+
+  const assistantMetadata = {
+    source: 'advisor_action',
+    handled: true,
+    ...(opts.assistantState ? { advisorState: opts.assistantState } : {}),
+    ...(opts.action
+      ? { advisorActionState: { status: 'active' as const, updatedAt: new Date().toISOString() } }
+      : {}),
+  }
+
+  const assistantRecord = await prisma.aIMessage.create({
+    data: {
+      conversationId: opts.conversationId,
+      role: 'assistant',
+      content: opts.assistantMessage,
+      metadata: assistantMetadata,
+    },
+    select: {
+      id: true,
+      metadata: true,
+    },
+  })
+
+  await prisma.aIConversation.update({
+    where: { id: opts.conversationId },
+    data: {
+      title: opts.titleSource.slice(0, 100),
+      language: opts.language,
+      updatedAt: new Date(),
+    },
+  }).catch(() => {})
+
+  return assistantRecord
 }
 
 function buildCampaignReadyText(
@@ -1058,35 +1115,23 @@ export async function POST(req: Request) {
     }
 
     if (assistantMessage) {
-      await prisma.aIMessage.createMany({
-        data: [
-          { conversationId: convId, role: 'user', content: message, metadata: {} },
-          {
-            conversationId: convId,
-            role: 'assistant',
-            content: assistantMessage,
-            metadata: {
-              source: 'advisor_action',
-              handled: true,
-              ...(assistantState ? { advisorState: assistantState } : {}),
-            },
-          },
-        ],
+      const assistantAction = extractAdvisorAction(assistantMessage)
+      const assistantRecord = await persistAdvisorExchange({
+        conversationId: convId,
+        userMessage: message,
+        assistantMessage,
+        titleSource: message,
+        language,
+        assistantState,
+        action: assistantAction,
       })
-
-      await prisma.aIConversation.update({
-        where: { id: convId },
-        data: {
-          title: message.slice(0, 100),
-          language,
-          updatedAt: new Date(),
-        },
-      }).catch(() => {})
 
       return Response.json({
         handled: true,
         conversationId: convId,
         assistantMessage,
+        assistantMessageId: assistantRecord.id,
+        assistantMetadata: assistantRecord.metadata,
       })
     }
 
@@ -1320,35 +1365,23 @@ export async function POST(req: Request) {
       )
     }
 
-    await prisma.aIMessage.createMany({
-      data: [
-        { conversationId: convId, role: 'user', content: message, metadata: {} },
-        {
-          conversationId: convId,
-          role: 'assistant',
-          content: assistantMessage,
-          metadata: {
-            source: 'advisor_action',
-            handled: true,
-            ...(assistantState ? { advisorState: assistantState } : {}),
-          },
-        },
-      ],
+    const assistantAction = extractAdvisorAction(assistantMessage)
+    const assistantRecord = await persistAdvisorExchange({
+      conversationId: convId,
+      userMessage: message,
+      assistantMessage,
+      titleSource: message,
+      language,
+      assistantState,
+      action: assistantAction,
     })
-
-    await prisma.aIConversation.update({
-      where: { id: convId },
-      data: {
-        title: message.slice(0, 100),
-        language,
-        updatedAt: new Date(),
-      },
-    }).catch(() => {})
 
     return Response.json({
       handled: true,
       conversationId: convId,
       assistantMessage,
+      assistantMessageId: assistantRecord.id,
+      assistantMetadata: assistantRecord.metadata,
     })
   } catch (error) {
     console.error('[Advisor Action] POST error:', error instanceof Error ? error.message : error)

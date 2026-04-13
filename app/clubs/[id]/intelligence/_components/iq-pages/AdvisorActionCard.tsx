@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Loader2, Mail, PencilLine, Send, Users, X } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Loader2, Mail, PauseCircle, PencilLine, Send, Users, XCircle } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import type { AdvisorAction } from '@/lib/ai/advisor-actions'
-import { useExecuteAdvisorAction } from '../../_hooks/use-intelligence'
+import { getAdvisorActionRuntimeState, type AdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
+import { useExecuteAdvisorAction, useUpdateAdvisorActionState } from '../../_hooks/use-intelligence'
 
 function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'create_campaign') return 'Make this campaign shorter and sharper.'
@@ -17,17 +18,22 @@ function getRefinePrompt(action: AdvisorAction) {
 
 export function AdvisorActionCard({
   clubId,
+  messageId,
   action,
+  actionState,
   onDraftPrompt,
 }: {
   clubId: string
+  messageId?: string
   action: AdvisorAction
+  actionState?: AdvisorActionRuntimeState | null
   onDraftPrompt?: (prompt: string) => void
 }) {
   const { isDark } = useTheme()
   const executeAction = useExecuteAdvisorAction()
+  const updateActionState = useUpdateAdvisorActionState()
   const [result, setResult] = useState<any | null>(null)
-  const [dismissed, setDismissed] = useState(false)
+  const [localActionState, setLocalActionState] = useState<AdvisorActionRuntimeState | null>(actionState || null)
   const isCampaign = action.kind === 'create_campaign'
   const isFillSession = action.kind === 'fill_session'
   const isReactivation = action.kind === 'reactivate_members'
@@ -123,8 +129,56 @@ export function AdvisorActionCard({
   }
 
   const isDone = !!result?.ok
+  const runtimeState = localActionState || actionState || getAdvisorActionRuntimeState(undefined)
+  const isDeclined = runtimeState.status === 'declined'
+  const isSnoozed = runtimeState.status === 'snoozed'
+  const snoozedLabel = useMemo(() => {
+    if (!isSnoozed || !runtimeState.snoozedUntil) return null
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(runtimeState.snoozedUntil))
+    } catch {
+      return runtimeState.snoozedUntil
+    }
+  }, [isSnoozed, runtimeState.snoozedUntil])
 
-  if (dismissed && !isDone) {
+  const handleDecline = () => {
+    if (!messageId) return
+    updateActionState.mutate(
+      { clubId, messageId, disposition: 'declined' },
+      {
+        onSuccess: (data) => {
+          setLocalActionState({
+            status: 'declined',
+            updatedAt: new Date().toISOString(),
+          })
+        },
+      },
+    )
+  }
+
+  const handleSnooze = () => {
+    if (!messageId) return
+    updateActionState.mutate(
+      { clubId, messageId, disposition: 'snoozed', snoozeHours: 24 },
+      {
+        onSuccess: (data) => {
+          setLocalActionState({
+            status: 'snoozed',
+            snoozedUntil: data.snoozedUntil || undefined,
+            updatedAt: new Date().toISOString(),
+          })
+        },
+      },
+    )
+  }
+
+  if ((isDeclined || isSnoozed) && !isDone) {
     return (
       <div
         className="mt-3 rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
@@ -133,17 +187,18 @@ export function AdvisorActionCard({
           border: '1px solid rgba(148,163,184,0.16)',
         }}
       >
-        <div className="text-xs" style={{ color: 'var(--t3)' }}>
-          Draft hidden for now. You can still bring it back and approve it later in this chat.
+        <div className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+          {isDeclined
+            ? 'Draft declined for this conversation. The agent will stop treating it as the active next step.'
+            : `Draft snoozed until ${snoozedLabel || 'later'}. The agent will stop using it until that window ends.`}
         </div>
-        <button
-          type="button"
-          onClick={() => setDismissed(false)}
-          className="px-3 py-1.5 rounded-xl text-xs"
+        <div
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
           style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}
         >
-          Undo
-        </button>
+          {isDeclined ? <XCircle className="w-3.5 h-3.5" /> : <PauseCircle className="w-3.5 h-3.5" />}
+          {isDeclined ? 'Declined' : 'Snoozed'}
+        </div>
       </div>
     )
   }
@@ -572,24 +627,42 @@ export function AdvisorActionCard({
           </button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={handleSnooze}
+            disabled={!messageId || updateActionState.isPending}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
             style={{
               background: 'transparent',
               color: 'var(--t3)',
               border: '1px solid var(--card-border)',
               fontWeight: 600,
+              opacity: !messageId ? 0.55 : 1,
             }}
           >
-            <X className="w-3.5 h-3.5" />
-            Not Now
+            <PauseCircle className="w-3.5 h-3.5" />
+            Snooze 24h
+          </button>
+          <button
+            type="button"
+            onClick={handleDecline}
+            disabled={!messageId || updateActionState.isPending}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: 'transparent',
+              color: '#F87171',
+              border: '1px solid rgba(248,113,113,0.25)',
+              fontWeight: 600,
+              opacity: !messageId ? 0.55 : 1,
+            }}
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            Decline
           </button>
         </div>
       )}
 
-      {executeAction.error && !isDone && (
+      {(executeAction.error || updateActionState.error) && !isDone && (
         <div className="text-xs mt-3" style={{ color: '#F87171' }}>
-          {executeAction.error.message}
+          {executeAction.error?.message || updateActionState.error?.message}
         </div>
       )}
     </div>

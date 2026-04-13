@@ -569,3 +569,7 @@ export function useSnoozeAction() {
 export function useExecuteAdvisorAction() {
   return trpc.intelligence.executeAdvisorAction.useMutation()
 }
+
+export function useUpdateAdvisorActionState() {
+  return trpc.intelligence.updateAdvisorActionState.useMutation()
+}

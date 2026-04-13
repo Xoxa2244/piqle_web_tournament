@@ -10,6 +10,7 @@ import {
   type AdvisorAction,
 } from './advisor-actions'
 import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
+import { isAdvisorActionHidden } from './advisor-action-state'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
@@ -142,6 +143,7 @@ export function deriveAdvisorConversationState(messages: ConversationMessageLike
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.role !== 'assistant') continue
+    if (isAdvisorActionHidden(message.metadata)) continue
 
     const metadataState = getStateFromMetadata(message.metadata)
     if (metadataState) return metadataState
