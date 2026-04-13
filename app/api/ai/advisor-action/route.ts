@@ -10,6 +10,7 @@ import {
   buildAdvisorConversationStateFromAction,
   deriveAdvisorConversationState,
 } from '@/lib/ai/advisor-conversation-state'
+import { getAdvisorEditCopy, maybeEditAdvisorDraft } from '@/lib/ai/advisor-draft-editor'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -170,9 +171,6 @@ export async function POST(req: Request) {
 
     const language = detectLanguage(message)
     const plan = await planAdvisorActionIntent(message)
-    if (plan.action === 'none') {
-      return Response.json({ handled: false })
-    }
 
     const convId = await getOrCreateConversation({
       clubId,
@@ -187,12 +185,76 @@ export async function POST(req: Request) {
       session: buildSessionForCaller(session),
     } as any)
 
+    const memory = await getAdvisorConversationMemory(convId)
     let assistantMessage = ''
     const copy = getAdvisorActionCopy(language)
     let assistantState: ReturnType<typeof buildAdvisorConversationStateFromAction> | null = null
 
     if (!access.isAdmin) {
-      assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[plan.action === 'create_cohort' ? 'create_cohort' : 'create_campaign'])
+      if (plan.action !== 'none') {
+        assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[plan.action === 'create_cohort' ? 'create_cohort' : 'create_campaign'])
+      }
+    } else {
+      const editedAction = await maybeEditAdvisorDraft({
+        message,
+        state: memory.state,
+      })
+
+      if (editedAction) {
+        const editCopy = getAdvisorEditCopy(language)
+        assistantState = buildAdvisorConversationStateFromAction(editedAction)
+        const audienceName = editedAction.kind === 'create_campaign'
+          ? editedAction.audience.name
+          : editedAction.cohort.name
+        const audienceCount = editedAction.kind === 'create_campaign'
+          ? editedAction.audience.count || 0
+          : editedAction.cohort.count || 0
+        const editText = editedAction.kind === 'create_campaign'
+          ? editCopy.campaignUpdated(audienceName, audienceCount)
+          : editCopy.audienceUpdated(audienceName, audienceCount)
+
+        assistantMessage = withSuggested(
+          `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
+          editCopy.suggestions[editedAction.kind],
+        )
+      }
+    }
+
+    if (assistantMessage) {
+      await prisma.aIMessage.createMany({
+        data: [
+          { conversationId: convId, role: 'user', content: message, metadata: {} },
+          {
+            conversationId: convId,
+            role: 'assistant',
+            content: assistantMessage,
+            metadata: {
+              source: 'advisor_action',
+              handled: true,
+              ...(assistantState ? { advisorState: assistantState } : {}),
+            },
+          },
+        ],
+      })
+
+      await prisma.aIConversation.update({
+        where: { id: convId },
+        data: {
+          title: message.slice(0, 100),
+          language,
+          updatedAt: new Date(),
+        },
+      }).catch(() => {})
+
+      return Response.json({
+        handled: true,
+        conversationId: convId,
+        assistantMessage,
+      })
+    }
+
+    if (plan.action === 'none') {
+      return Response.json({ handled: false })
     } else if (plan.action === 'create_cohort') {
       const parsed = await caller.intelligence.parseCohortFromText({
         clubId,
@@ -220,11 +282,11 @@ export async function POST(req: Request) {
     } else {
       let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
-      const memory = shouldReuseAudience ? await getAdvisorConversationMemory(convId) : null
-      const previousAction = memory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
+      const activeMemory = shouldReuseAudience ? memory : null
+      const previousAction = activeMemory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
 
-      if (memory?.state?.currentAudience) {
-        audienceDraft = memory.state.currentAudience
+      if (activeMemory?.state?.currentAudience) {
+        audienceDraft = activeMemory.state.currentAudience
       } else if (previousAction?.kind === 'create_cohort') {
         audienceDraft = previousAction.cohort
       } else if (previousAction?.kind === 'create_campaign') {
