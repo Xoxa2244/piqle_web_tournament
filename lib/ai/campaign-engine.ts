@@ -23,7 +23,11 @@ import { selectBestVariant } from './variant-optimizer'
 import { processSequences, hasActiveSequence, getSequenceType } from './sequence-runner'
 import { generateSequenceMessage, generateSequenceMessageVariants } from './sequence-messages'
 import { interpolateVariant, type MessageGenerationContext } from './llm/message-generator'
-import { evaluateAgentAutonomy, mapOutreachTypeToAutonomyAction } from './agent-autonomy'
+import { mapOutreachTypeToAutonomyAction } from './agent-autonomy'
+import {
+  buildAgentTriggerReasoning,
+  evaluateAgentTriggerRuntime,
+} from './agent-trigger-runtime'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -828,8 +832,10 @@ export async function runHealthCampaign(
     )
 
     const autonomyAction = mapOutreachTypeToAutonomyAction(outreachType)
-    const autonomyDecision = autonomyAction
-      ? evaluateAgentAutonomy({
+    const runtime = autonomyAction
+      ? evaluateAgentTriggerRuntime({
+          source: 'campaign_engine',
+          triggerMode: 'immediate',
           action: autonomyAction,
           automationSettings: rawSettings,
           liveMode: !dryRun,
@@ -839,7 +845,7 @@ export async function runHealthCampaign(
         })
       : null
 
-    if (autonomyDecision?.outcome === 'blocked') {
+    if (runtime?.decision.outcome === 'blocked') {
       try {
         await prisma.aIRecommendationLog.create({
           data: {
@@ -849,12 +855,13 @@ export async function runHealthCampaign(
             channel: settings.channel,
             status: 'blocked',
             reasoning: {
-              confidence: confidence.score,
-              autoApproved: false,
-              reasons: confidence.reasons,
-              autonomy: autonomyDecision,
-              transition: `${prevRisk} → ${newRisk}`,
-              healthScore: member.healthScore,
+              ...(runtime
+                ? buildAgentTriggerReasoning(runtime, {
+                    transition: `${prevRisk} → ${newRisk}`,
+                    healthScore: member.healthScore,
+                    confidenceReasons: confidence.reasons,
+                  })
+                : {}),
             },
           },
         })
@@ -864,7 +871,7 @@ export async function runHealthCampaign(
       continue
     }
 
-    if ((autonomyDecision?.outcome === 'pending') || (!confidence.autoApproved && !dryRun)) {
+    if ((runtime?.decision.outcome === 'pending') || (!confidence.autoApproved && !dryRun)) {
       // Queue for morning digest — don't send, just log as pending
       try {
         await prisma.aIRecommendationLog.create({
@@ -875,17 +882,18 @@ export async function runHealthCampaign(
             channel: settings.channel,
             status: 'pending',
             reasoning: {
-              confidence: confidence.score,
-              autoApproved: false,
-              reasons: confidence.reasons,
-              autonomy: autonomyDecision,
-              transition: `${prevRisk} → ${newRisk}`,
-              healthScore: member.healthScore,
+              ...(runtime
+                ? buildAgentTriggerReasoning(runtime, {
+                    transition: `${prevRisk} → ${newRisk}`,
+                    healthScore: member.healthScore,
+                    confidenceReasons: confidence.reasons,
+                  })
+                : {}),
             },
           },
         })
       } catch { /* non-critical */ }
-      const queueReason = autonomyDecision?.reasons?.[0] || `confidence ${confidence.score}%`
+      const queueReason = runtime?.decision.reasons?.[0] || `confidence ${confidence.score}%`
       transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (${queueReason})`, status: 'skipped' })
       messagesSkipped++
       continue
@@ -996,9 +1004,9 @@ export async function runHealthCampaign(
             variantId: variant.id,
             healthScore: member.healthScore,
             confidence: confidence.score,
-            autoApproved: confidence.autoApproved,
+            confidenceAutoApproved: confidence.autoApproved,
             confidenceReasons: confidence.reasons,
-            autonomy: autonomyDecision,
+            ...(runtime ? buildAgentTriggerReasoning(runtime) : {}),
             optimizerReason,
             sequenceType: getSequenceType(newRisk),
             originalSubject: variant.emailSubject,

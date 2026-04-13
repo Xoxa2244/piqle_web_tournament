@@ -12,7 +12,10 @@
 
 import { cronLogger as log } from '@/lib/logger'
 import { isAgentLive } from '@/lib/ai/agent-utils'
-import { evaluateAgentAutonomy } from '@/lib/ai/agent-autonomy'
+import {
+  buildAgentTriggerReasoning,
+  evaluateAgentTriggerRuntime,
+} from '@/lib/ai/agent-trigger-runtime'
 
 export interface EventResult {
   clubId: string
@@ -93,7 +96,9 @@ export async function detectEventsForClub(
   // Act on underfilled sessions (slot filler autopilot)
   if (live && underfilled.length > 0) {
     for (const session of underfilled.slice(0, 5)) {
-      const slotDecision = evaluateAgentAutonomy({
+      const slotRuntime = evaluateAgentTriggerRuntime({
+        source: 'event_detection',
+        triggerMode: 'deferred',
         action: 'slotFiller',
         automationSettings,
         liveMode: live,
@@ -101,7 +106,7 @@ export async function detectEventsForClub(
         recipientCount: 5,
         membershipSignal: 'weak',
       })
-      if (slotDecision.outcome === 'blocked') continue
+      if (slotRuntime.decision.outcome === 'blocked') continue
 
       const recentInvites = await prisma.aIRecommendationLog.count({
         where: {
@@ -120,17 +125,13 @@ export async function detectEventsForClub(
           type: 'SLOT_FILLER',
           sessionId: session.id,
           status: 'pending',
-          reasoning: {
-            source: 'event_detection',
+          reasoning: buildAgentTriggerReasoning(slotRuntime, {
             sessionTitle: session.title,
             sessionDate: session.date,
             confirmed: Number(session.confirmed),
             maxPlayers: session.maxPlayers,
             occupancy: Math.round(Number(session.confirmed) / session.maxPlayers * 100),
-            confidence: 75,
-            autoApproved: slotDecision.outcome === 'auto',
-            autonomy: slotDecision,
-          },
+          }),
         },
       }).catch(() => {})
       actionsTaken++
@@ -140,7 +141,9 @@ export async function detectEventsForClub(
   // Act on new members (onboarding)
   if (live && newMembers.length > 0) {
     for (const member of newMembers) {
-      const welcomeDecision = evaluateAgentAutonomy({
+      const welcomeRuntime = evaluateAgentTriggerRuntime({
+        source: 'event_detection',
+        triggerMode: 'immediate',
         action: 'welcome',
         automationSettings,
         liveMode: live,
@@ -148,7 +151,7 @@ export async function detectEventsForClub(
         recipientCount: 1,
         membershipSignal: 'weak',
       })
-      if (welcomeDecision.outcome === 'blocked') continue
+      if (welcomeRuntime.decision.outcome === 'blocked') continue
 
       const alreadyWelcomed = await prisma.aIRecommendationLog.count({
         where: {
@@ -159,7 +162,7 @@ export async function detectEventsForClub(
       })
       if (alreadyWelcomed > 0) continue
 
-      if (welcomeDecision.outcome === 'pending') {
+      if (welcomeRuntime.decision.outcome === 'pending') {
         await prisma.aIRecommendationLog.create({
           data: {
             clubId,
@@ -167,13 +170,9 @@ export async function detectEventsForClub(
             type: 'NEW_MEMBER_WELCOME',
             channel: 'email',
             status: 'pending',
-            reasoning: {
-              source: 'event_detection',
-              confidence: 95,
-              autoApproved: false,
-              autonomy: welcomeDecision,
+            reasoning: buildAgentTriggerReasoning(welcomeRuntime, {
               memberName: member.name,
-            },
+            }),
           },
         }).catch(() => {})
         actionsTaken++
@@ -201,13 +200,9 @@ export async function detectEventsForClub(
             channel: 'email',
             sequenceStep: 0,
             status: 'sent',
-            reasoning: {
-              source: 'event_detection',
-              confidence: 95,
-              autoApproved: true,
-              autonomy: welcomeDecision,
+            reasoning: buildAgentTriggerReasoning(welcomeRuntime, {
               memberName: member.name,
-            },
+            }),
           },
         }).catch(() => {})
         actionsTaken++

@@ -171,13 +171,14 @@ describe('Slot Filler Automation', () => {
       vi.mocked(generateSlotFillerRecommendations).mockReturnValue([
         { member: { id: 'member-1', name: 'Bob', email: 'bob@test.com' } as any, score: 80, estimatedLikelihood: 'high' as const, preference: null, reasoning: {} as any },
       ])
+      vi.mocked(checkAntiSpam).mockResolvedValue({ allowed: true })
 
       const result = await runSlotFillerAutomation(prisma as any, { mode: 'tomorrow', dryRun: true })
-      // If candidates found and passed anti-spam, log should be created
-      if (result.clubs[0]?.messagesSent > 0) {
-        expect(prisma.aIRecommendationLog.create).toHaveBeenCalled()
-      }
-      // At minimum, pipeline ran without errors
+      expect(prisma.aIRecommendationLog.create).toHaveBeenCalled()
+      const firstCall = vi.mocked(prisma.aIRecommendationLog.create).mock.calls[0]?.[0]
+      expect(firstCall?.data?.reasoning?.triggerRuntime?.source).toBe('slot_filler_automation')
+      expect(firstCall?.data?.reasoning?.triggerRuntime?.outcome).toBe('pending')
+
       expect(result.clubs).toHaveLength(1)
     })
   })

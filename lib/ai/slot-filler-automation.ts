@@ -16,7 +16,10 @@ import { checkAntiSpam } from './anti-spam'
 import { getFrequentPartnerIds } from './partners'
 import { sendSlotFillerInviteEmail } from '../email'
 import { inferPreferencesFromBookings } from './inferred-preferences'
-import { evaluateAgentAutonomy } from './agent-autonomy'
+import {
+  buildAgentTriggerReasoning,
+  evaluateAgentTriggerRuntime,
+} from './agent-trigger-runtime'
 import type { MemberData, UserPlayPreferenceData, BookingHistory, PlaySessionData } from '../../types/intelligence'
 
 export type SlotFillerMode = 'tomorrow' | 'lastminute'
@@ -185,7 +188,9 @@ async function processClub(
     const averageScore = topCandidates.length > 0
       ? Math.round(topCandidates.reduce((sum, rec) => sum + rec.score, 0) / topCandidates.length)
       : null
-    const autonomyDecision = evaluateAgentAutonomy({
+    const runtime = evaluateAgentTriggerRuntime({
+      source: 'slot_filler_automation',
+      triggerMode: 'immediate',
       action: 'slotFiller',
       automationSettings: club.automationSettings,
       liveMode: liveMode && !dryRun,
@@ -232,9 +237,9 @@ async function processClub(
         ? `${socialProof} Join the group!`
         : `${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left for ${session.title}. Don't miss out!`
 
-      const deliveryStatus = autonomyDecision.outcome === 'blocked'
+      const deliveryStatus = runtime.decision.outcome === 'blocked'
         ? 'blocked'
-        : autonomyDecision.outcome === 'pending'
+        : runtime.decision.outcome === 'pending'
           ? 'pending'
           : 'sent'
 
@@ -271,13 +276,14 @@ async function processClub(
           variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
           status: deliveryStatus,
           reasoning: {
-            mode,
-            score: rec.score,
-            estimatedLikelihood: rec.estimatedLikelihood,
-            spotsLeft,
-            socialProof: socialProof || null,
-            dryRun: deliveryStatus !== 'sent',
-            autonomy: autonomyDecision,
+            ...buildAgentTriggerReasoning(runtime, {
+              mode,
+              score: rec.score,
+              estimatedLikelihood: rec.estimatedLikelihood,
+              spotsLeft,
+              socialProof: socialProof || null,
+              dryRun: deliveryStatus !== 'sent',
+            }),
           } as any,
         },
       }).catch(() => {})
