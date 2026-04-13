@@ -19,6 +19,7 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
+import { advisorActionSchema } from '@/lib/ai/advisor-actions'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -244,6 +245,169 @@ async function parseCohortPrompt(prompt: string): Promise<{ name: string; descri
   } catch {
     return null
   }
+}
+
+type ManualCampaignInput = {
+  clubId: string
+  type: 'CHECK_IN' | 'RETENTION_BOOST' | 'REACTIVATION' | 'SLOT_FILLER' | 'EVENT_INVITE' | 'NEW_MEMBER_WELCOME'
+  channel: 'email' | 'sms' | 'both'
+  memberIds: string[]
+  subject?: string
+  body: string
+  smsBody?: string
+  sessionId?: string
+}
+
+async function enforceCampaignUsageLimits(clubId: string, channel: ManualCampaignInput['channel'], recipientCount: number) {
+  const { checkUsageLimit } = await import('@/lib/subscription')
+
+  const campaignCheck = await checkUsageLimit(clubId, 'campaigns')
+  if (!campaignCheck.allowed) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: JSON.stringify({
+        type: 'USAGE_LIMIT_REACHED',
+        resource: 'campaigns',
+        used: campaignCheck.used,
+        limit: campaignCheck.limit,
+        plan: campaignCheck.plan,
+        message: `Campaign limit reached (${campaignCheck.used}/${campaignCheck.limit} this month). Upgrade your plan for more campaigns.`,
+      }),
+    })
+  }
+
+  const emailCount = (channel === 'email' || channel === 'both') ? recipientCount : 0
+  if (emailCount > 0) {
+    const emailCheck = await checkUsageLimit(clubId, 'emails', emailCount)
+    if (!emailCheck.allowed) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: JSON.stringify({
+          type: 'USAGE_LIMIT_REACHED',
+          resource: 'emails',
+          used: emailCheck.used,
+          limit: emailCheck.limit,
+          remaining: emailCheck.remaining,
+          plan: emailCheck.plan,
+          message: `Email limit reached (${emailCheck.used}/${emailCheck.limit} this month). ${emailCheck.remaining} remaining, trying to send ${emailCount}.`,
+        }),
+      })
+    }
+  }
+
+  const smsCount = (channel === 'sms' || channel === 'both') ? recipientCount : 0
+  if (smsCount > 0) {
+    const smsCheck = await checkUsageLimit(clubId, 'sms', smsCount)
+    if (!smsCheck.allowed) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: JSON.stringify({
+          type: 'USAGE_LIMIT_REACHED',
+          resource: 'sms',
+          used: smsCheck.used,
+          limit: smsCheck.limit,
+          remaining: smsCheck.remaining,
+          plan: smsCheck.plan,
+          message: `SMS limit reached (${smsCheck.used}/${smsCheck.limit} this month). Upgrade for more SMS.`,
+        }),
+      })
+    }
+  }
+}
+
+async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
+  const club = await prisma.club.findUnique({
+    where: { id: input.clubId },
+    select: { id: true, name: true },
+  })
+  if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
+  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: input.memberIds } },
+    select: { id: true, email: true, name: true },
+  })
+
+  let sent = 0
+  let failed = 0
+  let skipped = 0
+  const results: { userId: string; status: string; channel: string; messageId?: string }[] = []
+
+  for (const user of users) {
+    const memberName = user.name?.split(' ')[0] || 'there'
+    const interpolate = (text: string) =>
+      text.replace(/\{\{name\}\}/g, memberName).replace(/\{\{club\}\}/g, club.name)
+
+    const emailSubject = input.subject ? interpolate(input.subject) : `Message from ${club.name}`
+    const emailBody = interpolate(input.body)
+    const smsText = input.smsBody ? interpolate(input.smsBody) : undefined
+
+    let channelSent = false
+    let externalMessageId: string | null = null
+
+    if ((input.channel === 'email' || input.channel === 'both') && user.email) {
+      try {
+        const { sendOutreachEmail } = await import('@/lib/email')
+        const result = await sendOutreachEmail({
+          to: user.email,
+          subject: emailSubject,
+          body: emailBody,
+          clubName: club.name,
+          bookingUrl,
+        })
+        channelSent = true
+        externalMessageId = result.messageId || null
+      } catch (err) {
+        log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
+      }
+    }
+
+    if ((input.channel === 'sms' || input.channel === 'both') && smsText) {
+      // SMS not yet implemented — skip silently
+    }
+
+    const status = channelSent ? 'sent' : (!user.email && (input.channel === 'email' || input.channel === 'both') ? 'skipped' : 'failed')
+
+    try {
+      await prisma.aIRecommendationLog.create({
+        data: {
+          clubId: input.clubId,
+          userId: user.id,
+          type: input.type,
+          channel: input.channel,
+          sessionId: input.sessionId || null,
+          externalMessageId,
+          variantId: input.type,
+          reasoning: {
+            source: 'manual_campaign',
+            subject: emailSubject,
+            bodyPreview: emailBody.slice(0, 200),
+          },
+          status,
+        },
+      })
+    } catch (logErr) {
+      log.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
+    }
+
+    results.push({ userId: user.id, status, channel: input.channel, messageId: externalMessageId || undefined })
+
+    if (channelSent) sent++
+    else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
+    else failed++
+  }
+
+  if (sent > 0) {
+    import('@/lib/stripe-usage').then(({ reportUsage }) => {
+      if (input.channel === 'email' || input.channel === 'both') reportUsage(input.clubId, 'email', sent)
+      if (input.channel === 'sms' || input.channel === 'both') reportUsage(input.clubId, 'sms', sent)
+    }).catch(() => {})
+  }
+
+  return { sent, failed, skipped, results }
 }
 
 export const intelligenceRouter = createTRPCRouter({
@@ -3926,161 +4090,87 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await enforceCampaignUsageLimits(input.clubId, input.channel, input.memberIds.length)
+      return runCreateCampaign(ctx.prisma, input)
+    }),
 
-      // ── Usage limit checks ──
-      const { checkUsageLimit } = await import('@/lib/subscription')
+  executeAdvisorAction: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      action: advisorActionSchema,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const campaignCheck = await checkUsageLimit(input.clubId, 'campaigns')
-      if (!campaignCheck.allowed) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: JSON.stringify({
-            type: 'USAGE_LIMIT_REACHED',
-            resource: 'campaigns',
-            used: campaignCheck.used,
-            limit: campaignCheck.limit,
-            plan: campaignCheck.plan,
-            message: `Campaign limit reached (${campaignCheck.used}/${campaignCheck.limit} this month). Upgrade your plan for more campaigns.`,
-          }),
+      if (input.action.kind === 'create_cohort') {
+        const count = await countCohortMembers(ctx.prisma, input.clubId, input.action.cohort.filters as CohortFilter[])
+        const cohort = await ctx.prisma.clubCohort.create({
+          data: {
+            clubId: input.clubId,
+            name: input.action.cohort.name,
+            description: input.action.cohort.description,
+            filters: input.action.cohort.filters as any,
+            memberCount: count,
+            createdBy: ctx.session.user.id,
+          },
         })
-      }
 
-      const emailCount = (input.channel === 'email' || input.channel === 'both') ? input.memberIds.length : 0
-      if (emailCount > 0) {
-        const emailCheck = await checkUsageLimit(input.clubId, 'emails', emailCount)
-        if (!emailCheck.allowed) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: JSON.stringify({
-              type: 'USAGE_LIMIT_REACHED',
-              resource: 'emails',
-              used: emailCheck.used,
-              limit: emailCheck.limit,
-              remaining: emailCheck.remaining,
-              plan: emailCheck.plan,
-              message: `Email limit reached (${emailCheck.used}/${emailCheck.limit} this month). ${emailCheck.remaining} remaining, trying to send ${emailCount}.`,
-            }),
-          })
+        return {
+          ok: true,
+          kind: 'create_cohort' as const,
+          cohortId: cohort.id,
+          name: cohort.name,
+          memberCount: count,
         }
       }
 
-      const smsCount = (input.channel === 'sms' || input.channel === 'both') ? input.memberIds.length : 0
-      if (smsCount > 0) {
-        const smsCheck = await checkUsageLimit(input.clubId, 'sms', smsCount)
-        if (!smsCheck.allowed) {
-          throw new TRPCError({
-            code: 'FORBIDDEN',
-            message: JSON.stringify({
-              type: 'USAGE_LIMIT_REACHED',
-              resource: 'sms',
-              used: smsCheck.used,
-              limit: smsCheck.limit,
-              remaining: smsCheck.remaining,
-              plan: smsCheck.plan,
-              message: `SMS limit reached (${smsCheck.used}/${smsCheck.limit} this month). Upgrade for more SMS.`,
-            }),
-          })
-        }
+      let audience = input.action.audience
+      let cohortId = audience.cohortId
+      let cohortName = audience.name
+
+      if (!cohortId) {
+        const audienceCount = await countCohortMembers(ctx.prisma, input.clubId, audience.filters as CohortFilter[])
+        const created = await ctx.prisma.clubCohort.create({
+          data: {
+            clubId: input.clubId,
+            name: audience.name,
+            description: audience.description,
+            filters: audience.filters as any,
+            memberCount: audienceCount,
+            createdBy: ctx.session.user.id,
+          },
+        })
+        cohortId = created.id
+        cohortName = created.name
+        audience = { ...audience, cohortId, count: audienceCount }
       }
 
-      const club = await ctx.prisma.club.findUnique({
-        where: { id: input.clubId },
-        select: { id: true, name: true },
-      })
-      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+      const members = await queryCohortMembers(ctx.prisma, input.clubId, audience.filters as CohortFilter[])
+      const memberIds = members.map((member: any) => member.id).filter(Boolean)
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-      const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-      const bookingUrl = `${appUrl}/clubs/${club.id}/play`
+      if (memberIds.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This action has no matching members to message.' })
+      }
 
-      // Load members
-      const users = await ctx.prisma.user.findMany({
-        where: { id: { in: input.memberIds } },
-        select: { id: true, email: true, name: true },
+      await enforceCampaignUsageLimits(input.clubId, input.action.campaign.channel, memberIds.length)
+      const result = await runCreateCampaign(ctx.prisma, {
+        clubId: input.clubId,
+        type: input.action.campaign.type,
+        channel: input.action.campaign.channel,
+        memberIds,
+        subject: input.action.campaign.subject,
+        body: input.action.campaign.body,
+        smsBody: input.action.campaign.smsBody,
       })
 
-      let sent = 0
-      let failed = 0
-      let skipped = 0
-      const results: { userId: string; status: string; channel: string; messageId?: string }[] = []
-
-      for (const user of users) {
-        // Interpolate template variables
-        const memberName = user.name?.split(' ')[0] || 'there'
-        const interpolate = (text: string) =>
-          text.replace(/\{\{name\}\}/g, memberName).replace(/\{\{club\}\}/g, club.name)
-
-        const emailSubject = input.subject ? interpolate(input.subject) : `Message from ${club.name}`
-        const emailBody = interpolate(input.body)
-        const smsText = input.smsBody ? interpolate(input.smsBody) : undefined
-
-        let channelSent = false
-        let externalMessageId: string | null = null
-
-        // Send email
-        if ((input.channel === 'email' || input.channel === 'both') && user.email) {
-          try {
-            const { sendOutreachEmail } = await import('@/lib/email')
-            const result = await sendOutreachEmail({
-              to: user.email,
-              subject: emailSubject,
-              body: emailBody,
-              clubName: club.name,
-              bookingUrl,
-            })
-            channelSent = true
-            externalMessageId = result.messageId || null
-          } catch (err) {
-            log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
-          }
-        }
-
-        // SMS placeholder (phone not yet in User model)
-        if ((input.channel === 'sms' || input.channel === 'both') && smsText) {
-          // SMS not yet implemented — skip silently
-        }
-
-        const status = channelSent ? 'sent' : (!user.email ? 'skipped' : 'failed')
-
-        // Log to ai_recommendation_logs for tracking
-        try {
-          await ctx.prisma.aIRecommendationLog.create({
-            data: {
-              clubId: input.clubId,
-              userId: user.id,
-              type: input.type,
-              channel: input.channel,
-              sessionId: input.sessionId || null,
-              externalMessageId,
-              variantId: input.type,
-              reasoning: {
-                source: 'manual_campaign',
-                subject: emailSubject,
-                bodyPreview: emailBody.slice(0, 200),
-              },
-              status,
-            },
-          })
-        } catch (logErr) {
-          log.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
-        }
-
-        results.push({ userId: user.id, status, channel: input.channel, messageId: externalMessageId || undefined })
-
-        if (channelSent) sent++
-        else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
-        else failed++
+      return {
+        ok: true,
+        kind: 'create_campaign' as const,
+        cohortId,
+        cohortName,
+        memberCount: memberIds.length,
+        ...result,
       }
-
-      // Report usage to Stripe for metered billing (non-blocking)
-      if (sent > 0) {
-        import('@/lib/stripe-usage').then(({ reportUsage }) => {
-          if (input.channel === 'email' || input.channel === 'both') reportUsage(input.clubId, 'email', sent)
-          if (input.channel === 'sms' || input.channel === 'both') reportUsage(input.clubId, 'sms', sent)
-        }).catch(() => {})
-      }
-
-      return { sent, failed, skipped, results }
     }),
 
   // ══════ AI Agent Dashboard ══════

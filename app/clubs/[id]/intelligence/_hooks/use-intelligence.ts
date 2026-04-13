@@ -565,3 +565,7 @@ export function useSkipAction() {
 export function useSnoozeAction() {
   return trpc.intelligence.snoozeAction.useMutation()
 }
+
+export function useExecuteAdvisorAction() {
+  return trpc.intelligence.executeAdvisorAction.useMutation()
+}

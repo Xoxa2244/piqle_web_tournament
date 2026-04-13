@@ -1,0 +1,151 @@
+import 'server-only'
+
+import { z } from 'zod'
+import { generateWithFallback } from '@/lib/ai/llm/provider'
+import type { SupportedLanguage } from '@/lib/ai/llm/language'
+import { advisorCampaignTypeEnum, advisorChannelEnum } from './advisor-actions'
+
+const advisorIntentSchema = z.object({
+  action: z.enum(['none', 'create_cohort', 'draft_campaign']),
+  usePreviousCohort: z.boolean().default(false),
+  audienceText: z.string().optional(),
+  campaignType: advisorCampaignTypeEnum.optional(),
+  channel: advisorChannelEnum.optional(),
+})
+
+export type AdvisorIntentPlan = z.infer<typeof advisorIntentSchema>
+
+const PLANNER_SYSTEM = `You are an intent planner for IQSport's AI Advisor.
+Your job is to recognize whether a user is asking the platform to DO something, not just explain something.
+
+Supported actions:
+- create_cohort: create/save a member segment or audience
+- draft_campaign: draft or launch a campaign/email/SMS/invite for an audience
+- none: any analytics/support/general question
+
+Return ONLY valid JSON:
+{"action":"none|create_cohort|draft_campaign","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"..."}
+
+Rules:
+- If the user asks to create/build/save a cohort, segment, audience, or group, use create_cohort.
+- If the user asks to draft/create/launch/send a campaign, email, outreach, invite, or reactivation message, use draft_campaign.
+- If the user says "that cohort", "this segment", "that audience", set usePreviousCohort=true.
+- audienceText should be ONLY the audience description, not the whole request, when you can isolate it.
+- campaignType must be one of: CHECK_IN, RETENTION_BOOST, REACTIVATION, SLOT_FILLER, EVENT_INVITE, NEW_MEMBER_WELCOME.
+- channel must be one of: email, sms, both.
+- Default campaignType to REACTIVATION for inactive/win-back/churn language.
+- Default campaignType to SLOT_FILLER for fill session / empty slots / invite players to session.
+- Default channel to email if unspecified.
+- If the request is mostly informational, return action=none.`
+
+function cleanJson(text: string) {
+  return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+}
+
+function heuristicPlan(message: string): AdvisorIntentPlan {
+  const lower = message.toLowerCase()
+  const usePreviousCohort = /\b(that|this)\s+(cohort|segment|audience|group)\b/.test(lower)
+  const wantsCampaign = /\b(campaign|email|sms|text|message|outreach|invite|reactivat|win[- ]?back|send|launch|draft)\b/.test(lower)
+  const wantsCohort = /\b(cohort|segment|audience|group)\b/.test(lower) && /\b(create|build|make|save|new|draft)\b/.test(lower)
+
+  let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
+  if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
+  else if (/\b(fill|slot|underfilled|open spots?|empty slots?)\b/.test(lower)) campaignType = 'SLOT_FILLER'
+  else if (/\bwelcome|new members?\b/.test(lower)) campaignType = 'NEW_MEMBER_WELCOME'
+  else if (wantsCampaign) campaignType = 'CHECK_IN'
+
+  let channel: z.infer<typeof advisorChannelEnum> | undefined = 'email'
+  if (/\b(email|e-mail)\b/.test(lower) && /\b(sms|text)\b/.test(lower)) channel = 'both'
+  else if (/\b(sms|text)\b/.test(lower)) channel = 'sms'
+
+  if (wantsCohort) {
+    return { action: 'create_cohort', audienceText: message, usePreviousCohort }
+  }
+
+  if (wantsCampaign) {
+    return { action: 'draft_campaign', audienceText: message, usePreviousCohort, campaignType, channel }
+  }
+
+  return { action: 'none', usePreviousCohort: false }
+}
+
+export async function planAdvisorActionIntent(message: string): Promise<AdvisorIntentPlan> {
+  const fallback = heuristicPlan(message)
+
+  try {
+    const result = await generateWithFallback({
+      system: PLANNER_SYSTEM,
+      prompt: message,
+      tier: 'fast',
+      maxTokens: 300,
+    })
+    const parsed = advisorIntentSchema.safeParse(JSON.parse(cleanJson(result.text)))
+    return parsed.success ? parsed.data : fallback
+  } catch {
+    return fallback
+  }
+}
+
+const ACTION_COPY: Record<'en' | 'ru' | 'es', {
+  cohortReady: (count: number, name: string) => string
+  campaignReady: (count: number, name: string) => string
+  adminOnly: string
+  suggestions: Record<'create_cohort' | 'create_campaign', string[]>
+}> = {
+  en: {
+    cohortReady: (count, name) => `I drafted the cohort "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
+    campaignReady: (count, name) => `I drafted a campaign for the cohort "${name}" with ${count} matching members. Review the audience and message below, then approve to send it.`,
+    adminOnly: `I can help draft actions here, but only club admins can approve and run them.`,
+    suggestions: {
+      create_cohort: [
+        'Draft a reactivation campaign for this cohort',
+        'Create a cohort of evening players',
+        'Show me the most at-risk members',
+      ],
+      create_campaign: [
+        'Create another campaign for competitive players',
+        'Build a cohort for weekday morning players',
+        'Show me inactive members again',
+      ],
+    },
+  },
+  ru: {
+    cohortReady: (count, name) => `Я подготовил когорту "${name}" и нашел ${count} подходящих участников. Ниже можно все проверить и подтвердить создание.`,
+    campaignReady: (count, name) => `Я подготовил кампанию для когорты "${name}" на ${count} участников. Проверь аудиторию и текст ниже, затем подтверди отправку.`,
+    adminOnly: `Я могу готовить такие действия в чате, но запускать их может только админ клуба.`,
+    suggestions: {
+      create_cohort: [
+        'Подготовь реактивационную кампанию для этой когорты',
+        'Создай когорту вечерних игроков',
+        'Покажи самых рискованных участников',
+      ],
+      create_campaign: [
+        'Сделай еще кампанию для сильных игроков',
+        'Создай когорту утренних игроков по будням',
+        'Снова покажи неактивных участников',
+      ],
+    },
+  },
+  es: {
+    cohortReady: (count, name) => `Preparé el cohorte "${name}" y encontré ${count} miembros coincidentes. Revísalo abajo y apruébalo cuando quieras.`,
+    campaignReady: (count, name) => `Preparé una campaña para el cohorte "${name}" con ${count} miembros. Revisa la audiencia y el mensaje abajo y luego apruébalo para enviarlo.`,
+    adminOnly: `Puedo preparar acciones aquí, pero solo los administradores del club pueden aprobarlas y ejecutarlas.`,
+    suggestions: {
+      create_cohort: [
+        'Prepara una campaña de reactivación para este cohorte',
+        'Crea un cohorte de jugadores de la noche',
+        'Muéstrame los miembros con más riesgo',
+      ],
+      create_campaign: [
+        'Crea otra campaña para jugadores competitivos',
+        'Arma un cohorte para jugadores de la mañana',
+        'Muéstrame otra vez los miembros inactivos',
+      ],
+    },
+  },
+}
+
+export function getAdvisorActionCopy(language: SupportedLanguage | string) {
+  const locale = language === 'ru' || language === 'es' ? language : 'en'
+  return ACTION_COPY[locale]
+}

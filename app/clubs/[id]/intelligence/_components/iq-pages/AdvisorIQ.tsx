@@ -10,6 +10,8 @@ import {
   ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { AdvisorActionCard } from "./AdvisorActionCard";
+import { extractAdvisorAction, stripAdvisorAction } from "@/lib/ai/advisor-actions";
 
 /* --- Suggested Prompts --- */
 const suggestedPrompts = [
@@ -144,27 +146,27 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
 
   const isBusy = status === 'submitted' || status === 'streaming';
 
+  const refreshConversations = useCallback(() => {
+    fetch(`/api/ai/conversations?clubId=${clubId}`)
+      .then(r => r.ok ? r.json() : { conversations: [] })
+      .then(data => setConversations(data.conversations || []))
+      .catch(() => {});
+  }, [clubId]);
+
   // Apply pending conversation ID after streaming ends
   useEffect(() => {
     if (!isBusy && pendingConvIdRef.current) {
       setConversationId(pendingConvIdRef.current);
       setActiveConvId(pendingConvIdRef.current);
       pendingConvIdRef.current = null;
-      // Refresh conversation list
-      fetch(`/api/ai/conversations?clubId=${clubId}`)
-        .then(r => r.ok ? r.json() : { conversations: [] })
-        .then(data => setConversations(data.conversations || []))
-        .catch(() => {});
+      refreshConversations();
     }
-  }, [isBusy, clubId]);
+  }, [isBusy, refreshConversations]);
 
   // Load conversation list on mount
   useEffect(() => {
-    fetch(`/api/ai/conversations?clubId=${clubId}`)
-      .then(r => r.ok ? r.json() : { conversations: [] })
-      .then(data => setConversations(data.conversations || []))
-      .catch(() => {});
-  }, [clubId]);
+    refreshConversations();
+  }, [refreshConversations]);
 
   // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
@@ -200,12 +202,56 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     inputRef.current?.focus();
   };
 
-  const handleSend = useCallback((text?: string) => {
+  const handleSend = useCallback(async (text?: string) => {
     const msg = text || inputValue.trim();
     if (!msg || isBusy) return;
-    sendMessage({ text: msg });
     setInputValue("");
-  }, [inputValue, isBusy, sendMessage]);
+
+    try {
+      const response = await fetch('/api/ai/advisor-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clubId,
+          message: msg,
+          conversationId: convIdRef.current,
+        }),
+      });
+
+      if (response.ok) {
+        const payload = await response.json();
+        if (payload?.handled) {
+          const nextConvId = payload.conversationId || convIdRef.current;
+          if (nextConvId) {
+            setConversationId(nextConvId);
+            setActiveConvId(nextConvId);
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'user',
+              parts: [{ type: 'text' as const, text: msg }],
+              createdAt: new Date(),
+            },
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+              createdAt: new Date(),
+            },
+          ]);
+          refreshConversations();
+          return;
+        }
+      }
+    } catch {
+      // Fall through to normal chat flow
+    }
+
+    sendMessage({ text: msg });
+  }, [clubId, inputValue, isBusy, refreshConversations, sendMessage, setMessages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -323,15 +369,17 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           <AnimatePresence>
             {messages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
+              const action = msg.role === 'assistant' ? extractAdvisorAction(text) : null;
+              const textWithoutAction = msg.role === 'assistant' ? stripAdvisorAction(text) : text;
               // Debug: log message structure
               if (typeof window !== 'undefined') {
                 console.log(`[AdvisorIQ msg ${msgIdx}]`, msg.role, 'text:', text.slice(0, 100), 'parts:', JSON.stringify((msg as any).parts?.map((p: any) => ({ type: p.type, hasText: !!p.text })) || 'none'));
               }
-              // Skip assistant messages with no text (tool-only steps)
-              if (msg.role === 'assistant' && !text.trim()) return null;
+              // Skip assistant messages with no text/action
+              if (msg.role === 'assistant' && !textWithoutAction.trim() && !action) return null;
               const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
               const { cleanText, suggestions } = msg.role === 'assistant'
-                ? extractSuggestions(text)
+                ? extractSuggestions(textWithoutAction)
                 : { cleanText: text, suggestions: [] };
 
               return (
@@ -348,33 +396,39 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                     </div>
                   )}
                   <div className={`max-w-[75%] ${msg.role === "user" ? "order-first" : ""}`}>
-                    <div
-                      className="rounded-2xl px-5 py-4 text-sm"
-                      style={{
-                        background: msg.role === "user"
-                          ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
-                          : "var(--subtle)",
-                        border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
-                        color: "var(--t1)",
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {cleanText.split("\n").map((line, i) => {
-                        const boldRegex = /\*\*(.*?)\*\*/g;
-                        const parts = line.split(boldRegex);
-                        return (
-                          <p key={i} className={line === "" ? "h-2" : ""}>
-                            {parts.map((part, j) =>
-                              j % 2 === 1 ? (
-                                <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
-                              ) : (
-                                <span key={j}>{part}</span>
-                              )
-                            )}
-                          </p>
-                        );
-                      })}
-                    </div>
+                    {cleanText.trim() && (
+                      <div
+                        className="rounded-2xl px-5 py-4 text-sm"
+                        style={{
+                          background: msg.role === "user"
+                            ? "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(6,182,212,0.15))"
+                            : "var(--subtle)",
+                          border: `1px solid ${msg.role === "user" ? "rgba(139,92,246,0.2)" : "var(--card-border)"}`,
+                          color: "var(--t1)",
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        {cleanText.split("\n").map((line, i) => {
+                          const boldRegex = /\*\*(.*?)\*\*/g;
+                          const parts = line.split(boldRegex);
+                          return (
+                            <p key={i} className={line === "" ? "h-2" : ""}>
+                              {parts.map((part, j) =>
+                                j % 2 === 1 ? (
+                                  <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
+                                ) : (
+                                  <span key={j}>{part}</span>
+                                )
+                              )}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {msg.role === "assistant" && action && (
+                      <AdvisorActionCard clubId={clubId} action={action} />
+                    )}
 
                     {/* Suggested follow-up questions */}
                     {suggestions.length > 0 && msg.role === "assistant" && isLastAssistant && !isBusy && (
@@ -408,7 +462,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                             <button
                               key={idx}
                               className="p-1 rounded hover:bg-white/5 transition-colors"
-                              onClick={idx === 2 ? () => navigator.clipboard.writeText(text) : undefined}
+                              onClick={idx === 2 ? () => navigator.clipboard.writeText(textWithoutAction) : undefined}
                             >
                               <Icon className="w-3 h-3" style={{ color: "var(--t4)" }} />
                             </button>
