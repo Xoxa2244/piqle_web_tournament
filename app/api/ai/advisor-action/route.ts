@@ -164,7 +164,7 @@ export async function POST(req: Request) {
 
       const action: AdvisorAction = {
         kind: 'create_cohort',
-        title: `Create cohort: ${parsed.name}`,
+        title: `Create audience: ${parsed.name}`,
         summary: `${parsed.count} matching members`,
         requiresApproval: true,
         cohort: {
@@ -176,7 +176,7 @@ export async function POST(req: Request) {
       }
 
       assistantMessage = withSuggested(
-        `${copy.cohortReady(parsed.count, parsed.name)}\n\n${buildAdvisorActionTag(action)}`,
+        `${copy.audienceReady(parsed.count, parsed.name)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_cohort,
       )
     } else {

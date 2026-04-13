@@ -47,7 +47,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: '#A78BFA', fontWeight: 700 }}>
-            Action Draft
+            {action.kind === 'create_cohort' ? 'Audience Draft' : 'Campaign Draft'}
           </div>
           <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
             {title}
@@ -144,7 +144,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         {isDone ? (
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
-              ? `Cohort created: ${result.name} (${result.memberCount} members)`
+              ? `Audience created: ${result.name} (${result.memberCount} members)`
               : `Campaign sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}`}
           </div>
         ) : (

@@ -340,7 +340,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               </div>
               <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--heading)" }}>Ask me anything about your club</h3>
               <p className="text-sm mb-6 max-w-md" style={{ color: "var(--t3)" }}>
-                I have access to your sessions, members, bookings, and revenue data. Ask me to analyze trends, identify opportunities, or suggest strategies.
+                I have access to your sessions, members, bookings, and revenue data. Ask me to analyze trends, build audiences, draft campaigns, or suggest strategies.
               </p>
               <div className="grid grid-cols-2 gap-2 max-w-lg">
                 {suggestedPrompts.map((p) => {
