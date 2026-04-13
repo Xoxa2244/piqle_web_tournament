@@ -20,6 +20,12 @@ interface AgentLog {
   autoApproved?: boolean | null
   transition?: string | null
   sessionTitle?: string | null
+  triggerSource?: string | null
+  triggerOutcome?: string | null
+  triggerConfiguredMode?: string | null
+  triggerPolicyOutcome?: string | null
+  triggerReasons?: string[]
+  sequenceStep?: number | null
 }
 
 interface PendingAction {
@@ -29,6 +35,12 @@ interface PendingAction {
   confidence?: number | null
   description: string
   createdAt: string | Date
+  triggerSource?: string | null
+  triggerOutcome?: string | null
+  triggerConfiguredMode?: string | null
+  triggerPolicyOutcome?: string | null
+  triggerReasons?: string[]
+  sequenceStep?: number | null
 }
 
 interface AgentIQProps {
@@ -91,6 +103,47 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+function TriggerSourceBadge({ source }: { source?: string | null }) {
+  if (!source) return null
+
+  const map: Record<string, { label: string; bg: string; text: string }> = {
+    event_detection: { label: "Event", bg: "rgba(6,182,212,0.12)", text: "#06B6D4" },
+    slot_filler_automation: { label: "Slot Auto", bg: "rgba(16,185,129,0.12)", text: "#10B981" },
+    campaign_engine: { label: "Campaign", bg: "rgba(245,158,11,0.12)", text: "#F59E0B" },
+    sequence_engine: { label: "Sequence", bg: "rgba(139,92,246,0.12)", text: "#A78BFA" },
+  }
+
+  const item = map[source] || { label: source, bg: "rgba(107,114,128,0.12)", text: "#9CA3AF" }
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+      style={{ background: item.bg, color: item.text }}
+    >
+      {item.label}
+    </span>
+  )
+}
+
+function TriggerOutcomeBadge({ outcome }: { outcome?: string | null }) {
+  if (!outcome) return null
+
+  const map: Record<string, { label: string; bg: string; text: string }> = {
+    auto: { label: "Auto", bg: "rgba(139,92,246,0.10)", text: "#A78BFA" },
+    pending: { label: "Needs Review", bg: "rgba(245,158,11,0.12)", text: "#F59E0B" },
+    blocked: { label: "Blocked", bg: "rgba(239,68,68,0.12)", text: "#EF4444" },
+  }
+
+  const item = map[outcome] || { label: outcome, bg: "rgba(107,114,128,0.12)", text: "#9CA3AF" }
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+      style={{ background: item.bg, color: item.text }}
+    >
+      {item.label}
+    </span>
+  )
+}
+
 // ── Type icon ──
 function TypeIcon({ type }: { type: string }) {
   const map: Record<string, { icon: typeof Bot; color: string }> = {
@@ -126,14 +179,23 @@ function timeAgo(date: string | Date): string {
 
 // ── Describe action for feed ──
 function describeAction(type: string, log: AgentLog): string {
+  const sequencePrefix = log.sequenceStep !== null && log.sequenceStep !== undefined
+    ? `Step ${log.sequenceStep}: `
+    : ""
+
   switch (type) {
-    case "CHECK_IN":           return `Check-in for ${log.transition || "watch member"}`
-    case "RETENTION_BOOST":    return `Win-back for ${log.transition || "at-risk member"}`
+    case "CHECK_IN":           return `${sequencePrefix}Check-in for ${log.transition || "watch member"}`
+    case "RETENTION_BOOST":    return `${sequencePrefix}Win-back for ${log.transition || "at-risk member"}`
     case "SLOT_FILLER":        return `Fill session: ${log.sessionTitle || "underfilled session"}`
     case "NEW_MEMBER_WELCOME": return "Welcome new member"
     case "REACTIVATION":       return "Reactivation outreach"
     default:                   return type
   }
+}
+
+function getPrimaryReason(reasons?: string[]) {
+  if (!reasons || reasons.length === 0) return null
+  return reasons[0]
 }
 
 // ── Component ──
@@ -337,6 +399,8 @@ export function AgentIQ({
                         {action.description}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
+                        <TriggerSourceBadge source={action.triggerSource} />
+                        <TriggerOutcomeBadge outcome={action.triggerOutcome} />
                         <span className="text-xs" style={{ color: "var(--t4)" }}>
                           {action.memberName}
                         </span>
@@ -359,6 +423,11 @@ export function AgentIQ({
                           {timeAgo(action.createdAt)}
                         </span>
                       </div>
+                      {getPrimaryReason(action.triggerReasons) && (
+                        <div className="text-[11px] mt-1 truncate" style={{ color: "var(--t4)" }}>
+                          {getPrimaryReason(action.triggerReasons)}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -455,21 +524,17 @@ export function AgentIQ({
                         {log.memberName}
                       </span>
                       <StatusBadge status={log.status} />
-                      {log.autoApproved && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{
-                            background: "rgba(139,92,246,0.1)",
-                            color: "#A78BFA",
-                          }}
-                        >
-                          Auto
-                        </span>
-                      )}
+                      <TriggerSourceBadge source={log.triggerSource} />
+                      <TriggerOutcomeBadge outcome={log.triggerOutcome || (log.autoApproved ? "auto" : null)} />
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{ color: "var(--t4)" }}>
                       {describeAction(log.type, log)}
                     </p>
+                    {getPrimaryReason(log.triggerReasons) && (
+                      <p className="text-[11px] mt-1 truncate" style={{ color: "var(--t4)" }}>
+                        {getPrimaryReason(log.triggerReasons)}
+                      </p>
+                    )}
                   </div>
                   <div className="text-xs shrink-0" style={{ color: "var(--t4)" }}>
                     {timeAgo(log.createdAt)}

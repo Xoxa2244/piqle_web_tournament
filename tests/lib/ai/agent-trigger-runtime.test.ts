@@ -64,4 +64,39 @@ describe('agent trigger runtime', () => {
     expect((reasoning as any).triggerRuntime.configuredMode).toBe('off')
     expect((reasoning as any).triggerRuntime.reasons[0]).toContain('disabled')
   })
+
+  it('can override the actual outcome while preserving policy outcome', () => {
+    const runtime = evaluateAgentTriggerRuntime({
+      source: 'sequence_engine',
+      triggerMode: 'deferred',
+      action: 'checkIn',
+      automationSettings: {
+        intelligence: {
+          autonomyPolicy: {
+            checkIn: {
+              mode: 'approve',
+            },
+          },
+        },
+      },
+      liveMode: true,
+      confidence: 82,
+      recipientCount: 1,
+      membershipSignal: 'weak',
+    })
+
+    const reasoning = buildAgentTriggerReasoning(
+      runtime,
+      { stepNumber: 2 },
+      {
+        outcome: 'auto',
+        reasons: ['Follow-up continued automatically because the parent sequence was already approved.'],
+      },
+    )
+
+    expect((reasoning as any).autoApproved).toBe(true)
+    expect((reasoning as any).triggerRuntime.policyOutcome).toBe('pending')
+    expect((reasoning as any).triggerRuntime.outcome).toBe('auto')
+    expect((reasoning as any).triggerRuntime.reasons[0]).toContain('parent sequence')
+  })
 })

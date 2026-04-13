@@ -65,13 +65,17 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
 
 // ── Helper: describe agent action for pending queue ──
 function describeAgentAction(type: string, reasoning: any): string {
+  const sequenceLabel = reasoning?.sequenceFollowUp && typeof reasoning?.stepNumber === 'number'
+    ? `Sequence step ${reasoning.stepNumber}: `
+    : ''
+
   switch (type) {
-    case 'CHECK_IN': return `Check-in for ${reasoning?.transition || 'watch member'}`
-    case 'RETENTION_BOOST': return `Win-back for ${reasoning?.transition || 'at-risk member'}`
+    case 'CHECK_IN': return `${sequenceLabel}Check-in for ${reasoning?.transition || 'watch member'}`
+    case 'RETENTION_BOOST': return `${sequenceLabel}Win-back for ${reasoning?.transition || 'at-risk member'}`
     case 'SLOT_FILLER': return `Fill session: ${reasoning?.sessionTitle || 'underfilled session'}`
     case 'NEW_MEMBER_WELCOME': return 'Welcome new member'
     case 'REACTIVATION': return 'Reactivation outreach'
-    default: return type
+    default: return `${sequenceLabel}${type}`
   }
 }
 
@@ -4677,23 +4681,37 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const actionsToday = logs.filter(l => l.createdAt >= today && l.status !== 'pending').length
       const actionsWeek = logs.filter(l => l.createdAt >= weekAgo && l.status !== 'pending').length
       const autoApproved = logs.filter(l => (l.reasoning as any)?.autoApproved === true).length
-      const totalWithConfidence = logs.filter(l => (l.reasoning as any)?.confidence != null).length
+      const totalWithConfidence = logs.filter(l => {
+        const reasoning = (l.reasoning as any) || {}
+        return reasoning?.confidence != null || reasoning?.triggerRuntime?.confidence != null
+      }).length
       const converted = logs.filter(l => l.status === 'converted').length
       const sent = logs.filter(l => ['sent', 'delivered', 'opened', 'clicked', 'converted'].includes(l.status)).length
 
       return {
-        logs: logs.map(l => ({
+        logs: logs.map(l => {
+          const reasoning = (l.reasoning as any) || {}
+          const triggerRuntime = reasoning.triggerRuntime || null
+
+          return {
           id: l.id,
           type: l.type,
           status: l.status,
           channel: l.channel,
           createdAt: l.createdAt,
           memberName: l.user?.name || l.user?.email || 'Unknown',
-          confidence: (l.reasoning as any)?.confidence ?? null,
-          autoApproved: (l.reasoning as any)?.autoApproved ?? null,
-          transition: (l.reasoning as any)?.transition ?? null,
-          sessionTitle: (l.reasoning as any)?.sessionTitle ?? null,
-        })),
+          confidence: reasoning?.confidence ?? triggerRuntime?.confidence ?? null,
+          autoApproved: reasoning?.autoApproved ?? null,
+          transition: reasoning?.transition ?? null,
+          sessionTitle: reasoning?.sessionTitle ?? null,
+          triggerSource: triggerRuntime?.source ?? reasoning?.source ?? null,
+          triggerOutcome: triggerRuntime?.outcome ?? null,
+          triggerConfiguredMode: triggerRuntime?.configuredMode ?? null,
+          triggerReasons: Array.isArray(triggerRuntime?.reasons) ? triggerRuntime.reasons : [],
+          triggerPolicyOutcome: triggerRuntime?.policyOutcome ?? null,
+          sequenceStep: reasoning?.stepNumber ?? reasoning?.sequenceStep ?? null,
+          }
+        }),
         stats: {
           actionsToday,
           actionsWeek,
@@ -4713,14 +4731,25 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         orderBy: { createdAt: 'desc' },
         take: 20,
       })
-      return pending.map(p => ({
-        id: p.id,
-        type: p.type,
-        memberName: p.user?.name || p.user?.email || 'System',
-        confidence: (p.reasoning as any)?.confidence ?? null,
-        description: describeAgentAction(p.type, p.reasoning as any),
-        createdAt: p.createdAt,
-      }))
+      return pending.map(p => {
+        const reasoning = (p.reasoning as any) || {}
+        const triggerRuntime = reasoning.triggerRuntime || null
+
+        return {
+          id: p.id,
+          type: p.type,
+          memberName: p.user?.name || p.user?.email || 'System',
+          confidence: reasoning?.confidence ?? triggerRuntime?.confidence ?? null,
+          description: describeAgentAction(p.type, reasoning),
+          createdAt: p.createdAt,
+          triggerSource: triggerRuntime?.source ?? reasoning?.source ?? null,
+          triggerOutcome: triggerRuntime?.outcome ?? null,
+          triggerConfiguredMode: triggerRuntime?.configuredMode ?? null,
+          triggerReasons: Array.isArray(triggerRuntime?.reasons) ? triggerRuntime.reasons : [],
+          triggerPolicyOutcome: triggerRuntime?.policyOutcome ?? null,
+          sequenceStep: reasoning?.stepNumber ?? reasoning?.sequenceStep ?? null,
+        }
+      })
     }),
 
   approveAction: protectedProcedure

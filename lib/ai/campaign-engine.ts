@@ -264,6 +264,7 @@ async function executeSequenceStep(
   decision: SequenceDecision,
   club: { id: string; name: string; slug?: string },
   settings: ClubAutomationSettings,
+  automationSettings: unknown,
   appUrl: string,
   upcomingSessions: any[],
   resolvedPrefMap: Map<string, any>,
@@ -276,7 +277,16 @@ async function executeSequenceStep(
   // Load user data
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, duprRatingDoubles: true, phone: true, smsOptIn: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      duprRatingDoubles: true,
+      phone: true,
+      smsOptIn: true,
+      membershipType: true,
+      membershipStatus: true,
+    },
   })
   if (!user) return false
 
@@ -294,6 +304,28 @@ async function executeSequenceStep(
 
   // Get original subject from Step 0 reasoning
   const step0Reasoning = sequence.rootLog.reasoning as any
+  const autonomyAction = mapOutreachTypeToAutonomyAction(String(sequence.rootLog.type))
+  const sequenceRuntime = autonomyAction
+    ? evaluateAgentTriggerRuntime({
+        source: 'sequence_engine',
+        triggerMode: 'deferred',
+        action: autonomyAction,
+        automationSettings,
+        liveMode: true,
+        confidence: typeof step0Reasoning?.confidence === 'number' ? step0Reasoning.confidence : null,
+        recipientCount: 1,
+        membershipSignal: user.membershipType || user.membershipStatus ? 'strong' : 'missing',
+      })
+    : null
+  const inheritedApproval =
+    sequenceRuntime?.decision.outcome === 'pending' &&
+    sequenceRuntime.decision.configuredMode === 'approve'
+  const sequenceRuntimeActual = inheritedApproval
+    ? {
+        outcome: 'auto' as const,
+        reasons: ['Follow-up continued automatically because the parent sequence was already approved.'],
+      }
+    : undefined
 
   // Build member values for template interpolation
   const memberName = user.name || 'there'
@@ -388,15 +420,30 @@ async function executeSequenceStep(
       variantId,
       sequenceStep: action.stepNumber,
       parentLogId: sequence.rootLog.id,
-      reasoning: {
-        sequenceFollowUp: true,
-        parentLogId: sequence.rootLog.id,
-        stepNumber: action.stepNumber,
-        messageType: action.messageType,
-        reason: action.reason,
-        originalSubject: message.emailSubject,
-        llmVariant: variantId.startsWith('llm_'),
-      },
+      reasoning: sequenceRuntime
+        ? buildAgentTriggerReasoning(
+            sequenceRuntime,
+            {
+              sequenceFollowUp: true,
+              parentLogId: sequence.rootLog.id,
+              stepNumber: action.stepNumber,
+              messageType: action.messageType,
+              reason: action.reason,
+              originalSubject: message.emailSubject,
+              llmVariant: variantId.startsWith('llm_'),
+            },
+            sequenceRuntimeActual,
+          )
+        : {
+            source: 'sequence_engine',
+            sequenceFollowUp: true,
+            parentLogId: sequence.rootLog.id,
+            stepNumber: action.stepNumber,
+            messageType: action.messageType,
+            reason: action.reason,
+            originalSubject: message.emailSubject,
+            llmVariant: variantId.startsWith('llm_'),
+          },
       status: 'pending',
     },
   })
@@ -1136,7 +1183,17 @@ export async function runHealthCampaign(
     // Execute follow-up actions
     for (const decision of seqDecisions) {
       try {
-        const sent = await executeSequenceStep(prisma, decision, club, settings, appUrl, upcomingSessions, resolvedPrefMap, bookingUrl)
+        const sent = await executeSequenceStep(
+          prisma,
+          decision,
+          club,
+          settings,
+          rawSettings,
+          appUrl,
+          upcomingSessions,
+          resolvedPrefMap,
+          bookingUrl,
+        )
         if (sent) sequenceFollowUps++
       } catch (err) {
         log.error(`[Campaign] Sequence step failed for ${decision.sequence.rootLog.userId}:`, (err as Error).message?.slice(0, 100))

@@ -2,6 +2,7 @@ import {
   evaluateAgentAutonomy,
   type AgentAutonomyAction,
   type AgentAutonomyDecision,
+  type AgentAutonomyOutcome,
 } from './agent-autonomy'
 
 export type AgentTriggerSource =
@@ -59,10 +60,17 @@ export function evaluateAgentTriggerRuntime(opts: {
 export function buildAgentTriggerReasoning(
   runtime: AgentTriggerRuntime,
   extraReasoning?: Record<string, unknown>,
+  actual?: {
+    outcome?: AgentAutonomyOutcome
+    reasons?: string[]
+  },
 ) {
+  const outcome = actual?.outcome || runtime.decision.outcome
+  const reasons = actual?.reasons || runtime.decision.reasons
+
   return {
     source: runtime.source,
-    autoApproved: runtime.decision.outcome === 'auto',
+    autoApproved: outcome === 'auto',
     autonomy: runtime.decision,
     triggerRuntime: {
       source: runtime.source,
@@ -73,8 +81,10 @@ export function buildAgentTriggerReasoning(
       recipientCount: runtime.recipientCount,
       membershipSignal: runtime.membershipSignal,
       configuredMode: runtime.decision.configuredMode,
-      outcome: runtime.decision.outcome,
-      reasons: runtime.decision.reasons,
+      policyOutcome: runtime.decision.outcome,
+      policyReasons: runtime.decision.reasons,
+      outcome,
+      reasons,
     },
     ...(extraReasoning || {}),
   }
