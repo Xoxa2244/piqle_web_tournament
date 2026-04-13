@@ -147,6 +147,25 @@ function getClarificationDraft(field: PendingClarification['field']) {
   return '';
 }
 
+type ClarificationTone = 'primary' | 'choice' | 'default' | 'ghost'
+
+type ClarificationChoice = {
+  value: string
+  label: string
+  description: string
+  icon: typeof Sparkles
+  tone: ClarificationTone
+  recommended?: boolean
+}
+
+function getClarificationSectionTitle(field: PendingClarification['field']) {
+  if (field === 'audience_mode') return 'Audience Source'
+  if (field === 'audience') return 'Audience Brief'
+  if (field === 'channel') return 'Delivery Channel'
+  if (field === 'schedule') return 'Send Timing'
+  return 'Session Match'
+}
+
 function getClarificationOptionUi(field: PendingClarification['field'], option: string) {
   const lower = option.toLowerCase();
 
@@ -173,7 +192,7 @@ function getClarificationOptionUi(field: PendingClarification['field'], option: 
   return { icon: Sparkles, tone: 'default' as const };
 }
 
-function getClarificationOptionStyles(tone: 'primary' | 'choice' | 'default') {
+function getClarificationOptionStyles(tone: ClarificationTone) {
   if (tone === 'primary') {
     return {
       background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))",
@@ -188,11 +207,126 @@ function getClarificationOptionStyles(tone: 'primary' | 'choice' | 'default') {
       color: "var(--t2)",
     };
   }
+  if (tone === 'ghost') {
+    return {
+      background: "rgba(148,163,184,0.08)",
+      border: "1px solid rgba(148,163,184,0.18)",
+      color: "var(--t2)",
+    };
+  }
   return {
     background: "rgba(139,92,246,0.08)",
     border: "1px solid rgba(139,92,246,0.2)",
     color: "var(--t2)",
   };
+}
+
+function describeAudienceOption(option: string) {
+  const lower = option.toLowerCase()
+  if (lower.includes('inactive') || lower.includes('неактив') || lower.includes('inactiv')) {
+    return 'Focus on members who have recently cooled off and need a win-back nudge.'
+  }
+  if (lower.includes('weekday evening') || lower.includes('будня') || lower.includes('entre semana')) {
+    return 'Useful when you want to fill after-work sessions with your most relevant players.'
+  }
+  if (lower.includes('55') || lower.includes('женщ') || lower.includes('mujeres')) {
+    return 'A narrower segment the agent can build directly into a campaign or audience.'
+  }
+  return 'Use this as a ready-made audience brief and let the agent keep going.'
+}
+
+function describeScheduleOption(option: string) {
+  const lower = option.toLowerCase()
+  if (lower.includes('6pm') || lower.includes('18:00')) {
+    return 'A strong after-work send window for most outreach.'
+  }
+  if (lower.includes('9am') || lower.includes('9 утра')) {
+    return 'A morning delivery window that is good for inbox visibility.'
+  }
+  if (lower.includes('tuesday') || lower.includes('вторник') || lower.includes('martes')) {
+    return 'Queue a timed send and let the agent handle delivery later.'
+  }
+  return 'Use this time window and let the platform schedule it.'
+}
+
+function buildClarificationChoices(pending: PendingClarification): ClarificationChoice[] {
+  return pending.options.map((option, index) => {
+    const lower = option.toLowerCase()
+    const optionUi = getClarificationOptionUi(pending.field, option)
+
+    if (pending.field === 'audience_mode') {
+      const isCurrent = lower.includes('current audience') || lower.includes('текущ') || lower.includes('actual')
+      return {
+        value: option,
+        label: isCurrent ? 'Use current audience' : option,
+        description: isCurrent
+          ? 'Fastest path: reuse the audience already in context and move straight into execution.'
+          : 'Switch to a fresh audience brief and let the agent rebuild the targeting.',
+        icon: isCurrent ? CheckCircle2 : Users,
+        tone: isCurrent ? 'primary' : 'default',
+        recommended: isCurrent,
+      }
+    }
+
+    if (pending.field === 'channel') {
+      if (lower.includes('both')) {
+        return {
+          value: option,
+          label: 'Email + SMS',
+          description: 'Maximize reach across both channels when the campaign matters most.',
+          icon: Send,
+          tone: 'choice',
+        }
+      }
+      if (lower.includes('sms')) {
+        return {
+          value: option,
+          label: 'SMS',
+          description: 'Best for urgent nudges and fast visibility on mobile.',
+          icon: Send,
+          tone: 'choice',
+        }
+      }
+      return {
+        value: option,
+        label: 'Email',
+        description: 'Best for richer copy, lower friction, and a more detailed message.',
+        icon: Mail,
+        tone: 'primary',
+        recommended: true,
+      }
+    }
+
+    if (pending.field === 'schedule') {
+      return {
+        value: option,
+        label: option,
+        description: describeScheduleOption(option),
+        icon: CalendarDays,
+        tone: index === 0 ? 'primary' : 'choice',
+        recommended: index === 0,
+      }
+    }
+
+    if (pending.field === 'audience') {
+      return {
+        value: option,
+        label: option,
+        description: describeAudienceOption(option),
+        icon: Users,
+        tone: index === 0 ? 'primary' : optionUi.tone,
+        recommended: index === 0,
+      }
+    }
+
+    return {
+      value: option,
+      label: option,
+      description: 'Use this option and let the agent keep moving.',
+      icon: optionUi.icon,
+      tone: optionUi.tone,
+    }
+  })
 }
 
 function AdvisorClarificationCard({
@@ -205,6 +339,15 @@ function AdvisorClarificationCard({
   onDraft: (value: string) => void
 }) {
   const draftSeed = getClarificationDraft(pending.field);
+  const choices = buildClarificationChoices(pending);
+  const sectionTitle = getClarificationSectionTitle(pending.field);
+  const customCtaLabel = pending.field === 'audience' || pending.field === 'audience_mode'
+    ? 'Type custom audience'
+    : pending.field === 'schedule'
+      ? 'Type custom time'
+      : pending.field === 'session'
+        ? 'Type custom session'
+        : 'Type custom answer'
 
   return (
     <div
@@ -215,18 +358,22 @@ function AdvisorClarificationCard({
       }}
     >
       <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: "#06B6D4", fontWeight: 700 }}>
-        Agent Question
+        Decision Card
       </div>
       <div className="text-sm mt-1" style={{ fontWeight: 700, color: "var(--heading)" }}>
         {pending.question}
       </div>
       <p className="text-xs mt-2" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
-        Pick a quick answer below or type your own custom instruction.
+        Pick the fastest path below, or switch to a custom instruction when you want something more specific.
       </p>
+      <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full mt-3 text-[11px]" style={{ background: "rgba(6,182,212,0.10)", color: "#0891B2", fontWeight: 700 }}>
+        <Sparkles className="w-3.5 h-3.5" />
+        {sectionTitle}
+      </div>
 
       {pending.field === 'session' && pending.sessionOptions?.length ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
-          {pending.sessionOptions.map((session) => (
+          {pending.sessionOptions.map((session, index) => (
             <button
               key={session.id}
               onClick={() => onSelect(`${session.date} ${session.startTime} ${session.title}`)}
@@ -236,9 +383,19 @@ function AdvisorClarificationCard({
                 border: "1px solid var(--card-border)",
               }}
             >
-              <div className="flex items-center gap-2 text-xs" style={{ color: "var(--t3)", fontWeight: 600 }}>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2" style={{ color: "var(--t3)", fontWeight: 600 }}>
                 <CalendarDays className="w-3.5 h-3.5" />
                 Session option
+                </div>
+                {index === 0 && (
+                  <span
+                    className="px-2 py-1 rounded-full text-[10px]"
+                    style={{ background: "rgba(139,92,246,0.14)", color: "#C4B5FD", fontWeight: 700 }}
+                  >
+                    Best match
+                  </span>
+                )}
               </div>
               <div className="text-sm mt-2" style={{ color: "var(--heading)", fontWeight: 700 }}>
                 {session.title}
@@ -251,26 +408,52 @@ function AdvisorClarificationCard({
                   .filter(Boolean)
                   .join(' · ')}
               </div>
+              <div className="text-[11px] mt-3 flex items-center gap-1.5" style={{ color: "#06B6D4", fontWeight: 700 }}>
+                Select this session
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
             </button>
           ))}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2 mt-3">
-          {pending.options.map((option) => {
-            const optionUi = getClarificationOptionUi(pending.field, option);
-            const OptionIcon = optionUi.icon;
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+          {choices.map((choice) => {
+            const OptionIcon = choice.icon;
             return (
               <button
-                key={option}
-                onClick={() => onSelect(option)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all hover:scale-[1.02]"
+                key={choice.value}
+                onClick={() => onSelect(choice.value)}
+                className="text-left rounded-xl p-3 transition-all hover:scale-[1.01]"
                 style={{
-                  ...getClarificationOptionStyles(optionUi.tone),
-                  fontWeight: 600,
+                  ...getClarificationOptionStyles(choice.tone),
                 }}
               >
-                <OptionIcon className="w-3.5 h-3.5" />
-                {option}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                    >
+                      <OptionIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                        {choice.label}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                        {choice.description}
+                      </div>
+                    </div>
+                  </div>
+                  {choice.recommended && (
+                    <span
+                      className="px-2 py-1 rounded-full text-[10px] shrink-0"
+                      style={{ background: "rgba(139,92,246,0.14)", color: "#C4B5FD", fontWeight: 700 }}
+                    >
+                      Fastest
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}
@@ -278,6 +461,21 @@ function AdvisorClarificationCard({
       )}
 
       <div className="flex flex-wrap gap-2 mt-3">
+        {pending.field === 'session' && (
+          <button
+            onClick={() => onDraft('Pick another session for me.')}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.18)",
+              color: "var(--t2)",
+              fontWeight: 600,
+            }}
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+            Pick another session
+          </button>
+        )}
         <button
           onClick={() => onDraft(draftSeed)}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
@@ -289,7 +487,7 @@ function AdvisorClarificationCard({
           }}
         >
           <MessageSquare className="w-3.5 h-3.5" />
-          Type custom answer
+          {customCtaLabel}
         </button>
       </div>
     </div>
