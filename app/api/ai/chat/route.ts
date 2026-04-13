@@ -9,6 +9,7 @@ import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
 import { createChatTools } from '@/lib/ai/chat-tools';
+import { buildAdvisorStatePrompt, deriveAdvisorConversationState } from '@/lib/ai/advisor-conversation-state';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -156,12 +157,19 @@ export async function POST(req: Request) {
     // 4.5 Load prior conversation messages for multi-turn context
     step = 'history';
     let fullMessages = messages;
+    let storedConversationMessages: Array<{ role: string; content: string; metadata?: unknown }> = [];
     if (convId && conversationId) {
       try {
         const priorMessages = await prisma.aIMessage.findMany({
           where: { conversationId: convId },
           orderBy: { createdAt: 'asc' },
         });
+
+        storedConversationMessages = priorMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          metadata: message.metadata,
+        }))
 
         if (priorMessages.length > 0) {
           const dbMessages = priorMessages
@@ -361,9 +369,12 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
       clubContextBlock = buildClubContextPrompt(intelligenceSettings)
     } catch { /* non-critical */ }
 
+    const advisorStateBlock = buildAdvisorStatePrompt(
+      deriveAdvisorConversationState(storedConversationMessages)
+    )
     const pageContextBlock = pageContext ? `\n\nCurrent page context: ${pageContext}` : ''
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${pageContextBlock}
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${pageContextBlock}
 
 --- Real-Time Club Data (live from database) ---
 ${liveDataBlock || 'No live data available.'}
@@ -401,6 +412,7 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
       if (!convId) return;
       try {
+        const advisorState = deriveAdvisorConversationState(storedConversationMessages)
         await prisma.aIMessage.createMany({
           data: [
             { conversationId: convId, role: 'user', content: lastUserText, metadata: {} },
@@ -412,6 +424,7 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
                 outputTokens: event.usage.outputTokens,
                 ragChunksUsed: ragChunks.length,
                 language: conversationLanguage,
+                ...(advisorState ? { advisorState } : {}),
                 ...(isFallback ? { fallback: true } : {}),
               },
             },

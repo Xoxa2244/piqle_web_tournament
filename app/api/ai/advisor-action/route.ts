@@ -6,6 +6,10 @@ import { appRouter } from '@/server/routers/_app'
 import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
 import { buildAdvisorActionTag, extractAdvisorAction, type AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
+import {
+  buildAdvisorConversationStateFromAction,
+  deriveAdvisorConversationState,
+} from '@/lib/ai/advisor-conversation-state'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -105,8 +109,40 @@ async function getLastAdvisorAction(conversationId: string): Promise<AdvisorActi
   return null
 }
 
+async function getAdvisorConversationMemory(conversationId: string) {
+  const priorMessages = await prisma.aIMessage.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'asc' },
+    take: 20,
+    select: { role: true, content: true, metadata: true },
+  })
+
+  let lastAction: AdvisorAction | null = null
+  for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
+    const message = priorMessages[index]
+    if (message.role !== 'assistant') continue
+    const action = extractAdvisorAction(message.content)
+    if (action) {
+      lastAction = action
+      break
+    }
+  }
+
+  return {
+    state: deriveAdvisorConversationState(priorMessages),
+    lastAction,
+  }
+}
+
 function withSuggested(text: string, suggestions: string[]) {
   return `${text}\n\n<suggested>\n${suggestions.join('\n')}\n</suggested>`
+}
+
+function isCampaignOnlyFollowUp(message: string) {
+  const lower = message.toLowerCase()
+  const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
+  const hasAudienceHint = /\b(audience|segment|cohort|group|list|players?|members?|this|that|those|them|inactive|morning|evening|weekday|weekend|beginner|intermediate|competitive|women|men|\d+\+)\b/.test(lower)
+  return hasCampaignVerb && !hasAudienceHint
 }
 
 export async function POST(req: Request) {
@@ -153,6 +189,7 @@ export async function POST(req: Request) {
 
     let assistantMessage = ''
     const copy = getAdvisorActionCopy(language)
+    let assistantState: ReturnType<typeof buildAdvisorConversationStateFromAction> | null = null
 
     if (!access.isAdmin) {
       assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[plan.action === 'create_cohort' ? 'create_cohort' : 'create_campaign'])
@@ -175,15 +212,20 @@ export async function POST(req: Request) {
         },
       }
 
+      assistantState = buildAdvisorConversationStateFromAction(action)
       assistantMessage = withSuggested(
         `${copy.audienceReady(parsed.count, parsed.name)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_cohort,
       )
     } else {
       let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
-      const previousAction = plan.usePreviousCohort ? await getLastAdvisorAction(convId) : null
+      const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
+      const memory = shouldReuseAudience ? await getAdvisorConversationMemory(convId) : null
+      const previousAction = memory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
 
-      if (previousAction?.kind === 'create_cohort') {
+      if (memory?.state?.currentAudience) {
+        audienceDraft = memory.state.currentAudience
+      } else if (previousAction?.kind === 'create_cohort') {
         audienceDraft = previousAction.cohort
       } else if (previousAction?.kind === 'create_campaign') {
         audienceDraft = previousAction.audience
@@ -227,6 +269,7 @@ export async function POST(req: Request) {
         },
       }
 
+      assistantState = buildAdvisorConversationStateFromAction(action)
       assistantMessage = withSuggested(
         `${copy.campaignReady(audienceDraft.count || 0, audienceDraft.name)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_campaign,
@@ -236,7 +279,16 @@ export async function POST(req: Request) {
     await prisma.aIMessage.createMany({
       data: [
         { conversationId: convId, role: 'user', content: message, metadata: {} },
-        { conversationId: convId, role: 'assistant', content: assistantMessage, metadata: { source: 'advisor_action', handled: true } },
+        {
+          conversationId: convId,
+          role: 'assistant',
+          content: assistantMessage,
+          metadata: {
+            source: 'advisor_action',
+            handled: true,
+            ...(assistantState ? { advisorState: assistantState } : {}),
+          },
+        },
       ],
     })
 
