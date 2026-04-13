@@ -7,6 +7,7 @@ import {
   extractAdvisorAction,
   type AdvisorAction,
 } from './advisor-actions'
+import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
 
 const advisorActiveCampaignSchema = advisorCampaignDraftSchema.extend({
   audienceName: z.string().optional(),
@@ -18,6 +19,7 @@ export const advisorConversationStateSchema = z.object({
   currentCampaign: advisorActiveCampaignSchema.optional(),
   lastActionKind: z.enum(['create_cohort', 'create_campaign']).optional(),
   lastActionTitle: z.string().max(120).optional(),
+  pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
 })
 
@@ -66,6 +68,31 @@ export function buildAdvisorConversationStateFromAction(
   }
 }
 
+export function withAdvisorPendingClarification(
+  state: AdvisorConversationState | null,
+  pendingClarification: AdvisorPendingClarification,
+  updatedAt: string = new Date().toISOString(),
+): AdvisorConversationState {
+  return {
+    ...(state || {}),
+    pendingClarification,
+    updatedAt,
+  }
+}
+
+export function clearAdvisorPendingClarification(
+  state: AdvisorConversationState | null,
+  updatedAt: string = new Date().toISOString(),
+): AdvisorConversationState | null {
+  if (!state?.pendingClarification) return state
+
+  return {
+    ...state,
+    pendingClarification: undefined,
+    updatedAt,
+  }
+}
+
 export function deriveAdvisorConversationState(messages: ConversationMessageLike[]): AdvisorConversationState | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -110,6 +137,13 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
 
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
+  }
+
+  if (state.pendingClarification) {
+    parts.push(`Pending clarification: ${state.pendingClarification.question}`)
+    if (state.pendingClarification.options.length > 0) {
+      parts.push(`Clarification options: ${state.pendingClarification.options.join(' | ')}`)
+    }
   }
 
   parts.push('If the user says "this audience", "that list", "those players", or "them", assume they mean the active audience above unless they clarify otherwise.')

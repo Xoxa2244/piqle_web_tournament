@@ -9,7 +9,11 @@ import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
 import { createChatTools } from '@/lib/ai/chat-tools';
-import { buildAdvisorStatePrompt, deriveAdvisorConversationState } from '@/lib/ai/advisor-conversation-state';
+import {
+  buildAdvisorStatePrompt,
+  clearAdvisorPendingClarification,
+  deriveAdvisorConversationState,
+} from '@/lib/ai/advisor-conversation-state';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -412,7 +416,9 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
       if (!convId) return;
       try {
-        const advisorState = deriveAdvisorConversationState(storedConversationMessages)
+        const advisorState = clearAdvisorPendingClarification(
+          deriveAdvisorConversationState(storedConversationMessages)
+        )
         await prisma.aIMessage.createMany({
           data: [
             { conversationId: convId, role: 'user', content: lastUserText, metadata: {} },

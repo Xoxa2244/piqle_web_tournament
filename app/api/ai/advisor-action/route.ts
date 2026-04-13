@@ -7,10 +7,16 @@ import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
 import { buildAdvisorActionTag, extractAdvisorAction, type AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
 import {
+  type AdvisorConversationState,
   buildAdvisorConversationStateFromAction,
   deriveAdvisorConversationState,
+  withAdvisorPendingClarification,
 } from '@/lib/ai/advisor-conversation-state'
 import { getAdvisorEditCopy, maybeEditAdvisorDraft } from '@/lib/ai/advisor-draft-editor'
+import {
+  maybeStartAdvisorClarification,
+  resolveAdvisorClarification,
+} from '@/lib/ai/advisor-clarifications'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -170,7 +176,6 @@ export async function POST(req: Request) {
     }
 
     const language = detectLanguage(message)
-    const plan = await planAdvisorActionIntent(message)
 
     const convId = await getOrCreateConversation({
       clubId,
@@ -186,37 +191,79 @@ export async function POST(req: Request) {
     } as any)
 
     const memory = await getAdvisorConversationMemory(convId)
+    let effectiveMessage = message
+    let plan = memory.state?.pendingClarification
+      ? null
+      : await planAdvisorActionIntent(message)
     let assistantMessage = ''
     const copy = getAdvisorActionCopy(language)
-    let assistantState: ReturnType<typeof buildAdvisorConversationStateFromAction> | null = null
+    let assistantState: AdvisorConversationState | null = null
+    const hadPendingClarification = !!memory.state?.pendingClarification
+
+    if (access.isAdmin && memory.state?.pendingClarification) {
+      const resolution = resolveAdvisorClarification({
+        message,
+        pending: memory.state.pendingClarification,
+        state: memory.state,
+        language,
+      })
+
+      if (resolution?.clarification) {
+        assistantState = withAdvisorPendingClarification(memory.state, resolution.clarification.pending)
+        assistantMessage = withSuggested(resolution.clarification.text, resolution.clarification.suggestions)
+      } else if (resolution?.plan) {
+        plan = resolution.plan
+        effectiveMessage = resolution.plan.audienceText || message
+      }
+    }
+
+    if (!plan) {
+      plan = await planAdvisorActionIntent(effectiveMessage)
+    }
 
     if (!access.isAdmin) {
       if (plan.action !== 'none') {
         assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[plan.action === 'create_cohort' ? 'create_cohort' : 'create_campaign'])
       }
     } else {
-      const editedAction = await maybeEditAdvisorDraft({
-        message,
-        state: memory.state,
-      })
+      if (!assistantMessage && !hadPendingClarification) {
+        const editedAction = await maybeEditAdvisorDraft({
+          message,
+          state: memory.state,
+        })
 
-      if (editedAction) {
-        const editCopy = getAdvisorEditCopy(language)
-        assistantState = buildAdvisorConversationStateFromAction(editedAction)
-        const audienceName = editedAction.kind === 'create_campaign'
-          ? editedAction.audience.name
-          : editedAction.cohort.name
-        const audienceCount = editedAction.kind === 'create_campaign'
-          ? editedAction.audience.count || 0
-          : editedAction.cohort.count || 0
-        const editText = editedAction.kind === 'create_campaign'
-          ? editCopy.campaignUpdated(audienceName, audienceCount)
-          : editCopy.audienceUpdated(audienceName, audienceCount)
+        if (editedAction) {
+          const editCopy = getAdvisorEditCopy(language)
+          assistantState = buildAdvisorConversationStateFromAction(editedAction)
+          const audienceName = editedAction.kind === 'create_campaign'
+            ? editedAction.audience.name
+            : editedAction.cohort.name
+          const audienceCount = editedAction.kind === 'create_campaign'
+            ? editedAction.audience.count || 0
+            : editedAction.cohort.count || 0
+          const editText = editedAction.kind === 'create_campaign'
+            ? editCopy.campaignUpdated(audienceName, audienceCount)
+            : editCopy.audienceUpdated(audienceName, audienceCount)
 
-        assistantMessage = withSuggested(
-          `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
-          editCopy.suggestions[editedAction.kind],
-        )
+          assistantMessage = withSuggested(
+            `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
+            editCopy.suggestions[editedAction.kind],
+          )
+        }
+      }
+
+      if (!assistantMessage) {
+        const clarification = maybeStartAdvisorClarification({
+          message: effectiveMessage,
+          plan,
+          state: memory.state,
+          language,
+        })
+
+        if (clarification) {
+          assistantState = withAdvisorPendingClarification(memory.state, clarification.pending)
+          assistantMessage = withSuggested(clarification.text, clarification.suggestions)
+        }
       }
     }
 
