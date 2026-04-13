@@ -28,6 +28,7 @@ import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
 } from './agent-trigger-runtime'
+import { normalizeMembership } from './membership-intelligence'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -314,7 +315,10 @@ async function executeSequenceStep(
         liveMode: true,
         confidence: typeof step0Reasoning?.confidence === 'number' ? step0Reasoning.confidence : null,
         recipientCount: 1,
-        membershipSignal: user.membershipType || user.membershipStatus ? 'strong' : 'missing',
+        membershipSignal: normalizeMembership({
+          membershipType: user.membershipType,
+          membershipStatus: user.membershipStatus,
+        }).signal,
       })
     : null
   const inheritedApproval =
@@ -888,7 +892,10 @@ export async function runHealthCampaign(
           liveMode: !dryRun,
           confidence: confidence.score,
           recipientCount: 1,
-          membershipSignal: member.membershipType || member.membershipStatus ? 'strong' : 'missing',
+          membershipSignal: normalizeMembership({
+            membershipType: member.membershipType,
+            membershipStatus: member.membershipStatus,
+          }).signal,
         })
       : null
 

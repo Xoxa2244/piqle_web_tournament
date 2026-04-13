@@ -83,6 +83,19 @@ export interface BookingHistory {
   inviteAcceptanceRate: number;
 }
 
+export type MembershipSignal = 'strong' | 'weak' | 'missing'
+export type NormalizedMembershipStatus = 'active' | 'suspended' | 'expired' | 'cancelled' | 'trial' | 'guest' | 'none' | 'unknown'
+export type NormalizedMembershipType = 'unlimited' | 'monthly' | 'package' | 'drop_in' | 'trial' | 'guest' | 'discounted' | 'insurance' | 'staff' | 'unknown'
+
+export interface NormalizedMembership {
+  rawType: string | null
+  rawStatus: string | null
+  normalizedType: NormalizedMembershipType
+  normalizedStatus: NormalizedMembershipStatus
+  confidence: number
+  signal: MembershipSignal
+}
+
 // ====== AI Scoring Types ======
 export interface ScoreComponent {
   score: number;    // 0-100
@@ -421,6 +434,10 @@ export interface MemberHealthResult {
   rawHealthScore?: number          // Score before tier adjustment
   membershipType?: string | null   // e.g. "Open Play Pass - $49.99/Month"
   membershipStatus?: string | null // "Currently Active" | "Suspended" | "Expired" | "No Membership"
+  normalizedMembershipType?: NormalizedMembershipType | null
+  normalizedMembershipStatus?: NormalizedMembershipStatus | null
+  membershipConfidence?: number | null
+  membershipSignal?: MembershipSignal
 }
 
 export interface MemberHealthSummary {

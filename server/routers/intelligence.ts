@@ -1926,11 +1926,12 @@ export const intelligenceRouter = createTRPCRouter({
         const allFollowers = await ctx.prisma.clubFollower.findMany({
           where: { clubId: input.clubId },
           include: {
-            user: {
+              user: {
               select: {
                 id: true, email: true, name: true, image: true,
                 gender: true, city: true,
                 duprRatingDoubles: true, duprRatingSingles: true,
+                membershipType: true, membershipStatus: true,
               },
             },
           },
@@ -1972,10 +1973,24 @@ export const intelligenceRouter = createTRPCRouter({
           if (m?.email) membershipByEmail.set(String(m.email).toLowerCase().trim(), info)
         }
         // Build lookup: try userId first, then email
-        const getMembershipInfo = (userId: string, email: string | null) => {
-          return membershipBySourceId.get(userId)
+        const getMembershipInfo = (
+          userId: string,
+          email: string | null,
+          membershipType: string | null | undefined,
+          membershipStatus: string | null | undefined,
+        ) => {
+          const embedded = membershipBySourceId.get(userId)
             || (email ? membershipByEmail.get(email.toLowerCase().trim()) : null)
             || null
+
+          if (!embedded && !membershipType && !membershipStatus) return null
+
+          return {
+            membership: membershipType || embedded?.membership || null,
+            membershipStatus: membershipStatus || embedded?.membershipStatus || null,
+            lastVisit: embedded?.lastVisit || null,
+            firstVisit: embedded?.firstVisit || null,
+          }
         }
 
         // Get all bookings for these users at this club
@@ -2069,7 +2084,12 @@ export const intelligenceRouter = createTRPCRouter({
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
             previousPeriodBookings: bookings30to60,
-            membershipInfo: getMembershipInfo(f.userId, f.user.email),
+            membershipInfo: getMembershipInfo(
+              f.userId,
+              f.user.email,
+              f.user.membershipType,
+              f.user.membershipStatus,
+            ),
             bookingsWithSessions: userBookings.map(b => ({
               date: (b as any).playSession?.date ?? b.bookedAt,
               startTime: (b as any).playSession?.startTime ?? '12:00',

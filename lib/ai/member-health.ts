@@ -3,10 +3,11 @@ import {
   MemberHealthResult, MemberHealthData, MemberHealthSummary,
   HealthScoreComponent, LifecycleStage, RiskLevel,
   DayOfWeek,
-  ActivityLevel, EngagementTrend, ValueTier, MemberSegment, SegmentLabel,
+  ActivityLevel, EngagementTrend, ValueTier, MemberSegment, SegmentLabel, NormalizedMembership,
   TimePref, DayPattern, FormatPref,
 } from '../../types/intelligence';
 import { clamp, getDayName, getTimeSlot } from './scoring';
+import { normalizeMembership } from './membership-intelligence';
 
 // ── Configurable Weights ──
 
@@ -251,8 +252,13 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
     0, 100
   ));
 
-  // Apply membership tier adjustment — Guest Pass members churn faster
-  const tierWeight = getMembershipTierWeight(input.membershipInfo?.membership || null);
+  const normalizedMembership = normalizeMembership({
+    membershipType: input.membershipInfo?.membership || null,
+    membershipStatus: input.membershipInfo?.membershipStatus || null,
+  });
+
+  // Apply membership tier adjustment — guest/trial/drop-in members churn faster
+  const tierWeight = getMembershipTierWeight(normalizedMembership);
   const adjustedScore = Math.round(clamp(healthScore * tierWeight, 0, 100));
 
   const riskLevel = getRiskLevel(adjustedScore);
@@ -292,13 +298,13 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
 
   // Add membership tier risk to topRisks if applicable
   if (tierWeight < 1.0 && adjustedScore < healthScore) {
-    const tierName = input.membershipInfo?.membership || 'Guest';
+    const tierName = normalizedMembership.rawType || normalizedMembership.normalizedType || 'Guest';
     const shortTier = tierName.length > 30 ? tierName.slice(0, 30) + '…' : tierName;
     topRisks.push(`${shortTier} — higher churn risk tier`);
   }
 
   // Membership-aware suggested action
-  const membershipAction = getMembershipSuggestedAction(input.membershipInfo, riskLevel, adjustedScore);
+  const membershipAction = getMembershipSuggestedAction(normalizedMembership, riskLevel);
 
   return {
     memberId: member.id,
@@ -320,6 +326,10 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
     totalRevenue,
     membershipType: input.membershipInfo?.membership || null,
     membershipStatus: input.membershipInfo?.membershipStatus || null,
+    normalizedMembershipType: normalizedMembership.normalizedType,
+    normalizedMembershipStatus: normalizedMembership.normalizedStatus,
+    membershipConfidence: normalizedMembership.confidence,
+    membershipSignal: normalizedMembership.signal,
   };
 }
 
@@ -631,41 +641,54 @@ function scoreCoPlayerLoss(
 
 // ── Membership Tier Helpers ──
 
-function getMembershipTierWeight(membership: string | null): number {
-  if (!membership) return 0.7; // No membership info → assume higher risk
-  const lower = membership.toLowerCase();
-  if (lower.includes('guest pass') || lower.includes('pay per play')) return 0.7;
-  if (lower.includes('court pass') || lower.includes('14.99')) return 0.85;
-  if (lower.includes('open play pass') || lower.includes('49.99')) return 0.9;
-  if (lower.includes('hero discount') || lower.includes('39.99')) return 0.9;
-  if (lower.includes('vip') || lower.includes('89.99')) return 1.0;
-  if (lower.includes('silver sneakers') || lower.includes('renew active') || lower.includes('tivity') || lower.includes('one pass')) return 1.0;
-  if (lower.includes('friends') || lower.includes('comped')) return 1.0;
-  return 0.9; // default
+function getMembershipTierWeight(membership: NormalizedMembership): number {
+  if (membership.signal === 'missing') return 0.7;
+  if (membership.normalizedStatus === 'none' || membership.normalizedStatus === 'guest') return 0.7;
+  if (membership.normalizedStatus === 'trial') return 0.75;
+
+  switch (membership.normalizedType) {
+    case 'guest':
+    case 'drop_in':
+      return 0.7;
+    case 'trial':
+      return 0.75;
+    case 'package':
+      return 0.85;
+    case 'monthly':
+    case 'discounted':
+      return 0.9;
+    case 'unlimited':
+    case 'insurance':
+    case 'staff':
+      return 1.0;
+    default:
+      return membership.signal === 'strong' ? 0.9 : 0.8;
+  }
 }
 
 function getMembershipSuggestedAction(
-  info: MembershipInfo | null | undefined,
+  membership: NormalizedMembership,
   riskLevel: RiskLevel,
-  adjustedScore: number,
 ): string | null {
-  if (!info) return null;
-  const status = info.membershipStatus;
-  const membership = info.membership?.toLowerCase() || '';
+  if (membership.signal === 'missing') return null;
 
-  if (status === 'Suspended') return 'Membership frozen — send "Welcome back" unfreeze campaign';
-  if (status === 'Expired') return 'Membership expired — send renewal offer with discount';
-  if (status === 'No Membership') return 'No membership — send trial/first-month-free offer';
+  if (membership.normalizedStatus === 'suspended') return 'Membership frozen — send "Welcome back" unfreeze campaign';
+  if (membership.normalizedStatus === 'expired' || membership.normalizedStatus === 'cancelled') {
+    return 'Membership expired — send renewal offer with discount';
+  }
+  if (membership.normalizedStatus === 'none' || membership.normalizedStatus === 'guest') {
+    return 'No membership — send trial/first-month-free offer';
+  }
 
   // Active members: tier-specific suggestions
   if (riskLevel === 'at_risk' || riskLevel === 'critical') {
-    if (membership.includes('guest pass') || membership.includes('pay per play')) {
+    if (membership.normalizedType === 'guest' || membership.normalizedType === 'drop_in') {
       return 'Guest Pass member disengaging — suggest upgrade to monthly pass';
     }
-    if (membership.includes('open play') || membership.includes('49.99') || membership.includes('39.99')) {
+    if (membership.normalizedType === 'monthly' || membership.normalizedType === 'discounted') {
       return 'Monthly member at risk — send personal check-in + invite to upcoming event';
     }
-    if (membership.includes('vip') || membership.includes('89.99')) {
+    if (membership.normalizedType === 'unlimited' || membership.normalizedType === 'insurance' || membership.normalizedType === 'staff') {
       return 'High-value VIP disengaging — manager should call personally';
     }
   }

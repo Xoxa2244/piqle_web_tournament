@@ -16,6 +16,7 @@ import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
 } from '@/lib/ai/agent-trigger-runtime'
+import { normalizeMembership } from '@/lib/ai/membership-intelligence'
 
 export interface EventResult {
   clubId: string
@@ -79,7 +80,7 @@ export async function detectEventsForClub(
 
   // 3. New members (created since last sync)
   const newMembers: any[] = await prisma.$queryRawUnsafe(`
-    SELECT cf.user_id as "userId", u.name, u.email
+    SELECT cf.user_id as "userId", u.name, u.email, u.membership_type as "membershipType", u.membership_status as "membershipStatus"
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
     WHERE cf.club_id = $1
@@ -149,7 +150,10 @@ export async function detectEventsForClub(
         liveMode: live,
         confidence: 95,
         recipientCount: 1,
-        membershipSignal: 'weak',
+        membershipSignal: normalizeMembership({
+          membershipType: member.membershipType,
+          membershipStatus: member.membershipStatus,
+        }).signal,
       })
       if (welcomeRuntime.decision.outcome === 'blocked') continue
 
