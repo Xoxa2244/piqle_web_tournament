@@ -325,6 +325,8 @@ export async function detectEventsForClub(
       const actualOutcome = runtime.decision.outcome === 'blocked' ? 'blocked' : 'pending'
       const actualReasons = runtime.decision.outcome === 'blocked'
         ? runtime.decision.reasons
+        : runtime.decision.reasons.some((reason) => /safety-locked off/i.test(reason))
+          ? runtime.decision.reasons
         : runtime.decision.outcome === 'auto'
           ? ['Trial follow-up is auto-ready under current policy, but direct lifecycle auto-send still stays in review until execution is enabled.']
           : ['Trial member follow-up queued for human review.']
@@ -391,6 +393,8 @@ export async function detectEventsForClub(
       const actualOutcome = runtime.decision.outcome === 'blocked' ? 'blocked' : 'pending'
       const actualReasons = runtime.decision.outcome === 'blocked'
         ? runtime.decision.reasons
+        : runtime.decision.reasons.some((reason) => /safety-locked off/i.test(reason))
+          ? runtime.decision.reasons
         : runtime.decision.outcome === 'auto'
           ? ['Renewal outreach is auto-ready under current policy, but direct lifecycle auto-send still stays in review until execution is enabled.']
           : ['Renewal opportunity queued for human review.']

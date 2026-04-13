@@ -526,6 +526,7 @@ export interface ClubIntelligenceSettings {
     tone: CommunicationTone
   }
   agentLive?: boolean
+  lifecycleAutoExecutionEnabled?: boolean
   autoApproveThreshold?: number
   notificationEmail?: string
   contactPolicy?: {

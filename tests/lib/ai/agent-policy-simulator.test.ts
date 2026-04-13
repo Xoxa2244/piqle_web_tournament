@@ -147,6 +147,7 @@ describe('agent policy simulator', () => {
       ],
       automationSettings: {
         intelligence: {
+          lifecycleAutoExecutionEnabled: true,
           autonomyPolicy: {
             trialFollowUp: {
               mode: 'approve',
@@ -167,5 +168,46 @@ describe('agent policy simulator', () => {
       stillPending: 0,
       stillBlocked: 0,
     })
+  })
+
+  it('keeps lifecycle scenarios on review while the safety lock is off', () => {
+    const scenarios = buildAgentPolicyScenarios({
+      items: [
+        {
+          id: 'renew-1',
+          type: 'REACTIVATION',
+          membershipLifecycle: 'renewal_reactivation',
+          currentOutcome: 'pending',
+          confidence: 93,
+          recipientCount: 1,
+          membershipSignal: 'strong',
+          membershipStatus: 'expired',
+          membershipType: 'monthly',
+          membershipConfidence: 92,
+        },
+      ],
+      automationSettings: {
+        intelligence: {
+          lifecycleAutoExecutionEnabled: false,
+          autonomyPolicy: {
+            renewalReactivation: {
+              mode: 'approve',
+              minConfidenceAuto: 88,
+              maxRecipientsAuto: 2,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+    })
+
+    expect(scenarios[0]).toMatchObject({
+      action: 'renewalReactivation',
+      autoGain: 0,
+      stillPending: 1,
+      stillBlocked: 0,
+    })
+    expect(scenarios[0]?.topReasons[0]?.label).toContain('safety-locked off')
   })
 })

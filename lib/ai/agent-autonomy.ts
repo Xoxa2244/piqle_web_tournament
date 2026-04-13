@@ -137,6 +137,16 @@ function parseRule(value: unknown, fallback: AgentAutonomyRule): AgentAutonomyRu
   return parsed.success ? { ...fallback, ...parsed.data } : fallback
 }
 
+function isLifecycleAutonomyAction(action: AgentAutonomyAction) {
+  return action === 'trialFollowUp' || action === 'renewalReactivation'
+}
+
+export function isLifecycleAutoExecutionEnabled(automationSettings?: unknown): boolean {
+  const automation = toRecord(automationSettings)
+  const intelligence = toRecord(automation.intelligence)
+  return intelligence.lifecycleAutoExecutionEnabled === true
+}
+
 export function readAgentAutonomyPolicyOverrides(automationSettings?: unknown): Partial<AgentAutonomyPolicy> {
   const automation = toRecord(automationSettings)
   const intelligence = toRecord(automation.intelligence)
@@ -298,6 +308,10 @@ export function evaluateAgentAutonomy(opts: {
       reasons: ['Club autonomy policy requires manual approval for this action.'],
       rule,
     }
+  }
+
+  if (isLifecycleAutonomyAction(opts.action) && !isLifecycleAutoExecutionEnabled(opts.automationSettings)) {
+    reasons.push('Membership lifecycle auto execution is safety-locked off until testing is complete.')
   }
 
   if (rule.requireMembershipSignal && opts.membershipSignal !== 'strong') {

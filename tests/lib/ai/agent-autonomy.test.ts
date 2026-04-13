@@ -174,6 +174,7 @@ describe('agent autonomy policy', () => {
       action: 'trialFollowUp',
       automationSettings: {
         intelligence: {
+          lifecycleAutoExecutionEnabled: true,
           autonomyPolicy: {
             trialFollowUp: {
               mode: 'auto',
@@ -194,6 +195,35 @@ describe('agent autonomy policy', () => {
     })
 
     expect(decision.outcome).toBe('auto')
+  })
+
+  it('keeps lifecycle actions pending behind the safety lock even when mode is auto', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'trialFollowUp',
+      automationSettings: {
+        intelligence: {
+          lifecycleAutoExecutionEnabled: false,
+          autonomyPolicy: {
+            trialFollowUp: {
+              mode: 'auto',
+              minConfidenceAuto: 80,
+              maxRecipientsAuto: 2,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+      confidence: 92,
+      recipientCount: 1,
+      membershipSignal: 'strong',
+      membershipStatus: 'trial',
+      membershipType: 'trial',
+      membershipConfidence: 90,
+    })
+
+    expect(decision.outcome).toBe('pending')
+    expect(decision.reasons.join(' ')).toContain('safety-locked off')
   })
 
   it('keeps renewal outreach on review for active memberships even when lifecycle policy is auto', () => {

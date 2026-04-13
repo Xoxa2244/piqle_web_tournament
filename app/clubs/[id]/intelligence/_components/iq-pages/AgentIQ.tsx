@@ -454,6 +454,7 @@ function buildMembershipLifecycleAutopilotCards(
   intelligenceSettings?: any,
 ): MembershipLifecycleAutopilotCard[] {
   const policy = resolveAgentAutonomyPolicy({ intelligence: intelligenceSettings || {} })
+  const lifecycleAutoExecutionEnabled = intelligenceSettings?.lifecycleAutoExecutionEnabled === true
   const combined = [
     ...pendingActions.map((item) => ({
       membershipLifecycle: item.membershipLifecycle || null,
@@ -518,6 +519,7 @@ function buildMembershipLifecycleAutopilotCards(
       `confidence ${config.minConfidence ?? "n/a"}+`,
       `max ${config.maxRecipients ?? "n/a"} auto`,
       config.membershipRequired ? "strong membership required" : "membership optional",
+      lifecycleAutoExecutionEnabled ? "live auto-send unlocked" : "live auto-send safety-locked",
     ]
 
     return {
