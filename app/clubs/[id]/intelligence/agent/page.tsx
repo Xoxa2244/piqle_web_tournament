@@ -32,6 +32,7 @@ export default function AgentPage() {
         pending={pending}
         isLoading={activityLoading || pendingLoading}
         agentLive={!!(settings?.settings as any)?.agentLive}
+        intelligenceSettings={settings?.settings || null}
         approveAction={approveAction}
         skipAction={skipAction}
         snoozeAction={snoozeAction}

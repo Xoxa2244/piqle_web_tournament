@@ -8,6 +8,12 @@ import {
   ArrowUpRight, Activity, Shield,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
+import { buildAgentPolicyScenarios } from "@/lib/ai/agent-policy-simulator"
+import type {
+  MembershipSignal,
+  NormalizedMembershipStatus,
+  NormalizedMembershipType,
+} from "@/types/intelligence"
 
 // ── Types ──
 interface AgentLog {
@@ -26,9 +32,12 @@ interface AgentLog {
   triggerConfiguredMode?: string | null
   triggerPolicyOutcome?: string | null
   triggerReasons?: string[]
+  triggerRecipientCount?: number | null
+  triggerMembershipSignal?: MembershipSignal | null
+  triggerMembershipConfidence?: number | null
   membershipLifecycle?: string | null
-  membershipStatus?: string | null
-  membershipType?: string | null
+  membershipStatus?: NormalizedMembershipStatus | null
+  membershipType?: NormalizedMembershipType | null
   sequenceStep?: number | null
 }
 
@@ -44,9 +53,12 @@ interface PendingAction {
   triggerConfiguredMode?: string | null
   triggerPolicyOutcome?: string | null
   triggerReasons?: string[]
+  triggerRecipientCount?: number | null
+  triggerMembershipSignal?: MembershipSignal | null
+  triggerMembershipConfidence?: number | null
   membershipLifecycle?: string | null
-  membershipStatus?: string | null
-  membershipType?: string | null
+  membershipStatus?: NormalizedMembershipStatus | null
+  membershipType?: NormalizedMembershipType | null
   sequenceStep?: number | null
 }
 
@@ -90,6 +102,7 @@ interface AgentIQProps {
   pending?: PendingAction[] | null
   isLoading: boolean
   agentLive: boolean
+  intelligenceSettings?: any
   approveAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   skipAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   snoozeAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
@@ -470,6 +483,26 @@ function suggestionToneStyles(tone: AutopilotSuggestion["tone"]) {
   }
 }
 
+function actionLabel(action: string) {
+  switch (action) {
+    case "slotFiller": return "Slot filler"
+    case "reactivation": return "Reactivation"
+    case "retentionBoost": return "Retention boost"
+    case "welcome": return "Welcome"
+    case "checkIn": return "Check-in"
+    default: return action
+  }
+}
+
+function normalizeSimulationOutcome(
+  outcome?: string | null,
+): "auto" | "pending" | "blocked" | "other" | null {
+  if (outcome === "auto" || outcome === "pending" || outcome === "blocked" || outcome === "other") {
+    return outcome
+  }
+  return null
+}
+
 // ── Component ──
 export function AgentIQ({
   clubId,
@@ -477,6 +510,7 @@ export function AgentIQ({
   pending,
   isLoading,
   agentLive,
+  intelligenceSettings,
   approveAction,
   skipAction,
   snoozeAction,
@@ -493,6 +527,34 @@ export function AgentIQ({
   const autopilotSummary = buildAutopilotSummary(logs)
   const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
   const proactiveOpportunities = buildProactiveOpportunities(logs, pendingActions)
+  const policyScenarios = buildAgentPolicyScenarios({
+    items: [
+      ...logs.map((item) => ({
+        id: item.id,
+        type: item.type,
+        currentOutcome: normalizeSimulationOutcome(resolveAutopilotOutcome(item)),
+        confidence: item.confidence ?? null,
+        recipientCount: item.triggerRecipientCount ?? null,
+        membershipSignal: item.triggerMembershipSignal ?? null,
+        membershipStatus: item.membershipStatus ?? null,
+        membershipType: item.membershipType ?? null,
+        membershipConfidence: item.triggerMembershipConfidence ?? null,
+      })),
+      ...pendingActions.map((item) => ({
+        id: item.id,
+        type: item.type,
+        currentOutcome: normalizeSimulationOutcome(item.triggerOutcome === "blocked" ? "blocked" : "pending"),
+        confidence: item.confidence ?? null,
+        recipientCount: item.triggerRecipientCount ?? null,
+        membershipSignal: item.triggerMembershipSignal ?? null,
+        membershipStatus: item.membershipStatus ?? null,
+        membershipType: item.membershipType ?? null,
+        membershipConfidence: item.triggerMembershipConfidence ?? null,
+      })),
+    ],
+    automationSettings: { intelligence: intelligenceSettings || {} },
+    liveMode: agentLive,
+  })
 
   const actionHref = (action: AutopilotSuggestionAction) => {
     switch (action) {
@@ -988,6 +1050,132 @@ export function AgentIQ({
                   </div>
                 )
               })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {policyScenarios.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" style={{ color: "#10B981" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Policy Simulator
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  What recent agent activity suggests would change if you move specific actions to auto-run.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {policyScenarios.slice(0, 4).map((scenario) => (
+                <div
+                  key={scenario.action}
+                  className="rounded-xl p-4"
+                  style={{
+                    background: "rgba(16,185,129,0.08)",
+                    border: "1px solid rgba(16,185,129,0.16)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                        {actionLabel(scenario.action)} → Auto
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                        Based on the last {scenario.consideredCount} recent {actionLabel(scenario.action).toLowerCase()} actions.
+                      </div>
+                    </div>
+                    <div
+                      className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                      style={{
+                        background: "rgba(245,158,11,0.12)",
+                        color: "#F59E0B",
+                      }}
+                    >
+                      {scenario.currentMode} now
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    <div
+                      className="rounded-lg p-2"
+                      style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.16)" }}
+                    >
+                      <div className="text-[11px]" style={{ color: "#10B981" }}>Would auto-run</div>
+                      <div className="text-lg font-bold tabular-nums" style={{ color: "#10B981" }}>{scenario.autoGain}</div>
+                    </div>
+                    <div
+                      className="rounded-lg p-2"
+                      style={{ background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.16)" }}
+                    >
+                      <div className="text-[11px]" style={{ color: "#F59E0B" }}>Still review</div>
+                      <div className="text-lg font-bold tabular-nums" style={{ color: "#F59E0B" }}>{scenario.stillPending}</div>
+                    </div>
+                    <div
+                      className="rounded-lg p-2"
+                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.16)" }}
+                    >
+                      <div className="text-[11px]" style={{ color: "#EF4444" }}>Still blocked</div>
+                      <div className="text-lg font-bold tabular-nums" style={{ color: "#EF4444" }}>{scenario.stillBlocked}</div>
+                    </div>
+                  </div>
+
+                  {scenario.requiresLiveMode && (
+                    <div className="text-[11px] mt-3" style={{ color: "#F59E0B" }}>
+                      This estimate assumes the club also switches Agent to Live mode.
+                    </div>
+                  )}
+
+                  {scenario.topReasons.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[11px] font-medium" style={{ color: "var(--heading)" }}>
+                        What would still hold it back
+                      </div>
+                      <div className="space-y-1 mt-1.5">
+                        {scenario.topReasons.slice(0, 2).map((reason) => (
+                          <div key={reason.label} className="flex items-start justify-between gap-3">
+                            <div className="text-[11px]" style={{ color: "var(--t3)" }}>
+                              {reason.label}
+                            </div>
+                            <div className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--t4)" }}>
+                              {reason.count}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 mt-4">
+                    <Link
+                      href={`/clubs/${clubId}/intelligence/settings`}
+                      className="inline-flex items-center gap-1 text-xs font-medium"
+                      style={{ color: "var(--heading)" }}
+                    >
+                      Open settings
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link
+                      href={`/clubs/${clubId}/intelligence/advisor`}
+                      className="inline-flex items-center gap-1 text-xs font-medium"
+                      style={{ color: "#10B981" }}
+                    >
+                      Ask Advisor to apply
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </motion.div>
