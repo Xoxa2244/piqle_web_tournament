@@ -85,6 +85,7 @@ model User {
 
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
+  agentDrafts              AgentDraft[]              @relation("UserAgentDrafts")
 
   // Session Interest
   sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
@@ -256,6 +257,7 @@ model Club {
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
+  agentDrafts             AgentDraft[]               @relation("ClubAgentDrafts")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   // Billing
@@ -1716,6 +1718,7 @@ model AIConversation {
   club     Club         @relation("ClubAIConversations", fields: [clubId], references: [id], onDelete: Cascade)
   user     User         @relation("UserAIConversations", fields: [userId], references: [id], onDelete: Cascade)
   messages AIMessage[]  @relation("ConversationMessages")
+  agentDrafts AgentDraft[] @relation("ConversationAgentDrafts")
 
   @@index([clubId, userId])
   @@index([updatedAt(sort: Desc)])
@@ -1731,10 +1734,46 @@ model AIMessage {
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation AIConversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+  sourceAgentDraft AgentDraft? @relation("AgentDraftSourceMessage")
 
   @@index([conversationId])
   @@index([createdAt])
   @@map("ai_messages")
+}
+
+model AgentDraft {
+  id              String         @id @default(uuid())
+  clubId          String         @map("club_id")
+  conversationId  String?        @map("conversation_id")
+  sourceMessageId String?        @unique @map("source_message_id")
+  createdByUserId String         @map("created_by_user_id")
+  kind            String
+  status          String         @default("review_ready")
+  title           String
+  summary         String?
+  originalIntent  String?        @map("original_intent")
+  selectedPlan    String         @default("requested") @map("selected_plan")
+  requestedAction Json           @map("requested_action")
+  recommendedAction Json?        @map("recommended_action")
+  workingAction   Json           @map("working_action")
+  sandboxMode     Boolean        @default(false) @map("sandbox_mode")
+  scheduledFor    DateTime?      @map("scheduled_for")
+  timeZone        String?        @map("time_zone")
+  metadata        Json           @default("{}")
+  approvedAt      DateTime?      @map("approved_at")
+  executedAt      DateTime?      @map("executed_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  club            Club           @relation("ClubAgentDrafts", fields: [clubId], references: [id], onDelete: Cascade)
+  conversation    AIConversation? @relation("ConversationAgentDrafts", fields: [conversationId], references: [id], onDelete: SetNull)
+  sourceMessage   AIMessage?     @relation("AgentDraftSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  createdByUser   User           @relation("UserAgentDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([conversationId, updatedAt(sort: Desc)])
+  @@index([createdByUserId, updatedAt(sort: Desc)])
+  @@map("agent_drafts")
 }
 
 // ── Member Health Snapshots (for ML training data) ──

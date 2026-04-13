@@ -12,6 +12,7 @@ import {
   type AdvisorAction,
 } from './advisor-actions'
 import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
+import { advisorDraftStatusSchema, type AdvisorDraftMetadata } from './advisor-drafts'
 import { isAdvisorActionHidden } from './advisor-action-state'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
@@ -24,6 +25,8 @@ const advisorActiveCampaignSchema = advisorCampaignDraftSchema.extend({
 })
 
 export const advisorConversationStateSchema = z.object({
+  currentDraftId: z.string().uuid().optional(),
+  currentDraftStatus: advisorDraftStatusSchema.optional(),
   currentAudience: advisorCohortDraftSchema.optional(),
   currentCampaign: advisorActiveCampaignSchema.optional(),
   currentSession: advisorSessionDraftSchema.optional(),
@@ -133,6 +136,19 @@ export function buildAdvisorConversationStateFromAction(
     },
     lastActionKind: action.kind,
     lastActionTitle: action.title,
+    updatedAt,
+  })
+}
+
+export function withAdvisorCurrentDraft(
+  state: AdvisorConversationState | null,
+  draft: AdvisorDraftMetadata | null,
+  updatedAt: string = new Date().toISOString(),
+): AdvisorConversationState {
+  return finalizeAdvisorConversationState({
+    ...(state || {}),
+    currentDraftId: draft?.id,
+    currentDraftStatus: draft?.status,
     updatedAt,
   })
 }

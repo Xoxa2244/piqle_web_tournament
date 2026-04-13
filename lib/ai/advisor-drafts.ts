@@ -1,0 +1,275 @@
+import 'server-only'
+
+import type { PrismaClient } from '@prisma/client'
+import { z } from 'zod'
+import {
+  stripAdvisorRecommendation,
+  type AdvisorAction,
+  type AdvisorActionCore,
+} from './advisor-actions'
+
+export const advisorDraftStatusSchema = z.enum([
+  'review_ready',
+  'draft_saved',
+  'approved',
+  'scheduled',
+  'sent',
+  'blocked',
+  'snoozed',
+  'declined',
+])
+
+export const advisorDraftSelectedPlanSchema = z.enum(['requested', 'recommended'])
+
+export const advisorDraftMetadataSchema = z.object({
+  id: z.string().uuid(),
+  status: advisorDraftStatusSchema,
+  selectedPlan: advisorDraftSelectedPlanSchema.default('requested'),
+  sandboxMode: z.boolean().default(false),
+  updatedAt: z.string().datetime(),
+})
+
+export type AdvisorDraftStatus = z.infer<typeof advisorDraftStatusSchema>
+export type AdvisorDraftSelectedPlan = z.infer<typeof advisorDraftSelectedPlanSchema>
+export type AdvisorDraftMetadata = z.infer<typeof advisorDraftMetadataSchema>
+
+function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
+  if (action.kind === 'create_campaign') return action.campaign.execution
+  if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
+    return action.lifecycle.execution
+  }
+  return null
+}
+
+function safeJsonEqual(left: unknown, right: unknown) {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right)
+  } catch {
+    return false
+  }
+}
+
+function parseAdvisorDraftMetadata(value: unknown): AdvisorDraftMetadata | null {
+  const parsed = advisorDraftMetadataSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+export function getAdvisorDraftFromMetadata(metadata: unknown): AdvisorDraftMetadata | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const record = metadata as Record<string, unknown>
+  return parseAdvisorDraftMetadata(record.advisorDraft)
+}
+
+export function withAdvisorDraftMetadata(
+  metadata: unknown,
+  draft: AdvisorDraftMetadata,
+) {
+  const next =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? { ...(metadata as Record<string, unknown>) }
+      : {}
+
+  next.advisorDraft = draft
+  return next
+}
+
+export function detectAdvisorDraftSelectedPlan(
+  sourceAction: AdvisorAction | AdvisorActionCore,
+  workingAction: AdvisorAction | AdvisorActionCore,
+): AdvisorDraftSelectedPlan {
+  const normalizedWorkingAction = stripAdvisorRecommendation(workingAction)
+
+  if (
+    'recommendation' in sourceAction &&
+    sourceAction.recommendation?.action &&
+    safeJsonEqual(sourceAction.recommendation.action, normalizedWorkingAction)
+  ) {
+    return 'recommended'
+  }
+
+  return 'requested'
+}
+
+export function resolveAdvisorDraftStatusFromResult(
+  action: AdvisorAction | AdvisorActionCore,
+  result: Record<string, any>,
+): AdvisorDraftStatus {
+  if (result?.blocked) return 'blocked'
+  if (result?.savedAsDraft) return 'draft_saved'
+  if (result?.deliveryMode === 'send_later') return 'scheduled'
+  if (action.kind === 'create_cohort' || action.kind === 'update_contact_policy' || action.kind === 'update_autonomy_policy') {
+    return 'approved'
+  }
+  return 'sent'
+}
+
+export function buildAdvisorDraftPersistencePayload(opts: {
+  action: AdvisorAction | AdvisorActionCore
+  originalIntent?: string | null
+  selectedPlan?: AdvisorDraftSelectedPlan
+  status?: AdvisorDraftStatus
+  sandboxMode?: boolean
+  metadata?: Record<string, any> | null
+}) {
+  const selectedPlan = opts.selectedPlan || 'requested'
+  const requestedAction = stripAdvisorRecommendation(opts.action)
+  const recommendedAction =
+    'recommendation' in opts.action && opts.action.recommendation?.action
+      ? stripAdvisorRecommendation(opts.action.recommendation.action)
+      : null
+  const workingAction =
+    selectedPlan === 'recommended' && recommendedAction
+      ? recommendedAction
+      : requestedAction
+  const execution = getAdvisorDraftExecution(workingAction)
+
+  return {
+    kind: workingAction.kind,
+    title: workingAction.title,
+    summary: workingAction.summary || null,
+    originalIntent: opts.originalIntent || null,
+    selectedPlan,
+    requestedAction,
+    recommendedAction,
+    workingAction,
+    sandboxMode: opts.sandboxMode ?? false,
+    status: opts.status || 'review_ready',
+    scheduledFor: execution?.scheduledFor ? new Date(execution.scheduledFor) : null,
+    timeZone: execution?.timeZone || null,
+    metadata: opts.metadata || {},
+  }
+}
+
+export async function persistAdvisorDraft(opts: {
+  prisma: PrismaClient
+  clubId: string
+  userId: string
+  conversationId?: string | null
+  sourceMessageId?: string | null
+  existingDraftId?: string | null
+  action: AdvisorAction | AdvisorActionCore
+  originalIntent?: string | null
+  selectedPlan?: AdvisorDraftSelectedPlan
+  status?: AdvisorDraftStatus
+  sandboxMode?: boolean
+  metadata?: Record<string, any> | null
+}): Promise<AdvisorDraftMetadata | null> {
+  const payload = buildAdvisorDraftPersistencePayload({
+    action: opts.action,
+    originalIntent: opts.originalIntent,
+    selectedPlan: opts.selectedPlan,
+    status: opts.status,
+    sandboxMode: opts.sandboxMode,
+    metadata: opts.metadata,
+  })
+
+  try {
+    const relationFields = {
+      ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
+      ...(opts.sourceMessageId ? { sourceMessageId: opts.sourceMessageId } : {}),
+    }
+    const existing =
+      opts.existingDraftId
+        ? await opts.prisma.agentDraft.findFirst({
+            where: {
+              id: opts.existingDraftId,
+              clubId: opts.clubId,
+              createdByUserId: opts.userId,
+            },
+            select: { id: true },
+          })
+        : null
+
+    const record = existing
+      ? await opts.prisma.agentDraft.update({
+          where: { id: existing.id },
+          data: {
+            ...payload,
+            ...relationFields,
+          } as any,
+          select: {
+            id: true,
+            status: true,
+            selectedPlan: true,
+            sandboxMode: true,
+            updatedAt: true,
+          },
+        })
+      : await opts.prisma.agentDraft.create({
+          data: {
+            clubId: opts.clubId,
+            createdByUserId: opts.userId,
+            ...payload,
+            ...relationFields,
+          } as any,
+          select: {
+            id: true,
+            status: true,
+            selectedPlan: true,
+            sandboxMode: true,
+            updatedAt: true,
+          },
+        })
+
+    return {
+      id: record.id,
+      status: record.status as AdvisorDraftStatus,
+      selectedPlan: record.selectedPlan as AdvisorDraftSelectedPlan,
+      sandboxMode: record.sandboxMode,
+      updatedAt: record.updatedAt.toISOString(),
+    }
+  } catch (error) {
+    console.warn('[Advisor Draft] persistence skipped:', error instanceof Error ? error.message : error)
+    return null
+  }
+}
+
+export async function updateAdvisorDraftStatus(opts: {
+  prisma: PrismaClient
+  clubId: string
+  userId: string
+  draftId: string
+  status: Extract<AdvisorDraftStatus, 'declined' | 'snoozed'>
+}): Promise<AdvisorDraftMetadata | null> {
+  try {
+    const existing = await opts.prisma.agentDraft.findFirst({
+      where: {
+        id: opts.draftId,
+        clubId: opts.clubId,
+        createdByUserId: opts.userId,
+      },
+      select: {
+        id: true,
+        selectedPlan: true,
+        sandboxMode: true,
+      },
+    })
+
+    if (!existing) return null
+
+    const updated = await opts.prisma.agentDraft.update({
+      where: { id: existing.id },
+      data: {
+        status: opts.status,
+      },
+      select: {
+        id: true,
+        status: true,
+        selectedPlan: true,
+        sandboxMode: true,
+        updatedAt: true,
+      },
+    })
+
+    return {
+      id: updated.id,
+      status: updated.status as AdvisorDraftStatus,
+      selectedPlan: updated.selectedPlan as AdvisorDraftSelectedPlan,
+      sandboxMode: updated.sandboxMode,
+      updatedAt: updated.updatedAt.toISOString(),
+    }
+  } catch (error) {
+    console.warn('[Advisor Draft] status update skipped:', error instanceof Error ? error.message : error)
+    return null
+  }
+}

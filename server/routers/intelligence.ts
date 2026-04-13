@@ -24,8 +24,17 @@ import { withAdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import {
   buildAdvisorConversationStateFromAction,
   getAdvisorConversationStateFromMetadata,
+  withAdvisorCurrentDraft,
   withAdvisorOutcome,
 } from '@/lib/ai/advisor-conversation-state'
+import {
+  detectAdvisorDraftSelectedPlan,
+  getAdvisorDraftFromMetadata,
+  persistAdvisorDraft,
+  resolveAdvisorDraftStatusFromResult,
+  updateAdvisorDraftStatus,
+  withAdvisorDraftMetadata,
+} from '@/lib/ai/advisor-drafts'
 import {
   scheduleCampaignSend,
   sendCampaignNow,
@@ -4197,6 +4206,13 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
       }
 
+      const sourceAdvisorAction = advisorMessage
+        ? getAdvisorActionFromMetadata(advisorMessage.metadata)
+        : null
+      const advisorDraft = advisorMessage
+        ? getAdvisorDraftFromMetadata(advisorMessage.metadata)
+        : null
+
       const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {
         if (!advisorMessage) return result
 
@@ -4205,13 +4221,34 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         const baseState =
           getAdvisorConversationStateFromMetadata(advisorMessage.metadata) ||
           buildAdvisorConversationStateFromAction(input.action, occurredAt)
-        const nextState = withAdvisorOutcome(baseState, outcome, occurredAt)
+        let nextState = withAdvisorOutcome(baseState, outcome, occurredAt)
 
         let metadata = withAdvisorActionRuntimeState(advisorMessage.metadata, {
           status: 'active',
           updatedAt: occurredAt,
         })
         metadata = withAdvisorOutcomeMetadata(metadata, outcome)
+        if (advisorDraft?.id) {
+          const selectedPlan = detectAdvisorDraftSelectedPlan(
+            sourceAdvisorAction || input.action,
+            input.action,
+          )
+          const persistedDraft = await persistAdvisorDraft({
+            prisma: ctx.prisma,
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            existingDraftId: advisorDraft.id,
+            sourceMessageId: advisorMessage.id,
+            action: sourceAdvisorAction || input.action,
+            selectedPlan,
+            status: resolveAdvisorDraftStatusFromResult(input.action, result),
+          })
+
+          if (persistedDraft) {
+            nextState = withAdvisorCurrentDraft(nextState, persistedDraft, occurredAt)
+            metadata = withAdvisorDraftMetadata(metadata, persistedDraft)
+          }
+        }
         metadata = {
           ...(metadata as Record<string, unknown>),
           advisorResolvedAction: input.action,
@@ -4841,7 +4878,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         ? new Date(updatedAt.getTime() + input.snoozeHours * 60 * 60 * 1000).toISOString()
         : undefined
 
-      const metadata = withAdvisorActionRuntimeState(
+      let metadata = withAdvisorActionRuntimeState(
         message.metadata,
         {
           status: input.disposition,
@@ -4849,6 +4886,28 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           updatedAt: updatedAt.toISOString(),
         },
       )
+      const advisorDraft = getAdvisorDraftFromMetadata(message.metadata)
+
+      if (advisorDraft?.id) {
+        const persistedDraft = await updateAdvisorDraftStatus({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          draftId: advisorDraft.id,
+          status: input.disposition,
+        })
+
+        if (persistedDraft) {
+          const baseState =
+            getAdvisorConversationStateFromMetadata(message.metadata) ||
+            buildAdvisorConversationStateFromAction(action, updatedAt.toISOString())
+          metadata = withAdvisorDraftMetadata(metadata, persistedDraft)
+          metadata = {
+            ...(metadata as Record<string, unknown>),
+            advisorState: withAdvisorCurrentDraft(baseState, persistedDraft, updatedAt.toISOString()),
+          }
+        }
+      }
 
       await ctx.prisma.aIMessage.update({
         where: { id: input.messageId },

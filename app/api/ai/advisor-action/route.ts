@@ -27,8 +27,13 @@ import {
   type AdvisorConversationState,
   buildAdvisorConversationStateFromAction,
   deriveAdvisorConversationState,
+  withAdvisorCurrentDraft,
   withAdvisorPendingClarification,
 } from '@/lib/ai/advisor-conversation-state'
+import {
+  persistAdvisorDraft,
+  withAdvisorDraftMetadata,
+} from '@/lib/ai/advisor-drafts'
 import { getAdvisorEditCopy, maybeEditAdvisorDraft } from '@/lib/ai/advisor-draft-editor'
 import {
   evaluateAdvisorContactGuardrails,
@@ -208,6 +213,8 @@ function truncateAdvisorText(text: string, maxChars: number) {
 }
 
 async function persistAdvisorExchange(opts: {
+  clubId: string
+  userId: string
   conversationId: string
   userMessage: string
   assistantMessage: string
@@ -215,6 +222,7 @@ async function persistAdvisorExchange(opts: {
   language: SupportedLanguage
   assistantState?: AdvisorConversationState | null
   action?: AdvisorAction | null
+  existingDraftId?: string | null
 }) {
   await prisma.aIMessage.create({
     data: {
@@ -225,13 +233,14 @@ async function persistAdvisorExchange(opts: {
     },
   })
 
+  const occurredAt = new Date().toISOString()
   const assistantMetadata = {
     source: 'advisor_action',
     handled: true,
     ...(opts.assistantState ? { advisorState: opts.assistantState } : {}),
     ...(opts.action ? { advisorResolvedAction: opts.action } : {}),
     ...(opts.action
-      ? { advisorActionState: { status: 'active' as const, updatedAt: new Date().toISOString() } }
+      ? { advisorActionState: { status: 'active' as const, updatedAt: occurredAt } }
       : {}),
   }
 
@@ -248,6 +257,42 @@ async function persistAdvisorExchange(opts: {
     },
   })
 
+  let finalMetadata: any = assistantRecord.metadata
+
+  if (opts.action) {
+    const persistedDraft = await persistAdvisorDraft({
+      prisma,
+      clubId: opts.clubId,
+      userId: opts.userId,
+      conversationId: opts.conversationId,
+      sourceMessageId: assistantRecord.id,
+      existingDraftId: opts.existingDraftId,
+      action: opts.action,
+      originalIntent: opts.titleSource,
+    })
+
+    if (persistedDraft) {
+      const nextState = withAdvisorCurrentDraft(
+        opts.assistantState || buildAdvisorConversationStateFromAction(opts.action, occurredAt),
+        persistedDraft,
+        occurredAt,
+      )
+
+      finalMetadata = withAdvisorDraftMetadata(
+        {
+          ...assistantMetadata,
+          advisorState: nextState,
+        },
+        persistedDraft,
+      )
+
+      await prisma.aIMessage.update({
+        where: { id: assistantRecord.id },
+        data: { metadata: finalMetadata as any },
+      })
+    }
+  }
+
   await prisma.aIConversation.update({
     where: { id: opts.conversationId },
     data: {
@@ -257,7 +302,10 @@ async function persistAdvisorExchange(opts: {
     },
   }).catch(() => {})
 
-  return assistantRecord
+  return {
+    ...assistantRecord,
+    metadata: finalMetadata,
+  }
 }
 
 function buildCampaignReadyText(
@@ -1657,6 +1705,7 @@ export async function POST(req: Request) {
     let assistantState: AdvisorConversationState | null = null
     const hadPendingClarification = !!memory.state?.pendingClarification
     let defaultsApplied: AdvisorAdaptiveDefaultsApplied | undefined
+    let draftIdToReuse: string | null = null
 
     if (access.isAdmin && memory.state?.pendingClarification) {
       if (
@@ -1735,6 +1784,7 @@ export async function POST(req: Request) {
             })
           : null
         if (editedContactPolicy) {
+          draftIdToReuse = memory.state?.currentDraftId || null
           const action = buildContactPolicyAction(editedContactPolicy)
           assistantState = buildAdvisorConversationStateFromAction(action)
           assistantMessage = withSuggested(
@@ -1757,6 +1807,7 @@ export async function POST(req: Request) {
             })
           : null
         if (editedAutonomyPolicy) {
+          draftIdToReuse = memory.state?.currentDraftId || null
           const action = buildAutonomyPolicyAction(editedAutonomyPolicy)
           assistantState = buildAdvisorConversationStateFromAction(action)
           assistantMessage = withSuggested(
@@ -1784,6 +1835,7 @@ export async function POST(req: Request) {
         })
 
         if (editedAction) {
+          draftIdToReuse = memory.state?.currentDraftId || null
           if (editedAction.kind === 'fill_session') {
             const editedResponse = await buildFillSessionAssistantResponse({
               caller,
@@ -1985,6 +2037,8 @@ export async function POST(req: Request) {
     if (assistantMessage) {
       const assistantAction = extractAdvisorAction(assistantMessage)
       const assistantRecord = await persistAdvisorExchange({
+        clubId,
+        userId: session.userId,
         conversationId: convId,
         userMessage: message,
         assistantMessage,
@@ -1992,6 +2046,7 @@ export async function POST(req: Request) {
         language,
         assistantState,
         action: assistantAction,
+        existingDraftId: draftIdToReuse,
       })
 
       return Response.json({
@@ -2292,6 +2347,8 @@ export async function POST(req: Request) {
 
     const assistantAction = extractAdvisorAction(assistantMessage)
     const assistantRecord = await persistAdvisorExchange({
+      clubId,
+      userId: session.userId,
       conversationId: convId,
       userMessage: message,
       assistantMessage,
@@ -2299,6 +2356,7 @@ export async function POST(req: Request) {
       language,
       assistantState,
       action: assistantAction,
+      existingDraftId: draftIdToReuse,
     })
 
     return Response.json({
