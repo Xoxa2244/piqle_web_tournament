@@ -23,7 +23,28 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
 
   const deliveryModeLabel = useMemo(() => {
     if (action.kind !== 'create_campaign') return null
-    return action.campaign.execution.mode === 'send_now' ? 'Send Now' : 'Save Draft'
+    if (action.campaign.execution.mode === 'send_now') return 'Send Now'
+    if (action.campaign.execution.mode === 'send_later') return 'Schedule Send'
+    return 'Save Draft'
+  }, [action])
+
+  const scheduledLabel = useMemo(() => {
+    if (action.kind !== 'create_campaign' || action.campaign.execution.mode !== 'send_later') return null
+    if (!action.campaign.execution.scheduledFor) return null
+
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: action.campaign.execution.timeZone || undefined,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: action.campaign.execution.timeZone ? 'short' : undefined,
+      }).format(new Date(action.campaign.execution.scheduledFor))
+    } catch {
+      return action.campaign.execution.scheduledFor
+    }
   }, [action])
 
   const recipientRuleLabels = useMemo(() => {
@@ -121,6 +142,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {deliveryModeLabel}
             </div>
+            {scheduledLabel && (
+              <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                {scheduledLabel}
+              </div>
+            )}
             {action.campaign.subject && (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)' }}>
                 <strong style={{ color: 'var(--heading)' }}>Subject:</strong> {action.campaign.subject}
@@ -180,12 +206,16 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               ? `Audience created: ${result.name} (${result.memberCount} members)`
               : result.savedAsDraft
                 ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
+                : result.deliveryMode === 'send_later'
+                  ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
                 : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`}
           </div>
         ) : (
           <div className="text-xs" style={{ color: 'var(--t3)' }}>
             {action.kind === 'create_campaign' && action.campaign.execution.mode === 'save_draft'
               ? 'Approval is required before the platform saves this campaign draft.'
+              : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
+                ? 'Approval is required before the platform schedules this campaign.'
               : 'Approval is required before the platform makes this change.'}
           </div>
         )}
@@ -205,7 +235,13 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           {isDone
             ? 'Approved'
             : action.kind === 'create_campaign'
-              ? (action.campaign.execution.mode === 'save_draft' ? 'Save Draft' : 'Send Now')
+              ? (
+                  action.campaign.execution.mode === 'save_draft'
+                    ? 'Save Draft'
+                    : action.campaign.execution.mode === 'send_later'
+                      ? 'Schedule Send'
+                      : 'Send Now'
+                )
               : 'Approve'}
         </button>
       </div>

@@ -8,6 +8,7 @@ import {
   type AdvisorAction,
 } from './advisor-actions'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
+import { formatAdvisorScheduledLabel } from './advisor-scheduling'
 
 const advisorActiveCampaignSchema = advisorCampaignDraftSchema.extend({
   audienceName: z.string().optional(),
@@ -130,6 +131,14 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   if (state.currentCampaign) {
     parts.push(`Active campaign draft: ${state.currentCampaign.type} via ${state.currentCampaign.channel}`)
     parts.push(`Campaign delivery mode: ${state.currentCampaign.execution.mode}`)
+    if (state.currentCampaign.execution.mode === 'send_later' && state.currentCampaign.execution.scheduledFor) {
+      parts.push(
+        `Campaign scheduled for: ${formatAdvisorScheduledLabel(
+          state.currentCampaign.execution.scheduledFor,
+          state.currentCampaign.execution.timeZone,
+        )}`,
+      )
+    }
     if (state.currentCampaign.audienceName) parts.push(`Campaign audience: ${state.currentCampaign.audienceName}`)
     if (typeof state.currentCampaign.audienceCount === 'number') parts.push(`Campaign audience count: ${state.currentCampaign.audienceCount}`)
     const ruleParts = [

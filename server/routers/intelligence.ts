@@ -20,6 +20,11 @@ import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/li
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
 import { advisorActionSchema } from '@/lib/ai/advisor-actions'
+import {
+  scheduleCampaignSend,
+  sendCampaignNow,
+} from '@/lib/ai/advisor-campaign-jobs'
+import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -335,138 +340,10 @@ async function enforceCampaignUsageLimits(clubId: string, channel: ManualCampaig
 }
 
 async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
-  const club = await prisma.club.findUnique({
-    where: { id: input.clubId },
-    select: { id: true, name: true },
+  return sendCampaignNow(prisma, {
+    ...input,
+    source: 'manual_campaign',
   })
-  if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
-
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
-
-  const users = await prisma.user.findMany({
-    where: { id: { in: input.memberIds } },
-    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
-  })
-
-  let sent = 0
-  let failed = 0
-  let skipped = 0
-  let emailSent = 0
-  let smsSent = 0
-  const results: { userId: string; status: string; channel: string; messageId?: string }[] = []
-  const shouldSendEmail = input.channel === 'email' || input.channel === 'both'
-  const shouldSendSms = input.channel === 'sms' || input.channel === 'both'
-  const sendSmsFn = shouldSendSms ? (await import('@/lib/sms')).sendSms : null
-
-  for (const user of users) {
-    const memberName = user.name?.split(' ')[0] || 'there'
-    const interpolate = (text: string) =>
-      text.replace(/\{\{name\}\}/g, memberName).replace(/\{\{club\}\}/g, club.name)
-
-    const emailSubject = input.subject ? interpolate(input.subject) : `Message from ${club.name}`
-    const emailBody = interpolate(input.body)
-    const smsText = input.smsBody
-      ? interpolate(input.smsBody)
-      : ((input.channel === 'sms' || input.channel === 'both') ? interpolate(input.body).slice(0, 300) : undefined)
-
-    let channelSent = false
-    let emailDelivered = false
-    let smsDelivered = false
-    let emailSkipped = false
-    let smsSkipped = false
-    let externalMessageId: string | null = null
-
-    if (shouldSendEmail) {
-      if (user.email) {
-        try {
-          const { sendOutreachEmail } = await import('@/lib/email')
-          const result = await sendOutreachEmail({
-            to: user.email,
-            subject: emailSubject,
-            body: emailBody,
-            clubName: club.name,
-            bookingUrl,
-          })
-          channelSent = true
-          emailDelivered = true
-          emailSent += 1
-          externalMessageId = result.messageId || null
-        } catch (err) {
-          log.error(`[createCampaign] Email failed for ${user.id}:`, (err as Error).message)
-        }
-      } else {
-        emailSkipped = true
-      }
-    }
-
-    if (shouldSendSms) {
-      if (smsText && user.phone && user.smsOptIn && sendSmsFn) {
-        try {
-          const result = await sendSmsFn({
-            to: user.phone,
-            body: smsText,
-          })
-          channelSent = true
-          smsDelivered = true
-          smsSent += 1
-          externalMessageId = externalMessageId || result.sid || null
-        } catch (err) {
-          log.error(`[createCampaign] SMS failed for ${user.id}:`, (err as Error).message)
-        }
-      } else {
-        smsSkipped = true
-      }
-    }
-
-    const status = channelSent
-      ? 'sent'
-      : input.channel === 'email'
-        ? (emailSkipped ? 'skipped' : 'failed')
-        : input.channel === 'sms'
-          ? (smsSkipped ? 'skipped' : 'failed')
-          : (emailSkipped && smsSkipped ? 'skipped' : 'failed')
-
-    try {
-      await prisma.aIRecommendationLog.create({
-        data: {
-          clubId: input.clubId,
-          userId: user.id,
-          type: input.type,
-          channel: input.channel,
-          sessionId: input.sessionId || null,
-          externalMessageId,
-          variantId: input.type,
-          reasoning: {
-            source: 'manual_campaign',
-            subject: emailSubject,
-            bodyPreview: emailBody.slice(0, 200),
-            emailDelivered,
-            smsDelivered,
-          },
-          status,
-        },
-      })
-    } catch (logErr) {
-      log.error(`[createCampaign] Log failed for ${user.id}:`, logErr)
-    }
-
-    results.push({ userId: user.id, status, channel: input.channel, messageId: externalMessageId || undefined })
-
-    if (channelSent) sent++
-    else if (!user.email && (input.channel === 'email' || input.channel === 'both')) skipped++
-    else failed++
-  }
-
-  if (sent > 0) {
-    import('@/lib/stripe-usage').then(({ reportUsage }) => {
-      if (emailSent > 0) reportUsage(input.clubId, 'email', emailSent)
-      if (smsSent > 0) reportUsage(input.clubId, 'sms', smsSent)
-    }).catch(() => {})
-  }
-
-  return { sent, failed, skipped, emailSent, smsSent, results }
 }
 
 export const intelligenceRouter = createTRPCRouter({
@@ -4236,6 +4113,43 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       await enforceCampaignUsageLimits(input.clubId, input.action.campaign.channel, memberIds.length)
+      if (input.action.campaign.execution.mode === 'send_later') {
+        const scheduledFor = input.action.campaign.execution.scheduledFor
+        if (!scheduledFor) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Scheduled campaigns need a send time before they can be approved.',
+          })
+        }
+
+        const timeZone = input.action.campaign.execution.timeZone || 'America/New_York'
+        const scheduled = await scheduleCampaignSend(ctx.prisma, {
+          clubId: input.clubId,
+          type: input.action.campaign.type,
+          channel: input.action.campaign.channel,
+          memberIds,
+          subject: input.action.campaign.subject,
+          body: input.action.campaign.body,
+          smsBody: input.action.campaign.smsBody,
+          scheduledFor,
+          timeZone,
+          recipientRules: input.action.campaign.execution.recipientRules || null,
+        })
+
+        return {
+          ok: true,
+          kind: 'create_campaign' as const,
+          cohortId,
+          cohortName,
+          memberCount: memberIds.length,
+          audienceCount: members.length,
+          excludedByRules,
+          deliveryMode: 'send_later' as const,
+          scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+          ...scheduled,
+        }
+      }
+
       const result = await runCreateCampaign(ctx.prisma, {
         clubId: input.clubId,
         type: input.action.campaign.type,

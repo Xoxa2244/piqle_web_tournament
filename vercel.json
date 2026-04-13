@@ -48,6 +48,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/campaigns/advisor-scheduled",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/ai/sync-embeddings",
       "schedule": "0 3 * * *"
     },

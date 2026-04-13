@@ -10,7 +10,7 @@ export const advisorCampaignTypeEnum = z.enum([
 ])
 
 export const advisorChannelEnum = z.enum(['email', 'sms', 'both'])
-export const advisorDeliveryModeEnum = z.enum(['save_draft', 'send_now'])
+export const advisorDeliveryModeEnum = z.enum(['save_draft', 'send_now', 'send_later'])
 export const advisorRecipientRulesSchema = z.object({
   requireEmail: z.boolean().optional(),
   requirePhone: z.boolean().optional(),
@@ -19,6 +19,8 @@ export const advisorRecipientRulesSchema = z.object({
 export const advisorCampaignExecutionSchema = z.object({
   mode: advisorDeliveryModeEnum.default('save_draft'),
   recipientRules: advisorRecipientRulesSchema.optional(),
+  scheduledFor: z.string().datetime().optional(),
+  timeZone: z.string().min(1).max(80).optional(),
 })
 
 export const cohortFilterSchema = z.object({

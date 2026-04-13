@@ -17,6 +17,11 @@ import {
   maybeStartAdvisorClarification,
   resolveAdvisorClarification,
 } from '@/lib/ai/advisor-clarifications'
+import {
+  formatAdvisorScheduledLabel,
+  parseAdvisorScheduledSend,
+  resolveAdvisorClubTimeZone,
+} from '@/lib/ai/advisor-scheduling'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -149,9 +154,11 @@ function buildCampaignReadyText(
   copy: ReturnType<typeof getAdvisorActionCopy>,
   count: number,
   name: string,
-  mode: 'save_draft' | 'send_now',
+  mode: 'save_draft' | 'send_now' | 'send_later',
+  scheduledLabel?: string | null,
 ) {
   if (mode === 'send_now') return copy.campaignReady(count, name)
+  if (mode === 'send_later') return copy.campaignScheduledReady(count, name, scheduledLabel || 'the selected time')
   return copy.campaignDraftReady(count, name)
 }
 
@@ -184,6 +191,22 @@ export async function POST(req: Request) {
     if (!access.hasAccess) {
       return new Response('Forbidden', { status: 403 })
     }
+
+    const clubContext = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: {
+        automationSettings: true,
+        address: true,
+        state: true,
+        country: true,
+      },
+    })
+    const clubTimeZone = resolveAdvisorClubTimeZone({
+      automationSettings: clubContext?.automationSettings,
+      address: clubContext?.address,
+      state: clubContext?.state,
+      country: clubContext?.country,
+    })
 
     const language = detectLanguage(message)
 
@@ -240,6 +263,7 @@ export async function POST(req: Request) {
         const editedAction = await maybeEditAdvisorDraft({
           message,
           state: memory.state,
+          timeZone: clubTimeZone,
         })
 
         if (editedAction) {
@@ -268,6 +292,7 @@ export async function POST(req: Request) {
           plan,
           state: memory.state,
           language,
+          timeZone: clubTimeZone,
         })
 
         if (clarification) {
@@ -364,6 +389,20 @@ export async function POST(req: Request) {
       const campaignType = plan.campaignType || 'REACTIVATION'
       const channel = plan.channel || 'email'
       const deliveryMode = plan.deliveryMode || 'save_draft'
+      const scheduledSend = deliveryMode === 'send_later'
+        ? (
+            plan.scheduledFor
+              ? {
+                  scheduledFor: plan.scheduledFor,
+                  timeZone: plan.timeZone || clubTimeZone,
+                  label: formatAdvisorScheduledLabel(plan.scheduledFor, plan.timeZone || clubTimeZone),
+                }
+              : parseAdvisorScheduledSend({
+                  message: effectiveMessage,
+                  timeZone: plan.timeZone || clubTimeZone,
+                })
+          )
+        : null
       const generated = await caller.intelligence.generateCampaignMessage({
         clubId,
         campaignType,
@@ -377,7 +416,7 @@ export async function POST(req: Request) {
       const action: AdvisorAction = {
         kind: 'create_campaign',
         title: `Launch ${campaignType.replace(/_/g, ' ').toLowerCase()} campaign`,
-        summary: `${channel.toUpperCase()} ${deliveryMode === 'send_now' ? 'outreach' : 'draft'} for ${audienceDraft.count || 0} members`,
+        summary: `${channel.toUpperCase()} ${deliveryMode === 'send_now' ? 'outreach' : deliveryMode === 'send_later' ? 'scheduled outreach' : 'draft'} for ${audienceDraft.count || 0} members`,
         requiresApproval: true,
         audience: audienceDraft,
         campaign: {
@@ -388,13 +427,19 @@ export async function POST(req: Request) {
           smsBody: generated.smsBody || undefined,
           execution: {
             mode: deliveryMode,
+            ...(scheduledSend
+              ? {
+                  scheduledFor: scheduledSend.scheduledFor,
+                  timeZone: scheduledSend.timeZone,
+                }
+              : {}),
           },
         },
       }
 
       assistantState = buildAdvisorConversationStateFromAction(action)
       assistantMessage = withSuggested(
-        `${buildCampaignReadyText(copy, audienceDraft.count || 0, audienceDraft.name, deliveryMode)}\n\n${buildAdvisorActionTag(action)}`,
+        `${buildCampaignReadyText(copy, audienceDraft.count || 0, audienceDraft.name, deliveryMode, scheduledSend?.label)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_campaign,
       )
     }

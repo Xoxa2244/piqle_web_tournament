@@ -5,10 +5,11 @@ import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } from './advisor-actions'
 import type { AdvisorIntentPlan } from './advisor-action-planner'
 import type { AdvisorConversationState } from './advisor-conversation-state'
+import { parseAdvisorScheduledSend } from './advisor-scheduling'
 
 export const advisorPendingClarificationSchema = z.object({
   action: z.enum(['create_cohort', 'draft_campaign']),
-  field: z.enum(['audience', 'audience_mode', 'channel']),
+  field: z.enum(['audience', 'audience_mode', 'channel', 'schedule']),
   question: z.string().min(1).max(240),
   options: z.array(z.string().min(1).max(80)).max(4).default([]),
   originalMessage: z.string().min(1).max(500),
@@ -17,6 +18,7 @@ export const advisorPendingClarificationSchema = z.object({
   channel: advisorChannelEnum.optional(),
   deliveryMode: advisorDeliveryModeEnum.optional(),
   usePreviousCohort: z.boolean().optional(),
+  timeZone: z.string().max(80).optional(),
 })
 
 export type AdvisorPendingClarification = z.infer<typeof advisorPendingClarificationSchema>
@@ -37,44 +39,56 @@ const COPY: Record<'en' | 'ru' | 'es', {
   needAudienceForCampaign: string
   needAudienceMode: string
   needChannel: string
+  needSchedule: string
   repeatAudience: string
   repeatChannel: string
+  repeatSchedule: string
   audienceOptions: string[]
   audienceModeOptions: string[]
   channelOptions: string[]
+  scheduleOptions: string[]
 }> = {
   en: {
     needAudienceForAudience: 'Who should be included in this audience?',
     needAudienceForCampaign: 'Who should this campaign target?',
     needAudienceMode: 'Should I use the current audience or build a new one for this campaign?',
     needChannel: 'Which channel should I use for this campaign?',
+    needSchedule: 'When should I send this campaign?',
     repeatAudience: 'I still need the audience to continue. Tell me who should be included or targeted.',
     repeatChannel: 'I still need the delivery channel. Choose email, SMS, or both.',
+    repeatSchedule: 'I still need a send time. Tell me something like "tomorrow at 6pm" or "Friday at 9am".',
     audienceOptions: ['Inactive members', 'Weekday evening players', 'Women 55+'],
     audienceModeOptions: ['Use current audience', 'Inactive members', 'Weekday evening players'],
     channelOptions: ['Email', 'SMS', 'Both email and SMS'],
+    scheduleOptions: ['Tomorrow at 6pm', 'Friday at 9am', 'Next Tuesday at 3pm'],
   },
   ru: {
     needAudienceForAudience: 'Кого включить в эту аудиторию?',
     needAudienceForCampaign: 'На какую аудиторию должна идти эта кампания?',
     needAudienceMode: 'Использовать текущую аудиторию или собрать новую для этой кампании?',
     needChannel: 'Какой канал использовать для этой кампании?',
+    needSchedule: 'Когда отправить эту кампанию?',
     repeatAudience: 'Мне все еще нужна аудитория. Напиши, кого включить или на кого таргетировать кампанию.',
     repeatChannel: 'Мне все еще нужен канал отправки. Выбери email, SMS или оба канала.',
+    repeatSchedule: 'Мне все еще нужно время отправки. Напиши что-то вроде "завтра в 18:00" или "в пятницу в 9 утра".',
     audienceOptions: ['Неактивные участники', 'Вечерние игроки по будням', 'Женщины 55+'],
     audienceModeOptions: ['Используй текущую аудиторию', 'Неактивные участники', 'Вечерние игроки по будням'],
     channelOptions: ['Email', 'SMS', 'И email и SMS'],
+    scheduleOptions: ['Завтра в 18:00', 'В пятницу в 9 утра', 'Во вторник в 15:00'],
   },
   es: {
     needAudienceForAudience: 'Quien debe estar en esta audiencia?',
     needAudienceForCampaign: 'A quien debe dirigirse esta campana?',
     needAudienceMode: 'Debo usar la audiencia actual o crear una nueva para esta campana?',
     needChannel: 'Que canal debo usar para esta campana?',
+    needSchedule: 'Cuando debo enviar esta campana?',
     repeatAudience: 'Todavia necesito la audiencia. Dime a quien debo incluir o a quien debo dirigirme.',
     repeatChannel: 'Todavia necesito el canal de envio. Elige email, SMS o ambos.',
+    repeatSchedule: 'Todavia necesito la hora de envio. Dime algo como "manana a las 6pm" o "viernes a las 9am".',
     audienceOptions: ['Miembros inactivos', 'Jugadores de noche entre semana', 'Mujeres 55+'],
     audienceModeOptions: ['Usa la audiencia actual', 'Miembros inactivos', 'Jugadores de noche entre semana'],
     channelOptions: ['Email', 'SMS', 'Email y SMS'],
+    scheduleOptions: ['Mañana a las 6pm', 'Viernes a las 9am', 'Martes a las 3pm'],
   },
 }
 
@@ -154,8 +168,9 @@ export function maybeStartAdvisorClarification(opts: {
   plan: AdvisorIntentPlan
   state: AdvisorConversationState | null
   language: SupportedLanguage | string
+  timeZone?: string | null
 }): ClarificationResponse | null {
-  const { message, plan, state, language } = opts
+  const { message, plan, state, language, timeZone } = opts
   const copy = getCopy(language)
 
   if (plan.action === 'none') return null
@@ -216,6 +231,25 @@ export function maybeStartAdvisorClarification(opts: {
     }, copy.needChannel, copy.channelOptions)
   }
 
+  if (plan.deliveryMode === 'send_later' && !plan.scheduledFor) {
+    const scheduled = parseAdvisorScheduledSend({ message, timeZone })
+    if (!scheduled) {
+      return buildClarification(language, {
+        action: 'draft_campaign',
+        field: 'schedule',
+        question: copy.needSchedule,
+        options: copy.scheduleOptions,
+        originalMessage: message,
+        audienceText: usesCurrentAudience ? undefined : (plan.audienceText || message),
+        campaignType: plan.campaignType,
+        channel: explicitChannel || state?.currentCampaign?.channel || undefined,
+        deliveryMode: 'send_later',
+        usePreviousCohort: usesCurrentAudience,
+        timeZone: timeZone || undefined,
+      }, copy.needSchedule, copy.scheduleOptions)
+    }
+  }
+
   return null
 }
 
@@ -248,6 +282,36 @@ export function resolveAdvisorClarification(opts: {
         campaignType: pending.campaignType,
         channel: explicitChannel,
         deliveryMode: pending.deliveryMode,
+        timeZone: pending.timeZone,
+      },
+    }
+  }
+
+  if (pending.field === 'schedule') {
+    const scheduled = parseAdvisorScheduledSend({
+      message,
+      timeZone: pending.timeZone,
+    })
+    if (!scheduled) {
+      return {
+        clarification: buildClarification(language, {
+          ...pending,
+          question: copy.repeatSchedule,
+          options: copy.scheduleOptions,
+        }, copy.repeatSchedule, copy.scheduleOptions),
+      }
+    }
+
+    return {
+      plan: {
+        action: 'draft_campaign',
+        usePreviousCohort: pending.usePreviousCohort || false,
+        audienceText: pending.usePreviousCohort ? undefined : pending.audienceText,
+        campaignType: pending.campaignType,
+        channel: pending.channel,
+        deliveryMode: 'send_later',
+        scheduledFor: scheduled.scheduledFor,
+        timeZone: scheduled.timeZone,
       },
     }
   }
@@ -261,6 +325,7 @@ export function resolveAdvisorClarification(opts: {
           campaignType: pending.campaignType,
           channel: pending.channel,
           deliveryMode: pending.deliveryMode,
+          timeZone: pending.timeZone,
         },
       }
     }
@@ -295,6 +360,7 @@ export function resolveAdvisorClarification(opts: {
         campaignType: pending.campaignType,
         channel: pending.channel,
         deliveryMode: pending.deliveryMode,
+        timeZone: pending.timeZone,
       },
     }
   }
@@ -308,6 +374,7 @@ export function resolveAdvisorClarification(opts: {
           campaignType: pending.campaignType,
           channel: pending.channel,
           deliveryMode: pending.deliveryMode,
+          timeZone: pending.timeZone,
         },
       }
     }
@@ -346,6 +413,7 @@ export function resolveAdvisorClarification(opts: {
           campaignType: pending.campaignType,
           deliveryMode: pending.deliveryMode,
           usePreviousCohort: false,
+          timeZone: pending.timeZone,
         }, copy.needChannel, copy.channelOptions),
       }
     }
@@ -358,6 +426,7 @@ export function resolveAdvisorClarification(opts: {
         campaignType: pending.campaignType,
         channel: pending.channel || explicitChannel || undefined,
         deliveryMode: pending.deliveryMode,
+        timeZone: pending.timeZone,
       },
     }
   }

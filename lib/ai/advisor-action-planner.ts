@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { generateWithFallback } from '@/lib/ai/llm/provider'
 import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } from './advisor-actions'
+import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 
 const advisorIntentSchema = z.object({
   action: z.enum(['none', 'create_cohort', 'draft_campaign']),
@@ -12,6 +13,8 @@ const advisorIntentSchema = z.object({
   campaignType: advisorCampaignTypeEnum.optional(),
   channel: advisorChannelEnum.optional(),
   deliveryMode: advisorDeliveryModeEnum.optional(),
+  scheduledFor: z.string().datetime().optional(),
+  timeZone: z.string().optional(),
 })
 
 export type AdvisorIntentPlan = z.infer<typeof advisorIntentSchema>
@@ -25,7 +28,7 @@ Supported actions:
 - none: any analytics/support/general question
 
 Return ONLY valid JSON:
-{"action":"none|create_cohort|draft_campaign","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now"}
+{"action":"none|create_cohort|draft_campaign","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later"}
 
 Rules:
 - If the user asks to create/build/save an audience, segment, cohort, group, or list, use create_cohort.
@@ -34,11 +37,12 @@ Rules:
 - audienceText should be ONLY the audience description, not the whole request, when you can isolate it.
 - campaignType must be one of: CHECK_IN, RETENTION_BOOST, REACTIVATION, SLOT_FILLER, EVENT_INVITE, NEW_MEMBER_WELCOME.
 - channel must be one of: email, sms, both.
-- deliveryMode must be one of: save_draft, send_now.
+- deliveryMode must be one of: save_draft, send_now, send_later.
 - Default campaignType to REACTIVATION for inactive/win-back/churn language.
 - Default campaignType to SLOT_FILLER for fill session / empty slots / invite players to session.
 - Default channel to email if unspecified.
 - If the user says draft, prepare, save, or don't send yet, use deliveryMode=save_draft.
+- If the user says later, schedule, tomorrow, tonight, next Tuesday, or names a future send time, use deliveryMode=send_later.
 - If the user says send now, launch now, go ahead, or explicitly wants delivery now, use deliveryMode=send_now.
 - If the user asks to create a campaign but does not clearly say send now, default to save_draft.
 - If the request is mostly informational, return action=none.`
@@ -66,7 +70,13 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   else if (/\b(sms|text)\b/.test(lower)) channel = 'sms'
 
   let deliveryMode: z.infer<typeof advisorDeliveryModeEnum> | undefined = 'save_draft'
-  if (/\b(send now|launch now|go ahead|send it|approve and send|deliver now)\b/.test(lower) || (/\b(send|launch|reach out|invite)\b/.test(lower) && !/\b(draft|prepare|save|preview)\b/.test(lower))) {
+  if (/\b(send later|schedule|scheduled|later)\b/.test(lower) || containsAdvisorSchedulingIntent(message)) {
+    deliveryMode = 'send_later'
+  } else if (/\b(send now|launch now|go ahead|approve and send|deliver now)\b/.test(lower)) {
+    deliveryMode = 'send_now'
+  } else if (/\b(send it)\b/.test(lower) && !/\b(later|tomorrow|tonight|next)\b/.test(lower)) {
+    deliveryMode = 'send_now'
+  } else if (/\b(send|launch|reach out|invite)\b/.test(lower) && !/\b(draft|prepare|save|preview)\b/.test(lower)) {
     deliveryMode = 'send_now'
   } else if (/\b(draft|prepare|save|preview|don'?t send|do not send|hold)\b/.test(lower)) {
     deliveryMode = 'save_draft'
@@ -104,6 +114,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
   audienceReady: (count: number, name: string) => string
   campaignReady: (count: number, name: string) => string
   campaignDraftReady: (count: number, name: string) => string
+  campaignScheduledReady: (count: number, name: string, when: string) => string
   adminOnly: string
   suggestions: Record<'create_cohort' | 'create_campaign', string[]>
 }> = {
@@ -111,6 +122,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     audienceReady: (count, name) => `I drafted the audience "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
     campaignReady: (count, name) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review the audience and message below, then approve to send it.`,
     campaignDraftReady: (count, name) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review it below, then approve to save it as a draft for later.`,
+    campaignScheduledReady: (count, name, when) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review it below, then approve to schedule delivery for ${when}.`,
     adminOnly: `I can help draft actions here, but only club admins can approve and run them.`,
     suggestions: {
       create_cohort: [
@@ -129,6 +141,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     audienceReady: (count, name) => `Я подготовил аудиторию "${name}" и нашел ${count} подходящих участников. Ниже можно все проверить и подтвердить создание.`,
     campaignReady: (count, name) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь аудиторию и текст ниже, затем подтверди отправку.`,
     campaignDraftReady: (count, name) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь ее ниже и подтверди, чтобы сохранить как черновик.`,
+    campaignScheduledReady: (count, name, when) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь ее ниже и подтверди, чтобы запланировать отправку на ${when}.`,
     adminOnly: `Я могу готовить такие действия в чате, но запускать их может только админ клуба.`,
     suggestions: {
       create_cohort: [
@@ -147,6 +160,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     audienceReady: (count, name) => `Preparé la audiencia "${name}" y encontré ${count} miembros coincidentes. Revísala abajo y apruébala cuando quieras.`,
     campaignReady: (count, name) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revisa la audiencia y el mensaje abajo y luego apruébalo para enviarlo.`,
     campaignDraftReady: (count, name) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revísala abajo y apruébala para guardarla como borrador.`,
+    campaignScheduledReady: (count, name, when) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revísala abajo y apruébala para programarla para ${when}.`,
     adminOnly: `Puedo preparar acciones aquí, pero solo los administradores del club pueden aprobarlas y ejecutarlas.`,
     suggestions: {
       create_cohort: [

@@ -5,6 +5,7 @@ import { generateWithFallback } from '@/lib/ai/llm/provider'
 import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorActionSchema, cohortFilterSchema, type AdvisorAction } from './advisor-actions'
 import type { AdvisorConversationState } from './advisor-conversation-state'
+import { containsAdvisorSchedulingIntent, parseAdvisorScheduledSend } from './advisor-scheduling'
 
 const advisorEditResultSchema = z.object({
   handled: z.boolean(),
@@ -50,6 +51,7 @@ function isLikelyEditRequest(message: string, state: AdvisorConversationState | 
     /\b(shorter|shorten|longer|long-form|concise|brief)\b/,
     /\b(subject|body|copy|tone|message|campaign|email|sms)\b/,
     /\b(exclude|include|remove|add|only|filter|narrow|broaden)\b/,
+    /\b(schedule|scheduled|later|send now|save as draft)\b/,
   ]) || containsAny(lower, [
     /\b(короче|длиннее|измени|исправь|обнови|убери|добавь|оставь|только)\b/,
     /\b(mas corto|más corto|actualiza|edita|cambia|quita|solo)\b/,
@@ -61,7 +63,7 @@ function isLikelyEditRequest(message: string, state: AdvisorConversationState | 
     /\b(eso|esa|ese|ellos|ellas)\b/,
   ])
 
-  return explicitEdit || pronounEdit
+  return explicitEdit || pronounEdit || containsAdvisorSchedulingIntent(message)
 }
 
 function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationState): AdvisorAction | null {
@@ -145,7 +147,11 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
   }
 }
 
-function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationState): AdvisorAction | null {
+function applyHeuristicCampaignEdit(
+  message: string,
+  state: AdvisorConversationState,
+  timeZone?: string | null,
+): AdvisorAction | null {
   if (!state.currentCampaign || !state.currentAudience) return null
 
   const lower = message.toLowerCase()
@@ -179,6 +185,7 @@ function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationS
     campaign.execution = {
       ...campaign.execution,
       mode: 'send_now',
+      scheduledFor: undefined,
     }
     changed = true
   } else if (containsAny(lower, [
@@ -188,8 +195,31 @@ function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationS
     campaign.execution = {
       ...campaign.execution,
       mode: 'save_draft',
+      scheduledFor: undefined,
     }
     changed = true
+  }
+
+  if (containsAdvisorSchedulingIntent(message)) {
+    const scheduled = parseAdvisorScheduledSend({
+      message,
+      timeZone: timeZone || campaign.execution.timeZone,
+    })
+    if (scheduled) {
+      campaign.execution = {
+        ...campaign.execution,
+        mode: 'send_later',
+        scheduledFor: scheduled.scheduledFor,
+        timeZone: scheduled.timeZone,
+      }
+      changed = true
+    } else if (containsAny(lower, [/\b(send later|schedule|scheduled|later|tomorrow|tonight|next)\b/])) {
+      campaign.execution = {
+        ...campaign.execution,
+        mode: 'send_later',
+      }
+      changed = true
+    }
   }
 
   if (containsAny(lower, [
@@ -235,11 +265,12 @@ function applyHeuristicCampaignEdit(message: string, state: AdvisorConversationS
   }
 
   if (!changed) return null
+  if (campaign.execution.mode === 'send_later' && !campaign.execution.scheduledFor) return null
 
   return {
     kind: 'create_campaign',
     title: `Update campaign draft: ${state.currentAudience.name}`,
-    summary: `${campaign.channel.toUpperCase()} ${campaign.execution.mode === 'send_now' ? 'outreach' : 'draft'} for ${state.currentAudience.count || state.currentCampaign.audienceCount || 0} members`,
+    summary: `${campaign.channel.toUpperCase()} ${campaign.execution.mode === 'send_now' ? 'outreach' : campaign.execution.mode === 'send_later' ? 'scheduled outreach' : 'draft'} for ${state.currentAudience.count || state.currentCampaign.audienceCount || 0} members`,
     requiresApproval: true,
     audience: state.currentAudience,
     campaign: {
@@ -274,6 +305,7 @@ Rules:
 - Preserve campaign.execution unless the user clearly changes send timing or recipient restrictions.
 - For "send now", set campaign.execution.mode=send_now.
 - For "save as draft" or "don't send yet", set campaign.execution.mode=save_draft.
+- For "send later" or any scheduled send request, set campaign.execution.mode=send_later and provide campaign.execution.scheduledFor as a UTC ISO string plus campaign.execution.timeZone.
 - For "only members with email", set recipientRules.requireEmail=true.
 - For "only members with phone", set recipientRules.requirePhone=true.
 - For "SMS opt-ins only", set recipientRules.smsOptInOnly=true.
@@ -342,15 +374,16 @@ export function getAdvisorEditCopy(language: SupportedLanguage | string) {
 export async function maybeEditAdvisorDraft(opts: {
   message: string
   state: AdvisorConversationState | null
+  timeZone?: string | null
 }): Promise<AdvisorAction | null> {
-  const { message, state } = opts
+  const { message, state, timeZone } = opts
   if (!isLikelyEditRequest(message, state)) return null
   if (!state?.currentAudience && !state?.currentCampaign) return null
 
   const heuristicAudienceEdit = applyHeuristicAudienceEdit(message, state)
   if (heuristicAudienceEdit) return heuristicAudienceEdit
 
-  const heuristicCampaignEdit = applyHeuristicCampaignEdit(message, state)
+  const heuristicCampaignEdit = applyHeuristicCampaignEdit(message, state, timeZone)
   if (heuristicCampaignEdit) return heuristicCampaignEdit
 
   try {
@@ -369,6 +402,13 @@ export async function maybeEditAdvisorDraft(opts: {
     const parsed = advisorEditResultSchema.safeParse(JSON.parse(cleanJson(result.text)))
     if (!parsed.success) return null
     if (!parsed.data.handled || !parsed.data.action) return null
+    if (
+      parsed.data.action.kind === 'create_campaign' &&
+      parsed.data.action.campaign.execution.mode === 'send_later' &&
+      !parsed.data.action.campaign.execution.scheduledFor
+    ) {
+      return null
+    }
     return parsed.data.action
   } catch {
     return null
