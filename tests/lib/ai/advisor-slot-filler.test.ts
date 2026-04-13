@@ -50,7 +50,7 @@ describe('advisor slot filler session resolution', () => {
 
   it('matches a session from time and skill hints', () => {
     const result = resolveAdvisorSlotSession({
-      message: "Fill tomorrow's 6pm beginner session",
+      message: 'Fill Monday 6pm beginner session',
       sessions: [...sessions],
     })
 
