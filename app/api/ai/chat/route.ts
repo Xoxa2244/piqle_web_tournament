@@ -16,6 +16,7 @@ import {
 } from '@/lib/ai/advisor-conversation-state';
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
+import { buildAdvisorOutcomeInsightsBlock } from '@/lib/ai/advisor-outcome-insights';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -257,28 +258,32 @@ export async function POST(req: Request) {
     // 6. Pre-fetch real-time club data (cached 5 min per club)
     step = 'prefetch';
     let liveDataBlock = ''
+    let outcomeInsightsBlock = ''
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, outcomeInsights: string
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights } = cached.data)
+        outcomeInsightsBlock = outcomeInsights || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
       } else {
         // Fresh fetch
         const tools = createChatTools(clubId)
         const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
           exec(tools.getReactivationCandidates, { limit: 10 }),
           exec(tools.getMembershipBreakdown, {}),
           exec(tools.getUpcomingSessions, { limit: 10 }),
+          buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
         ])
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } })
+        outcomeInsightsBlock = outcomeInsights || ''
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights: outcomeInsightsBlock } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -397,7 +402,7 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
     )
     const pageContextBlock = pageContext ? `\n\nCurrent page context: ${pageContext}` : ''
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${pageContextBlock}
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${outcomeInsightsBlock}${pageContextBlock}
 
 --- Real-Time Club Data (live from database) ---
 ${liveDataBlock || 'No live data available.'}
