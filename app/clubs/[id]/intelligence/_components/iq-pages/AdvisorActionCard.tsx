@@ -7,6 +7,13 @@ import type { AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionRuntimeState, type AdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import { useExecuteAdvisorAction, useUpdateAdvisorActionState } from '../../_hooks/use-intelligence'
 
+type CampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
+type FillSessionAction = Extract<AdvisorAction, { kind: 'fill_session' }>
+type ReactivationAction = Extract<AdvisorAction, { kind: 'reactivate_members' }>
+type ContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
+type AutonomyPolicyAction = Extract<AdvisorAction, { kind: 'update_autonomy_policy' }>
+type CohortAction = Extract<AdvisorAction, { kind: 'create_cohort' }>
+
 function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'create_campaign') return 'Make this campaign shorter and sharper.'
   if (action.kind === 'fill_session') return 'Use SMS instead and keep only the top 3 players.'
@@ -14,6 +21,25 @@ function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'update_contact_policy') return 'Tighten these messaging rules a bit.'
   if (action.kind === 'update_autonomy_policy') return 'Make this autopilot policy a bit safer.'
   return 'Narrow this audience a bit.'
+}
+
+function buildCampaignSummary(action: CampaignAction, execution: CampaignAction['campaign']['execution']) {
+  const modeLabel = execution.mode === 'send_now'
+    ? 'outreach'
+    : execution.mode === 'send_later'
+      ? 'scheduled outreach'
+      : 'draft'
+  return `${action.campaign.channel.toUpperCase()} ${modeLabel} for ${action.audience.count || 0} members`
+}
+
+function buildQuickScheduleOption(hoursFromNow: number, hourOfDay: number, label: string) {
+  const scheduled = new Date()
+  scheduled.setDate(scheduled.getDate() + hoursFromNow)
+  scheduled.setHours(hourOfDay, 0, 0, 0)
+  return {
+    label,
+    scheduledFor: scheduled.toISOString(),
+  }
 }
 
 export function AdvisorActionCard({
@@ -34,58 +60,84 @@ export function AdvisorActionCard({
   const updateActionState = useUpdateAdvisorActionState()
   const [result, setResult] = useState<any | null>(null)
   const [localActionState, setLocalActionState] = useState<AdvisorActionRuntimeState | null>(actionState || null)
+  const [campaignExecutionOverride, setCampaignExecutionOverride] = useState<CampaignAction['campaign']['execution'] | null>(null)
+  const [showScheduleOptions, setShowScheduleOptions] = useState(false)
   const isCampaign = action.kind === 'create_campaign'
   const isFillSession = action.kind === 'fill_session'
   const isReactivation = action.kind === 'reactivate_members'
   const isContactPolicy = action.kind === 'update_contact_policy'
   const isAutonomyPolicy = action.kind === 'update_autonomy_policy'
+  const baseCampaignAction = isCampaign ? action as CampaignAction : null
 
-  const title = action.title
-  const summary = action.summary
+  const currentAction = useMemo<AdvisorAction>(() => {
+    if (!baseCampaignAction || !campaignExecutionOverride) return action
+    return {
+      ...baseCampaignAction,
+      summary: buildCampaignSummary(baseCampaignAction, campaignExecutionOverride),
+      campaign: {
+        ...baseCampaignAction.campaign,
+        execution: campaignExecutionOverride,
+      },
+    }
+  }, [action, baseCampaignAction, campaignExecutionOverride])
+  const currentCampaignAction = isCampaign ? currentAction as CampaignAction : null
+  const currentFillAction = isFillSession ? currentAction as FillSessionAction : null
+  const currentReactivationAction = isReactivation ? currentAction as ReactivationAction : null
+  const currentContactPolicyAction = isContactPolicy ? currentAction as ContactPolicyAction : null
+  const currentAutonomyPolicyAction = isAutonomyPolicy ? currentAction as AutonomyPolicyAction : null
+  const currentCohortAction = currentAction.kind === 'create_cohort' ? currentAction as CohortAction : null
+
+  const title = currentAction.title
+  const summary = currentAction.summary
+
+  const quickScheduleOptions = useMemo(() => ([
+    buildQuickScheduleOption(1, 9, 'Tomorrow 9 AM'),
+    buildQuickScheduleOption(1, 18, 'Tomorrow 6 PM'),
+  ]), [])
 
   const channelLabel = useMemo(() => {
     const channel = isCampaign
-      ? action.campaign.channel
+      ? currentCampaignAction?.campaign.channel
       : isFillSession
-        ? action.outreach.channel
+        ? currentFillAction?.outreach.channel
         : isReactivation
-          ? action.reactivation.channel
+          ? currentReactivationAction?.reactivation.channel
         : null
     if (!channel) return null
     if (channel === 'both') return 'Email + SMS'
     if (channel === 'sms') return 'SMS'
     return 'Email'
-  }, [action, isCampaign, isFillSession, isReactivation])
+  }, [currentCampaignAction, currentFillAction, currentReactivationAction, isCampaign, isFillSession, isReactivation])
 
   const deliveryModeLabel = useMemo(() => {
-    if (!isCampaign) return null
-    if (action.campaign.execution.mode === 'send_now') return 'Send Now'
-    if (action.campaign.execution.mode === 'send_later') return 'Schedule Send'
+    if (!currentCampaignAction) return null
+    if (currentCampaignAction.campaign.execution.mode === 'send_now') return 'Send Now'
+    if (currentCampaignAction.campaign.execution.mode === 'send_later') return 'Schedule Send'
     return 'Save Draft'
-  }, [action, isCampaign])
+  }, [currentCampaignAction])
 
   const scheduledLabel = useMemo(() => {
-    if (!isCampaign || action.campaign.execution.mode !== 'send_later') return null
-    if (!action.campaign.execution.scheduledFor) return null
+    if (!currentCampaignAction || currentCampaignAction.campaign.execution.mode !== 'send_later') return null
+    if (!currentCampaignAction.campaign.execution.scheduledFor) return null
 
     try {
       return new Intl.DateTimeFormat('en-US', {
-        timeZone: action.campaign.execution.timeZone || undefined,
+        timeZone: currentCampaignAction.campaign.execution.timeZone || undefined,
         weekday: 'short',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        timeZoneName: action.campaign.execution.timeZone ? 'short' : undefined,
-      }).format(new Date(action.campaign.execution.scheduledFor))
+        timeZoneName: currentCampaignAction.campaign.execution.timeZone ? 'short' : undefined,
+      }).format(new Date(currentCampaignAction.campaign.execution.scheduledFor))
     } catch {
-      return action.campaign.execution.scheduledFor
+      return currentCampaignAction.campaign.execution.scheduledFor
     }
-  }, [action, isCampaign])
+  }, [currentCampaignAction])
 
   const recipientRuleLabels = useMemo(() => {
-    if (!isCampaign) return []
-    const rules = action.campaign.execution.recipientRules
+    if (!currentCampaignAction) return []
+    const rules = currentCampaignAction.campaign.execution.recipientRules
     if (!rules) return []
 
     return [
@@ -93,23 +145,23 @@ export function AdvisorActionCard({
       rules.requirePhone ? 'Require phone' : null,
       rules.smsOptInOnly ? 'SMS opt-in only' : null,
     ].filter(Boolean) as string[]
-  }, [action, isCampaign])
+  }, [currentCampaignAction])
 
-  const targetCount = action.kind === 'create_cohort'
-    ? action.cohort.count ?? 0
+  const targetCount = currentCohortAction
+    ? currentCohortAction.cohort.count ?? 0
     : isCampaign
-      ? action.audience.count ?? 0
+      ? currentCampaignAction?.audience.count ?? 0
       : isFillSession
-        ? action.outreach.candidateCount ?? 0
+        ? currentFillAction?.outreach.candidateCount ?? 0
         : isReactivation
-          ? action.reactivation.candidateCount ?? 0
+          ? currentReactivationAction?.reactivation.candidateCount ?? 0
           : 0
   const contactGuardrails = isCampaign
-    ? action.campaign.guardrails
+    ? currentCampaignAction?.campaign.guardrails
     : isFillSession
-      ? action.outreach.guardrails
+      ? currentFillAction?.outreach.guardrails
       : isReactivation
-        ? action.reactivation.guardrails
+        ? currentReactivationAction?.reactivation.guardrails
         : null
   const recipientRuleExcludedCount = isCampaign && contactGuardrails
     ? Math.max(0, targetCount - contactGuardrails.eligibleCount - contactGuardrails.excludedCount)
@@ -117,7 +169,7 @@ export function AdvisorActionCard({
 
   const handleApprove = () => {
     executeAction.mutate(
-      { clubId, action },
+      { clubId, action: currentAction },
       {
         onSuccess: (data) => setResult(data),
       }
@@ -125,7 +177,34 @@ export function AdvisorActionCard({
   }
 
   const handleRefine = () => {
-    onDraftPrompt?.(getRefinePrompt(action))
+    onDraftPrompt?.(getRefinePrompt(currentAction))
+  }
+
+  const handleSetCampaignMode = (mode: CampaignAction['campaign']['execution']['mode']) => {
+    if (!baseCampaignAction) return
+
+    if (mode === 'send_later') {
+      setShowScheduleOptions(true)
+      return
+    }
+
+    setShowScheduleOptions(false)
+    setCampaignExecutionOverride({
+      ...baseCampaignAction.campaign.execution,
+      mode,
+      scheduledFor: undefined,
+    })
+  }
+
+  const handlePickSchedule = (scheduledFor: string) => {
+    if (!baseCampaignAction) return
+    setShowScheduleOptions(false)
+    setCampaignExecutionOverride({
+      ...baseCampaignAction.campaign.execution,
+      mode: 'send_later',
+      scheduledFor,
+      timeZone: baseCampaignAction.campaign.execution.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    })
   }
 
   const isDone = !!result?.ok
@@ -254,50 +333,50 @@ export function AdvisorActionCard({
               {isFillSession ? 'Session' : isContactPolicy || isAutonomyPolicy ? 'Policy' : 'Audience'}
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-              {action.kind === 'create_cohort'
-                ? action.cohort.name
+              {currentCohortAction
+                ? currentCohortAction.cohort.name
                 : isCampaign
-                  ? action.audience.name
+                  ? currentCampaignAction?.audience.name
                   : isFillSession
-                    ? action.session.title
+                    ? currentFillAction?.session.title
                     : isReactivation
-                      ? action.reactivation.segmentLabel
+                      ? currentReactivationAction?.reactivation.segmentLabel
                       : isAutonomyPolicy
                         ? 'Club autopilot rules'
                       : 'Club messaging guardrails'}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {isFillSession
-                ? `${action.session.date} · ${action.session.startTime}${action.session.endTime ? `-${action.session.endTime}` : ''}`
+                ? `${currentFillAction?.session.date} · ${currentFillAction?.session.startTime}${currentFillAction?.session.endTime ? `-${currentFillAction.session.endTime}` : ''}`
                 : isReactivation
                   ? `${targetCount} inactive member${targetCount === 1 ? '' : 's'}`
                   : isContactPolicy
-                    ? action.policy.timeZone
+                    ? currentContactPolicyAction?.policy.timeZone
                     : isAutonomyPolicy
-                      ? `${action.policy.changes.length} pending change${action.policy.changes.length === 1 ? '' : 's'}`
+                      ? `${currentAutonomyPolicyAction?.policy.changes.length} pending change${currentAutonomyPolicyAction?.policy.changes.length === 1 ? '' : 's'}`
                     : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
             </div>
             {isFillSession ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                {action.session.court ? `${action.session.court} · ` : ''}
-                {action.session.format || 'Session'} · {action.session.spotsRemaining} spot{action.session.spotsRemaining === 1 ? '' : 's'} left
+                {currentFillAction?.session.court ? `${currentFillAction.session.court} · ` : ''}
+                {currentFillAction?.session.format || 'Session'} · {currentFillAction?.session.spotsRemaining} spot{currentFillAction?.session.spotsRemaining === 1 ? '' : 's'} left
               </p>
             ) : isReactivation ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                Inactive for at least {action.reactivation.inactivityDays} days
+                Inactive for at least {currentReactivationAction?.reactivation.inactivityDays} days
               </p>
             ) : isContactPolicy ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                Quiet hours {action.policy.quietHours.startHour}:00-{action.policy.quietHours.endHour}:00
+                Quiet hours {currentContactPolicyAction?.policy.quietHours.startHour}:00-{currentContactPolicyAction?.policy.quietHours.endHour}:00
               </p>
             ) : isAutonomyPolicy ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                Welcome {action.policy.welcome.mode} · Slot filler {action.policy.slotFiller.mode} · Reactivation {action.policy.reactivation.mode}
+                Welcome {currentAutonomyPolicyAction?.policy.welcome.mode} · Slot filler {currentAutonomyPolicyAction?.policy.slotFiller.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode}
               </p>
             ) : (
-              (action.kind === 'create_cohort' ? action.cohort.description : action.audience.description) && (
+              (currentCohortAction ? currentCohortAction.cohort.description : currentCampaignAction?.audience.description) && (
                 <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                  {action.kind === 'create_cohort' ? action.cohort.description : action.audience.description}
+                  {currentCohortAction ? currentCohortAction.cohort.description : currentCampaignAction?.audience.description}
                 </p>
               )
             )}
@@ -310,7 +389,7 @@ export function AdvisorActionCard({
               Campaign
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-              {action.campaign.type.replace(/_/g, ' ')}
+              {currentCampaignAction?.campaign.type.replace(/_/g, ' ')}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {channelLabel}
@@ -328,9 +407,9 @@ export function AdvisorActionCard({
                 {scheduledLabel}
               </div>
             )}
-            {action.campaign.subject && (
+            {currentCampaignAction?.campaign.subject && (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)' }}>
-                <strong style={{ color: 'var(--heading)' }}>Subject:</strong> {action.campaign.subject}
+                <strong style={{ color: 'var(--heading)' }}>Subject:</strong> {currentCampaignAction?.campaign.subject}
               </p>
             )}
             {recipientRuleLabels.length > 0 && (
@@ -357,7 +436,7 @@ export function AdvisorActionCard({
               {channelLabel}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-              {action.outreach.candidateCount} matched player{action.outreach.candidateCount === 1 ? '' : 's'}
+              {currentFillAction?.outreach.candidateCount} matched player{currentFillAction?.outreach.candidateCount === 1 ? '' : 's'}
             </div>
             {contactGuardrails && (
               <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
@@ -365,7 +444,7 @@ export function AdvisorActionCard({
               </div>
             )}
             <div className="mt-2 flex flex-wrap gap-2">
-              {action.outreach.candidates.slice(0, 4).map((candidate) => (
+              {currentFillAction?.outreach.candidates.slice(0, 4).map((candidate) => (
                 <span
                   key={candidate.memberId}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -386,7 +465,7 @@ export function AdvisorActionCard({
               {channelLabel}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-              {action.reactivation.candidateCount} inactive member{action.reactivation.candidateCount === 1 ? '' : 's'}
+              {currentReactivationAction?.reactivation.candidateCount} inactive member{currentReactivationAction?.reactivation.candidateCount === 1 ? '' : 's'}
             </div>
             {contactGuardrails && (
               <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
@@ -394,7 +473,7 @@ export function AdvisorActionCard({
               </div>
             )}
             <div className="mt-2 flex flex-wrap gap-2">
-              {action.reactivation.candidates.slice(0, 4).map((candidate) => (
+              {currentReactivationAction?.reactivation.candidates.slice(0, 4).map((candidate) => (
                 <span
                   key={candidate.memberId}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -404,9 +483,9 @@ export function AdvisorActionCard({
                 </span>
               ))}
             </div>
-            {action.reactivation.candidates[0]?.topReason && (
+            {currentReactivationAction?.reactivation.candidates[0]?.topReason && (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                {action.reactivation.candidates[0].topReason}
+                {currentReactivationAction?.reactivation.candidates[0].topReason}
               </p>
             )}
           </div>
@@ -417,13 +496,13 @@ export function AdvisorActionCard({
               Guardrails
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-              {action.policy.max24h}/day · {action.policy.max7d}/week
+              {currentContactPolicyAction?.policy.max24h}/day · {currentContactPolicyAction?.policy.max7d}/week
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-              {action.policy.cooldownHours}h cooldown · {action.policy.recentBookingLookbackDays}d recent booking window
+              {currentContactPolicyAction?.policy.cooldownHours}h cooldown · {currentContactPolicyAction?.policy.recentBookingLookbackDays}d recent booking window
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {action.policy.changes.slice(0, 4).map((change) => (
+              {currentContactPolicyAction?.policy.changes.slice(0, 4).map((change) => (
                 <span
                   key={change}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -441,13 +520,13 @@ export function AdvisorActionCard({
               Autopilot Rules
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-              Welcome {action.policy.welcome.mode} · Slot filler {action.policy.slotFiller.mode}
+              Welcome {currentAutonomyPolicyAction?.policy.welcome.mode} · Slot filler {currentAutonomyPolicyAction?.policy.slotFiller.mode}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-              Check-in {action.policy.checkIn.mode} · Retention {action.policy.retentionBoost.mode} · Reactivation {action.policy.reactivation.mode}
+              Check-in {currentAutonomyPolicyAction?.policy.checkIn.mode} · Retention {currentAutonomyPolicyAction?.policy.retentionBoost.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {action.policy.changes.slice(0, 5).map((change) => (
+              {currentAutonomyPolicyAction?.policy.changes.slice(0, 5).map((change) => (
                 <span
                   key={change}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -465,7 +544,7 @@ export function AdvisorActionCard({
               Filters
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {action.cohort.filters.slice(0, 4).map((filter, index) => (
+              {currentCohortAction?.cohort.filters.slice(0, 4).map((filter, index) => (
                 <span
                   key={`${filter.field}-${index}`}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -479,6 +558,85 @@ export function AdvisorActionCard({
         )}
       </div>
 
+      {isCampaign && !isDone && (
+        <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+            <Send className="w-3.5 h-3.5" />
+            Execution
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {([
+              { key: 'save_draft', label: 'Save Draft' },
+              { key: 'send_now', label: 'Send Now' },
+              { key: 'send_later', label: 'Schedule' },
+            ] as const).map((option) => {
+              const isActive = currentCampaignAction?.campaign.execution.mode === option.key
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => handleSetCampaignMode(option.key)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                  style={{
+                    background: isActive ? 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))' : 'rgba(255,255,255,0.04)',
+                    border: isActive ? '1px solid rgba(139,92,246,0.28)' : '1px solid var(--card-border)',
+                    color: isActive ? 'var(--heading)' : 'var(--t2)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {option.key === 'send_later' ? <CalendarDays className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {(showScheduleOptions || currentCampaignAction?.campaign.execution.mode === 'send_later') && (
+            <div className="mt-3">
+              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+                Pick a send time
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {quickScheduleOptions.map((option) => {
+                  const isActive = currentCampaignAction?.campaign.execution.mode === 'send_later' && currentCampaignAction?.campaign.execution.scheduledFor === option.scheduledFor
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => handlePickSchedule(option.scheduledFor)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                      style={{
+                        background: isActive ? 'rgba(6,182,212,0.12)' : 'rgba(255,255,255,0.04)',
+                        border: isActive ? '1px solid rgba(6,182,212,0.28)' : '1px solid var(--card-border)',
+                        color: isActive ? 'var(--heading)' : 'var(--t2)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      {option.label}
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => onDraftPrompt?.('Schedule this campaign for Friday at 9am.')}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--card-border)',
+                    color: 'var(--t3)',
+                    fontWeight: 600,
+                  }}
+                >
+                  <PencilLine className="w-3.5 h-3.5" />
+                  Custom Time
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {(isCampaign || isFillSession || isReactivation || isContactPolicy || isAutonomyPolicy) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -487,12 +645,12 @@ export function AdvisorActionCard({
           </div>
           <div className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
             {isCampaign
-              ? action.campaign.body
+              ? currentCampaignAction?.campaign.body
               : isFillSession
-                ? action.outreach.message
+                ? currentFillAction?.outreach.message
                 : isReactivation
-                  ? action.reactivation.message
-                  : action.policy.changes.join('\n')}
+                  ? currentReactivationAction?.reactivation.message
+                  : (currentContactPolicyAction?.policy.changes || currentAutonomyPolicyAction?.policy.changes || []).join('\n')}
           </div>
         </div>
       )}
@@ -561,9 +719,9 @@ export function AdvisorActionCard({
           </div>
         ) : (
           <div className="text-xs" style={{ color: 'var(--t3)' }}>
-            {action.kind === 'create_campaign' && action.campaign.execution.mode === 'save_draft'
+            {currentCampaignAction?.campaign.execution.mode === 'save_draft'
               ? 'Approval is required before the platform saves this campaign draft.'
-              : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
+              : currentCampaignAction?.campaign.execution.mode === 'send_later'
                   ? 'Approval is required before the platform schedules this campaign.'
               : isAutonomyPolicy
                 ? 'Approval is required before the platform updates club autopilot rules.'
@@ -593,9 +751,9 @@ export function AdvisorActionCard({
             ? 'Approved'
             : isCampaign
               ? (
-                  action.campaign.execution.mode === 'save_draft'
+                  currentCampaignAction?.campaign.execution.mode === 'save_draft'
                     ? 'Save Draft'
-                    : action.campaign.execution.mode === 'send_later'
+                    : currentCampaignAction?.campaign.execution.mode === 'send_later'
                       ? 'Schedule Send'
                       : 'Send Now'
                 )
