@@ -4,7 +4,13 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { appRouter } from '@/server/routers/_app'
 import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
-import { buildAdvisorActionTag, extractAdvisorAction, getAdvisorActionFromMetadata, type AdvisorAction } from '@/lib/ai/advisor-actions'
+import {
+  buildAdvisorActionTag,
+  extractAdvisorAction,
+  getAdvisorActionFromMetadata,
+  type AdvisorAction,
+  type AdvisorAdaptiveDefaultsApplied,
+} from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent, type AdvisorIntentPlan } from '@/lib/ai/advisor-action-planner'
 import {
   isAdvisorActionHidden,
@@ -256,6 +262,53 @@ function buildCampaignReadyText(
   if (mode === 'send_now') return copy.campaignReady(count, name)
   if (mode === 'send_later') return copy.campaignScheduledReady(count, name, scheduledLabel || 'the selected time')
   return copy.campaignDraftReady(count, name)
+}
+
+function humanizeAdvisorFlow(type: string) {
+  return type
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatAdvisorChannelLabel(channel: 'email' | 'sms' | 'both') {
+  if (channel === 'sms') return 'SMS'
+  if (channel === 'both') return 'Email + SMS'
+  return 'Email'
+}
+
+function buildAdvisorAdaptiveDefaultsApplied(opts: {
+  type: string
+  channel?: 'email' | 'sms' | 'both'
+  channelDerivedFromOutcomes?: boolean
+  scheduledSend?: {
+    scheduledFor: string
+    timeZone: string
+    label: string
+  } | null
+}): AdvisorAdaptiveDefaultsApplied | undefined {
+  const flowLabel = humanizeAdvisorFlow(opts.type)
+  const defaultsApplied: AdvisorAdaptiveDefaultsApplied = {}
+
+  if (opts.channel && opts.channelDerivedFromOutcomes) {
+    defaultsApplied.channel = {
+      value: opts.channel,
+      label: formatAdvisorChannelLabel(opts.channel),
+      reason: `Agent defaulted the channel to ${formatAdvisorChannelLabel(opts.channel)} because recent ${flowLabel.toLowerCase()} results were strongest there.`,
+    }
+  }
+
+  if (opts.scheduledSend) {
+    defaultsApplied.scheduledSend = {
+      scheduledFor: opts.scheduledSend.scheduledFor,
+      timeZone: opts.scheduledSend.timeZone,
+      label: opts.scheduledSend.label,
+      reason: `Agent defaulted the send time to ${opts.scheduledSend.label} because that hour performed best recently for ${flowLabel.toLowerCase()} outreach.`,
+    }
+  }
+
+  return defaultsApplied.channel || defaultsApplied.scheduledSend ? defaultsApplied : undefined
 }
 
 type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
@@ -520,6 +573,7 @@ async function buildFillSessionAssistantResponse(opts: {
   sessionId?: string | null
   channel?: Extract<AdvisorAction, { kind: 'fill_session' }>['outreach']['channel']
   candidateLimit?: number
+  defaultsApplied?: AdvisorAdaptiveDefaultsApplied
   timeZone?: string | null
   automationSettings?: unknown
 }) {
@@ -652,20 +706,21 @@ async function buildFillSessionAssistantResponse(opts: {
   const action: AdvisorAction = {
     kind: 'fill_session',
     title: `Fill session: ${resolvedSession.title}`,
-      summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
-      requiresApproval: true,
-      session: resolvedSession,
-      outreach: {
-        channel,
-        candidateCount: candidates.length,
-        message: channel === 'sms'
-          ? (generated.smsBody || generated.body)
-          : generated.body,
-        candidates,
-        guardrails: guardrails.summary,
-      },
-      signals: signals || undefined,
-    }
+    summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
+    requiresApproval: true,
+    session: resolvedSession,
+    outreach: {
+      channel,
+      candidateCount: candidates.length,
+      message: channel === 'sms'
+        ? (generated.smsBody || generated.body)
+        : generated.body,
+      candidates,
+      guardrails: guardrails.summary,
+    },
+    signals: signals || undefined,
+    defaultsApplied: opts.defaultsApplied,
+  }
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
   return {
@@ -688,6 +743,7 @@ async function buildReactivationAssistantResponse(opts: {
   inactivityDays?: number
   channel?: Extract<AdvisorAction, { kind: 'reactivate_members' }>['reactivation']['channel']
   candidateLimit?: number
+  defaultsApplied?: AdvisorAdaptiveDefaultsApplied
   timeZone?: string | null
   automationSettings?: unknown
 }) {
@@ -793,6 +849,7 @@ async function buildReactivationAssistantResponse(opts: {
       guardrails: guardrails.summary,
     },
     signals: signals || undefined,
+    defaultsApplied: opts.defaultsApplied,
   }
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
@@ -822,7 +879,10 @@ async function applyAdvisorAdaptiveDefaults(opts: {
 }) {
   const explicitChannel = extractExplicitAdvisorChannel(opts.message)
   if (opts.plan.action === 'none' || opts.plan.action === 'create_cohort' || opts.plan.action === 'update_contact_policy' || opts.plan.action === 'update_autonomy_policy') {
-    return opts.plan
+    return {
+      plan: opts.plan,
+      defaultsApplied: undefined,
+    }
   }
 
   const type = opts.plan.action === 'fill_session'
@@ -855,7 +915,22 @@ async function applyAdvisorAdaptiveDefaults(opts: {
     nextPlan.timeZone = defaults.scheduledSend.timeZone
   }
 
-  return nextPlan
+  const appliedScheduledSend = (
+    nextPlan.action === 'draft_campaign' &&
+    nextPlan.deliveryMode === 'send_later' &&
+    !opts.plan.scheduledFor &&
+    defaults?.scheduledSend
+  ) ? defaults.scheduledSend : null
+
+  return {
+    plan: nextPlan,
+    defaultsApplied: buildAdvisorAdaptiveDefaultsApplied({
+      type,
+      channel: defaults?.channel,
+      channelDerivedFromOutcomes: defaults?.channelDerivedFromOutcomes,
+      scheduledSend: appliedScheduledSend,
+    }),
+  }
 }
 
 export async function POST(req: Request) {
@@ -921,6 +996,7 @@ export async function POST(req: Request) {
     const copy = getAdvisorActionCopy(language)
     let assistantState: AdvisorConversationState | null = null
     const hadPendingClarification = !!memory.state?.pendingClarification
+    let defaultsApplied: AdvisorAdaptiveDefaultsApplied | undefined
 
     if (access.isAdmin && memory.state?.pendingClarification) {
       if (
@@ -974,13 +1050,15 @@ export async function POST(req: Request) {
     }
 
     if (access.isAdmin) {
-      plan = await applyAdvisorAdaptiveDefaults({
+      const adaptiveDefaults = await applyAdvisorAdaptiveDefaults({
         prisma,
         clubId,
         plan,
         message: effectiveMessage,
         timeZone: clubTimeZone,
       })
+      plan = adaptiveDefaults.plan
+      defaultsApplied = adaptiveDefaults.defaultsApplied
     }
 
     if (!access.isAdmin) {
@@ -1268,6 +1346,7 @@ export async function POST(req: Request) {
         sessionId: plan.sessionId,
         channel: plan.channel,
         candidateLimit: plan.candidateLimit,
+        defaultsApplied,
         timeZone: clubTimeZone,
         automationSettings: clubContext?.automationSettings,
       })
@@ -1285,6 +1364,7 @@ export async function POST(req: Request) {
         inactivityDays: plan.inactivityDays,
         channel: plan.channel,
         candidateLimit: plan.candidateLimit,
+        defaultsApplied,
         timeZone: clubTimeZone,
         automationSettings: clubContext?.automationSettings,
       })
@@ -1436,6 +1516,7 @@ export async function POST(req: Request) {
               : {}),
           },
         },
+        defaultsApplied,
       }
       const hydratedCampaign = await hydrateAdvisorCampaignAction({
         clubId,

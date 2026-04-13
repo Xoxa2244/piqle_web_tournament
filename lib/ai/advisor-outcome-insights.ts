@@ -47,6 +47,7 @@ export type AdvisorPerformanceSignal = {
 
 export type AdvisorAdaptiveDefaults = {
   channel?: Extract<AdvisorAction, { kind: 'create_campaign' }>['campaign']['channel']
+  channelDerivedFromOutcomes?: boolean
   scheduledSend?: AdvisorScheduledSend | null
 }
 
@@ -424,6 +425,7 @@ export async function resolveAdvisorAdaptiveDefaultsForAction(opts: {
     advisorOutcomes: [],
   })
   const topChannel = insights.topFlows[0]?.channel
+  const channelDerivedFromOutcomes = !normalizeChannel(opts.requestedChannel) && !!normalizeChannel(topChannel)
   const resolvedChannel = normalizeChannel(opts.requestedChannel) || normalizeChannel(topChannel) || 'email'
   const timeZone = String(opts.timeZone || '').trim()
 
@@ -473,6 +475,7 @@ export async function resolveAdvisorAdaptiveDefaultsForAction(opts: {
 
   return {
     channel: resolvedChannel as AdvisorAdaptiveDefaults['channel'],
+    channelDerivedFromOutcomes,
     scheduledSend,
   }
 }

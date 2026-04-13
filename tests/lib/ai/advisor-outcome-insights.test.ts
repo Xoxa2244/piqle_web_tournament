@@ -158,6 +158,7 @@ describe('advisor outcome insights', () => {
     })
 
     expect(defaults.channel).toBe('sms')
+    expect(defaults.channelDerivedFromOutcomes).toBe(true)
     expect(defaults.scheduledSend?.timeZone).toBe('UTC')
     expect(defaults.scheduledSend?.localDateTime.endsWith('18:00')).toBe(true)
   })

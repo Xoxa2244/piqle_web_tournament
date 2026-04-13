@@ -45,6 +45,21 @@ export const advisorPerformanceSignalSchema = z.object({
   headline: z.string().min(1).max(220),
   bullets: z.array(z.string().min(1).max(220)).max(4).default([]),
 })
+export const advisorAdaptiveChannelDefaultSchema = z.object({
+  value: advisorChannelEnum,
+  label: z.string().min(1).max(80),
+  reason: z.string().min(1).max(220),
+})
+export const advisorAdaptiveScheduledDefaultSchema = z.object({
+  scheduledFor: z.string().datetime(),
+  timeZone: z.string().min(1).max(80),
+  label: z.string().min(1).max(120),
+  reason: z.string().min(1).max(220),
+})
+export const advisorAdaptiveDefaultsAppliedSchema = z.object({
+  channel: advisorAdaptiveChannelDefaultSchema.optional(),
+  scheduledSend: advisorAdaptiveScheduledDefaultSchema.optional(),
+})
 
 export const cohortFilterSchema = z.object({
   field: z.string(),
@@ -138,6 +153,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     audience: advisorCohortDraftSchema,
     campaign: advisorCampaignDraftSchema,
     signals: advisorPerformanceSignalSchema.optional(),
+    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
   }),
   z.object({
     kind: z.literal('fill_session'),
@@ -147,6 +163,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     session: advisorSessionDraftSchema,
     outreach: advisorSlotFillerOutreachSchema,
     signals: advisorPerformanceSignalSchema.optional(),
+    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
   }),
   z.object({
     kind: z.literal('reactivate_members'),
@@ -155,6 +172,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     requiresApproval: z.boolean().default(true),
     reactivation: advisorReactivationDraftSchema,
     signals: advisorPerformanceSignalSchema.optional(),
+    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
   }),
   z.object({
     kind: z.literal('update_contact_policy'),
@@ -173,6 +191,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
 ])
 
 export type AdvisorAction = z.infer<typeof advisorActionSchema>
+export type AdvisorAdaptiveDefaultsApplied = z.infer<typeof advisorAdaptiveDefaultsAppliedSchema>
 
 const ACTION_TAG_REGEX = /<action>\s*([\s\S]*?)\s*<\/action>/i
 

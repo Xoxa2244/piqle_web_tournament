@@ -43,6 +43,13 @@ function buildQuickScheduleOption(hoursFromNow: number, hourOfDay: number, label
   }
 }
 
+function getActionAdaptiveDefaults(action: AdvisorAction) {
+  if (action.kind === 'create_campaign') return action.defaultsApplied || null
+  if (action.kind === 'fill_session') return action.defaultsApplied || null
+  if (action.kind === 'reactivate_members') return action.defaultsApplied || null
+  return null
+}
+
 export function AdvisorActionCard({
   clubId,
   messageId,
@@ -74,6 +81,20 @@ export function AdvisorActionCard({
 
   const currentAction = useMemo<AdvisorAction>(() => {
     if (!baseCampaignAction || !campaignExecutionOverride) return action
+
+    const nextDefaultsApplied = baseCampaignAction.defaultsApplied
+      ? { ...baseCampaignAction.defaultsApplied }
+      : undefined
+
+    if (nextDefaultsApplied?.scheduledSend) {
+      const scheduledChanged = campaignExecutionOverride.mode !== 'send_later'
+        || campaignExecutionOverride.scheduledFor !== nextDefaultsApplied.scheduledSend.scheduledFor
+
+      if (scheduledChanged) {
+        delete nextDefaultsApplied.scheduledSend
+      }
+    }
+
     return {
       ...baseCampaignAction,
       summary: buildCampaignSummary(baseCampaignAction, campaignExecutionOverride),
@@ -81,6 +102,9 @@ export function AdvisorActionCard({
         ...baseCampaignAction.campaign,
         execution: campaignExecutionOverride,
       },
+      defaultsApplied: nextDefaultsApplied?.channel || nextDefaultsApplied?.scheduledSend
+        ? nextDefaultsApplied
+        : undefined,
     }
   }, [action, baseCampaignAction, campaignExecutionOverride])
   const currentCampaignAction = isCampaign ? currentAction as CampaignAction : null
@@ -99,6 +123,7 @@ export function AdvisorActionCard({
       : currentAction.kind === 'reactivate_members'
         ? currentAction.signals
         : null
+  const defaultsApplied = getActionAdaptiveDefaults(currentAction)
 
   const quickScheduleOptions = useMemo(() => ([
     buildQuickScheduleOption(1, 9, 'Tomorrow 9 AM'),
@@ -156,6 +181,14 @@ export function AdvisorActionCard({
       rules.smsOptInOnly ? 'SMS opt-in only' : null,
     ].filter(Boolean) as string[]
   }, [currentCampaignAction])
+
+  const adaptiveDefaultBadges = useMemo(() => {
+    if (!defaultsApplied) return []
+    return [
+      defaultsApplied.channel ? `Agent defaulted ${defaultsApplied.channel.label}` : null,
+      defaultsApplied.scheduledSend ? `Agent defaulted ${defaultsApplied.scheduledSend.label}` : null,
+    ].filter(Boolean) as string[]
+  }, [defaultsApplied])
 
   const targetCount = currentCohortAction
     ? currentCohortAction.cohort.count ?? 0
@@ -471,6 +504,19 @@ export function AdvisorActionCard({
                 ))}
               </div>
             )}
+            {adaptiveDefaultBadges.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {adaptiveDefaultBadges.map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-1 rounded-full"
+                    style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : isFillSession ? (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
@@ -500,6 +546,19 @@ export function AdvisorActionCard({
                 </span>
               ))}
             </div>
+            {adaptiveDefaultBadges.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {adaptiveDefaultBadges.map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-1 rounded-full"
+                    style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ) : isReactivation ? (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
@@ -533,6 +592,19 @@ export function AdvisorActionCard({
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
                 {currentReactivationAction?.reactivation.candidates[0].topReason}
               </p>
+            )}
+            {adaptiveDefaultBadges.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {adaptiveDefaultBadges.map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-1 rounded-full"
+                    style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         ) : isContactPolicy ? (
@@ -603,6 +675,29 @@ export function AdvisorActionCard({
           </div>
         )}
       </div>
+
+      {defaultsApplied && (
+        <div
+          className="rounded-xl p-3 mt-3"
+          style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.18)' }}
+        >
+          <div className="flex items-center gap-2 text-xs" style={{ color: '#06B6D4', fontWeight: 700 }}>
+            Agent Defaults Applied
+          </div>
+          <div className="mt-2 space-y-2">
+            {defaultsApplied.channel && (
+              <div className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                <span style={{ color: 'var(--heading)', fontWeight: 600 }}>Channel:</span> {defaultsApplied.channel.label}. {defaultsApplied.channel.reason}
+              </div>
+            )}
+            {defaultsApplied.scheduledSend && (
+              <div className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                <span style={{ color: 'var(--heading)', fontWeight: 600 }}>Send time:</span> {defaultsApplied.scheduledSend.label}. {defaultsApplied.scheduledSend.reason}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {performanceSignals && (
         <div
@@ -723,6 +818,15 @@ export function AdvisorActionCard({
                 {scheduledLabel}
               </span>
             )}
+            {adaptiveDefaultBadges.map((label) => (
+              <span
+                key={label}
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+              >
+                {label}
+              </span>
+            ))}
           </div>
 
           {isCampaign && (
