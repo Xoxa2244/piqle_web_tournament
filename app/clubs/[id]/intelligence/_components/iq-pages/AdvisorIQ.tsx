@@ -4,11 +4,11 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Brain, Send, Sparkles, TrendingUp, Users, CalendarDays,
-  DollarSign, Target, Lightbulb, BarChart3, Clock, Zap,
-  MessageSquare, ChevronRight, Mic, Paperclip, RotateCcw,
-  ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2,
-} from "lucide-react";
+    Brain, Send, Sparkles, TrendingUp, Users, CalendarDays,
+    DollarSign, Target, Lightbulb, BarChart3, Clock, Zap,
+    MessageSquare, ChevronRight, Mic, Paperclip, RotateCcw,
+    ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2, CheckCircle2,
+  } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
 import { extractAdvisorAction, stripAdvisorAction } from "@/lib/ai/advisor-actions";
@@ -92,6 +92,25 @@ function getMessageText(message: { parts?: Array<{ type: string; text?: string }
   }
   if (typeof message.content === 'string') return message.content;
   return '';
+}
+
+function classifySuggestionChip(text: string) {
+  const lower = text.toLowerCase();
+
+  if (/\b(approve|send now|launch now|use current audience)\b/.test(lower)) {
+    return { tone: "primary" as const, icon: CheckCircle2 };
+  }
+  if (/\b(email|sms|both)\b/.test(lower)) {
+    return { tone: "choice" as const, icon: Send };
+  }
+  if (/\b(tomorrow|friday|tuesday|today|tonight|\d{1,2}(:\d{2})?\s*(am|pm))\b/.test(lower)) {
+    return { tone: "choice" as const, icon: CalendarDays };
+  }
+  if (/\b(another|other|different|show me)\b/.test(lower)) {
+    return { tone: "ghost" as const, icon: ChevronRight };
+  }
+
+  return { tone: "default" as const, icon: Sparkles };
 }
 
 /* ============================================= */
@@ -257,6 +276,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     e.preventDefault();
     handleSend();
   };
+
+  const draftIntoComposer = useCallback((text: string) => {
+    setInputValue(text);
+    inputRef.current?.focus();
+  }, []);
 
   return (
     <div className="flex gap-6 max-w-[1400px] mx-auto" style={{ height: "calc(100vh - 112px)" }}>
@@ -427,28 +451,55 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                     )}
 
                     {msg.role === "assistant" && action && (
-                      <AdvisorActionCard clubId={clubId} action={action} />
+                      <AdvisorActionCard clubId={clubId} action={action} onDraftPrompt={draftIntoComposer} />
                     )}
 
                     {/* Suggested follow-up questions */}
                     {suggestions.length > 0 && msg.role === "assistant" && isLastAssistant && !isBusy && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {suggestions.map((q, qi) => (
+                          (() => {
+                            const suggestionUi = classifySuggestionChip(q);
+                            const SuggestionIcon = suggestionUi.icon;
+                            const styles = suggestionUi.tone === "primary"
+                              ? {
+                                  background: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))",
+                                  border: "1px solid rgba(139,92,246,0.28)",
+                                  color: "var(--heading)",
+                                }
+                              : suggestionUi.tone === "choice"
+                                ? {
+                                    background: "rgba(6,182,212,0.08)",
+                                    border: "1px solid rgba(6,182,212,0.22)",
+                                    color: "var(--t2)",
+                                  }
+                                : suggestionUi.tone === "ghost"
+                                  ? {
+                                      background: "rgba(148,163,184,0.08)",
+                                      border: "1px solid rgba(148,163,184,0.18)",
+                                      color: "var(--t2)",
+                                    }
+                                  : {
+                                      background: "rgba(139,92,246,0.08)",
+                                      border: "1px solid rgba(139,92,246,0.2)",
+                                      color: "var(--t2)",
+                                    };
+
+                            return (
                           <button
                             key={qi}
                             onClick={() => handleSend(q)}
-                            className="px-3 py-1.5 rounded-xl text-xs transition-all hover:scale-[1.02]"
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all hover:scale-[1.02]"
                             style={{
-                              background: "rgba(139,92,246,0.08)",
-                              border: "1px solid rgba(139,92,246,0.2)",
-                              color: "var(--t2)",
-                              fontWeight: 500,
+                              ...styles,
+                              fontWeight: 600,
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.15)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(139,92,246,0.08)"; }}
                           >
+                            <SuggestionIcon className="w-3.5 h-3.5" />
                             {q}
                           </button>
+                            );
+                          })()
                         ))}
                       </div>
                     )}

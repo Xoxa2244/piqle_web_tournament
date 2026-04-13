@@ -1,15 +1,33 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Loader2, Mail, Send, Users } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Loader2, Mail, PencilLine, Send, Users, X } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import type { AdvisorAction } from '@/lib/ai/advisor-actions'
 import { useExecuteAdvisorAction } from '../../_hooks/use-intelligence'
 
-export function AdvisorActionCard({ clubId, action }: { clubId: string; action: AdvisorAction }) {
+function getRefinePrompt(action: AdvisorAction) {
+  if (action.kind === 'create_campaign') return 'Make this campaign shorter and sharper.'
+  if (action.kind === 'fill_session') return 'Use SMS instead and keep only the top 3 players.'
+  if (action.kind === 'reactivate_members') return 'Use SMS instead and keep only the top 5 inactive members.'
+  if (action.kind === 'update_contact_policy') return 'Tighten these messaging rules a bit.'
+  if (action.kind === 'update_autonomy_policy') return 'Make this autopilot policy a bit safer.'
+  return 'Narrow this audience a bit.'
+}
+
+export function AdvisorActionCard({
+  clubId,
+  action,
+  onDraftPrompt,
+}: {
+  clubId: string
+  action: AdvisorAction
+  onDraftPrompt?: (prompt: string) => void
+}) {
   const { isDark } = useTheme()
   const executeAction = useExecuteAdvisorAction()
   const [result, setResult] = useState<any | null>(null)
+  const [dismissed, setDismissed] = useState(false)
   const isCampaign = action.kind === 'create_campaign'
   const isFillSession = action.kind === 'fill_session'
   const isReactivation = action.kind === 'reactivate_members'
@@ -100,7 +118,35 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
     )
   }
 
+  const handleRefine = () => {
+    onDraftPrompt?.(getRefinePrompt(action))
+  }
+
   const isDone = !!result?.ok
+
+  if (dismissed && !isDone) {
+    return (
+      <div
+        className="mt-3 rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+        style={{
+          background: isDark ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.08)',
+          border: '1px solid rgba(148,163,184,0.16)',
+        }}
+      >
+        <div className="text-xs" style={{ color: 'var(--t3)' }}>
+          Draft hidden for now. You can still bring it back and approve it later in this chat.
+        </div>
+        <button
+          type="button"
+          onClick={() => setDismissed(false)}
+          className="px-3 py-1.5 rounded-xl text-xs"
+          style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}
+        >
+          Undo
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -507,6 +553,39 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               : 'Approve'}
         </button>
       </div>
+
+      {!isDone && (
+        <div className="flex items-center gap-2 mt-3">
+          <button
+            type="button"
+            onClick={handleRefine}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: 'var(--subtle)',
+              color: 'var(--t2)',
+              border: '1px solid var(--card-border)',
+              fontWeight: 600,
+            }}
+          >
+            <PencilLine className="w-3.5 h-3.5" />
+            Refine
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{
+              background: 'transparent',
+              color: 'var(--t3)',
+              border: '1px solid var(--card-border)',
+              fontWeight: 600,
+            }}
+          >
+            <X className="w-3.5 h-3.5" />
+            Not Now
+          </button>
+        </div>
+      )}
 
       {executeAction.error && !isDone && (
         <div className="text-xs mt-3" style={{ color: '#F87171' }}>
