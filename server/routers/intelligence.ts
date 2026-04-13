@@ -25,6 +25,7 @@ import {
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
+import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -4063,14 +4064,45 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       if (input.action.kind === 'fill_session') {
         await checkFeatureAccess(input.clubId, 'slot-filler')
         const fillAction = input.action
+        const guardrails = await evaluateAdvisorContactGuardrails({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          type: 'SLOT_FILLER',
+          requestedChannel: fillAction.outreach.channel,
+          candidates: fillAction.outreach.candidates.map((candidate) => ({ memberId: candidate.memberId })),
+          sessionId: fillAction.session.id,
+        })
+        const eligibleCandidates = fillAction.outreach.candidates
+          .map((candidate) => {
+            const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+            if (!eligible) return null
+            return {
+              memberId: candidate.memberId,
+              channel: candidate.channel || eligible.channel,
+              customMessage: fillAction.outreach.message,
+            }
+          })
+          .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both'; customMessage: string }>
+
+        if (eligibleCandidates.length === 0) {
+          return {
+            ok: true,
+            kind: 'fill_session' as const,
+            sessionId: fillAction.session.id,
+            sessionTitle: fillAction.session.title,
+            candidateCount: 0,
+            channel: fillAction.outreach.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+          }
+        }
+
         const inviteResult = await sendInvites(ctx.prisma, {
           clubId: input.clubId,
           sessionId: fillAction.session.id,
-          candidates: fillAction.outreach.candidates.map((candidate) => ({
-            memberId: candidate.memberId,
-            channel: fillAction.outreach.channel,
-            customMessage: fillAction.outreach.message,
-          })),
+          candidates: eligibleCandidates,
         })
 
         return {
@@ -4078,21 +4110,53 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           kind: 'fill_session' as const,
           sessionId: fillAction.session.id,
           sessionTitle: fillAction.session.title,
-          candidateCount: fillAction.outreach.candidates.length,
+          candidateCount: eligibleCandidates.length,
           channel: fillAction.outreach.channel,
           ...inviteResult,
+          skipped: (inviteResult.skipped || 0) + guardrails.summary.excludedCount,
+          guardrails: guardrails.summary,
         }
       }
 
       if (input.action.kind === 'reactivate_members') {
         await checkFeatureAccess(input.clubId, 'reactivation')
         const reactivationAction = input.action
+        const guardrails = await evaluateAdvisorContactGuardrails({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          type: 'REACTIVATION',
+          requestedChannel: reactivationAction.reactivation.channel,
+          candidates: reactivationAction.reactivation.candidates.map((candidate) => ({ memberId: candidate.memberId })),
+        })
+        const eligibleCandidates = reactivationAction.reactivation.candidates
+          .map((candidate) => {
+            const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+            if (!eligible) return null
+            return {
+              memberId: candidate.memberId,
+              channel: candidate.channel || eligible.channel,
+            }
+          })
+          .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
+
+        if (eligibleCandidates.length === 0) {
+          return {
+            ok: true,
+            kind: 'reactivate_members' as const,
+            segmentLabel: reactivationAction.reactivation.segmentLabel,
+            inactivityDays: reactivationAction.reactivation.inactivityDays,
+            candidateCount: 0,
+            channel: reactivationAction.reactivation.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+          }
+        }
+
         const sendResult = await sendReactivationMessages(ctx.prisma, {
           clubId: input.clubId,
-          candidates: reactivationAction.reactivation.candidates.map((candidate) => ({
-            memberId: candidate.memberId,
-            channel: reactivationAction.reactivation.channel,
-          })),
+          candidates: eligibleCandidates,
           customMessage: reactivationAction.reactivation.message,
         })
 
@@ -4101,9 +4165,11 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           kind: 'reactivate_members' as const,
           segmentLabel: reactivationAction.reactivation.segmentLabel,
           inactivityDays: reactivationAction.reactivation.inactivityDays,
-          candidateCount: reactivationAction.reactivation.candidates.length,
+          candidateCount: eligibleCandidates.length,
           channel: reactivationAction.reactivation.channel,
           ...sendResult,
+          skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
+          guardrails: guardrails.summary,
         }
       }
 

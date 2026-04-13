@@ -14,6 +14,10 @@ import {
 } from '@/lib/ai/advisor-conversation-state'
 import { getAdvisorEditCopy, maybeEditAdvisorDraft } from '@/lib/ai/advisor-draft-editor'
 import {
+  evaluateAdvisorContactGuardrails,
+  formatAdvisorGuardrailDigest,
+} from '@/lib/ai/advisor-contact-guardrails'
+import {
   maybeStartAdvisorClarification,
   resolveAdvisorClarification,
 } from '@/lib/ai/advisor-clarifications'
@@ -262,6 +266,7 @@ async function loadAdvisorSlotSessions(caller: ReturnType<typeof appRouter.creat
 
 async function buildFillSessionAssistantResponse(opts: {
   caller: ReturnType<typeof appRouter.createCaller>
+  prisma: any
   clubId: string
   language: SupportedLanguage
   state: AdvisorConversationState | null
@@ -269,8 +274,10 @@ async function buildFillSessionAssistantResponse(opts: {
   sessionId?: string | null
   channel?: Extract<AdvisorAction, { kind: 'fill_session' }>['outreach']['channel']
   candidateLimit?: number
+  timeZone?: string | null
+  automationSettings?: unknown
 }) {
-  const { caller, clubId, language, state, message, sessionId, channel = 'email' } = opts
+  const { caller, prisma, clubId, language, state, message, sessionId, channel = 'email' } = opts
   const slotCopy = getSlotFillerCopy(language)
   const sessions = await loadAdvisorSlotSessions(caller, clubId)
 
@@ -324,7 +331,7 @@ async function buildFillSessionAssistantResponse(opts: {
     limit: candidateLimit,
     clubId,
   })
-  const candidates = ((recommendations as any)?.recommendations || [])
+  const rawCandidates = ((recommendations as any)?.recommendations || [])
     .slice(0, candidateLimit)
     .map((candidate: any) => ({
       memberId: candidate.member?.id || candidate.memberId,
@@ -334,6 +341,27 @@ async function buildFillSessionAssistantResponse(opts: {
       email: candidate.member?.email || undefined,
     }))
     .filter((candidate: any) => !!candidate.memberId)
+
+  const guardrails = await evaluateAdvisorContactGuardrails({
+    prisma,
+    clubId,
+    type: 'SLOT_FILLER',
+    requestedChannel: channel,
+    candidates: rawCandidates.map((candidate: any) => ({ memberId: candidate.memberId })),
+    sessionId: resolvedSession.id,
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+  })
+  const candidates = rawCandidates
+    .map((candidate: any) => {
+      const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+      if (!eligible) return null
+      return {
+        ...candidate,
+        channel: eligible.channel,
+      }
+    })
+    .filter(Boolean)
 
   if (candidates.length === 0) {
     const assistantState: AdvisorConversationState = {
@@ -346,7 +374,10 @@ async function buildFillSessionAssistantResponse(opts: {
 
     return {
       assistantState,
-      assistantMessage: withSuggested(slotCopy.noCandidates(formatAdvisorSlotSessionLabel(resolvedSession)), slotCopy.suggestions),
+      assistantMessage: withSuggested(
+        `${slotCopy.noCandidates(formatAdvisorSlotSessionLabel(resolvedSession))} ${formatAdvisorGuardrailDigest(guardrails.summary)}`.trim(),
+        slotCopy.suggestions,
+      ),
     }
   }
 
@@ -363,23 +394,25 @@ async function buildFillSessionAssistantResponse(opts: {
   const action: AdvisorAction = {
     kind: 'fill_session',
     title: `Fill session: ${resolvedSession.title}`,
-    summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
-    requiresApproval: true,
-    session: resolvedSession,
-    outreach: {
-      channel,
-      candidateCount: candidates.length,
-      message: channel === 'sms'
-        ? (generated.smsBody || generated.body)
-        : generated.body,
-      candidates,
-    },
-  }
+      summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
+      requiresApproval: true,
+      session: resolvedSession,
+      outreach: {
+        channel,
+        candidateCount: candidates.length,
+        message: channel === 'sms'
+          ? (generated.smsBody || generated.body)
+          : generated.body,
+        candidates,
+        guardrails: guardrails.summary,
+      },
+    }
 
+  const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
   return {
     assistantState: buildAdvisorConversationStateFromAction(action),
     assistantMessage: withSuggested(
-      `${slotCopy.ready(candidates.length, formatAdvisorSlotSessionLabel(resolvedSession))}\n\n${buildAdvisorActionTag(action)}`,
+      `${slotCopy.ready(candidates.length, formatAdvisorSlotSessionLabel(resolvedSession))}${guardrailNote ? `\n\n${guardrailNote}` : ''}\n\n${buildAdvisorActionTag(action)}`,
       slotCopy.suggestions,
     ),
     action,
@@ -388,6 +421,7 @@ async function buildFillSessionAssistantResponse(opts: {
 
 async function buildReactivationAssistantResponse(opts: {
   caller: ReturnType<typeof appRouter.createCaller>
+  prisma: any
   clubId: string
   language: SupportedLanguage
   state: AdvisorConversationState | null
@@ -395,8 +429,10 @@ async function buildReactivationAssistantResponse(opts: {
   inactivityDays?: number
   channel?: Extract<AdvisorAction, { kind: 'reactivate_members' }>['reactivation']['channel']
   candidateLimit?: number
+  timeZone?: string | null
+  automationSettings?: unknown
 }) {
-  const { caller, clubId, language, state, message, channel = 'email' } = opts
+  const { caller, prisma, clubId, language, state, message, channel = 'email' } = opts
   const reactivationCopy = getReactivationCopy(language)
   const inactivityDays = parseAdvisorInactivityDays(message) || opts.inactivityDays || 21
   const candidateLimit = Math.min(Math.max(opts.candidateLimit || 10, 1), 25)
@@ -408,7 +444,7 @@ async function buildReactivationAssistantResponse(opts: {
     limit: candidateLimit,
   })
 
-  const candidates = ((result as any)?.candidates || [])
+  const rawCandidates = ((result as any)?.candidates || [])
     .slice(0, candidateLimit)
     .map((candidate: any) => ({
       memberId: candidate.member?.id || candidate.memberId,
@@ -419,6 +455,26 @@ async function buildReactivationAssistantResponse(opts: {
       suggestedSessionTitle: candidate.suggestedSessions?.[0]?.title || undefined,
     }))
     .filter((candidate: any) => !!candidate.memberId)
+
+  const guardrails = await evaluateAdvisorContactGuardrails({
+    prisma,
+    clubId,
+    type: 'REACTIVATION',
+    requestedChannel: channel,
+    candidates: rawCandidates.map((candidate: any) => ({ memberId: candidate.memberId })),
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+  })
+  const candidates = rawCandidates
+    .map((candidate: any) => {
+      const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+      if (!eligible) return null
+      return {
+        ...candidate,
+        channel: eligible.channel,
+      }
+    })
+    .filter(Boolean)
 
   if (candidates.length === 0) {
     const assistantState: AdvisorConversationState = {
@@ -431,7 +487,10 @@ async function buildReactivationAssistantResponse(opts: {
 
     return {
       assistantState,
-      assistantMessage: withSuggested(reactivationCopy.empty(segmentLabel), reactivationCopy.suggestions),
+      assistantMessage: withSuggested(
+        `${reactivationCopy.empty(segmentLabel)} ${formatAdvisorGuardrailDigest(guardrails.summary)}`.trim(),
+        reactivationCopy.suggestions,
+      ),
     }
   }
 
@@ -462,13 +521,15 @@ async function buildReactivationAssistantResponse(opts: {
       candidateCount: candidates.length,
       message: messagePreview,
       candidates,
+      guardrails: guardrails.summary,
     },
   }
 
+  const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
   return {
     assistantState: buildAdvisorConversationStateFromAction(action),
     assistantMessage: withSuggested(
-      `${reactivationCopy.ready(candidates.length, segmentLabel)}\n\n${buildAdvisorActionTag(action)}`,
+      `${reactivationCopy.ready(candidates.length, segmentLabel)}${guardrailNote ? `\n\n${guardrailNote}` : ''}\n\n${buildAdvisorActionTag(action)}`,
       reactivationCopy.suggestions,
     ),
     action,
@@ -626,6 +687,7 @@ export async function POST(req: Request) {
           if (editedAction.kind === 'fill_session') {
             const editedResponse = await buildFillSessionAssistantResponse({
               caller,
+              prisma,
               clubId,
               language,
               state: memory.state,
@@ -633,6 +695,8 @@ export async function POST(req: Request) {
               sessionId: editedAction.session.id,
               channel: editedAction.outreach.channel,
               candidateLimit: editedAction.outreach.candidateCount,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
             })
 
             assistantState = editedResponse.assistantState
@@ -640,6 +704,7 @@ export async function POST(req: Request) {
           } else if (editedAction.kind === 'reactivate_members') {
             const editedResponse = await buildReactivationAssistantResponse({
               caller,
+              prisma,
               clubId,
               language,
               state: memory.state,
@@ -647,6 +712,8 @@ export async function POST(req: Request) {
               inactivityDays: editedAction.reactivation.inactivityDays,
               channel: editedAction.reactivation.channel,
               candidateLimit: editedAction.reactivation.candidateCount,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
             })
 
             assistantState = editedResponse.assistantState
@@ -792,6 +859,7 @@ export async function POST(req: Request) {
     } else if (plan.action === 'fill_session') {
       const fillSessionResponse = await buildFillSessionAssistantResponse({
         caller,
+        prisma,
         clubId,
         language,
         state: memory.state,
@@ -799,6 +867,8 @@ export async function POST(req: Request) {
         sessionId: plan.sessionId,
         channel: plan.channel,
         candidateLimit: plan.candidateLimit,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
       })
 
       assistantState = fillSessionResponse.assistantState
@@ -806,6 +876,7 @@ export async function POST(req: Request) {
     } else if (plan.action === 'reactivate_members') {
       const reactivationResponse = await buildReactivationAssistantResponse({
         caller,
+        prisma,
         clubId,
         language,
         state: memory.state,
@@ -813,6 +884,8 @@ export async function POST(req: Request) {
         inactivityDays: plan.inactivityDays,
         channel: plan.channel,
         candidateLimit: plan.candidateLimit,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
       })
 
       assistantState = reactivationResponse.assistantState

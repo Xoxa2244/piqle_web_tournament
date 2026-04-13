@@ -11,6 +11,23 @@ export const advisorCampaignTypeEnum = z.enum([
 
 export const advisorChannelEnum = z.enum(['email', 'sms', 'both'])
 export const advisorDeliveryModeEnum = z.enum(['save_draft', 'send_now', 'send_later'])
+export const advisorGuardrailReasonSchema = z.object({
+  code: z.string().min(1).max(80),
+  label: z.string().min(1).max(160),
+  count: z.number().int().positive(),
+})
+export const advisorContactGuardrailsSchema = z.object({
+  requestedChannel: advisorChannelEnum,
+  eligibleCount: z.number().int().nonnegative(),
+  excludedCount: z.number().int().nonnegative(),
+  deliveryBreakdown: z.object({
+    email: z.number().int().nonnegative(),
+    sms: z.number().int().nonnegative(),
+    both: z.number().int().nonnegative(),
+  }),
+  reasons: z.array(advisorGuardrailReasonSchema).max(8).default([]),
+  warnings: z.array(z.string().min(1).max(200)).max(4).default([]),
+})
 export const advisorRecipientRulesSchema = z.object({
   requireEmail: z.boolean().optional(),
   requirePhone: z.boolean().optional(),
@@ -67,6 +84,7 @@ export const advisorSlotFillerCandidateSchema = z.object({
   score: z.number().int().min(0).max(100),
   likelihood: z.enum(['high', 'medium', 'low']).optional(),
   email: z.string().max(200).optional(),
+  channel: advisorChannelEnum.optional(),
 })
 
 export const advisorSlotFillerOutreachSchema = z.object({
@@ -74,6 +92,7 @@ export const advisorSlotFillerOutreachSchema = z.object({
   candidateCount: z.number().int().positive(),
   message: z.string().min(1).max(2000),
   candidates: z.array(advisorSlotFillerCandidateSchema).min(1).max(20),
+  guardrails: advisorContactGuardrailsSchema.optional(),
 })
 
 export const advisorReactivationCandidateSchema = z.object({
@@ -83,6 +102,7 @@ export const advisorReactivationCandidateSchema = z.object({
   daysSinceLastActivity: z.number().int().nonnegative(),
   topReason: z.string().max(240).optional(),
   suggestedSessionTitle: z.string().max(160).optional(),
+  channel: advisorChannelEnum.optional(),
 })
 
 export const advisorReactivationDraftSchema = z.object({
@@ -92,6 +112,7 @@ export const advisorReactivationDraftSchema = z.object({
   candidateCount: z.number().int().positive(),
   message: z.string().min(1).max(500),
   candidates: z.array(advisorReactivationCandidateSchema).min(1).max(25),
+  guardrails: advisorContactGuardrailsSchema.optional(),
 })
 
 export const advisorActionSchema = z.discriminatedUnion('kind', [

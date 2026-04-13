@@ -76,6 +76,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       : isFillSession
         ? action.outreach.candidateCount ?? 0
         : action.reactivation.candidateCount ?? 0
+  const contactGuardrails = isFillSession
+    ? action.outreach.guardrails
+    : isReactivation
+      ? action.reactivation.guardrails
+      : null
 
   const handleApprove = () => {
     executeAction.mutate(
@@ -207,6 +212,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {action.outreach.candidateCount} matched player{action.outreach.candidateCount === 1 ? '' : 's'}
             </div>
+            {contactGuardrails && (
+              <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                {contactGuardrails.eligibleCount} eligible now · {contactGuardrails.excludedCount} excluded
+              </div>
+            )}
             <div className="mt-2 flex flex-wrap gap-2">
               {action.outreach.candidates.slice(0, 4).map((candidate) => (
                 <span
@@ -231,6 +241,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {action.reactivation.candidateCount} inactive member{action.reactivation.candidateCount === 1 ? '' : 's'}
             </div>
+            {contactGuardrails && (
+              <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                {contactGuardrails.eligibleCount} eligible now · {contactGuardrails.excludedCount} excluded
+              </div>
+            )}
             <div className="mt-2 flex flex-wrap gap-2">
               {action.reactivation.candidates.slice(0, 4).map((candidate) => (
                 <span
@@ -281,15 +296,53 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         </div>
       )}
 
+      {contactGuardrails && (contactGuardrails.excludedCount > 0 || contactGuardrails.warnings.length > 0) && (
+        <div className="rounded-xl p-3 mt-3" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.18)' }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: '#F59E0B', fontWeight: 700 }}>
+            Contact Guardrails
+          </div>
+          <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+            Eligible now: {contactGuardrails.eligibleCount}. Excluded: {contactGuardrails.excludedCount}.
+          </div>
+          {contactGuardrails.deliveryBreakdown && (
+            <div className="text-xs mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+              Delivery mix: {contactGuardrails.deliveryBreakdown.email} email, {contactGuardrails.deliveryBreakdown.sms} SMS, {contactGuardrails.deliveryBreakdown.both} email+SMS.
+            </div>
+          )}
+          {contactGuardrails.reasons.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {contactGuardrails.reasons.map((reason) => (
+                <span
+                  key={reason.code}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(245,158,11,0.12)', color: '#B45309' }}
+                >
+                  {reason.count} {reason.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {contactGuardrails.warnings.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {contactGuardrails.warnings.map((warning) => (
+                <p key={warning} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 mt-4">
         {isDone ? (
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
               : result.kind === 'fill_session'
-                ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}`
+                ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'reactivate_members'
-                ? `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}`
+                ? `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.savedAsDraft
                 ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
                 : result.deliveryMode === 'send_later'

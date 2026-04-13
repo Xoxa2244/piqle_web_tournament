@@ -1259,8 +1259,9 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
 
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
+  const skipped = results.filter(r => r.status === 'skipped').length
 
-  return { sent, failed, csvSkipped, results }
+  return { sent, failed, skipped, csvSkipped, results }
 }
 
 /**
@@ -1454,6 +1455,7 @@ export async function sendReactivationMessages(
 
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
+  const skipped = results.filter(r => r.status === 'skipped').length
 
   // Report usage to Stripe for metered billing (non-blocking)
   if (sent > 0) {
@@ -1462,7 +1464,7 @@ export async function sendReactivationMessages(
     }).catch(() => {})
   }
 
-  return { sent, failed, results }
+  return { sent, failed, skipped, results }
 }
 
 /**
