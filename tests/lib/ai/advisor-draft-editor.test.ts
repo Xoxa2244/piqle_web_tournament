@@ -60,6 +60,37 @@ const state = {
   updatedAt: '2026-04-12T16:00:00.000Z',
 }
 
+const reactivationAction: AdvisorAction = {
+  kind: 'reactivate_members',
+  title: 'Reactivate: 21+ day inactive members',
+  summary: 'EMAIL win-back outreach for 8 inactive members',
+  requiresApproval: true,
+  reactivation: {
+    segmentLabel: '21+ day inactive members',
+    inactivityDays: 21,
+    channel: 'email',
+    candidateCount: 8,
+    message: 'Hi {{name}}, we miss seeing you at {{club}}. We have new sessions coming up that match your level and would love to have you back.',
+    candidates: [
+      { memberId: 'member-a', name: 'Avery', score: 18, daysSinceLastActivity: 35, topReason: 'Gradual disengagement', suggestedSessionTitle: 'Beginner Open Play' },
+      { memberId: 'member-b', name: 'Blake', score: 21, daysSinceLastActivity: 29, topReason: 'Cancellation pattern', suggestedSessionTitle: 'Intermediate Ladder' },
+      { memberId: 'member-c', name: 'Casey', score: 25, daysSinceLastActivity: 31 },
+      { memberId: 'member-d', name: 'Devon', score: 27, daysSinceLastActivity: 42 },
+      { memberId: 'member-e', name: 'Emerson', score: 32, daysSinceLastActivity: 47 },
+      { memberId: 'member-f', name: 'Finley', score: 34, daysSinceLastActivity: 53 },
+      { memberId: 'member-g', name: 'Gray', score: 36, daysSinceLastActivity: 61 },
+      { memberId: 'member-h', name: 'Harper', score: 39, daysSinceLastActivity: 68 },
+    ],
+  },
+}
+
+const reactivationState = {
+  currentReactivation: reactivationAction.reactivation,
+  lastActionKind: 'reactivate_members' as const,
+  lastActionTitle: reactivationAction.title,
+  updatedAt: '2026-04-12T16:00:00.000Z',
+}
+
 describe('advisor draft editor for fill session drafts', () => {
   it('switches the active fill session draft to SMS', async () => {
     const edited = await maybeEditAdvisorDraft({
@@ -97,5 +128,47 @@ describe('advisor draft editor for fill session drafts', () => {
 
     expect(edited?.kind).toBe('fill_session')
     expect((edited as Extract<AdvisorAction, { kind: 'fill_session' }>).session.id).toBe('session-2')
+  })
+})
+
+describe('advisor draft editor for reactivation drafts', () => {
+  it('switches the active reactivation draft to SMS', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Use SMS instead',
+      state: reactivationState,
+      lastAction: reactivationAction,
+      sessions: [...sessions],
+    })
+
+    expect(edited?.kind).toBe('reactivate_members')
+    expect((edited as Extract<AdvisorAction, { kind: 'reactivate_members' }>).reactivation.channel).toBe('sms')
+  })
+
+  it('reduces the reactivation draft to the top 5 members', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Only top 5 members',
+      state: reactivationState,
+      lastAction: reactivationAction,
+      sessions: [...sessions],
+    })
+
+    expect(edited?.kind).toBe('reactivate_members')
+    const reactivationDraft = edited as Extract<AdvisorAction, { kind: 'reactivate_members' }>
+    expect(reactivationDraft.reactivation.candidateCount).toBe(5)
+    expect(reactivationDraft.reactivation.candidates).toHaveLength(5)
+  })
+
+  it('retargets the reactivation draft to a new inactivity threshold', async () => {
+    const edited = await maybeEditAdvisorDraft({
+      message: 'Target members inactive 30 days',
+      state: reactivationState,
+      lastAction: reactivationAction,
+      sessions: [...sessions],
+    })
+
+    expect(edited?.kind).toBe('reactivate_members')
+    const reactivationDraft = edited as Extract<AdvisorAction, { kind: 'reactivate_members' }>
+    expect(reactivationDraft.reactivation.inactivityDays).toBe(30)
+    expect(reactivationDraft.reactivation.segmentLabel).toContain('30+')
   })
 })

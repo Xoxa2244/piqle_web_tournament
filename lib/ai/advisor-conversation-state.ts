@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   advisorCampaignDraftSchema,
   advisorCohortDraftSchema,
+  advisorReactivationDraftSchema,
   advisorSessionDraftSchema,
   extractAdvisorAction,
   type AdvisorAction,
@@ -20,7 +21,8 @@ export const advisorConversationStateSchema = z.object({
   currentAudience: advisorCohortDraftSchema.optional(),
   currentCampaign: advisorActiveCampaignSchema.optional(),
   currentSession: advisorSessionDraftSchema.optional(),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session']).optional(),
+  currentReactivation: advisorReactivationDraftSchema.optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -61,6 +63,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'fill_session') {
     return {
       currentSession: action.session,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    }
+  }
+
+  if (action.kind === 'reactivate_members') {
+    return {
+      currentReactivation: action.reactivation,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -170,6 +181,18 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     parts.push(`Open spots remaining: ${state.currentSession.spotsRemaining}`)
   }
 
+  if (state.currentReactivation) {
+    parts.push(`Active reactivation draft: ${state.currentReactivation.segmentLabel}`)
+    parts.push(`Reactivation channel: ${state.currentReactivation.channel}`)
+    parts.push(`Reactivation inactivity threshold: ${state.currentReactivation.inactivityDays} days`)
+    parts.push(`Reactivation candidate count: ${state.currentReactivation.candidateCount}`)
+    const sampleCandidates = state.currentReactivation.candidates
+      .slice(0, 3)
+      .map((candidate) => `${candidate.name} (${candidate.daysSinceLastActivity}d inactive)`)
+    if (sampleCandidates.length > 0) parts.push(`Reactivation candidates: ${sampleCandidates.join(', ')}`)
+    parts.push(`Reactivation note preview: ${state.currentReactivation.message.slice(0, 220)}`)
+  }
+
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
   }
@@ -184,6 +207,7 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   parts.push('If the user says "this audience", "that list", "those players", or "them", assume they mean the active audience above unless they clarify otherwise.')
   parts.push('If the user says "the campaign", "the draft", "the message", or asks to revise it, assume they mean the active campaign above unless they clarify otherwise.')
   parts.push('If the user says "this session", "that slot", or "fill it", assume they mean the active session above unless they clarify otherwise.')
+  parts.push('If the user says "those inactive members", "the reactivation list", or asks to revise the win-back message, assume they mean the active reactivation draft above unless they clarify otherwise.')
   parts.push('--- End of Active Advisor Working Memory ---')
 
   return parts.join('\n')

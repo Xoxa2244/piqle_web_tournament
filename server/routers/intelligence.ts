@@ -4084,6 +4084,29 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
       }
 
+      if (input.action.kind === 'reactivate_members') {
+        await checkFeatureAccess(input.clubId, 'reactivation')
+        const reactivationAction = input.action
+        const sendResult = await sendReactivationMessages(ctx.prisma, {
+          clubId: input.clubId,
+          candidates: reactivationAction.reactivation.candidates.map((candidate) => ({
+            memberId: candidate.memberId,
+            channel: reactivationAction.reactivation.channel,
+          })),
+          customMessage: reactivationAction.reactivation.message,
+        })
+
+        return {
+          ok: true,
+          kind: 'reactivate_members' as const,
+          segmentLabel: reactivationAction.reactivation.segmentLabel,
+          inactivityDays: reactivationAction.reactivation.inactivityDays,
+          candidateCount: reactivationAction.reactivation.candidates.length,
+          channel: reactivationAction.reactivation.channel,
+          ...sendResult,
+        }
+      }
+
       let audience = input.action.audience
       let cohortId = audience.cohortId
       let cohortName = audience.name

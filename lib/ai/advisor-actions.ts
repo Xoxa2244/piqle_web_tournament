@@ -76,6 +76,24 @@ export const advisorSlotFillerOutreachSchema = z.object({
   candidates: z.array(advisorSlotFillerCandidateSchema).min(1).max(20),
 })
 
+export const advisorReactivationCandidateSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  score: z.number().int().min(0).max(100),
+  daysSinceLastActivity: z.number().int().nonnegative(),
+  topReason: z.string().max(240).optional(),
+  suggestedSessionTitle: z.string().max(160).optional(),
+})
+
+export const advisorReactivationDraftSchema = z.object({
+  segmentLabel: z.string().min(1).max(120),
+  inactivityDays: z.number().int().min(7).max(365),
+  channel: advisorChannelEnum,
+  candidateCount: z.number().int().positive(),
+  message: z.string().min(1).max(500),
+  candidates: z.array(advisorReactivationCandidateSchema).min(1).max(25),
+})
+
 export const advisorActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('create_cohort'),
@@ -99,6 +117,13 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     requiresApproval: z.boolean().default(true),
     session: advisorSessionDraftSchema,
     outreach: advisorSlotFillerOutreachSchema,
+  }),
+  z.object({
+    kind: z.literal('reactivate_members'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    reactivation: advisorReactivationDraftSchema,
   }),
 ])
 

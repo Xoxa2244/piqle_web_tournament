@@ -9,7 +9,7 @@ import { parseAdvisorScheduledSend } from './advisor-scheduling'
 import { advisorSlotSessionOptionSchema } from './advisor-slot-filler'
 
 export const advisorPendingClarificationSchema = z.object({
-  action: z.enum(['create_cohort', 'draft_campaign', 'fill_session']),
+  action: z.enum(['create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members']),
   field: z.enum(['audience', 'audience_mode', 'channel', 'schedule', 'session']),
   question: z.string().min(1).max(240),
   options: z.array(z.string().min(1).max(80)).max(4).default([]),
@@ -176,7 +176,7 @@ export function maybeStartAdvisorClarification(opts: {
   const { message, plan, state, language, timeZone } = opts
   const copy = getCopy(language)
 
-  if (plan.action === 'none' || plan.action === 'fill_session') return null
+  if (plan.action === 'none' || plan.action === 'fill_session' || plan.action === 'reactivate_members') return null
 
   if (plan.action === 'create_cohort') {
     if (hasMeaningfulAudienceDescription(plan.audienceText || message)) return null

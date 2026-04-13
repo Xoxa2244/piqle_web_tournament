@@ -18,6 +18,10 @@ import {
   resolveAdvisorClarification,
 } from '@/lib/ai/advisor-clarifications'
 import {
+  buildAdvisorReactivationLabel,
+  parseAdvisorInactivityDays,
+} from '@/lib/ai/advisor-reactivation'
+import {
   formatAdvisorScheduledLabel,
   parseAdvisorScheduledSend,
   resolveAdvisorClubTimeZone,
@@ -156,6 +160,12 @@ function withSuggested(text: string, suggestions: string[]) {
   return `${text}\n\n<suggested>\n${suggestions.join('\n')}\n</suggested>`
 }
 
+function truncateAdvisorText(text: string, maxChars: number) {
+  const trimmed = text.trim()
+  if (trimmed.length <= maxChars) return trimmed
+  return `${trimmed.slice(0, Math.max(0, maxChars - 1)).trim()}…`
+}
+
 function buildCampaignReadyText(
   copy: ReturnType<typeof getAdvisorActionCopy>,
   count: number,
@@ -198,6 +208,30 @@ function getSlotFillerCopy(language: SupportedLanguage | string) {
     noCandidates: (sessionLabel: string) => `I found the right session, but I couldn't find strong invite candidates for ${sessionLabel} yet.`,
     ready: (count: number, sessionLabel: string) => `I picked ${count} candidates for ${sessionLabel}. Review the invite below, then approve to send it.`,
     suggestions: ['Use SMS instead', 'Invite the top 8 players', 'Show me another underfilled session'],
+  }
+}
+
+function getReactivationCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      empty: (label: string) => `Сейчас я не вижу сильных кандидатов на реактивацию в сегменте "${label}".`,
+      ready: (count: number, label: string) => `Я нашел ${count} кандидатов на реактивацию в сегменте "${label}". Проверь win-back сообщение ниже и подтверди отправку.`,
+      suggestions: ['Переключи на SMS', 'Оставь только топ-5', 'Возьми тех, кто не играл 30+ дней'],
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      empty: (label: string) => `No encuentro buenos candidatos de reactivación en "${label}" ahora mismo.`,
+      ready: (count: number, label: string) => `Encontré ${count} candidatos de reactivación en "${label}". Revisa el mensaje abajo y apruébalo para enviarlo.`,
+      suggestions: ['Usa SMS en su lugar', 'Solo los mejores 5 miembros', 'Apunta a quienes llevan 30+ días inactivos'],
+    }
+  }
+
+  return {
+    empty: (label: string) => `I couldn't find strong reactivation candidates in "${label}" right now.`,
+    ready: (count: number, label: string) => `I found ${count} reactivation candidates in "${label}". Review the win-back message below, then approve to send it.`,
+    suggestions: ['Use SMS instead', 'Only top 5 members', 'Target 30+ day inactive members'],
   }
 }
 
@@ -352,6 +386,95 @@ async function buildFillSessionAssistantResponse(opts: {
   }
 }
 
+async function buildReactivationAssistantResponse(opts: {
+  caller: ReturnType<typeof appRouter.createCaller>
+  clubId: string
+  language: SupportedLanguage
+  state: AdvisorConversationState | null
+  message: string
+  inactivityDays?: number
+  channel?: Extract<AdvisorAction, { kind: 'reactivate_members' }>['reactivation']['channel']
+  candidateLimit?: number
+}) {
+  const { caller, clubId, language, state, message, channel = 'email' } = opts
+  const reactivationCopy = getReactivationCopy(language)
+  const inactivityDays = parseAdvisorInactivityDays(message) || opts.inactivityDays || 21
+  const candidateLimit = Math.min(Math.max(opts.candidateLimit || 10, 1), 25)
+  const segmentLabel = buildAdvisorReactivationLabel(inactivityDays)
+
+  const result = await caller.intelligence.getReactivationCandidates({
+    clubId,
+    inactivityDays,
+    limit: candidateLimit,
+  })
+
+  const candidates = ((result as any)?.candidates || [])
+    .slice(0, candidateLimit)
+    .map((candidate: any) => ({
+      memberId: candidate.member?.id || candidate.memberId,
+      name: candidate.member?.name || candidate.member?.email || 'Unknown',
+      score: Math.max(0, Math.min(100, Math.round(candidate.score || 0))),
+      daysSinceLastActivity: Math.max(0, Math.round(candidate.daysSinceLastActivity || 0)),
+      topReason: candidate.churnReasons?.[0]?.summary || undefined,
+      suggestedSessionTitle: candidate.suggestedSessions?.[0]?.title || undefined,
+    }))
+    .filter((candidate: any) => !!candidate.memberId)
+
+  if (candidates.length === 0) {
+    const assistantState: AdvisorConversationState = {
+      ...(state || {}),
+      currentReactivation: undefined,
+      lastActionKind: 'reactivate_members',
+      lastActionTitle: `Reactivate: ${segmentLabel}`,
+      updatedAt: new Date().toISOString(),
+    }
+
+    return {
+      assistantState,
+      assistantMessage: withSuggested(reactivationCopy.empty(segmentLabel), reactivationCopy.suggestions),
+    }
+  }
+
+  const generated = await caller.intelligence.generateCampaignMessage({
+    clubId,
+    campaignType: 'REACTIVATION',
+    channel,
+    audienceCount: candidates.length,
+    context: {
+      riskSegment: segmentLabel,
+      inactivityDays,
+    },
+  })
+
+  const messagePreview = channel === 'email'
+    ? truncateAdvisorText(generated.body, 500)
+    : truncateAdvisorText(generated.smsBody || generated.body, 160)
+
+  const action: AdvisorAction = {
+    kind: 'reactivate_members',
+    title: `Reactivate: ${segmentLabel}`,
+    summary: `${channel.toUpperCase()} win-back outreach for ${candidates.length} inactive members`,
+    requiresApproval: true,
+    reactivation: {
+      segmentLabel,
+      inactivityDays,
+      channel,
+      candidateCount: candidates.length,
+      message: messagePreview,
+      candidates,
+    },
+  }
+
+  return {
+    assistantState: buildAdvisorConversationStateFromAction(action),
+    assistantMessage: withSuggested(
+      `${reactivationCopy.ready(candidates.length, segmentLabel)}\n\n${buildAdvisorActionTag(action)}`,
+      reactivationCopy.suggestions,
+    ),
+    action,
+  }
+}
+
 function isCampaignOnlyFollowUp(message: string) {
   const lower = message.toLowerCase()
   const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
@@ -480,6 +603,8 @@ export async function POST(req: Request) {
           ? 'create_cohort'
           : plan.action === 'fill_session'
             ? 'fill_session'
+            : plan.action === 'reactivate_members'
+              ? 'reactivate_members'
             : 'create_campaign'
         assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[suggestionKey])
       }
@@ -508,6 +633,20 @@ export async function POST(req: Request) {
               sessionId: editedAction.session.id,
               channel: editedAction.outreach.channel,
               candidateLimit: editedAction.outreach.candidateCount,
+            })
+
+            assistantState = editedResponse.assistantState
+            assistantMessage = editedResponse.assistantMessage
+          } else if (editedAction.kind === 'reactivate_members') {
+            const editedResponse = await buildReactivationAssistantResponse({
+              caller,
+              clubId,
+              language,
+              state: memory.state,
+              message,
+              inactivityDays: editedAction.reactivation.inactivityDays,
+              channel: editedAction.reactivation.channel,
+              candidateLimit: editedAction.reactivation.candidateCount,
             })
 
             assistantState = editedResponse.assistantState
@@ -664,6 +803,20 @@ export async function POST(req: Request) {
 
       assistantState = fillSessionResponse.assistantState
       assistantMessage = fillSessionResponse.assistantMessage
+    } else if (plan.action === 'reactivate_members') {
+      const reactivationResponse = await buildReactivationAssistantResponse({
+        caller,
+        clubId,
+        language,
+        state: memory.state,
+        message: effectiveMessage,
+        inactivityDays: plan.inactivityDays,
+        channel: plan.channel,
+        candidateLimit: plan.candidateLimit,
+      })
+
+      assistantState = reactivationResponse.assistantState
+      assistantMessage = reactivationResponse.assistantMessage
     } else {
       let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
