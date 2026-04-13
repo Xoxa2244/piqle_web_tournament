@@ -13,6 +13,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
   const isCampaign = action.kind === 'create_campaign'
   const isFillSession = action.kind === 'fill_session'
   const isReactivation = action.kind === 'reactivate_members'
+  const isContactPolicy = action.kind === 'update_contact_policy'
 
   const title = action.title
   const summary = action.summary
@@ -75,7 +76,9 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       ? action.audience.count ?? 0
       : isFillSession
         ? action.outreach.candidateCount ?? 0
-        : action.reactivation.candidateCount ?? 0
+        : isReactivation
+          ? action.reactivation.candidateCount ?? 0
+          : 0
   const contactGuardrails = isCampaign
     ? action.campaign.guardrails
     : isFillSession
@@ -109,7 +112,15 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: '#A78BFA', fontWeight: 700 }}>
-            {action.kind === 'create_cohort' ? 'Audience Draft' : isCampaign ? 'Campaign Draft' : isFillSession ? 'Session Fill Draft' : 'Reactivation Draft'}
+            {action.kind === 'create_cohort'
+              ? 'Audience Draft'
+              : isCampaign
+                ? 'Campaign Draft'
+                : isFillSession
+                  ? 'Session Fill Draft'
+                  : isReactivation
+                    ? 'Reactivation Draft'
+                    : 'Contact Policy Draft'}
           </div>
           <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
             {title}
@@ -136,17 +147,27 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
               {isFillSession ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {isFillSession ? 'Session' : 'Audience'}
+              {isFillSession ? 'Session' : isContactPolicy ? 'Policy' : 'Audience'}
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-              {action.kind === 'create_cohort' ? action.cohort.name : isCampaign ? action.audience.name : isFillSession ? action.session.title : action.reactivation.segmentLabel}
+              {action.kind === 'create_cohort'
+                ? action.cohort.name
+                : isCampaign
+                  ? action.audience.name
+                  : isFillSession
+                    ? action.session.title
+                    : isReactivation
+                      ? action.reactivation.segmentLabel
+                      : 'Club messaging guardrails'}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               {isFillSession
                 ? `${action.session.date} · ${action.session.startTime}${action.session.endTime ? `-${action.session.endTime}` : ''}`
                 : isReactivation
                   ? `${targetCount} inactive member${targetCount === 1 ? '' : 's'}`
-                : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
+                  : isContactPolicy
+                    ? action.policy.timeZone
+                    : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
             </div>
             {isFillSession ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
@@ -156,6 +177,10 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             ) : isReactivation ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
                 Inactive for at least {action.reactivation.inactivityDays} days
+              </p>
+            ) : isContactPolicy ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                Quiet hours {action.policy.quietHours.startHour}:00-{action.policy.quietHours.endHour}:00
               </p>
             ) : (
               (action.kind === 'create_cohort' ? action.cohort.description : action.audience.description) && (
@@ -273,6 +298,30 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               </p>
             )}
           </div>
+        ) : isContactPolicy ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Guardrails
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {action.policy.max24h}/day · {action.policy.max7d}/week
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {action.policy.cooldownHours}h cooldown · {action.policy.recentBookingLookbackDays}d recent booking window
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {action.policy.changes.slice(0, 4).map((change) => (
+                <span
+                  key={change}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                >
+                  {change}
+                </span>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -294,14 +343,20 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         )}
       </div>
 
-      {(isCampaign || isFillSession || isReactivation) && (
+      {(isCampaign || isFillSession || isReactivation || isContactPolicy) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             <Send className="w-3.5 h-3.5" />
-            Message Preview
+            {isContactPolicy ? 'Policy Preview' : 'Message Preview'}
           </div>
           <div className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
-            {isCampaign ? action.campaign.body : isFillSession ? action.outreach.message : action.reactivation.message}
+            {isCampaign
+              ? action.campaign.body
+              : isFillSession
+                ? action.outreach.message
+                : isReactivation
+                  ? action.reactivation.message
+                  : action.policy.changes.join('\n')}
           </div>
         </div>
       )}
@@ -354,6 +409,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
+              : result.kind === 'update_contact_policy'
+                ? `Contact policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'fill_session'
                 ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'reactivate_members'
@@ -370,6 +427,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               ? 'Approval is required before the platform saves this campaign draft.'
             : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
                 ? 'Approval is required before the platform schedules this campaign.'
+              : isContactPolicy
+                ? 'Approval is required before the platform updates club messaging rules.'
               : isFillSession
                 ? 'Approval is required before the platform sends these invites.'
               : isReactivation

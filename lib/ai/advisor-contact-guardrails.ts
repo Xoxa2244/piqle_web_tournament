@@ -2,6 +2,7 @@ import 'server-only'
 
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
 import { checkAntiSpam } from './anti-spam'
+import { resolveAdvisorContactPolicy } from './advisor-contact-policy'
 import { toDateTimeInputInTimeZone, toUtcIsoFromLocalInput } from '@/lib/timezone'
 
 type GuardrailInviteType =
@@ -49,50 +50,6 @@ type ContactPolicy = {
     endHour: number
   }
   recentBookingLookbackDays: number
-}
-
-const DEFAULT_TIME_ZONE = 'America/New_York'
-const DEFAULT_QUIET_HOURS = { startHour: 21, endHour: 8 }
-const DEFAULT_RECENT_BOOKING_LOOKBACK_DAYS = 7
-
-function toRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-}
-
-function clampHour(value: unknown, fallback: number) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return fallback
-  return Math.max(0, Math.min(23, Math.round(numeric)))
-}
-
-function clampDays(value: unknown, fallback: number) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return fallback
-  return Math.max(1, Math.min(30, Math.round(numeric)))
-}
-
-function resolveContactPolicy(opts: {
-  timeZone?: string | null
-  automationSettings?: unknown
-}): ContactPolicy {
-  const automationSettings = toRecord(opts.automationSettings)
-  const intelligence = toRecord(automationSettings.intelligence)
-  const contactPolicy = toRecord(intelligence.contactPolicy)
-  const quietHours = toRecord(contactPolicy.quietHours)
-
-  return {
-    timeZone: String(opts.timeZone || intelligence.timezone || '').trim() || DEFAULT_TIME_ZONE,
-    quietHours: {
-      startHour: clampHour(quietHours.startHour, DEFAULT_QUIET_HOURS.startHour),
-      endHour: clampHour(quietHours.endHour, DEFAULT_QUIET_HOURS.endHour),
-    },
-    recentBookingLookbackDays: clampDays(
-      contactPolicy.recentBookingLookbackDays,
-      DEFAULT_RECENT_BOOKING_LOOKBACK_DAYS,
-    ),
-  }
 }
 
 function getLocalDateTimeParts(now: Date, timeZone: string) {
@@ -242,10 +199,15 @@ export async function evaluateAdvisorContactGuardrails(opts: {
     now = new Date(),
   } = opts
 
-  const policy = resolveContactPolicy({
+  const resolvedPolicy = resolveAdvisorContactPolicy({
     timeZone: opts.timeZone,
     automationSettings: opts.automationSettings,
   })
+  const policy: ContactPolicy = {
+    timeZone: resolvedPolicy.timeZone,
+    quietHours: resolvedPolicy.quietHours,
+    recentBookingLookbackDays: resolvedPolicy.recentBookingLookbackDays,
+  }
   const memberIds = Array.from(new Set(candidates.map((candidate) => candidate.memberId).filter(Boolean)))
 
   const users: Array<{ id: string; email: string | null; phone: string | null; smsOptIn: boolean | null }> = memberIds.length > 0
@@ -320,6 +282,7 @@ export async function evaluateAdvisorContactGuardrails(opts: {
       clubId,
       type,
       sessionId,
+      automationSettings: opts.automationSettings,
     })
     if (!antiSpam.allowed) {
       const normalized = normalizeAntiSpamReason(antiSpam.reason || 'Blocked by contact policy')

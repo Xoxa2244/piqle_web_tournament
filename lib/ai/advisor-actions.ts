@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 
 export const advisorCampaignTypeEnum = z.enum([
   'CHECK_IN',
@@ -146,6 +147,13 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     summary: z.string().max(240).optional(),
     requiresApproval: z.boolean().default(true),
     reactivation: advisorReactivationDraftSchema,
+  }),
+  z.object({
+    kind: z.literal('update_contact_policy'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    policy: advisorContactPolicyDraftSchema,
   }),
 ])
 

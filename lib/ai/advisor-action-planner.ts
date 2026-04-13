@@ -4,11 +4,12 @@ import { z } from 'zod'
 import { generateWithFallback } from '@/lib/ai/llm/provider'
 import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } from './advisor-actions'
+import { isAdvisorContactPolicyRequest } from './advisor-contact-policy'
 import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 import { parseAdvisorInactivityDays } from './advisor-reactivation'
 
 const advisorIntentSchema = z.object({
-  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members']),
+  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy']),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
@@ -31,16 +32,19 @@ Supported actions:
 - draft_campaign: draft or launch a campaign/email/SMS/invite for an audience
 - fill_session: choose an underfilled session and invite the best matching players into it
 - reactivate_members: pick inactive members worth winning back and prepare direct reactivation outreach
+- update_contact_policy: change quiet hours, cooldowns, or contact frequency rules for the club
 - none: any analytics/support/general question
 
 Return ONLY valid JSON:
-{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
+{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members|update_contact_policy","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
 
 Rules:
 - If the user asks to create/build/save an audience, segment, cohort, group, or list, use create_cohort.
 - If the user asks to draft/create/launch/send a campaign, email, outreach, invite, or reactivation message, use draft_campaign.
 - If the user asks to fill a specific session, underfilled slot, open spot, or invite players into a session, use fill_session.
 - If the user asks to reactivate, win back, or bring back inactive/lapsed members directly, use reactivate_members.
+- If the user asks to change quiet hours, cooldowns, daily/weekly message caps, or outreach/contact policy rules, use update_contact_policy.
+- If the user is only asking what the current contact rules are, or wants an explanation of them, return action=none.
 - If the user refers to a previous audience with phrases like "that audience", "this segment", "those players", "that list", or "them", set usePreviousCohort=true.
 - audienceText should be ONLY the audience description, not the whole request, when you can isolate it.
 - campaignType must be one of: CHECK_IN, RETENTION_BOOST, REACTIVATION, SLOT_FILLER, EVENT_INVITE, NEW_MEMBER_WELCOME.
@@ -73,6 +77,7 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   const wantsSessionFill =
     /\b(fill|slot filler|underfilled|open spots?|empty slots?)\b/.test(lower) &&
     /\b(session|slot|court|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|beginner|intermediate|advanced|\d{1,2}(:\d{2})?\s*(am|pm))\b/.test(lower)
+  const wantsContactPolicy = isAdvisorContactPolicyRequest(message)
   const inactivityDays = parseAdvisorInactivityDays(message) || undefined
 
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
@@ -128,6 +133,13 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     }
   }
 
+  if (wantsContactPolicy) {
+    return {
+      action: 'update_contact_policy',
+      usePreviousCohort: false,
+    }
+  }
+
   if (wantsCampaign) {
     return { action: 'draft_campaign', audienceText: message, usePreviousCohort, campaignType, channel, deliveryMode, candidateLimit, inactivityDays }
   }
@@ -161,8 +173,9 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
   fillSessionEmpty: (sessionLabel: string) => string
   reactivationReady: (count: number, label: string) => string
   reactivationEmpty: (label: string) => string
+  contactPolicyReady: (changes: number) => string
   adminOnly: string
-  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members', string[]>
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'update_contact_policy', string[]>
 }> = {
   en: {
     audienceReady: (count, name) => `I drafted the audience "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
@@ -173,6 +186,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionEmpty: (sessionLabel) => `I found the right session to fill, but I couldn't find strong invite candidates for ${sessionLabel} yet.`,
     reactivationReady: (count, label) => `I found ${count} reactivation candidates in "${label}". Review the win-back message below, then approve to send it.`,
     reactivationEmpty: (label) => `I couldn't find strong reactivation candidates in "${label}" right now.`,
+    contactPolicyReady: (changes) => `I drafted ${changes} contact policy update${changes === 1 ? '' : 's'} for the club. Review the policy below, then approve to apply it.`,
     adminOnly: `I can help draft actions here, but only club admins can approve and run them.`,
     suggestions: {
       create_cohort: [
@@ -195,6 +209,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Only top 5 members',
         'Target 30+ day inactive members',
       ],
+      update_contact_policy: [
+        'Set quiet hours to 10pm-8am',
+        'Use a 6 hour cooldown',
+        'Limit outreach to 1 message per day',
+      ],
     },
   },
   ru: {
@@ -206,6 +225,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionEmpty: (sessionLabel) => `Я нашел нужную сессию, но пока не вижу сильных кандидатов для приглашения на ${sessionLabel}.`,
     reactivationReady: (count, label) => `Я нашел ${count} кандидатов на реактивацию в сегменте "${label}". Проверь win-back сообщение ниже и подтверди отправку.`,
     reactivationEmpty: (label) => `Сейчас я не вижу сильных кандидатов на реактивацию в сегменте "${label}".`,
+    contactPolicyReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} contact policy клуба. Проверь правила ниже и подтверди применение.`,
     adminOnly: `Я могу готовить такие действия в чате, но запускать их может только админ клуба.`,
     suggestions: {
       create_cohort: [
@@ -228,6 +248,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Оставь только топ-5',
         'Возьми тех, кто не играл 30+ дней',
       ],
+      update_contact_policy: [
+        'Поставь quiet hours с 22:00 до 8:00',
+        'Сделай cooldown 6 часов',
+        'Ограничь касания до 1 сообщения в день',
+      ],
     },
   },
   es: {
@@ -239,6 +264,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionEmpty: (sessionLabel) => `Encontré la sesión correcta, pero todavía no veo buenos candidatos para invitar a ${sessionLabel}.`,
     reactivationReady: (count, label) => `Encontré ${count} candidatos de reactivación en "${label}". Revisa el mensaje abajo y apruébalo para enviarlo.`,
     reactivationEmpty: (label) => `No encuentro buenos candidatos de reactivación en "${label}" ahora mismo.`,
+    contactPolicyReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en la política de contacto del club. Revisa la política abajo y apruébala para aplicarla.`,
     adminOnly: `Puedo preparar acciones aquí, pero solo los administradores del club pueden aprobarlas y ejecutarlas.`,
     suggestions: {
       create_cohort: [
@@ -260,6 +286,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Usa SMS en su lugar',
         'Solo los mejores 5 miembros',
         'Apunta a quienes llevan 30+ días inactivos',
+      ],
+      update_contact_policy: [
+        'Pon quiet hours de 10pm a 8am',
+        'Usa un cooldown de 6 horas',
+        'Limita el outreach a 1 mensaje por día',
       ],
     },
   },

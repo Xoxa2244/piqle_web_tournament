@@ -18,6 +18,12 @@ import {
   formatAdvisorGuardrailDigest,
 } from '@/lib/ai/advisor-contact-guardrails'
 import {
+  formatAdvisorContactPolicyDigest,
+  resolveAdvisorContactPolicy,
+  updateAdvisorContactPolicyFromMessage,
+  type AdvisorContactPolicyDraft,
+} from '@/lib/ai/advisor-contact-policy'
+import {
   maybeStartAdvisorClarification,
   resolveAdvisorClarification,
 } from '@/lib/ai/advisor-clarifications'
@@ -184,6 +190,7 @@ function buildCampaignReadyText(
 }
 
 type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
+type AdvisorContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
 
 async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter[]) {
   const where = buildCohortWhereClause(filters)
@@ -286,6 +293,16 @@ async function hydrateAdvisorCampaignAction(opts: {
   }
 }
 
+function buildContactPolicyAction(policy: AdvisorContactPolicyDraft): AdvisorContactPolicyAction {
+  return {
+    kind: 'update_contact_policy',
+    title: 'Update club contact policy',
+    summary: formatAdvisorContactPolicyDigest(policy),
+    requiresApproval: true,
+    policy,
+  }
+}
+
 function getSlotFillerCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
@@ -340,6 +357,24 @@ function getReactivationCopy(language: SupportedLanguage | string) {
     empty: (label: string) => `I couldn't find strong reactivation candidates in "${label}" right now.`,
     ready: (count: number, label: string) => `I found ${count} reactivation candidates in "${label}". Review the win-back message below, then approve to send it.`,
     suggestions: ['Use SMS instead', 'Only top 5 members', 'Target 30+ day inactive members'],
+  }
+}
+
+function getContactPolicyCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      needChanges: 'Скажи, что именно поменять в contact policy: quiet hours, cooldown, дневной лимит, недельный лимит или окно recent booking.',
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      needChanges: 'Dime que quieres cambiar en la politica de contacto: quiet hours, cooldown, limite diario, limite semanal o la ventana de recent booking.',
+    }
+  }
+
+  return {
+    needChanges: 'Tell me what to change in the contact policy: quiet hours, cooldown, daily cap, weekly cap, or the recent booking suppression window.',
   }
 }
 
@@ -770,10 +805,34 @@ export async function POST(req: Request) {
             ? 'fill_session'
             : plan.action === 'reactivate_members'
               ? 'reactivate_members'
+            : plan.action === 'update_contact_policy'
+              ? 'update_contact_policy'
             : 'create_campaign'
         assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[suggestionKey])
       }
     } else {
+      if (!assistantMessage && !hadPendingClarification) {
+        const editedContactPolicy = memory.state?.currentContactPolicy
+          ? updateAdvisorContactPolicyFromMessage({
+              message,
+              currentPolicy: memory.state.currentContactPolicy,
+              allowImplicit: true,
+            })
+          : null
+        if (editedContactPolicy) {
+          const action = buildContactPolicyAction(editedContactPolicy)
+          assistantState = buildAdvisorConversationStateFromAction(action)
+          assistantMessage = withSuggested(
+            [
+              copy.contactPolicyReady(action.policy.changes.length),
+              ...action.policy.changes,
+              buildAdvisorActionTag(action),
+            ].join('\n\n'),
+            copy.suggestions.update_contact_policy,
+          )
+        }
+      }
+
       if (!assistantMessage && !hadPendingClarification) {
         const activeFillSession = memory.lastAction?.kind === 'fill_session'
         const fillSessionEditSessions = activeFillSession
@@ -845,6 +904,16 @@ export async function POST(req: Request) {
                 buildAdvisorActionTag(hydratedCampaign.action),
               ].filter(Boolean).join('\n\n'),
               editCopy.suggestions.create_campaign,
+            )
+          } else if (editedAction.kind === 'update_contact_policy') {
+            assistantState = buildAdvisorConversationStateFromAction(editedAction)
+            assistantMessage = withSuggested(
+              [
+                copy.contactPolicyReady(editedAction.policy.changes.length),
+                ...editedAction.policy.changes,
+                buildAdvisorActionTag(editedAction),
+              ].join('\n\n'),
+              copy.suggestions.update_contact_policy,
             )
           } else {
             const editCopy = getAdvisorEditCopy(language)
@@ -1012,6 +1081,41 @@ export async function POST(req: Request) {
 
       assistantState = reactivationResponse.assistantState
       assistantMessage = reactivationResponse.assistantMessage
+    } else if (plan.action === 'update_contact_policy') {
+      const contactPolicyCopy = getContactPolicyCopy(language)
+      const currentPolicy = resolveAdvisorContactPolicy({
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
+      })
+      const updatedPolicy = updateAdvisorContactPolicyFromMessage({
+        message: effectiveMessage,
+        currentPolicy,
+      })
+
+      if (!updatedPolicy) {
+        assistantState = {
+          ...(memory.state || {}),
+          currentContactPolicy: currentPolicy,
+          lastActionKind: 'update_contact_policy',
+          lastActionTitle: 'Update club contact policy',
+          updatedAt: new Date().toISOString(),
+        }
+        assistantMessage = withSuggested(
+          contactPolicyCopy.needChanges,
+          copy.suggestions.update_contact_policy,
+        )
+      } else {
+        const action = buildContactPolicyAction(updatedPolicy)
+        assistantState = buildAdvisorConversationStateFromAction(action)
+        assistantMessage = withSuggested(
+          [
+            copy.contactPolicyReady(action.policy.changes.length),
+            ...action.policy.changes,
+            buildAdvisorActionTag(action),
+          ].join('\n\n'),
+          copy.suggestions.update_contact_policy,
+        )
+      }
     } else {
       let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)

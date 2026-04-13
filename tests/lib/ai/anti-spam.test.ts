@@ -5,6 +5,9 @@ import { checkAntiSpam } from '@/lib/ai/anti-spam'
 
 function createMockPrisma() {
   return {
+    club: {
+      findUnique: vi.fn().mockResolvedValue({ automationSettings: null }),
+    },
     userPlayPreference: {
       findUnique: vi.fn().mockResolvedValue(null),
     },
@@ -158,5 +161,25 @@ describe('Антиспам > Полный пайплайн', () => {
     expect(result.allowed).toBe(false)
     // Frequency count should not have been called
     expect(mockPrisma.aIRecommendationLog.count).not.toHaveBeenCalled()
+  })
+})
+
+describe('Антиспам > Club-level contact policy overrides', () => {
+  it('использует club override для daily cap', async () => {
+    mockPrisma.club.findUnique.mockResolvedValue({
+      automationSettings: {
+        intelligence: {
+          contactPolicy: {
+            max24h: 1,
+          },
+        },
+      },
+    })
+    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(1)
+
+    const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
+
+    expect(result.allowed).toBe(false)
+    expect(result.reason).toContain('24 hours')
   })
 })

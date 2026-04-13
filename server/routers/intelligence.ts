@@ -24,6 +24,7 @@ import {
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
+import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
 
@@ -4187,6 +4188,47 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           ...sendResult,
           skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
           guardrails: guardrails.summary,
+        }
+      }
+
+      if (input.action.kind === 'update_contact_policy') {
+        const club = await ctx.prisma.club.findUniqueOrThrow({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        })
+        const currentPolicy = resolveAdvisorContactPolicy({
+          automationSettings: club.automationSettings,
+          timeZone: input.action.policy.timeZone,
+        })
+        const existingAutomationSettings = (club.automationSettings as Record<string, any> | null) || {}
+        const existingIntelligence = existingAutomationSettings.intelligence || {}
+
+        await ctx.prisma.club.update({
+          where: { id: input.clubId },
+          data: {
+            automationSettings: {
+              ...existingAutomationSettings,
+              intelligence: {
+                ...existingIntelligence,
+                timezone: input.action.policy.timeZone,
+                contactPolicy: {
+                  quietHours: input.action.policy.quietHours,
+                  recentBookingLookbackDays: input.action.policy.recentBookingLookbackDays,
+                  max24h: input.action.policy.max24h,
+                  max7d: input.action.policy.max7d,
+                  cooldownHours: input.action.policy.cooldownHours,
+                },
+              },
+            },
+          },
+        })
+
+        return {
+          ok: true,
+          kind: 'update_contact_policy' as const,
+          policy: input.action.policy,
+          changedFields: input.action.policy.changes,
+          previousPolicy: currentPolicy,
         }
       }
 

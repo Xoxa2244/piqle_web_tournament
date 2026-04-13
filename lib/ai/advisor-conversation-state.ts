@@ -9,6 +9,7 @@ import {
   extractAdvisorAction,
   type AdvisorAction,
 } from './advisor-actions'
+import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
 
@@ -22,7 +23,8 @@ export const advisorConversationStateSchema = z.object({
   currentCampaign: advisorActiveCampaignSchema.optional(),
   currentSession: advisorSessionDraftSchema.optional(),
   currentReactivation: advisorReactivationDraftSchema.optional(),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members']).optional(),
+  currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -72,6 +74,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'reactivate_members') {
     return {
       currentReactivation: action.reactivation,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    }
+  }
+
+  if (action.kind === 'update_contact_policy') {
+    return {
+      currentContactPolicy: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -193,6 +204,15 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     parts.push(`Reactivation note preview: ${state.currentReactivation.message.slice(0, 220)}`)
   }
 
+  if (state.currentContactPolicy) {
+    parts.push(`Active contact policy draft: quiet hours ${state.currentContactPolicy.quietHours.startHour}:00-${state.currentContactPolicy.quietHours.endHour}:00`)
+    parts.push(`Contact cooldown: ${state.currentContactPolicy.cooldownHours} hours`)
+    parts.push(`Daily contact cap: ${state.currentContactPolicy.max24h}`)
+    parts.push(`Weekly contact cap: ${state.currentContactPolicy.max7d}`)
+    parts.push(`Recent booking suppression window: ${state.currentContactPolicy.recentBookingLookbackDays} days`)
+    parts.push(`Contact policy time zone: ${state.currentContactPolicy.timeZone}`)
+  }
+
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
   }
@@ -208,6 +228,7 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   parts.push('If the user says "the campaign", "the draft", "the message", or asks to revise it, assume they mean the active campaign above unless they clarify otherwise.')
   parts.push('If the user says "this session", "that slot", or "fill it", assume they mean the active session above unless they clarify otherwise.')
   parts.push('If the user says "those inactive members", "the reactivation list", or asks to revise the win-back message, assume they mean the active reactivation draft above unless they clarify otherwise.')
+  parts.push('If the user says "those rules", "that policy", or asks to tighten or relax messaging rules, assume they mean the active contact policy draft above unless they clarify otherwise.')
   parts.push('--- End of Active Advisor Working Memory ---')
 
   return parts.join('\n')

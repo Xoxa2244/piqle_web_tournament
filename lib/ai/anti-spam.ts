@@ -7,6 +7,8 @@
  * don't trigger cross-type cooldown but DO count toward frequency caps.
  */
 
+import { readAdvisorContactPolicyOverrides } from './advisor-contact-policy'
+
 type InviteType =
   | 'SLOT_FILLER'
   | 'REACTIVATION'
@@ -22,6 +24,7 @@ interface SpamCheckInput {
   clubId: string
   type: InviteType
   sessionId?: string | null
+  automationSettings?: unknown
   /** If true, this is a follow-up within an existing sequence chain.
    *  Relaxes: cross-type cooldown is skipped. Still enforces frequency caps. */
   isSequenceFollowUp?: boolean
@@ -67,7 +70,26 @@ export async function checkAntiSpam(input: SpamCheckInput): Promise<SpamCheckRes
   }
 
   // Persona-aware limits (falls back to default)
-  const limits = persona ? PERSONA_LIMITS[persona] : DEFAULT_LIMITS
+  let automationSettings = input.automationSettings
+  if (automationSettings === undefined) {
+    try {
+      const club = await prisma.club.findUnique({
+        where: { id: clubId },
+        select: { automationSettings: true },
+      })
+      automationSettings = club?.automationSettings
+    } catch {
+      automationSettings = undefined
+    }
+  }
+
+  const policyOverrides = readAdvisorContactPolicyOverrides(automationSettings)
+  const baseLimits = persona ? PERSONA_LIMITS[persona] : DEFAULT_LIMITS
+  const limits = {
+    max24h: policyOverrides.max24h ?? baseLimits.max24h,
+    max7d: policyOverrides.max7d ?? baseLimits.max7d,
+    cooldownHours: policyOverrides.cooldownHours ?? baseLimits.cooldownHours,
+  }
 
   // 2. Dedup: same session + same user + same type
   if (sessionId && !sessionId.startsWith('csv-')) {

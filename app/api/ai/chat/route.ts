@@ -14,6 +14,7 @@ import {
   clearAdvisorPendingClarification,
   deriveAdvisorConversationState,
 } from '@/lib/ai/advisor-conversation-state';
+import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -370,7 +371,17 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
     try {
       const club: any = await prisma.club.findUnique({ where: { id: clubId } })
       const intelligenceSettings = club?.automationSettings?.intelligence || null
-      clubContextBlock = buildClubContextPrompt(intelligenceSettings)
+      const contactPolicy = resolveAdvisorContactPolicy({
+        timeZone: intelligenceSettings?.timezone,
+        automationSettings: club?.automationSettings,
+      })
+      const contactPolicyBlock = `\nCurrent contact policy:
+- Quiet hours: ${contactPolicy.quietHours.startHour}:00-${contactPolicy.quietHours.endHour}:00 (${contactPolicy.timeZone})
+- Cross-campaign cooldown: ${contactPolicy.cooldownHours} hours
+- Daily contact cap: ${contactPolicy.max24h}
+- Weekly contact cap: ${contactPolicy.max7d}
+- Recent booking suppression window: ${contactPolicy.recentBookingLookbackDays} days`
+      clubContextBlock = `${buildClubContextPrompt(intelligenceSettings)}${contactPolicyBlock}`
     } catch { /* non-critical */ }
 
     const advisorStateBlock = buildAdvisorStatePrompt(
