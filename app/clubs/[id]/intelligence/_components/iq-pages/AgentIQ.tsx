@@ -211,6 +211,35 @@ function getPrimaryReason(reasons?: string[]) {
   return reasons[0]
 }
 
+function isMembershipReason(reason?: string | null) {
+  return !!reason && /membership|trial|guest|renewal|reactivation flow|confidence/i.test(reason)
+}
+
+function membershipReasonLabel(reason?: string | null) {
+  if (!reason) return null
+  if (/confidence/i.test(reason)) return "Low membership confidence"
+  if (/trial/i.test(reason)) return "Trial review gate"
+  if (/guest/i.test(reason)) return "Guest review gate"
+  if (/active memberships/i.test(reason)) return "Active member protection"
+  if (/renewal\/reactivation flow/i.test(reason)) return "Renewal route required"
+  if (/membership status/i.test(reason)) return "Membership status rule"
+  return "Membership-aware rule"
+}
+
+function MembershipReasonBadge({ reason }: { reason?: string | null }) {
+  const label = membershipReasonLabel(reason)
+  if (!label) return null
+
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+      style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA" }}
+    >
+      {label}
+    </span>
+  )
+}
+
 function resolveAutopilotOutcome(log: AgentLog): AutopilotOutcome {
   if (log.triggerOutcome === "auto" || log.triggerOutcome === "pending" || log.triggerOutcome === "blocked") {
     return log.triggerOutcome
@@ -239,6 +268,8 @@ function buildAutopilotSummary(logs: AgentLog[]) {
   const sourceCounts = new Map<string, number>()
   const blockedReasons = new Map<string, number>()
   const reviewReasons = new Map<string, number>()
+  const membershipReasons = new Map<string, number>()
+  let membershipHeldCount = 0
 
   for (const log of logs) {
     const outcome = resolveAutopilotOutcome(log)
@@ -249,6 +280,10 @@ function buildAutopilotSummary(logs: AgentLog[]) {
     const reason = getPrimaryReason(log.triggerReasons)
     if (outcome === "blocked") incrementCounter(blockedReasons, reason)
     if (outcome === "pending") incrementCounter(reviewReasons, reason)
+    if ((outcome === "blocked" || outcome === "pending") && isMembershipReason(reason)) {
+      membershipHeldCount += 1
+      incrementCounter(membershipReasons, reason)
+    }
   }
 
   const mostActiveSource = topEntries(sourceCounts, 1)[0] || null
@@ -258,6 +293,8 @@ function buildAutopilotSummary(logs: AgentLog[]) {
     mostActiveSource,
     topBlockedReasons: topEntries(blockedReasons),
     topReviewReasons: topEntries(reviewReasons),
+    membershipHeldCount,
+    topMembershipReasons: topEntries(membershipReasons, 2),
   }
 }
 
@@ -637,6 +674,49 @@ export function AgentIQ({
             </div>
           </div>
 
+          <div
+            className="rounded-xl p-3 mt-4"
+            style={{
+              background: "rgba(139,92,246,0.08)",
+              border: "1px solid rgba(139,92,246,0.16)",
+            }}
+          >
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4" style={{ color: "#A78BFA" }} />
+                <div className="text-sm font-medium" style={{ color: "var(--heading)" }}>
+                  Membership Friction
+                </div>
+              </div>
+              <div className="text-xs font-semibold tabular-nums" style={{ color: "#A78BFA" }}>
+                {autopilotSummary.membershipHeldCount} held
+              </div>
+            </div>
+            {autopilotSummary.topMembershipReasons.length === 0 ? (
+              <div className="text-xs" style={{ color: "var(--t4)" }}>
+                Membership rules are not currently the main autopilot bottleneck.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {autopilotSummary.topMembershipReasons.map((entry) => (
+                  <div key={entry.label} className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-medium" style={{ color: "#A78BFA" }}>
+                        {membershipReasonLabel(entry.label)}
+                      </div>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
+                        {entry.label}
+                      </div>
+                    </div>
+                    <div className="text-xs font-semibold tabular-nums" style={{ color: "#A78BFA" }}>
+                      {entry.count}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {autopilotSuggestions.length > 0 && (
             <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--card-border)" }}>
               <div className="flex items-center gap-2 mb-3">
@@ -752,6 +832,7 @@ export function AgentIQ({
                       <div className="flex items-center gap-2 mt-0.5">
                         <TriggerSourceBadge source={action.triggerSource} />
                         <TriggerOutcomeBadge outcome={action.triggerOutcome} />
+                        <MembershipReasonBadge reason={getPrimaryReason(action.triggerReasons)} />
                         <span className="text-xs" style={{ color: "var(--t4)" }}>
                           {action.memberName}
                         </span>
@@ -775,7 +856,12 @@ export function AgentIQ({
                         </span>
                       </div>
                       {getPrimaryReason(action.triggerReasons) && (
-                        <div className="text-[11px] mt-1 truncate" style={{ color: "var(--t4)" }}>
+                        <div
+                          className="text-[11px] mt-1"
+                          style={{
+                            color: isMembershipReason(getPrimaryReason(action.triggerReasons)) ? "#C4B5FD" : "var(--t4)",
+                          }}
+                        >
                           {getPrimaryReason(action.triggerReasons)}
                         </div>
                       )}
@@ -877,12 +963,18 @@ export function AgentIQ({
                       <StatusBadge status={log.status} />
                       <TriggerSourceBadge source={log.triggerSource} />
                       <TriggerOutcomeBadge outcome={log.triggerOutcome || (log.autoApproved ? "auto" : null)} />
+                      <MembershipReasonBadge reason={getPrimaryReason(log.triggerReasons)} />
                     </div>
                     <p className="text-xs mt-0.5 truncate" style={{ color: "var(--t4)" }}>
                       {describeAction(log.type, log)}
                     </p>
                     {getPrimaryReason(log.triggerReasons) && (
-                      <p className="text-[11px] mt-1 truncate" style={{ color: "var(--t4)" }}>
+                      <p
+                        className="text-[11px] mt-1"
+                        style={{
+                          color: isMembershipReason(getPrimaryReason(log.triggerReasons)) ? "#C4B5FD" : "var(--t4)",
+                        }}
+                      >
                         {getPrimaryReason(log.triggerReasons)}
                       </p>
                     )}
