@@ -166,6 +166,37 @@ export function AdvisorActionCard({
   const recipientRuleExcludedCount = isCampaign && contactGuardrails
     ? Math.max(0, targetCount - contactGuardrails.eligibleCount - contactGuardrails.excludedCount)
     : 0
+  const isDone = !!result?.ok
+  const approvalHelperText = isCampaign
+    ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
+      ? 'Choose how the platform should handle this draft, then confirm the action.'
+      : currentCampaignAction?.campaign.execution.mode === 'send_later'
+        ? 'Pick a send time, then approve the scheduling decision.'
+        : 'Choose the live send path, or park this draft for later.'
+    : isAutonomyPolicy
+      ? 'Review these autopilot changes, then apply, refine, snooze, or decline them.'
+      : isContactPolicy
+        ? 'Review the messaging guardrails, then decide whether to apply or park them.'
+        : isFillSession
+          ? 'This session-fill action is ready to go. Approve it, refine it, or park it.'
+          : isReactivation
+            ? 'This reactivation draft is ready. Approve, refine, snooze, or decline it.'
+            : 'Review the draft and decide how the agent should proceed.'
+  const primaryApproveLabel = isDone
+    ? 'Approved'
+    : isCampaign
+      ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
+        ? 'Save Draft'
+        : currentCampaignAction?.campaign.execution.mode === 'send_later'
+          ? 'Schedule Send'
+          : 'Send Now'
+      : isFillSession
+        ? 'Send Invites'
+      : isReactivation
+        ? 'Send Reactivation'
+      : isAutonomyPolicy
+        ? 'Apply Autopilot Rules'
+        : 'Approve'
 
   const handleApprove = () => {
     executeAction.mutate(
@@ -207,7 +238,6 @@ export function AdvisorActionCard({
     })
   }
 
-  const isDone = !!result?.ok
   const runtimeState = localActionState || actionState || getAdvisorActionRuntimeState(undefined)
   const isDeclined = runtimeState.status === 'declined'
   const isSnoozed = runtimeState.status === 'snoozed'
@@ -558,85 +588,6 @@ export function AdvisorActionCard({
         )}
       </div>
 
-      {isCampaign && !isDone && (
-        <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
-            <Send className="w-3.5 h-3.5" />
-            Execution
-          </div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            {([
-              { key: 'save_draft', label: 'Save Draft' },
-              { key: 'send_now', label: 'Send Now' },
-              { key: 'send_later', label: 'Schedule' },
-            ] as const).map((option) => {
-              const isActive = currentCampaignAction?.campaign.execution.mode === option.key
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => handleSetCampaignMode(option.key)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-                  style={{
-                    background: isActive ? 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))' : 'rgba(255,255,255,0.04)',
-                    border: isActive ? '1px solid rgba(139,92,246,0.28)' : '1px solid var(--card-border)',
-                    color: isActive ? 'var(--heading)' : 'var(--t2)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {option.key === 'send_later' ? <CalendarDays className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {(showScheduleOptions || currentCampaignAction?.campaign.execution.mode === 'send_later') && (
-            <div className="mt-3">
-              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 600 }}>
-                Pick a send time
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {quickScheduleOptions.map((option) => {
-                  const isActive = currentCampaignAction?.campaign.execution.mode === 'send_later' && currentCampaignAction?.campaign.execution.scheduledFor === option.scheduledFor
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      onClick={() => handlePickSchedule(option.scheduledFor)}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-                      style={{
-                        background: isActive ? 'rgba(6,182,212,0.12)' : 'rgba(255,255,255,0.04)',
-                        border: isActive ? '1px solid rgba(6,182,212,0.28)' : '1px solid var(--card-border)',
-                        color: isActive ? 'var(--heading)' : 'var(--t2)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      <CalendarDays className="w-3.5 h-3.5" />
-                      {option.label}
-                    </button>
-                  )
-                })}
-                <button
-                  type="button"
-                  onClick={() => onDraftPrompt?.('Schedule this campaign for Friday at 9am.')}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--card-border)',
-                    color: 'var(--t3)',
-                    fontWeight: 600,
-                  }}
-                >
-                  <PencilLine className="w-3.5 h-3.5" />
-                  Custom Time
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {(isCampaign || isFillSession || isReactivation || isContactPolicy || isAutonomyPolicy) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -698,8 +649,191 @@ export function AdvisorActionCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 mt-4">
-        {isDone ? (
+      {!isDone ? (
+        <div className="rounded-xl p-3 mt-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 700 }}>
+            <Send className="w-3.5 h-3.5" />
+            Decision Rail
+          </div>
+          <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+            {approvalHelperText}
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {channelLabel && (
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+              >
+                {channelLabel}
+              </span>
+            )}
+            {deliveryModeLabel && (
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(139,92,246,0.14)', color: '#C4B5FD' }}
+              >
+                {deliveryModeLabel}
+              </span>
+            )}
+            {scheduledLabel && (
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+              >
+                {scheduledLabel}
+              </span>
+            )}
+          </div>
+
+          {isCampaign && (
+            <div className="mt-4">
+              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+                Execution Path
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {([
+                  { key: 'save_draft', label: 'Save Draft' },
+                  { key: 'send_now', label: 'Send Now' },
+                  { key: 'send_later', label: 'Schedule' },
+                ] as const).map((option) => {
+                  const isActive = currentCampaignAction?.campaign.execution.mode === option.key
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => handleSetCampaignMode(option.key)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                      style={{
+                        background: isActive ? 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(6,182,212,0.16))' : 'rgba(255,255,255,0.04)',
+                        border: isActive ? '1px solid rgba(139,92,246,0.28)' : '1px solid var(--card-border)',
+                        color: isActive ? 'var(--heading)' : 'var(--t2)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {option.key === 'send_later' ? <CalendarDays className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {(showScheduleOptions || currentCampaignAction?.campaign.execution.mode === 'send_later') && (
+                <div className="mt-3">
+                  <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+                    Pick a send time
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {quickScheduleOptions.map((option) => {
+                      const isActive = currentCampaignAction?.campaign.execution.mode === 'send_later' && currentCampaignAction?.campaign.execution.scheduledFor === option.scheduledFor
+                      return (
+                        <button
+                          key={option.label}
+                          type="button"
+                          onClick={() => handlePickSchedule(option.scheduledFor)}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                          style={{
+                            background: isActive ? 'rgba(6,182,212,0.12)' : 'rgba(255,255,255,0.04)',
+                            border: isActive ? '1px solid rgba(6,182,212,0.28)' : '1px solid var(--card-border)',
+                            color: isActive ? 'var(--heading)' : 'var(--t2)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <CalendarDays className="w-3.5 h-3.5" />
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => onDraftPrompt?.('Schedule this campaign for Friday at 9am.')}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--card-border)',
+                        color: 'var(--t3)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <PencilLine className="w-3.5 h-3.5" />
+                      Custom Time
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4">
+            <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              Final Decision
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={executeAction.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
+                  fontWeight: 600,
+                  opacity: executeAction.isPending ? 0.75 : 1,
+                }}
+              >
+                {executeAction.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                {primaryApproveLabel}
+              </button>
+              <button
+                type="button"
+                onClick={handleRefine}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{
+                  background: 'var(--subtle)',
+                  color: 'var(--t2)',
+                  border: '1px solid var(--card-border)',
+                  fontWeight: 600,
+                }}
+              >
+                <PencilLine className="w-3.5 h-3.5" />
+                Refine
+              </button>
+              <button
+                type="button"
+                onClick={handleSnooze}
+                disabled={!messageId || updateActionState.isPending}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--t3)',
+                  border: '1px solid var(--card-border)',
+                  fontWeight: 600,
+                  opacity: !messageId ? 0.55 : 1,
+                }}
+              >
+                <PauseCircle className="w-3.5 h-3.5" />
+                Snooze 24h
+              </button>
+              <button
+                type="button"
+                onClick={handleDecline}
+                disabled={!messageId || updateActionState.isPending}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{
+                  background: 'transparent',
+                  color: '#F87171',
+                  border: '1px solid rgba(248,113,113,0.25)',
+                  fontWeight: 600,
+                  opacity: !messageId ? 0.55 : 1,
+                }}
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3 mt-4">
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
@@ -717,104 +851,13 @@ export function AdvisorActionCard({
                   ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
                 : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`}
           </div>
-        ) : (
-          <div className="text-xs" style={{ color: 'var(--t3)' }}>
-            {currentCampaignAction?.campaign.execution.mode === 'save_draft'
-              ? 'Approval is required before the platform saves this campaign draft.'
-              : currentCampaignAction?.campaign.execution.mode === 'send_later'
-                  ? 'Approval is required before the platform schedules this campaign.'
-              : isAutonomyPolicy
-                ? 'Approval is required before the platform updates club autopilot rules.'
-              : isContactPolicy
-                ? 'Approval is required before the platform updates club messaging rules.'
-              : isFillSession
-                ? 'Approval is required before the platform sends these invites.'
-              : isReactivation
-                ? 'Approval is required before the platform sends this win-back outreach.'
-              : 'Approval is required before the platform makes this change.'}
+          <div
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981', fontWeight: 700 }}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Approved
           </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleApprove}
-          disabled={executeAction.isPending || isDone}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-white"
-          style={{
-            background: isDone ? 'rgba(16,185,129,0.85)' : 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
-            fontWeight: 600,
-            opacity: executeAction.isPending ? 0.75 : 1,
-          }}
-        >
-          {executeAction.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-          {isDone
-            ? 'Approved'
-            : isCampaign
-              ? (
-                  currentCampaignAction?.campaign.execution.mode === 'save_draft'
-                    ? 'Save Draft'
-                    : currentCampaignAction?.campaign.execution.mode === 'send_later'
-                      ? 'Schedule Send'
-                      : 'Send Now'
-                )
-              : isFillSession
-                ? 'Send Invites'
-              : isReactivation
-                ? 'Send Reactivation'
-              : isAutonomyPolicy
-                ? 'Apply Autopilot Rules'
-              : 'Approve'}
-        </button>
-      </div>
-
-      {!isDone && (
-        <div className="flex items-center gap-2 mt-3">
-          <button
-            type="button"
-            onClick={handleRefine}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: 'var(--subtle)',
-              color: 'var(--t2)',
-              border: '1px solid var(--card-border)',
-              fontWeight: 600,
-            }}
-          >
-            <PencilLine className="w-3.5 h-3.5" />
-            Refine
-          </button>
-          <button
-            type="button"
-            onClick={handleSnooze}
-            disabled={!messageId || updateActionState.isPending}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: 'transparent',
-              color: 'var(--t3)',
-              border: '1px solid var(--card-border)',
-              fontWeight: 600,
-              opacity: !messageId ? 0.55 : 1,
-            }}
-          >
-            <PauseCircle className="w-3.5 h-3.5" />
-            Snooze 24h
-          </button>
-          <button
-            type="button"
-            onClick={handleDecline}
-            disabled={!messageId || updateActionState.isPending}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{
-              background: 'transparent',
-              color: '#F87171',
-              border: '1px solid rgba(248,113,113,0.25)',
-              fontWeight: 600,
-              opacity: !messageId ? 0.55 : 1,
-            }}
-          >
-            <XCircle className="w-3.5 h-3.5" />
-            Decline
-          </button>
         </div>
       )}
 
