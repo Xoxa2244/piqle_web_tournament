@@ -103,7 +103,7 @@ function containsAny(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text))
 }
 
-function extractExplicitChannel(message: string): z.infer<typeof advisorChannelEnum> | null {
+export function extractExplicitAdvisorChannel(message: string): z.infer<typeof advisorChannelEnum> | null {
   const lower = message.toLowerCase()
   if (containsAny(lower, [/\b(email|e-mail)\b/]) && containsAny(lower, [/\b(sms|text)\b/])) return 'both'
   if (containsAny(lower, [/\b(both|both channels|all channels)\b/, /\b(оба канала|и email и sms)\b/, /\b(email y sms|ambos)\b/])) return 'both'
@@ -189,7 +189,7 @@ export function maybeStartAdvisorClarification(opts: {
     }, copy.needAudienceForAudience, copy.audienceOptions)
   }
 
-  const explicitChannel = extractExplicitChannel(message)
+  const explicitChannel = extractExplicitAdvisorChannel(message)
   const hasCurrentAudience = !!state?.currentAudience
   const usesCurrentAudience = plan.usePreviousCohort || wantsCurrentAudience(message)
   const hasAudienceDescription = usesCurrentAudience || hasMeaningfulAudienceDescription(plan.audienceText || message)
@@ -220,7 +220,7 @@ export function maybeStartAdvisorClarification(opts: {
     }, copy.needAudienceForCampaign, copy.audienceOptions)
   }
 
-  if (!explicitChannel && !state?.currentCampaign?.channel) {
+  if (!explicitChannel && !plan.channel && !state?.currentCampaign?.channel) {
     return buildClarification(language, {
       action: 'draft_campaign',
       field: 'channel',
@@ -264,7 +264,7 @@ export function resolveAdvisorClarification(opts: {
 }): ClarificationResolution | null {
   const { message, pending, state, language } = opts
   const copy = getCopy(language)
-  const explicitChannel = extractExplicitChannel(message)
+  const explicitChannel = extractExplicitAdvisorChannel(message)
 
   if (pending.action === 'fill_session' || pending.field === 'session') return null
 

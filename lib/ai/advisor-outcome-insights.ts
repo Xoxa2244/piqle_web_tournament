@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { getAdvisorLatestOutcome, type AdvisorOutcomeMemory } from './advisor-outcomes'
+import { buildAdvisorScheduledSendFromLocalTime, type AdvisorScheduledSend } from './advisor-scheduling'
+import type { AdvisorAction } from './advisor-actions'
 
 type CampaignOutcomeLog = {
   type: string
@@ -10,6 +12,7 @@ type CampaignOutcomeLog = {
   clickedAt?: Date | string | null
   respondedAt?: Date | string | null
   deliveredAt?: Date | string | null
+  createdAt?: Date | string | null
 }
 
 type FlowInsight = {
@@ -40,6 +43,11 @@ export type AdvisorOutcomeInsights = {
 export type AdvisorPerformanceSignal = {
   headline: string
   bullets: string[]
+}
+
+export type AdvisorAdaptiveDefaults = {
+  channel?: Extract<AdvisorAction, { kind: 'create_campaign' }>['campaign']['channel']
+  scheduledSend?: AdvisorScheduledSend | null
 }
 
 const SENT_EQUIVALENT_STATUSES = new Set(['sent', 'delivered', 'opened', 'clicked', 'converted'])
@@ -74,6 +82,16 @@ function humanizeChannel(channel?: string | null) {
 
 function normalizeChannel(channel?: string | null) {
   return (channel || '').trim().toLowerCase()
+}
+
+function getLocalHour(date: Date, timeZone: string) {
+  const formatted = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    hour12: false,
+  }).format(date)
+  const hour = Number(formatted)
+  return Number.isFinite(hour) ? hour : null
 }
 
 export function buildAdvisorOutcomeInsights(input: {
@@ -369,4 +387,92 @@ export async function buildAdvisorPerformanceSignalForAction(opts: {
       advisorOutcomes: recentOutcomes,
     }),
   })
+}
+
+export async function resolveAdvisorAdaptiveDefaultsForAction(opts: {
+  prisma: any
+  clubId: string
+  type: string
+  timeZone?: string | null
+  requestedChannel?: string | null
+  days?: number
+  now?: Date
+}) {
+  const since = new Date(Date.now() - (opts.days || 30) * 86400000)
+  const campaignLogs: CampaignOutcomeLog[] = await opts.prisma.aIRecommendationLog.findMany({
+    where: {
+      clubId: opts.clubId,
+      createdAt: { gte: since },
+      type: opts.type,
+    },
+    select: {
+      type: true,
+      channel: true,
+      status: true,
+      openedAt: true,
+      clickedAt: true,
+      respondedAt: true,
+      deliveredAt: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  })
+
+  const insights = buildAdvisorOutcomeInsights({
+    campaignLogs,
+    advisorOutcomes: [],
+  })
+  const topChannel = insights.topFlows[0]?.channel
+  const resolvedChannel = normalizeChannel(opts.requestedChannel) || normalizeChannel(topChannel) || 'email'
+  const timeZone = String(opts.timeZone || '').trim()
+
+  let scheduledSend: AdvisorScheduledSend | null = null
+  if (timeZone) {
+    const hourlyBuckets = new Map<number, { sent: number; opened: number; converted: number }>()
+
+    for (const log of campaignLogs) {
+      if (normalizeChannel(log.channel) !== resolvedChannel) continue
+      if (!log.createdAt) continue
+      const createdAt = new Date(log.createdAt)
+      if (Number.isNaN(createdAt.getTime())) continue
+      const hour = getLocalHour(createdAt, timeZone)
+      if (hour === null) continue
+
+      const bucket = hourlyBuckets.get(hour) || { sent: 0, opened: 0, converted: 0 }
+      const status = normalizeStatus(log.status)
+      if (SENT_EQUIVALENT_STATUSES.has(status)) bucket.sent += 1
+      if (!!log.openedAt || OPENED_EQUIVALENT_STATUSES.has(status)) bucket.opened += 1
+      if (!!log.respondedAt || status === 'converted') bucket.converted += 1
+      hourlyBuckets.set(hour, bucket)
+    }
+
+    const bestHour = Array.from(hourlyBuckets.entries())
+      .filter(([, bucket]) => bucket.sent >= 2)
+      .map(([hour, bucket]) => ({
+        hour,
+        sent: bucket.sent,
+        openRate: formatPercent(bucket.opened, bucket.sent),
+        conversionRate: formatPercent(bucket.converted, bucket.sent),
+      }))
+      .sort((a, b) => {
+        if (b.conversionRate !== a.conversionRate) return b.conversionRate - a.conversionRate
+        if (b.openRate !== a.openRate) return b.openRate - a.openRate
+        return b.sent - a.sent
+      })[0]
+
+    if (bestHour) {
+      scheduledSend = buildAdvisorScheduledSendFromLocalTime({
+        hour: bestHour.hour,
+        minute: 0,
+        timeZone,
+        now: opts.now,
+      })
+    }
+  }
+
+  return {
+    channel: resolvedChannel as AdvisorAdaptiveDefaults['channel'],
+    scheduledSend,
+  }
 }

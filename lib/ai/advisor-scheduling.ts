@@ -275,3 +275,36 @@ export function parseAdvisorScheduledSend(opts: {
     label: formatAdvisorScheduledLabel(scheduledFor, timeZone),
   }
 }
+
+export function buildAdvisorScheduledSendFromLocalTime(opts: {
+  hour: number
+  minute?: number
+  timeZone?: string | null
+  now?: Date
+}): AdvisorScheduledSend | null {
+  const hour = Math.max(0, Math.min(23, Math.round(opts.hour)))
+  const minute = Math.max(0, Math.min(59, Math.round(opts.minute || 0)))
+  const timeZone = String(opts.timeZone || '').trim() || DEFAULT_ADVISOR_TIME_ZONE
+  const now = opts.now || new Date()
+  const localNow = getLocalNowParts(now, timeZone)
+
+  const targetDate =
+    hour > localNow.hour || (hour === localNow.hour && minute > localNow.minute + 15)
+      ? { year: localNow.year, month: localNow.month, day: localNow.day }
+      : addDays(localNow, 1)
+
+  const localDateTime = toLocalDateTimeInput({
+    ...targetDate,
+    hour,
+    minute,
+  })
+  const scheduledFor = toUtcIsoFromLocalInput(localDateTime, timeZone)
+  if (!scheduledFor) return null
+
+  return {
+    scheduledFor,
+    timeZone,
+    localDateTime,
+    label: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+  }
+}

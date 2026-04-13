@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { appRouter } from '@/server/routers/_app'
 import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
 import { buildAdvisorActionTag, extractAdvisorAction, getAdvisorActionFromMetadata, type AdvisorAction } from '@/lib/ai/advisor-actions'
-import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
+import { getAdvisorActionCopy, planAdvisorActionIntent, type AdvisorIntentPlan } from '@/lib/ai/advisor-action-planner'
 import {
   isAdvisorActionHidden,
 } from '@/lib/ai/advisor-action-state'
@@ -26,7 +26,10 @@ import {
   evaluateAdvisorContactGuardrails,
   formatAdvisorGuardrailDigest,
 } from '@/lib/ai/advisor-contact-guardrails'
-import { buildAdvisorPerformanceSignalForAction } from '@/lib/ai/advisor-outcome-insights'
+import {
+  buildAdvisorPerformanceSignalForAction,
+  resolveAdvisorAdaptiveDefaultsForAction,
+} from '@/lib/ai/advisor-outcome-insights'
 import {
   formatAdvisorContactPolicyDigest,
   resolveAdvisorContactPolicy,
@@ -34,6 +37,7 @@ import {
   type AdvisorContactPolicyDraft,
 } from '@/lib/ai/advisor-contact-policy'
 import {
+  extractExplicitAdvisorChannel,
   maybeStartAdvisorClarification,
   resolveAdvisorClarification,
 } from '@/lib/ai/advisor-clarifications'
@@ -809,6 +813,51 @@ function isCampaignOnlyFollowUp(message: string) {
   return hasCampaignVerb && !hasAudienceHint
 }
 
+async function applyAdvisorAdaptiveDefaults(opts: {
+  prisma: any
+  clubId: string
+  plan: AdvisorIntentPlan
+  message: string
+  timeZone?: string | null
+}) {
+  const explicitChannel = extractExplicitAdvisorChannel(opts.message)
+  if (opts.plan.action === 'none' || opts.plan.action === 'create_cohort' || opts.plan.action === 'update_contact_policy' || opts.plan.action === 'update_autonomy_policy') {
+    return opts.plan
+  }
+
+  const type = opts.plan.action === 'fill_session'
+    ? 'SLOT_FILLER'
+    : opts.plan.action === 'reactivate_members'
+      ? 'REACTIVATION'
+      : opts.plan.campaignType || 'REACTIVATION'
+
+  const defaults = await resolveAdvisorAdaptiveDefaultsForAction({
+    prisma: opts.prisma,
+    clubId: opts.clubId,
+    type,
+    requestedChannel: explicitChannel || undefined,
+    timeZone: opts.timeZone,
+    days: 30,
+  }).catch(() => null)
+
+  const nextPlan: AdvisorIntentPlan = {
+    ...opts.plan,
+    channel: explicitChannel || defaults?.channel || opts.plan.channel || 'email',
+  }
+
+  if (
+    nextPlan.action === 'draft_campaign' &&
+    nextPlan.deliveryMode === 'send_later' &&
+    !nextPlan.scheduledFor &&
+    defaults?.scheduledSend
+  ) {
+    nextPlan.scheduledFor = defaults.scheduledSend.scheduledFor
+    nextPlan.timeZone = defaults.scheduledSend.timeZone
+  }
+
+  return nextPlan
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getSessionFromRequest(req)
@@ -922,6 +971,16 @@ export async function POST(req: Request) {
 
     if (!plan) {
       plan = await planAdvisorActionIntent(effectiveMessage)
+    }
+
+    if (access.isAdmin) {
+      plan = await applyAdvisorAdaptiveDefaults({
+        prisma,
+        clubId,
+        plan,
+        message: effectiveMessage,
+        timeZone: clubTimeZone,
+      })
     }
 
     if (!access.isAdmin) {

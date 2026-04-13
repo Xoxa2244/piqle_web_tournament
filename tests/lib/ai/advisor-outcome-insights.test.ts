@@ -4,6 +4,7 @@ import {
   buildAdvisorPerformanceSignal,
   buildAdvisorOutcomeInsights,
   formatAdvisorOutcomeInsightsBlock,
+  resolveAdvisorAdaptiveDefaultsForAction,
 } from '@/lib/ai/advisor-outcome-insights'
 
 describe('advisor outcome insights', () => {
@@ -119,5 +120,45 @@ describe('advisor outcome insights', () => {
     expect(signal?.headline).toContain('SMS')
     expect(signal?.bullets[0]).toContain('25% convert')
     expect(signal?.bullets[1]).toContain('Latest completed advisor action')
+  })
+
+  it('resolves adaptive defaults from stronger channel and send-hour performance', async () => {
+    const defaults = await resolveAdvisorAdaptiveDefaultsForAction({
+      prisma: {
+        aIRecommendationLog: {
+          findMany: async () => ([
+            {
+              type: 'REACTIVATION',
+              channel: 'sms',
+              status: 'converted',
+              openedAt: '2026-04-10T18:01:00.000Z',
+              respondedAt: '2026-04-10T18:05:00.000Z',
+              createdAt: '2026-04-10T18:00:00.000Z',
+            },
+            {
+              type: 'REACTIVATION',
+              channel: 'sms',
+              status: 'opened',
+              openedAt: '2026-04-11T18:02:00.000Z',
+              createdAt: '2026-04-11T18:00:00.000Z',
+            },
+            {
+              type: 'REACTIVATION',
+              channel: 'email',
+              status: 'sent',
+              createdAt: '2026-04-11T09:00:00.000Z',
+            },
+          ]),
+        },
+      },
+      clubId: 'club-1',
+      type: 'REACTIVATION',
+      timeZone: 'UTC',
+      now: new Date('2026-04-12T10:00:00.000Z'),
+    })
+
+    expect(defaults.channel).toBe('sms')
+    expect(defaults.scheduledSend?.timeZone).toBe('UTC')
+    expect(defaults.scheduledSend?.localDateTime.endsWith('18:00')).toBe(true)
   })
 })
