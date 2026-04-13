@@ -1761,6 +1761,48 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  listAdvisorDrafts: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(50).default(24),
+    }))
+    .query(async ({ ctx, input }) => {
+      try {
+        return await ctx.prisma.agentDraft.findMany({
+          where: {
+            clubId: input.clubId,
+            createdByUserId: ctx.session.user.id,
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: input.limit,
+          select: {
+            id: true,
+            kind: true,
+            status: true,
+            title: true,
+            summary: true,
+            originalIntent: true,
+            selectedPlan: true,
+            sandboxMode: true,
+            scheduledFor: true,
+            timeZone: true,
+            updatedAt: true,
+            createdAt: true,
+            conversationId: true,
+            conversation: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        })
+      } catch (err) {
+        log.warn('[Intelligence] listAdvisorDrafts failed:', err)
+        return []
+      }
+    }),
+
   getConversation: protectedProcedure
     .input(z.object({
       conversationId: z.string().uuid(),

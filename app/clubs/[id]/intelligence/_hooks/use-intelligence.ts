@@ -530,6 +530,25 @@ export function useUnderfilledSessions(clubId: string) {
   )
 }
 
+export function useAdvisorDrafts(clubId: string, limit = 24) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listAdvisorDrafts.useQuery(
+    { clubId, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 15000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: [] }),
+    } as any
+  }
+
+  return query
+}
+
 // ── New Members ──
 export function useNewMembers(clubId: string, days: number = 14) {
   return trpc.intelligence.getNewMembers.useQuery(

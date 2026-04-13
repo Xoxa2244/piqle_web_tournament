@@ -15,6 +15,7 @@ import { AdvisorActionCard } from "./AdvisorActionCard";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
 import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
 import { getAdvisorLatestOutcome } from "@/lib/ai/advisor-outcomes";
+import { useAdvisorDrafts } from "../../_hooks/use-intelligence";
 
 /* --- Suggested Prompts --- */
 const suggestedPrompts = [
@@ -31,6 +32,103 @@ interface Conversation {
   id: string;
   title: string;
   updatedAt: string;
+}
+
+interface AdvisorDraftWorkspaceItem {
+  id: string
+  kind: string
+  status: string
+  title: string
+  summary: string | null
+  originalIntent: string | null
+  selectedPlan: 'requested' | 'recommended'
+  sandboxMode: boolean
+  scheduledFor?: string | Date | null
+  timeZone?: string | null
+  updatedAt: string | Date
+  createdAt: string | Date
+  conversationId?: string | null
+  conversation?: {
+    id: string
+    title: string | null
+  } | null
+}
+
+const advisorDraftSections = [
+  { key: 'review_ready', label: 'Needs Review' },
+  { key: 'draft_saved', label: 'Drafts' },
+  { key: 'scheduled', label: 'Scheduled' },
+  { key: 'completed', label: 'Recently Applied' },
+  { key: 'paused', label: 'Paused' },
+  { key: 'stopped', label: 'Stopped' },
+] as const
+
+function getAdvisorDraftBucket(status: string) {
+  if (status === 'review_ready') return 'review_ready'
+  if (status === 'draft_saved') return 'draft_saved'
+  if (status === 'scheduled') return 'scheduled'
+  if (status === 'approved' || status === 'sent') return 'completed'
+  if (status === 'snoozed') return 'paused'
+  return 'stopped'
+}
+
+function formatDraftStatus(status: string) {
+  switch (status) {
+    case 'review_ready': return 'Review'
+    case 'draft_saved': return 'Draft'
+    case 'scheduled': return 'Scheduled'
+    case 'approved': return 'Applied'
+    case 'sent': return 'Sent'
+    case 'snoozed': return 'Snoozed'
+    case 'declined': return 'Declined'
+    case 'blocked': return 'Blocked'
+    default: return status
+  }
+}
+
+function getDraftStatusStyles(status: string) {
+  switch (status) {
+    case 'review_ready':
+      return { background: "rgba(139,92,246,0.14)", color: "#C4B5FD" }
+    case 'draft_saved':
+      return { background: "rgba(6,182,212,0.14)", color: "#67E8F9" }
+    case 'scheduled':
+      return { background: "rgba(245,158,11,0.14)", color: "#FCD34D" }
+    case 'approved':
+    case 'sent':
+      return { background: "rgba(16,185,129,0.14)", color: "#86EFAC" }
+    case 'snoozed':
+      return { background: "rgba(148,163,184,0.14)", color: "#CBD5E1" }
+    default:
+      return { background: "rgba(239,68,68,0.14)", color: "#FCA5A5" }
+  }
+}
+
+function formatDraftKind(kind: string) {
+  switch (kind) {
+    case 'create_campaign': return 'Campaign'
+    case 'fill_session': return 'Slot Filler'
+    case 'reactivate_members': return 'Reactivation'
+    case 'trial_follow_up': return 'Trial Follow-up'
+    case 'renewal_reactivation': return 'Renewal Outreach'
+    case 'create_cohort': return 'Audience'
+    case 'update_contact_policy': return 'Contact Policy'
+    case 'update_autonomy_policy': return 'Autopilot Policy'
+    default: return kind.replace(/_/g, ' ')
+  }
+}
+
+function formatDraftSchedule(value: string | Date | null | undefined, timeZone?: string | null) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: timeZone || undefined,
+  }).format(date)
 }
 
 /* --- Typing Indicator --- */
@@ -567,6 +665,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const {
+    data: advisorDrafts = [],
+    isLoading: isDraftsLoading,
+    refetch: refetchAdvisorDrafts,
+  } = useAdvisorDrafts(clubId, 24);
 
   // Track conversation ID from API response without re-creating transport mid-stream
   const convIdRef = useRef<string | null>(null);
@@ -671,13 +774,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isBusy]);
 
-  const startNewChat = () => {
+  const startNewChat = useCallback(() => {
     setActiveConvId(null);
     setConversationId(null);
     setMessages([]);
     setInputValue("");
     inputRef.current?.focus();
-  };
+  }, [setMessages]);
 
   const handleSend = useCallback(async (text?: string) => {
     const msg = text || inputValue.trim();
@@ -696,30 +799,31 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       });
 
       if (response.ok) {
-              const payload = await response.json();
-              if (payload?.handled) {
+        const payload = await response.json();
+        if (payload?.handled) {
           const nextConvId = payload.conversationId || convIdRef.current;
           if (nextConvId) {
             setConversationId(nextConvId);
             setActiveConvId(nextConvId);
           }
 
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: crypto.randomUUID(),
-                    role: 'user',
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'user',
               parts: [{ type: 'text' as const, text: msg }],
               createdAt: new Date(),
             },
-                  {
-                    id: payload.assistantMessageId || crypto.randomUUID(),
-                    role: 'assistant',
-                    parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-                    createdAt: new Date(),
-                    metadata: payload.assistantMetadata ?? undefined,
-                  },
-                ]);
+            {
+              id: payload.assistantMessageId || crypto.randomUUID(),
+              role: 'assistant',
+              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+              createdAt: new Date(),
+              metadata: payload.assistantMetadata ?? undefined,
+            },
+          ]);
+          void refetchAdvisorDrafts();
           refreshConversations();
           return;
         }
@@ -729,7 +833,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     }
 
     sendMessage({ text: msg });
-  }, [clubId, inputValue, isBusy, refreshConversations, sendMessage, setMessages]);
+  }, [clubId, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -740,6 +844,35 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     setInputValue(text);
     inputRef.current?.focus();
   }, []);
+
+  const groupedDrafts = useMemo(() => {
+    const buckets = new Map<string, AdvisorDraftWorkspaceItem[]>()
+    advisorDraftSections.forEach((section) => buckets.set(section.key, []))
+
+    for (const draft of advisorDrafts as AdvisorDraftWorkspaceItem[]) {
+      const bucket = getAdvisorDraftBucket(draft.status)
+      buckets.get(bucket)?.push(draft)
+    }
+
+    return advisorDraftSections
+      .map((section) => ({
+        ...section,
+        drafts: buckets.get(section.key) || [],
+      }))
+      .filter((section) => section.drafts.length > 0)
+  }, [advisorDrafts]);
+
+  const openDraftWorkspaceItem = useCallback((draft: AdvisorDraftWorkspaceItem) => {
+    if (draft.conversationId) {
+      void loadConversation(draft.conversationId)
+      return
+    }
+
+    startNewChat()
+    if (draft.originalIntent) {
+      draftIntoComposer(draft.originalIntent)
+    }
+  }, [draftIntoComposer, loadConversation, startNewChat]);
 
   return (
     <div className="flex gap-6 max-w-[1400px] mx-auto" style={{ height: "calc(100vh - 112px)" }}>
@@ -755,35 +888,144 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             <Plus className="w-3 h-3" /> New
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.length === 0 && (
-            <div className="text-center py-8 text-[11px]" style={{ color: "var(--t4)" }}>
-              No conversations yet
-            </div>
-          )}
-          {conversations.map((conv) => {
-            const isActive = activeConvId === conv.id;
-            return (
-              <button
-                key={conv.id}
-                onClick={() => loadConversation(conv.id)}
-                className="w-full text-left px-3 py-2.5 rounded-xl transition-all group"
-                style={{
-                  background: isActive ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "transparent",
-                  border: isActive ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
-                }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--hover)"; }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs truncate flex-1" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
-                    {conv.title || 'New conversation'}
-                  </span>
+        <div className="flex-1 overflow-y-auto p-2 space-y-4">
+          <div className="space-y-1">
+            {conversations.length === 0 && (
+              <div className="text-center py-8 text-[11px]" style={{ color: "var(--t4)" }}>
+                No conversations yet
+              </div>
+            )}
+            {conversations.map((conv) => {
+              const isActive = activeConvId === conv.id;
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => loadConversation(conv.id)}
+                  className="w-full text-left px-3 py-2.5 rounded-xl transition-all group"
+                  style={{
+                    background: isActive ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "transparent",
+                    border: isActive ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--hover)"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs truncate flex-1" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
+                      {conv.title || 'New conversation'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-3" style={{ borderTop: "1px solid var(--divider)" }}>
+            <div className="flex items-center justify-between px-2 pb-2">
+              <div>
+                <h4 style={{ fontSize: "12px", fontWeight: 700, color: "var(--heading)" }}>Agent Drafts</h4>
+                <div className="text-[10px]" style={{ color: "var(--t4)" }}>
+                  {advisorDrafts.length} records in the agent workspace
                 </div>
-                <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
+              </div>
+              <button
+                onClick={() => void refetchAdvisorDrafts()}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-colors"
+                style={{ background: "var(--subtle)", color: "var(--t3)", fontWeight: 600 }}
+              >
+                <RotateCcw className="w-3 h-3" />
+                Refresh
               </button>
-            );
-          })}
+            </div>
+
+            {isDraftsLoading && (
+              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
+                Loading draft workspace…
+              </div>
+            )}
+
+            {!isDraftsLoading && groupedDrafts.length === 0 && (
+              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
+                No agent drafts yet
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {groupedDrafts.map((section) => (
+                <div key={section.key}>
+                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                    {section.label}
+                  </div>
+                  <div className="space-y-1">
+                    {section.drafts.map((draft) => {
+                      const statusStyles = getDraftStatusStyles(draft.status)
+                      const scheduleLabel = formatDraftSchedule(draft.scheduledFor, draft.timeZone)
+                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
+
+                      return (
+                        <button
+                          key={draft.id}
+                          onClick={() => openDraftWorkspaceItem(draft)}
+                          className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
+                          style={{
+                            background: isDraftActive ? (isDark ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.05)") : "var(--subtle)",
+                            border: isDraftActive ? "1px solid rgba(6,182,212,0.22)" : "1px solid var(--card-border)",
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[11px]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                                {formatDraftKind(draft.kind)}
+                              </div>
+                              <div className="text-xs truncate mt-0.5" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                                {draft.title}
+                              </div>
+                            </div>
+                            <span
+                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
+                              style={{ ...statusStyles, fontWeight: 700 }}
+                            >
+                              {formatDraftStatus(draft.status)}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {draft.selectedPlan === 'recommended' && (
+                              <span
+                                className="px-2 py-1 rounded-full text-[10px]"
+                                style={{ background: "rgba(139,92,246,0.12)", color: "#C4B5FD", fontWeight: 700 }}
+                              >
+                                Agent plan
+                              </span>
+                            )}
+                            {draft.sandboxMode && (
+                              <span
+                                className="px-2 py-1 rounded-full text-[10px]"
+                                style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
+                              >
+                                Sandbox
+                              </span>
+                            )}
+                          </div>
+
+                          {(draft.summary || scheduleLabel) && (
+                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {draft.summary || (scheduleLabel ? `Scheduled for ${scheduleLabel}` : '')}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
+                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
+                            <span>{formatRelative(String(draft.updatedAt))}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
