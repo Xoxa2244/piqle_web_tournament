@@ -6,6 +6,7 @@ import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorActionSchema, cohortFilterSchema, type AdvisorAction } from './advisor-actions'
 import type { AdvisorConversationState } from './advisor-conversation-state'
 import { containsAdvisorSchedulingIntent, parseAdvisorScheduledSend } from './advisor-scheduling'
+import { resolveAdvisorSlotSession, type AdvisorSlotSessionOption } from './advisor-slot-filler'
 
 const advisorEditResultSchema = z.object({
   handled: z.boolean(),
@@ -13,6 +14,7 @@ const advisorEditResultSchema = z.object({
 })
 
 type AudienceFilter = z.infer<typeof cohortFilterSchema>
+type FillSessionAction = Extract<AdvisorAction, { kind: 'fill_session' }>
 
 function cleanJson(text: string) {
   return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
@@ -42,8 +44,16 @@ function replaceFilter(filters: AudienceFilter[], nextFilter: AudienceFilter) {
   return [...filters.filter((filter) => filter.field !== nextFilter.field), nextFilter]
 }
 
-function isLikelyEditRequest(message: string, state: AdvisorConversationState | null) {
-  if (!state?.currentAudience && !state?.currentCampaign) return false
+function getActiveFillSessionAction(lastAction: AdvisorAction | null | undefined): FillSessionAction | null {
+  return lastAction?.kind === 'fill_session' ? lastAction : null
+}
+
+function isLikelyEditRequest(
+  message: string,
+  state: AdvisorConversationState | null,
+  activeFillSession: FillSessionAction | null,
+) {
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession) return false
 
   const lower = message.toLowerCase()
   const explicitEdit = containsAny(lower, [
@@ -52,8 +62,10 @@ function isLikelyEditRequest(message: string, state: AdvisorConversationState | 
     /\b(subject|body|copy|tone|message|campaign|email|sms)\b/,
     /\b(exclude|include|remove|add|only|filter|narrow|broaden)\b/,
     /\b(schedule|scheduled|later|send now|save as draft)\b/,
+    /\b(top\s+\d{1,2}|best\s+\d{1,2}|another session|different session|other session)\b/,
   ]) || containsAny(lower, [
     /\b(короче|длиннее|измени|исправь|обнови|убери|добавь|оставь|только)\b/,
+    /\b(другую сессию|другой слот|топ-\d{1,2}|топ \d{1,2})\b/,
     /\b(mas corto|más corto|actualiza|edita|cambia|quita|solo)\b/,
   ])
 
@@ -64,6 +76,34 @@ function isLikelyEditRequest(message: string, state: AdvisorConversationState | 
   ])
 
   return explicitEdit || pronounEdit || containsAdvisorSchedulingIntent(message)
+}
+
+function extractCandidateLimit(message: string) {
+  const lower = message.toLowerCase()
+  const match =
+    lower.match(/\btop\s+(\d{1,2})\b/) ||
+    lower.match(/\bbest\s+(\d{1,2})\b/) ||
+    lower.match(/\binvite(?:\s+only)?\s+(\d{1,2})\s+(?:players?|members?|people)\b/) ||
+    lower.match(/\bonly\s+(\d{1,2})\s+(?:players?|members?|people)\b/) ||
+    lower.match(/\bтоп[- ]?(\d{1,2})\b/)
+
+  if (!match) return null
+
+  const value = Number(match[1])
+  if (!Number.isInteger(value) || value < 1 || value > 20) return null
+  return value
+}
+
+function pickAlternateSession(
+  sessions: AdvisorSlotSessionOption[],
+  currentSession: AdvisorSlotSessionOption,
+): AdvisorSlotSessionOption | null {
+  if (sessions.length < 2) return null
+
+  const currentIndex = sessions.findIndex((session) => session.id === currentSession.id)
+  if (currentIndex === -1) return sessions[0] || null
+
+  return sessions[(currentIndex + 1) % sessions.length] || null
 }
 
 function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationState): AdvisorAction | null {
@@ -284,6 +324,76 @@ function applyHeuristicCampaignEdit(
   }
 }
 
+function applyHeuristicFillSessionEdit(
+  message: string,
+  currentAction: FillSessionAction | null,
+  sessions: AdvisorSlotSessionOption[] | undefined,
+): AdvisorAction | null {
+  if (!currentAction) return null
+
+  const lower = message.toLowerCase()
+  let nextAction: FillSessionAction = {
+    ...currentAction,
+    session: { ...currentAction.session },
+    outreach: {
+      ...currentAction.outreach,
+      candidates: [...currentAction.outreach.candidates],
+    },
+  }
+  let changed = false
+
+  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/, /\b(только sms|только смс|переключи на sms|смс вместо email)\b/])) {
+    nextAction.outreach.channel = 'sms'
+    nextAction.outreach.message = truncateText(nextAction.outreach.message, 160)
+    changed = true
+  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/, /\b(только email|только имейл|только емейл|переключи на email)\b/])) {
+    nextAction.outreach.channel = 'email'
+    changed = true
+  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/, /\b(оба канала|и email и sms|и емейл и смс)\b/])) {
+    nextAction.outreach.channel = 'both'
+    changed = true
+  }
+
+  const candidateLimit = extractCandidateLimit(message)
+  if (candidateLimit && candidateLimit !== nextAction.outreach.candidateCount) {
+    nextAction.outreach.candidateCount = candidateLimit
+    nextAction.outreach.candidates = nextAction.outreach.candidates.slice(0, candidateLimit)
+    changed = true
+  }
+
+  let nextSession: AdvisorSlotSessionOption | null = null
+  if (sessions?.length) {
+    if (containsAny(lower, [
+      /\b(another|different|other)\s+(session|slot|match)\b/,
+      /\b(show me another|pick another|choose another)\b/,
+      /\b(другую сессию|другой слот|покажи другую)\b/,
+    ])) {
+      nextSession = pickAlternateSession(sessions, nextAction.session)
+    } else {
+      const resolved = resolveAdvisorSlotSession({
+        message,
+        sessions,
+        currentSession: nextAction.session,
+      })
+      if (resolved.session && resolved.session.id !== nextAction.session.id && resolved.reason !== 'current') {
+        nextSession = resolved.session
+      }
+    }
+  }
+
+  if (nextSession) {
+    nextAction.session = nextSession
+    changed = true
+  }
+
+  if (!changed) return null
+
+  nextAction.title = `Fill session: ${nextAction.session.title}`
+  nextAction.summary = `${nextAction.outreach.channel.toUpperCase()} invites for ${nextAction.outreach.candidateCount} matched player${nextAction.outreach.candidateCount === 1 ? '' : 's'}`
+
+  return nextAction
+}
+
 const EDITOR_SYSTEM = `You revise the active working draft inside IQSport's AI Advisor.
 
 Return ONLY valid JSON:
@@ -314,11 +424,13 @@ Rules:
 const EDIT_COPY: Record<'en' | 'ru' | 'es', {
   audienceUpdated: (name: string, count: number) => string
   campaignUpdated: (name: string, count: number) => string
-  suggestions: Record<'create_cohort' | 'create_campaign', string[]>
+  fillSessionUpdated: (title: string, count: number) => string
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session', string[]>
 }> = {
   en: {
     audienceUpdated: (name, count) => `I updated the active audience "${name}" and it now targets ${count} matching members. Review the draft below and approve when you're ready.`,
     campaignUpdated: (name, count) => `I updated the active campaign for the audience "${name}" with ${count} matching members. Review the revised draft below and approve when you're ready.`,
+    fillSessionUpdated: (title, count) => `I updated the active session fill draft for "${title}" with ${count} target players. Review the invite below and approve when you're ready.`,
     suggestions: {
       create_cohort: [
         'Draft a campaign for this audience',
@@ -330,11 +442,17 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Switch to SMS only',
         'Exclude members active this week',
       ],
+      fill_session: [
+        'Use SMS instead',
+        'Invite the top 3 players',
+        'Pick another session',
+      ],
     },
   },
   ru: {
     audienceUpdated: (name, count) => `Я обновил активную аудиторию "${name}". Сейчас в ней ${count} подходящих участников. Проверь черновик ниже и подтверди, когда будешь готов.`,
     campaignUpdated: (name, count) => `Я обновил активную кампанию для аудитории "${name}" на ${count} участников. Проверь обновленный черновик ниже и подтверди отправку.`,
+    fillSessionUpdated: (title, count) => `Я обновил активный черновик заполнения для "${title}" на ${count} игроков. Проверь приглашение ниже и подтверди, когда будешь готов.`,
     suggestions: {
       create_cohort: [
         'Подготовь кампанию для этой аудитории',
@@ -346,11 +464,17 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Переключи только на SMS',
         'Убери тех, кто играл на этой неделе',
       ],
+      fill_session: [
+        'Переключи на SMS',
+        'Пригласи топ-3 игроков',
+        'Выбери другую сессию',
+      ],
     },
   },
   es: {
     audienceUpdated: (name, count) => `Actualicé la audiencia activa "${name}" y ahora apunta a ${count} miembros. Revisa el borrador abajo y apruébalo cuando quieras.`,
     campaignUpdated: (name, count) => `Actualicé la campaña activa para la audiencia "${name}" con ${count} miembros. Revisa el borrador actualizado abajo y apruébalo cuando quieras.`,
+    fillSessionUpdated: (title, count) => `Actualicé el borrador activo para llenar "${title}" con ${count} jugadores objetivo. Revisa la invitación abajo y apruébala cuando quieras.`,
     suggestions: {
       create_cohort: [
         'Prepara una campaña para esta audiencia',
@@ -361,6 +485,11 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Hazlo más corto',
         'Cámbialo a solo SMS',
         'Excluye a quienes jugaron esta semana',
+      ],
+      fill_session: [
+        'Usa SMS en su lugar',
+        'Invita a los mejores 3 jugadores',
+        'Elige otra sesión',
       ],
     },
   },
@@ -374,10 +503,19 @@ export function getAdvisorEditCopy(language: SupportedLanguage | string) {
 export async function maybeEditAdvisorDraft(opts: {
   message: string
   state: AdvisorConversationState | null
+  lastAction?: AdvisorAction | null
+  sessions?: AdvisorSlotSessionOption[]
   timeZone?: string | null
 }): Promise<AdvisorAction | null> {
-  const { message, state, timeZone } = opts
-  if (!isLikelyEditRequest(message, state)) return null
+  const { message, state, lastAction, sessions, timeZone } = opts
+  const activeFillSession = getActiveFillSessionAction(lastAction)
+
+  if (!isLikelyEditRequest(message, state, activeFillSession)) return null
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession) return null
+
+  const heuristicFillSessionEdit = applyHeuristicFillSessionEdit(message, activeFillSession, sessions)
+  if (heuristicFillSessionEdit) return heuristicFillSessionEdit
+
   if (!state?.currentAudience && !state?.currentCampaign) return null
 
   const heuristicAudienceEdit = applyHeuristicAudienceEdit(message, state)
