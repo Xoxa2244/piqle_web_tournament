@@ -37,6 +37,11 @@ export type AdvisorOutcomeInsights = {
   recentOutcomes: AdvisorOutcomeMemory[]
 }
 
+export type AdvisorPerformanceSignal = {
+  headline: string
+  bullets: string[]
+}
+
 const SENT_EQUIVALENT_STATUSES = new Set(['sent', 'delivered', 'opened', 'clicked', 'converted'])
 const DELIVERED_EQUIVALENT_STATUSES = new Set(['delivered', 'opened', 'clicked', 'converted'])
 const OPENED_EQUIVALENT_STATUSES = new Set(['opened', 'clicked', 'converted'])
@@ -65,6 +70,10 @@ function humanizeChannel(channel?: string | null) {
   if (channel === 'email') return 'email'
   if (channel === 'both') return 'email + SMS'
   return channel
+}
+
+function normalizeChannel(channel?: string | null) {
+  return (channel || '').trim().toLowerCase()
 }
 
 export function buildAdvisorOutcomeInsights(input: {
@@ -185,6 +194,55 @@ export function formatAdvisorOutcomeInsightsBlock(insights: AdvisorOutcomeInsigh
   return parts.join('\n')
 }
 
+export function buildAdvisorPerformanceSignal(input: {
+  type: string
+  requestedChannel?: string | null
+  insights: AdvisorOutcomeInsights
+  days?: number
+}): AdvisorPerformanceSignal | null {
+  const typeLabel = humanizeType(input.type).toLowerCase()
+  const requestedChannel = normalizeChannel(input.requestedChannel)
+  const flowForRequestedChannel = requestedChannel
+    ? input.insights.topFlows.find((flow) => normalizeChannel(flow.channel) === requestedChannel)
+    : null
+  const topFlow = flowForRequestedChannel || input.insights.topFlows[0]
+  const bullets: string[] = []
+  let headline = ''
+
+  if (topFlow && topFlow.sent > 0) {
+    const flowChannel = humanizeChannel(topFlow.channel)
+    headline = flowForRequestedChannel
+      ? `${flowChannel} has the clearest recent signal for this ${typeLabel} action.`
+      : `${flowChannel} is the strongest recent channel for ${typeLabel}.`
+    bullets.push(
+      `Recent ${typeLabel} via ${flowChannel}: ${topFlow.sent} sent, ${topFlow.openRate}% open, ${topFlow.clickRate}% click, ${topFlow.conversionRate}% convert.`,
+    )
+
+    if (requestedChannel && normalizeChannel(topFlow.channel) !== requestedChannel) {
+      bullets.push(
+        `This draft currently uses ${humanizeChannel(requestedChannel)}, so compare it against the stronger ${flowChannel} signal before sending.`,
+      )
+    }
+  }
+
+  if (input.insights.recentOutcomes.length > 0) {
+    bullets.push(`Latest completed advisor action: ${input.insights.recentOutcomes[0].summary}`)
+  }
+
+  if (input.insights.totals.sent > 0) {
+    bullets.push(
+      `Last ${input.days || 30} days across this club: ${input.insights.totals.sent} related sends, ${input.insights.totals.delivered} delivered, ${input.insights.totals.converted} converted.`,
+    )
+  }
+
+  if (!headline && bullets.length === 0) return null
+
+  return {
+    headline: headline || 'Recent club outcomes can help guide this action.',
+    bullets: bullets.slice(0, 3),
+  }
+}
+
 export async function buildAdvisorOutcomeInsightsBlock(opts: {
   prisma: any
   clubId: string
@@ -247,4 +305,68 @@ export async function buildAdvisorOutcomeInsightsBlock(opts: {
     }),
     opts.days || 30,
   )
+}
+
+export async function buildAdvisorPerformanceSignalForAction(opts: {
+  prisma: any
+  clubId: string
+  type: string
+  requestedChannel?: string | null
+  advisorOutcomeKind?: AdvisorOutcomeMemory['kind']
+  days?: number
+  maxAdvisorMessages?: number
+}) {
+  const since = new Date(Date.now() - (opts.days || 30) * 86400000)
+
+  const [campaignLogs, advisorMessages] = await Promise.all([
+    opts.prisma.aIRecommendationLog.findMany({
+      where: {
+        clubId: opts.clubId,
+        createdAt: { gte: since },
+        type: opts.type,
+      },
+      select: {
+        type: true,
+        channel: true,
+        status: true,
+        openedAt: true,
+        clickedAt: true,
+        respondedAt: true,
+        deliveredAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+    opts.prisma.aIMessage.findMany({
+      where: {
+        role: 'assistant',
+        createdAt: { gte: since },
+        conversation: {
+          is: {
+            clubId: opts.clubId,
+          },
+        },
+      },
+      select: {
+        metadata: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: opts.maxAdvisorMessages || 30,
+    }),
+  ])
+
+  const recentOutcomes = advisorMessages
+    .map((message: { metadata?: unknown }) => getAdvisorLatestOutcome(message.metadata))
+    .filter((outcome: AdvisorOutcomeMemory | null): outcome is AdvisorOutcomeMemory => !!outcome)
+    .filter((outcome: AdvisorOutcomeMemory) => !opts.advisorOutcomeKind || outcome.kind === opts.advisorOutcomeKind)
+
+  return buildAdvisorPerformanceSignal({
+    type: opts.type,
+    requestedChannel: opts.requestedChannel,
+    days: opts.days,
+    insights: buildAdvisorOutcomeInsights({
+      campaignLogs,
+      advisorOutcomes: recentOutcomes,
+    }),
+  })
 }

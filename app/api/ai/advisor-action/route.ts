@@ -26,6 +26,7 @@ import {
   evaluateAdvisorContactGuardrails,
   formatAdvisorGuardrailDigest,
 } from '@/lib/ai/advisor-contact-guardrails'
+import { buildAdvisorPerformanceSignalForAction } from '@/lib/ai/advisor-outcome-insights'
 import {
   formatAdvisorContactPolicyDigest,
   resolveAdvisorContactPolicy,
@@ -332,6 +333,14 @@ async function hydrateAdvisorCampaignAction(opts: {
       : new Date(),
   })
   const excludedByRules = Math.max(0, members.length - ruleEligibleMembers.length)
+  const signals = await buildAdvisorPerformanceSignalForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.campaign.type,
+    requestedChannel: opts.action.campaign.channel,
+    advisorOutcomeKind: 'create_campaign',
+    days: 30,
+  }).catch(() => null)
 
   const action: AdvisorCampaignAction = {
     ...opts.action,
@@ -348,6 +357,7 @@ async function hydrateAdvisorCampaignAction(opts: {
       ...opts.action.campaign,
       guardrails: guardrails.summary,
     },
+    signals: signals || undefined,
   }
 
   return {
@@ -626,6 +636,14 @@ async function buildFillSessionAssistantResponse(opts: {
       sessionTitle: resolvedSession.title,
     },
   })
+  const signals = await buildAdvisorPerformanceSignalForAction({
+    prisma,
+    clubId,
+    type: 'SLOT_FILLER',
+    requestedChannel: channel,
+    advisorOutcomeKind: 'fill_session',
+    days: 30,
+  }).catch(() => null)
 
   const action: AdvisorAction = {
     kind: 'fill_session',
@@ -642,6 +660,7 @@ async function buildFillSessionAssistantResponse(opts: {
         candidates,
         guardrails: guardrails.summary,
       },
+      signals: signals || undefined,
     }
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
@@ -742,6 +761,14 @@ async function buildReactivationAssistantResponse(opts: {
       inactivityDays,
     },
   })
+  const signals = await buildAdvisorPerformanceSignalForAction({
+    prisma,
+    clubId,
+    type: 'REACTIVATION',
+    requestedChannel: channel,
+    advisorOutcomeKind: 'reactivate_members',
+    days: 30,
+  }).catch(() => null)
 
   const messagePreview = channel === 'email'
     ? truncateAdvisorText(generated.body, 500)
@@ -761,6 +788,7 @@ async function buildReactivationAssistantResponse(opts: {
       candidates,
       guardrails: guardrails.summary,
     },
+    signals: signals || undefined,
   }
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)

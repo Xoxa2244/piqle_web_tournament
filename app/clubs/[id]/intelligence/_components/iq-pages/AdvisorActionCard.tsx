@@ -92,6 +92,13 @@ export function AdvisorActionCard({
 
   const title = currentAction.title
   const summary = currentAction.summary
+  const performanceSignals = currentAction.kind === 'create_campaign'
+    ? currentAction.signals
+    : currentAction.kind === 'fill_session'
+      ? currentAction.signals
+      : currentAction.kind === 'reactivate_members'
+        ? currentAction.signals
+        : null
 
   const quickScheduleOptions = useMemo(() => ([
     buildQuickScheduleOption(1, 9, 'Tomorrow 9 AM'),
@@ -596,6 +603,29 @@ export function AdvisorActionCard({
           </div>
         )}
       </div>
+
+      {performanceSignals && (
+        <div
+          className="rounded-xl p-3 mt-3"
+          style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)' }}
+        >
+          <div className="flex items-center gap-2 text-xs" style={{ color: '#10B981', fontWeight: 700 }}>
+            Why this is recommended
+          </div>
+          <div className="text-xs mt-2" style={{ color: 'var(--heading)', lineHeight: 1.6, fontWeight: 600 }}>
+            {performanceSignals.headline}
+          </div>
+          {performanceSignals.bullets.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {performanceSignals.bullets.map((bullet) => (
+                <p key={bullet} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                  {bullet}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {(isCampaign || isFillSession || isReactivation || isContactPolicy || isAutonomyPolicy) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>

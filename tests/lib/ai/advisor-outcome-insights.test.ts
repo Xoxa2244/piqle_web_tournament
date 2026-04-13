@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildAdvisorPerformanceSignal,
   buildAdvisorOutcomeInsights,
   formatAdvisorOutcomeInsightsBlock,
 } from '@/lib/ai/advisor-outcome-insights'
@@ -75,5 +76,48 @@ describe('advisor outcome insights', () => {
     expect(block).toContain('Last 30d outreach totals: 8 sent')
     expect(block).toContain('Reactivation via email: 5 sent')
     expect(block).toContain('Campaign scheduled for Tue, Apr 14, 9:00 AM PDT')
+  })
+
+  it('builds structured recommendation signals from recent outcomes', () => {
+    const signal = buildAdvisorPerformanceSignal({
+      type: 'REACTIVATION',
+      requestedChannel: 'sms',
+      days: 30,
+      insights: {
+        totals: {
+          sent: 7,
+          delivered: 7,
+          opened: 4,
+          clicked: 2,
+          converted: 1,
+        },
+        topFlows: [
+          {
+            type: 'REACTIVATION',
+            channel: 'sms',
+            sent: 4,
+            delivered: 4,
+            opened: 3,
+            clicked: 1,
+            converted: 1,
+            openRate: 75,
+            clickRate: 33,
+            conversionRate: 25,
+          },
+        ],
+        recentOutcomes: [
+          {
+            kind: 'reactivate_members',
+            title: 'Reactivate inactive members',
+            summary: 'Reactivation outreach sent to 4 eligible inactive members.',
+            occurredAt: '2026-04-13T16:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    expect(signal?.headline).toContain('SMS')
+    expect(signal?.bullets[0]).toContain('25% convert')
+    expect(signal?.bullets[1]).toContain('Latest completed advisor action')
   })
 })

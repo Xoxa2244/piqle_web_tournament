@@ -41,6 +41,10 @@ export const advisorCampaignExecutionSchema = z.object({
   scheduledFor: z.string().datetime().optional(),
   timeZone: z.string().min(1).max(80).optional(),
 })
+export const advisorPerformanceSignalSchema = z.object({
+  headline: z.string().min(1).max(220),
+  bullets: z.array(z.string().min(1).max(220)).max(4).default([]),
+})
 
 export const cohortFilterSchema = z.object({
   field: z.string(),
@@ -133,6 +137,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     requiresApproval: z.boolean().default(true),
     audience: advisorCohortDraftSchema,
     campaign: advisorCampaignDraftSchema,
+    signals: advisorPerformanceSignalSchema.optional(),
   }),
   z.object({
     kind: z.literal('fill_session'),
@@ -141,6 +146,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     requiresApproval: z.boolean().default(true),
     session: advisorSessionDraftSchema,
     outreach: advisorSlotFillerOutreachSchema,
+    signals: advisorPerformanceSignalSchema.optional(),
   }),
   z.object({
     kind: z.literal('reactivate_members'),
@@ -148,6 +154,7 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     summary: z.string().max(240).optional(),
     requiresApproval: z.boolean().default(true),
     reactivation: advisorReactivationDraftSchema,
+    signals: advisorPerformanceSignalSchema.optional(),
   }),
   z.object({
     kind: z.literal('update_contact_policy'),
