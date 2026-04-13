@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 
 export const advisorCampaignTypeEnum = z.enum([
@@ -154,6 +155,13 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     summary: z.string().max(240).optional(),
     requiresApproval: z.boolean().default(true),
     policy: advisorContactPolicyDraftSchema,
+  }),
+  z.object({
+    kind: z.literal('update_autonomy_policy'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    policy: advisorAutonomyPolicyDraftSchema,
   }),
 ])
 

@@ -7,6 +7,12 @@ import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
 import { buildAdvisorActionTag, extractAdvisorAction, type AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
 import {
+  formatAdvisorAutonomyPolicyDigest,
+  resolveAdvisorAutonomyPolicy,
+  updateAdvisorAutonomyPolicyFromMessage,
+  type AdvisorAutonomyPolicyDraft,
+} from '@/lib/ai/advisor-autonomy-policy'
+import {
   type AdvisorConversationState,
   buildAdvisorConversationStateFromAction,
   deriveAdvisorConversationState,
@@ -191,6 +197,7 @@ function buildCampaignReadyText(
 
 type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
 type AdvisorContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
+type AdvisorAutonomyPolicyAction = Extract<AdvisorAction, { kind: 'update_autonomy_policy' }>
 
 async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter[]) {
   const where = buildCohortWhereClause(filters)
@@ -303,6 +310,16 @@ function buildContactPolicyAction(policy: AdvisorContactPolicyDraft): AdvisorCon
   }
 }
 
+function buildAutonomyPolicyAction(policy: AdvisorAutonomyPolicyDraft): AdvisorAutonomyPolicyAction {
+  return {
+    kind: 'update_autonomy_policy',
+    title: 'Update club autonomy policy',
+    summary: formatAdvisorAutonomyPolicyDigest(policy),
+    requiresApproval: true,
+    policy,
+  }
+}
+
 function getSlotFillerCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
@@ -375,6 +392,24 @@ function getContactPolicyCopy(language: SupportedLanguage | string) {
 
   return {
     needChanges: 'Tell me what to change in the contact policy: quiet hours, cooldown, daily cap, weekly cap, or the recent booking suppression window.',
+  }
+}
+
+function getAutonomyPolicyCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      needChanges: 'Скажи, что поменять в autonomy policy: какой action поставить в auto, approve или off, и нужны ли пороги confidence, лимит получателей или membership signal.',
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      needChanges: 'Dime que quieres cambiar en la politica de autonomia: que acciones van en auto, approve u off, y si quieres umbrales de confidence, limite de recipients o membership signal.',
+    }
+  }
+
+  return {
+    needChanges: 'Tell me what to change in the autonomy policy: which actions should be auto, approve, or off, and whether you want confidence thresholds, recipient caps, or membership signal requirements.',
   }
 }
 
@@ -807,6 +842,8 @@ export async function POST(req: Request) {
               ? 'reactivate_members'
             : plan.action === 'update_contact_policy'
               ? 'update_contact_policy'
+            : plan.action === 'update_autonomy_policy'
+              ? 'update_autonomy_policy'
             : 'create_campaign'
         assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[suggestionKey])
       }
@@ -829,6 +866,28 @@ export async function POST(req: Request) {
               buildAdvisorActionTag(action),
             ].join('\n\n'),
             copy.suggestions.update_contact_policy,
+          )
+        }
+      }
+
+      if (!assistantMessage && !hadPendingClarification) {
+        const editedAutonomyPolicy = memory.state?.currentAutonomyPolicy
+          ? updateAdvisorAutonomyPolicyFromMessage({
+              message,
+              currentPolicy: memory.state.currentAutonomyPolicy,
+              allowImplicit: true,
+            })
+          : null
+        if (editedAutonomyPolicy) {
+          const action = buildAutonomyPolicyAction(editedAutonomyPolicy)
+          assistantState = buildAdvisorConversationStateFromAction(action)
+          assistantMessage = withSuggested(
+            [
+              copy.autonomyPolicyReady(action.policy.changes.length),
+              ...action.policy.changes,
+              buildAdvisorActionTag(action),
+            ].join('\n\n'),
+            copy.suggestions.update_autonomy_policy,
           )
         }
       }
@@ -914,6 +973,16 @@ export async function POST(req: Request) {
                 buildAdvisorActionTag(editedAction),
               ].join('\n\n'),
               copy.suggestions.update_contact_policy,
+            )
+          } else if (editedAction.kind === 'update_autonomy_policy') {
+            assistantState = buildAdvisorConversationStateFromAction(editedAction)
+            assistantMessage = withSuggested(
+              [
+                copy.autonomyPolicyReady(editedAction.policy.changes.length),
+                ...editedAction.policy.changes,
+                buildAdvisorActionTag(editedAction),
+              ].join('\n\n'),
+              copy.suggestions.update_autonomy_policy,
             )
           } else {
             const editCopy = getAdvisorEditCopy(language)
@@ -1114,6 +1183,38 @@ export async function POST(req: Request) {
             buildAdvisorActionTag(action),
           ].join('\n\n'),
           copy.suggestions.update_contact_policy,
+        )
+      }
+    } else if (plan.action === 'update_autonomy_policy') {
+      const autonomyPolicyCopy = getAutonomyPolicyCopy(language)
+      const currentPolicy = resolveAdvisorAutonomyPolicy(clubContext?.automationSettings)
+      const updatedPolicy = updateAdvisorAutonomyPolicyFromMessage({
+        message: effectiveMessage,
+        currentPolicy,
+      })
+
+      if (!updatedPolicy) {
+        assistantState = {
+          ...(memory.state || {}),
+          currentAutonomyPolicy: currentPolicy,
+          lastActionKind: 'update_autonomy_policy',
+          lastActionTitle: 'Update club autonomy policy',
+          updatedAt: new Date().toISOString(),
+        }
+        assistantMessage = withSuggested(
+          autonomyPolicyCopy.needChanges,
+          copy.suggestions.update_autonomy_policy,
+        )
+      } else {
+        const action = buildAutonomyPolicyAction(updatedPolicy)
+        assistantState = buildAdvisorConversationStateFromAction(action)
+        assistantMessage = withSuggested(
+          [
+            copy.autonomyPolicyReady(action.policy.changes.length),
+            ...action.policy.changes,
+            buildAdvisorActionTag(action),
+          ].join('\n\n'),
+          copy.suggestions.update_autonomy_policy,
         )
       }
     } else {

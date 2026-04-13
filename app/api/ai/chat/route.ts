@@ -14,6 +14,7 @@ import {
   clearAdvisorPendingClarification,
   deriveAdvisorConversationState,
 } from '@/lib/ai/advisor-conversation-state';
+import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
@@ -371,17 +372,24 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
     try {
       const club: any = await prisma.club.findUnique({ where: { id: clubId } })
       const intelligenceSettings = club?.automationSettings?.intelligence || null
+      const autonomyPolicy = resolveAdvisorAutonomyPolicy(club?.automationSettings)
       const contactPolicy = resolveAdvisorContactPolicy({
         timeZone: intelligenceSettings?.timezone,
         automationSettings: club?.automationSettings,
       })
+      const autonomyPolicyBlock = `\nCurrent agent autonomy policy:
+- Welcome: ${autonomyPolicy.welcome.mode} (confidence ${autonomyPolicy.welcome.minConfidenceAuto}+, max ${autonomyPolicy.welcome.maxRecipientsAuto}, membership required ${autonomyPolicy.welcome.requireMembershipSignal ? 'yes' : 'no'})
+- Slot filler: ${autonomyPolicy.slotFiller.mode} (confidence ${autonomyPolicy.slotFiller.minConfidenceAuto}+, max ${autonomyPolicy.slotFiller.maxRecipientsAuto}, membership required ${autonomyPolicy.slotFiller.requireMembershipSignal ? 'yes' : 'no'})
+- Check-in: ${autonomyPolicy.checkIn.mode} (confidence ${autonomyPolicy.checkIn.minConfidenceAuto}+, max ${autonomyPolicy.checkIn.maxRecipientsAuto}, membership required ${autonomyPolicy.checkIn.requireMembershipSignal ? 'yes' : 'no'})
+- Retention boost: ${autonomyPolicy.retentionBoost.mode} (confidence ${autonomyPolicy.retentionBoost.minConfidenceAuto}+, max ${autonomyPolicy.retentionBoost.maxRecipientsAuto}, membership required ${autonomyPolicy.retentionBoost.requireMembershipSignal ? 'yes' : 'no'})
+- Reactivation: ${autonomyPolicy.reactivation.mode} (confidence ${autonomyPolicy.reactivation.minConfidenceAuto}+, max ${autonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'})`
       const contactPolicyBlock = `\nCurrent contact policy:
 - Quiet hours: ${contactPolicy.quietHours.startHour}:00-${contactPolicy.quietHours.endHour}:00 (${contactPolicy.timeZone})
 - Cross-campaign cooldown: ${contactPolicy.cooldownHours} hours
 - Daily contact cap: ${contactPolicy.max24h}
 - Weekly contact cap: ${contactPolicy.max7d}
 - Recent booking suppression window: ${contactPolicy.recentBookingLookbackDays} days`
-      clubContextBlock = `${buildClubContextPrompt(intelligenceSettings)}${contactPolicyBlock}`
+      clubContextBlock = `${buildClubContextPrompt(intelligenceSettings)}${autonomyPolicyBlock}${contactPolicyBlock}`
     } catch { /* non-critical */ }
 
     const advisorStateBlock = buildAdvisorStatePrompt(

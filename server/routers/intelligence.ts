@@ -24,6 +24,7 @@ import {
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
+import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
@@ -4268,6 +4269,43 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         return {
           ok: true,
           kind: 'update_contact_policy' as const,
+          policy: input.action.policy,
+          changedFields: input.action.policy.changes,
+          previousPolicy: currentPolicy,
+        }
+      }
+
+      if (input.action.kind === 'update_autonomy_policy') {
+        const club = await ctx.prisma.club.findUniqueOrThrow({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        })
+        const currentPolicy = resolveAdvisorAutonomyPolicy(club.automationSettings)
+        const existingAutomationSettings = (club.automationSettings as Record<string, any> | null) || {}
+        const existingIntelligence = existingAutomationSettings.intelligence || {}
+
+        await ctx.prisma.club.update({
+          where: { id: input.clubId },
+          data: {
+            automationSettings: {
+              ...existingAutomationSettings,
+              intelligence: {
+                ...existingIntelligence,
+                autonomyPolicy: {
+                  welcome: input.action.policy.welcome,
+                  slotFiller: input.action.policy.slotFiller,
+                  checkIn: input.action.policy.checkIn,
+                  retentionBoost: input.action.policy.retentionBoost,
+                  reactivation: input.action.policy.reactivation,
+                },
+              },
+            },
+          },
+        })
+
+        return {
+          ok: true,
+          kind: 'update_autonomy_policy' as const,
           policy: input.action.policy,
           changedFields: input.action.policy.changes,
           previousPolicy: currentPolicy,

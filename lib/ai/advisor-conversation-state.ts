@@ -9,6 +9,7 @@ import {
   extractAdvisorAction,
   type AdvisorAction,
 } from './advisor-actions'
+import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
@@ -24,7 +25,8 @@ export const advisorConversationStateSchema = z.object({
   currentSession: advisorSessionDraftSchema.optional(),
   currentReactivation: advisorReactivationDraftSchema.optional(),
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy']).optional(),
+  currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy', 'update_autonomy_policy']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -83,6 +85,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'update_contact_policy') {
     return {
       currentContactPolicy: action.policy,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    }
+  }
+
+  if (action.kind === 'update_autonomy_policy') {
+    return {
+      currentAutonomyPolicy: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -213,6 +224,12 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     parts.push(`Contact policy time zone: ${state.currentContactPolicy.timeZone}`)
   }
 
+  if (state.currentAutonomyPolicy) {
+    parts.push(`Active autonomy policy draft: welcome ${state.currentAutonomyPolicy.welcome.mode}, slot filler ${state.currentAutonomyPolicy.slotFiller.mode}, check-in ${state.currentAutonomyPolicy.checkIn.mode}, retention ${state.currentAutonomyPolicy.retentionBoost.mode}, reactivation ${state.currentAutonomyPolicy.reactivation.mode}`)
+    parts.push(`Slot filler auto thresholds: confidence ${state.currentAutonomyPolicy.slotFiller.minConfidenceAuto}, max ${state.currentAutonomyPolicy.slotFiller.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.slotFiller.requireMembershipSignal ? 'yes' : 'no'}`)
+    parts.push(`Reactivation auto thresholds: confidence ${state.currentAutonomyPolicy.reactivation.minConfidenceAuto}, max ${state.currentAutonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'}`)
+  }
+
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
   }
@@ -229,6 +246,7 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   parts.push('If the user says "this session", "that slot", or "fill it", assume they mean the active session above unless they clarify otherwise.')
   parts.push('If the user says "those inactive members", "the reactivation list", or asks to revise the win-back message, assume they mean the active reactivation draft above unless they clarify otherwise.')
   parts.push('If the user says "those rules", "that policy", or asks to tighten or relax messaging rules, assume they mean the active contact policy draft above unless they clarify otherwise.')
+  parts.push('If the user says "autopilot", "autonomy rules", "approval matrix", or "that automation policy", assume they mean the active autonomy policy draft above unless they clarify otherwise.')
   parts.push('--- End of Active Advisor Working Memory ---')
 
   return parts.join('\n')

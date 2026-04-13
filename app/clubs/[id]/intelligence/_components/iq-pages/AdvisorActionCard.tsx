@@ -14,6 +14,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
   const isFillSession = action.kind === 'fill_session'
   const isReactivation = action.kind === 'reactivate_members'
   const isContactPolicy = action.kind === 'update_contact_policy'
+  const isAutonomyPolicy = action.kind === 'update_autonomy_policy'
 
   const title = action.title
   const summary = action.summary
@@ -120,7 +121,9 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
                   ? 'Session Fill Draft'
                   : isReactivation
                     ? 'Reactivation Draft'
-                    : 'Contact Policy Draft'}
+                    : isAutonomyPolicy
+                      ? 'Autonomy Policy Draft'
+                      : 'Contact Policy Draft'}
           </div>
           <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
             {title}
@@ -147,7 +150,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
               {isFillSession ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {isFillSession ? 'Session' : isContactPolicy ? 'Policy' : 'Audience'}
+              {isFillSession ? 'Session' : isContactPolicy || isAutonomyPolicy ? 'Policy' : 'Audience'}
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
               {action.kind === 'create_cohort'
@@ -158,6 +161,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
                     ? action.session.title
                     : isReactivation
                       ? action.reactivation.segmentLabel
+                      : isAutonomyPolicy
+                        ? 'Club autopilot rules'
                       : 'Club messaging guardrails'}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
@@ -167,6 +172,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
                   ? `${targetCount} inactive member${targetCount === 1 ? '' : 's'}`
                   : isContactPolicy
                     ? action.policy.timeZone
+                    : isAutonomyPolicy
+                      ? `${action.policy.changes.length} pending change${action.policy.changes.length === 1 ? '' : 's'}`
                     : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
             </div>
             {isFillSession ? (
@@ -181,6 +188,10 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
             ) : isContactPolicy ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
                 Quiet hours {action.policy.quietHours.startHour}:00-{action.policy.quietHours.endHour}:00
+              </p>
+            ) : isAutonomyPolicy ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                Welcome {action.policy.welcome.mode} · Slot filler {action.policy.slotFiller.mode} · Reactivation {action.policy.reactivation.mode}
               </p>
             ) : (
               (action.kind === 'create_cohort' ? action.cohort.description : action.audience.description) && (
@@ -322,6 +333,30 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               ))}
             </div>
           </div>
+        ) : isAutonomyPolicy ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Autopilot Rules
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              Welcome {action.policy.welcome.mode} · Slot filler {action.policy.slotFiller.mode}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              Check-in {action.policy.checkIn.mode} · Retention {action.policy.retentionBoost.mode} · Reactivation {action.policy.reactivation.mode}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {action.policy.changes.slice(0, 5).map((change) => (
+                <span
+                  key={change}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                >
+                  {change}
+                </span>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -343,11 +378,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         )}
       </div>
 
-      {(isCampaign || isFillSession || isReactivation || isContactPolicy) && (
+      {(isCampaign || isFillSession || isReactivation || isContactPolicy || isAutonomyPolicy) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             <Send className="w-3.5 h-3.5" />
-            {isContactPolicy ? 'Policy Preview' : 'Message Preview'}
+            {isContactPolicy || isAutonomyPolicy ? 'Policy Preview' : 'Message Preview'}
           </div>
           <div className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
             {isCampaign
@@ -411,6 +446,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               ? `Audience created: ${result.name} (${result.memberCount} members)`
               : result.kind === 'update_contact_policy'
                 ? `Contact policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
+              : result.kind === 'update_autonomy_policy'
+                ? `Autonomy policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'fill_session'
                 ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'reactivate_members'
@@ -425,8 +462,10 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="text-xs" style={{ color: 'var(--t3)' }}>
             {action.kind === 'create_campaign' && action.campaign.execution.mode === 'save_draft'
               ? 'Approval is required before the platform saves this campaign draft.'
-            : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
-                ? 'Approval is required before the platform schedules this campaign.'
+              : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
+                  ? 'Approval is required before the platform schedules this campaign.'
+              : isAutonomyPolicy
+                ? 'Approval is required before the platform updates club autopilot rules.'
               : isContactPolicy
                 ? 'Approval is required before the platform updates club messaging rules.'
               : isFillSession
@@ -463,6 +502,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
                 ? 'Send Invites'
               : isReactivation
                 ? 'Send Reactivation'
+              : isAutonomyPolicy
+                ? 'Apply Autopilot Rules'
               : 'Approve'}
         </button>
       </div>
