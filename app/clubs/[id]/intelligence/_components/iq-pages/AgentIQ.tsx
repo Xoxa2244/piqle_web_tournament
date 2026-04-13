@@ -87,6 +87,7 @@ interface ProactiveOpportunity {
   sampleMembers: string[]
   ctaLabel: string
   action: AutopilotSuggestionAction
+  advisorPrompt?: string
 }
 
 interface AgentIQProps {
@@ -345,6 +346,20 @@ function isProactiveMembershipLifecycle(kind?: string | null): kind is Proactive
   return kind === "trial_follow_up" || kind === "renewal_reactivation"
 }
 
+function buildProactiveAdvisorPrompt(kind: ProactiveOpportunityKind, blockedCount: number) {
+  if (kind === "trial_follow_up") {
+    const base = "Draft a first-play follow-up for trial members who joined recently and still have no confirmed booking. Use the safest channel for this club and keep the tone supportive."
+    return blockedCount > 0
+      ? `${base} Also explain which cases should stay manual because current autopilot policy is still blocking them.`
+      : base
+  }
+
+  const base = "Draft a renewal outreach for recently active members whose membership is expired, cancelled, or suspended. Use membership context to keep active members review-first if needed."
+  return blockedCount > 0
+    ? `${base} Also explain which cases are still being held by current policy and what the safest next step is.`
+    : base
+}
+
 function buildProactiveOpportunities(logs: AgentLog[], pendingActions: PendingAction[]): ProactiveOpportunity[] {
   const combined = [
     ...pendingActions.map((item) => ({
@@ -397,8 +412,9 @@ function buildProactiveOpportunities(logs: AgentLog[], pendingActions: PendingAc
         pendingCount,
         blockedCount,
         sampleMembers,
-        ctaLabel: pendingCount > 0 ? "Review pending actions" : "Open Advisor",
+        ctaLabel: pendingCount > 0 ? "Review pending actions" : "Prepare in Advisor",
         action: pendingCount > 0 ? "scroll_pending" : "open_advisor",
+        advisorPrompt: pendingCount > 0 ? undefined : buildProactiveAdvisorPrompt(kind, blockedCount),
       }
     }
 
@@ -410,8 +426,9 @@ function buildProactiveOpportunities(logs: AgentLog[], pendingActions: PendingAc
       pendingCount,
       blockedCount,
       sampleMembers,
-      ctaLabel: pendingCount > 0 ? "Review pending actions" : "Open Advisor",
+      ctaLabel: pendingCount > 0 ? "Review pending actions" : "Prepare in Advisor",
       action: pendingCount > 0 ? "scroll_pending" : "open_advisor",
+      advisorPrompt: pendingCount > 0 ? undefined : buildProactiveAdvisorPrompt(kind, blockedCount),
     }
   })
 }
@@ -568,14 +585,16 @@ export function AgentIQ({
     liveMode: agentLive,
   })
 
-  const actionHref = (action: AutopilotSuggestionAction) => {
+  const actionHref = (action: AutopilotSuggestionAction, prompt?: string) => {
     switch (action) {
       case "open_settings":
         return `/clubs/${clubId}/intelligence/settings`
       case "open_integrations":
         return `/clubs/${clubId}/intelligence/integrations`
       case "open_advisor":
-        return `/clubs/${clubId}/intelligence/advisor`
+        return prompt
+          ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(prompt)}`
+          : `/clubs/${clubId}/intelligence/advisor`
       default:
         return null
     }
@@ -979,7 +998,7 @@ export function AgentIQ({
               {proactiveOpportunities.map((opportunity) => {
                 const iconColor = opportunity.kind === "trial_follow_up" ? "#10B981" : "#8B5CF6"
                 const Icon = opportunity.kind === "trial_follow_up" ? UserPlus : Send
-                const href = actionHref(opportunity.action)
+                    const href = actionHref(opportunity.action, opportunity.advisorPrompt)
 
                 return (
                   <div
