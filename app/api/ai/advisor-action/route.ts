@@ -8,8 +8,10 @@ import {
   buildAdvisorActionTag,
   extractAdvisorAction,
   getAdvisorActionFromMetadata,
+  stripAdvisorRecommendation,
   type AdvisorAction,
   type AdvisorAdaptiveDefaultsApplied,
+  type AdvisorActionCore,
 } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent, type AdvisorIntentPlan } from '@/lib/ai/advisor-action-planner'
 import {
@@ -36,6 +38,7 @@ import {
   buildAdvisorPerformanceSignalForAction,
   resolveAdvisorAdaptiveDefaultsForAction,
 } from '@/lib/ai/advisor-outcome-insights'
+import { buildAdvisorRecommendation } from '@/lib/ai/advisor-recommendations'
 import {
   formatAdvisorContactPolicyDigest,
   resolveAdvisorContactPolicy,
@@ -316,12 +319,46 @@ function buildAdvisorAdaptiveDefaultsApplied(opts: {
   return defaultsApplied.channel || defaultsApplied.scheduledSend ? defaultsApplied : undefined
 }
 
-type AdvisorCampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
-type AdvisorContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
-type AdvisorAutonomyPolicyAction = Extract<AdvisorAction, { kind: 'update_autonomy_policy' }>
-type AdvisorTrialFollowUpAction = Extract<AdvisorAction, { kind: 'trial_follow_up' }>
-type AdvisorRenewalReactivationAction = Extract<AdvisorAction, { kind: 'renewal_reactivation' }>
+type AdvisorCampaignAction = Extract<AdvisorActionCore, { kind: 'create_campaign' }>
+type AdvisorFillSessionAction = Extract<AdvisorActionCore, { kind: 'fill_session' }>
+type AdvisorReactivationAction = Extract<AdvisorActionCore, { kind: 'reactivate_members' }>
+type AdvisorContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
+type AdvisorAutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
+type AdvisorTrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
+type AdvisorRenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type AdvisorMembershipLifecycleAction = AdvisorTrialFollowUpAction | AdvisorRenewalReactivationAction
+
+function buildRecommendationTitle(action: { kind: AdvisorActionCore['kind'] }) {
+  if (action.kind === 'fill_session') return 'Agent recommendation for this session'
+  if (action.kind === 'reactivate_members') return 'Agent recommendation for this win-back flow'
+  if (action.kind === 'trial_follow_up') return 'Agent recommendation for this trial follow-up'
+  if (action.kind === 'renewal_reactivation') return 'Agent recommendation for this renewal outreach'
+  if (action.kind === 'create_campaign') return 'Agent recommendation for this campaign'
+  return 'Agent recommendation'
+}
+
+function buildRecommendationChannelHighlight(channel: 'email' | 'sms' | 'both') {
+  return `Switch to ${formatAdvisorChannelLabel(channel)}`
+}
+
+function getAdvisorActionEligibleCount(action: AdvisorAction | AdvisorActionCore) {
+  if (action.kind === 'create_campaign') return action.campaign.guardrails?.eligibleCount ?? action.audience.count ?? 0
+  if (action.kind === 'fill_session') return action.outreach.guardrails?.eligibleCount ?? action.outreach.candidateCount
+  if (action.kind === 'reactivate_members') return action.reactivation.guardrails?.eligibleCount ?? action.reactivation.candidateCount
+  if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
+    return action.lifecycle.guardrails?.eligibleCount ?? action.lifecycle.candidateCount
+  }
+  return 0
+}
+
+function sameAdvisorScheduledMoment(a?: string, b?: string) {
+  if (!a || !b) return false
+  return new Date(a).getTime() === new Date(b).getTime()
+}
+
+function buildScheduleRecommendationHighlight(label: string) {
+  return `Shift send time to ${label}`
+}
 
 async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter[]) {
   const where = buildCohortWhereClause(filters)
@@ -349,7 +386,11 @@ async function queryAdvisorAudienceMembers(clubId: string, filters: CohortFilter
 
 function applyAdvisorCampaignRecipientRules(
   members: Array<{ id: string; email?: string | null; phone?: string | null; smsOptIn?: boolean | null }>,
-  rules?: AdvisorCampaignAction['campaign']['execution']['recipientRules'],
+  rules?: {
+    requireEmail?: boolean
+    requirePhone?: boolean
+    smsOptInOnly?: boolean
+  },
 ) {
   if (!rules) return members
 
@@ -362,8 +403,8 @@ function applyAdvisorCampaignRecipientRules(
 }
 
 function buildCampaignSummary(
-  channel: AdvisorCampaignAction['campaign']['channel'],
-  mode: AdvisorCampaignAction['campaign']['execution']['mode'],
+  channel: 'email' | 'sms' | 'both',
+  mode: 'save_draft' | 'send_now' | 'send_later',
   eligibleCount: number,
 ) {
   const modeLabel = mode === 'send_now'
@@ -376,8 +417,8 @@ function buildCampaignSummary(
 
 function buildMembershipLifecycleSummary(
   kind: AdvisorMembershipLifecycleKind,
-  channel: AdvisorMembershipLifecycleAction['lifecycle']['channel'],
-  mode: AdvisorMembershipLifecycleAction['lifecycle']['execution']['mode'],
+  channel: 'email' | 'sms' | 'both',
+  mode: 'save_draft' | 'send_now' | 'send_later',
   eligibleCount: number,
 ) {
   const modeLabel = mode === 'send_now'
@@ -525,6 +566,299 @@ async function hydrateAdvisorMembershipLifecycleAction(opts: {
   return {
     action,
     guardrails: guardrails.summary,
+  }
+}
+
+async function maybeAttachCampaignRecommendation(opts: {
+  action: AdvisorCampaignAction
+  clubId: string
+  message: string
+  timeZone?: string | null
+  automationSettings?: unknown
+}): Promise<AdvisorAction> {
+  const explicitChannel = extractExplicitAdvisorChannel(opts.message)
+  const suggestedDefaults = await resolveAdvisorAdaptiveDefaultsForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.campaign.type,
+    timeZone: opts.timeZone,
+    days: 30,
+  }).catch(() => null)
+
+  const nextExecution = { ...opts.action.campaign.execution }
+  let proposedChannel = opts.action.campaign.channel
+  const why: string[] = []
+  const highlights: string[] = []
+
+  if (explicitChannel && suggestedDefaults?.channel && suggestedDefaults.channel !== opts.action.campaign.channel) {
+    proposedChannel = suggestedDefaults.channel
+    why.push(`Recent ${humanizeAdvisorFlow(opts.action.campaign.type).toLowerCase()} results are strongest via ${formatAdvisorChannelLabel(suggestedDefaults.channel)} for this club.`)
+    highlights.push(buildRecommendationChannelHighlight(suggestedDefaults.channel))
+  }
+
+  if (
+    opts.action.campaign.execution.mode === 'send_later' &&
+    opts.action.campaign.execution.scheduledFor &&
+    !opts.action.defaultsApplied?.scheduledSend &&
+    suggestedDefaults?.scheduledSend &&
+    !sameAdvisorScheduledMoment(opts.action.campaign.execution.scheduledFor, suggestedDefaults.scheduledSend.scheduledFor)
+  ) {
+    nextExecution.scheduledFor = suggestedDefaults.scheduledSend.scheduledFor
+    nextExecution.timeZone = suggestedDefaults.scheduledSend.timeZone
+    why.push(`Recent club outcomes point to ${suggestedDefaults.scheduledSend.label} as the stronger send window for this outreach.`)
+    highlights.push(buildScheduleRecommendationHighlight(suggestedDefaults.scheduledSend.label))
+  }
+
+  if (why.length === 0) return opts.action
+
+  const baseAction = stripAdvisorRecommendation(opts.action) as AdvisorCampaignAction
+  const variant = await hydrateAdvisorCampaignAction({
+    clubId: opts.clubId,
+    action: {
+      ...baseAction,
+      campaign: {
+        ...opts.action.campaign,
+        channel: proposedChannel,
+        execution: nextExecution,
+      },
+      defaultsApplied: undefined,
+    },
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+  })
+
+  if (variant.guardrails.eligibleCount < getAdvisorActionEligibleCount(opts.action)) {
+    return opts.action
+  }
+
+  if (variant.action.signals?.headline) {
+    why.unshift(variant.action.signals.headline)
+  }
+
+  return {
+    ...opts.action,
+    recommendation: buildAdvisorRecommendation({
+      current: opts.action,
+      recommended: variant.action,
+      title: buildRecommendationTitle(variant.action),
+      summary: variant.action.summary,
+      why,
+      highlights,
+    }),
+  }
+}
+
+async function maybeAttachFillSessionRecommendation(opts: {
+  action: AdvisorFillSessionAction
+  caller: ReturnType<typeof appRouter.createCaller>
+  clubId: string
+  language: SupportedLanguage
+  message: string
+  state: AdvisorConversationState | null
+  timeZone?: string | null
+  automationSettings?: unknown
+}): Promise<AdvisorAction> {
+  const explicitChannel = extractExplicitAdvisorChannel(opts.message)
+  if (!explicitChannel) return opts.action
+
+  const suggestedDefaults = await resolveAdvisorAdaptiveDefaultsForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: 'SLOT_FILLER',
+    timeZone: opts.timeZone,
+    days: 30,
+  }).catch(() => null)
+
+  if (!suggestedDefaults?.channel || suggestedDefaults.channel === opts.action.outreach.channel) {
+    return opts.action
+  }
+
+  const variant = await buildFillSessionAssistantResponse({
+    caller: opts.caller,
+    prisma,
+    clubId: opts.clubId,
+    language: opts.language,
+    state: opts.state,
+    message: opts.message,
+    sessionId: opts.action.session.id,
+    channel: suggestedDefaults.channel,
+    candidateLimit: opts.action.outreach.candidateCount,
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+    allowRecommendation: false,
+  })
+
+  const recommendedAction = variant.action
+  if (!recommendedAction || recommendedAction.kind !== 'fill_session') return opts.action
+  if (getAdvisorActionEligibleCount(recommendedAction) < getAdvisorActionEligibleCount(opts.action)) {
+    return opts.action
+  }
+
+  const why = [
+    `Recent slot filler results are strongest via ${formatAdvisorChannelLabel(suggestedDefaults.channel)} for this club.`,
+  ]
+  if (recommendedAction.signals?.headline) why.unshift(recommendedAction.signals.headline)
+
+  return {
+    ...opts.action,
+    recommendation: buildAdvisorRecommendation({
+      current: opts.action,
+      recommended: recommendedAction,
+      title: buildRecommendationTitle(recommendedAction as AdvisorActionCore),
+      summary: recommendedAction.summary,
+      why,
+      highlights: [buildRecommendationChannelHighlight(suggestedDefaults.channel)],
+    }),
+  }
+}
+
+async function maybeAttachReactivationRecommendation(opts: {
+  action: AdvisorReactivationAction
+  caller: ReturnType<typeof appRouter.createCaller>
+  clubId: string
+  language: SupportedLanguage
+  message: string
+  state: AdvisorConversationState | null
+  timeZone?: string | null
+  automationSettings?: unknown
+}): Promise<AdvisorAction> {
+  const explicitChannel = extractExplicitAdvisorChannel(opts.message)
+  if (!explicitChannel) return opts.action
+
+  const suggestedDefaults = await resolveAdvisorAdaptiveDefaultsForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: 'REACTIVATION',
+    timeZone: opts.timeZone,
+    days: 30,
+  }).catch(() => null)
+
+  if (!suggestedDefaults?.channel || suggestedDefaults.channel === opts.action.reactivation.channel) {
+    return opts.action
+  }
+
+  const variant = await buildReactivationAssistantResponse({
+    caller: opts.caller,
+    prisma,
+    clubId: opts.clubId,
+    language: opts.language,
+    state: opts.state,
+    message: opts.message,
+    inactivityDays: opts.action.reactivation.inactivityDays,
+    channel: suggestedDefaults.channel,
+    candidateLimit: opts.action.reactivation.candidateCount,
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+    allowRecommendation: false,
+  })
+
+  const recommendedAction = variant.action
+  if (!recommendedAction || recommendedAction.kind !== 'reactivate_members') return opts.action
+  if (getAdvisorActionEligibleCount(recommendedAction) < getAdvisorActionEligibleCount(opts.action)) {
+    return opts.action
+  }
+
+  const why = [
+    `Recent reactivation results are strongest via ${formatAdvisorChannelLabel(suggestedDefaults.channel)} for this club.`,
+  ]
+  if (recommendedAction.signals?.headline) why.unshift(recommendedAction.signals.headline)
+
+  return {
+    ...opts.action,
+    recommendation: buildAdvisorRecommendation({
+      current: opts.action,
+      recommended: recommendedAction,
+      title: buildRecommendationTitle(recommendedAction as AdvisorActionCore),
+      summary: recommendedAction.summary,
+      why,
+      highlights: [buildRecommendationChannelHighlight(suggestedDefaults.channel)],
+    }),
+  }
+}
+
+async function maybeAttachMembershipLifecycleRecommendation(opts: {
+  action: AdvisorMembershipLifecycleAction
+  caller: ReturnType<typeof appRouter.createCaller>
+  clubId: string
+  language: SupportedLanguage
+  message: string
+  state: AdvisorConversationState | null
+  timeZone?: string | null
+  automationSettings?: unknown
+}): Promise<AdvisorAction> {
+  const explicitChannel = extractExplicitAdvisorChannel(opts.message)
+  const suggestedDefaults = await resolveAdvisorAdaptiveDefaultsForAction({
+    prisma,
+    clubId: opts.clubId,
+    type: opts.action.lifecycle.campaignType,
+    timeZone: opts.timeZone,
+    days: 30,
+  }).catch(() => null)
+
+  const highlights: string[] = []
+  const why: string[] = []
+  let nextChannel = opts.action.lifecycle.channel
+  let nextScheduledFor = opts.action.lifecycle.execution.scheduledFor
+  let nextTimeZone = opts.action.lifecycle.execution.timeZone
+
+  if (explicitChannel && suggestedDefaults?.channel && suggestedDefaults.channel !== opts.action.lifecycle.channel) {
+    nextChannel = suggestedDefaults.channel
+    why.push(`Recent ${humanizeAdvisorFlow(opts.action.lifecycle.campaignType).toLowerCase()} results are strongest via ${formatAdvisorChannelLabel(suggestedDefaults.channel)} for this club.`)
+    highlights.push(buildRecommendationChannelHighlight(suggestedDefaults.channel))
+  }
+
+  if (
+    opts.action.lifecycle.execution.mode === 'send_later' &&
+    opts.action.lifecycle.execution.scheduledFor &&
+    !opts.action.defaultsApplied?.scheduledSend &&
+    suggestedDefaults?.scheduledSend &&
+    !sameAdvisorScheduledMoment(opts.action.lifecycle.execution.scheduledFor, suggestedDefaults.scheduledSend.scheduledFor)
+  ) {
+    nextScheduledFor = suggestedDefaults.scheduledSend.scheduledFor
+    nextTimeZone = suggestedDefaults.scheduledSend.timeZone
+    why.push(`Recent club outcomes point to ${suggestedDefaults.scheduledSend.label} as the stronger send window for this membership flow.`)
+    highlights.push(buildScheduleRecommendationHighlight(suggestedDefaults.scheduledSend.label))
+  }
+
+  if (why.length === 0) return opts.action
+
+  const variant = await buildMembershipLifecycleAssistantResponse({
+    caller: opts.caller,
+    clubId: opts.clubId,
+    language: opts.language,
+    state: opts.state,
+    message: opts.message,
+    kind: opts.action.lifecycle.lifecycle,
+    deliveryMode: opts.action.lifecycle.execution.mode,
+    scheduledFor: nextScheduledFor,
+    planTimeZone: nextTimeZone,
+    channel: nextChannel,
+    candidateLimit: opts.action.lifecycle.candidateCount,
+    timeZone: opts.timeZone,
+    automationSettings: opts.automationSettings,
+    allowRecommendation: false,
+  })
+
+  const recommendedAction = variant.action
+  if (!recommendedAction || (recommendedAction.kind !== 'trial_follow_up' && recommendedAction.kind !== 'renewal_reactivation')) {
+    return opts.action
+  }
+  if (getAdvisorActionEligibleCount(recommendedAction) < getAdvisorActionEligibleCount(opts.action)) {
+    return opts.action
+  }
+
+  if (recommendedAction.signals?.headline) why.unshift(recommendedAction.signals.headline)
+
+  return {
+    ...opts.action,
+    recommendation: buildAdvisorRecommendation({
+      current: opts.action,
+      recommended: recommendedAction,
+      title: buildRecommendationTitle(recommendedAction as AdvisorActionCore),
+      summary: recommendedAction.summary,
+      why,
+      highlights,
+    }),
   }
 }
 
@@ -692,11 +1026,12 @@ async function buildFillSessionAssistantResponse(opts: {
   state: AdvisorConversationState | null
   message: string
   sessionId?: string | null
-  channel?: Extract<AdvisorAction, { kind: 'fill_session' }>['outreach']['channel']
+  channel?: 'email' | 'sms' | 'both'
   candidateLimit?: number
   defaultsApplied?: AdvisorAdaptiveDefaultsApplied
   timeZone?: string | null
   automationSettings?: unknown
+  allowRecommendation?: boolean
 }) {
   const { caller, prisma, clubId, language, state, message, sessionId, channel = 'email' } = opts
   const slotCopy = getSlotFillerCopy(language)
@@ -824,7 +1159,7 @@ async function buildFillSessionAssistantResponse(opts: {
     days: 30,
   }).catch(() => null)
 
-  const action: AdvisorAction = {
+  const baseAction: AdvisorFillSessionAction = {
     kind: 'fill_session',
     title: `Fill session: ${resolvedSession.title}`,
     summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
@@ -842,6 +1177,18 @@ async function buildFillSessionAssistantResponse(opts: {
     signals: signals || undefined,
     defaultsApplied: opts.defaultsApplied,
   }
+  const action = opts.allowRecommendation === false
+    ? baseAction
+    : await maybeAttachFillSessionRecommendation({
+        action: baseAction,
+        caller,
+        clubId,
+        language,
+        message,
+        state,
+        timeZone: opts.timeZone,
+        automationSettings: opts.automationSettings,
+      })
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
   return {
@@ -862,11 +1209,12 @@ async function buildReactivationAssistantResponse(opts: {
   state: AdvisorConversationState | null
   message: string
   inactivityDays?: number
-  channel?: Extract<AdvisorAction, { kind: 'reactivate_members' }>['reactivation']['channel']
+  channel?: 'email' | 'sms' | 'both'
   candidateLimit?: number
   defaultsApplied?: AdvisorAdaptiveDefaultsApplied
   timeZone?: string | null
   automationSettings?: unknown
+  allowRecommendation?: boolean
 }) {
   const { caller, prisma, clubId, language, state, message, channel = 'email' } = opts
   const reactivationCopy = getReactivationCopy(language)
@@ -955,7 +1303,7 @@ async function buildReactivationAssistantResponse(opts: {
     ? truncateAdvisorText(generated.body, 500)
     : truncateAdvisorText(generated.smsBody || generated.body, 160)
 
-  const action: AdvisorAction = {
+  const baseAction: AdvisorReactivationAction = {
     kind: 'reactivate_members',
     title: `Reactivate: ${segmentLabel}`,
     summary: `${channel.toUpperCase()} win-back outreach for ${candidates.length} inactive members`,
@@ -972,6 +1320,18 @@ async function buildReactivationAssistantResponse(opts: {
     signals: signals || undefined,
     defaultsApplied: opts.defaultsApplied,
   }
+  const action = opts.allowRecommendation === false
+    ? baseAction
+    : await maybeAttachReactivationRecommendation({
+        action: baseAction,
+        caller,
+        clubId,
+        language,
+        message,
+        state,
+        timeZone: opts.timeZone,
+        automationSettings: opts.automationSettings,
+      })
 
   const guardrailNote = formatAdvisorGuardrailDigest(guardrails.summary)
   return {
@@ -989,15 +1349,17 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
   clubId: string
   language: SupportedLanguage
   state: AdvisorConversationState | null
+  message: string
   kind: AdvisorMembershipLifecycleKind
   deliveryMode?: AdvisorIntentPlan['deliveryMode']
-  channel?: AdvisorMembershipLifecycleAction['lifecycle']['channel']
+  channel?: 'email' | 'sms' | 'both'
   candidateLimit?: number
   defaultsApplied?: AdvisorAdaptiveDefaultsApplied
   timeZone?: string | null
   automationSettings?: unknown
   scheduledFor?: string
   planTimeZone?: string
+  allowRecommendation?: boolean
 }) {
   const { caller, clubId, language, state, kind } = opts
   const meta = getAdvisorMembershipLifecycleMeta(kind)
@@ -1109,15 +1471,30 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
     timeZone: opts.timeZone,
     automationSettings: opts.automationSettings,
   })
+  const action = opts.allowRecommendation === false
+    ? hydrated.action
+    : await maybeAttachMembershipLifecycleRecommendation({
+        action: hydrated.action,
+        caller,
+        clubId,
+        language,
+        message: opts.message,
+        state,
+        timeZone: opts.timeZone,
+        automationSettings: opts.automationSettings,
+      })
+  const lifecycleAction = action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation'
+    ? action
+    : hydrated.action
   const guardrailNote = formatAdvisorGuardrailDigest(hydrated.guardrails)
 
   return {
-    assistantState: buildAdvisorConversationStateFromAction(hydrated.action),
+    assistantState: buildAdvisorConversationStateFromAction(action),
     assistantMessage: withSuggested(
-      `${lifecycleCopy.ready(hydrated.action.lifecycle.candidateCount, meta.label)}${guardrailNote ? `\n\n${guardrailNote}` : ''}\n\n${buildAdvisorActionTag(hydrated.action)}`,
+      `${lifecycleCopy.ready(lifecycleAction.lifecycle.candidateCount, meta.label)}${guardrailNote ? `\n\n${guardrailNote}` : ''}\n\n${buildAdvisorActionTag(action)}`,
       lifecycleCopy.suggestions,
     ),
-    action: hydrated.action,
+    action,
   }
 }
 
@@ -1444,46 +1821,69 @@ export async function POST(req: Request) {
           } else if (editedAction.kind === 'create_campaign') {
             const hydratedCampaign = await hydrateAdvisorCampaignAction({
               clubId,
-              action: editedAction,
+              action: editedAction as AdvisorCampaignAction,
               timeZone: clubTimeZone,
               automationSettings: clubContext?.automationSettings,
             })
+            const campaignAction = await maybeAttachCampaignRecommendation({
+              action: hydratedCampaign.action,
+              clubId,
+              message,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
+            })
+            const resolvedCampaignAction = campaignAction.kind === 'create_campaign'
+              ? campaignAction
+              : hydratedCampaign.action
             const editCopy = getAdvisorEditCopy(language)
             const guardrailNote = formatAdvisorGuardrailDigest(hydratedCampaign.guardrails)
             const ruleNote = hydratedCampaign.excludedByRules > 0
               ? `${hydratedCampaign.excludedByRules} member${hydratedCampaign.excludedByRules === 1 ? '' : 's'} excluded by recipient rules.`
               : ''
-            assistantState = buildAdvisorConversationStateFromAction(hydratedCampaign.action)
+            assistantState = buildAdvisorConversationStateFromAction(campaignAction)
             assistantMessage = withSuggested(
               [
                 editCopy.campaignUpdated(
-                  hydratedCampaign.action.audience.name,
-                  hydratedCampaign.action.audience.count || 0,
+                  resolvedCampaignAction.audience.name,
+                  resolvedCampaignAction.audience.count || 0,
                 ),
                 [ruleNote, guardrailNote].filter(Boolean).join(' ').trim(),
-                buildAdvisorActionTag(hydratedCampaign.action),
+                buildAdvisorActionTag(campaignAction),
               ].filter(Boolean).join('\n\n'),
               editCopy.suggestions.create_campaign,
             )
           } else if (editedAction.kind === 'trial_follow_up' || editedAction.kind === 'renewal_reactivation') {
             const hydratedLifecycle = await hydrateAdvisorMembershipLifecycleAction({
               clubId,
-              action: editedAction,
+              action: editedAction as AdvisorMembershipLifecycleAction,
               timeZone: clubTimeZone,
               automationSettings: clubContext?.automationSettings,
             })
+            const lifecycleAction = await maybeAttachMembershipLifecycleRecommendation({
+              action: hydratedLifecycle.action,
+              caller,
+              clubId,
+              language,
+              message,
+              state: memory.state,
+              timeZone: clubTimeZone,
+              automationSettings: clubContext?.automationSettings,
+            })
+            const resolvedLifecycleAction = lifecycleAction.kind === 'trial_follow_up' || lifecycleAction.kind === 'renewal_reactivation'
+              ? lifecycleAction
+              : hydratedLifecycle.action
             const editCopy = getAdvisorEditCopy(language)
             const lifecycleMeta = getAdvisorMembershipLifecycleMeta(editedAction.lifecycle.lifecycle)
             const guardrailNote = formatAdvisorGuardrailDigest(hydratedLifecycle.guardrails)
-            assistantState = buildAdvisorConversationStateFromAction(hydratedLifecycle.action)
+            assistantState = buildAdvisorConversationStateFromAction(lifecycleAction)
             assistantMessage = withSuggested(
               [
                 editCopy.membershipUpdated(
                   lifecycleMeta.label,
-                  hydratedLifecycle.action.lifecycle.candidateCount,
+                  resolvedLifecycleAction.lifecycle.candidateCount,
                 ),
                 guardrailNote,
-                buildAdvisorActionTag(hydratedLifecycle.action),
+                buildAdvisorActionTag(lifecycleAction),
               ].filter(Boolean).join('\n\n'),
               editCopy.suggestions[editedAction.kind],
             )
@@ -1516,7 +1916,7 @@ export async function POST(req: Request) {
 
             assistantMessage = withSuggested(
               `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
-              editCopy.suggestions[editedAction.kind],
+              editCopy.suggestions.create_cohort,
             )
           }
         }
@@ -1671,6 +2071,7 @@ export async function POST(req: Request) {
         clubId,
         language,
         state: memory.state,
+        message: effectiveMessage,
         kind: 'trial_follow_up',
         deliveryMode: plan.deliveryMode,
         scheduledFor: plan.scheduledFor,
@@ -1690,6 +2091,7 @@ export async function POST(req: Request) {
         clubId,
         language,
         state: memory.state,
+        message: effectiveMessage,
         kind: 'renewal_reactivation',
         deliveryMode: plan.deliveryMode,
         scheduledFor: plan.scheduledFor,
@@ -1775,7 +2177,7 @@ export async function POST(req: Request) {
         )
       }
     } else {
-      let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
+      let audienceDraft: AdvisorCampaignAction['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
       const activeMemory = shouldReuseAudience ? memory : null
       const previousAction = activeMemory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
@@ -1856,23 +2258,33 @@ export async function POST(req: Request) {
         timeZone: clubTimeZone,
         automationSettings: clubContext?.automationSettings,
       })
+      const campaignAction = await maybeAttachCampaignRecommendation({
+        action: hydratedCampaign.action,
+        clubId,
+        message: effectiveMessage,
+        timeZone: clubTimeZone,
+        automationSettings: clubContext?.automationSettings,
+      })
+      const resolvedCampaignAction = campaignAction.kind === 'create_campaign'
+        ? campaignAction
+        : hydratedCampaign.action
       const guardrailNote = formatAdvisorGuardrailDigest(hydratedCampaign.guardrails)
       const ruleNote = hydratedCampaign.excludedByRules > 0
         ? `${hydratedCampaign.excludedByRules} member${hydratedCampaign.excludedByRules === 1 ? '' : 's'} excluded by recipient rules.`
         : ''
 
-      assistantState = buildAdvisorConversationStateFromAction(hydratedCampaign.action)
+      assistantState = buildAdvisorConversationStateFromAction(campaignAction)
       assistantMessage = withSuggested(
         [
           buildCampaignReadyText(
             copy,
             hydratedCampaign.guardrails.eligibleCount,
-            hydratedCampaign.action.audience.name,
+            resolvedCampaignAction.audience.name,
             deliveryMode,
             scheduledSend?.label,
           ),
           [ruleNote, guardrailNote].filter(Boolean).join(' ').trim(),
-          buildAdvisorActionTag(hydratedCampaign.action),
+          buildAdvisorActionTag(campaignAction),
         ].filter(Boolean).join('\n\n'),
         copy.suggestions.create_campaign,
       )

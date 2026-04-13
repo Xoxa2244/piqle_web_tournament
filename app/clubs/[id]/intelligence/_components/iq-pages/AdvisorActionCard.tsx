@@ -1,22 +1,22 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, CheckCircle2, Loader2, Mail, PauseCircle, PencilLine, Send, Users, XCircle } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Loader2, Mail, PauseCircle, PencilLine, Send, Sparkles, Users, XCircle } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
-import type { AdvisorAction } from '@/lib/ai/advisor-actions'
+import type { AdvisorAction, AdvisorActionCore } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionRuntimeState, type AdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import type { AdvisorOutcomeMemory } from '@/lib/ai/advisor-outcomes'
 import { useExecuteAdvisorAction, useUpdateAdvisorActionState } from '../../_hooks/use-intelligence'
 
-type CampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
-type FillSessionAction = Extract<AdvisorAction, { kind: 'fill_session' }>
-type ReactivationAction = Extract<AdvisorAction, { kind: 'reactivate_members' }>
-type TrialFollowUpAction = Extract<AdvisorAction, { kind: 'trial_follow_up' }>
-type RenewalReactivationAction = Extract<AdvisorAction, { kind: 'renewal_reactivation' }>
+type CampaignAction = Extract<AdvisorActionCore, { kind: 'create_campaign' }>
+type FillSessionAction = Extract<AdvisorActionCore, { kind: 'fill_session' }>
+type ReactivationAction = Extract<AdvisorActionCore, { kind: 'reactivate_members' }>
+type TrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
+type RenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type MembershipLifecycleAction = TrialFollowUpAction | RenewalReactivationAction
-type ContactPolicyAction = Extract<AdvisorAction, { kind: 'update_contact_policy' }>
-type AutonomyPolicyAction = Extract<AdvisorAction, { kind: 'update_autonomy_policy' }>
-type CohortAction = Extract<AdvisorAction, { kind: 'create_cohort' }>
+type ContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
+type AutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
+type CohortAction = Extract<AdvisorActionCore, { kind: 'create_cohort' }>
 
 function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'create_campaign') return 'Make this campaign shorter and sharper.'
@@ -29,7 +29,7 @@ function getRefinePrompt(action: AdvisorAction) {
   return 'Narrow this audience a bit.'
 }
 
-function buildCampaignSummary(action: CampaignAction, execution: CampaignAction['campaign']['execution']) {
+function buildCampaignSummary(action: CampaignAction, execution: { mode: 'save_draft' | 'send_now' | 'send_later' }) {
   const modeLabel = execution.mode === 'send_now'
     ? 'outreach'
     : execution.mode === 'send_later'
@@ -40,7 +40,7 @@ function buildCampaignSummary(action: CampaignAction, execution: CampaignAction[
 
 function buildMembershipLifecycleSummary(
   action: MembershipLifecycleAction,
-  execution: MembershipLifecycleAction['lifecycle']['execution'],
+  execution: { mode: 'save_draft' | 'send_now' | 'send_later' },
 ) {
   const modeLabel = execution.mode === 'send_now'
     ? 'outreach'
@@ -70,6 +70,51 @@ function getActionAdaptiveDefaults(action: AdvisorAction) {
   return null
 }
 
+function getActionDecisionSummary(action: AdvisorAction) {
+  if (action.summary) return action.summary
+  return action.title
+}
+
+function getActionDecisionHighlights(action: AdvisorAction) {
+  if (action.kind === 'create_campaign') {
+    return [
+      action.campaign.channel === 'both' ? 'Email + SMS' : action.campaign.channel.toUpperCase(),
+      action.campaign.execution.mode === 'send_later'
+        ? 'Scheduled'
+        : action.campaign.execution.mode === 'send_now'
+          ? 'Send now'
+          : 'Draft',
+    ]
+  }
+
+  if (action.kind === 'fill_session') {
+    return [
+      action.outreach.channel === 'both' ? 'Email + SMS' : action.outreach.channel.toUpperCase(),
+      `${action.outreach.candidateCount} candidates`,
+    ]
+  }
+
+  if (action.kind === 'reactivate_members') {
+    return [
+      action.reactivation.channel === 'both' ? 'Email + SMS' : action.reactivation.channel.toUpperCase(),
+      `${action.reactivation.candidateCount} inactive members`,
+    ]
+  }
+
+  if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
+    return [
+      action.lifecycle.channel === 'both' ? 'Email + SMS' : action.lifecycle.channel.toUpperCase(),
+      action.lifecycle.execution.mode === 'send_later'
+        ? 'Scheduled'
+        : action.lifecycle.execution.mode === 'send_now'
+          ? 'Send now'
+          : 'Draft',
+    ]
+  }
+
+  return []
+}
+
 export function AdvisorActionCard({
   clubId,
   messageId,
@@ -93,16 +138,21 @@ export function AdvisorActionCard({
   const [campaignExecutionOverride, setCampaignExecutionOverride] = useState<CampaignAction['campaign']['execution'] | null>(null)
   const [lifecycleExecutionOverride, setLifecycleExecutionOverride] = useState<MembershipLifecycleAction['lifecycle']['execution'] | null>(null)
   const [showScheduleOptions, setShowScheduleOptions] = useState(false)
-  const isCampaign = action.kind === 'create_campaign'
-  const isFillSession = action.kind === 'fill_session'
-  const isReactivation = action.kind === 'reactivate_members'
-  const isTrialFollowUp = action.kind === 'trial_follow_up'
-  const isRenewalReactivation = action.kind === 'renewal_reactivation'
+  const [selectedPlan, setSelectedPlan] = useState<'requested' | 'recommended'>('requested')
+  const recommendation = action.recommendation || null
+  const selectedBaseAction = selectedPlan === 'recommended' && recommendation
+    ? recommendation.action as AdvisorAction
+    : action
+  const isCampaign = selectedBaseAction.kind === 'create_campaign'
+  const isFillSession = selectedBaseAction.kind === 'fill_session'
+  const isReactivation = selectedBaseAction.kind === 'reactivate_members'
+  const isTrialFollowUp = selectedBaseAction.kind === 'trial_follow_up'
+  const isRenewalReactivation = selectedBaseAction.kind === 'renewal_reactivation'
   const isMembershipLifecycle = isTrialFollowUp || isRenewalReactivation
-  const isContactPolicy = action.kind === 'update_contact_policy'
-  const isAutonomyPolicy = action.kind === 'update_autonomy_policy'
-  const baseCampaignAction = isCampaign ? action as CampaignAction : null
-  const baseMembershipLifecycleAction = isMembershipLifecycle ? action as MembershipLifecycleAction : null
+  const isContactPolicy = selectedBaseAction.kind === 'update_contact_policy'
+  const isAutonomyPolicy = selectedBaseAction.kind === 'update_autonomy_policy'
+  const baseCampaignAction = isCampaign ? selectedBaseAction as CampaignAction : null
+  const baseMembershipLifecycleAction = isMembershipLifecycle ? selectedBaseAction as MembershipLifecycleAction : null
 
   const currentAction = useMemo<AdvisorAction>(() => {
     if (baseCampaignAction && campaignExecutionOverride) {
@@ -173,8 +223,8 @@ export function AdvisorActionCard({
       ) as AdvisorAction
     }
 
-    return action
-  }, [action, baseCampaignAction, baseMembershipLifecycleAction, campaignExecutionOverride, lifecycleExecutionOverride])
+    return selectedBaseAction
+  }, [baseCampaignAction, baseMembershipLifecycleAction, campaignExecutionOverride, lifecycleExecutionOverride, selectedBaseAction])
   const currentCampaignAction = isCampaign ? currentAction as CampaignAction : null
   const currentFillAction = isFillSession ? currentAction as FillSessionAction : null
   const currentReactivationAction = isReactivation ? currentAction as ReactivationAction : null
@@ -353,6 +403,13 @@ export function AdvisorActionCard({
     onDraftPrompt?.(getRefinePrompt(currentAction))
   }
 
+  const handleSelectPlan = (plan: 'requested' | 'recommended') => {
+    setSelectedPlan(plan)
+    setCampaignExecutionOverride(null)
+    setLifecycleExecutionOverride(null)
+    setShowScheduleOptions(false)
+  }
+
   const handleSetExecutionMode = (mode: CampaignAction['campaign']['execution']['mode']) => {
     if (mode === 'send_later') {
       setShowScheduleOptions(true)
@@ -524,6 +581,117 @@ export function AdvisorActionCard({
         </div>
       </div>
 
+      {recommendation && (
+        <div
+          className="rounded-xl p-3 mt-4"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(139,92,246,0.18)' }}
+        >
+          <div className="flex items-center gap-2 text-xs" style={{ color: '#A78BFA', fontWeight: 700 }}>
+            <Sparkles className="w-3.5 h-3.5" />
+            Agent Plan Check
+          </div>
+          <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+            Your request is workable. The agent sees a stronger option below and you can choose either path.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div
+              className="rounded-xl p-3"
+              style={{
+                background: selectedPlan === 'requested' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
+                border: selectedPlan === 'requested' ? '1px solid rgba(148,163,184,0.22)' : '1px solid transparent',
+              }}
+            >
+              <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--t3)', fontWeight: 700 }}>
+                Your Request
+              </div>
+              <div className="text-sm mt-2" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                {getActionDecisionSummary(action)}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {getActionDecisionHighlights(action).map((label: string) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-1 rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-3"
+              style={{
+                background: selectedPlan === 'recommended' ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.05)',
+                border: '1px solid rgba(16,185,129,0.18)',
+              }}
+            >
+              <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: '#10B981', fontWeight: 700 }}>
+                Agent Recommendation
+              </div>
+              <div className="text-sm mt-2" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                {recommendation.title}
+              </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                {recommendation.summary || getActionDecisionSummary(recommendation.action as AdvisorAction)}
+              </p>
+              {recommendation.highlights.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {recommendation.highlights.map((label: string) => (
+                    <span
+                      key={label}
+                      className="text-[11px] px-2 py-1 rounded-full"
+                      style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 space-y-2">
+                {recommendation.why.map((reason: string) => (
+                  <p key={reason} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                    {reason}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              type="button"
+              onClick={() => handleSelectPlan('recommended')}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+              style={{
+                background: selectedPlan === 'recommended' ? 'linear-gradient(135deg, rgba(16,185,129,0.24), rgba(6,182,212,0.18))' : 'rgba(16,185,129,0.08)',
+                border: selectedPlan === 'recommended' ? '1px solid rgba(16,185,129,0.28)' : '1px solid rgba(16,185,129,0.18)',
+                color: selectedPlan === 'recommended' ? 'var(--heading)' : '#10B981',
+                fontWeight: 700,
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {selectedPlan === 'recommended' ? 'Using Agent Plan' : 'Use Agent Plan'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectPlan('requested')}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+              style={{
+                background: selectedPlan === 'requested' ? 'rgba(255,255,255,0.08)' : 'transparent',
+                border: '1px solid var(--card-border)',
+                color: selectedPlan === 'requested' ? 'var(--heading)' : 'var(--t3)',
+                fontWeight: 600,
+              }}
+            >
+              {selectedPlan === 'requested' ? 'Keeping My Version' : 'Keep My Version'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -622,7 +790,7 @@ export function AdvisorActionCard({
             )}
             {recipientRuleLabels.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {recipientRuleLabels.map((label) => (
+                {recipientRuleLabels.map((label: string) => (
                   <span
                     key={label}
                     className="text-[11px] px-2 py-1 rounded-full"
@@ -635,7 +803,7 @@ export function AdvisorActionCard({
             )}
             {adaptiveDefaultBadges.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {adaptiveDefaultBadges.map((label) => (
+                {adaptiveDefaultBadges.map((label: string) => (
                   <span
                     key={label}
                     className="text-[11px] px-2 py-1 rounded-full"
@@ -678,7 +846,7 @@ export function AdvisorActionCard({
               </p>
             )}
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentMembershipLifecycleAction?.lifecycle.candidates.slice(0, 4).map((candidate) => (
+              {currentMembershipLifecycleAction?.lifecycle.candidates.slice(0, 4).map((candidate: MembershipLifecycleAction['lifecycle']['candidates'][number]) => (
                 <span
                   key={candidate.memberId}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -695,7 +863,7 @@ export function AdvisorActionCard({
             )}
             {adaptiveDefaultBadges.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {adaptiveDefaultBadges.map((label) => (
+                {adaptiveDefaultBadges.map((label: string) => (
                   <span
                     key={label}
                     className="text-[11px] px-2 py-1 rounded-full"
@@ -725,7 +893,7 @@ export function AdvisorActionCard({
               </div>
             )}
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentFillAction?.outreach.candidates.slice(0, 4).map((candidate) => (
+              {currentFillAction?.outreach.candidates.slice(0, 4).map((candidate: FillSessionAction['outreach']['candidates'][number]) => (
                 <span
                   key={candidate.memberId}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -737,7 +905,7 @@ export function AdvisorActionCard({
             </div>
             {adaptiveDefaultBadges.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {adaptiveDefaultBadges.map((label) => (
+                {adaptiveDefaultBadges.map((label: string) => (
                   <span
                     key={label}
                     className="text-[11px] px-2 py-1 rounded-full"
@@ -767,7 +935,7 @@ export function AdvisorActionCard({
               </div>
             )}
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentReactivationAction?.reactivation.candidates.slice(0, 4).map((candidate) => (
+              {currentReactivationAction?.reactivation.candidates.slice(0, 4).map((candidate: ReactivationAction['reactivation']['candidates'][number]) => (
                 <span
                   key={candidate.memberId}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -784,7 +952,7 @@ export function AdvisorActionCard({
             )}
             {adaptiveDefaultBadges.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
-                {adaptiveDefaultBadges.map((label) => (
+                {adaptiveDefaultBadges.map((label: string) => (
                   <span
                     key={label}
                     className="text-[11px] px-2 py-1 rounded-full"
@@ -809,7 +977,7 @@ export function AdvisorActionCard({
               {currentContactPolicyAction?.policy.cooldownHours}h cooldown · {currentContactPolicyAction?.policy.recentBookingLookbackDays}d recent booking window
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentContactPolicyAction?.policy.changes.slice(0, 4).map((change) => (
+              {currentContactPolicyAction?.policy.changes.slice(0, 4).map((change: string) => (
                 <span
                   key={change}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -836,7 +1004,7 @@ export function AdvisorActionCard({
               Trial follow-up {currentAutonomyPolicyAction?.policy.trialFollowUp.mode} · Renewal outreach {currentAutonomyPolicyAction?.policy.renewalReactivation.mode}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentAutonomyPolicyAction?.policy.changes.slice(0, 5).map((change) => (
+              {currentAutonomyPolicyAction?.policy.changes.slice(0, 5).map((change: string) => (
                 <span
                   key={change}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -854,7 +1022,7 @@ export function AdvisorActionCard({
               Filters
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              {currentCohortAction?.cohort.filters.slice(0, 4).map((filter, index) => (
+              {currentCohortAction?.cohort.filters.slice(0, 4).map((filter: CohortAction['cohort']['filters'][number], index: number) => (
                 <span
                   key={`${filter.field}-${index}`}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -904,7 +1072,7 @@ export function AdvisorActionCard({
           </div>
           {performanceSignals.bullets.length > 0 && (
             <div className="mt-2 space-y-2">
-              {performanceSignals.bullets.map((bullet) => (
+              {performanceSignals.bullets.map((bullet: string) => (
                 <p key={bullet} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
                   {bullet}
                 </p>
@@ -954,7 +1122,7 @@ export function AdvisorActionCard({
           )}
           {contactGuardrails.reasons.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {contactGuardrails.reasons.map((reason) => (
+              {contactGuardrails.reasons.map((reason: NonNullable<typeof contactGuardrails>['reasons'][number]) => (
                 <span
                   key={reason.code}
                   className="text-[11px] px-2 py-1 rounded-full"
@@ -967,7 +1135,7 @@ export function AdvisorActionCard({
           )}
           {contactGuardrails.warnings.length > 0 && (
             <div className="mt-2 space-y-2">
-              {contactGuardrails.warnings.map((warning) => (
+              {contactGuardrails.warnings.map((warning: string) => (
                 <p key={warning} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
                   {warning}
                 </p>
@@ -1012,7 +1180,7 @@ export function AdvisorActionCard({
                 {scheduledLabel}
               </span>
             )}
-            {adaptiveDefaultBadges.map((label) => (
+            {adaptiveDefaultBadges.map((label: string) => (
               <span
                 key={label}
                 className="text-[11px] px-2 py-1 rounded-full"

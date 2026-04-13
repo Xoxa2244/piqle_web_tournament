@@ -170,77 +170,109 @@ export const advisorRenewalReactivationDraftSchema = advisorMembershipLifecycleD
   campaignType: z.literal('REACTIVATION'),
 })
 
-export const advisorActionSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('create_cohort'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    cohort: advisorCohortDraftSchema,
-  }),
-  z.object({
-    kind: z.literal('create_campaign'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    audience: advisorCohortDraftSchema,
-    campaign: advisorCampaignDraftSchema,
-    signals: advisorPerformanceSignalSchema.optional(),
-    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
-  }),
-  z.object({
-    kind: z.literal('fill_session'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    session: advisorSessionDraftSchema,
-    outreach: advisorSlotFillerOutreachSchema,
-    signals: advisorPerformanceSignalSchema.optional(),
-    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
-  }),
-  z.object({
-    kind: z.literal('reactivate_members'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    reactivation: advisorReactivationDraftSchema,
-    signals: advisorPerformanceSignalSchema.optional(),
-    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
-  }),
-  z.object({
-    kind: z.literal('trial_follow_up'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    lifecycle: advisorTrialFollowUpDraftSchema,
-    signals: advisorPerformanceSignalSchema.optional(),
-    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
-  }),
-  z.object({
-    kind: z.literal('renewal_reactivation'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    lifecycle: advisorRenewalReactivationDraftSchema,
-    signals: advisorPerformanceSignalSchema.optional(),
-    defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
-  }),
-  z.object({
-    kind: z.literal('update_contact_policy'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    policy: advisorContactPolicyDraftSchema,
-  }),
-  z.object({
-    kind: z.literal('update_autonomy_policy'),
-    title: z.string().min(1).max(120),
-    summary: z.string().max(240).optional(),
-    requiresApproval: z.boolean().default(true),
-    policy: advisorAutonomyPolicyDraftSchema,
-  }),
+const createCohortActionCoreSchema = z.object({
+  kind: z.literal('create_cohort'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  cohort: advisorCohortDraftSchema,
+})
+
+const createCampaignActionCoreSchema = z.object({
+  kind: z.literal('create_campaign'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  audience: advisorCohortDraftSchema,
+  campaign: advisorCampaignDraftSchema,
+  signals: advisorPerformanceSignalSchema.optional(),
+  defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+})
+
+const fillSessionActionCoreSchema = z.object({
+  kind: z.literal('fill_session'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  session: advisorSessionDraftSchema,
+  outreach: advisorSlotFillerOutreachSchema,
+  signals: advisorPerformanceSignalSchema.optional(),
+  defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+})
+
+const reactivateMembersActionCoreSchema = z.object({
+  kind: z.literal('reactivate_members'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  reactivation: advisorReactivationDraftSchema,
+  signals: advisorPerformanceSignalSchema.optional(),
+  defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+})
+
+const trialFollowUpActionCoreSchema = z.object({
+  kind: z.literal('trial_follow_up'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  lifecycle: advisorTrialFollowUpDraftSchema,
+  signals: advisorPerformanceSignalSchema.optional(),
+  defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+})
+
+const renewalReactivationActionCoreSchema = z.object({
+  kind: z.literal('renewal_reactivation'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  lifecycle: advisorRenewalReactivationDraftSchema,
+  signals: advisorPerformanceSignalSchema.optional(),
+  defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
+})
+
+const updateContactPolicyActionCoreSchema = z.object({
+  kind: z.literal('update_contact_policy'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  policy: advisorContactPolicyDraftSchema,
+})
+
+const updateAutonomyPolicyActionCoreSchema = z.object({
+  kind: z.literal('update_autonomy_policy'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  policy: advisorAutonomyPolicyDraftSchema,
+})
+
+export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
+  createCohortActionCoreSchema,
+  createCampaignActionCoreSchema,
+  fillSessionActionCoreSchema,
+  reactivateMembersActionCoreSchema,
+  trialFollowUpActionCoreSchema,
+  renewalReactivationActionCoreSchema,
+  updateContactPolicyActionCoreSchema,
+  updateAutonomyPolicyActionCoreSchema,
 ])
 
+export const advisorActionRecommendationSchema = z.object({
+  title: z.string().min(1).max(140),
+  summary: z.string().max(240).optional(),
+  why: z.array(z.string().min(1).max(220)).min(1).max(4),
+  highlights: z.array(z.string().min(1).max(120)).max(4).default([]),
+  action: advisorActionCoreSchema,
+})
+
+export const advisorActionSchema = advisorActionCoreSchema.and(
+  z.object({
+    recommendation: advisorActionRecommendationSchema.optional(),
+  }),
+)
+
+export type AdvisorActionCore = z.infer<typeof advisorActionCoreSchema>
+export type AdvisorActionRecommendation = z.infer<typeof advisorActionRecommendationSchema>
 export type AdvisorAction = z.infer<typeof advisorActionSchema>
 export type AdvisorAdaptiveDefaultsApplied = z.infer<typeof advisorAdaptiveDefaultsAppliedSchema>
 
@@ -249,6 +281,18 @@ const ACTION_TAG_REGEX = /<action>\s*([\s\S]*?)\s*<\/action>/i
 function parseAdvisorActionCandidate(value: unknown): AdvisorAction | null {
   const result = advisorActionSchema.safeParse(value)
   return result.success ? result.data : null
+}
+
+export function stripAdvisorRecommendation(action: AdvisorAction | AdvisorActionCore): AdvisorActionCore {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) {
+    return action as AdvisorActionCore
+  }
+
+  const { recommendation: _recommendation, ...rest } = action as AdvisorAction & {
+    recommendation?: AdvisorActionRecommendation
+  }
+
+  return rest as AdvisorActionCore
 }
 
 export function buildAdvisorActionTag(action: AdvisorAction) {
