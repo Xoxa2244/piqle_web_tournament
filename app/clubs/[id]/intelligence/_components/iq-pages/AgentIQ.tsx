@@ -1,4 +1,5 @@
 'use client'
+import Link from "next/link"
 import { useState, useRef } from "react"
 import { motion, useInView, AnimatePresence } from "motion/react"
 import {
@@ -44,6 +45,16 @@ interface PendingAction {
 }
 
 type AutopilotOutcome = "auto" | "pending" | "blocked" | "other"
+type AutopilotSuggestionAction = "scroll_pending" | "open_settings" | "open_integrations" | "open_advisor"
+
+interface AutopilotSuggestion {
+  id: string
+  title: string
+  description: string
+  ctaLabel: string
+  action: AutopilotSuggestionAction
+  tone: "default" | "warn" | "danger"
+}
 
 interface AgentIQProps {
   clubId: string
@@ -250,6 +261,74 @@ function buildAutopilotSummary(logs: AgentLog[]) {
   }
 }
 
+function reasonIncludes(entries: Array<{ label: string; count: number }>, matcher: RegExp) {
+  return entries.some((entry) => matcher.test(entry.label))
+}
+
+function buildAutopilotSuggestions(summary: ReturnType<typeof buildAutopilotSummary>, pendingCount: number): AutopilotSuggestion[] {
+  const suggestions: AutopilotSuggestion[] = []
+
+  if (pendingCount > 0 || summary.counts.pending > 0) {
+    suggestions.push({
+      id: "review-pending",
+      title: "Clear the review queue",
+      description: "Some actions are waiting on manual approval. Reviewing them is the fastest way to unlock more autopilot volume.",
+      ctaLabel: "Review pending actions",
+      action: "scroll_pending",
+      tone: "warn",
+    })
+  }
+
+  if (reasonIncludes(summary.topBlockedReasons, /membership signal|membership/i) || reasonIncludes(summary.topReviewReasons, /membership signal|membership/i)) {
+    suggestions.push({
+      id: "improve-membership",
+      title: "Improve membership confidence",
+      description: "The agent is holding actions because membership data is weak or missing. Strengthening imports will unlock safer automation.",
+      ctaLabel: "Open integrations",
+      action: "open_integrations",
+      tone: "danger",
+    })
+  }
+
+  if (
+    reasonIncludes(summary.topBlockedReasons, /disabled|threshold|Recipient count|manual approval|auto-send/i) ||
+    reasonIncludes(summary.topReviewReasons, /manual approval|threshold|Recipient count|confidence/i)
+  ) {
+    suggestions.push({
+      id: "tune-policy",
+      title: "Tune autonomy policy",
+      description: "A large share of actions are being slowed down by current limits. Tightening or relaxing policy here changes what the club trusts the agent to do automatically.",
+      ctaLabel: "Open settings",
+      action: "open_settings",
+      tone: "default",
+    })
+  }
+
+  if (summary.counts.auto === 0 && (summary.counts.pending > 0 || summary.counts.blocked > 0)) {
+    suggestions.push({
+      id: "use-advisor",
+      title: "Ask Advisor to reshape policy",
+      description: "If you're not sure which rule to change, let Advisor recommend a safer autopilot setup based on recent club outcomes.",
+      ctaLabel: "Open Advisor",
+      action: "open_advisor",
+      tone: "default",
+    })
+  }
+
+  return suggestions.slice(0, 3)
+}
+
+function suggestionToneStyles(tone: AutopilotSuggestion["tone"]) {
+  switch (tone) {
+    case "warn":
+      return { bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.18)", title: "#F59E0B" }
+    case "danger":
+      return { bg: "rgba(239,68,68,0.10)", border: "rgba(239,68,68,0.18)", title: "#EF4444" }
+    default:
+      return { bg: "rgba(139,92,246,0.10)", border: "rgba(139,92,246,0.18)", title: "#A78BFA" }
+  }
+}
+
 // ── Component ──
 export function AgentIQ({
   clubId,
@@ -263,6 +342,7 @@ export function AgentIQ({
 }: AgentIQProps) {
   const { isDark } = useTheme()
   const headerRef = useRef<HTMLDivElement>(null)
+  const pendingQueueRef = useRef<HTMLDivElement>(null)
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
 
@@ -270,6 +350,26 @@ export function AgentIQ({
   const logs = activity?.logs || []
   const pendingActions = pending || []
   const autopilotSummary = buildAutopilotSummary(logs)
+  const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
+
+  const actionHref = (action: AutopilotSuggestionAction) => {
+    switch (action) {
+      case "open_settings":
+        return `/clubs/${clubId}/intelligence/settings`
+      case "open_integrations":
+        return `/clubs/${clubId}/intelligence/integrations`
+      case "open_advisor":
+        return `/clubs/${clubId}/intelligence/advisor`
+      default:
+        return null
+    }
+  }
+
+  const runSuggestionAction = (action: AutopilotSuggestionAction) => {
+    if (action === "scroll_pending") {
+      pendingQueueRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
 
   const handleApprove = (actionId: string) => {
     setProcessingId(actionId)
@@ -536,11 +636,68 @@ export function AgentIQ({
               )}
             </div>
           </div>
+
+          {autopilotSuggestions.length > 0 && (
+            <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--card-border)" }}>
+              <div className="flex items-center gap-2 mb-3">
+                <ArrowUpRight className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+                <div className="text-sm font-medium" style={{ color: "var(--heading)" }}>
+                  Top blockers to fix
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {autopilotSuggestions.map((suggestion) => {
+                  const styles = suggestionToneStyles(suggestion.tone)
+                  const href = actionHref(suggestion.action)
+
+                  return (
+                    <div
+                      key={suggestion.id}
+                      className="rounded-xl p-3"
+                      style={{
+                        background: styles.bg,
+                        border: `1px solid ${styles.border}`,
+                      }}
+                    >
+                      <div className="text-sm font-semibold" style={{ color: styles.title }}>
+                        {suggestion.title}
+                      </div>
+                      <div className="text-xs mt-1 min-h-[40px]" style={{ color: "var(--t3)" }}>
+                        {suggestion.description}
+                      </div>
+
+                      {href ? (
+                        <Link
+                          href={href}
+                          className="inline-flex items-center gap-1 mt-3 text-xs font-medium"
+                          style={{ color: "var(--heading)" }}
+                        >
+                          {suggestion.ctaLabel}
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => runSuggestionAction(suggestion.action)}
+                          className="inline-flex items-center gap-1 mt-3 text-xs font-medium"
+                          style={{ color: "var(--heading)" }}
+                        >
+                          {suggestion.ctaLabel}
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </Card>
       </motion.div>
 
       {/* ── Pending Actions Queue ── */}
       <motion.div
+        ref={pendingQueueRef}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
