@@ -55,6 +55,7 @@ const fillAction: AdvisorAction = {
 
 const state = {
   currentSession: sessions[0],
+  recentOutcomes: [],
   lastActionKind: 'fill_session' as const,
   lastActionTitle: fillAction.title,
   updatedAt: '2026-04-12T16:00:00.000Z',
@@ -86,6 +87,7 @@ const reactivationAction: AdvisorAction = {
 
 const reactivationState = {
   currentReactivation: reactivationAction.reactivation,
+  recentOutcomes: [],
   lastActionKind: 'reactivate_members' as const,
   lastActionTitle: reactivationAction.title,
   updatedAt: '2026-04-12T16:00:00.000Z',
