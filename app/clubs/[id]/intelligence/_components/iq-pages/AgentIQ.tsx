@@ -26,6 +26,9 @@ interface AgentLog {
   triggerConfiguredMode?: string | null
   triggerPolicyOutcome?: string | null
   triggerReasons?: string[]
+  membershipLifecycle?: string | null
+  membershipStatus?: string | null
+  membershipType?: string | null
   sequenceStep?: number | null
 }
 
@@ -41,6 +44,9 @@ interface PendingAction {
   triggerConfiguredMode?: string | null
   triggerPolicyOutcome?: string | null
   triggerReasons?: string[]
+  membershipLifecycle?: string | null
+  membershipStatus?: string | null
+  membershipType?: string | null
   sequenceStep?: number | null
 }
 
@@ -54,6 +60,20 @@ interface AutopilotSuggestion {
   ctaLabel: string
   action: AutopilotSuggestionAction
   tone: "default" | "warn" | "danger"
+}
+
+type ProactiveOpportunityKind = "trial_follow_up" | "renewal_reactivation"
+
+interface ProactiveOpportunity {
+  id: string
+  kind: ProactiveOpportunityKind
+  title: string
+  description: string
+  pendingCount: number
+  blockedCount: number
+  sampleMembers: string[]
+  ctaLabel: string
+  action: AutopilotSuggestionAction
 }
 
 interface AgentIQProps {
@@ -101,6 +121,7 @@ function StatusBadge({ status }: { status: string }) {
     clicked:   { bg: "rgba(59,130,246,0.12)", text: "#3B82F6", label: "Clicked" },
     converted: { bg: "rgba(139,92,246,0.12)", text: "#A78BFA", label: "Converted" },
     pending:   { bg: "rgba(245,158,11,0.12)", text: "#F59E0B", label: "Pending" },
+    blocked:   { bg: "rgba(239,68,68,0.12)",  text: "#EF4444", label: "Blocked" },
     skipped:   { bg: "rgba(107,114,128,0.12)", text: "#9CA3AF", label: "Skipped" },
     bounced:   { bg: "rgba(239,68,68,0.12)",  text: "#EF4444", label: "Bounced" },
     snoozed:   { bg: "rgba(245,158,11,0.12)", text: "#F59E0B", label: "Snoozed" },
@@ -195,6 +216,14 @@ function describeAction(type: string, log: AgentLog): string {
   const sequencePrefix = log.sequenceStep !== null && log.sequenceStep !== undefined
     ? `Step ${log.sequenceStep}: `
     : ""
+
+  if (log.membershipLifecycle === "trial_follow_up") {
+    return `${sequencePrefix}Trial follow-up for first booking`
+  }
+
+  if (log.membershipLifecycle === "renewal_reactivation") {
+    return `${sequencePrefix}Renewal outreach for recently active member`
+  }
 
   switch (type) {
     case "CHECK_IN":           return `${sequencePrefix}Check-in for ${log.transition || "watch member"}`
@@ -298,6 +327,81 @@ function buildAutopilotSummary(logs: AgentLog[]) {
   }
 }
 
+function isProactiveMembershipLifecycle(kind?: string | null): kind is ProactiveOpportunityKind {
+  return kind === "trial_follow_up" || kind === "renewal_reactivation"
+}
+
+function buildProactiveOpportunities(logs: AgentLog[], pendingActions: PendingAction[]): ProactiveOpportunity[] {
+  const combined = [
+    ...pendingActions.map((item) => ({
+      memberName: item.memberName,
+      createdAt: item.createdAt,
+      outcome: item.triggerOutcome || "pending",
+      membershipLifecycle: item.membershipLifecycle || null,
+    })),
+    ...logs.map((item) => ({
+      memberName: item.memberName,
+      createdAt: item.createdAt,
+      outcome: item.triggerOutcome || resolveAutopilotOutcome(item),
+      membershipLifecycle: item.membershipLifecycle || null,
+    })),
+  ]
+
+  const latest = combined
+    .filter((item) => isProactiveMembershipLifecycle(item.membershipLifecycle) && (item.outcome === "pending" || item.outcome === "blocked"))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  const deduped: typeof latest = []
+  const seen = new Set<string>()
+  for (const item of latest) {
+    const key = `${item.membershipLifecycle}:${item.memberName}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(item)
+  }
+
+  const grouped = new Map<ProactiveOpportunityKind, typeof deduped>()
+  for (const item of deduped) {
+    const kind = item.membershipLifecycle as ProactiveOpportunityKind
+    const current = grouped.get(kind) || []
+    current.push(item)
+    grouped.set(kind, current)
+  }
+
+  return Array.from(grouped.entries()).map(([kind, items]) => {
+    const pendingCount = items.filter((item) => item.outcome === "pending").length
+    const blockedCount = items.filter((item) => item.outcome === "blocked").length
+    const total = items.length
+    const sampleMembers = items.map((item) => item.memberName).filter(Boolean).slice(0, 3)
+
+    if (kind === "trial_follow_up") {
+      return {
+        id: kind,
+        kind,
+        title: "Trial members need first-play follow-up",
+        description: `${total} trial members still need a nudge into their first booking. ${pendingCount > 0 ? `${pendingCount} are ready for review.` : ""}${blockedCount > 0 ? ` ${blockedCount} are still blocked by current policy.` : ""}`.trim(),
+        pendingCount,
+        blockedCount,
+        sampleMembers,
+        ctaLabel: pendingCount > 0 ? "Review pending actions" : "Open Advisor",
+        action: pendingCount > 0 ? "scroll_pending" : "open_advisor",
+      }
+    }
+
+    return {
+      id: kind,
+      kind,
+      title: "Renewal opportunities are ready",
+      description: `${total} recently active members have expired or suspended memberships. ${pendingCount > 0 ? `${pendingCount} are queued for outreach review.` : ""}${blockedCount > 0 ? ` ${blockedCount} are being held by policy.` : ""}`.trim(),
+      pendingCount,
+      blockedCount,
+      sampleMembers,
+      ctaLabel: pendingCount > 0 ? "Review pending actions" : "Open Advisor",
+      action: pendingCount > 0 ? "scroll_pending" : "open_advisor",
+    }
+  })
+}
+
 function reasonIncludes(entries: Array<{ label: string; count: number }>, matcher: RegExp) {
   return entries.some((entry) => matcher.test(entry.label))
 }
@@ -388,6 +492,7 @@ export function AgentIQ({
   const pendingActions = pending || []
   const autopilotSummary = buildAutopilotSummary(logs)
   const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
+  const proactiveOpportunities = buildProactiveOpportunities(logs, pendingActions)
 
   const actionHref = (action: AutopilotSuggestionAction) => {
     switch (action) {
@@ -774,6 +879,119 @@ export function AgentIQ({
           )}
         </Card>
       </motion.div>
+
+      {proactiveOpportunities.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.18 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ArrowUpRight className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Proactive Opportunities
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  Membership lifecycle moments the agent is already surfacing for the club.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {proactiveOpportunities.map((opportunity) => {
+                const iconColor = opportunity.kind === "trial_follow_up" ? "#10B981" : "#8B5CF6"
+                const Icon = opportunity.kind === "trial_follow_up" ? UserPlus : Send
+                const href = actionHref(opportunity.action)
+
+                return (
+                  <div
+                    key={opportunity.id}
+                    className="rounded-xl p-4"
+                    style={{
+                      background: opportunity.blockedCount > 0
+                        ? "rgba(239,68,68,0.08)"
+                        : "rgba(139,92,246,0.08)",
+                      border: opportunity.blockedCount > 0
+                        ? "1px solid rgba(239,68,68,0.16)"
+                        : "1px solid rgba(139,92,246,0.16)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: `${iconColor}15` }}
+                        >
+                          <Icon className="w-5 h-5" style={{ color: iconColor }} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                            {opportunity.title}
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                            {opportunity.description}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-lg font-bold tabular-nums" style={{ color: iconColor }}>
+                          {opportunity.pendingCount + opportunity.blockedCount}
+                        </div>
+                        <div className="text-[11px]" style={{ color: "var(--t4)" }}>
+                          open cases
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                      {opportunity.pendingCount > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(245,158,11,0.12)", color: "#F59E0B" }}>
+                          {opportunity.pendingCount} pending
+                        </span>
+                      )}
+                      {opportunity.blockedCount > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444" }}>
+                          {opportunity.blockedCount} blocked
+                        </span>
+                      )}
+                    </div>
+
+                    {opportunity.sampleMembers.length > 0 && (
+                      <div className="text-[11px] mt-3" style={{ color: "var(--t4)" }}>
+                        Members: {opportunity.sampleMembers.join(", ")}
+                      </div>
+                    )}
+
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="inline-flex items-center gap-1 mt-3 text-xs font-medium"
+                        style={{ color: "var(--heading)" }}
+                      >
+                        {opportunity.ctaLabel}
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : (
+                      <button
+                        onClick={() => runSuggestionAction(opportunity.action)}
+                        className="inline-flex items-center gap-1 mt-3 text-xs font-medium"
+                        style={{ color: "var(--heading)" }}
+                      >
+                        {opportunity.ctaLabel}
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {/* ── Pending Actions Queue ── */}
       <motion.div

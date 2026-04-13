@@ -69,6 +69,14 @@ function describeAgentAction(type: string, reasoning: any): string {
     ? `Sequence step ${reasoning.stepNumber}: `
     : ''
 
+  if (reasoning?.membershipLifecycle === 'trial_follow_up') {
+    return `${sequenceLabel}Trial follow-up for ${reasoning?.memberName || 'trial member'}`
+  }
+
+  if (reasoning?.membershipLifecycle === 'renewal_reactivation') {
+    return `${sequenceLabel}Renewal outreach for ${reasoning?.memberName || 'recently active member'}`
+  }
+
   switch (type) {
     case 'CHECK_IN': return `${sequenceLabel}Check-in for ${reasoning?.transition || 'watch member'}`
     case 'RETENTION_BOOST': return `${sequenceLabel}Win-back for ${reasoning?.transition || 'at-risk member'}`
@@ -110,6 +118,22 @@ function buildApprovedAgentMessage(opts: {
     return {
       subject: opts.reasoning?.originalSubject || `${opts.clubName} — checking in`,
       body: `Hey ${firstName}!\n\nJust checking in from ${opts.clubName}. We'd love to help you get back into a good rhythm on court.`,
+      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+    }
+  }
+
+  if (opts.reasoning?.membershipLifecycle === 'trial_follow_up') {
+    return {
+      subject: `${opts.clubName} — ready for your first game?`,
+      body: `Hey ${firstName}!\n\nYour trial is active at ${opts.clubName}, and we'd love to help you get that first booking on the calendar.`,
+      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+    }
+  }
+
+  if (opts.reasoning?.membershipLifecycle === 'renewal_reactivation') {
+    return {
+      subject: `${opts.clubName} — let's get you back on court`,
+      body: `Hey ${firstName}!\n\nYou've been active with ${opts.clubName} recently, and this is a great time to jump back in with a renewal or a fresh booking.`,
       bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
     }
   }
@@ -4729,6 +4753,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           triggerConfiguredMode: triggerRuntime?.configuredMode ?? null,
           triggerReasons: Array.isArray(triggerRuntime?.reasons) ? triggerRuntime.reasons : [],
           triggerPolicyOutcome: triggerRuntime?.policyOutcome ?? null,
+          membershipLifecycle: reasoning?.membershipLifecycle ?? null,
+          membershipStatus: triggerRuntime?.membershipStatus ?? null,
+          membershipType: triggerRuntime?.membershipType ?? null,
           sequenceStep: reasoning?.stepNumber ?? reasoning?.sequenceStep ?? null,
           }
         }),
@@ -4767,6 +4794,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           triggerConfiguredMode: triggerRuntime?.configuredMode ?? null,
           triggerReasons: Array.isArray(triggerRuntime?.reasons) ? triggerRuntime.reasons : [],
           triggerPolicyOutcome: triggerRuntime?.policyOutcome ?? null,
+          membershipLifecycle: reasoning?.membershipLifecycle ?? null,
+          membershipStatus: triggerRuntime?.membershipStatus ?? null,
+          membershipType: triggerRuntime?.membershipType ?? null,
           sequenceStep: reasoning?.stepNumber ?? reasoning?.sequenceStep ?? null,
         }
       })
