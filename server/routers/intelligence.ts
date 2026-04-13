@@ -19,14 +19,20 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
-import { advisorActionSchema, extractAdvisorAction } from '@/lib/ai/advisor-actions'
+import { advisorActionSchema, extractAdvisorAction, getAdvisorActionFromMetadata } from '@/lib/ai/advisor-actions'
 import { withAdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
+import {
+  buildAdvisorConversationStateFromAction,
+  getAdvisorConversationStateFromMetadata,
+  withAdvisorOutcome,
+} from '@/lib/ai/advisor-conversation-state'
 import {
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
+import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
 
@@ -4096,10 +4102,80 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
   executeAdvisorAction: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
+      messageId: z.string().uuid().optional(),
       action: advisorActionSchema,
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const advisorMessage = input.messageId
+        ? await ctx.prisma.aIMessage.findUnique({
+            where: { id: input.messageId },
+            select: {
+              id: true,
+              role: true,
+              metadata: true,
+              conversation: {
+                select: {
+                  clubId: true,
+                  userId: true,
+                },
+              },
+            },
+          })
+        : null
+
+      if (input.messageId) {
+        if (!advisorMessage) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Advisor draft not found.',
+          })
+        }
+
+        if (advisorMessage.role !== 'assistant') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'This message does not contain an executable advisor draft.',
+          })
+        }
+
+        if (advisorMessage.conversation.clubId !== input.clubId || advisorMessage.conversation.userId !== ctx.session.user.id) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to execute this advisor draft.',
+          })
+        }
+      }
+
+      const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {
+        if (!advisorMessage) return result
+
+        const occurredAt = new Date().toISOString()
+        const outcome = buildAdvisorOutcomeMemory(input.action, result, occurredAt)
+        const baseState =
+          getAdvisorConversationStateFromMetadata(advisorMessage.metadata) ||
+          buildAdvisorConversationStateFromAction(input.action, occurredAt)
+        const nextState = withAdvisorOutcome(baseState, outcome, occurredAt)
+
+        let metadata = withAdvisorActionRuntimeState(advisorMessage.metadata, {
+          status: 'active',
+          updatedAt: occurredAt,
+        })
+        metadata = withAdvisorOutcomeMetadata(metadata, outcome)
+        metadata = {
+          ...(metadata as Record<string, unknown>),
+          advisorResolvedAction: input.action,
+          advisorState: nextState,
+        }
+
+        await ctx.prisma.aIMessage.update({
+          where: { id: advisorMessage.id },
+          data: { metadata: metadata as any },
+        })
+
+        return result
+      }
 
       if (input.action.kind === 'create_cohort') {
         const count = await countCohortMembers(ctx.prisma, input.clubId, input.action.cohort.filters as CohortFilter[])
@@ -4114,13 +4190,13 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           },
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'create_cohort' as const,
           cohortId: cohort.id,
           name: cohort.name,
           memberCount: count,
-        }
+        })
       }
 
       if (input.action.kind === 'fill_session') {
@@ -4147,7 +4223,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both'; customMessage: string }>
 
         if (eligibleCandidates.length === 0) {
-          return {
+          return persistAdvisorOutcome({
             ok: true,
             kind: 'fill_session' as const,
             sessionId: fillAction.session.id,
@@ -4158,7 +4234,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             failed: 0,
             skipped: guardrails.summary.excludedCount,
             guardrails: guardrails.summary,
-          }
+          })
         }
 
         const inviteResult = await sendInvites(ctx.prisma, {
@@ -4167,7 +4243,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           candidates: eligibleCandidates,
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'fill_session' as const,
           sessionId: fillAction.session.id,
@@ -4177,7 +4253,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           ...inviteResult,
           skipped: (inviteResult.skipped || 0) + guardrails.summary.excludedCount,
           guardrails: guardrails.summary,
-        }
+        })
       }
 
       if (input.action.kind === 'reactivate_members') {
@@ -4202,7 +4278,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
 
         if (eligibleCandidates.length === 0) {
-          return {
+          return persistAdvisorOutcome({
             ok: true,
             kind: 'reactivate_members' as const,
             segmentLabel: reactivationAction.reactivation.segmentLabel,
@@ -4213,7 +4289,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             failed: 0,
             skipped: guardrails.summary.excludedCount,
             guardrails: guardrails.summary,
-          }
+          })
         }
 
         const sendResult = await sendReactivationMessages(ctx.prisma, {
@@ -4222,7 +4298,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           customMessage: reactivationAction.reactivation.message,
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'reactivate_members' as const,
           segmentLabel: reactivationAction.reactivation.segmentLabel,
@@ -4232,7 +4308,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           ...sendResult,
           skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
           guardrails: guardrails.summary,
-        }
+        })
       }
 
       if (input.action.kind === 'update_contact_policy') {
@@ -4267,13 +4343,13 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           },
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'update_contact_policy' as const,
           policy: input.action.policy,
           changedFields: input.action.policy.changes,
           previousPolicy: currentPolicy,
-        }
+        })
       }
 
       if (input.action.kind === 'update_autonomy_policy') {
@@ -4304,13 +4380,13 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           },
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'update_autonomy_policy' as const,
           policy: input.action.policy,
           changedFields: input.action.policy.changes,
           previousPolicy: currentPolicy,
-        }
+        })
       }
 
       let audience = input.action.audience
@@ -4380,7 +4456,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       if (input.action.campaign.execution.mode === 'save_draft') {
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'create_campaign' as const,
           cohortId,
@@ -4392,7 +4468,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           guardrails: guardrails.summary,
           deliveryMode: 'save_draft' as const,
           savedAsDraft: true,
-        }
+        })
       }
 
       await enforceCampaignUsageLimits(
@@ -4412,7 +4488,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
 
         const timeZone = input.action.campaign.execution.timeZone || 'America/New_York'
         if (recipients.length === 0) {
-          return {
+          return persistAdvisorOutcome({
             ok: true,
             kind: 'create_campaign' as const,
             cohortId,
@@ -4427,7 +4503,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             scheduledFor,
             timeZone,
             scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
-          }
+          })
         }
 
         const scheduled = await scheduleCampaignSend(ctx.prisma, {
@@ -4444,7 +4520,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           recipientRules: input.action.campaign.execution.recipientRules || null,
         })
 
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'create_campaign' as const,
           cohortId,
@@ -4457,11 +4533,11 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           deliveryMode: 'send_later' as const,
           scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
           ...scheduled,
-        }
+        })
       }
 
       if (recipients.length === 0) {
-        return {
+        return persistAdvisorOutcome({
           ok: true,
           kind: 'create_campaign' as const,
           cohortId,
@@ -4477,7 +4553,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           skipped: excludedByGuardrails,
           emailSent: 0,
           smsSent: 0,
-        }
+        })
       }
 
       const result = await runCreateCampaign(ctx.prisma, {
@@ -4491,7 +4567,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         smsBody: input.action.campaign.smsBody,
       })
 
-      return {
+      return persistAdvisorOutcome({
         ok: true,
         kind: 'create_campaign' as const,
         cohortId,
@@ -4504,7 +4580,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         deliveryMode: 'send_now' as const,
         ...result,
         skipped: (result.skipped || 0) + excludedByGuardrails,
-      }
+      })
     }),
 
   updateAdvisorActionState: protectedProcedure
@@ -4547,7 +4623,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         })
       }
 
-      const action = extractAdvisorAction(message.content)
+      const action = getAdvisorActionFromMetadata(message.metadata) || extractAdvisorAction(message.content)
       if (!action) {
         throw new TRPCError({
           code: 'BAD_REQUEST',

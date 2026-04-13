@@ -5,6 +5,7 @@ import { CalendarDays, CheckCircle2, Loader2, Mail, PauseCircle, PencilLine, Sen
 import { useTheme } from '../IQThemeProvider'
 import type { AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionRuntimeState, type AdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
+import type { AdvisorOutcomeMemory } from '@/lib/ai/advisor-outcomes'
 import { useExecuteAdvisorAction, useUpdateAdvisorActionState } from '../../_hooks/use-intelligence'
 
 type CampaignAction = Extract<AdvisorAction, { kind: 'create_campaign' }>
@@ -47,12 +48,14 @@ export function AdvisorActionCard({
   messageId,
   action,
   actionState,
+  persistedOutcome,
   onDraftPrompt,
 }: {
   clubId: string
   messageId?: string
   action: AdvisorAction
   actionState?: AdvisorActionRuntimeState | null
+  persistedOutcome?: AdvisorOutcomeMemory | null
   onDraftPrompt?: (prompt: string) => void
 }) {
   const { isDark } = useTheme()
@@ -166,7 +169,7 @@ export function AdvisorActionCard({
   const recipientRuleExcludedCount = isCampaign && contactGuardrails
     ? Math.max(0, targetCount - contactGuardrails.eligibleCount - contactGuardrails.excludedCount)
     : 0
-  const isDone = !!result?.ok
+  const isDone = !!result?.ok || !!persistedOutcome
   const approvalHelperText = isCampaign
     ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
       ? 'Choose how the platform should handle this draft, then confirm the action.'
@@ -200,9 +203,15 @@ export function AdvisorActionCard({
 
   const handleApprove = () => {
     executeAction.mutate(
-      { clubId, action: currentAction },
+      { clubId, messageId, action: currentAction },
       {
-        onSuccess: (data) => setResult(data),
+        onSuccess: (data) => {
+          setResult(data)
+          setLocalActionState({
+            status: 'active',
+            updatedAt: new Date().toISOString(),
+          })
+        },
       }
     )
   }
@@ -835,7 +844,8 @@ export function AdvisorActionCard({
       ) : (
         <div className="flex items-center justify-between gap-3 mt-4">
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
-            {result.kind === 'create_cohort'
+            {result
+              ? result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
               : result.kind === 'update_contact_policy'
                 ? `Contact policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
@@ -849,7 +859,8 @@ export function AdvisorActionCard({
                 ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
                 : result.deliveryMode === 'send_later'
                   ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
-                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`}
+                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`
+              : persistedOutcome?.summary || 'Approved'}
           </div>
           <div
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"

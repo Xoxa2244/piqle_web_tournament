@@ -13,6 +13,7 @@ import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
 import { isAdvisorActionHidden } from './advisor-action-state'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
+import { advisorOutcomeMemorySchema, type AdvisorOutcomeMemory } from './advisor-outcomes'
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
 
 const advisorActiveCampaignSchema = advisorCampaignDraftSchema.extend({
@@ -27,6 +28,8 @@ export const advisorConversationStateSchema = z.object({
   currentReactivation: advisorReactivationDraftSchema.optional(),
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
   currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
+  latestOutcome: advisorOutcomeMemorySchema.optional(),
+  recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
   lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'update_contact_policy', 'update_autonomy_policy']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
@@ -46,10 +49,18 @@ function parseStateCandidate(value: unknown): AdvisorConversationState | null {
   return parsed.success ? parsed.data : null
 }
 
+function finalizeAdvisorConversationState(state: Partial<AdvisorConversationState>): AdvisorConversationState {
+  return advisorConversationStateSchema.parse(state)
+}
+
 function getStateFromMetadata(metadata: unknown): AdvisorConversationState | null {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
   const record = metadata as Record<string, unknown>
   return parseStateCandidate(record.advisorState)
+}
+
+export function getAdvisorConversationStateFromMetadata(metadata: unknown): AdvisorConversationState | null {
+  return getStateFromMetadata(metadata)
 }
 
 export function buildAdvisorConversationStateFromAction(
@@ -57,51 +68,51 @@ export function buildAdvisorConversationStateFromAction(
   updatedAt: string = new Date().toISOString(),
 ): AdvisorConversationState {
   if (action.kind === 'create_cohort') {
-    return {
+    return finalizeAdvisorConversationState({
       currentAudience: action.cohort,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
-    }
+    })
   }
 
   if (action.kind === 'fill_session') {
-    return {
+    return finalizeAdvisorConversationState({
       currentSession: action.session,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
-    }
+    })
   }
 
   if (action.kind === 'reactivate_members') {
-    return {
+    return finalizeAdvisorConversationState({
       currentReactivation: action.reactivation,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
-    }
+    })
   }
 
   if (action.kind === 'update_contact_policy') {
-    return {
+    return finalizeAdvisorConversationState({
       currentContactPolicy: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
-    }
+    })
   }
 
   if (action.kind === 'update_autonomy_policy') {
-    return {
+    return finalizeAdvisorConversationState({
       currentAutonomyPolicy: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
-    }
+    })
   }
 
-  return {
+  return finalizeAdvisorConversationState({
     currentAudience: action.audience,
     currentCampaign: {
       ...action.campaign,
@@ -111,7 +122,7 @@ export function buildAdvisorConversationStateFromAction(
     lastActionKind: action.kind,
     lastActionTitle: action.title,
     updatedAt,
-  }
+  })
 }
 
 export function withAdvisorPendingClarification(
@@ -119,11 +130,11 @@ export function withAdvisorPendingClarification(
   pendingClarification: AdvisorPendingClarification,
   updatedAt: string = new Date().toISOString(),
 ): AdvisorConversationState {
-  return {
+  return finalizeAdvisorConversationState({
     ...(state || {}),
     pendingClarification,
     updatedAt,
-  }
+  })
 }
 
 export function clearAdvisorPendingClarification(
@@ -132,11 +143,32 @@ export function clearAdvisorPendingClarification(
 ): AdvisorConversationState | null {
   if (!state?.pendingClarification) return state
 
-  return {
+  return finalizeAdvisorConversationState({
     ...state,
     pendingClarification: undefined,
     updatedAt,
-  }
+  })
+}
+
+export function withAdvisorOutcome(
+  state: AdvisorConversationState | null,
+  outcome: AdvisorOutcomeMemory,
+  updatedAt: string = new Date().toISOString(),
+): AdvisorConversationState {
+  const recentOutcomes = [
+    outcome,
+    ...((state?.recentOutcomes || []).filter((item) => item.summary !== outcome.summary || item.occurredAt !== outcome.occurredAt)),
+  ].slice(0, 5)
+
+  return finalizeAdvisorConversationState({
+    ...(state || {}),
+    latestOutcome: outcome,
+    recentOutcomes,
+    pendingClarification: undefined,
+    lastActionKind: outcome.kind,
+    lastActionTitle: outcome.title,
+    updatedAt,
+  })
 }
 
 export function deriveAdvisorConversationState(messages: ConversationMessageLike[]): AdvisorConversationState | null {
@@ -234,6 +266,14 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
 
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
+  }
+
+  if (state.latestOutcome) {
+    parts.push(`Latest completed outcome: ${state.latestOutcome.summary}`)
+  }
+
+  if (state.recentOutcomes.length > 0) {
+    parts.push(`Recent completed outcomes: ${state.recentOutcomes.slice(0, 3).map((outcome) => outcome.summary).join(' | ')}`)
   }
 
   if (state.pendingClarification) {

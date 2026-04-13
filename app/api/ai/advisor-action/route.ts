@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { appRouter } from '@/server/routers/_app'
 import { detectLanguage, type SupportedLanguage } from '@/lib/ai/llm/language'
-import { buildAdvisorActionTag, extractAdvisorAction, type AdvisorAction } from '@/lib/ai/advisor-actions'
+import { buildAdvisorActionTag, extractAdvisorAction, getAdvisorActionFromMetadata, type AdvisorAction } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionCopy, planAdvisorActionIntent } from '@/lib/ai/advisor-action-planner'
 import {
   isAdvisorActionHidden,
@@ -145,7 +145,7 @@ async function getLastAdvisorAction(conversationId: string): Promise<AdvisorActi
 
   for (const message of priorMessages) {
     if (isAdvisorActionHidden(message.metadata)) continue
-    const action = extractAdvisorAction(message.content)
+    const action = getAdvisorActionFromMetadata(message.metadata) || extractAdvisorAction(message.content)
     if (action) return action
   }
 
@@ -165,7 +165,7 @@ async function getAdvisorConversationMemory(conversationId: string) {
     const message = priorMessages[index]
     if (message.role !== 'assistant') continue
     if (isAdvisorActionHidden(message.metadata)) continue
-    const action = extractAdvisorAction(message.content)
+    const action = getAdvisorActionFromMetadata(message.metadata) || extractAdvisorAction(message.content)
     if (action) {
       lastAction = action
       break
@@ -210,6 +210,7 @@ async function persistAdvisorExchange(opts: {
     source: 'advisor_action',
     handled: true,
     ...(opts.assistantState ? { advisorState: opts.assistantState } : {}),
+    ...(opts.action ? { advisorResolvedAction: opts.action } : {}),
     ...(opts.action
       ? { advisorActionState: { status: 'active' as const, updatedAt: new Date().toISOString() } }
       : {}),
@@ -515,6 +516,8 @@ async function buildFillSessionAssistantResponse(opts: {
   if (sessions.length === 0) {
     const assistantState: AdvisorConversationState = {
       ...(state || {}),
+      latestOutcome: state?.latestOutcome,
+      recentOutcomes: state?.recentOutcomes || [],
       currentSession: undefined,
       lastActionKind: 'fill_session',
       lastActionTitle: 'Fill an underfilled session',
@@ -597,6 +600,8 @@ async function buildFillSessionAssistantResponse(opts: {
   if (candidates.length === 0) {
     const assistantState: AdvisorConversationState = {
       ...(state || {}),
+      latestOutcome: state?.latestOutcome,
+      recentOutcomes: state?.recentOutcomes || [],
       currentSession: resolvedSession,
       lastActionKind: 'fill_session',
       lastActionTitle: `Fill session: ${resolvedSession.title}`,
@@ -710,6 +715,8 @@ async function buildReactivationAssistantResponse(opts: {
   if (candidates.length === 0) {
     const assistantState: AdvisorConversationState = {
       ...(state || {}),
+      latestOutcome: state?.latestOutcome,
+      recentOutcomes: state?.recentOutcomes || [],
       currentReactivation: undefined,
       lastActionKind: 'reactivate_members',
       lastActionTitle: `Reactivate: ${segmentLabel}`,
@@ -1063,6 +1070,8 @@ export async function POST(req: Request) {
           if (sessions.length === 0) {
             assistantState = {
               ...(memory.state || {}),
+              latestOutcome: memory.state?.latestOutcome,
+              recentOutcomes: memory.state?.recentOutcomes || [],
               currentSession: undefined,
               lastActionKind: 'fill_session',
               lastActionTitle: 'Fill an underfilled session',
@@ -1209,6 +1218,8 @@ export async function POST(req: Request) {
       if (!updatedPolicy) {
         assistantState = {
           ...(memory.state || {}),
+          latestOutcome: memory.state?.latestOutcome,
+          recentOutcomes: memory.state?.recentOutcomes || [],
           currentContactPolicy: currentPolicy,
           lastActionKind: 'update_contact_policy',
           lastActionTitle: 'Update club contact policy',
@@ -1241,6 +1252,8 @@ export async function POST(req: Request) {
       if (!updatedPolicy) {
         assistantState = {
           ...(memory.state || {}),
+          latestOutcome: memory.state?.latestOutcome,
+          recentOutcomes: memory.state?.recentOutcomes || [],
           currentAutonomyPolicy: currentPolicy,
           lastActionKind: 'update_autonomy_policy',
           lastActionTitle: 'Update club autonomy policy',

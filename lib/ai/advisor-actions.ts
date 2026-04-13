@@ -169,6 +169,11 @@ export type AdvisorAction = z.infer<typeof advisorActionSchema>
 
 const ACTION_TAG_REGEX = /<action>\s*([\s\S]*?)\s*<\/action>/i
 
+function parseAdvisorActionCandidate(value: unknown): AdvisorAction | null {
+  const result = advisorActionSchema.safeParse(value)
+  return result.success ? result.data : null
+}
+
 export function buildAdvisorActionTag(action: AdvisorAction) {
   return `<action>${JSON.stringify(action)}</action>`
 }
@@ -179,11 +184,16 @@ export function extractAdvisorAction(text: string): AdvisorAction | null {
 
   try {
     const parsed = JSON.parse(match[1].trim())
-    const result = advisorActionSchema.safeParse(parsed)
-    return result.success ? result.data : null
+    return parseAdvisorActionCandidate(parsed)
   } catch {
     return null
   }
+}
+
+export function getAdvisorActionFromMetadata(metadata: unknown): AdvisorAction | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const record = metadata as Record<string, unknown>
+  return parseAdvisorActionCandidate(record.advisorResolvedAction ?? record.advisorAction)
 }
 
 export function stripAdvisorAction(text: string): string {

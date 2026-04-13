@@ -11,8 +11,9 @@ import {
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
-import { extractAdvisorAction, stripAdvisorAction } from "@/lib/ai/advisor-actions";
+import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
 import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
+import { getAdvisorLatestOutcome } from "@/lib/ai/advisor-outcomes";
 
 /* --- Suggested Prompts --- */
 const suggestedPrompts = [
@@ -835,8 +836,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           <AnimatePresence>
             {messages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
-              const action = msg.role === 'assistant' ? extractAdvisorAction(text) : null;
+              const action = msg.role === 'assistant'
+                ? getAdvisorActionFromMetadata((msg as any).metadata) || extractAdvisorAction(text)
+                : null;
               const actionState = action ? getAdvisorActionRuntimeState((msg as any).metadata) : null;
+              const persistedOutcome = action ? getAdvisorLatestOutcome((msg as any).metadata) : null;
               const pendingClarification = msg.role === 'assistant'
                 ? getPendingClarification((msg as any).metadata)
                 : null;
@@ -902,6 +906,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                         messageId={String(msg.id)}
                         action={action}
                         actionState={actionState}
+                        persistedOutcome={persistedOutcome}
                         onDraftPrompt={draftIntoComposer}
                       />
                     )}
