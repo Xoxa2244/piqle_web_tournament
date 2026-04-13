@@ -36,6 +36,7 @@ describe('agent trigger runtime', () => {
     expect(reasoning.autoApproved).toBe(true)
     expect((reasoning as any).triggerRuntime.source).toBe('slot_filler_automation')
     expect((reasoning as any).triggerRuntime.outcome).toBe('auto')
+    expect((reasoning as any).triggerRuntime.membershipSignal).toBe('weak')
     expect((reasoning as any).mode).toBe('tomorrow')
   })
 

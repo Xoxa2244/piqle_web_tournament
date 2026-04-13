@@ -104,4 +104,66 @@ describe('agent autonomy policy', () => {
     expect(decision.outcome).toBe('pending')
     expect(decision.reasons.join(' ')).toContain('Membership signal')
   })
+
+  it('keeps trial members on approval for automated retention nudges', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'retentionBoost',
+      automationSettings: undefined,
+      liveMode: true,
+      confidence: 91,
+      recipientCount: 1,
+      membershipSignal: 'strong',
+      membershipStatus: 'trial',
+      membershipType: 'trial',
+      membershipConfidence: 88,
+    })
+
+    expect(decision.outcome).toBe('pending')
+    expect(decision.reasons.join(' ')).toContain('Trial and guest-style memberships')
+  })
+
+  it('keeps active memberships review-first for reactivation even when policy is auto', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'reactivation',
+      automationSettings: {
+        intelligence: {
+          autonomyPolicy: {
+            reactivation: {
+              mode: 'auto',
+              minConfidenceAuto: 80,
+              maxRecipientsAuto: 3,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+      confidence: 96,
+      recipientCount: 1,
+      membershipSignal: 'strong',
+      membershipStatus: 'active',
+      membershipType: 'monthly',
+      membershipConfidence: 90,
+    })
+
+    expect(decision.outcome).toBe('pending')
+    expect(decision.reasons.join(' ')).toContain('Active memberships should stay review-first')
+  })
+
+  it('requires review when membership confidence is weak even if a membership exists', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'welcome',
+      automationSettings: undefined,
+      liveMode: true,
+      confidence: 97,
+      recipientCount: 1,
+      membershipSignal: 'weak',
+      membershipStatus: 'active',
+      membershipType: 'monthly',
+      membershipConfidence: 52,
+    })
+
+    expect(decision.outcome).toBe('pending')
+    expect(decision.reasons.join(' ')).toContain('Membership confidence 52')
+  })
 })

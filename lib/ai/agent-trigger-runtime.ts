@@ -4,6 +4,11 @@ import {
   type AgentAutonomyDecision,
   type AgentAutonomyOutcome,
 } from './agent-autonomy'
+import type {
+  MembershipSignal,
+  NormalizedMembershipStatus,
+  NormalizedMembershipType,
+} from '@/types/intelligence'
 
 export type AgentTriggerSource =
   | 'event_detection'
@@ -20,7 +25,10 @@ export type AgentTriggerRuntime = {
   action: AgentAutonomyAction
   confidence: number | null
   recipientCount: number | null
-  membershipSignal: 'strong' | 'weak' | 'missing'
+  membershipSignal: MembershipSignal
+  membershipStatus: NormalizedMembershipStatus | null
+  membershipType: NormalizedMembershipType | null
+  membershipConfidence: number | null
   decision: AgentAutonomyDecision
 }
 
@@ -32,11 +40,17 @@ export function evaluateAgentTriggerRuntime(opts: {
   liveMode: boolean
   confidence?: number | null
   recipientCount?: number | null
-  membershipSignal?: 'strong' | 'weak' | 'missing'
+  membershipSignal?: MembershipSignal
+  membershipStatus?: NormalizedMembershipStatus | null
+  membershipType?: NormalizedMembershipType | null
+  membershipConfidence?: number | null
 }): AgentTriggerRuntime {
   const confidence = typeof opts.confidence === 'number' ? opts.confidence : null
   const recipientCount = typeof opts.recipientCount === 'number' ? opts.recipientCount : null
   const membershipSignal = opts.membershipSignal || 'missing'
+  const membershipStatus = opts.membershipStatus || null
+  const membershipType = opts.membershipType || null
+  const membershipConfidence = typeof opts.membershipConfidence === 'number' ? opts.membershipConfidence : null
 
   return {
     source: opts.source,
@@ -46,6 +60,9 @@ export function evaluateAgentTriggerRuntime(opts: {
     confidence,
     recipientCount,
     membershipSignal,
+    membershipStatus,
+    membershipType,
+    membershipConfidence,
     decision: evaluateAgentAutonomy({
       action: opts.action,
       automationSettings: opts.automationSettings,
@@ -53,6 +70,9 @@ export function evaluateAgentTriggerRuntime(opts: {
       confidence,
       recipientCount,
       membershipSignal,
+      membershipStatus,
+      membershipType,
+      membershipConfidence,
     }),
   }
 }
@@ -80,6 +100,9 @@ export function buildAgentTriggerReasoning(
       confidence: runtime.confidence,
       recipientCount: runtime.recipientCount,
       membershipSignal: runtime.membershipSignal,
+      membershipStatus: runtime.membershipStatus,
+      membershipType: runtime.membershipType,
+      membershipConfidence: runtime.membershipConfidence,
       configuredMode: runtime.decision.configuredMode,
       policyOutcome: runtime.decision.outcome,
       policyReasons: runtime.decision.reasons,

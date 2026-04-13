@@ -306,6 +306,10 @@ async function executeSequenceStep(
   // Get original subject from Step 0 reasoning
   const step0Reasoning = sequence.rootLog.reasoning as any
   const autonomyAction = mapOutreachTypeToAutonomyAction(String(sequence.rootLog.type))
+  const normalizedMembership = normalizeMembership({
+    membershipType: user.membershipType,
+    membershipStatus: user.membershipStatus,
+  })
   const sequenceRuntime = autonomyAction
     ? evaluateAgentTriggerRuntime({
         source: 'sequence_engine',
@@ -315,10 +319,10 @@ async function executeSequenceStep(
         liveMode: true,
         confidence: typeof step0Reasoning?.confidence === 'number' ? step0Reasoning.confidence : null,
         recipientCount: 1,
-        membershipSignal: normalizeMembership({
-          membershipType: user.membershipType,
-          membershipStatus: user.membershipStatus,
-        }).signal,
+        membershipSignal: normalizedMembership.signal,
+        membershipStatus: normalizedMembership.normalizedStatus,
+        membershipType: normalizedMembership.normalizedType,
+        membershipConfidence: normalizedMembership.confidence,
       })
     : null
   const inheritedApproval =
@@ -883,6 +887,10 @@ export async function runHealthCampaign(
     )
 
     const autonomyAction = mapOutreachTypeToAutonomyAction(outreachType)
+    const normalizedMembership = normalizeMembership({
+      membershipType: member.membershipType,
+      membershipStatus: member.membershipStatus,
+    })
     const runtime = autonomyAction
       ? evaluateAgentTriggerRuntime({
           source: 'campaign_engine',
@@ -892,10 +900,10 @@ export async function runHealthCampaign(
           liveMode: !dryRun,
           confidence: confidence.score,
           recipientCount: 1,
-          membershipSignal: normalizeMembership({
-            membershipType: member.membershipType,
-            membershipStatus: member.membershipStatus,
-          }).signal,
+          membershipSignal: normalizedMembership.signal,
+          membershipStatus: normalizedMembership.normalizedStatus,
+          membershipType: normalizedMembership.normalizedType,
+          membershipConfidence: normalizedMembership.confidence,
         })
       : null
 

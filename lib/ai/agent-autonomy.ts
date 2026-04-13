@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import type {
+  MembershipSignal,
+  NormalizedMembershipStatus,
+  NormalizedMembershipType,
+} from '@/types/intelligence'
 
 export const agentAutonomyModeSchema = z.enum(['off', 'approve', 'auto'])
 
@@ -148,13 +153,66 @@ export function mapOutreachTypeToAutonomyAction(type: string): AgentAutonomyActi
   }
 }
 
+function getMembershipReviewReasons(opts: {
+  action: AgentAutonomyAction
+  membershipSignal: MembershipSignal
+  membershipStatus?: NormalizedMembershipStatus | null
+  membershipType?: NormalizedMembershipType | null
+  membershipConfidence?: number | null
+}): string[] {
+  const reasons: string[] = []
+  const status = opts.membershipStatus || 'unknown'
+  const type = opts.membershipType || 'unknown'
+  const signal = opts.membershipSignal
+  const confidence = typeof opts.membershipConfidence === 'number' ? opts.membershipConfidence : null
+
+  if ((signal === 'weak' || signal === 'missing') && confidence !== null && confidence < 70) {
+    reasons.push(`Membership confidence ${confidence} is too low for reliable autopilot decisions.`)
+  }
+
+  switch (opts.action) {
+    case 'welcome':
+      if (['expired', 'cancelled', 'suspended'].includes(status)) {
+        reasons.push(`Membership status is ${status}, so welcome automation should be reviewed.`)
+      }
+      break
+    case 'slotFiller':
+      if (['expired', 'cancelled', 'suspended'].includes(status)) {
+        reasons.push(`Membership status is ${status}, so slot-filler outreach should stay manual.`)
+      }
+      break
+    case 'checkIn':
+    case 'retentionBoost':
+      if (['trial', 'guest', 'none'].includes(status) || ['trial', 'guest', 'drop_in'].includes(type)) {
+        reasons.push('Trial and guest-style memberships should stay on approval for retention nudges.')
+      } else if (['expired', 'cancelled', 'suspended'].includes(status)) {
+        reasons.push(`Membership status is ${status}; use a renewal/reactivation flow instead of auto retention outreach.`)
+      }
+      break
+    case 'reactivation':
+      if (status === 'active' && ['monthly', 'unlimited', 'package', 'discounted', 'insurance', 'staff'].includes(type)) {
+        reasons.push('Active memberships should stay review-first for reactivation. Use check-in or retention flow instead.')
+      } else if (status === 'trial' || type === 'trial') {
+        reasons.push('Trial members should stay in onboarding or welcome flows before autonomous reactivation.')
+      } else if (type === 'staff') {
+        reasons.push('Staff and comped memberships should stay manual for reactivation outreach.')
+      }
+      break
+  }
+
+  return reasons
+}
+
 export function evaluateAgentAutonomy(opts: {
   action: AgentAutonomyAction
   automationSettings?: unknown
   liveMode: boolean
   confidence?: number | null
   recipientCount?: number | null
-  membershipSignal?: 'strong' | 'weak' | 'missing'
+  membershipSignal?: MembershipSignal
+  membershipStatus?: NormalizedMembershipStatus | null
+  membershipType?: NormalizedMembershipType | null
+  membershipConfidence?: number | null
 }): AgentAutonomyDecision {
   const policy = resolveAgentAutonomyPolicy(opts.automationSettings)
   const rule = policy[opts.action]
@@ -193,6 +251,16 @@ export function evaluateAgentAutonomy(opts: {
   if (rule.requireMembershipSignal && opts.membershipSignal !== 'strong') {
     reasons.push('Membership signal is not reliable enough for automatic execution.')
   }
+
+  reasons.push(
+    ...getMembershipReviewReasons({
+      action: opts.action,
+      membershipSignal: opts.membershipSignal || 'missing',
+      membershipStatus: opts.membershipStatus || null,
+      membershipType: opts.membershipType || null,
+      membershipConfidence: opts.membershipConfidence ?? null,
+    }),
+  )
 
   if (typeof rule.maxRecipientsAuto === 'number') {
     const recipientCount = opts.recipientCount ?? 1

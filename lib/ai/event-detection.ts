@@ -142,6 +142,10 @@ export async function detectEventsForClub(
   // Act on new members (onboarding)
   if (live && newMembers.length > 0) {
     for (const member of newMembers) {
+      const normalizedMembership = normalizeMembership({
+        membershipType: member.membershipType,
+        membershipStatus: member.membershipStatus,
+      })
       const welcomeRuntime = evaluateAgentTriggerRuntime({
         source: 'event_detection',
         triggerMode: 'immediate',
@@ -150,10 +154,10 @@ export async function detectEventsForClub(
         liveMode: live,
         confidence: 95,
         recipientCount: 1,
-        membershipSignal: normalizeMembership({
-          membershipType: member.membershipType,
-          membershipStatus: member.membershipStatus,
-        }).signal,
+        membershipSignal: normalizedMembership.signal,
+        membershipStatus: normalizedMembership.normalizedStatus,
+        membershipType: normalizedMembership.normalizedType,
+        membershipConfidence: normalizedMembership.confidence,
       })
       if (welcomeRuntime.decision.outcome === 'blocked') continue
 
