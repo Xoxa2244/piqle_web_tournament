@@ -6,10 +6,11 @@ import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } 
 import type { AdvisorIntentPlan } from './advisor-action-planner'
 import type { AdvisorConversationState } from './advisor-conversation-state'
 import { parseAdvisorScheduledSend } from './advisor-scheduling'
+import { advisorSlotSessionOptionSchema } from './advisor-slot-filler'
 
 export const advisorPendingClarificationSchema = z.object({
-  action: z.enum(['create_cohort', 'draft_campaign']),
-  field: z.enum(['audience', 'audience_mode', 'channel', 'schedule']),
+  action: z.enum(['create_cohort', 'draft_campaign', 'fill_session']),
+  field: z.enum(['audience', 'audience_mode', 'channel', 'schedule', 'session']),
   question: z.string().min(1).max(240),
   options: z.array(z.string().min(1).max(80)).max(4).default([]),
   originalMessage: z.string().min(1).max(500),
@@ -17,6 +18,8 @@ export const advisorPendingClarificationSchema = z.object({
   campaignType: advisorCampaignTypeEnum.optional(),
   channel: advisorChannelEnum.optional(),
   deliveryMode: advisorDeliveryModeEnum.optional(),
+  candidateLimit: z.number().int().min(1).max(20).optional(),
+  sessionOptions: z.array(advisorSlotSessionOptionSchema).max(6).optional(),
   usePreviousCohort: z.boolean().optional(),
   timeZone: z.string().max(80).optional(),
 })
@@ -173,7 +176,7 @@ export function maybeStartAdvisorClarification(opts: {
   const { message, plan, state, language, timeZone } = opts
   const copy = getCopy(language)
 
-  if (plan.action === 'none') return null
+  if (plan.action === 'none' || plan.action === 'fill_session') return null
 
   if (plan.action === 'create_cohort') {
     if (hasMeaningfulAudienceDescription(plan.audienceText || message)) return null
@@ -262,6 +265,8 @@ export function resolveAdvisorClarification(opts: {
   const { message, pending, state, language } = opts
   const copy = getCopy(language)
   const explicitChannel = extractExplicitChannel(message)
+
+  if (pending.action === 'fill_session' || pending.field === 'session') return null
 
   if (pending.field === 'channel') {
     if (!explicitChannel) {

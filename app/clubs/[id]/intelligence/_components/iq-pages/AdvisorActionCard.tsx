@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CheckCircle2, Loader2, Mail, Send, Users } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Loader2, Mail, Send, Users } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import type { AdvisorAction } from '@/lib/ai/advisor-actions'
 import { useExecuteAdvisorAction } from '../../_hooks/use-intelligence'
@@ -15,9 +15,14 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
   const summary = action.summary
 
   const channelLabel = useMemo(() => {
-    if (action.kind !== 'create_campaign') return null
-    if (action.campaign.channel === 'both') return 'Email + SMS'
-    if (action.campaign.channel === 'sms') return 'SMS'
+    const channel = action.kind === 'create_campaign'
+      ? action.campaign.channel
+      : action.kind === 'fill_session'
+        ? action.outreach.channel
+        : null
+    if (!channel) return null
+    if (channel === 'both') return 'Email + SMS'
+    if (channel === 'sms') return 'SMS'
     return 'Email'
   }, [action])
 
@@ -59,9 +64,11 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
     ].filter(Boolean) as string[]
   }, [action])
 
-  const audienceCount = action.kind === 'create_cohort'
+  const targetCount = action.kind === 'create_cohort'
     ? action.cohort.count ?? 0
-    : action.audience.count ?? 0
+    : action.kind === 'create_campaign'
+      ? action.audience.count ?? 0
+      : action.outreach.candidateCount ?? 0
 
   const handleApprove = () => {
     executeAction.mutate(
@@ -85,7 +92,7 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: '#A78BFA', fontWeight: 700 }}>
-            {action.kind === 'create_cohort' ? 'Audience Draft' : 'Campaign Draft'}
+            {action.kind === 'create_cohort' ? 'Audience Draft' : action.kind === 'create_campaign' ? 'Campaign Draft' : 'Session Fill Draft'}
           </div>
           <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
             {title}
@@ -109,23 +116,32 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-        <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
-            <Users className="w-3.5 h-3.5" />
-            Audience
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              {action.kind === 'fill_session' ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
+              {action.kind === 'fill_session' ? 'Session' : 'Audience'}
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {action.kind === 'create_cohort' ? action.cohort.name : action.kind === 'create_campaign' ? action.audience.name : action.session.title}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {action.kind === 'fill_session'
+                ? `${action.session.date} · ${action.session.startTime}${action.session.endTime ? `-${action.session.endTime}` : ''}`
+                : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
+            </div>
+            {action.kind === 'fill_session' ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                {action.session.court ? `${action.session.court} · ` : ''}
+                {action.session.format || 'Session'} · {action.session.spotsRemaining} spot{action.session.spotsRemaining === 1 ? '' : 's'} left
+              </p>
+            ) : (
+              (action.kind === 'create_cohort' ? action.cohort.description : action.audience.description) && (
+                <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                  {action.kind === 'create_cohort' ? action.cohort.description : action.audience.description}
+                </p>
+              )
+            )}
           </div>
-          <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
-            {action.kind === 'create_cohort' ? action.cohort.name : action.audience.name}
-          </div>
-          <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-            {audienceCount} matching member{audienceCount === 1 ? '' : 's'}
-          </div>
-          {(action.kind === 'create_cohort' ? action.cohort.description : action.audience.description) && (
-            <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-              {action.kind === 'create_cohort' ? action.cohort.description : action.audience.description}
-            </p>
-          )}
-        </div>
 
         {action.kind === 'create_campaign' ? (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
@@ -166,6 +182,30 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
               </div>
             )}
           </div>
+        ) : action.kind === 'fill_session' ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <Mail className="w-3.5 h-3.5" />
+              Outreach
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {channelLabel}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {action.outreach.candidateCount} matched player{action.outreach.candidateCount === 1 ? '' : 's'}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {action.outreach.candidates.slice(0, 4).map((candidate) => (
+                <span
+                  key={candidate.memberId}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                >
+                  {candidate.name} · {candidate.score}
+                </span>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -187,14 +227,14 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
         )}
       </div>
 
-      {action.kind === 'create_campaign' && (
+      {(action.kind === 'create_campaign' || action.kind === 'fill_session') && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             <Send className="w-3.5 h-3.5" />
             Message Preview
           </div>
           <div className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
-            {action.campaign.body}
+            {action.kind === 'create_campaign' ? action.campaign.body : action.outreach.message}
           </div>
         </div>
       )}
@@ -204,6 +244,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="text-xs" style={{ color: '#10B981', fontWeight: 600 }}>
             {result.kind === 'create_cohort'
               ? `Audience created: ${result.name} (${result.memberCount} members)`
+              : result.kind === 'fill_session'
+                ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}`
               : result.savedAsDraft
                 ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}`
                 : result.deliveryMode === 'send_later'
@@ -214,8 +256,10 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
           <div className="text-xs" style={{ color: 'var(--t3)' }}>
             {action.kind === 'create_campaign' && action.campaign.execution.mode === 'save_draft'
               ? 'Approval is required before the platform saves this campaign draft.'
-              : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
+            : action.kind === 'create_campaign' && action.campaign.execution.mode === 'send_later'
                 ? 'Approval is required before the platform schedules this campaign.'
+              : action.kind === 'fill_session'
+                ? 'Approval is required before the platform sends these invites.'
               : 'Approval is required before the platform makes this change.'}
           </div>
         )}
@@ -242,6 +286,8 @@ export function AdvisorActionCard({ clubId, action }: { clubId: string; action: 
                       ? 'Schedule Send'
                       : 'Send Now'
                 )
+              : action.kind === 'fill_session'
+                ? 'Send Invites'
               : 'Approve'}
         </button>
       </div>

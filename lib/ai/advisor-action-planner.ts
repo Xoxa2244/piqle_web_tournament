@@ -7,12 +7,14 @@ import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } 
 import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 
 const advisorIntentSchema = z.object({
-  action: z.enum(['none', 'create_cohort', 'draft_campaign']),
+  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session']),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
   channel: advisorChannelEnum.optional(),
   deliveryMode: advisorDeliveryModeEnum.optional(),
+  candidateLimit: z.number().int().min(1).max(20).optional(),
+  sessionId: z.string().optional(),
   scheduledFor: z.string().datetime().optional(),
   timeZone: z.string().optional(),
 })
@@ -25,19 +27,22 @@ Your job is to recognize whether a user is asking the platform to DO something, 
 Supported actions:
 - create_cohort: create/save an audience or reusable member segment
 - draft_campaign: draft or launch a campaign/email/SMS/invite for an audience
+- fill_session: choose an underfilled session and invite the best matching players into it
 - none: any analytics/support/general question
 
 Return ONLY valid JSON:
-{"action":"none|create_cohort|draft_campaign","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later"}
+{"action":"none|create_cohort|draft_campaign|fill_session","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5}
 
 Rules:
 - If the user asks to create/build/save an audience, segment, cohort, group, or list, use create_cohort.
 - If the user asks to draft/create/launch/send a campaign, email, outreach, invite, or reactivation message, use draft_campaign.
+- If the user asks to fill a specific session, underfilled slot, open spot, or invite players into a session, use fill_session.
 - If the user refers to a previous audience with phrases like "that audience", "this segment", "those players", "that list", or "them", set usePreviousCohort=true.
 - audienceText should be ONLY the audience description, not the whole request, when you can isolate it.
 - campaignType must be one of: CHECK_IN, RETENTION_BOOST, REACTIVATION, SLOT_FILLER, EVENT_INVITE, NEW_MEMBER_WELCOME.
 - channel must be one of: email, sms, both.
 - deliveryMode must be one of: save_draft, send_now, send_later.
+- candidateLimit should be set when the user specifies how many players to invite, like "top 5" or "invite 8 players".
 - Default campaignType to REACTIVATION for inactive/win-back/churn language.
 - Default campaignType to SLOT_FILLER for fill session / empty slots / invite players to session.
 - Default channel to email if unspecified.
@@ -58,6 +63,9 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     /\b(them|that list|this list|that audience|this audience)\b/.test(lower)
   const wantsCampaign = /\b(campaign|email|sms|text|message|outreach|invite|reactivat|win[- ]?back|send|launch|draft|reach out)\b/.test(lower)
   const wantsCohort = /\b(cohort|segment|audience|group|list)\b/.test(lower) && /\b(create|build|make|save|new|draft)\b/.test(lower)
+  const wantsSessionFill =
+    /\b(fill|slot filler|underfilled|open spots?|empty slots?)\b/.test(lower) &&
+    /\b(session|slot|court|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|beginner|intermediate|advanced|\d{1,2}(:\d{2})?\s*(am|pm))\b/.test(lower)
 
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
   if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
@@ -82,12 +90,28 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     deliveryMode = 'save_draft'
   }
 
+  const limitMatch =
+    lower.match(/\btop\s+(\d{1,2})\b/) ||
+    lower.match(/\bbest\s+(\d{1,2})\b/) ||
+    lower.match(/\binvite\s+(\d{1,2})\s+(players?|members?|people)\b/) ||
+    lower.match(/\b(\d{1,2})\s+(players?|members?|people)\b/)
+  const candidateLimit = limitMatch ? Number(limitMatch[1]) : undefined
+
   if (wantsCohort) {
     return { action: 'create_cohort', audienceText: message, usePreviousCohort }
   }
 
+  if (wantsSessionFill && !/\b(campaign|draft campaign|email campaign|sms campaign)\b/.test(lower)) {
+    return {
+      action: 'fill_session',
+      usePreviousCohort: false,
+      channel,
+      candidateLimit,
+    }
+  }
+
   if (wantsCampaign) {
-    return { action: 'draft_campaign', audienceText: message, usePreviousCohort, campaignType, channel, deliveryMode }
+    return { action: 'draft_campaign', audienceText: message, usePreviousCohort, campaignType, channel, deliveryMode, candidateLimit }
   }
 
   return { action: 'none', usePreviousCohort: false }
@@ -115,14 +139,18 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
   campaignReady: (count: number, name: string) => string
   campaignDraftReady: (count: number, name: string) => string
   campaignScheduledReady: (count: number, name: string, when: string) => string
+  fillSessionReady: (count: number, name: string, sessionLabel: string) => string
+  fillSessionEmpty: (sessionLabel: string) => string
   adminOnly: string
-  suggestions: Record<'create_cohort' | 'create_campaign', string[]>
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session', string[]>
 }> = {
   en: {
     audienceReady: (count, name) => `I drafted the audience "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
     campaignReady: (count, name) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review the audience and message below, then approve to send it.`,
     campaignDraftReady: (count, name) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review it below, then approve to save it as a draft for later.`,
     campaignScheduledReady: (count, name, when) => `I drafted a campaign for the audience "${name}" with ${count} matching members. Review it below, then approve to schedule delivery for ${when}.`,
+    fillSessionReady: (count, name, sessionLabel) => `I picked ${count} strong candidates for ${sessionLabel}. Review the invite below, then approve to message ${name}.`,
+    fillSessionEmpty: (sessionLabel) => `I found the right session to fill, but I couldn't find strong invite candidates for ${sessionLabel} yet.`,
     adminOnly: `I can help draft actions here, but only club admins can approve and run them.`,
     suggestions: {
       create_cohort: [
@@ -135,6 +163,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Build an audience for weekday morning players',
         'Show me inactive members again',
       ],
+      fill_session: [
+        'Use SMS instead',
+        'Invite the top 8 players',
+        'Show me another underfilled session',
+      ],
     },
   },
   ru: {
@@ -142,6 +175,8 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     campaignReady: (count, name) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь аудиторию и текст ниже, затем подтверди отправку.`,
     campaignDraftReady: (count, name) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь ее ниже и подтверди, чтобы сохранить как черновик.`,
     campaignScheduledReady: (count, name, when) => `Я подготовил кампанию для аудитории "${name}" на ${count} участников. Проверь ее ниже и подтверди, чтобы запланировать отправку на ${when}.`,
+    fillSessionReady: (count, name, sessionLabel) => `Я подобрал ${count} сильных кандидатов для ${sessionLabel}. Проверь приглашение ниже и подтверди, чтобы написать ${name}.`,
+    fillSessionEmpty: (sessionLabel) => `Я нашел нужную сессию, но пока не вижу сильных кандидатов для приглашения на ${sessionLabel}.`,
     adminOnly: `Я могу готовить такие действия в чате, но запускать их может только админ клуба.`,
     suggestions: {
       create_cohort: [
@@ -154,6 +189,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Создай аудиторию утренних игроков по будням',
         'Снова покажи неактивных участников',
       ],
+      fill_session: [
+        'Переключи на SMS',
+        'Пригласи топ-8 игроков',
+        'Покажи другую недозаполненную сессию',
+      ],
     },
   },
   es: {
@@ -161,6 +201,8 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     campaignReady: (count, name) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revisa la audiencia y el mensaje abajo y luego apruébalo para enviarlo.`,
     campaignDraftReady: (count, name) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revísala abajo y apruébala para guardarla como borrador.`,
     campaignScheduledReady: (count, name, when) => `Preparé una campaña para la audiencia "${name}" con ${count} miembros. Revísala abajo y apruébala para programarla para ${when}.`,
+    fillSessionReady: (count, name, sessionLabel) => `Elegí ${count} candidatos fuertes para ${sessionLabel}. Revisa la invitación abajo y apruébala para contactar a ${name}.`,
+    fillSessionEmpty: (sessionLabel) => `Encontré la sesión correcta, pero todavía no veo buenos candidatos para invitar a ${sessionLabel}.`,
     adminOnly: `Puedo preparar acciones aquí, pero solo los administradores del club pueden aprobarlas y ejecutarlas.`,
     suggestions: {
       create_cohort: [
@@ -172,6 +214,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Crea otra campaña para jugadores competitivos',
         'Arma una audiencia para jugadores de la mañana',
         'Muéstrame otra vez los miembros inactivos',
+      ],
+      fill_session: [
+        'Usa SMS en su lugar',
+        'Invita a los mejores 8 jugadores',
+        'Muéstrame otra sesión con huecos',
       ],
     },
   },

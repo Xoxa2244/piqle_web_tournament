@@ -22,6 +22,12 @@ import {
   parseAdvisorScheduledSend,
   resolveAdvisorClubTimeZone,
 } from '@/lib/ai/advisor-scheduling'
+import {
+  buildAdvisorSlotSessionOptions,
+  formatAdvisorSlotSessionLabel,
+  resolveAdvisorSlotSession,
+  type AdvisorSlotSessionOption,
+} from '@/lib/ai/advisor-slot-filler'
 
 async function getSessionFromRequest(req: Request) {
   try {
@@ -162,6 +168,64 @@ function buildCampaignReadyText(
   return copy.campaignDraftReady(count, name)
 }
 
+function getSlotFillerCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      needSession: 'Какую недозаполненную сессию мне заполнить?',
+      repeatSession: 'Мне все еще нужна конкретная сессия. Выбери одну из вариантов ниже или опиши ее по времени/формату.',
+      noSessions: 'Я не вижу недозаполненных сессий на ближайшие дни. Когда появятся свободные слоты, я смогу подобрать игроков и подготовить приглашения.',
+      noCandidates: (sessionLabel: string) => `Я нашел нужную сессию, но пока не вижу сильных кандидатов для приглашения на ${sessionLabel}.`,
+      ready: (count: number, sessionLabel: string) => `Я подобрал ${count} кандидатов для ${sessionLabel}. Проверь приглашение ниже и подтверди отправку.`,
+      suggestions: ['Переключи на SMS', 'Пригласи топ-8 игроков', 'Покажи другую недозаполненную сессию'],
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      needSession: '¿Qué sesión con huecos debo llenar?',
+      repeatSession: 'Todavía necesito una sesión específica. Elige una de las opciones de abajo o descríbela por hora o formato.',
+      noSessions: 'No veo sesiones con huecos en los próximos días. En cuanto aparezcan, podré elegir jugadores y preparar invitaciones.',
+      noCandidates: (sessionLabel: string) => `Encontré la sesión correcta, pero todavía no veo buenos candidatos para invitar a ${sessionLabel}.`,
+      ready: (count: number, sessionLabel: string) => `Elegí ${count} candidatos para ${sessionLabel}. Revisa la invitación abajo y apruébala para enviarla.`,
+      suggestions: ['Usa SMS en su lugar', 'Invita a los mejores 8 jugadores', 'Muéstrame otra sesión con huecos'],
+    }
+  }
+
+  return {
+    needSession: 'Which underfilled session should I fill?',
+    repeatSession: 'I still need a specific session. Pick one of the options below or describe it by time or format.',
+    noSessions: `I don't see any underfilled sessions coming up right now. As soon as there are open spots, I can pick the best players and prepare invites.`,
+    noCandidates: (sessionLabel: string) => `I found the right session, but I couldn't find strong invite candidates for ${sessionLabel} yet.`,
+    ready: (count: number, sessionLabel: string) => `I picked ${count} candidates for ${sessionLabel}. Review the invite below, then approve to send it.`,
+    suggestions: ['Use SMS instead', 'Invite the top 8 players', 'Show me another underfilled session'],
+  }
+}
+
+function normalizeSlotSession(raw: any): AdvisorSlotSessionOption {
+  const registered = raw.registered ?? raw.confirmedCount ?? 0
+  const maxPlayers = raw.maxPlayers || 1
+  const occupancy = raw.occupancy ?? Math.round((registered / Math.max(maxPlayers, 1)) * 100)
+  return {
+    id: raw.id ?? raw.sessionId,
+    title: raw.title || raw.format || 'Session',
+    date: String(raw.date || ''),
+    startTime: raw.startTime || raw.time || '',
+    endTime: raw.endTime || null,
+    format: raw.format || null,
+    skillLevel: raw.skillLevel || null,
+    court: raw.court || raw.courtName || null,
+    registered,
+    maxPlayers,
+    occupancy,
+    spotsRemaining: raw.spotsRemaining ?? Math.max(0, maxPlayers - registered),
+  }
+}
+
+async function loadAdvisorSlotSessions(caller: ReturnType<typeof appRouter.createCaller>, clubId: string) {
+  const result = await caller.intelligence.getUnderfilledSessions({ clubId, days: 14 })
+  return ((result as any)?.sessions || []).map(normalizeSlotSession)
+}
+
 function isCampaignOnlyFollowUp(message: string) {
   const lower = message.toLowerCase()
   const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
@@ -234,19 +298,49 @@ export async function POST(req: Request) {
     const hadPendingClarification = !!memory.state?.pendingClarification
 
     if (access.isAdmin && memory.state?.pendingClarification) {
-      const resolution = resolveAdvisorClarification({
-        message,
-        pending: memory.state.pendingClarification,
-        state: memory.state,
-        language,
-      })
+      if (
+        memory.state.pendingClarification.action === 'fill_session' &&
+        memory.state.pendingClarification.field === 'session'
+      ) {
+        const slotCopy = getSlotFillerCopy(language)
+        const sessionOptions = memory.state.pendingClarification.sessionOptions || []
+        const resolved = resolveAdvisorSlotSession({
+          message,
+          sessions: sessionOptions,
+          currentSession: memory.state.currentSession,
+        })
 
-      if (resolution?.clarification) {
-        assistantState = withAdvisorPendingClarification(memory.state, resolution.clarification.pending)
-        assistantMessage = withSuggested(resolution.clarification.text, resolution.clarification.suggestions)
-      } else if (resolution?.plan) {
-        plan = resolution.plan
-        effectiveMessage = resolution.plan.audienceText || message
+        if (!resolved.session) {
+          assistantState = withAdvisorPendingClarification(memory.state, {
+            ...memory.state.pendingClarification,
+            question: slotCopy.repeatSession,
+            options: buildAdvisorSlotSessionOptions(sessionOptions),
+          })
+          assistantMessage = withSuggested(slotCopy.repeatSession, buildAdvisorSlotSessionOptions(sessionOptions))
+        } else {
+          plan = {
+            action: 'fill_session',
+            usePreviousCohort: false,
+            channel: memory.state.pendingClarification.channel,
+            candidateLimit: memory.state.pendingClarification.candidateLimit,
+            sessionId: resolved.session.id,
+          }
+        }
+      } else {
+        const resolution = resolveAdvisorClarification({
+          message,
+          pending: memory.state.pendingClarification,
+          state: memory.state,
+          language,
+        })
+
+        if (resolution?.clarification) {
+          assistantState = withAdvisorPendingClarification(memory.state, resolution.clarification.pending)
+          assistantMessage = withSuggested(resolution.clarification.text, resolution.clarification.suggestions)
+        } else if (resolution?.plan) {
+          plan = resolution.plan
+          effectiveMessage = resolution.plan.audienceText || message
+        }
       }
     }
 
@@ -256,7 +350,12 @@ export async function POST(req: Request) {
 
     if (!access.isAdmin) {
       if (plan.action !== 'none') {
-        assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[plan.action === 'create_cohort' ? 'create_cohort' : 'create_campaign'])
+        const suggestionKey = plan.action === 'create_cohort'
+          ? 'create_cohort'
+          : plan.action === 'fill_session'
+            ? 'fill_session'
+            : 'create_campaign'
+        assistantMessage = withSuggested(copy.adminOnly, copy.suggestions[suggestionKey])
       }
     } else {
       if (!assistantMessage && !hadPendingClarification) {
@@ -267,37 +366,81 @@ export async function POST(req: Request) {
         })
 
         if (editedAction) {
-          const editCopy = getAdvisorEditCopy(language)
-          assistantState = buildAdvisorConversationStateFromAction(editedAction)
-          const audienceName = editedAction.kind === 'create_campaign'
-            ? editedAction.audience.name
-            : editedAction.cohort.name
-          const audienceCount = editedAction.kind === 'create_campaign'
-            ? editedAction.audience.count || 0
-            : editedAction.cohort.count || 0
-          const editText = editedAction.kind === 'create_campaign'
-            ? editCopy.campaignUpdated(audienceName, audienceCount)
-            : editCopy.audienceUpdated(audienceName, audienceCount)
+          if (editedAction.kind !== 'fill_session') {
+            const editCopy = getAdvisorEditCopy(language)
+            assistantState = buildAdvisorConversationStateFromAction(editedAction)
+            const audienceName = editedAction.kind === 'create_campaign'
+              ? editedAction.audience.name
+              : editedAction.cohort.name
+            const audienceCount = editedAction.kind === 'create_campaign'
+              ? editedAction.audience.count || 0
+              : editedAction.cohort.count || 0
+            const editText = editedAction.kind === 'create_campaign'
+              ? editCopy.campaignUpdated(audienceName, audienceCount)
+              : editCopy.audienceUpdated(audienceName, audienceCount)
 
-          assistantMessage = withSuggested(
-            `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
-            editCopy.suggestions[editedAction.kind],
-          )
+            assistantMessage = withSuggested(
+              `${editText}\n\n${buildAdvisorActionTag(editedAction)}`,
+              editCopy.suggestions[editedAction.kind],
+            )
+          }
         }
       }
 
       if (!assistantMessage) {
-        const clarification = maybeStartAdvisorClarification({
-          message: effectiveMessage,
-          plan,
-          state: memory.state,
-          language,
-          timeZone: clubTimeZone,
-        })
+        if (plan.action === 'fill_session') {
+          const slotCopy = getSlotFillerCopy(language)
+          const sessions = await loadAdvisorSlotSessions(caller, clubId)
+          if (sessions.length === 0) {
+            assistantState = {
+              ...(memory.state || {}),
+              currentSession: undefined,
+              lastActionKind: 'fill_session',
+              lastActionTitle: 'Fill an underfilled session',
+              updatedAt: new Date().toISOString(),
+            }
+            assistantMessage = withSuggested(slotCopy.noSessions, slotCopy.suggestions)
+          } else {
+            const sessionId = plan.sessionId
+            const explicitSession = sessionId
+              ? sessions.find((session: AdvisorSlotSessionOption) => session.id === sessionId) || null
+              : null
+            const resolved = explicitSession
+              ? { session: explicitSession, reason: 'best_match' as const }
+              : resolveAdvisorSlotSession({
+                  message: effectiveMessage,
+                  sessions,
+                  currentSession: memory.state?.currentSession,
+                })
 
-        if (clarification) {
-          assistantState = withAdvisorPendingClarification(memory.state, clarification.pending)
-          assistantMessage = withSuggested(clarification.text, clarification.suggestions)
+            if (!resolved.session) {
+              const pending = {
+                action: 'fill_session' as const,
+                field: 'session' as const,
+                question: slotCopy.needSession,
+                options: buildAdvisorSlotSessionOptions(sessions),
+                originalMessage: message,
+                channel: plan.channel,
+                candidateLimit: plan.candidateLimit,
+                sessionOptions: sessions.slice(0, 6),
+              }
+              assistantState = withAdvisorPendingClarification(memory.state, pending)
+              assistantMessage = withSuggested(slotCopy.needSession, pending.options)
+            }
+          }
+        } else {
+          const clarification = maybeStartAdvisorClarification({
+            message: effectiveMessage,
+            plan,
+            state: memory.state,
+            language,
+            timeZone: clubTimeZone,
+          })
+
+          if (clarification) {
+            assistantState = withAdvisorPendingClarification(memory.state, clarification.pending)
+            assistantMessage = withSuggested(clarification.text, clarification.suggestions)
+          }
         }
       }
     }
@@ -361,6 +504,92 @@ export async function POST(req: Request) {
         `${copy.audienceReady(parsed.count, parsed.name)}\n\n${buildAdvisorActionTag(action)}`,
         copy.suggestions.create_cohort,
       )
+    } else if (plan.action === 'fill_session') {
+      const slotCopy = getSlotFillerCopy(language)
+      const sessions = await loadAdvisorSlotSessions(caller, clubId)
+      const resolvedSession = plan.sessionId
+        ? sessions.find((session: AdvisorSlotSessionOption) => session.id === plan.sessionId) || null
+        : resolveAdvisorSlotSession({
+            message: effectiveMessage,
+            sessions,
+            currentSession: memory.state?.currentSession,
+          }).session
+
+      if (!resolvedSession) {
+        const pending = {
+          action: 'fill_session' as const,
+          field: 'session' as const,
+          question: slotCopy.needSession,
+          options: buildAdvisorSlotSessionOptions(sessions),
+          originalMessage: message,
+          channel: plan.channel,
+          candidateLimit: plan.candidateLimit,
+          sessionOptions: sessions.slice(0, 6),
+        }
+        assistantState = withAdvisorPendingClarification(memory.state, pending)
+        assistantMessage = withSuggested(slotCopy.needSession, pending.options)
+      } else {
+        const candidateLimit = plan.candidateLimit || 5
+        const channel = plan.channel || 'email'
+        const recommendations = await caller.intelligence.getSlotFillerRecommendations({
+          sessionId: resolvedSession.id,
+          limit: candidateLimit,
+          clubId,
+        })
+        const candidates = ((recommendations as any)?.recommendations || [])
+          .slice(0, candidateLimit)
+          .map((candidate: any) => ({
+            memberId: candidate.member?.id || candidate.memberId,
+            name: candidate.member?.name || 'Unknown',
+            score: Math.max(0, Math.min(100, Math.round(candidate.score || 0))),
+            likelihood: candidate.estimatedLikelihood || undefined,
+            email: candidate.member?.email || undefined,
+          }))
+          .filter((candidate: any) => !!candidate.memberId)
+
+        if (candidates.length === 0) {
+          assistantState = {
+            ...(memory.state || {}),
+            currentSession: resolvedSession,
+            lastActionKind: 'fill_session',
+            lastActionTitle: `Fill session: ${resolvedSession.title}`,
+            updatedAt: new Date().toISOString(),
+          }
+          assistantMessage = withSuggested(slotCopy.noCandidates(formatAdvisorSlotSessionLabel(resolvedSession)), slotCopy.suggestions)
+        } else {
+          const generated = await caller.intelligence.generateCampaignMessage({
+            clubId,
+            campaignType: 'SLOT_FILLER',
+            channel,
+            audienceCount: candidates.length,
+            context: {
+              sessionTitle: resolvedSession.title,
+            },
+          })
+
+          const action: AdvisorAction = {
+            kind: 'fill_session',
+            title: `Fill session: ${resolvedSession.title}`,
+            summary: `${channel.toUpperCase()} invites for ${candidates.length} matched players`,
+            requiresApproval: true,
+            session: resolvedSession,
+            outreach: {
+              channel,
+              candidateCount: candidates.length,
+              message: channel === 'sms'
+                ? (generated.smsBody || generated.body)
+                : generated.body,
+              candidates,
+            },
+          }
+
+          assistantState = buildAdvisorConversationStateFromAction(action)
+          assistantMessage = withSuggested(
+            `${slotCopy.ready(candidates.length, formatAdvisorSlotSessionLabel(resolvedSession))}\n\n${buildAdvisorActionTag(action)}`,
+            slotCopy.suggestions,
+          )
+        }
+      }
     } else {
       let audienceDraft: Extract<AdvisorAction, { kind: 'create_campaign' }>['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)

@@ -46,6 +46,36 @@ export const advisorCampaignDraftSchema = z.object({
   execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
 })
 
+export const advisorSessionDraftSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(160),
+  date: z.string().min(1).max(40),
+  startTime: z.string().min(1).max(20),
+  endTime: z.string().max(20).optional().nullable(),
+  format: z.string().max(80).optional().nullable(),
+  skillLevel: z.string().max(40).optional().nullable(),
+  court: z.string().max(80).optional().nullable(),
+  registered: z.number().int().nonnegative(),
+  maxPlayers: z.number().int().positive(),
+  occupancy: z.number().int().min(0).max(100),
+  spotsRemaining: z.number().int().nonnegative(),
+})
+
+export const advisorSlotFillerCandidateSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  score: z.number().int().min(0).max(100),
+  likelihood: z.enum(['high', 'medium', 'low']).optional(),
+  email: z.string().max(200).optional(),
+})
+
+export const advisorSlotFillerOutreachSchema = z.object({
+  channel: advisorChannelEnum,
+  candidateCount: z.number().int().positive(),
+  message: z.string().min(1).max(2000),
+  candidates: z.array(advisorSlotFillerCandidateSchema).min(1).max(20),
+})
+
 export const advisorActionSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('create_cohort'),
@@ -61,6 +91,14 @@ export const advisorActionSchema = z.discriminatedUnion('kind', [
     requiresApproval: z.boolean().default(true),
     audience: advisorCohortDraftSchema,
     campaign: advisorCampaignDraftSchema,
+  }),
+  z.object({
+    kind: z.literal('fill_session'),
+    title: z.string().min(1).max(120),
+    summary: z.string().max(240).optional(),
+    requiresApproval: z.boolean().default(true),
+    session: advisorSessionDraftSchema,
+    outreach: advisorSlotFillerOutreachSchema,
   }),
 ])
 

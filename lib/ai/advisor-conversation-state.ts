@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   advisorCampaignDraftSchema,
   advisorCohortDraftSchema,
+  advisorSessionDraftSchema,
   extractAdvisorAction,
   type AdvisorAction,
 } from './advisor-actions'
@@ -18,7 +19,8 @@ const advisorActiveCampaignSchema = advisorCampaignDraftSchema.extend({
 export const advisorConversationStateSchema = z.object({
   currentAudience: advisorCohortDraftSchema.optional(),
   currentCampaign: advisorActiveCampaignSchema.optional(),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign']).optional(),
+  currentSession: advisorSessionDraftSchema.optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -50,6 +52,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'create_cohort') {
     return {
       currentAudience: action.cohort,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    }
+  }
+
+  if (action.kind === 'fill_session') {
+    return {
+      currentSession: action.session,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -151,6 +162,14 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     parts.push(`Campaign body preview: ${state.currentCampaign.body.slice(0, 280)}`)
   }
 
+  if (state.currentSession) {
+    parts.push(`Active session: ${state.currentSession.title}`)
+    parts.push(`Session timing: ${state.currentSession.date} ${state.currentSession.startTime}${state.currentSession.endTime ? `-${state.currentSession.endTime}` : ''}`)
+    if (state.currentSession.court) parts.push(`Session court: ${state.currentSession.court}`)
+    if (state.currentSession.format) parts.push(`Session format: ${state.currentSession.format}`)
+    parts.push(`Open spots remaining: ${state.currentSession.spotsRemaining}`)
+  }
+
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
   }
@@ -164,6 +183,7 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
 
   parts.push('If the user says "this audience", "that list", "those players", or "them", assume they mean the active audience above unless they clarify otherwise.')
   parts.push('If the user says "the campaign", "the draft", "the message", or asks to revise it, assume they mean the active campaign above unless they clarify otherwise.')
+  parts.push('If the user says "this session", "that slot", or "fill it", assume they mean the active session above unless they clarify otherwise.')
   parts.push('--- End of Active Advisor Working Memory ---')
 
   return parts.join('\n')

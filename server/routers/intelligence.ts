@@ -4060,6 +4060,30 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
       }
 
+      if (input.action.kind === 'fill_session') {
+        await checkFeatureAccess(input.clubId, 'slot-filler')
+        const fillAction = input.action
+        const inviteResult = await sendInvites(ctx.prisma, {
+          clubId: input.clubId,
+          sessionId: fillAction.session.id,
+          candidates: fillAction.outreach.candidates.map((candidate) => ({
+            memberId: candidate.memberId,
+            channel: fillAction.outreach.channel,
+            customMessage: fillAction.outreach.message,
+          })),
+        })
+
+        return {
+          ok: true,
+          kind: 'fill_session' as const,
+          sessionId: fillAction.session.id,
+          sessionTitle: fillAction.session.title,
+          candidateCount: fillAction.outreach.candidates.length,
+          channel: fillAction.outreach.channel,
+          ...inviteResult,
+        }
+      }
+
       let audience = input.action.audience
       let cohortId = audience.cohortId
       let cohortName = audience.name
