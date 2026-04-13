@@ -535,15 +535,27 @@ export interface ClubIntelligenceSettings {
     max7d: number
     cooldownHours: number
   }
-  autonomyPolicy?: Record<string, {
-    mode?: 'off' | 'approve' | 'auto'
-    minConfidenceAuto?: number
-    maxRecipientsAuto?: number
-    requireMembershipSignal?: boolean
-  }>
+  autonomyPolicy?: ClubAutonomyPolicySettings
   goals: ClubGoal[]
   onboardingCompletedAt: string | null
   onboardingVersion: number
+}
+
+export interface ClubAutonomyPolicyRule {
+  mode?: 'off' | 'approve' | 'auto'
+  minConfidenceAuto?: number
+  maxRecipientsAuto?: number
+  requireMembershipSignal?: boolean
+}
+
+export interface ClubAutonomyPolicySettings {
+  welcome?: ClubAutonomyPolicyRule
+  slotFiller?: ClubAutonomyPolicyRule
+  checkIn?: ClubAutonomyPolicyRule
+  retentionBoost?: ClubAutonomyPolicyRule
+  reactivation?: ClubAutonomyPolicyRule
+  trialFollowUp?: ClubAutonomyPolicyRule
+  renewalReactivation?: ClubAutonomyPolicyRule
 }
 
 export interface ClubAutomationSettingsV2 {

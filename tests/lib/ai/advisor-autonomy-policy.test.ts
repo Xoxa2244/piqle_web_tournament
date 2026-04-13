@@ -12,6 +12,8 @@ describe('advisor autonomy policy', () => {
     expect(policy.welcome.mode).toBe('auto')
     expect(policy.slotFiller.mode).toBe('approve')
     expect(policy.reactivation.mode).toBe('approve')
+    expect(policy.trialFollowUp.mode).toBe('approve')
+    expect(policy.renewalReactivation.mode).toBe('approve')
   })
 
   it('detects autonomy policy change requests', () => {
@@ -59,5 +61,22 @@ describe('advisor autonomy policy', () => {
     expect(updated?.checkIn.mode).toBe('approve')
     expect(updated?.retentionBoost.mode).toBe('approve')
     expect(updated?.reactivation.mode).toBe('approve')
+    expect(updated?.trialFollowUp.mode).toBe('approve')
+    expect(updated?.renewalReactivation.mode).toBe('approve')
+  })
+
+  it('can target trial and renewal lifecycle rules independently', () => {
+    const policy = resolveAdvisorAutonomyPolicy()
+    const updated = updateAdvisorAutonomyPolicyFromMessage({
+      message: 'Set trial follow-up to auto, but keep renewal outreach on approval with 92% confidence.',
+      currentPolicy: policy,
+    })
+
+    expect(updated).not.toBeNull()
+    expect(updated?.trialFollowUp.mode).toBe('auto')
+    expect(updated?.renewalReactivation.mode).toBe('approve')
+    expect(updated?.renewalReactivation.minConfidenceAuto).toBe(92)
+    expect(updated?.changes.some((change) => change.includes('Trial follow-up'))).toBe(true)
+    expect(updated?.changes.some((change) => change.includes('Renewal outreach'))).toBe(true)
   })
 })

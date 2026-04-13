@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { buildAgentPolicyScenarios } from "@/lib/ai/agent-policy-simulator"
+import { resolveAgentAutonomyPolicy } from "@/lib/ai/agent-autonomy"
 import type {
   MembershipSignal,
   NormalizedMembershipStatus,
@@ -76,6 +77,7 @@ interface AutopilotSuggestion {
 }
 
 type ProactiveOpportunityKind = "trial_follow_up" | "renewal_reactivation"
+type MembershipLifecycleAutonomyAction = "trialFollowUp" | "renewalReactivation"
 
 interface ProactiveOpportunity {
   id: string
@@ -88,6 +90,19 @@ interface ProactiveOpportunity {
   ctaLabel: string
   action: AutopilotSuggestionAction
   advisorPrompt?: string
+}
+
+interface MembershipLifecycleAutopilotCard {
+  id: MembershipLifecycleAutonomyAction
+  kind: ProactiveOpportunityKind
+  title: string
+  description: string
+  currentMode: string
+  autoCount: number
+  pendingCount: number
+  blockedCount: number
+  topReasons: Array<{ label: string; count: number }>
+  advisorPrompt: string
 }
 
 interface AgentIQProps {
@@ -433,6 +448,93 @@ function buildProactiveOpportunities(logs: AgentLog[], pendingActions: PendingAc
   })
 }
 
+function buildMembershipLifecycleAutopilotCards(
+  logs: AgentLog[],
+  pendingActions: PendingAction[],
+  intelligenceSettings?: any,
+): MembershipLifecycleAutopilotCard[] {
+  const policy = resolveAgentAutonomyPolicy({ intelligence: intelligenceSettings || {} })
+  const combined = [
+    ...pendingActions.map((item) => ({
+      membershipLifecycle: item.membershipLifecycle || null,
+      outcome: item.triggerOutcome === "blocked" ? "blocked" : "pending",
+      reason: getPrimaryReason(item.triggerReasons),
+    })),
+    ...logs.map((item) => ({
+      membershipLifecycle: item.membershipLifecycle || null,
+      outcome: resolveAutopilotOutcome(item),
+      reason: getPrimaryReason(item.triggerReasons),
+    })),
+  ].filter((item) => isProactiveMembershipLifecycle(item.membershipLifecycle))
+
+  const configs: Array<{
+    id: MembershipLifecycleAutonomyAction
+    kind: ProactiveOpportunityKind
+    title: string
+    prompt: string
+    currentMode: string
+    minConfidence?: number
+    maxRecipients?: number
+    membershipRequired?: boolean
+  }> = [
+    {
+      id: "trialFollowUp",
+      kind: "trial_follow_up",
+      title: "Trial follow-up autopilot",
+      prompt: "Update the club autopilot policy so trial follow-up stays safe but can run with the right membership confidence. Recommend the safest mode and thresholds for trial members who still need their first booking.",
+      currentMode: policy.trialFollowUp.mode,
+      minConfidence: policy.trialFollowUp.minConfidenceAuto,
+      maxRecipients: policy.trialFollowUp.maxRecipientsAuto,
+      membershipRequired: policy.trialFollowUp.requireMembershipSignal,
+    },
+    {
+      id: "renewalReactivation",
+      kind: "renewal_reactivation",
+      title: "Renewal outreach autopilot",
+      prompt: "Update the club autopilot policy so renewal outreach is safe for recently active expired or suspended members. Recommend the safest mode and thresholds, and keep active memberships review-first if needed.",
+      currentMode: policy.renewalReactivation.mode,
+      minConfidence: policy.renewalReactivation.minConfidenceAuto,
+      maxRecipients: policy.renewalReactivation.maxRecipientsAuto,
+      membershipRequired: policy.renewalReactivation.requireMembershipSignal,
+    },
+  ]
+
+  return configs.map((config) => {
+    const items = combined.filter((item) => item.membershipLifecycle === config.kind)
+    const reasonCounts = new Map<string, number>()
+    let autoCount = 0
+    let pendingCount = 0
+    let blockedCount = 0
+
+    for (const item of items) {
+      if (item.outcome === "auto") autoCount += 1
+      else if (item.outcome === "blocked") blockedCount += 1
+      else pendingCount += 1
+      incrementCounter(reasonCounts, item.reason)
+    }
+
+    const ruleBits = [
+      `${config.currentMode} now`,
+      `confidence ${config.minConfidence ?? "n/a"}+`,
+      `max ${config.maxRecipients ?? "n/a"} auto`,
+      config.membershipRequired ? "strong membership required" : "membership optional",
+    ]
+
+    return {
+      id: config.id,
+      kind: config.kind,
+      title: config.title,
+      description: ruleBits.join(" · "),
+      currentMode: config.currentMode,
+      autoCount,
+      pendingCount,
+      blockedCount,
+      topReasons: topEntries(reasonCounts, 2),
+      advisorPrompt: config.prompt,
+    }
+  }).filter((card) => card.autoCount > 0 || card.pendingCount > 0 || card.blockedCount > 0)
+}
+
 function reasonIncludes(entries: Array<{ label: string; count: number }>, matcher: RegExp) {
   return entries.some((entry) => matcher.test(entry.label))
 }
@@ -506,6 +608,8 @@ function actionLabel(action: string) {
     case "slotFiller": return "Slot filler"
     case "reactivation": return "Reactivation"
     case "retentionBoost": return "Retention boost"
+    case "trialFollowUp": return "Trial follow-up"
+    case "renewalReactivation": return "Renewal outreach"
     case "welcome": return "Welcome"
     case "checkIn": return "Check-in"
     default: return action
@@ -556,11 +660,13 @@ export function AgentIQ({
   const autopilotSummary = buildAutopilotSummary(logs)
   const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
   const proactiveOpportunities = buildProactiveOpportunities(logs, pendingActions)
+  const membershipLifecycleCards = buildMembershipLifecycleAutopilotCards(logs, pendingActions, intelligenceSettings)
   const policyScenarios = buildAgentPolicyScenarios({
     items: [
       ...logs.map((item) => ({
         id: item.id,
         type: item.type,
+        membershipLifecycle: item.membershipLifecycle ?? null,
         currentOutcome: normalizeSimulationOutcome(resolveAutopilotOutcome(item)),
         confidence: item.confidence ?? null,
         recipientCount: item.triggerRecipientCount ?? null,
@@ -572,6 +678,7 @@ export function AgentIQ({
       ...pendingActions.map((item) => ({
         id: item.id,
         type: item.type,
+        membershipLifecycle: item.membershipLifecycle ?? null,
         currentOutcome: normalizeSimulationOutcome(item.triggerOutcome === "blocked" ? "blocked" : "pending"),
         confidence: item.confidence ?? null,
         recipientCount: item.triggerRecipientCount ?? null,
@@ -972,6 +1079,134 @@ export function AgentIQ({
           )}
         </Card>
       </motion.div>
+
+      {membershipLifecycleCards.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.17 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4" style={{ color: "#A78BFA" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Membership Lifecycle Autopilot
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  Separate autopilot rules and live pressure points for trial follow-up and renewal outreach.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {membershipLifecycleCards.map((card) => {
+                const href = actionHref("open_advisor", card.advisorPrompt)
+                const iconColor = card.kind === "trial_follow_up" ? "#10B981" : "#8B5CF6"
+                const Icon = card.kind === "trial_follow_up" ? UserPlus : Send
+
+                return (
+                  <div
+                    key={card.id}
+                    className="rounded-xl p-4"
+                    style={{
+                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                      border: "1px solid var(--card-border)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: `${iconColor}15` }}
+                        >
+                          <Icon className="w-5 h-5" style={{ color: iconColor }} />
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                            {card.title}
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                            {card.description}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                        style={{
+                          background: card.currentMode === "auto"
+                            ? "rgba(16,185,129,0.12)"
+                            : card.currentMode === "off"
+                              ? "rgba(239,68,68,0.12)"
+                              : "rgba(245,158,11,0.12)",
+                          color: card.currentMode === "auto"
+                            ? "#10B981"
+                            : card.currentMode === "off"
+                              ? "#EF4444"
+                              : "#F59E0B",
+                        }}
+                      >
+                        {card.currentMode}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                      {[
+                        { label: "Auto", value: card.autoCount, color: "#10B981" },
+                        { label: "Review", value: card.pendingCount, color: "#F59E0B" },
+                        { label: "Blocked", value: card.blockedCount, color: "#EF4444" },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-lg p-2"
+                          style={{
+                            background: `${item.color}12`,
+                            border: `1px solid ${item.color}22`,
+                          }}
+                        >
+                          <div className="text-[11px]" style={{ color: item.color }}>{item.label}</div>
+                          <div className="text-lg font-bold tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {card.topReasons.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        <div className="text-[11px] font-medium" style={{ color: "var(--heading)" }}>
+                          Main hold-ups
+                        </div>
+                        {card.topReasons.map((reason) => (
+                          <div key={reason.label} className="flex items-start justify-between gap-3">
+                            <div className="text-[11px]" style={{ color: "var(--t3)" }}>
+                              {reason.label}
+                            </div>
+                            <div className="text-[11px] font-semibold tabular-nums" style={{ color: "var(--t4)" }}>
+                              {reason.count}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {href && (
+                      <Link
+                        href={href}
+                        className="inline-flex items-center gap-1 mt-3 text-xs font-medium"
+                        style={{ color: "var(--heading)" }}
+                      >
+                        Tune in Advisor
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
 
       {proactiveOpportunities.length > 0 && (
         <motion.div

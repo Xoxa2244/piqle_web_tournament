@@ -11,6 +11,8 @@ describe('agent autonomy policy', () => {
     expect(policy.welcome.mode).toBe('auto')
     expect(policy.slotFiller.mode).toBe('approve')
     expect(policy.reactivation.mode).toBe('approve')
+    expect(policy.trialFollowUp.mode).toBe('approve')
+    expect(policy.renewalReactivation.mode).toBe('approve')
   })
 
   it('merges club overrides from automation settings', () => {
@@ -165,5 +167,60 @@ describe('agent autonomy policy', () => {
 
     expect(decision.outcome).toBe('pending')
     expect(decision.reasons.join(' ')).toContain('Membership confidence 52')
+  })
+
+  it('can auto-run trial follow-up when the club explicitly enables it and membership is clearly trial', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'trialFollowUp',
+      automationSettings: {
+        intelligence: {
+          autonomyPolicy: {
+            trialFollowUp: {
+              mode: 'auto',
+              minConfidenceAuto: 80,
+              maxRecipientsAuto: 2,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+      confidence: 92,
+      recipientCount: 1,
+      membershipSignal: 'strong',
+      membershipStatus: 'trial',
+      membershipType: 'trial',
+      membershipConfidence: 90,
+    })
+
+    expect(decision.outcome).toBe('auto')
+  })
+
+  it('keeps renewal outreach on review for active memberships even when lifecycle policy is auto', () => {
+    const decision = evaluateAgentAutonomy({
+      action: 'renewalReactivation',
+      automationSettings: {
+        intelligence: {
+          autonomyPolicy: {
+            renewalReactivation: {
+              mode: 'auto',
+              minConfidenceAuto: 88,
+              maxRecipientsAuto: 2,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+      confidence: 96,
+      recipientCount: 1,
+      membershipSignal: 'strong',
+      membershipStatus: 'active',
+      membershipType: 'monthly',
+      membershipConfidence: 93,
+    })
+
+    expect(decision.outcome).toBe('pending')
+    expect(decision.reasons.join(' ')).toContain('Active memberships should stay review-first for renewal outreach')
   })
 })

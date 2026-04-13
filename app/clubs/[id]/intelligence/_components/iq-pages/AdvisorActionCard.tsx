@@ -579,7 +579,7 @@ export function AdvisorActionCard({
               </p>
             ) : isAutonomyPolicy ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
-                Welcome {currentAutonomyPolicyAction?.policy.welcome.mode} · Slot filler {currentAutonomyPolicyAction?.policy.slotFiller.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode}
+                Welcome {currentAutonomyPolicyAction?.policy.welcome.mode} · Slot filler {currentAutonomyPolicyAction?.policy.slotFiller.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode} · Trial {currentAutonomyPolicyAction?.policy.trialFollowUp.mode} · Renewal {currentAutonomyPolicyAction?.policy.renewalReactivation.mode}
               </p>
             ) : (
               (currentCohortAction ? currentCohortAction.cohort.description : currentCampaignAction?.audience.description) && (
@@ -831,6 +831,9 @@ export function AdvisorActionCard({
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
               Check-in {currentAutonomyPolicyAction?.policy.checkIn.mode} · Retention {currentAutonomyPolicyAction?.policy.retentionBoost.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              Trial follow-up {currentAutonomyPolicyAction?.policy.trialFollowUp.mode} · Renewal outreach {currentAutonomyPolicyAction?.policy.renewalReactivation.mode}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {currentAutonomyPolicyAction?.policy.changes.slice(0, 5).map((change) => (

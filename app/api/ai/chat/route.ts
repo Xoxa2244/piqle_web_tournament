@@ -387,7 +387,9 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
 - Slot filler: ${autonomyPolicy.slotFiller.mode} (confidence ${autonomyPolicy.slotFiller.minConfidenceAuto}+, max ${autonomyPolicy.slotFiller.maxRecipientsAuto}, membership required ${autonomyPolicy.slotFiller.requireMembershipSignal ? 'yes' : 'no'})
 - Check-in: ${autonomyPolicy.checkIn.mode} (confidence ${autonomyPolicy.checkIn.minConfidenceAuto}+, max ${autonomyPolicy.checkIn.maxRecipientsAuto}, membership required ${autonomyPolicy.checkIn.requireMembershipSignal ? 'yes' : 'no'})
 - Retention boost: ${autonomyPolicy.retentionBoost.mode} (confidence ${autonomyPolicy.retentionBoost.minConfidenceAuto}+, max ${autonomyPolicy.retentionBoost.maxRecipientsAuto}, membership required ${autonomyPolicy.retentionBoost.requireMembershipSignal ? 'yes' : 'no'})
-- Reactivation: ${autonomyPolicy.reactivation.mode} (confidence ${autonomyPolicy.reactivation.minConfidenceAuto}+, max ${autonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'})`
+- Reactivation: ${autonomyPolicy.reactivation.mode} (confidence ${autonomyPolicy.reactivation.minConfidenceAuto}+, max ${autonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'})
+- Trial follow-up: ${autonomyPolicy.trialFollowUp.mode} (confidence ${autonomyPolicy.trialFollowUp.minConfidenceAuto}+, max ${autonomyPolicy.trialFollowUp.maxRecipientsAuto}, membership required ${autonomyPolicy.trialFollowUp.requireMembershipSignal ? 'yes' : 'no'})
+- Renewal outreach: ${autonomyPolicy.renewalReactivation.mode} (confidence ${autonomyPolicy.renewalReactivation.minConfidenceAuto}+, max ${autonomyPolicy.renewalReactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.renewalReactivation.requireMembershipSignal ? 'yes' : 'no'})`
       const contactPolicyBlock = `\nCurrent contact policy:
 - Quiet hours: ${contactPolicy.quietHours.startHour}:00-${contactPolicy.quietHours.endHour}:00 (${contactPolicy.timeZone})
 - Cross-campaign cooldown: ${contactPolicy.cooldownHours} hours

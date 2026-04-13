@@ -128,4 +128,44 @@ describe('agent policy simulator', () => {
       requiresLiveMode: true,
     })
   })
+
+  it('simulates trial follow-up separately from generic retention actions', () => {
+    const scenarios = buildAgentPolicyScenarios({
+      items: [
+        {
+          id: 'trial-1',
+          type: 'RETENTION_BOOST',
+          membershipLifecycle: 'trial_follow_up',
+          currentOutcome: 'pending',
+          confidence: 91,
+          recipientCount: 1,
+          membershipSignal: 'strong',
+          membershipStatus: 'trial',
+          membershipType: 'trial',
+          membershipConfidence: 90,
+        },
+      ],
+      automationSettings: {
+        intelligence: {
+          autonomyPolicy: {
+            trialFollowUp: {
+              mode: 'approve',
+              minConfidenceAuto: 86,
+              maxRecipientsAuto: 2,
+              requireMembershipSignal: true,
+            },
+          },
+        },
+      },
+      liveMode: true,
+    })
+
+    expect(scenarios[0]).toMatchObject({
+      action: 'trialFollowUp',
+      currentMode: 'approve',
+      autoGain: 1,
+      stillPending: 0,
+      stillBlocked: 0,
+    })
+  })
 })

@@ -311,7 +311,7 @@ export async function detectEventsForClub(
       const runtime = evaluateAgentTriggerRuntime({
         source: 'event_detection',
         triggerMode: 'deferred',
-        action: 'retentionBoost',
+        action: 'trialFollowUp',
         automationSettings,
         liveMode: live,
         confidence: Math.max(82, normalizedMembership.confidence),
@@ -325,7 +325,9 @@ export async function detectEventsForClub(
       const actualOutcome = runtime.decision.outcome === 'blocked' ? 'blocked' : 'pending'
       const actualReasons = runtime.decision.outcome === 'blocked'
         ? runtime.decision.reasons
-        : ['Trial member follow-up queued for human review.']
+        : runtime.decision.outcome === 'auto'
+          ? ['Trial follow-up is auto-ready under current policy, but direct lifecycle auto-send still stays in review until execution is enabled.']
+          : ['Trial member follow-up queued for human review.']
 
       await prisma.aIRecommendationLog.create({
         data: {
@@ -375,7 +377,7 @@ export async function detectEventsForClub(
       const runtime = evaluateAgentTriggerRuntime({
         source: 'event_detection',
         triggerMode: 'deferred',
-        action: 'reactivation',
+        action: 'renewalReactivation',
         automationSettings,
         liveMode: live,
         confidence: Math.max(88, normalizedMembership.confidence),
@@ -389,7 +391,9 @@ export async function detectEventsForClub(
       const actualOutcome = runtime.decision.outcome === 'blocked' ? 'blocked' : 'pending'
       const actualReasons = runtime.decision.outcome === 'blocked'
         ? runtime.decision.reasons
-        : ['Renewal opportunity queued for human review.']
+        : runtime.decision.outcome === 'auto'
+          ? ['Renewal outreach is auto-ready under current policy, but direct lifecycle auto-send still stays in review until execution is enabled.']
+          : ['Renewal opportunity queued for human review.']
 
       await prisma.aIRecommendationLog.create({
         data: {

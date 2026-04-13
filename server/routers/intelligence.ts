@@ -4577,6 +4577,8 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
                   checkIn: input.action.policy.checkIn,
                   retentionBoost: input.action.policy.retentionBoost,
                   reactivation: input.action.policy.reactivation,
+                  trialFollowUp: input.action.policy.trialFollowUp,
+                  renewalReactivation: input.action.policy.renewalReactivation,
                 },
               },
             },

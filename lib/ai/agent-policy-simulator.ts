@@ -1,5 +1,6 @@
 import {
   evaluateAgentAutonomy,
+  mapMembershipLifecycleToAutonomyAction,
   mapOutreachTypeToAutonomyAction,
   resolveAgentAutonomyPolicy,
   type AgentAutonomyAction,
@@ -14,6 +15,7 @@ import type {
 export interface AgentPolicySimulationItem {
   id: string
   type: string
+  membershipLifecycle?: string | null
   currentOutcome?: 'auto' | 'pending' | 'blocked' | 'other' | null
   confidence?: number | null
   recipientCount?: number | null
@@ -21,6 +23,10 @@ export interface AgentPolicySimulationItem {
   membershipStatus?: NormalizedMembershipStatus | null
   membershipType?: NormalizedMembershipType | null
   membershipConfidence?: number | null
+}
+
+function resolveSimulationAction(item: AgentPolicySimulationItem): AgentAutonomyAction | null {
+  return mapMembershipLifecycleToAutonomyAction(item.membershipLifecycle) || mapOutreachTypeToAutonomyAction(item.type)
 }
 
 export interface AgentPolicyScenario {
@@ -75,12 +81,12 @@ export function buildAgentPolicyScenarios(opts: {
   const currentPolicy = resolveAgentAutonomyPolicy(opts.automationSettings)
   const scenarios: AgentPolicyScenario[] = []
 
-  const actions: AgentAutonomyAction[] = ['welcome', 'slotFiller', 'checkIn', 'retentionBoost', 'reactivation']
+  const actions: AgentAutonomyAction[] = ['welcome', 'slotFiller', 'checkIn', 'retentionBoost', 'reactivation', 'trialFollowUp', 'renewalReactivation']
   for (const action of actions) {
     const currentMode = currentPolicy[action].mode
     if (currentMode === 'auto') continue
 
-    const actionItems = Array.from(deduped.values()).filter((item) => mapOutreachTypeToAutonomyAction(item.type) === action)
+    const actionItems = Array.from(deduped.values()).filter((item) => resolveSimulationAction(item) === action)
     if (actionItems.length === 0) continue
 
     const simulatedSettings = withActionMode(opts.automationSettings, action, 'auto')

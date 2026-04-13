@@ -291,9 +291,11 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   }
 
   if (state.currentAutonomyPolicy) {
-    parts.push(`Active autonomy policy draft: welcome ${state.currentAutonomyPolicy.welcome.mode}, slot filler ${state.currentAutonomyPolicy.slotFiller.mode}, check-in ${state.currentAutonomyPolicy.checkIn.mode}, retention ${state.currentAutonomyPolicy.retentionBoost.mode}, reactivation ${state.currentAutonomyPolicy.reactivation.mode}`)
+    parts.push(`Active autonomy policy draft: welcome ${state.currentAutonomyPolicy.welcome.mode}, slot filler ${state.currentAutonomyPolicy.slotFiller.mode}, check-in ${state.currentAutonomyPolicy.checkIn.mode}, retention ${state.currentAutonomyPolicy.retentionBoost.mode}, reactivation ${state.currentAutonomyPolicy.reactivation.mode}, trial follow-up ${state.currentAutonomyPolicy.trialFollowUp.mode}, renewal outreach ${state.currentAutonomyPolicy.renewalReactivation.mode}`)
     parts.push(`Slot filler auto thresholds: confidence ${state.currentAutonomyPolicy.slotFiller.minConfidenceAuto}, max ${state.currentAutonomyPolicy.slotFiller.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.slotFiller.requireMembershipSignal ? 'yes' : 'no'}`)
     parts.push(`Reactivation auto thresholds: confidence ${state.currentAutonomyPolicy.reactivation.minConfidenceAuto}, max ${state.currentAutonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'}`)
+    parts.push(`Trial follow-up auto thresholds: confidence ${state.currentAutonomyPolicy.trialFollowUp.minConfidenceAuto}, max ${state.currentAutonomyPolicy.trialFollowUp.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.trialFollowUp.requireMembershipSignal ? 'yes' : 'no'}`)
+    parts.push(`Renewal outreach auto thresholds: confidence ${state.currentAutonomyPolicy.renewalReactivation.minConfidenceAuto}, max ${state.currentAutonomyPolicy.renewalReactivation.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.renewalReactivation.requireMembershipSignal ? 'yes' : 'no'}`)
   }
 
   if (state.lastActionKind) {

@@ -45,6 +45,18 @@ export const agentAutonomyPolicySchema = z.object({
     maxRecipientsAuto: 3,
     requireMembershipSignal: true,
   }),
+  trialFollowUp: agentAutonomyRuleSchema.default({
+    mode: 'approve',
+    minConfidenceAuto: 86,
+    maxRecipientsAuto: 2,
+    requireMembershipSignal: true,
+  }),
+  renewalReactivation: agentAutonomyRuleSchema.default({
+    mode: 'approve',
+    minConfidenceAuto: 90,
+    maxRecipientsAuto: 2,
+    requireMembershipSignal: true,
+  }),
 })
 
 export type AgentAutonomyMode = z.infer<typeof agentAutonomyModeSchema>
@@ -56,6 +68,8 @@ export type AgentAutonomyAction =
   | 'checkIn'
   | 'retentionBoost'
   | 'reactivation'
+  | 'trialFollowUp'
+  | 'renewalReactivation'
 
 export type AgentAutonomyOutcome = 'auto' | 'pending' | 'blocked'
 
@@ -90,6 +104,18 @@ export const DEFAULT_AGENT_AUTONOMY_POLICY: AgentAutonomyPolicy = {
     maxRecipientsAuto: 3,
     requireMembershipSignal: true,
   },
+  trialFollowUp: {
+    mode: 'approve',
+    minConfidenceAuto: 86,
+    maxRecipientsAuto: 2,
+    requireMembershipSignal: true,
+  },
+  renewalReactivation: {
+    mode: 'approve',
+    minConfidenceAuto: 90,
+    maxRecipientsAuto: 2,
+    requireMembershipSignal: true,
+  },
 }
 
 export type AgentAutonomyDecision = {
@@ -122,6 +148,8 @@ export function readAgentAutonomyPolicyOverrides(automationSettings?: unknown): 
     checkIn: autonomyPolicy.checkIn ? parseRule(autonomyPolicy.checkIn, DEFAULT_AGENT_AUTONOMY_POLICY.checkIn) : undefined,
     retentionBoost: autonomyPolicy.retentionBoost ? parseRule(autonomyPolicy.retentionBoost, DEFAULT_AGENT_AUTONOMY_POLICY.retentionBoost) : undefined,
     reactivation: autonomyPolicy.reactivation ? parseRule(autonomyPolicy.reactivation, DEFAULT_AGENT_AUTONOMY_POLICY.reactivation) : undefined,
+    trialFollowUp: autonomyPolicy.trialFollowUp ? parseRule(autonomyPolicy.trialFollowUp, DEFAULT_AGENT_AUTONOMY_POLICY.trialFollowUp) : undefined,
+    renewalReactivation: autonomyPolicy.renewalReactivation ? parseRule(autonomyPolicy.renewalReactivation, DEFAULT_AGENT_AUTONOMY_POLICY.renewalReactivation) : undefined,
   }
 }
 
@@ -133,6 +161,8 @@ export function resolveAgentAutonomyPolicy(automationSettings?: unknown): AgentA
     checkIn: overrides.checkIn ?? DEFAULT_AGENT_AUTONOMY_POLICY.checkIn,
     retentionBoost: overrides.retentionBoost ?? DEFAULT_AGENT_AUTONOMY_POLICY.retentionBoost,
     reactivation: overrides.reactivation ?? DEFAULT_AGENT_AUTONOMY_POLICY.reactivation,
+    trialFollowUp: overrides.trialFollowUp ?? DEFAULT_AGENT_AUTONOMY_POLICY.trialFollowUp,
+    renewalReactivation: overrides.renewalReactivation ?? DEFAULT_AGENT_AUTONOMY_POLICY.renewalReactivation,
   }
 }
 
@@ -151,6 +181,12 @@ export function mapOutreachTypeToAutonomyAction(type: string): AgentAutonomyActi
     default:
       return null
   }
+}
+
+export function mapMembershipLifecycleToAutonomyAction(lifecycle?: string | null): AgentAutonomyAction | null {
+  if (lifecycle === 'trial_follow_up') return 'trialFollowUp'
+  if (lifecycle === 'renewal_reactivation') return 'renewalReactivation'
+  return null
 }
 
 function getMembershipReviewReasons(opts: {
@@ -196,6 +232,22 @@ function getMembershipReviewReasons(opts: {
         reasons.push('Trial members should stay in onboarding or welcome flows before autonomous reactivation.')
       } else if (type === 'staff') {
         reasons.push('Staff and comped memberships should stay manual for reactivation outreach.')
+      }
+      break
+    case 'trialFollowUp':
+      if (['expired', 'cancelled', 'suspended'].includes(status)) {
+        reasons.push(`Membership status is ${status}, so trial follow-up should stay manual.`)
+      } else if (!['trial', 'guest'].includes(status) && !['trial', 'guest', 'drop_in'].includes(type)) {
+        reasons.push('Trial follow-up should only auto-run for clear trial-style memberships.')
+      }
+      break
+    case 'renewalReactivation':
+      if (status === 'active') {
+        reasons.push('Active memberships should stay review-first for renewal outreach.')
+      } else if (status === 'trial' || type === 'trial' || status === 'guest' || type === 'guest' || type === 'drop_in') {
+        reasons.push('Trial and guest memberships should use onboarding flows before autonomous renewal outreach.')
+      } else if (type === 'staff') {
+        reasons.push('Staff and comped memberships should stay manual for renewal outreach.')
       }
       break
   }

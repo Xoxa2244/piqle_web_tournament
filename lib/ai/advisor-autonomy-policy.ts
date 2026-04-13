@@ -12,6 +12,8 @@ const ALL_AUTONOMY_ACTIONS: AgentAutonomyAction[] = [
   'checkIn',
   'retentionBoost',
   'reactivation',
+  'trialFollowUp',
+  'renewalReactivation',
 ]
 
 const ACTION_LABELS: Record<AgentAutonomyAction, string> = {
@@ -20,6 +22,8 @@ const ACTION_LABELS: Record<AgentAutonomyAction, string> = {
   checkIn: 'Check-in',
   retentionBoost: 'Retention boost',
   reactivation: 'Reactivation',
+  trialFollowUp: 'Trial follow-up',
+  renewalReactivation: 'Renewal outreach',
 }
 
 const ACTION_PATTERNS: Record<AgentAutonomyAction, RegExp[]> = {
@@ -59,6 +63,23 @@ const ACTION_PATTERNS: Record<AgentAutonomyAction, RegExp[]> = {
     /\blapsed members?\b/,
     /\bнеактивн\w+\b/,
     /\bреактивац\w+\b/,
+  ],
+  trialFollowUp: [
+    /\btrial follow[- ]?up\b/,
+    /\bfirst[- ]?play\b/,
+    /\bfirst booking\b/,
+    /\btrial members?\b/,
+    /\bтриал\w*\b/,
+    /\bперв\w+\s+бронирован\w+\b/,
+  ],
+  renewalReactivation: [
+    /\brenewal(?: outreach)?\b/,
+    /\bexpir\w+\s+membership\b/,
+    /\bexpired members?\b/,
+    /\brenew\b/,
+    /\bпродлен\w+\b/,
+    /\bистек\w+\s+membership\b/,
+    /\brenewal reactivation\b/,
   ],
 }
 
@@ -115,6 +136,8 @@ function clonePolicy(policy: AdvisorAutonomyPolicyDraft): AdvisorAutonomyPolicyD
     checkIn: { ...policy.checkIn },
     retentionBoost: { ...policy.retentionBoost },
     reactivation: { ...policy.reactivation },
+    trialFollowUp: { ...policy.trialFollowUp },
+    renewalReactivation: { ...policy.renewalReactivation },
     changes: [...policy.changes],
   }
 }
@@ -230,6 +253,8 @@ export function formatAdvisorAutonomyPolicyDigest(policy: AdvisorAutonomyPolicyD
     `Check-in ${policy.checkIn.mode}`,
     `Retention ${policy.retentionBoost.mode}`,
     `Reactivation ${policy.reactivation.mode}`,
+    `Trial follow-up ${policy.trialFollowUp.mode}`,
+    `Renewal outreach ${policy.renewalReactivation.mode}`,
   ].join(' · ')
 }
 
