@@ -52,12 +52,57 @@ export const PageLayout = ({
   const { colors } = useAppTheme()
   const insets = useSafeAreaInsets()
   const styles = useMemo(() => createStyles(), [])
-  const main = (
-    <>
+  const body = scroll ? (
+    pullToRefresh ? (
+      <View style={styles.fill}>
+        {fixedUnderTopBar}
+        <PickleRefreshScrollView
+          style={{ flex: 1, backgroundColor: chatAmbient ? 'transparent' : colors.background }}
+          contentContainerStyle={[
+            styles.content,
+            fixedUnderTopBar && styles.contentWithFixedUpper,
+            contentStyle,
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshing={pullToRefresh.refreshing}
+          onRefresh={pullToRefresh.onRefresh}
+          bounces
+        >
+          {children}
+        </PickleRefreshScrollView>
+      </View>
+    ) : (
+      <View style={styles.fill}>
+        {fixedUnderTopBar}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: chatAmbient ? 'transparent' : colors.background }}
+          contentContainerStyle={[styles.content, fixedUnderTopBar && styles.contentWithFixedUpper, contentStyle]}
+          showsVerticalScrollIndicator={false}
+          bounces
+        >
+          {children}
+        </ScrollView>
+      </View>
+    )
+  ) : (
+    <View
+      style={[
+        styles.fill,
+        chatAmbient ? styles.contentChatNoPad : styles.content,
+        { backgroundColor: chatAmbient ? 'transparent' : colors.background },
+        contentStyle,
+      ]}
+    >
+      {children}
+    </View>
+  )
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View
         style={{
           paddingTop: insets.top,
-          backgroundColor: chatAmbient ? 'transparent' : colors.surfaceOverlay,
+          backgroundColor: colors.surfaceOverlay,
         }}
       >
         <TopBar
@@ -71,64 +116,14 @@ export const PageLayout = ({
           refreshPulseKey={topBarRefreshPulseKey}
         />
       </View>
-      {scroll ? (
-        pullToRefresh ? (
-          <View style={styles.fill}>
-            {fixedUnderTopBar}
-            <PickleRefreshScrollView
-              style={{ flex: 1, backgroundColor: colors.background }}
-              contentContainerStyle={[
-                styles.content,
-                fixedUnderTopBar && styles.contentWithFixedUpper,
-                contentStyle,
-              ]}
-              showsVerticalScrollIndicator={false}
-              refreshing={pullToRefresh.refreshing}
-              onRefresh={pullToRefresh.onRefresh}
-              bounces
-            >
-              {children}
-            </PickleRefreshScrollView>
-          </View>
-        ) : (
-          <View style={styles.fill}>
-            {fixedUnderTopBar}
-            <ScrollView
-              style={{ flex: 1, backgroundColor: colors.background }}
-              contentContainerStyle={[styles.content, fixedUnderTopBar && styles.contentWithFixedUpper, contentStyle]}
-              showsVerticalScrollIndicator={false}
-              bounces
-            >
-              {children}
-            </ScrollView>
-          </View>
-        )
-      ) : (
-        <View
-          style={[
-            styles.fill,
-            chatAmbient ? styles.contentChatNoPad : styles.content,
-            { backgroundColor: colors.background },
-            contentStyle,
-          ]}
-        >
-          {children}
+      {chatAmbient ? (
+        <View style={styles.chatAmbientRoot}>
+          <ChatAmbientBackground />
+          <View style={styles.chatAmbientForeground}>{body}</View>
         </View>
+      ) : (
+        body
       )}
-    </>
-  )
-
-  if (!chatAmbient) {
-    return <View style={[styles.root, { backgroundColor: colors.background }]}>{main}</View>
-  }
-
-  return (
-    <View style={[styles.chatAmbientRoot, { backgroundColor: colors.background }]}>
-      <ChatAmbientBackground />
-      {/* Только top: нижний отступ даёт сам tab bar экрана; bottom + padding дублировали зазор над меню */}
-      <View style={styles.safeAreaChatAmbientFill}>
-        <View style={styles.chatAmbientForeground}>{main}</View>
-      </View>
     </View>
   )
 }
@@ -138,9 +133,6 @@ const createStyles = () => StyleSheet.create({
     flex: 1,
   },
   chatAmbientRoot: {
-    flex: 1,
-  },
-  safeAreaChatAmbientFill: {
     flex: 1,
     backgroundColor: 'transparent',
   },

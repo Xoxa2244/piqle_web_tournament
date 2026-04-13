@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
+import { BlurView } from 'expo-blur'
 import { Keyboard, Platform, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -61,7 +62,9 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
   ref
 ) {
   const { colors, theme } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const styles = useMemo(() => createStyles(colors, theme), [colors, theme])
+  const composerOverlayBackground =
+    theme === 'dark' ? 'rgba(26, 26, 26, 0.4)' : 'rgba(255, 255, 255, 0.4)'
   const insets = useSafeAreaInsets()
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0)
   const inputRef = useRef<TextInput>(null)
@@ -101,7 +104,12 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
     androidBottomInset
 
   return (
-    <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal }]}>
+    <View style={[styles.wrap, { paddingBottom: bottom, paddingHorizontal, backgroundColor: composerOverlayBackground }]}>
+      <BlurView
+        intensity={26}
+        tint={theme === 'dark' ? 'dark' : 'light'}
+        style={StyleSheet.absoluteFill}
+      />
       {topSlot ? <View style={styles.topSlot}>{topSlot}</View> : null}
       <View style={styles.row}>
         {leadingSlot ? <View style={styles.leadingSlot}>{leadingSlot}</View> : null}
@@ -146,12 +154,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
   )
 })
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
   StyleSheet.create({
   wrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    backgroundColor: 'transparent',
     paddingTop: 16,
   },
   row: {
@@ -174,7 +181,7 @@ const createStyles = (colors: ThemePalette) =>
     borderRadius: radius.pill,
     paddingHorizontal: 14,
     paddingVertical: 0,
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: theme === 'light' ? colors.white : colors.surfaceMuted,
     color: colors.text,
     fontSize: 15,
     fontWeight: '400',

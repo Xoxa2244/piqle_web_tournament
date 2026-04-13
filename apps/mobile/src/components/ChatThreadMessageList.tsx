@@ -1342,6 +1342,11 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
       paddingHorizontal: 14,
       paddingVertical: 10,
       overflow: 'visible',
+      shadowColor: colors.shadowStrong,
+      shadowOpacity: theme === 'dark' ? 0.28 : 0.14,
+      shadowRadius: theme === 'dark' ? 12 : 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4,
     },
     bubbleReply: {
       maxWidth: '76%',
@@ -1357,23 +1362,21 @@ const createStyles = (colors: ThemePalette, theme: AppTheme) =>
     },
     bubbleMine: {
       borderBottomRightRadius: 6,
-      backgroundColor: theme === 'dark' ? colors.chip : colors.brandPrimaryTint,
+      backgroundColor: theme === 'dark' ? '#17351C' : '#E1FFDA',
       ...(theme === 'dark'
         ? {
-            shadowOpacity: 0,
-            elevation: 0,
+            shadowOpacity: 0.28,
+            elevation: 4,
           }
         : {
-            shadowColor: colors.shadowStrong,
-            shadowOpacity: 0.06,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 1,
+            shadowOpacity: 0.14,
+            shadowRadius: 8,
+            elevation: 4,
           }),
     },
     bubbleOther: {
       borderBottomLeftRadius: 6,
-      backgroundColor: theme === 'light' ? 'rgba(10, 10, 10, 0.045)' : colors.surfaceMuted,
+      backgroundColor: theme === 'light' ? '#F9FFF7' : colors.surfaceMuted,
     },
     bubbleMineGroupedTop: {
       borderTopRightRadius: 8,

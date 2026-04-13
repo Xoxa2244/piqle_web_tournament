@@ -300,6 +300,19 @@ export default function AITab() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
+        {theme === 'light' ? (
+          <View pointerEvents="none" style={styles.aiAmbientLayer}>
+            <OptionalLinearGradient
+              colors={['#9449F2', '#5F42E8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+              fallbackColor="#9449F2"
+            >
+              <View style={{ flex: 1 }} />
+            </OptionalLinearGradient>
+          </View>
+        ) : null}
         <ChatThreadRoot
           ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
@@ -330,12 +343,22 @@ export default function AITab() {
                       <OptionalLinearGradient
                         colors={
                           msg.role === 'user'
-                            ? [theme === 'dark' ? colors.chip : colors.brandPrimaryTint, theme === 'dark' ? colors.chip : colors.brandPrimaryTint]
-                            : ['rgba(168, 85, 247, 0.10)', 'rgba(124, 58, 237, 0.08)', 'rgba(79, 70, 229, 0.06)']
+                            ? [theme === 'dark' ? '#153219' : '#E1FFDA', theme === 'dark' ? '#153219' : '#E1FFDA']
+                            : theme === 'light'
+                              ? ['#F4ECFF', '#F4ECFF', '#F4ECFF']
+                              : ['#22182F', '#22182F', '#22182F']
                         }
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        fallbackColor={msg.role === 'user' ? (theme === 'dark' ? colors.chip : colors.brandPrimaryTint) : colors.surfaceElevated}
+                        fallbackColor={
+                          msg.role === 'user'
+                            ? theme === 'dark'
+                              ? '#153219'
+                              : '#E1FFDA'
+                            : theme === 'light'
+                              ? '#F4ECFF'
+                              : '#22182F'
+                        }
                         style={[
                           styles.bubble,
                           msg.role === 'user' ? styles.bubbleMine : styles.bubbleAssistant,
@@ -464,6 +487,10 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     minHeight: 220,
     justifyContent: 'center',
   },
+  aiAmbientLayer: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.2,
+  },
   messageLine: {
     flexDirection: 'row',
     gap: 12,
@@ -491,14 +518,19 @@ const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    shadowColor: colors.shadowStrong,
+    shadowOpacity: theme === 'dark' ? 0.28 : 0.14,
+    shadowRadius: theme === 'dark' ? 12 : 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   bubbleMine: {
     borderTopRightRadius: 8,
   },
   bubbleAssistant: {
-    borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.18)',
-    backgroundColor: 'rgba(168, 85, 247, 0.06)',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: theme === 'light' ? '#F4ECFF' : '#22182F',
   },
   bubbleText: {
     color: colors.text,

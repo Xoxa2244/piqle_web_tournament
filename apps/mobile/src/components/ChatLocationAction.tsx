@@ -94,7 +94,8 @@ export function ChatLocationAction({
   onSendText: (messageText: string) => void
 }) {
   const { colors } = useAppTheme()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const resolvedTheme = colors.background === '#0a0a0a' ? 'dark' : 'light'
+  const styles = useMemo(() => createStyles(colors, resolvedTheme), [colors, resolvedTheme])
   const { token } = useAuth()
   const toast = useToast()
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -703,7 +704,7 @@ export function ChatLocationAction({
   )
 }
 
-const createStyles = (colors: ThemePalette) =>
+const createStyles = (colors: ThemePalette, theme: 'light' | 'dark') =>
   StyleSheet.create({
     plusButton: {
       width: 42,
@@ -711,9 +712,9 @@ const createStyles = (colors: ThemePalette) =>
       borderRadius: 21,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surfaceMuted,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
+      backgroundColor: theme === 'light' ? colors.white : colors.surfaceMuted,
+      borderWidth: 0,
+      borderColor: 'transparent',
     },
     plusButtonDisabled: {
       opacity: 0.52,
