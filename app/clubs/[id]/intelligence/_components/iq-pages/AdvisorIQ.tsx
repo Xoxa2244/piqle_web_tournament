@@ -153,9 +153,12 @@ type ClarificationChoice = {
   value: string
   label: string
   description: string
+  impact: string
   icon: typeof Sparkles
   tone: ClarificationTone
   recommended?: boolean
+  whyRecommended?: string
+  badges?: string[]
 }
 
 function getClarificationSectionTitle(field: PendingClarification['field']) {
@@ -262,9 +265,14 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
         description: isCurrent
           ? 'Fastest path: reuse the audience already in context and move straight into execution.'
           : 'Switch to a fresh audience brief and let the agent rebuild the targeting.',
+        impact: isCurrent
+          ? 'Keeps the current targeting context and avoids rebuilding the audience from scratch.'
+          : 'Replaces the current audience context and makes the agent rebuild targeting before it continues.',
         icon: isCurrent ? CheckCircle2 : Users,
         tone: isCurrent ? 'primary' : 'default',
         recommended: isCurrent,
+        whyRecommended: isCurrent ? 'The agent already has this audience in memory, so this removes one extra step.' : undefined,
+        badges: isCurrent ? ['Fastest path', 'Keeps context'] : ['New targeting'],
       }
     }
 
@@ -274,8 +282,10 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
           value: option,
           label: 'Email + SMS',
           description: 'Maximize reach across both channels when the campaign matters most.',
+          impact: 'Broadest reach, but guardrails may split delivery per member depending on channel eligibility.',
           icon: Send,
           tone: 'choice',
+          badges: ['Max reach'],
         }
       }
       if (lower.includes('sms')) {
@@ -283,17 +293,22 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
           value: option,
           label: 'SMS',
           description: 'Best for urgent nudges and fast visibility on mobile.',
+          impact: 'Pushes the agent toward shorter copy and only members with phone + SMS consent stay eligible.',
           icon: Send,
           tone: 'choice',
+          badges: ['Urgent', 'Mobile first'],
         }
       }
       return {
         value: option,
         label: 'Email',
         description: 'Best for richer copy, lower friction, and a more detailed message.',
+        impact: 'Keeps the campaign in a safer long-form channel and targets email-eligible members first.',
         icon: Mail,
         tone: 'primary',
         recommended: true,
+        whyRecommended: 'Email is usually the lowest-risk default when the user has not explicitly asked for SMS.',
+        badges: ['Safer default', 'Richer copy'],
       }
     }
 
@@ -302,9 +317,12 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
         value: option,
         label: option,
         description: describeScheduleOption(option),
+        impact: 'Queues the campaign for later instead of sending immediately, so the agent can respect timing and guardrails.',
         icon: CalendarDays,
         tone: index === 0 ? 'primary' : 'choice',
         recommended: index === 0,
+        whyRecommended: index === 0 ? 'This is the quickest suggested send window so the draft can move forward without more back-and-forth.' : undefined,
+        badges: index === 0 ? ['Fastest schedule', 'Keeps momentum'] : ['Scheduled send'],
       }
     }
 
@@ -313,9 +331,16 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
         value: option,
         label: option,
         description: describeAudienceOption(option),
+        impact: lower.includes('inactive') || lower.includes('неактив') || lower.includes('inactiv')
+          ? 'Pushes the agent toward win-back logic and member health signals.'
+          : lower.includes('weekday evening') || lower.includes('будня') || lower.includes('entre semana')
+            ? 'Re-centers the plan around after-work demand and likely session-fit members.'
+            : 'Narrows the segment so the agent can produce a more specific audience or campaign next.',
         icon: Users,
         tone: index === 0 ? 'primary' : optionUi.tone,
         recommended: index === 0,
+        whyRecommended: index === 0 ? 'This is the cleanest audience brief to keep the conversation moving.' : undefined,
+        badges: index === 0 ? ['Fastest brief'] : ['Narrower segment'],
       }
     }
 
@@ -323,8 +348,10 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
       value: option,
       label: option,
       description: 'Use this option and let the agent keep moving.',
+      impact: 'The agent will continue with this choice as the next operational step.',
       icon: optionUi.icon,
       tone: optionUi.tone,
+      badges: ['Continue'],
     }
   })
 }
@@ -408,6 +435,14 @@ function AdvisorClarificationCard({
                   .filter(Boolean)
                   .join(' · ')}
               </div>
+              <div
+                className="mt-3 rounded-lg px-2.5 py-2 text-[11px]"
+                style={{ background: "rgba(255,255,255,0.05)", color: "var(--t3)", lineHeight: 1.5 }}
+              >
+                {index === 0
+                  ? 'Why recommended: this is the best current match for the request and available capacity.'
+                  : 'Alternative path: use this if you want to steer the agent toward a different session option.'}
+              </div>
               <div className="text-[11px] mt-3 flex items-center gap-1.5" style={{ color: "#06B6D4", fontWeight: 700 }}>
                 Select this session
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -443,6 +478,30 @@ function AdvisorClarificationCard({
                       <div className="text-xs mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
                         {choice.description}
                       </div>
+                      <div
+                        className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
+                        style={{ background: "rgba(255,255,255,0.05)", color: "var(--t2)", lineHeight: 1.5 }}
+                      >
+                        What changes: {choice.impact}
+                      </div>
+                      {choice.whyRecommended && (
+                        <div className="text-[11px] mt-2" style={{ color: "#06B6D4", fontWeight: 700, lineHeight: 1.5 }}>
+                          Why recommended: {choice.whyRecommended}
+                        </div>
+                      )}
+                      {choice.badges && choice.badges.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {choice.badges.map((badge) => (
+                            <span
+                              key={badge}
+                              className="px-2 py-1 rounded-full text-[10px]"
+                              style={{ background: "rgba(255,255,255,0.06)", color: "var(--t3)", fontWeight: 700 }}
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {choice.recommended && (
