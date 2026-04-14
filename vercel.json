@@ -48,6 +48,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/agent/admin-reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/campaigns/advisor-scheduled",
       "schedule": "*/10 * * * *"
     },
