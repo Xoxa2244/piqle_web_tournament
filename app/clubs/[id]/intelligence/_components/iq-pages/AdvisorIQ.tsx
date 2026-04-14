@@ -793,6 +793,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     } catch { /* ignore */ }
   }, [setMessages]);
 
+  useEffect(() => {
+    const requestedConversationId = searchParams.get('conversationId');
+    if (!requestedConversationId) return;
+    if (requestedConversationId === activeConvId) return;
+    void loadConversation(requestedConversationId);
+  }, [activeConvId, loadConversation, searchParams]);
+
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

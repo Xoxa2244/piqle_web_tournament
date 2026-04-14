@@ -5,6 +5,7 @@
 import { z } from 'zod'
 import { agentAutonomyPolicySchema } from './agent-autonomy'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
+import { advisorSandboxRoutingSettingsSchema } from './advisor-sandbox-routing'
 
 // ── Shared enums ──
 
@@ -87,6 +88,7 @@ export const intelligenceSettingsSchema = z.object({
   }),
   agentLive: z.boolean().optional(),
   lifecycleAutoExecutionEnabled: z.boolean().optional(),
+  sandboxRouting: advisorSandboxRoutingSettingsSchema.optional(),
   autoApproveThreshold: z.number().int().min(0).max(100).optional(),
   notificationEmail: z.string().email().optional(),
   contactPolicy: advisorContactPolicyDraftSchema.omit({ changes: true }).optional(),
@@ -142,6 +144,11 @@ export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettingsInput = {
     tone: 'friendly',
   },
   lifecycleAutoExecutionEnabled: false,
+  sandboxRouting: {
+    mode: 'preview_only',
+    emailRecipients: [],
+    smsRecipients: [],
+  },
   goals: ['fill_sessions'],
   onboardingCompletedAt: null,
   onboardingVersion: 1,

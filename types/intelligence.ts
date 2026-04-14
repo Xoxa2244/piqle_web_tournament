@@ -527,6 +527,11 @@ export interface ClubIntelligenceSettings {
   }
   agentLive?: boolean
   lifecycleAutoExecutionEnabled?: boolean
+  sandboxRouting?: {
+    mode?: 'preview_only' | 'test_recipients'
+    emailRecipients?: string[]
+    smsRecipients?: string[]
+  }
   autoApproveThreshold?: number
   notificationEmail?: string
   contactPolicy?: {

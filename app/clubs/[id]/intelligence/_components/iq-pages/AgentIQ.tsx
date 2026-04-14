@@ -10,6 +10,7 @@ import {
 import { useTheme } from "../IQThemeProvider"
 import { buildAgentPolicyScenarios } from "@/lib/ai/agent-policy-simulator"
 import { resolveAgentAutonomyPolicy } from "@/lib/ai/agent-autonomy"
+import { buildAdvisorSandboxRoutingSummary } from "@/lib/ai/advisor-sandbox-routing"
 import type {
   MembershipSignal,
   NormalizedMembershipStatus,
@@ -105,6 +106,51 @@ interface MembershipLifecycleAutopilotCard {
   advisorPrompt: string
 }
 
+interface SandboxPreviewRouting {
+  mode: 'preview_only' | 'test_recipients'
+  configuredMode: 'preview_only' | 'test_recipients'
+  emailRecipients: string[]
+  smsRecipients: string[]
+  label: string
+  note: string
+}
+
+interface AdvisorDraftWorkspaceItem {
+  id: string
+  kind: string
+  status: string
+  title: string
+  summary: string | null
+  originalIntent: string | null
+  selectedPlan: 'requested' | 'recommended'
+  sandboxMode: boolean
+  scheduledFor?: string | Date | null
+  timeZone?: string | null
+  conversationId?: string | null
+  metadata?: {
+    sandboxPreview?: {
+      kind?: string
+      channel?: 'email' | 'sms' | 'both'
+      deliveryMode?: 'send_now' | 'send_later'
+      recipientCount?: number
+      skippedCount?: number
+      scheduledLabel?: string
+      note?: string
+      routing?: SandboxPreviewRouting | null
+      recipients?: Array<{
+        memberId: string
+        name: string
+        channel: 'email' | 'sms' | 'both'
+        score?: number
+        email?: string
+        phone?: string
+      }>
+    } | null
+  } | null
+  updatedAt: string | Date
+  createdAt: string | Date
+}
+
 interface AgentIQProps {
   clubId: string
   activity?: {
@@ -117,6 +163,7 @@ interface AgentIQProps {
     }
   } | null
   pending?: PendingAction[] | null
+  advisorDrafts?: AdvisorDraftWorkspaceItem[] | null
   isLoading: boolean
   agentLive: boolean
   intelligenceSettings?: any
@@ -629,6 +676,29 @@ function buildAdvisorPolicyPrompt(scenario: AgentPolicyScenario) {
   return base
 }
 
+function formatSandboxDraftKind(kind: string) {
+  switch (kind) {
+    case 'create_campaign': return 'Campaign'
+    case 'fill_session': return 'Slot Filler'
+    case 'reactivate_members': return 'Reactivation'
+    case 'trial_follow_up': return 'Trial Follow-up'
+    case 'renewal_reactivation': return 'Renewal Outreach'
+    default: return kind.replace(/_/g, ' ')
+  }
+}
+
+function buildAdvisorDraftHref(clubId: string, draft: AdvisorDraftWorkspaceItem) {
+  if (draft.conversationId) {
+    return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(draft.conversationId)}`
+  }
+
+  if (draft.originalIntent) {
+    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(draft.originalIntent)}`
+  }
+
+  return `/clubs/${clubId}/intelligence/advisor`
+}
+
 function normalizeSimulationOutcome(
   outcome?: string | null,
 ): "auto" | "pending" | "blocked" | "other" | null {
@@ -643,6 +713,7 @@ export function AgentIQ({
   clubId,
   activity,
   pending,
+  advisorDrafts,
   isLoading,
   agentLive,
   intelligenceSettings,
@@ -659,6 +730,11 @@ export function AgentIQ({
   const stats = activity?.stats
   const logs = activity?.logs || []
   const pendingActions = pending || []
+  const sandboxDrafts = (advisorDrafts || []).filter((draft) => draft.status === 'sandboxed' || !!draft.metadata?.sandboxPreview)
+  const sandboxRouting = buildAdvisorSandboxRoutingSummary({
+    settings: { sandboxRouting: intelligenceSettings?.sandboxRouting },
+    channel: 'both',
+  })
   const autopilotSummary = buildAutopilotSummary(logs)
   const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
   const proactiveOpportunities = buildProactiveOpportunities(logs, pendingActions)
@@ -1445,6 +1521,263 @@ export function AgentIQ({
                 </div>
               ))}
             </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {(sandboxDrafts.length > 0 || sandboxRouting.configuredMode === 'test_recipients') && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.22 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Send className="w-4 h-4" style={{ color: "#F472B6" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Preview Inbox
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  Sandbox runs stop before live delivery and stage the exact audience, routing, and send window here for review.
+                </p>
+              </div>
+              <div
+                className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                style={{
+                  background: sandboxRouting.configuredMode === 'test_recipients'
+                    ? "rgba(16,185,129,0.12)"
+                    : "rgba(244,114,182,0.12)",
+                  color: sandboxRouting.configuredMode === 'test_recipients' ? "#10B981" : "#F472B6",
+                }}
+              >
+                {sandboxRouting.configuredMode === 'test_recipients' ? 'Test recipients armed' : 'Preview only'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              {[
+                {
+                  label: 'Preview-ready drafts',
+                  value: sandboxDrafts.length,
+                  note: 'Sandbox runs staged in Advisor',
+                  color: '#F472B6',
+                },
+                {
+                  label: 'Email test recipients',
+                  value: sandboxRouting.emailRecipients.length,
+                  note: sandboxRouting.configuredMode === 'test_recipients' ? 'Approved inboxes for safe delivery tests' : 'Preview-only mode keeps email delivery off',
+                  color: '#10B981',
+                },
+                {
+                  label: 'SMS test recipients',
+                  value: sandboxRouting.smsRecipients.length,
+                  note: sandboxRouting.configuredMode === 'test_recipients' ? 'Approved phones for safe SMS tests' : 'Preview-only mode keeps SMS delivery off',
+                  color: '#06B6D4',
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  <div className="text-[11px] font-medium" style={{ color: item.color }}>
+                    {item.label}
+                  </div>
+                  <div className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "var(--heading)" }}>
+                    {item.value}
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--t4)" }}>
+                    {item.note}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="rounded-xl p-3 mb-4"
+              style={{
+                background: sandboxRouting.configuredMode === 'test_recipients'
+                  ? "rgba(16,185,129,0.08)"
+                  : "rgba(244,114,182,0.08)",
+                border: sandboxRouting.configuredMode === 'test_recipients'
+                  ? "1px solid rgba(16,185,129,0.16)"
+                  : "1px solid rgba(244,114,182,0.16)",
+              }}
+            >
+              <div className="text-sm font-medium" style={{ color: "var(--heading)" }}>
+                {sandboxRouting.configuredMode === 'test_recipients'
+                  ? 'Sandbox delivery is armed for approved test recipients only.'
+                  : 'Sandbox stays in preview-only mode until we explicitly whitelist delivery targets.'}
+              </div>
+              <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                {sandboxRouting.configuredMode === 'test_recipients'
+                  ? `Email: ${sandboxRouting.emailRecipients.length || 0} · SMS: ${sandboxRouting.smsRecipients.length || 0}. Live members remain protected.`
+                  : 'No live messages will be sent. The agent only stages who would receive the action and why.'}
+              </div>
+            </div>
+
+            {sandboxDrafts.length === 0 ? (
+              <div className="text-center py-6">
+                <CheckCircle2 className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--t4)", opacity: 0.5 }} />
+                <p className="text-sm" style={{ color: "var(--t4)" }}>
+                  No sandbox previews yet. Run a draft through Advisor and it will land here for review.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sandboxDrafts.slice(0, 6).map((draft) => {
+                  const preview = draft.metadata?.sandboxPreview || null
+                  const routing = preview?.routing || null
+                  const routeEmails = routing?.emailRecipients || []
+                  const routeSms = routing?.smsRecipients || []
+                  const previewRecipients = preview?.recipients || []
+
+                  return (
+                    <div
+                      key={draft.id}
+                      className="rounded-xl p-4"
+                      style={{
+                        background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                        border: "1px solid var(--card-border)",
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                              {draft.title}
+                            </div>
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: "rgba(244,114,182,0.12)", color: "#F472B6" }}
+                            >
+                              {formatSandboxDraftKind(draft.kind)}
+                            </span>
+                            {draft.selectedPlan === 'recommended' && (
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA" }}
+                              >
+                                Agent plan
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                            {draft.summary || draft.originalIntent || 'Sandbox preview ready for review.'}
+                          </div>
+                        </div>
+
+                        <Link
+                          href={buildAdvisorDraftHref(clubId, draft)}
+                          className="inline-flex items-center gap-1 text-xs font-medium shrink-0"
+                          style={{ color: "var(--heading)" }}
+                        >
+                          Open in Advisor
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: "rgba(244,114,182,0.12)", color: "#F472B6" }}
+                        >
+                          {(preview?.recipientCount || 0)} eligible
+                        </span>
+                        {!!preview?.skippedCount && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                            style={{ background: "rgba(245,158,11,0.12)", color: "#F59E0B" }}
+                          >
+                            {preview.skippedCount} skipped
+                          </span>
+                        )}
+                        {preview?.scheduledLabel && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                            style={{ background: "rgba(59,130,246,0.12)", color: "#3B82F6" }}
+                          >
+                            {preview.scheduledLabel}
+                          </span>
+                        )}
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          style={{
+                            background: routing?.mode === 'test_recipients'
+                              ? "rgba(16,185,129,0.12)"
+                              : "rgba(148,163,184,0.12)",
+                            color: routing?.mode === 'test_recipients' ? "#10B981" : "#94A3B8",
+                          }}
+                        >
+                          {routing?.label || 'Preview only'}
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] mt-2" style={{ color: "var(--t4)" }}>
+                        {routing?.note || preview?.note || 'Live members were not contacted.'}
+                      </div>
+
+                      {(routeEmails.length > 0 || routeSms.length > 0) && (
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {routeEmails.length > 0 && (
+                            <div
+                              className="rounded-lg p-2.5"
+                              style={{
+                                background: "rgba(16,185,129,0.08)",
+                                border: "1px solid rgba(16,185,129,0.16)",
+                              }}
+                            >
+                              <div className="text-[11px] font-medium" style={{ color: "#10B981" }}>
+                                Email test route
+                              </div>
+                              <div className="text-[11px] mt-1 break-all" style={{ color: "var(--t3)" }}>
+                                {routeEmails.join(', ')}
+                              </div>
+                            </div>
+                          )}
+                          {routeSms.length > 0 && (
+                            <div
+                              className="rounded-lg p-2.5"
+                              style={{
+                                background: "rgba(6,182,212,0.08)",
+                                border: "1px solid rgba(6,182,212,0.16)",
+                              }}
+                            >
+                              <div className="text-[11px] font-medium" style={{ color: "#06B6D4" }}>
+                                SMS test route
+                              </div>
+                              <div className="text-[11px] mt-1 break-all" style={{ color: "var(--t3)" }}>
+                                {routeSms.join(', ')}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {previewRecipients.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-medium" style={{ color: "var(--heading)" }}>
+                            Would reach
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: "var(--t3)" }}>
+                            {previewRecipients.slice(0, 4).map((recipient) => recipient.name).join(', ')}
+                            {preview?.recipientCount && preview.recipientCount > 4
+                              ? ` +${preview.recipientCount - 4} more`
+                              : ''}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </Card>
         </motion.div>
       )}

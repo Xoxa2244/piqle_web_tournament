@@ -9,6 +9,7 @@ import {
   useApproveAction,
   useSkipAction,
   useSnoozeAction,
+  useAdvisorDrafts,
   useIntelligenceSettings,
 } from '../_hooks/use-intelligence'
 
@@ -18,6 +19,7 @@ export default function AgentPage() {
 
   const { data: activity, isLoading: activityLoading } = useAgentActivity(clubId)
   const { data: pending, isLoading: pendingLoading } = usePendingActions(clubId)
+  const { data: advisorDrafts, isLoading: draftsLoading } = useAdvisorDrafts(clubId, 16)
   const { data: settings } = useIntelligenceSettings(clubId)
   const approveAction = useApproveAction()
   const skipAction = useSkipAction()
@@ -30,7 +32,8 @@ export default function AgentPage() {
         clubId={clubId}
         activity={activity}
         pending={pending}
-        isLoading={activityLoading || pendingLoading}
+        advisorDrafts={advisorDrafts || []}
+        isLoading={activityLoading || pendingLoading || draftsLoading}
         agentLive={!!(settings?.settings as any)?.agentLive}
         intelligenceSettings={settings?.settings || null}
         approveAction={approveAction}

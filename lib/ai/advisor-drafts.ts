@@ -7,6 +7,7 @@ import {
   type AdvisorAction,
   type AdvisorActionCore,
 } from './advisor-actions'
+import { advisorSandboxRoutingSummarySchema } from './advisor-sandbox-routing'
 
 export const advisorDraftStatusSchema = z.enum([
   'review_ready',
@@ -51,6 +52,7 @@ export const advisorDraftSandboxPreviewSchema = z.object({
   skippedCount: z.number().int().min(0).default(0),
   scheduledLabel: z.string().max(120).optional(),
   note: z.string().max(240).optional(),
+  routing: advisorSandboxRoutingSummarySchema.optional(),
   recipients: z.array(advisorDraftPreviewRecipientSchema).max(5).default([]),
 })
 

@@ -41,6 +41,7 @@ import {
 } from '@/lib/ai/advisor-campaign-jobs'
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
+import { buildAdvisorSandboxRoutingSummary } from '@/lib/ai/advisor-sandbox-routing'
 import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
@@ -186,7 +187,8 @@ function buildAdvisorSandboxDraftMetadata(result: Record<string, any>) {
       recipientCount: result.previewRecipientCount || 0,
       skippedCount: result.skipped || 0,
       scheduledLabel: result.scheduledLabel || undefined,
-      note: 'Live delivery is safety-locked. This draft was executed in sandbox preview mode only.',
+      note: result?.sandboxRouting?.note || 'Live delivery is safety-locked. This draft was executed in sandbox preview mode only.',
+      routing: result?.sandboxRouting || undefined,
       recipients: Array.isArray(result.previewRecipients) ? result.previewRecipients : [],
     },
   }
@@ -4294,6 +4296,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         ? getAdvisorDraftFromMetadata(advisorMessage.metadata)
         : null
       const isSandboxExecution = advisorDraft?.sandboxMode ?? true
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const buildSandboxRouting = (channel: 'email' | 'sms' | 'both') =>
+        buildAdvisorSandboxRoutingSummary({
+          settings: clubAutomationContext?.automationSettings,
+          channel,
+        })
 
       const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {
         if (!advisorMessage) return result
@@ -4435,6 +4446,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             deliveryMode: 'send_now' as const,
             previewRecipientCount: eligibleCandidates.length,
             previewRecipients,
+            sandboxRouting: buildSandboxRouting(fillAction.outreach.channel),
           })
         }
 
@@ -4521,6 +4533,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             deliveryMode: 'send_now' as const,
             previewRecipientCount: eligibleCandidates.length,
             previewRecipients,
+            sandboxRouting: buildSandboxRouting(reactivationAction.reactivation.channel),
           })
         }
 
@@ -4545,10 +4558,6 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
 
       if (input.action.kind === 'trial_follow_up' || input.action.kind === 'renewal_reactivation') {
         const lifecycleAction = input.action
-        const clubContext = await ctx.prisma.club.findUnique({
-          where: { id: input.clubId },
-          select: { automationSettings: true },
-        })
         const guardrails = await evaluateAdvisorContactGuardrails({
           prisma: ctx.prisma,
           clubId: input.clubId,
@@ -4556,7 +4565,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           requestedChannel: lifecycleAction.lifecycle.channel,
           candidates: lifecycleAction.lifecycle.candidates.map((candidate) => ({ memberId: candidate.memberId })),
           timeZone: lifecycleAction.lifecycle.execution.timeZone || null,
-          automationSettings: clubContext?.automationSettings,
+          automationSettings: clubAutomationContext?.automationSettings,
           now: lifecycleAction.lifecycle.execution.mode === 'send_later' && lifecycleAction.lifecycle.execution.scheduledFor
             ? new Date(lifecycleAction.lifecycle.execution.scheduledFor)
             : new Date(),
@@ -4619,6 +4628,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             scheduledLabel: scheduledFor ? formatAdvisorScheduledLabel(scheduledFor, timeZone) : undefined,
             previewRecipientCount: memberIds.length,
             previewRecipients,
+            sandboxRouting: buildSandboxRouting(lifecycleAction.lifecycle.channel),
             sent: 0,
             failed: 0,
             skipped: guardrails.summary.excludedCount,
@@ -4840,10 +4850,6 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         members,
         input.action.campaign.execution.recipientRules,
       )
-      const clubContext = await ctx.prisma.club.findUnique({
-        where: { id: input.clubId },
-        select: { automationSettings: true },
-      })
       const guardrails = await evaluateAdvisorContactGuardrails({
         prisma: ctx.prisma,
         clubId: input.clubId,
@@ -4852,7 +4858,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         candidates: eligibleMembers.map((member: any) => ({ memberId: member.id })).filter((candidate: any) => !!candidate.memberId),
         sessionId: null,
         timeZone: input.action.campaign.execution.timeZone || null,
-        automationSettings: clubContext?.automationSettings,
+        automationSettings: clubAutomationContext?.automationSettings,
         now: input.action.campaign.execution.mode === 'send_later' && input.action.campaign.execution.scheduledFor
           ? new Date(input.action.campaign.execution.scheduledFor)
           : new Date(),
@@ -4929,6 +4935,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           scheduledLabel: scheduledFor ? formatAdvisorScheduledLabel(scheduledFor, timeZone) : undefined,
           previewRecipientCount: memberIds.length,
           previewRecipients,
+          sandboxRouting: buildSandboxRouting(input.action.campaign.channel),
           sent: 0,
           failed: 0,
           emailSent: 0,
