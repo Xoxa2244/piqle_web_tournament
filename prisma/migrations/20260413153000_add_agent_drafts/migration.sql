@@ -1,8 +1,8 @@
 CREATE TABLE "agent_drafts" (
     "id" UUID NOT NULL,
     "club_id" UUID NOT NULL,
-    "conversation_id" UUID,
-    "source_message_id" UUID,
+    "conversation_id" TEXT,
+    "source_message_id" TEXT,
     "created_by_user_id" UUID NOT NULL,
     "kind" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'review_ready',
