@@ -87,6 +87,7 @@ model User {
   aiConversations          AIConversation[]           @relation("UserAIConversations")
   agentDrafts              AgentDraft[]              @relation("UserAgentDrafts")
   opsSessionDraftsCreated  OpsSessionDraft[]         @relation("UserOpsSessionDrafts")
+  adminTodoDecisions       AgentAdminTodoDecision[]  @relation("UserAgentAdminTodoDecisions")
 
   // Session Interest
   sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
@@ -260,6 +261,7 @@ model Club {
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
   agentDrafts             AgentDraft[]               @relation("ClubAgentDrafts")
   opsSessionDrafts        OpsSessionDraft[]          @relation("ClubOpsSessionDrafts")
+  adminTodoDecisions      AgentAdminTodoDecision[]   @relation("ClubAgentAdminTodoDecisions")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   // Billing
@@ -1821,6 +1823,28 @@ model OpsSessionDraft {
   @@index([clubId, status, updatedAt(sort: Desc)])
   @@index([agentDraftId, updatedAt(sort: Desc)])
   @@map("ops_session_drafts")
+}
+
+model AgentAdminTodoDecision {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  dateKey   String   @map("date_key")
+  itemId    String   @map("item_id")
+  decision  String
+  title     String
+  bucket    String
+  href      String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  club Club @relation("ClubAgentAdminTodoDecisions", fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation("UserAgentAdminTodoDecisions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId, dateKey, itemId])
+  @@index([clubId, userId, dateKey, updatedAt(sort: Desc)])
+  @@map("agent_admin_todo_decisions")
 }
 
 // ── Member Health Snapshots (for ML training data) ──

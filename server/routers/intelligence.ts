@@ -2044,6 +2044,137 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  listAdminTodoDecisions: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      dateKey: z.string().min(1).max(32),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        return await ctx.prisma.agentAdminTodoDecision.findMany({
+          where: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            dateKey: input.dateKey,
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: {
+            itemId: true,
+            decision: true,
+            title: true,
+            bucket: true,
+            href: true,
+            metadata: true,
+            updatedAt: true,
+            createdAt: true,
+          },
+        })
+      } catch (err) {
+        log.warn('[Intelligence] listAdminTodoDecisions failed:', err)
+        return []
+      }
+    }),
+
+  setAdminTodoDecision: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      dateKey: z.string().min(1).max(32),
+      itemId: z.string().min(1),
+      decision: z.enum(['accepted', 'declined', 'not_now']),
+      title: z.string().min(1),
+      bucket: z.string().min(1),
+      href: z.string().min(1),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        const record = await ctx.prisma.agentAdminTodoDecision.upsert({
+          where: {
+            clubId_userId_dateKey_itemId: {
+              clubId: input.clubId,
+              userId: ctx.session.user.id,
+              dateKey: input.dateKey,
+              itemId: input.itemId,
+            },
+          },
+          update: {
+            decision: input.decision,
+            title: input.title,
+            bucket: input.bucket,
+            href: input.href,
+            metadata: (input.metadata || {}) as any,
+          },
+          create: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            dateKey: input.dateKey,
+            itemId: input.itemId,
+            decision: input.decision,
+            title: input.title,
+            bucket: input.bucket,
+            href: input.href,
+            metadata: (input.metadata || {}) as any,
+          },
+          select: {
+            itemId: true,
+            decision: true,
+            updatedAt: true,
+          },
+        })
+
+        return {
+          ok: true,
+          persisted: true,
+          ...record,
+        }
+      } catch (err) {
+        log.warn('[Intelligence] setAdminTodoDecision failed:', err)
+        return {
+          ok: false,
+          persisted: false,
+          itemId: input.itemId,
+          decision: input.decision,
+          updatedAt: new Date(),
+        }
+      }
+    }),
+
+  clearAdminTodoDecisions: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      dateKey: z.string().min(1).max(32),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        const result = await ctx.prisma.agentAdminTodoDecision.deleteMany({
+          where: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            dateKey: input.dateKey,
+          },
+        })
+
+        return {
+          ok: true,
+          persisted: true,
+          count: result.count,
+        }
+      } catch (err) {
+        log.warn('[Intelligence] clearAdminTodoDecisions failed:', err)
+        return {
+          ok: false,
+          persisted: false,
+          count: 0,
+        }
+      }
+    }),
+
   getConversation: protectedProcedure
     .input(z.object({
       conversationId: z.string().uuid(),

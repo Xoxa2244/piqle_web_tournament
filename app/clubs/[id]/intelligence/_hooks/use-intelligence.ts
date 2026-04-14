@@ -568,6 +568,25 @@ export function useOpsSessionDrafts(clubId: string, limit = 24) {
   return query
 }
 
+export function useAdminTodoDecisions(clubId: string, dateKey: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listAdminTodoDecisions.useQuery(
+    { clubId, dateKey },
+    { enabled: !!clubId && !!dateKey && !isDemo, staleTime: 30 * 1000, refetchInterval: 15000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: [] }),
+    } as any
+  }
+
+  return query
+}
+
 // ── New Members ──
 export function useNewMembers(clubId: string, days: number = 14) {
   return trpc.intelligence.getNewMembers.useQuery(
@@ -622,6 +641,32 @@ export function usePromoteOpsSessionDraft() {
         utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
         utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
       ])
+    },
+  })
+}
+
+export function useSetAdminTodoDecision() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.setAdminTodoDecision.useMutation({
+    onSuccess: async (_result, variables) => {
+      await utils.intelligence.listAdminTodoDecisions.invalidate({
+        clubId: variables.clubId,
+        dateKey: variables.dateKey,
+      }).catch(() => undefined)
+    },
+  })
+}
+
+export function useClearAdminTodoDecisions() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.clearAdminTodoDecisions.useMutation({
+    onSuccess: async (_result, variables) => {
+      await utils.intelligence.listAdminTodoDecisions.invalidate({
+        clubId: variables.clubId,
+        dateKey: variables.dateKey,
+      }).catch(() => undefined)
     },
   })
 }

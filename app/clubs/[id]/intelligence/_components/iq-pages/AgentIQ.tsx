@@ -1,6 +1,6 @@
 'use client'
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion, useInView, AnimatePresence } from "motion/react"
 import {
@@ -18,6 +18,11 @@ import type {
   NormalizedMembershipType,
 } from "@/types/intelligence"
 import type { AgentPolicyScenario } from "@/lib/ai/agent-policy-simulator"
+import {
+  useAdminTodoDecisions,
+  useClearAdminTodoDecisions,
+  useSetAdminTodoDecision,
+} from "../../_hooks/use-intelligence"
 
 // ── Types ──
 interface AgentLog {
@@ -296,6 +301,17 @@ interface DailyAdminTodoSection {
 }
 
 type DailyAdminTodoDecision = 'accepted' | 'declined' | 'not_now'
+
+interface AdminTodoDecisionRecord {
+  itemId: string
+  decision: string
+  title: string
+  bucket: string
+  href: string
+  metadata?: Record<string, unknown> | null
+  updatedAt: string | Date
+  createdAt: string | Date
+}
 
 interface OpsSessionDraftStage {
   key: OpsSessionDraftStageKey
@@ -1539,8 +1555,15 @@ export function AgentIQ({
   const lastDeepLinkRef = useRef<string | null>(null)
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
-  const [dailyTodoDecisions, setDailyTodoDecisions] = useState<Record<string, DailyAdminTodoDecision>>({})
+  const [optimisticDailyTodoDecisions, setOptimisticDailyTodoDecisions] = useState<Record<string, DailyAdminTodoDecision>>({})
   const [dailyTodoDateKey] = useState(() => new Date().toLocaleDateString('en-CA'))
+  const { data: dailyTodoDecisionRecordsData } = useAdminTodoDecisions(clubId, dailyTodoDateKey)
+  const setAdminTodoDecision = useSetAdminTodoDecision()
+  const clearAdminTodoDecisions = useClearAdminTodoDecisions()
+  const dailyTodoDecisionRecords = useMemo(
+    () => (dailyTodoDecisionRecordsData || []) as AdminTodoDecisionRecord[],
+    [dailyTodoDecisionRecordsData],
+  )
 
   const stats = activity?.stats
   const logs = activity?.logs || []
@@ -1603,7 +1626,24 @@ export function AgentIQ({
     sandboxDrafts,
     policyScenarios,
   })
-  const dailyTodoStorageKey = `iqsport:agent-daily-todo:${clubId}:${dailyTodoDateKey}`
+  const persistedDailyTodoDecisions = useMemo(
+    () =>
+      (dailyTodoDecisionRecords || []).reduce<Record<string, DailyAdminTodoDecision>>((acc, record) => {
+        const decision = record.decision
+        if (decision === 'accepted' || decision === 'declined' || decision === 'not_now') {
+          acc[record.itemId] = decision
+        }
+        return acc
+      }, {}),
+    [dailyTodoDecisionRecords],
+  )
+  const dailyTodoDecisions = useMemo(
+    () => ({
+      ...persistedDailyTodoDecisions,
+      ...optimisticDailyTodoDecisions,
+    }),
+    [optimisticDailyTodoDecisions, persistedDailyTodoDecisions],
+  )
   const handledDailyTodoItems = dailyAdminTodoSections
     .flatMap((section) => section.items)
     .filter((item) => !!dailyTodoDecisions[item.id])
@@ -1649,27 +1689,20 @@ export function AgentIQ({
   }, [deepLinkFocus, deepLinkKey, isLoading])
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(dailyTodoStorageKey)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as Record<string, DailyAdminTodoDecision>
-      setDailyTodoDecisions(parsed)
-    } catch {
-      setDailyTodoDecisions({})
-    }
-  }, [dailyTodoStorageKey])
+    setOptimisticDailyTodoDecisions((current) => {
+      let changed = false
+      const next = { ...current }
 
-  useEffect(() => {
-    try {
-      if (Object.keys(dailyTodoDecisions).length === 0) {
-        window.localStorage.removeItem(dailyTodoStorageKey)
-        return
+      for (const [itemId, decision] of Object.entries(current)) {
+        if (persistedDailyTodoDecisions[itemId] === decision) {
+          delete next[itemId]
+          changed = true
+        }
       }
-      window.localStorage.setItem(dailyTodoStorageKey, JSON.stringify(dailyTodoDecisions))
-    } catch {
-      // Ignore local persistence failures; the board still works in-memory.
-    }
-  }, [dailyTodoDecisions, dailyTodoStorageKey])
+
+      return changed ? next : current
+    })
+  }, [persistedDailyTodoDecisions])
 
   const actionHref = (action: AutopilotSuggestionAction, prompt?: string) => {
     switch (action) {
@@ -1724,11 +1757,30 @@ export function AgentIQ({
     )
   }
 
-  const handleDailyTodoDecision = (item: DailyAdminTodoItem, decision: DailyAdminTodoDecision) => {
-    setDailyTodoDecisions((current) => ({
+  const handleDailyTodoDecision = (
+    item: DailyAdminTodoItem,
+    decision: DailyAdminTodoDecision,
+    bucket: DailyAdminTodoBucket,
+  ) => {
+    setOptimisticDailyTodoDecisions((current) => ({
       ...current,
       [item.id]: decision,
     }))
+
+    setAdminTodoDecision.mutate({
+      clubId,
+      dateKey: dailyTodoDateKey,
+      itemId: item.id,
+      decision,
+      title: item.title,
+      bucket,
+      href: item.href,
+      metadata: {
+        description: item.description,
+        ctaLabel: item.ctaLabel,
+        tone: item.tone,
+      },
+    })
 
     if (decision === 'accepted') {
       router.push(item.href)
@@ -1736,7 +1788,11 @@ export function AgentIQ({
   }
 
   const resetDailyTodoDecisions = () => {
-    setDailyTodoDecisions({})
+    setOptimisticDailyTodoDecisions({})
+    clearAdminTodoDecisions.mutate({
+      clubId,
+      dateKey: dailyTodoDateKey,
+    })
   }
 
   // Loading skeleton
@@ -1989,7 +2045,7 @@ export function AgentIQ({
 
                               <div className="flex flex-wrap gap-2 mt-3">
                                 <button
-                                  onClick={() => handleDailyTodoDecision(item, 'accepted')}
+                                  onClick={() => handleDailyTodoDecision(item, 'accepted', section.key)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
                                   style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.22)", color: "#10B981" }}
                                 >
@@ -1997,14 +2053,14 @@ export function AgentIQ({
                                   <ArrowUpRight className="w-3 h-3" />
                                 </button>
                                 <button
-                                  onClick={() => handleDailyTodoDecision(item, 'not_now')}
+                                  onClick={() => handleDailyTodoDecision(item, 'not_now', section.key)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
                                   style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#F59E0B" }}
                                 >
                                   Not now
                                 </button>
                                 <button
-                                  onClick={() => handleDailyTodoDecision(item, 'declined')}
+                                  onClick={() => handleDailyTodoDecision(item, 'declined', section.key)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
                                   style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.22)", color: "#EF4444" }}
                                 >
