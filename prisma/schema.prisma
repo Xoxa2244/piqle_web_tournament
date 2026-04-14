@@ -86,6 +86,7 @@ model User {
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
   agentDrafts              AgentDraft[]              @relation("UserAgentDrafts")
+  opsSessionDraftsCreated  OpsSessionDraft[]         @relation("UserOpsSessionDrafts")
 
   // Session Interest
   sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
@@ -258,6 +259,7 @@ model Club {
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
   agentDrafts             AgentDraft[]               @relation("ClubAgentDrafts")
+  opsSessionDrafts        OpsSessionDraft[]          @relation("ClubOpsSessionDrafts")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   // Billing
@@ -1769,11 +1771,56 @@ model AgentDraft {
   conversation    AIConversation? @relation("ConversationAgentDrafts", fields: [conversationId], references: [id], onDelete: SetNull)
   sourceMessage   AIMessage?     @relation("AgentDraftSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
   createdByUser   User           @relation("UserAgentDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  opsSessionDrafts OpsSessionDraft[] @relation("AgentDraftOpsSessionDrafts")
 
   @@index([clubId, status, updatedAt(sort: Desc)])
   @@index([conversationId, updatedAt(sort: Desc)])
   @@index([createdByUserId, updatedAt(sort: Desc)])
   @@map("agent_drafts")
+}
+
+enum OpsSessionDraftStatus {
+  READY_FOR_OPS
+  SESSION_DRAFT
+  REJECTED
+  ARCHIVED
+}
+
+model OpsSessionDraft {
+  id                       String                @id @default(uuid())
+  clubId                   String                @map("club_id")
+  agentDraftId             String                @map("agent_draft_id")
+  createdByUserId          String                @map("created_by_user_id")
+  sourceProposalId         String                @map("source_proposal_id")
+  origin                   String
+  status                   OpsSessionDraftStatus @default(READY_FOR_OPS)
+  title                    String
+  description              String?
+  dayOfWeek                String                @map("day_of_week")
+  timeSlot                 String                @map("time_slot")
+  startTime                String                @map("start_time")
+  endTime                  String                @map("end_time")
+  format                   PlaySessionFormat
+  skillLevel               PlaySessionSkillLevel @default(ALL_LEVELS) @map("skill_level")
+  maxPlayers               Int                   @default(8) @map("max_players")
+  projectedOccupancy       Int                   @map("projected_occupancy")
+  estimatedInterestedMembers Int                 @map("estimated_interested_members")
+  confidence               Int
+  note                     String
+  metadata                 Json                  @default("{}")
+  sessionDraftedAt         DateTime?             @map("session_drafted_at")
+  archivedAt               DateTime?             @map("archived_at")
+  createdAt                DateTime              @default(now()) @map("created_at")
+  updatedAt                DateTime              @updatedAt @map("updated_at")
+
+  club                     Club                  @relation("ClubOpsSessionDrafts", fields: [clubId], references: [id], onDelete: Cascade)
+  agentDraft               AgentDraft            @relation("AgentDraftOpsSessionDrafts", fields: [agentDraftId], references: [id], onDelete: Cascade)
+  createdByUser            User                  @relation("UserOpsSessionDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([agentDraftId, sourceProposalId])
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([agentDraftId, updatedAt(sort: Desc)])
+  @@map("ops_session_drafts")
 }
 
 // ── Member Health Snapshots (for ML training data) ──

@@ -82,7 +82,7 @@ export const advisorDraftProgrammingOpsSessionDraftSchema = z.object({
   id: z.string().min(1).max(120),
   sourceProposalId: z.string().min(1).max(80),
   origin: z.enum(['primary', 'alternative']),
-  state: z.literal('ready_for_ops').default('ready_for_ops'),
+  state: z.enum(['ready_for_ops', 'session_draft', 'rejected', 'archived']).default('ready_for_ops'),
   title: z.string().min(1).max(160),
   dayOfWeek: z.string().min(1).max(20),
   timeSlot: z.enum(['morning', 'afternoon', 'evening']),

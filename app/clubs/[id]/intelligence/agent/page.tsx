@@ -10,6 +10,8 @@ import {
   useSkipAction,
   useSnoozeAction,
   useAdvisorDrafts,
+  useOpsSessionDrafts,
+  usePromoteOpsSessionDraft,
   useIntelligenceSettings,
 } from '../_hooks/use-intelligence'
 
@@ -20,10 +22,12 @@ export default function AgentPage() {
   const { data: activity, isLoading: activityLoading } = useAgentActivity(clubId)
   const { data: pending, isLoading: pendingLoading } = usePendingActions(clubId)
   const { data: advisorDrafts, isLoading: draftsLoading } = useAdvisorDrafts(clubId, 16)
+  const { data: opsSessionDrafts, isLoading: opsDraftsLoading } = useOpsSessionDrafts(clubId, 24)
   const { data: settings } = useIntelligenceSettings(clubId)
   const approveAction = useApproveAction()
   const skipAction = useSkipAction()
   const snoozeAction = useSnoozeAction()
+  const promoteOpsSessionDraft = usePromoteOpsSessionDraft()
 
   const brand = useBrand()
   if (brand.key === 'iqsport') {
@@ -33,12 +37,14 @@ export default function AgentPage() {
         activity={activity}
         pending={pending}
         advisorDrafts={advisorDrafts || []}
-        isLoading={activityLoading || pendingLoading || draftsLoading}
+        opsSessionDrafts={opsSessionDrafts || []}
+        isLoading={activityLoading || pendingLoading || draftsLoading || opsDraftsLoading}
         agentLive={!!(settings?.settings as any)?.agentLive}
         intelligenceSettings={settings?.settings || null}
         approveAction={approveAction}
         skipAction={skipAction}
         snoozeAction={snoozeAction}
+        promoteOpsSessionDraft={promoteOpsSessionDraft}
       />
     )
   }

@@ -549,6 +549,25 @@ export function useAdvisorDrafts(clubId: string, limit = 24) {
   return query
 }
 
+export function useOpsSessionDrafts(clubId: string, limit = 24) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listOpsSessionDrafts.useQuery(
+    { clubId, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 15000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: [] }),
+    } as any
+  }
+
+  return query
+}
+
 // ── New Members ──
 export function useNewMembers(clubId: string, days: number = 14) {
   return trpc.intelligence.getNewMembers.useQuery(
@@ -591,4 +610,18 @@ export function useExecuteAdvisorAction() {
 
 export function useUpdateAdvisorActionState() {
   return trpc.intelligence.updateAdvisorActionState.useMutation()
+}
+
+export function usePromoteOpsSessionDraft() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.promoteOpsSessionDraft.useMutation({
+    onSuccess: async (_result, _variables) => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+      ])
+    },
+  })
 }

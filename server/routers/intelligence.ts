@@ -193,6 +193,145 @@ function buildAdvisorSandboxDraftMetadata(result: Record<string, any>) {
   }
 }
 
+function mapOpsSessionDraftStatusForMetadata(status: string) {
+  switch (status) {
+    case 'SESSION_DRAFT':
+      return 'session_draft' as const
+    case 'REJECTED':
+      return 'rejected' as const
+    case 'ARCHIVED':
+      return 'archived' as const
+    default:
+      return 'ready_for_ops' as const
+  }
+}
+
+function serializeOpsSessionDraftRecordForMetadata(record: any) {
+  return {
+    id: record.id,
+    sourceProposalId: record.sourceProposalId,
+    origin: record.origin === 'alternative' ? 'alternative' : 'primary',
+    state: mapOpsSessionDraftStatusForMetadata(String(record.status || 'READY_FOR_OPS')),
+    title: record.title,
+    dayOfWeek: record.dayOfWeek,
+    timeSlot: record.timeSlot,
+    startTime: record.startTime,
+    endTime: record.endTime,
+    format: record.format,
+    skillLevel: record.skillLevel,
+    maxPlayers: record.maxPlayers,
+    projectedOccupancy: record.projectedOccupancy,
+    estimatedInterestedMembers: record.estimatedInterestedMembers,
+    confidence: record.confidence,
+    note: record.note,
+  }
+}
+
+async function syncAgentDraftOpsSessionDraftMetadata(prisma: any, agentDraftId: string) {
+  try {
+    const drafts = await prisma.opsSessionDraft.findMany({
+      where: { agentDraftId },
+      orderBy: [
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+    })
+
+    const metadataDrafts = drafts.map(serializeOpsSessionDraftRecordForMetadata)
+    const agentDraft = await prisma.agentDraft.findUnique({
+      where: { id: agentDraftId },
+      select: { metadata: true },
+    })
+
+    if (!agentDraft) return metadataDrafts
+
+    await prisma.agentDraft.update({
+      where: { id: agentDraftId },
+      data: {
+        metadata: {
+          ...((agentDraft.metadata as Record<string, any> | null) || {}),
+          opsSessionDrafts: metadataDrafts,
+        },
+      } as any,
+    })
+
+    return metadataDrafts
+  } catch (error) {
+    console.warn('[Ops Session Draft] metadata sync skipped:', error instanceof Error ? error.message : error)
+    return []
+  }
+}
+
+async function upsertProgrammingOpsSessionDraftRecords(opts: {
+  prisma: any
+  clubId: string
+  createdByUserId: string
+  agentDraftId: string
+  action: Extract<z.infer<typeof advisorActionSchema>, { kind: 'program_schedule' }>
+}) {
+  const drafts = buildAdvisorProgrammingOpsSessionDrafts(opts.action)
+
+  try {
+    const records = await Promise.all(
+      drafts.map((draft) =>
+        opts.prisma.opsSessionDraft.upsert({
+          where: {
+            agentDraftId_sourceProposalId: {
+              agentDraftId: opts.agentDraftId,
+              sourceProposalId: draft.sourceProposalId,
+            },
+          },
+          create: {
+            clubId: opts.clubId,
+            agentDraftId: opts.agentDraftId,
+            createdByUserId: opts.createdByUserId,
+            sourceProposalId: draft.sourceProposalId,
+            origin: draft.origin,
+            status: 'READY_FOR_OPS',
+            title: draft.title,
+            dayOfWeek: draft.dayOfWeek,
+            timeSlot: draft.timeSlot,
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            format: draft.format,
+            skillLevel: draft.skillLevel,
+            maxPlayers: draft.maxPlayers,
+            projectedOccupancy: draft.projectedOccupancy,
+            estimatedInterestedMembers: draft.estimatedInterestedMembers,
+            confidence: draft.confidence,
+            note: draft.note,
+            metadata: {},
+          },
+          update: {
+            origin: draft.origin,
+            status: 'READY_FOR_OPS',
+            title: draft.title,
+            dayOfWeek: draft.dayOfWeek,
+            timeSlot: draft.timeSlot,
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            format: draft.format,
+            skillLevel: draft.skillLevel,
+            maxPlayers: draft.maxPlayers,
+            projectedOccupancy: draft.projectedOccupancy,
+            estimatedInterestedMembers: draft.estimatedInterestedMembers,
+            confidence: draft.confidence,
+            note: draft.note,
+            archivedAt: null,
+          },
+        }),
+      ),
+    )
+
+    const serialized = records.map(serializeOpsSessionDraftRecordForMetadata)
+    await syncAgentDraftOpsSessionDraftMetadata(opts.prisma, opts.agentDraftId)
+    return serialized
+  } catch (error) {
+    console.warn('[Ops Session Draft] persistence skipped:', error instanceof Error ? error.message : error)
+    return drafts
+  }
+}
+
 // ── Cohort filter helpers ──
 export interface CohortFilter {
   field: string
@@ -1839,6 +1978,68 @@ export const intelligenceRouter = createTRPCRouter({
         })
       } catch (err) {
         log.warn('[Intelligence] listAdvisorDrafts failed:', err)
+        return []
+      }
+    }),
+
+  listOpsSessionDrafts: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(50).default(24),
+    }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const drafts = await ctx.prisma.opsSessionDraft.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { updatedAt: 'desc' },
+          take: input.limit,
+          select: {
+            id: true,
+            sourceProposalId: true,
+            origin: true,
+            status: true,
+            title: true,
+            description: true,
+            dayOfWeek: true,
+            timeSlot: true,
+            startTime: true,
+            endTime: true,
+            format: true,
+            skillLevel: true,
+            maxPlayers: true,
+            projectedOccupancy: true,
+            estimatedInterestedMembers: true,
+            confidence: true,
+            note: true,
+            metadata: true,
+            sessionDraftedAt: true,
+            createdAt: true,
+            updatedAt: true,
+            agentDraft: {
+              select: {
+                id: true,
+                title: true,
+                conversationId: true,
+                originalIntent: true,
+                selectedPlan: true,
+                conversation: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+
+        return drafts.map((draft) => ({
+          ...draft,
+          origin: draft.origin === 'alternative' ? 'alternative' : 'primary',
+          status: mapOpsSessionDraftStatusForMetadata(draft.status),
+        }))
+      } catch (err) {
+        log.warn('[Intelligence] listOpsSessionDrafts failed:', err)
         return []
       }
     }),
@@ -4744,7 +4945,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       if (input.action.kind === 'program_schedule') {
-        const opsSessionDrafts = buildAdvisorProgrammingOpsSessionDrafts(input.action)
+        const opsSessionDrafts = advisorDraft?.id
+          ? await upsertProgrammingOpsSessionDraftRecords({
+              prisma: ctx.prisma,
+              clubId: input.clubId,
+              createdByUserId: ctx.session.user.id,
+              agentDraftId: advisorDraft.id,
+              action: input.action,
+            })
+          : buildAdvisorProgrammingOpsSessionDrafts(input.action)
 
         return persistAdvisorOutcome({
           ok: true,
@@ -5198,6 +5407,116 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         status: input.disposition,
         snoozedUntil,
         actionKind: action.kind,
+      }
+    }),
+
+  promoteOpsSessionDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        const draft = await ctx.prisma.opsSessionDraft.findFirst({
+          where: {
+            id: input.opsSessionDraftId,
+            clubId: input.clubId,
+          },
+          select: {
+            id: true,
+            title: true,
+            dayOfWeek: true,
+            timeSlot: true,
+            startTime: true,
+            endTime: true,
+            format: true,
+            skillLevel: true,
+            maxPlayers: true,
+            projectedOccupancy: true,
+            estimatedInterestedMembers: true,
+            confidence: true,
+            note: true,
+            sourceProposalId: true,
+            origin: true,
+            status: true,
+            metadata: true,
+            agentDraftId: true,
+          },
+        })
+
+        if (!draft) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Ops session draft not found.',
+          })
+        }
+
+        if (draft.status === 'SESSION_DRAFT') {
+          return {
+            ok: true,
+            id: draft.id,
+            status: 'session_draft' as const,
+            title: draft.title,
+          }
+        }
+
+        const now = new Date()
+        const sessionDraftMetadata = {
+          ...((draft.metadata as Record<string, any> | null) || {}),
+          sessionDraft: {
+            stage: 'internal_session_draft',
+            createdAt: now.toISOString(),
+            publishMode: 'manual_only',
+            title: draft.title,
+            recommendedWindow: `${draft.dayOfWeek} ${draft.startTime}-${draft.endTime}`,
+            nextStep: 'Assign a real date, court, and owner before any live publish.',
+          },
+        }
+
+        const updated = await ctx.prisma.opsSessionDraft.update({
+          where: { id: draft.id },
+          data: {
+            status: 'SESSION_DRAFT',
+            sessionDraftedAt: now,
+            metadata: sessionDraftMetadata as any,
+          },
+          select: {
+            id: true,
+            title: true,
+            dayOfWeek: true,
+            startTime: true,
+            endTime: true,
+            format: true,
+            skillLevel: true,
+            projectedOccupancy: true,
+            estimatedInterestedMembers: true,
+            confidence: true,
+            note: true,
+            sourceProposalId: true,
+            origin: true,
+            status: true,
+            sessionDraftedAt: true,
+          },
+        })
+
+        await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+        return {
+          ok: true,
+          id: updated.id,
+          status: 'session_draft' as const,
+          title: updated.title,
+          sessionDraftedAt: updated.sessionDraftedAt?.toISOString() || now.toISOString(),
+        }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        log.warn('[Intelligence] promoteOpsSessionDraft failed:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Unable to promote ops session draft right now.',
+        })
       }
     }),
 

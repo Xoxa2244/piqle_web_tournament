@@ -181,7 +181,7 @@ interface AdvisorDraftWorkspaceItem {
       id: string
       sourceProposalId: string
       origin: 'primary' | 'alternative'
-      state: 'ready_for_ops'
+      state: 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
       title: string
       dayOfWeek: string
       timeSlot: 'morning' | 'afternoon' | 'evening'
@@ -202,6 +202,50 @@ interface AdvisorDraftWorkspaceItem {
 
 type ProgrammingPreview = NonNullable<NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']>
 type ProgrammingPreviewProposal = ProgrammingPreview['primary']
+
+interface OpsSessionDraftItem {
+  id: string
+  sourceProposalId: string
+  origin: 'primary' | 'alternative'
+  status: 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
+  title: string
+  description?: string | null
+  dayOfWeek: string
+  timeSlot: 'morning' | 'afternoon' | 'evening'
+  startTime: string
+  endTime: string
+  format: string
+  skillLevel: string
+  maxPlayers: number
+  projectedOccupancy: number
+  estimatedInterestedMembers: number
+  confidence: number
+  note: string
+  metadata?: {
+    sessionDraft?: {
+      stage?: string
+      createdAt?: string
+      publishMode?: string
+      nextStep?: string
+      title?: string
+      recommendedWindow?: string
+    } | null
+  } | null
+  sessionDraftedAt?: string | Date | null
+  createdAt: string | Date
+  updatedAt: string | Date
+  agentDraft?: {
+    id: string
+    title: string
+    conversationId?: string | null
+    originalIntent?: string | null
+    selectedPlan?: 'requested' | 'recommended'
+    conversation?: {
+      id: string
+      title: string | null
+    } | null
+  } | null
+}
 
 interface ProgrammingDraftCard {
   id: string
@@ -228,6 +272,16 @@ interface ProgrammingOpsStage {
   cards: ProgrammingDraftCard[]
 }
 
+type OpsSessionDraftStageKey = 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
+
+interface OpsSessionDraftStage {
+  key: OpsSessionDraftStageKey
+  label: string
+  description: string
+  color: string
+  drafts: OpsSessionDraftItem[]
+}
+
 interface AgentIQProps {
   clubId: string
   activity?: {
@@ -241,12 +295,14 @@ interface AgentIQProps {
   } | null
   pending?: PendingAction[] | null
   advisorDrafts?: AdvisorDraftWorkspaceItem[] | null
+  opsSessionDrafts?: OpsSessionDraftItem[] | null
   isLoading: boolean
   agentLive: boolean
   intelligenceSettings?: any
   approveAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   skipAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   snoozeAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  promoteOpsSessionDraft: { mutate: (input: any, opts?: any) => void; isPending: boolean }
 }
 
 // ── Card ──
@@ -919,6 +975,80 @@ function buildProgrammingOpsBoard(drafts: AdvisorDraftWorkspaceItem[]) {
   return stages
 }
 
+function sortOpsSessionDrafts(drafts: OpsSessionDraftItem[]) {
+  const dayOrder = new Map([
+    ['Monday', 1],
+    ['Tuesday', 2],
+    ['Wednesday', 3],
+    ['Thursday', 4],
+    ['Friday', 5],
+    ['Saturday', 6],
+    ['Sunday', 7],
+  ])
+  const timeSlotOrder = new Map([
+    ['morning', 1],
+    ['afternoon', 2],
+    ['evening', 3],
+  ])
+
+  return [...drafts].sort((left, right) => {
+    const leftDay = dayOrder.get(left.dayOfWeek) || 99
+    const rightDay = dayOrder.get(right.dayOfWeek) || 99
+    if (leftDay !== rightDay) return leftDay - rightDay
+
+    const leftSlot = timeSlotOrder.get(left.timeSlot) || 99
+    const rightSlot = timeSlotOrder.get(right.timeSlot) || 99
+    if (leftSlot !== rightSlot) return leftSlot - rightSlot
+
+    if (right.confidence !== left.confidence) return right.confidence - left.confidence
+    return right.projectedOccupancy - left.projectedOccupancy
+  })
+}
+
+function buildOpsSessionDraftQueue(drafts: OpsSessionDraftItem[]) {
+  const stages: OpsSessionDraftStage[] = [
+    {
+      key: 'ready_for_ops',
+      label: 'Ready For Ops',
+      description: 'Operational ideas the agent has already translated into internal session drafts for review.',
+      color: '#10B981',
+      drafts: [],
+    },
+    {
+      key: 'session_draft',
+      label: 'Session Drafts',
+      description: 'Internal session drafts already promoted for manual scheduling work, still not live.',
+      color: '#06B6D4',
+      drafts: [],
+    },
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      description: 'Ideas the team decided not to operationalize right now.',
+      color: '#EF4444',
+      drafts: [],
+    },
+    {
+      key: 'archived',
+      label: 'Archived',
+      description: 'Older session-draft ideas kept only for traceability.',
+      color: '#94A3B8',
+      drafts: [],
+    },
+  ]
+
+  const stageMap = new Map<OpsSessionDraftStageKey, OpsSessionDraftStage>(stages.map((stage) => [stage.key, stage]))
+  for (const draft of drafts) {
+    stageMap.get(draft.status)?.drafts.push(draft)
+  }
+
+  for (const stage of stages) {
+    stage.drafts = sortOpsSessionDrafts(stage.drafts)
+  }
+
+  return stages
+}
+
 function buildAdvisorDraftHref(
   clubId: string,
   draft: Pick<AdvisorDraftWorkspaceItem, 'conversationId' | 'originalIntent'>,
@@ -932,6 +1062,13 @@ function buildAdvisorDraftHref(
   }
 
   return `/clubs/${clubId}/intelligence/advisor`
+}
+
+function buildOpsSessionDraftHref(clubId: string, draft: OpsSessionDraftItem) {
+  return buildAdvisorDraftHref(clubId, {
+    conversationId: draft.agentDraft?.conversationId || null,
+    originalIntent: draft.agentDraft?.originalIntent || null,
+  })
 }
 
 function buildAdvisorDraftRefineHref(
@@ -1068,12 +1205,14 @@ export function AgentIQ({
   activity,
   pending,
   advisorDrafts,
+  opsSessionDrafts,
   isLoading,
   agentLive,
   intelligenceSettings,
   approveAction,
   skipAction,
   snoozeAction,
+  promoteOpsSessionDraft,
 }: AgentIQProps) {
   const { isDark } = useTheme()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -1095,6 +1234,7 @@ export function AgentIQ({
   const membershipLifecycleCards = buildMembershipLifecycleAutopilotCards(logs, pendingActions, intelligenceSettings)
   const programmingCockpit = buildProgrammingCockpit(advisorDrafts || [])
   const programmingOpsBoard = buildProgrammingOpsBoard(advisorDrafts || [])
+  const opsSessionDraftQueue = buildOpsSessionDraftQueue(opsSessionDrafts || [])
   const policyScenarios = buildAgentPolicyScenarios({
     items: [
       ...logs.map((item) => ({
@@ -1167,6 +1307,14 @@ export function AgentIQ({
     setProcessingId(actionId)
     snoozeAction.mutate(
       { clubId, actionId },
+      { onSettled: () => setProcessingId(null) }
+    )
+  }
+
+  const handlePromoteOpsSessionDraft = (opsSessionDraftId: string) => {
+    setProcessingId(`ops:${opsSessionDraftId}`)
+    promoteOpsSessionDraft.mutate(
+      { clubId, opsSessionDraftId },
       { onSettled: () => setProcessingId(null) }
     )
   }
@@ -2137,6 +2285,169 @@ export function AgentIQ({
                                 Refine
                                 <ArrowUpRight className="w-3 h-3" />
                               </Link>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {opsSessionDraftQueue.some((stage) => stage.drafts.length > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.22 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4" style={{ color: "#67E8F9" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Internal Session Draft Queue
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  First-class internal session drafts created from agent programming approvals. These are still manual-only and never live-published here.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+              {opsSessionDraftQueue.map((stage) => (
+                <div
+                  key={stage.key}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                        {stage.label}
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                        {stage.description}
+                      </div>
+                    </div>
+                    <div
+                      className="min-w-[28px] h-7 px-2 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                      style={{ background: `${stage.color}14`, color: stage.color }}
+                    >
+                      {stage.drafts.length}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mt-4">
+                    {stage.drafts.length === 0 ? (
+                      <div
+                        className="rounded-lg px-3 py-4 text-[11px]"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px dashed var(--card-border)",
+                          color: "var(--t4)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        No internal session drafts in this stage yet.
+                      </div>
+                    ) : (
+                      stage.drafts.slice(0, 4).map((draft) => {
+                        const advisorHref = buildOpsSessionDraftHref(clubId, draft)
+                        const isPromoting = processingId === `ops:${draft.id}`
+                        const nextStep = draft.metadata?.sessionDraft?.nextStep
+
+                        return (
+                          <div
+                            key={`${stage.key}-${draft.id}`}
+                            className="rounded-lg p-3"
+                            style={{
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                                {draft.title}
+                              </div>
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                style={{
+                                  background: draft.origin === 'primary' ? "rgba(16,185,129,0.12)" : "rgba(139,92,246,0.12)",
+                                  color: draft.origin === 'primary' ? "#10B981" : "#A78BFA",
+                                }}
+                              >
+                                {draft.origin === 'primary' ? 'Primary' : 'Alternative'}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {draft.dayOfWeek} · {draft.startTime}-{draft.endTime} · {formatProgrammingValue(draft.format)} · {formatProgrammingValue(draft.skillLevel)}
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 mt-3">
+                              {[
+                                { label: 'Fill', value: `${draft.projectedOccupancy}%`, color: '#10B981' },
+                                { label: 'Demand', value: draft.estimatedInterestedMembers, color: '#06B6D4' },
+                                { label: 'Confidence', value: `${draft.confidence}`, color: '#F59E0B' },
+                              ].map((item) => (
+                                <div
+                                  key={item.label}
+                                  className="rounded-md p-2"
+                                  style={{ background: `${item.color}10`, border: `1px solid ${item.color}16` }}
+                                >
+                                  <div className="text-[10px]" style={{ color: item.color }}>{item.label}</div>
+                                  <div className="text-sm font-bold tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="text-[11px] mt-3" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {nextStep || draft.note || 'Internal session draft ready for manual scheduling review.'}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {draft.status === 'ready_for_ops' && (
+                                <button
+                                  onClick={() => handlePromoteOpsSessionDraft(draft.id)}
+                                  disabled={isPromoting || promoteOpsSessionDraft.isPending}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(6,182,212,0.12)",
+                                    border: "1px solid rgba(6,182,212,0.22)",
+                                    color: "#67E8F9",
+                                    opacity: isPromoting ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isPromoting ? 'Converting…' : 'Convert to Session Draft'}
+                                </button>
+                              )}
+
+                              <Link
+                                href={advisorHref}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                style={{
+                                  background: "rgba(255,255,255,0.06)",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  color: "var(--heading)",
+                                }}
+                              >
+                                Open in Advisor
+                                <ArrowUpRight className="w-3 h-3" />
+                              </Link>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-3 text-[11px]" style={{ color: "var(--t4)" }}>
+                              <span>{draft.maxPlayers} max players</span>
+                              <span>{timeAgo(draft.updatedAt)}</span>
                             </div>
                           </div>
                         )
