@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { DashboardSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useSessionsCalendar, useDashboardV2 } from '../_hooks/use-intelligence'
+import { useSessionsCalendar, useDashboardV2, useAdvisorDrafts, useOpsSessionDrafts } from '../_hooks/use-intelligence'
 import type { SessionCalendarItem, SessionRecommendation } from '@/types/intelligence'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
@@ -480,7 +480,20 @@ export default function SessionsCalendarPage() {
 
   const brand = useBrand()
   const { data: dashboardData } = useDashboardV2(clubId)
-  if (brand.key === 'iqsport') return <ScheduleIQ calendarData={calendarData} dashboardData={dashboardData} isLoading={isLoading} clubId={clubId} />
+  const { data: advisorDrafts } = useAdvisorDrafts(clubId, 12)
+  const { data: opsSessionDrafts } = useOpsSessionDrafts(clubId, 16)
+  if (brand.key === 'iqsport') {
+    return (
+      <ScheduleIQ
+        calendarData={calendarData}
+        dashboardData={dashboardData}
+        isLoading={isLoading}
+        clubId={clubId}
+        advisorDrafts={advisorDrafts || []}
+        opsSessionDrafts={opsSessionDrafts || []}
+      />
+    )
+  }
 
   if (isLoading || (!calendarData && isFetching)) return <DashboardSkeleton />
 
