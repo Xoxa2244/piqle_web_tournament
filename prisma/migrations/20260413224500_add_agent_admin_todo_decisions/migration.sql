@@ -1,7 +1,7 @@
 CREATE TABLE "agent_admin_todo_decisions" (
   "id" UUID NOT NULL,
   "club_id" UUID NOT NULL,
-  "user_id" UUID NOT NULL,
+  "user_id" TEXT NOT NULL,
   "date_key" TEXT NOT NULL,
   "item_id" TEXT NOT NULL,
   "decision" TEXT NOT NULL,
