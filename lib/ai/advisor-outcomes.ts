@@ -9,6 +9,7 @@ export const advisorOutcomeMemorySchema = z.object({
     'reactivate_members',
     'trial_follow_up',
     'renewal_reactivation',
+    'program_schedule',
     'update_contact_policy',
     'update_autonomy_policy',
     'update_sandbox_routing',
@@ -135,6 +136,18 @@ export function buildAdvisorOutcomeMemory(
       kind: action.kind,
       title: action.title,
       summary: `${flowLabel} sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
+      occurredAt,
+    }
+  }
+
+  if (action.kind === 'program_schedule') {
+    const proposalCount = 1 + action.program.alternatives.length
+    return {
+      kind: action.kind,
+      title: action.title,
+      summary: result?.savedAsDraft
+        ? `Programming draft saved with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`
+        : `Programming plan updated with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`,
       occurredAt,
     }
   }

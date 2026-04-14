@@ -4745,6 +4745,17 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         })
       }
 
+      if (input.action.kind === 'program_schedule') {
+        return persistAdvisorOutcome({
+          ok: true,
+          kind: 'program_schedule' as const,
+          savedAsDraft: true,
+          proposalCount: 1 + input.action.program.alternatives.length,
+          primaryTitle: input.action.program.primary.title,
+          goal: input.action.program.goal,
+        })
+      }
+
       if (input.action.kind === 'update_contact_policy') {
         const club = await ctx.prisma.club.findUniqueOrThrow({
           where: { id: input.clubId },

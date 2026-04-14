@@ -4,6 +4,7 @@ import {
   buildAdvisorDraftPersistencePayload,
   detectAdvisorDraftSelectedPlan,
   getAdvisorDraftFromMetadata,
+  getAdvisorDraftProgrammingPreview,
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 
@@ -34,6 +35,54 @@ function buildCampaignAction(channel: 'email' | 'sms'): AdvisorAction {
         reasons: [],
         warnings: [],
       },
+    },
+  }
+}
+
+function buildProgrammingAction(): AdvisorAction {
+  return {
+    kind: 'program_schedule',
+    title: 'Draft programming plan',
+    summary: '3 schedule ideas around Wednesday Evening Intermediate Open Play',
+    requiresApproval: true,
+    program: {
+      goal: 'Add a stronger weekday evening intermediate option',
+      publishMode: 'draft_only',
+      primary: {
+        id: 'wed-evening-open-play',
+        title: 'Wednesday Evening Intermediate Open Play',
+        dayOfWeek: 'Wednesday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        maxPlayers: 8,
+        projectedOccupancy: 84,
+        estimatedInterestedMembers: 9,
+        confidence: 87,
+        source: 'expand_peak',
+        rationale: ['Strong repeat demand in this window.'],
+      },
+      alternatives: [
+        {
+          id: 'thu-evening-open-play',
+          title: 'Thursday Evening Intermediate Open Play',
+          dayOfWeek: 'Thursday',
+          timeSlot: 'evening',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          projectedOccupancy: 79,
+          estimatedInterestedMembers: 7,
+          confidence: 82,
+          source: 'fill_gap',
+          rationale: ['Secondary demand signal.'],
+        },
+      ],
+      insights: ['Wednesday evening is the clearest programming opportunity right now.'],
     },
   }
 }
@@ -110,5 +159,25 @@ describe('advisor drafts', () => {
       sandboxMode: true,
       updatedAt: '2026-04-13T22:30:00.000Z',
     })
+  })
+
+  it('persists a compact programming preview in draft metadata', () => {
+    const payload = buildAdvisorDraftPersistencePayload({
+      action: buildProgrammingAction(),
+      originalIntent: 'What should we add to the schedule next?',
+    })
+
+    const preview = getAdvisorDraftProgrammingPreview(payload.metadata)
+
+    expect(preview).toMatchObject({
+      goal: 'Add a stronger weekday evening intermediate option',
+      publishMode: 'draft_only',
+      primary: {
+        title: 'Wednesday Evening Intermediate Open Play',
+        projectedOccupancy: 84,
+        estimatedInterestedMembers: 9,
+      },
+    })
+    expect(preview?.alternatives).toHaveLength(1)
   })
 })

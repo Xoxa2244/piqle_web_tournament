@@ -63,6 +63,37 @@ interface AdvisorDraftWorkspaceItem {
         phone?: string
       }>
     } | null
+    programmingPreview?: {
+      goal: string
+      publishMode: 'draft_only'
+      primary: {
+        id: string
+        title: string
+        dayOfWeek: string
+        timeSlot: 'morning' | 'afternoon' | 'evening'
+        startTime: string
+        endTime: string
+        format: string
+        skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+      }
+      alternatives?: Array<{
+        id: string
+        title: string
+        dayOfWeek: string
+        timeSlot: 'morning' | 'afternoon' | 'evening'
+        startTime: string
+        endTime: string
+        format: string
+        skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+      }>
+      insights?: string[]
+    } | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
@@ -135,6 +166,7 @@ function formatDraftKind(kind: string) {
     case 'reactivate_members': return 'Reactivation'
     case 'trial_follow_up': return 'Trial Follow-up'
     case 'renewal_reactivation': return 'Renewal Outreach'
+    case 'program_schedule': return 'Programming Plan'
     case 'create_cohort': return 'Audience'
     case 'update_contact_policy': return 'Contact Policy'
     case 'update_autonomy_policy': return 'Autopilot Policy'
@@ -154,6 +186,19 @@ function formatDraftSchedule(value: string | Date | null | undefined, timeZone?:
     minute: '2-digit',
     timeZone: timeZone || undefined,
   }).format(date)
+}
+
+function formatProgrammingValue(value: string) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatProgrammingWindow(preview: NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']) {
+  if (!preview) return null
+  return `${preview.primary.dayOfWeek} · ${preview.primary.startTime}-${preview.primary.endTime} · ${formatProgrammingValue(preview.primary.format)} · ${formatProgrammingValue(preview.primary.skillLevel)}`
 }
 
 /* --- Typing Indicator --- */
@@ -882,6 +927,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     advisorDraftSections.forEach((section) => buckets.set(section.key, []))
 
     for (const draft of advisorDrafts as AdvisorDraftWorkspaceItem[]) {
+      if (draft.kind === 'program_schedule') continue
       const bucket = getAdvisorDraftBucket(draft.status)
       buckets.get(bucket)?.push(draft)
     }
@@ -893,6 +939,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       }))
       .filter((section) => section.drafts.length > 0)
   }, [advisorDrafts]);
+
+  const programmingDrafts = useMemo(
+    () => (advisorDrafts as AdvisorDraftWorkspaceItem[]).filter((draft) => draft.kind === 'program_schedule').slice(0, 4),
+    [advisorDrafts],
+  );
 
   const openDraftWorkspaceItem = useCallback((draft: AdvisorDraftWorkspaceItem) => {
     if (draft.conversationId) {
@@ -983,6 +1034,104 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             )}
 
             <div className="space-y-3">
+              {programmingDrafts.length > 0 && (
+                <div>
+                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
+                    Programming Drafts
+                  </div>
+                  <div className="space-y-2">
+                    {programmingDrafts.map((draft) => {
+                      const preview = draft.metadata?.programmingPreview || null
+                      const statusStyles = getDraftStatusStyles(draft.status)
+                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
+                      const previewWindow = formatProgrammingWindow(preview || null)
+
+                      return (
+                        <button
+                          key={`programming-${draft.id}`}
+                          onClick={() => openDraftWorkspaceItem(draft)}
+                          className="w-full text-left px-3 py-3 rounded-xl transition-all"
+                          style={{
+                            background: isDraftActive ? (isDark ? "rgba(139,92,246,0.10)" : "rgba(139,92,246,0.05)") : "rgba(139,92,246,0.05)",
+                            border: isDraftActive ? "1px solid rgba(139,92,246,0.26)" : "1px solid rgba(139,92,246,0.12)",
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[11px]" style={{ color: "#C4B5FD", fontWeight: 700 }}>
+                                Draft-first schedule plan
+                              </div>
+                              <div className="text-xs mt-1 truncate" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                                {preview?.primary.title || draft.title}
+                              </div>
+                            </div>
+                            <span
+                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
+                              style={{ ...statusStyles, fontWeight: 700 }}
+                            >
+                              {formatDraftStatus(draft.status)}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <span
+                              className="px-2 py-1 rounded-full text-[10px]"
+                              style={{ background: "rgba(139,92,246,0.16)", color: "#DDD6FE", fontWeight: 700 }}
+                            >
+                              {preview ? `${1 + (preview.alternatives?.length || 0)} ideas` : 'Programming'}
+                            </span>
+                            {draft.selectedPlan === 'recommended' && (
+                              <span
+                                className="px-2 py-1 rounded-full text-[10px]"
+                                style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
+                              >
+                                Agent plan
+                              </span>
+                            )}
+                            <span
+                              className="px-2 py-1 rounded-full text-[10px]"
+                              style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
+                            >
+                              Draft only
+                            </span>
+                          </div>
+
+                          {previewWindow && (
+                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {previewWindow}
+                            </div>
+                          )}
+
+                          {preview && (
+                            <div
+                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
+                              style={{ background: "rgba(255,255,255,0.04)", color: "var(--t2)", lineHeight: 1.5 }}
+                            >
+                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
+                                Programming preview
+                              </div>
+                              <div className="mt-1">
+                                {preview.primary.projectedOccupancy}% projected fill · {preview.primary.estimatedInterestedMembers} likely players · {preview.primary.confidence}/100 confidence
+                              </div>
+                              {preview.insights?.[0] && (
+                                <div className="mt-1" style={{ color: "var(--t3)" }}>
+                                  {preview.insights[0]}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
+                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
+                            <span>{formatRelative(String(draft.updatedAt))}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {groupedDrafts.map((section) => (
                 <div key={section.key}>
                   <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
@@ -995,6 +1144,8 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                       const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
                       const sandboxPreview = draft.metadata?.sandboxPreview || null
                       const sandboxRecipients = sandboxPreview?.recipients || []
+                      const programmingPreview = draft.metadata?.programmingPreview || null
+                      const programmingWindow = formatProgrammingWindow(programmingPreview || null)
                       const sandboxSummary = draft.status === 'sandboxed'
                         ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
                         : null
@@ -1071,6 +1222,25 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                                     : ''}
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {!sandboxSummary && draft.kind === 'program_schedule' && programmingPreview && (
+                            <div
+                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
+                              style={{ background: "rgba(139,92,246,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
+                            >
+                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
+                                Draft preview
+                              </div>
+                              <div className="mt-1">
+                                {programmingPreview.primary.title}
+                                {programmingWindow ? ` · ${programmingWindow}` : ''}
+                              </div>
+                              <div className="mt-1" style={{ color: "var(--t3)" }}>
+                                {programmingPreview.primary.projectedOccupancy}% projected fill · {programmingPreview.primary.estimatedInterestedMembers} likely players
+                                {programmingPreview.alternatives?.length ? ` · +${programmingPreview.alternatives.length} alternatives` : ''}
+                              </div>
                             </div>
                           )}
 

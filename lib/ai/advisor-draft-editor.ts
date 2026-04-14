@@ -18,6 +18,7 @@ type AudienceFilter = z.infer<typeof cohortFilterSchema>
 type FillSessionAction = Extract<AdvisorAction, { kind: 'fill_session' }>
 type ReactivationAction = Extract<AdvisorAction, { kind: 'reactivate_members' }>
 type MembershipLifecycleAction = Extract<AdvisorAction, { kind: 'trial_follow_up' | 'renewal_reactivation' }>
+type ProgrammingAction = Extract<AdvisorAction, { kind: 'program_schedule' }>
 
 function cleanJson(text: string) {
   return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
@@ -57,14 +58,19 @@ function getActiveMembershipLifecycleAction(lastAction: AdvisorAction | null | u
     : null
 }
 
+function getActiveProgrammingAction(lastAction: AdvisorAction | null | undefined): ProgrammingAction | null {
+  return lastAction?.kind === 'program_schedule' ? lastAction : null
+}
+
 function isLikelyEditRequest(
   message: string,
   state: AdvisorConversationState | null,
   activeFillSession: FillSessionAction | null,
   activeReactivation: ReactivationAction | null,
   activeMembershipLifecycle: MembershipLifecycleAction | null,
+  activeProgramming: ProgrammingAction | null,
 ) {
-  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle) return false
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle && !state?.currentProgramming && !activeProgramming) return false
 
   const lower = message.toLowerCase()
   const explicitEdit = containsAny(lower, [
@@ -76,6 +82,7 @@ function isLikelyEditRequest(
     /\b(top\s+\d{1,2}|best\s+\d{1,2}|another session|different session|other session)\b/,
     /\b(inactive\s+\d{1,3}\s*days|\d{1,3}\+?\s*day inactive|reactivat|win[- ]?back)\b/,
     /\b(trial|renewal|first[- ]?play|first booking|expired membership|suspended membership)\b/,
+    /\b(schedule|programming|session plan|new session|clinic|drill|open play|league|evening session|morning session|weekday|weekend)\b/,
   ]) || containsAny(lower, [
     /\b(короче|длиннее|измени|исправь|обнови|убери|добавь|оставь|только)\b/,
     /\b(другую сессию|другой слот|топ-\d{1,2}|топ \d{1,2})\b/,
@@ -89,6 +96,100 @@ function isLikelyEditRequest(
   ])
 
   return explicitEdit || pronounEdit || containsAdvisorSchedulingIntent(message)
+}
+
+function applyHeuristicProgrammingEdit(
+  message: string,
+  currentAction: ProgrammingAction | null,
+): AdvisorAction | null {
+  if (!currentAction) return null
+
+  const lower = message.toLowerCase()
+  const nextPrimary = {
+    ...currentAction.program.primary,
+    rationale: [...currentAction.program.primary.rationale],
+  }
+  let alternatives = [...currentAction.program.alternatives]
+  let changed = false
+
+  const explicitDay = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    .find((day) => lower.includes(day.toLowerCase()))
+  if (explicitDay && explicitDay !== nextPrimary.dayOfWeek) {
+    nextPrimary.dayOfWeek = explicitDay as ProgrammingAction['program']['primary']['dayOfWeek']
+    changed = true
+  }
+
+  if (containsAny(lower, [/\b(morning|before work|early)\b/, /\b(утром|утренн)\b/])) {
+    nextPrimary.timeSlot = 'morning'
+    nextPrimary.startTime = '09:00'
+    nextPrimary.endTime = '10:30'
+    changed = true
+  } else if (containsAny(lower, [/\b(afternoon|midday|lunch)\b/, /\b(днем|дн[её]м)\b/])) {
+    nextPrimary.timeSlot = 'afternoon'
+    nextPrimary.startTime = '13:00'
+    nextPrimary.endTime = '14:30'
+    changed = true
+  } else if (containsAny(lower, [/\b(evening|after work|night)\b/, /\b(вечером|вечерн)\b/])) {
+    nextPrimary.timeSlot = 'evening'
+    nextPrimary.startTime = nextPrimary.format === 'LEAGUE_PLAY' ? '18:30' : '18:00'
+    nextPrimary.endTime = nextPrimary.format === 'LEAGUE_PLAY' ? '20:30' : '19:30'
+    changed = true
+  }
+
+  if (containsAny(lower, [/\b(open play)\b/, /\b(открыт\w+ игру|open play)\b/])) {
+    nextPrimary.format = 'OPEN_PLAY'
+    changed = true
+  } else if (containsAny(lower, [/\b(clinic)\b/, /\b(клиник|clinic)\b/])) {
+    nextPrimary.format = 'CLINIC'
+    changed = true
+  } else if (containsAny(lower, [/\b(drill)\b/, /\b(дрилл|drill)\b/])) {
+    nextPrimary.format = 'DRILL'
+    changed = true
+  } else if (containsAny(lower, [/\b(league)\b/, /\b(лигу|league)\b/])) {
+    nextPrimary.format = 'LEAGUE_PLAY'
+    changed = true
+  } else if (containsAny(lower, [/\b(social)\b/, /\b(соушл|social)\b/])) {
+    nextPrimary.format = 'SOCIAL'
+    changed = true
+  }
+
+  if (containsAny(lower, [/\b(beginner)\b/, /\b(новичк|beginner)\b/])) {
+    nextPrimary.skillLevel = 'BEGINNER'
+    changed = true
+  } else if (containsAny(lower, [/\b(intermediate)\b/, /\b(средн\w+ уров|intermediate)\b/])) {
+    nextPrimary.skillLevel = 'INTERMEDIATE'
+    changed = true
+  } else if (containsAny(lower, [/\b(advanced|competitive)\b/, /\b(продвинут|competitive)\b/])) {
+    nextPrimary.skillLevel = 'ADVANCED'
+    changed = true
+  } else if (containsAny(lower, [/\b(all levels|all-levels)\b/, /\b(для всех уровней)\b/])) {
+    nextPrimary.skillLevel = 'ALL_LEVELS'
+    changed = true
+  }
+
+  if (containsAny(lower, [
+    /\b(another idea|another option|show me another|different idea|pick another)\b/,
+    /\b(другую идею|другой вариант|покажи другую)\b/,
+  ]) && alternatives.length > 0) {
+    const [nextAlternative, ...rest] = alternatives
+    alternatives = [nextPrimary, ...rest]
+    Object.assign(nextPrimary, nextAlternative)
+    changed = true
+  }
+
+  if (!changed) return null
+
+  nextPrimary.title = `${nextPrimary.dayOfWeek} ${nextPrimary.timeSlot.charAt(0).toUpperCase()}${nextPrimary.timeSlot.slice(1)} ${nextPrimary.skillLevel === 'ALL_LEVELS' ? '' : `${nextPrimary.skillLevel.charAt(0)}${nextPrimary.skillLevel.slice(1).toLowerCase()} `}${nextPrimary.format.toLowerCase().split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')}`.replace(/\s+/g, ' ').trim()
+
+  return {
+    ...currentAction,
+    summary: `${1 + alternatives.length} schedule idea${1 + alternatives.length === 1 ? '' : 's'} around ${nextPrimary.title}`,
+    program: {
+      ...currentAction.program,
+      primary: nextPrimary,
+      alternatives,
+    },
+  }
 }
 
 function extractCandidateLimit(message: string) {
@@ -602,7 +703,8 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
   fillSessionUpdated: (title: string, count: number) => string
   reactivationUpdated: (title: string, count: number) => string
   membershipUpdated: (title: string, count: number) => string
-  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation', string[]>
+  programmingUpdated: (title: string, count: number) => string
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation' | 'program_schedule', string[]>
 }> = {
   en: {
     audienceUpdated: (name, count) => `I updated the active audience "${name}" and it now targets ${count} matching members. Review the draft below and approve when you're ready.`,
@@ -610,6 +712,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionUpdated: (title, count) => `I updated the active session fill draft for "${title}" with ${count} target players. Review the invite below and approve when you're ready.`,
     reactivationUpdated: (title, count) => `I updated the active reactivation draft for "${title}" with ${count} inactive members. Review the win-back message below and approve when you're ready.`,
     membershipUpdated: (title, count) => `I updated the active membership flow "${title}" with ${count} candidates. Review the revised draft below and approve when you're ready.`,
+    programmingUpdated: (title, count) => `I updated the active programming draft around "${title}" with ${count} schedule ideas. Review the plan below and approve when you're ready.`,
     suggestions: {
       create_cohort: [
         'Draft a campaign for this audience',
@@ -641,6 +744,11 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Only top 5 renewal candidates',
         'Schedule this for tomorrow at 9am',
       ],
+      program_schedule: [
+        'Make the primary option an evening session',
+        'Focus this on beginner programming',
+        'Show me another schedule idea',
+      ],
     },
   },
   ru: {
@@ -649,6 +757,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionUpdated: (title, count) => `Я обновил активный черновик заполнения для "${title}" на ${count} игроков. Проверь приглашение ниже и подтверди, когда будешь готов.`,
     reactivationUpdated: (title, count) => `Я обновил активный черновик реактивации для "${title}" на ${count} неактивных участников. Проверь win-back сообщение ниже и подтверди, когда будешь готов.`,
     membershipUpdated: (title, count) => `Я обновил активный membership-flow "${title}" на ${count} кандидатов. Проверь обновленный черновик ниже и подтверди, когда будешь готов.`,
+    programmingUpdated: (title, count) => `Я обновил активный programming draft вокруг "${title}" на ${count} идей для расписания. Проверь план ниже и подтверди, когда будешь готов.`,
     suggestions: {
       create_cohort: [
         'Подготовь кампанию для этой аудитории',
@@ -680,6 +789,11 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Оставь только топ-5 renewal-кандидатов',
         'Запланируй это на завтра в 9 утра',
       ],
+      program_schedule: [
+        'Сделай основной вариант вечерней сессией',
+        'Сфокусируй это на beginner-программировании',
+        'Покажи другую идею для расписания',
+      ],
     },
   },
   es: {
@@ -688,6 +802,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
     fillSessionUpdated: (title, count) => `Actualicé el borrador activo para llenar "${title}" con ${count} jugadores objetivo. Revisa la invitación abajo y apruébala cuando quieras.`,
     reactivationUpdated: (title, count) => `Actualicé el borrador activo de reactivación para "${title}" con ${count} miembros inactivos. Revisa el mensaje abajo y apruébalo cuando quieras.`,
     membershipUpdated: (title, count) => `Actualicé el flujo activo "${title}" con ${count} candidatos. Revisa el borrador abajo y apruébalo cuando quieras.`,
+    programmingUpdated: (title, count) => `Actualicé el programming draft activo alrededor de "${title}" con ${count} ideas de horario. Revisa el plan abajo y apruébalo cuando quieras.`,
     suggestions: {
       create_cohort: [
         'Prepara una campaña para esta audiencia',
@@ -719,6 +834,11 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
         'Solo los mejores 5 candidatos',
         'Programa esto para mañana a las 9am',
       ],
+      program_schedule: [
+        'Haz la opción principal una sesión por la tarde',
+        'Enfócalo en programación para principiantes',
+        'Muéstrame otra idea de horario',
+      ],
     },
   },
 }
@@ -739,9 +859,10 @@ export async function maybeEditAdvisorDraft(opts: {
   const activeFillSession = getActiveFillSessionAction(lastAction)
   const activeReactivation = getActiveReactivationAction(lastAction)
   const activeMembershipLifecycle = getActiveMembershipLifecycleAction(lastAction)
+  const activeProgramming = getActiveProgrammingAction(lastAction)
 
-  if (!isLikelyEditRequest(message, state, activeFillSession, activeReactivation, activeMembershipLifecycle)) return null
-  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle) return null
+  if (!isLikelyEditRequest(message, state, activeFillSession, activeReactivation, activeMembershipLifecycle, activeProgramming)) return null
+  if (!state?.currentAudience && !state?.currentCampaign && !activeFillSession && !activeReactivation && !state?.currentMembershipLifecycle && !activeMembershipLifecycle && !state?.currentProgramming && !activeProgramming) return null
 
   const heuristicFillSessionEdit = applyHeuristicFillSessionEdit(message, activeFillSession, sessions)
   if (heuristicFillSessionEdit) return heuristicFillSessionEdit
@@ -751,6 +872,9 @@ export async function maybeEditAdvisorDraft(opts: {
 
   const heuristicMembershipLifecycleEdit = applyHeuristicMembershipLifecycleEdit(message, activeMembershipLifecycle, timeZone)
   if (heuristicMembershipLifecycleEdit) return heuristicMembershipLifecycleEdit
+
+  const heuristicProgrammingEdit = applyHeuristicProgrammingEdit(message, activeProgramming)
+  if (heuristicProgrammingEdit) return heuristicProgrammingEdit
 
   if (!state?.currentAudience && !state?.currentCampaign) return null
 

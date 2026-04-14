@@ -56,7 +56,30 @@ export const advisorDraftSandboxPreviewSchema = z.object({
   recipients: z.array(advisorDraftPreviewRecipientSchema).max(5).default([]),
 })
 
+export const advisorDraftProgrammingPreviewProposalSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(160),
+  dayOfWeek: z.string().min(1).max(20),
+  timeSlot: z.enum(['morning', 'afternoon', 'evening']),
+  startTime: z.string().min(1).max(20),
+  endTime: z.string().min(1).max(20),
+  format: z.string().min(1).max(40),
+  skillLevel: z.string().min(1).max(40),
+  projectedOccupancy: z.number().int().min(0).max(100),
+  estimatedInterestedMembers: z.number().int().nonnegative(),
+  confidence: z.number().int().min(0).max(100),
+})
+
+export const advisorDraftProgrammingPreviewSchema = z.object({
+  goal: z.string().min(1).max(180),
+  publishMode: z.literal('draft_only').default('draft_only'),
+  primary: advisorDraftProgrammingPreviewProposalSchema,
+  alternatives: z.array(advisorDraftProgrammingPreviewProposalSchema).max(3).default([]),
+  insights: z.array(z.string().min(1).max(220)).max(4).default([]),
+})
+
 export type AdvisorDraftSandboxPreview = z.infer<typeof advisorDraftSandboxPreviewSchema>
+export type AdvisorDraftProgrammingPreview = z.infer<typeof advisorDraftProgrammingPreviewSchema>
 
 function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
   if (action.kind === 'create_campaign') return action.campaign.execution
@@ -64,6 +87,46 @@ function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
     return action.lifecycle.execution
   }
   return null
+}
+
+function buildAdvisorDraftWorkspaceMetadata(action: AdvisorAction | AdvisorActionCore) {
+  if (action.kind === 'program_schedule') {
+    return {
+      programmingPreview: {
+        goal: action.program.goal,
+        publishMode: action.program.publishMode,
+        primary: {
+          id: action.program.primary.id,
+          title: action.program.primary.title,
+          dayOfWeek: action.program.primary.dayOfWeek,
+          timeSlot: action.program.primary.timeSlot,
+          startTime: action.program.primary.startTime,
+          endTime: action.program.primary.endTime,
+          format: action.program.primary.format,
+          skillLevel: action.program.primary.skillLevel,
+          projectedOccupancy: action.program.primary.projectedOccupancy,
+          estimatedInterestedMembers: action.program.primary.estimatedInterestedMembers,
+          confidence: action.program.primary.confidence,
+        },
+        alternatives: action.program.alternatives.map((proposal) => ({
+          id: proposal.id,
+          title: proposal.title,
+          dayOfWeek: proposal.dayOfWeek,
+          timeSlot: proposal.timeSlot,
+          startTime: proposal.startTime,
+          endTime: proposal.endTime,
+          format: proposal.format,
+          skillLevel: proposal.skillLevel,
+          projectedOccupancy: proposal.projectedOccupancy,
+          estimatedInterestedMembers: proposal.estimatedInterestedMembers,
+          confidence: proposal.confidence,
+        })),
+        insights: action.program.insights,
+      },
+    }
+  }
+
+  return {}
 }
 
 function safeJsonEqual(left: unknown, right: unknown) {
@@ -153,6 +216,7 @@ export function buildAdvisorDraftPersistencePayload(opts: {
       ? recommendedAction
       : requestedAction
   const execution = getAdvisorDraftExecution(workingAction)
+  const previewMetadata = buildAdvisorDraftWorkspaceMetadata(workingAction)
 
   return {
     kind: workingAction.kind,
@@ -167,7 +231,10 @@ export function buildAdvisorDraftPersistencePayload(opts: {
     status: opts.status || 'review_ready',
     scheduledFor: execution?.scheduledFor ? new Date(execution.scheduledFor) : null,
     timeZone: execution?.timeZone || null,
-    metadata: opts.metadata || {},
+    metadata: {
+      ...previewMetadata,
+      ...(opts.metadata || {}),
+    },
   }
 }
 
@@ -323,5 +390,14 @@ export function getAdvisorDraftSandboxPreview(
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
   const preview = (metadata as Record<string, unknown>).sandboxPreview
   const parsed = advisorDraftSandboxPreviewSchema.safeParse(preview)
+  return parsed.success ? parsed.data : null
+}
+
+export function getAdvisorDraftProgrammingPreview(
+  metadata: unknown,
+): AdvisorDraftProgrammingPreview | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const preview = (metadata as Record<string, unknown>).programmingPreview
+  const parsed = advisorDraftProgrammingPreviewSchema.safeParse(preview)
   return parsed.success ? parsed.data : null
 }

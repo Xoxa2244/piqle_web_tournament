@@ -5,7 +5,7 @@ import { motion, useInView, AnimatePresence } from "motion/react"
 import {
   Bot, Zap, TrendingUp, CheckCircle2, Clock, Send,
   XCircle, SkipForward, Timer, UserPlus, Heart, Puzzle,
-  ArrowUpRight, Activity, Shield,
+  ArrowUpRight, Activity, Shield, CalendarDays,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { buildAgentPolicyScenarios } from "@/lib/ai/agent-policy-simulator"
@@ -146,9 +146,67 @@ interface AdvisorDraftWorkspaceItem {
         phone?: string
       }>
     } | null
+    programmingPreview?: {
+      goal: string
+      publishMode: 'draft_only'
+      primary: {
+        id: string
+        title: string
+        dayOfWeek: string
+        timeSlot: 'morning' | 'afternoon' | 'evening'
+        startTime: string
+        endTime: string
+        format: string
+        skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+      }
+      alternatives?: Array<{
+        id: string
+        title: string
+        dayOfWeek: string
+        timeSlot: 'morning' | 'afternoon' | 'evening'
+        startTime: string
+        endTime: string
+        format: string
+        skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+      }>
+      insights?: string[]
+    } | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
+}
+
+type ProgrammingPreview = NonNullable<NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']>
+type ProgrammingPreviewProposal = ProgrammingPreview['primary']
+
+interface ProgrammingDraftCard {
+  id: string
+  title: string
+  summary: string | null
+  status: string
+  selectedPlan: 'requested' | 'recommended'
+  conversationId?: string | null
+  originalIntent: string | null
+  updatedAt: string | Date
+  primary: ProgrammingPreviewProposal
+  alternatives: ProgrammingPreviewProposal[]
+  insights: string[]
+}
+
+type ProgrammingOpsStageKey = 'new' | 'ready_for_ops' | 'paused' | 'rejected'
+
+interface ProgrammingOpsStage {
+  key: ProgrammingOpsStageKey
+  label: string
+  description: string
+  color: string
+  cards: ProgrammingDraftCard[]
 }
 
 interface AgentIQProps {
@@ -683,11 +741,166 @@ function formatSandboxDraftKind(kind: string) {
     case 'reactivate_members': return 'Reactivation'
     case 'trial_follow_up': return 'Trial Follow-up'
     case 'renewal_reactivation': return 'Renewal Outreach'
+    case 'program_schedule': return 'Programming Plan'
     default: return kind.replace(/_/g, ' ')
   }
 }
 
-function buildAdvisorDraftHref(clubId: string, draft: AdvisorDraftWorkspaceItem) {
+function formatProgrammingValue(value: string) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatProgrammingWindow(primary: ProgrammingPreviewProposal) {
+  return `${primary.dayOfWeek} · ${primary.startTime}-${primary.endTime} · ${formatProgrammingValue(primary.format)} · ${formatProgrammingValue(primary.skillLevel)}`
+}
+
+function sortProgrammingDrafts(drafts: ProgrammingDraftCard[]) {
+  return [...drafts].sort((left, right) => {
+    if (right.primary.confidence !== left.primary.confidence) return right.primary.confidence - left.primary.confidence
+    if (right.primary.projectedOccupancy !== left.primary.projectedOccupancy) {
+      return right.primary.projectedOccupancy - left.primary.projectedOccupancy
+    }
+    return right.primary.estimatedInterestedMembers - left.primary.estimatedInterestedMembers
+  })
+}
+
+function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
+  const cards: ProgrammingDraftCard[] = drafts
+    .filter((draft) => draft.kind === 'program_schedule' && draft.metadata?.programmingPreview?.primary)
+    .map((draft) => ({
+      id: draft.id,
+      title: draft.title,
+      summary: draft.summary,
+      status: draft.status,
+      selectedPlan: draft.selectedPlan,
+      conversationId: draft.conversationId,
+      originalIntent: draft.originalIntent,
+      updatedAt: draft.updatedAt,
+      primary: draft.metadata!.programmingPreview!.primary,
+      alternatives: draft.metadata?.programmingPreview?.alternatives || [],
+      insights: draft.metadata?.programmingPreview?.insights || [],
+    }))
+
+  const ranked = sortProgrammingDrafts(cards)
+  const strongest = ranked[0] || null
+  const totalIdeas = ranked.reduce((sum, draft) => sum + 1 + draft.alternatives.length, 0)
+  const avgProjectedFill = ranked.length
+    ? Math.round(ranked.reduce((sum, draft) => sum + draft.primary.projectedOccupancy, 0) / ranked.length)
+    : 0
+  const topConfidence = strongest?.primary.confidence || 0
+  const topInterestedMembers = strongest?.primary.estimatedInterestedMembers || 0
+  const nextBest = strongest?.alternatives?.[0] || null
+  const fillLiftVsAlternative = strongest && nextBest
+    ? strongest.primary.projectedOccupancy - nextBest.projectedOccupancy
+    : null
+
+  return {
+    cards: ranked,
+    strongest,
+    totalIdeas,
+    avgProjectedFill,
+    topConfidence,
+    topInterestedMembers,
+    fillLiftVsAlternative,
+  }
+}
+
+function resolveProgrammingOpsStage(status: string): ProgrammingOpsStageKey {
+  if (status === 'review_ready') return 'new'
+  if (status === 'draft_saved' || status === 'approved' || status === 'sandboxed' || status === 'scheduled') {
+    return 'ready_for_ops'
+  }
+  if (status === 'snoozed') return 'paused'
+  if (status === 'declined' || status === 'blocked') return 'rejected'
+  return 'new'
+}
+
+function sortProgrammingOpsCards(drafts: ProgrammingDraftCard[]) {
+  const dayOrder = new Map([
+    ['Monday', 1],
+    ['Tuesday', 2],
+    ['Wednesday', 3],
+    ['Thursday', 4],
+    ['Friday', 5],
+    ['Saturday', 6],
+    ['Sunday', 7],
+  ])
+  const timeSlotOrder = new Map([
+    ['morning', 1],
+    ['afternoon', 2],
+    ['evening', 3],
+  ])
+
+  return [...drafts].sort((left, right) => {
+    const leftDay = dayOrder.get(left.primary.dayOfWeek) || 99
+    const rightDay = dayOrder.get(right.primary.dayOfWeek) || 99
+    if (leftDay !== rightDay) return leftDay - rightDay
+
+    const leftSlot = timeSlotOrder.get(left.primary.timeSlot) || 99
+    const rightSlot = timeSlotOrder.get(right.primary.timeSlot) || 99
+    if (leftSlot !== rightSlot) return leftSlot - rightSlot
+
+    if (right.primary.confidence !== left.primary.confidence) {
+      return right.primary.confidence - left.primary.confidence
+    }
+
+    return right.primary.projectedOccupancy - left.primary.projectedOccupancy
+  })
+}
+
+function buildProgrammingOpsBoard(drafts: AdvisorDraftWorkspaceItem[]) {
+  const cards = buildProgrammingCockpit(drafts).cards
+  const stages: ProgrammingOpsStage[] = [
+    {
+      key: 'new',
+      label: 'New Ideas',
+      description: 'Fresh agent proposals that still need a programming decision.',
+      color: '#A78BFA',
+      cards: [],
+    },
+    {
+      key: 'ready_for_ops',
+      label: 'Ready For Ops',
+      description: 'Plans already saved by the agent and ready for internal scheduling review.',
+      color: '#10B981',
+      cards: [],
+    },
+    {
+      key: 'paused',
+      label: 'Paused',
+      description: 'Drafts intentionally parked until the club is ready to revisit them.',
+      color: '#F59E0B',
+      cards: [],
+    },
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      description: 'Ideas the team decided not to push forward right now.',
+      color: '#EF4444',
+      cards: [],
+    },
+  ]
+
+  const stageMap = new Map<ProgrammingOpsStageKey, ProgrammingOpsStage>(stages.map((stage) => [stage.key, stage]))
+  for (const card of cards) {
+    stageMap.get(resolveProgrammingOpsStage(card.status))?.cards.push(card)
+  }
+
+  for (const stage of stages) {
+    stage.cards = sortProgrammingOpsCards(stage.cards)
+  }
+
+  return stages
+}
+
+function buildAdvisorDraftHref(
+  clubId: string,
+  draft: Pick<AdvisorDraftWorkspaceItem, 'conversationId' | 'originalIntent'>,
+) {
   if (draft.conversationId) {
     return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(draft.conversationId)}`
   }
@@ -697,6 +910,125 @@ function buildAdvisorDraftHref(clubId: string, draft: AdvisorDraftWorkspaceItem)
   }
 
   return `/clubs/${clubId}/intelligence/advisor`
+}
+
+function buildAdvisorDraftRefineHref(
+  clubId: string,
+  draft: Pick<AdvisorDraftWorkspaceItem, 'conversationId' | 'originalIntent'>,
+  prompt: string,
+) {
+  const params = new URLSearchParams()
+  if (draft.conversationId) {
+    params.set('conversationId', draft.conversationId)
+  }
+  params.set('prompt', prompt)
+  return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
+}
+
+function buildProgrammingRefineActions(draft: ProgrammingDraftCard) {
+  const actions: Array<{ label: string; prompt: string }> = []
+  const primary = draft.primary
+  const topAlternative = draft.alternatives[0]
+
+  if (topAlternative) {
+    actions.push({
+      label: `Try ${topAlternative.dayOfWeek} ${formatProgrammingValue(topAlternative.timeSlot)}`,
+      prompt: `Use the ${topAlternative.dayOfWeek} ${topAlternative.timeSlot} ${formatProgrammingValue(topAlternative.format).toLowerCase()} option as the primary programming plan instead.`,
+    })
+  }
+
+  if (primary.skillLevel !== 'BEGINNER') {
+    actions.push({
+      label: 'Make beginner',
+      prompt: 'Keep this programming plan, but make the primary option beginner-friendly.',
+    })
+  }
+
+  if (primary.format !== 'CLINIC') {
+    actions.push({
+      label: 'Switch to clinic',
+      prompt: 'Keep the same programming window, but switch the primary option to a clinic format.',
+    })
+  }
+
+  actions.push({
+    label: 'Smaller group',
+    prompt: 'Keep the same idea, but make the primary option a smaller group capped at 6 players.',
+  })
+
+  actions.push({
+    label: 'Show another option',
+    prompt: 'Show another programming option for this plan with a different day or time window.',
+  })
+
+  return actions.slice(0, 4)
+}
+
+function buildProgrammingConfidenceBand(confidence: number) {
+  if (confidence >= 85) {
+    return {
+      label: 'High readiness',
+      color: '#10B981',
+      note: 'Demand and fit are strong enough that this looks like the clearest draft to test first.',
+    }
+  }
+  if (confidence >= 70) {
+    return {
+      label: 'Strong signal',
+      color: '#06B6D4',
+      note: 'This is a solid draft candidate, but it is still worth comparing one nearby variant before publishing.',
+    }
+  }
+  return {
+    label: 'Needs validation',
+    color: '#F59E0B',
+    note: 'The demand signal is promising, but the club should keep this in draft mode and compare alternatives first.',
+  }
+}
+
+function buildProgrammingRiskCheck(
+  primary: ProgrammingPreviewProposal,
+  alternative?: ProgrammingPreviewProposal | null,
+) {
+  const closeFill = alternative
+    ? Math.abs(primary.projectedOccupancy - alternative.projectedOccupancy) <= 3
+    : false
+  const closeDemand = alternative
+    ? Math.abs(primary.estimatedInterestedMembers - alternative.estimatedInterestedMembers) <= 2
+    : false
+
+  if (primary.confidence >= 82 && primary.estimatedInterestedMembers >= 10 && !closeFill && !closeDemand) {
+    return {
+      label: 'Cleaner opening',
+      color: '#10B981',
+      note: 'This option is separating cleanly from the next best idea, so it looks safer to test first.',
+    }
+  }
+
+  if (closeFill || closeDemand) {
+    return {
+      label: 'Compare two windows',
+      color: '#F59E0B',
+      note: 'Another nearby option is scoring similarly, so compare both before turning this into an ops draft.',
+    }
+  }
+
+  return {
+    label: 'Validate in draft',
+    color: '#F59E0B',
+    note: 'This still looks good, but it should stay in draft mode until the club reviews the slot fit.',
+  }
+}
+
+function buildProgrammingImpactAssessment(draft: ProgrammingDraftCard) {
+  const nextBest = draft.alternatives[0] || null
+  return {
+    nextBest,
+    fillDelta: nextBest ? draft.primary.projectedOccupancy - nextBest.projectedOccupancy : null,
+    demandDelta: nextBest ? draft.primary.estimatedInterestedMembers - nextBest.estimatedInterestedMembers : null,
+    confidenceBand: buildProgrammingConfidenceBand(draft.primary.confidence),
+    riskCheck: buildProgrammingRiskCheck(draft.primary, nextBest),
+  }
 }
 
 function normalizeSimulationOutcome(
@@ -739,6 +1071,8 @@ export function AgentIQ({
   const autopilotSuggestions = buildAutopilotSuggestions(autopilotSummary, pendingActions.length)
   const proactiveOpportunities = buildProactiveOpportunities(logs, pendingActions)
   const membershipLifecycleCards = buildMembershipLifecycleAutopilotCards(logs, pendingActions, intelligenceSettings)
+  const programmingCockpit = buildProgrammingCockpit(advisorDrafts || [])
+  const programmingOpsBoard = buildProgrammingOpsBoard(advisorDrafts || [])
   const policyScenarios = buildAgentPolicyScenarios({
     items: [
       ...logs.map((item) => ({
@@ -1281,6 +1615,499 @@ export function AgentIQ({
                   </div>
                 )
               })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {programmingCockpit.cards.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.19 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4" style={{ color: "#A78BFA" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Programming Cockpit
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  Draft-first schedule opportunities the agent believes are strongest right now. Nothing here publishes live.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+              {[
+                {
+                  label: "Programming drafts",
+                  value: programmingCockpit.cards.length,
+                  note: "Active scheduling plans in workspace",
+                  color: "#A78BFA",
+                },
+                {
+                  label: "Session ideas",
+                  value: programmingCockpit.totalIdeas,
+                  note: "Primary + alternative schedule options",
+                  color: "#06B6D4",
+                },
+                {
+                  label: "Best projected fill",
+                  value: `${programmingCockpit.strongest?.primary.projectedOccupancy || 0}%`,
+                  note: "Strongest slot from current draft set",
+                  color: "#10B981",
+                },
+                {
+                  label: "Likely interested",
+                  value: programmingCockpit.topInterestedMembers,
+                  note: "Demand estimate behind the strongest slot",
+                  color: "#F59E0B",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  <div className="text-[11px] font-medium" style={{ color: item.color }}>
+                    {item.label}
+                  </div>
+                  <div className="text-2xl font-bold mt-1 tabular-nums" style={{ color: "var(--heading)" }}>
+                    {item.value}
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--t4)" }}>
+                    {item.note}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {programmingCockpit.strongest && (
+              <div
+                className="rounded-xl p-4 mb-4"
+                style={{
+                  background: "rgba(139,92,246,0.08)",
+                  border: "1px solid rgba(139,92,246,0.16)",
+                }}
+              >
+                {(() => {
+                  const strongest = programmingCockpit.strongest
+                  const impact = buildProgrammingImpactAssessment(strongest)
+
+                  return (
+                    <>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                              Strongest opportunity: {strongest.primary.title}
+                            </div>
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: "rgba(16,185,129,0.12)", color: "#10B981" }}
+                            >
+                              {strongest.primary.projectedOccupancy}% projected fill
+                            </span>
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: `${impact.confidenceBand.color}14`, color: impact.confidenceBand.color }}
+                            >
+                              {impact.confidenceBand.label}
+                            </span>
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                            {formatProgrammingWindow(strongest.primary)}
+                          </div>
+                          <div className="text-xs mt-2" style={{ color: "var(--heading)", lineHeight: 1.6, fontWeight: 600 }}>
+                            {strongest.insights[0] || strongest.summary || "The agent sees the strongest demand signal in this slot based on recent occupancy and member preferences."}
+                          </div>
+                        </div>
+                        <Link
+                          href={buildAdvisorDraftHref(clubId, strongest)}
+                          className="inline-flex items-center gap-1 text-xs font-medium shrink-0"
+                          style={{ color: "var(--heading)" }}
+                        >
+                          Open in Advisor
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4">
+                        <div
+                          className="rounded-lg p-3"
+                          style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.16)" }}
+                        >
+                          <div className="text-[11px] font-medium" style={{ color: "#10B981" }}>
+                            Impact outlook
+                          </div>
+                          <div className="text-sm mt-1" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                            {strongest.primary.estimatedInterestedMembers} likely players
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: "var(--t3)" }}>
+                            The agent expects this window to fill faster than the club’s current average programming ideas.
+                          </div>
+                        </div>
+
+                        <div
+                          className="rounded-lg p-3"
+                          style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.16)" }}
+                        >
+                          <div className="text-[11px] font-medium" style={{ color: "#06B6D4" }}>
+                            Why this slot
+                          </div>
+                          <div className="text-sm mt-1" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                            {strongest.primary.dayOfWeek} {strongest.primary.timeSlot}
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: "var(--t3)" }}>
+                            Demand and recent occupancy are clustering here more consistently than in the surrounding draft options.
+                          </div>
+                        </div>
+
+                        <div
+                          className="rounded-lg p-3"
+                          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.16)" }}
+                        >
+                          <div className="text-[11px] font-medium" style={{ color: "#F59E0B" }}>
+                            Compared to next best
+                          </div>
+                          <div className="text-sm mt-1" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                            {impact.fillDelta !== null
+                              ? `${impact.fillDelta >= 0 ? "+" : ""}${impact.fillDelta} fill pts`
+                              : "No alternative yet"}
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: "var(--t3)" }}>
+                            {impact.fillDelta !== null
+                              ? `${impact.demandDelta && impact.demandDelta >= 0 ? "+" : ""}${impact.demandDelta ?? 0} likely players vs the next best option.`
+                              : "Add more alternatives in Advisor to compare options side by side."}
+                          </div>
+                        </div>
+
+                        <div
+                          className="rounded-lg p-3"
+                          style={{ background: `${impact.riskCheck.color}10`, border: `1px solid ${impact.riskCheck.color}22` }}
+                        >
+                          <div className="text-[11px] font-medium" style={{ color: impact.riskCheck.color }}>
+                            Validation check
+                          </div>
+                          <div className="text-sm mt-1" style={{ color: "var(--heading)", fontWeight: 700 }}>
+                            {impact.riskCheck.label}
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: "var(--t3)" }}>
+                            {impact.riskCheck.note}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
+                          Quick refine controls
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {buildProgrammingRefineActions(strongest).map((refine) => (
+                            <Link
+                              key={refine.label}
+                              href={buildAdvisorDraftRefineHref(clubId, strongest, refine.prompt)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium"
+                              style={{
+                                background: "rgba(255,255,255,0.08)",
+                                border: "1px solid rgba(139,92,246,0.16)",
+                                color: "var(--heading)",
+                              }}
+                            >
+                              {refine.label}
+                              <ArrowUpRight className="w-3 h-3" />
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {programmingCockpit.cards.slice(0, 4).map((draft) => {
+                const impact = buildProgrammingImpactAssessment(draft)
+
+                return (
+                  <div
+                    key={draft.id}
+                    className="rounded-xl p-4"
+                    style={{
+                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                      border: "1px solid var(--card-border)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                            {draft.primary.title}
+                          </div>
+                          {draft.selectedPlan === "recommended" && (
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA" }}
+                            >
+                              Agent plan
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                          {formatProgrammingWindow(draft.primary)}
+                        </div>
+                      </div>
+                      <Link
+                        href={buildAdvisorDraftHref(clubId, draft)}
+                        className="inline-flex items-center gap-1 text-xs font-medium shrink-0"
+                        style={{ color: "var(--heading)" }}
+                      >
+                        Open
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                      {[
+                        { label: "Fill", value: `${draft.primary.projectedOccupancy}%`, color: "#10B981" },
+                        { label: "Demand", value: draft.primary.estimatedInterestedMembers, color: "#06B6D4" },
+                        { label: "Confidence", value: `${draft.primary.confidence}`, color: "#F59E0B" },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-lg p-2"
+                          style={{ background: `${item.color}10`, border: `1px solid ${item.color}16` }}
+                        >
+                          <div className="text-[11px]" style={{ color: item.color }}>{item.label}</div>
+                          <div className="text-lg font-bold tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">
+                      <div
+                        className="rounded-lg p-2"
+                        style={{ background: `${impact.confidenceBand.color}10`, border: `1px solid ${impact.confidenceBand.color}22` }}
+                      >
+                        <div className="text-[11px]" style={{ color: impact.confidenceBand.color, fontWeight: 700 }}>
+                          {impact.confidenceBand.label}
+                        </div>
+                        <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                          {impact.confidenceBand.note}
+                        </div>
+                      </div>
+                      <div
+                        className="rounded-lg p-2"
+                        style={{ background: `${impact.riskCheck.color}10`, border: `1px solid ${impact.riskCheck.color}22` }}
+                      >
+                        <div className="text-[11px]" style={{ color: impact.riskCheck.color, fontWeight: 700 }}>
+                          {impact.riskCheck.label}
+                        </div>
+                        <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                          {impact.fillDelta !== null
+                            ? `${impact.fillDelta >= 0 ? "+" : ""}${impact.fillDelta} fill pts vs next best.`
+                            : impact.riskCheck.note}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] mt-3" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+                      {draft.insights[0] || draft.summary || "Draft-only programming suggestion ready for review."}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {buildProgrammingRefineActions(draft).slice(0, 3).map((refine) => (
+                        <Link
+                          key={refine.label}
+                          href={buildAdvisorDraftRefineHref(clubId, draft, refine.prompt)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            background: "rgba(255,255,255,0.06)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                            color: "var(--heading)",
+                          }}
+                        >
+                          {refine.label}
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3 text-[11px]" style={{ color: "var(--t4)" }}>
+                      <span>{1 + draft.alternatives.length} ideas in this plan</span>
+                      <span>{timeAgo(draft.updatedAt)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {programmingCockpit.cards.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <Card>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Puzzle className="w-4 h-4" style={{ color: "#10B981" }} />
+                  <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                    Ops Draft Calendar
+                  </h2>
+                </div>
+                <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                  Internal schedule-draft board for the club team. These ideas stay draft-only until someone chooses to operationalize them.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+              {programmingOpsBoard.map((stage) => (
+                <div
+                  key={stage.key}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                    border: "1px solid var(--card-border)",
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                        {stage.label}
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                        {stage.description}
+                      </div>
+                    </div>
+                    <div
+                      className="min-w-[28px] h-7 px-2 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                      style={{ background: `${stage.color}14`, color: stage.color }}
+                    >
+                      {stage.cards.length}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mt-4">
+                    {stage.cards.length === 0 ? (
+                      <div
+                        className="rounded-lg px-3 py-4 text-[11px]"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px dashed var(--card-border)",
+                          color: "var(--t4)",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        No programming drafts in this stage yet.
+                      </div>
+                    ) : (
+                      stage.cards.slice(0, 4).map((draft) => {
+                        const impact = buildProgrammingImpactAssessment(draft)
+                        return (
+                          <div
+                            key={`${stage.key}-${draft.id}`}
+                            className="rounded-lg p-3"
+                            style={{
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                                {draft.primary.title}
+                              </div>
+                              {draft.selectedPlan === 'recommended' && (
+                                <span
+                                  className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                  style={{ background: "rgba(139,92,246,0.12)", color: "#A78BFA" }}
+                                >
+                                  Agent
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {formatProgrammingWindow(draft.primary)}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mt-3">
+                              <div
+                                className="rounded-md p-2"
+                                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.16)" }}
+                              >
+                                <div className="text-[10px]" style={{ color: "#10B981" }}>Projected fill</div>
+                                <div className="text-sm font-bold tabular-nums" style={{ color: "#10B981" }}>
+                                  {draft.primary.projectedOccupancy}%
+                                </div>
+                              </div>
+                              <div
+                                className="rounded-md p-2"
+                                style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.16)" }}
+                              >
+                                <div className="text-[10px]" style={{ color: "#06B6D4" }}>Likely players</div>
+                                <div className="text-sm font-bold tabular-nums" style={{ color: "#06B6D4" }}>
+                                  {draft.primary.estimatedInterestedMembers}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {impact.fillDelta !== null
+                                ? `${impact.fillDelta >= 0 ? "+" : ""}${impact.fillDelta} fill pts vs next best option.`
+                                : impact.confidenceBand.note}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              <Link
+                                href={buildAdvisorDraftHref(clubId, draft)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                style={{
+                                  background: "rgba(255,255,255,0.06)",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  color: "var(--heading)",
+                                }}
+                              >
+                                Open
+                                <ArrowUpRight className="w-3 h-3" />
+                              </Link>
+                              <Link
+                                href={buildAdvisorDraftRefineHref(
+                                  clubId,
+                                  draft,
+                                  'Turn this programming plan into an ops-ready draft board item and tighten the strongest option for internal review.',
+                                )}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                style={{
+                                  background: `${stage.color}12`,
+                                  border: `1px solid ${stage.color}22`,
+                                  color: stage.color,
+                                }}
+                              >
+                                Refine
+                                <ArrowUpRight className="w-3 h-3" />
+                              </Link>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </motion.div>

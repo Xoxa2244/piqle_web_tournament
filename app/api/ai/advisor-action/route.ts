@@ -81,6 +81,10 @@ import {
   getAdvisorMembershipLifecycleMeta,
   type AdvisorMembershipLifecycleKind,
 } from '@/lib/ai/advisor-membership-lifecycle'
+import {
+  getAdvisorProgrammingDraft,
+  type AdvisorProgrammingRequestSpec,
+} from '@/lib/ai/advisor-programming'
 import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
 
 async function getSessionFromRequest(req: Request) {
@@ -382,12 +386,14 @@ type AdvisorSandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sa
 type AdvisorTrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
 type AdvisorRenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type AdvisorMembershipLifecycleAction = AdvisorTrialFollowUpAction | AdvisorRenewalReactivationAction
+type AdvisorProgrammingAction = Extract<AdvisorAction, { kind: 'program_schedule' }>
 
 function buildRecommendationTitle(action: { kind: AdvisorActionCore['kind'] }) {
   if (action.kind === 'fill_session') return 'Agent recommendation for this session'
   if (action.kind === 'reactivate_members') return 'Agent recommendation for this win-back flow'
   if (action.kind === 'trial_follow_up') return 'Agent recommendation for this trial follow-up'
   if (action.kind === 'renewal_reactivation') return 'Agent recommendation for this renewal outreach'
+  if (action.kind === 'program_schedule') return 'Agent recommendation for this programming plan'
   if (action.kind === 'create_campaign') return 'Agent recommendation for this campaign'
   return 'Agent recommendation'
 }
@@ -404,6 +410,26 @@ function getAdvisorActionEligibleCount(action: AdvisorAction | AdvisorActionCore
     return action.lifecycle.guardrails?.eligibleCount ?? action.lifecycle.candidateCount
   }
   return 0
+}
+
+function sameProgrammingProposal(
+  left: AdvisorProgrammingAction['program']['primary'],
+  right: AdvisorProgrammingAction['program']['primary'],
+) {
+  return (
+    left.dayOfWeek === right.dayOfWeek &&
+    left.timeSlot === right.timeSlot &&
+    left.format === right.format &&
+    left.skillLevel === right.skillLevel &&
+    left.startTime === right.startTime &&
+    left.endTime === right.endTime
+  )
+}
+
+function formatProgrammingTimeSlot(slot: 'morning' | 'afternoon' | 'evening') {
+  if (slot === 'morning') return 'Morning'
+  if (slot === 'afternoon') return 'Afternoon'
+  return 'Evening'
 }
 
 function sameAdvisorScheduledMoment(a?: string, b?: string) {
@@ -944,6 +970,42 @@ function buildSandboxRoutingAction(policy: AdvisorSandboxRoutingDraft): AdvisorS
     summary: formatAdvisorSandboxRoutingDigest(policy),
     requiresApproval: true,
     policy,
+  }
+}
+
+function buildProgrammingSummary(action: AdvisorProgrammingAction) {
+  const proposalCount = 1 + action.program.alternatives.length
+  return `${proposalCount} draft session idea${proposalCount === 1 ? '' : 's'} led by ${action.program.primary.title}`
+}
+
+function buildProgrammingAction(input: {
+  goal: string
+  primary: AdvisorProgrammingAction['program']['primary']
+  alternatives: AdvisorProgrammingAction['program']['alternatives']
+  insights: string[]
+}): AdvisorProgrammingAction {
+  return {
+    kind: 'program_schedule',
+    title: 'Draft programming plan',
+    summary: `${1 + input.alternatives.length} schedule idea${1 + input.alternatives.length === 1 ? '' : 's'} around ${input.primary.title}`,
+    requiresApproval: true,
+    program: {
+      goal: input.goal,
+      primary: input.primary,
+      alternatives: input.alternatives,
+      insights: input.insights,
+      publishMode: 'draft_only',
+    },
+  }
+}
+
+function getProgrammingCopy(language: SupportedLanguage | string) {
+  const locale = language === 'ru' || language === 'es' ? language : 'en'
+  const actionCopy = getAdvisorActionCopy(locale)
+  return {
+    ready: actionCopy.programmingReady,
+    empty: actionCopy.programmingEmpty,
+    suggestions: actionCopy.suggestions.program_schedule,
   }
 }
 
@@ -1581,6 +1643,110 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
   }
 }
 
+function maybeAttachProgrammingRecommendation(opts: {
+  action: AdvisorProgrammingAction
+  recommendedPrimary: AdvisorProgrammingAction['program']['primary'] | null
+}): AdvisorProgrammingAction {
+  const recommendedPrimary = opts.recommendedPrimary
+  if (!recommendedPrimary) return opts.action
+  if (sameProgrammingProposal(opts.action.program.primary, recommendedPrimary)) return opts.action
+  if (recommendedPrimary.confidence < opts.action.program.primary.confidence + 5) return opts.action
+
+  const deltaOccupancy = recommendedPrimary.projectedOccupancy - opts.action.program.primary.projectedOccupancy
+  const recommendedAction = buildProgrammingAction({
+    goal: opts.action.program.goal,
+    primary: recommendedPrimary,
+    alternatives: [
+      opts.action.program.primary,
+      ...opts.action.program.alternatives.filter((proposal) => !sameProgrammingProposal(proposal, recommendedPrimary)),
+    ].slice(0, 3),
+    insights: opts.action.program.insights,
+  })
+
+  return {
+    ...opts.action,
+    recommendation: buildAdvisorRecommendation({
+      current: opts.action,
+      recommended: recommendedAction,
+      title: buildRecommendationTitle(recommendedAction),
+      summary: buildProgrammingSummary(recommendedAction),
+      why: [
+        `The agent sees stronger demand in ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot).toLowerCase()} for this format mix.`,
+        deltaOccupancy > 0
+          ? `Projected fill improves from ${opts.action.program.primary.projectedOccupancy}% to ${recommendedPrimary.projectedOccupancy}%.`
+          : `This window carries a stronger confidence score (${recommendedPrimary.confidence}/100).`,
+        ...recommendedPrimary.rationale.slice(0, 2),
+      ],
+      highlights: [
+        `Move to ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot)}`,
+        `${recommendedPrimary.projectedOccupancy}% projected fill`,
+      ].filter(Boolean),
+    }),
+  }
+}
+
+async function buildProgrammingAssistantResponse(opts: {
+  prisma: any
+  clubId: string
+  language: SupportedLanguage
+  state: AdvisorConversationState | null
+  message: string
+  currentRequest?: AdvisorProgrammingRequestSpec | null
+  allowRecommendation?: boolean
+}) {
+  const programmingCopy = getProgrammingCopy(opts.language)
+  const draft = await getAdvisorProgrammingDraft({
+    prisma: opts.prisma,
+    clubId: opts.clubId,
+    message: opts.message,
+    current: opts.currentRequest,
+    limit: 3,
+  })
+
+  if (!draft.hasData || draft.proposals.length === 0) {
+    const assistantState: AdvisorConversationState = {
+      ...(opts.state || {}),
+      latestOutcome: opts.state?.latestOutcome,
+      recentOutcomes: opts.state?.recentOutcomes || [],
+      currentProgramming: undefined,
+      lastActionKind: 'program_schedule',
+      lastActionTitle: 'Draft programming plan',
+      updatedAt: new Date().toISOString(),
+    }
+
+    return {
+      assistantState,
+      assistantMessage: withSuggested(programmingCopy.empty, programmingCopy.suggestions),
+    }
+  }
+
+  const requestedPrimary = draft.requested || draft.proposals[0]
+  const alternatives = draft.proposals
+    .filter((proposal) => !sameProgrammingProposal(proposal, requestedPrimary))
+    .slice(0, 3)
+  const baseAction = buildProgrammingAction({
+    goal: truncateAdvisorText(opts.message, 180),
+    primary: requestedPrimary,
+    alternatives,
+    insights: draft.insights,
+  })
+  const action = opts.allowRecommendation === false
+    ? baseAction
+    : maybeAttachProgrammingRecommendation({
+        action: baseAction,
+        recommendedPrimary: draft.requested ? draft.recommended : null,
+      })
+
+  return {
+    assistantState: buildAdvisorConversationStateFromAction(action),
+    assistantMessage: withSuggested(
+      `${programmingCopy.ready(1 + action.program.alternatives.length, action.program.primary.title)}\n\nNothing will publish live from here. This stays as a draft-first programming plan until you explicitly approve and implement it.\n\n${buildAdvisorActionTag(action)}`,
+      programmingCopy.suggestions,
+    ),
+    action,
+  }
+}
+
 function isCampaignOnlyFollowUp(message: string) {
   const lower = message.toLowerCase()
   const hasCampaignVerb = /\b(campaign|email|sms|text|message|outreach|send|launch|draft|reactivat|invite)\b/.test(lower)
@@ -1600,6 +1766,8 @@ function getSuggestionKeyForPlanAction(action: AdvisorIntentPlan['action']) {
       return 'trial_follow_up' as const
     case 'renewal_reactivation':
       return 'renewal_reactivation' as const
+    case 'program_schedule':
+      return 'program_schedule' as const
     case 'update_contact_policy':
       return 'update_contact_policy' as const
     case 'update_autonomy_policy':
@@ -1622,6 +1790,7 @@ async function applyAdvisorAdaptiveDefaults(opts: {
   if (
     opts.plan.action === 'none' ||
     opts.plan.action === 'create_cohort' ||
+    opts.plan.action === 'program_schedule' ||
     opts.plan.action === 'update_contact_policy' ||
     opts.plan.action === 'update_autonomy_policy' ||
     opts.plan.action === 'update_sandbox_routing'
@@ -2005,6 +2174,26 @@ export async function POST(req: Request) {
               ].filter(Boolean).join('\n\n'),
               editCopy.suggestions[editedAction.kind],
             )
+          } else if (editedAction.kind === 'program_schedule') {
+            const editedResponse = await buildProgrammingAssistantResponse({
+              prisma,
+              clubId,
+              language,
+              state: memory.state,
+              message,
+              currentRequest: {
+                dayOfWeek: editedAction.program.primary.dayOfWeek,
+                timeSlot: editedAction.program.primary.timeSlot,
+                startTime: editedAction.program.primary.startTime,
+                endTime: editedAction.program.primary.endTime,
+                format: editedAction.program.primary.format,
+                skillLevel: editedAction.program.primary.skillLevel,
+                maxPlayers: editedAction.program.primary.maxPlayers,
+              },
+            })
+
+            assistantState = editedResponse.assistantState
+            assistantMessage = editedResponse.assistantMessage
           } else if (editedAction.kind === 'update_contact_policy') {
             assistantState = buildAdvisorConversationStateFromAction(editedAction)
             assistantMessage = withSuggested(
@@ -2236,6 +2425,17 @@ export async function POST(req: Request) {
 
       assistantState = lifecycleResponse.assistantState
       assistantMessage = lifecycleResponse.assistantMessage
+    } else if (plan.action === 'program_schedule') {
+      const programmingResponse = await buildProgrammingAssistantResponse({
+        prisma,
+        clubId,
+        language,
+        state: memory.state,
+        message: effectiveMessage,
+      })
+
+      assistantState = programmingResponse.assistantState
+      assistantMessage = programmingResponse.assistantMessage
     } else if (plan.action === 'update_contact_policy') {
       const contactPolicyCopy = getContactPolicyCopy(language)
       const currentPolicy = resolveAdvisorContactPolicy({

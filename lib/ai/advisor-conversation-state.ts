@@ -4,6 +4,7 @@ import { z } from 'zod'
 import {
   advisorCampaignDraftSchema,
   advisorCohortDraftSchema,
+  advisorProgrammingDraftSchema,
   advisorRenewalReactivationDraftSchema,
   advisorReactivationDraftSchema,
   advisorSessionDraftSchema,
@@ -33,12 +34,13 @@ export const advisorConversationStateSchema = z.object({
   currentSession: advisorSessionDraftSchema.optional(),
   currentReactivation: advisorReactivationDraftSchema.optional(),
   currentMembershipLifecycle: z.union([advisorTrialFollowUpDraftSchema, advisorRenewalReactivationDraftSchema]).optional(),
+  currentProgramming: advisorProgrammingDraftSchema.optional(),
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
   currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
   currentSandboxRouting: advisorSandboxRoutingDraftSchema.optional(),
   latestOutcome: advisorOutcomeMemorySchema.optional(),
   recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']).optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -105,6 +107,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
     return finalizeAdvisorConversationState({
       currentMembershipLifecycle: action.lifecycle,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    })
+  }
+
+  if (action.kind === 'program_schedule') {
+    return finalizeAdvisorConversationState({
+      currentProgramming: action.program,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -306,6 +317,17 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
       .map((candidate) => `${candidate.name} (${candidate.membershipStatus}, ${candidate.daysSinceSignal}d)`)
     if (lifecycleCandidates.length > 0) parts.push(`Lifecycle candidates: ${lifecycleCandidates.join(', ')}`)
     parts.push(`Lifecycle message preview: ${state.currentMembershipLifecycle.message.slice(0, 220)}`)
+  }
+
+  if (state.currentProgramming) {
+    parts.push(`Active programming draft: ${state.currentProgramming.goal}`)
+    parts.push(`Primary program idea: ${state.currentProgramming.primary.title}`)
+    parts.push(`Primary window: ${state.currentProgramming.primary.dayOfWeek} ${state.currentProgramming.primary.startTime}-${state.currentProgramming.primary.endTime}`)
+    parts.push(`Primary format/level: ${state.currentProgramming.primary.format} / ${state.currentProgramming.primary.skillLevel}`)
+    parts.push(`Projected occupancy: ${state.currentProgramming.primary.projectedOccupancy}% with ${state.currentProgramming.primary.estimatedInterestedMembers} likely members`)
+    if (state.currentProgramming.alternatives.length > 0) {
+      parts.push(`Alternative program ideas: ${state.currentProgramming.alternatives.slice(0, 2).map((proposal) => proposal.title).join(', ')}`)
+    }
   }
 
   if (state.currentContactPolicy) {

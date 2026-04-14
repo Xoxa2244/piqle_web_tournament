@@ -14,6 +14,7 @@ type ReactivationAction = Extract<AdvisorActionCore, { kind: 'reactivate_members
 type TrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
 type RenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type MembershipLifecycleAction = TrialFollowUpAction | RenewalReactivationAction
+type ProgrammingAction = Extract<AdvisorActionCore, { kind: 'program_schedule' }>
 type ContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
 type AutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
 type SandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sandbox_routing' }>
@@ -25,10 +26,52 @@ function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'reactivate_members') return 'Use SMS instead and keep only the top 5 inactive members.'
   if (action.kind === 'trial_follow_up') return 'Use SMS instead and keep only the top 3 trial members.'
   if (action.kind === 'renewal_reactivation') return 'Use SMS instead and keep only the top 5 renewal candidates.'
+  if (action.kind === 'program_schedule') return 'Make the primary option an evening beginner session.'
   if (action.kind === 'update_contact_policy') return 'Tighten these messaging rules a bit.'
   if (action.kind === 'update_autonomy_policy') return 'Make this autopilot policy a bit safer.'
   if (action.kind === 'update_sandbox_routing') return 'Keep sandbox preview only and trim the test recipient list.'
   return 'Narrow this audience a bit.'
+}
+
+function getProgrammingRefinePrompts(action: ProgrammingAction) {
+  const prompts: Array<{ label: string; prompt: string }> = []
+  const primary = action.program.primary
+  const topAlternative = action.program.alternatives[0]
+
+  if (topAlternative) {
+    prompts.push({
+      label: `Try ${topAlternative.dayOfWeek} ${topAlternative.timeSlot}`,
+      prompt: `Use the ${topAlternative.dayOfWeek} ${topAlternative.timeSlot} ${topAlternative.format.replace(/_/g, ' ').toLowerCase()} option as the primary programming plan instead.`,
+    })
+  }
+
+  if (primary.skillLevel !== 'BEGINNER') {
+    prompts.push({
+      label: 'Make beginner',
+      prompt: 'Keep this programming plan, but make the primary option beginner-friendly.',
+    })
+  }
+
+  if (primary.format !== 'CLINIC') {
+    prompts.push({
+      label: 'Switch to clinic',
+      prompt: 'Keep the same programming window, but switch the primary option to a clinic format.',
+    })
+  }
+
+  if (primary.maxPlayers > 6) {
+    prompts.push({
+      label: 'Smaller group',
+      prompt: 'Keep the same idea, but make the primary option a smaller group capped at 6 players.',
+    })
+  }
+
+  prompts.push({
+    label: 'Show another option',
+    prompt: 'Show another programming option for this plan with a different day or time window.',
+  })
+
+  return prompts.slice(0, 4)
 }
 
 function buildCampaignSummary(action: CampaignAction, execution: { mode: 'save_draft' | 'send_now' | 'send_later' }) {
@@ -114,6 +157,13 @@ function getActionDecisionHighlights(action: AdvisorAction) {
     ]
   }
 
+  if (action.kind === 'program_schedule') {
+    return [
+      `${1 + action.program.alternatives.length} ideas`,
+      `${action.program.primary.projectedOccupancy}% projected fill`,
+    ]
+  }
+
   return []
 }
 
@@ -155,6 +205,7 @@ export function AdvisorActionCard({
   const isTrialFollowUp = selectedBaseAction.kind === 'trial_follow_up'
   const isRenewalReactivation = selectedBaseAction.kind === 'renewal_reactivation'
   const isMembershipLifecycle = isTrialFollowUp || isRenewalReactivation
+  const isProgramming = selectedBaseAction.kind === 'program_schedule'
   const isContactPolicy = selectedBaseAction.kind === 'update_contact_policy'
   const isAutonomyPolicy = selectedBaseAction.kind === 'update_autonomy_policy'
   const isSandboxRouting = selectedBaseAction.kind === 'update_sandbox_routing'
@@ -236,6 +287,7 @@ export function AdvisorActionCard({
   const currentFillAction = isFillSession ? currentAction as FillSessionAction : null
   const currentReactivationAction = isReactivation ? currentAction as ReactivationAction : null
   const currentMembershipLifecycleAction = isMembershipLifecycle ? currentAction as MembershipLifecycleAction : null
+  const currentProgrammingAction = isProgramming ? currentAction as ProgrammingAction : null
   const currentContactPolicyAction = isContactPolicy ? currentAction as ContactPolicyAction : null
   const currentAutonomyPolicyAction = isAutonomyPolicy ? currentAction as AutonomyPolicyAction : null
   const currentSandboxRoutingAction = isSandboxRouting ? currentAction as SandboxRoutingAction : null
@@ -331,10 +383,12 @@ export function AdvisorActionCard({
       ? currentCampaignAction?.audience.count ?? 0
       : isFillSession
         ? currentFillAction?.outreach.candidateCount ?? 0
-        : isReactivation
-          ? currentReactivationAction?.reactivation.candidateCount ?? 0
-          : isMembershipLifecycle
-            ? currentMembershipLifecycleAction?.lifecycle.candidateCount ?? 0
+      : isReactivation
+        ? currentReactivationAction?.reactivation.candidateCount ?? 0
+        : isMembershipLifecycle
+          ? currentMembershipLifecycleAction?.lifecycle.candidateCount ?? 0
+          : isProgramming
+            ? 1 + (currentProgrammingAction?.program.alternatives.length ?? 0)
           : 0
   const contactGuardrails = isCampaign
     ? currentCampaignAction?.campaign.guardrails
@@ -364,6 +418,8 @@ export function AdvisorActionCard({
           : (sandboxMode ? 'Choose the sandbox path for this membership flow. The platform will prepare a preview and will not message live members yet.' : 'Choose the live send path for this membership flow, or park it for later.')
     : isAutonomyPolicy
       ? 'Review these autopilot changes, then apply, refine, snooze, or decline them.'
+      : isProgramming
+        ? 'Review this draft-first programming plan. Approving it only saves the schedule ideas into the agent workspace; nothing will publish live.'
       : isSandboxRouting
         ? 'Review the sandbox preview routing, then decide whether to apply or park it.'
       : isContactPolicy
@@ -391,6 +447,8 @@ export function AdvisorActionCard({
         ? (sandboxMode ? 'Run Sandbox' : 'Send Invites')
       : isReactivation
         ? (sandboxMode ? 'Run Sandbox' : 'Send Reactivation')
+      : isProgramming
+        ? 'Save Program Draft'
       : isAutonomyPolicy
         ? 'Apply Autopilot Rules'
         : isSandboxRouting
@@ -569,6 +627,8 @@ export function AdvisorActionCard({
                       ? 'Trial Follow-up Draft'
                     : isRenewalReactivation
                       ? 'Renewal Outreach Draft'
+                    : isProgramming
+                      ? 'Programming Draft'
                     : isSandboxRouting
                       ? 'Sandbox Routing Draft'
                     : isAutonomyPolicy
@@ -721,8 +781,8 @@ export function AdvisorActionCard({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
-              {isFillSession ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {isFillSession ? 'Session' : isContactPolicy || isAutonomyPolicy || isSandboxRouting ? 'Policy' : isMembershipLifecycle ? 'Member Flow' : 'Audience'}
+              {isFillSession || isProgramming ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
+              {isFillSession ? 'Session' : isProgramming ? 'Programming' : isContactPolicy || isAutonomyPolicy || isSandboxRouting ? 'Policy' : isMembershipLifecycle ? 'Member Flow' : 'Audience'}
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
               {currentCohortAction
@@ -735,6 +795,8 @@ export function AdvisorActionCard({
                       ? currentReactivationAction?.reactivation.segmentLabel
                       : isMembershipLifecycle
                         ? currentMembershipLifecycleAction?.lifecycle.label
+                      : isProgramming
+                        ? currentProgrammingAction?.program.goal
                       : isAutonomyPolicy
                         ? 'Club autopilot rules'
                       : isSandboxRouting
@@ -748,6 +810,8 @@ export function AdvisorActionCard({
                   ? `${targetCount} inactive member${targetCount === 1 ? '' : 's'}`
                   : isMembershipLifecycle
                     ? `${targetCount} lifecycle candidate${targetCount === 1 ? '' : 's'}`
+                    : isProgramming
+                      ? `${targetCount} session idea${targetCount === 1 ? '' : 's'}`
                   : isContactPolicy
                     ? currentContactPolicyAction?.policy.timeZone
                     : isAutonomyPolicy
@@ -760,6 +824,10 @@ export function AdvisorActionCard({
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
                 {currentFillAction?.session.court ? `${currentFillAction.session.court} · ` : ''}
                 {currentFillAction?.session.format || 'Session'} · {currentFillAction?.session.spotsRemaining} spot{currentFillAction?.session.spotsRemaining === 1 ? '' : 's'} left
+              </p>
+            ) : isProgramming ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                {currentProgrammingAction?.program.primary.dayOfWeek} {currentProgrammingAction?.program.primary.startTime}-{currentProgrammingAction?.program.primary.endTime} · {currentProgrammingAction?.program.primary.format.replace(/_/g, ' ')} · {currentProgrammingAction?.program.primary.skillLevel.replace(/_/g, ' ')}
               </p>
             ) : isReactivation ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
@@ -794,7 +862,43 @@ export function AdvisorActionCard({
             )}
           </div>
 
-        {isCampaign ? (
+        {isProgramming ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <CalendarDays className="w-3.5 h-3.5" />
+              Primary Draft
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {currentProgrammingAction?.program.primary.title}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {currentProgrammingAction?.program.primary.dayOfWeek} · {currentProgrammingAction?.program.primary.startTime}-{currentProgrammingAction?.program.primary.endTime}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {currentProgrammingAction?.program.primary.projectedOccupancy}% projected fill · {currentProgrammingAction?.program.primary.estimatedInterestedMembers} likely players
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+              >
+                {currentProgrammingAction?.program.primary.format.replace(/_/g, ' ')}
+              </span>
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+              >
+                {currentProgrammingAction?.program.primary.skillLevel.replace(/_/g, ' ')}
+              </span>
+              <span
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+              >
+                {currentProgrammingAction?.program.primary.confidence}/100 confidence
+              </span>
+            </div>
+          </div>
+        ) : isCampaign ? (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
               <Mail className="w-3.5 h-3.5" />
@@ -1152,6 +1256,91 @@ export function AdvisorActionCard({
         </div>
       )}
 
+      {isProgramming && (
+        <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
+          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+            <CalendarDays className="w-3.5 h-3.5" />
+            Draft Session Ideas
+          </div>
+          {onDraftPrompt && currentProgrammingAction ? (
+            <div className="mt-3">
+              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 700 }}>
+                Quick refine controls
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {getProgrammingRefinePrompts(currentProgrammingAction).map((refine) => (
+                  <button
+                    key={refine.label}
+                    type="button"
+                    onClick={() => onDraftPrompt(refine.prompt)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      color: 'var(--heading)',
+                    }}
+                  >
+                    {refine.label}
+                    <PencilLine className="w-3 h-3" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="space-y-3 mt-3">
+            {[currentProgrammingAction?.program.primary, ...(currentProgrammingAction?.program.alternatives || [])].filter(Boolean).map((proposal: any, index: number) => (
+              <div
+                key={proposal.id}
+                className="rounded-xl p-3"
+                style={{
+                  background: index === 0 ? 'rgba(139,92,246,0.08)' : 'rgba(255,255,255,0.04)',
+                  border: index === 0 ? '1px solid rgba(139,92,246,0.18)' : '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: index === 0 ? '#A78BFA' : 'var(--t3)', fontWeight: 700 }}>
+                      {index === 0 ? 'Primary Idea' : `Alternative ${index}`}
+                    </div>
+                    <div className="text-sm mt-1" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+                      {proposal.title}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                      {proposal.dayOfWeek} · {proposal.startTime}-{proposal.endTime} · {proposal.format.replace(/_/g, ' ')} · {proposal.skillLevel.replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                  <div className="text-[11px] px-2 py-1 rounded-full" style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9', fontWeight: 700 }}>
+                    {proposal.projectedOccupancy}% fill
+                  </div>
+                </div>
+                <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                  {proposal.estimatedInterestedMembers} likely players · {proposal.maxPlayers} max players · {proposal.confidence}/100 confidence
+                </div>
+                <div className="space-y-2 mt-2">
+                  {proposal.rationale.map((reason: string) => (
+                    <p key={reason} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                      {reason}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {currentProgrammingAction?.program.insights.length ? (
+            <div className="mt-3 space-y-2">
+              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 700 }}>
+                Why the agent likes this plan
+              </div>
+              {currentProgrammingAction.program.insights.map((insight: string) => (
+                <p key={insight} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                  {insight}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {(isCampaign || isFillSession || isReactivation || isMembershipLifecycle || isContactPolicy || isAutonomyPolicy || isSandboxRouting) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -1427,6 +1616,8 @@ export function AdvisorActionCard({
                 ? `Autonomy policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'update_sandbox_routing'
                 ? `Sandbox routing updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
+              : result.kind === 'program_schedule'
+                ? `Programming draft saved${result.proposalCount ? `: ${result.proposalCount} schedule ideas around ${result.primaryTitle}` : ''}`
               : result.kind === 'fill_session'
                 ? result.sandboxed
                   ? `Sandbox preview ready for ${result.sessionTitle}: ${result.previewRecipientCount} eligible recipients${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`

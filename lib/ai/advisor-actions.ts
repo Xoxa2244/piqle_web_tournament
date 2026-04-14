@@ -43,6 +43,7 @@ export const advisorCampaignExecutionSchema = z.object({
   scheduledFor: z.string().datetime().optional(),
   timeZone: z.string().min(1).max(80).optional(),
 })
+export const advisorProgramProposalSourceEnum = z.enum(['expand_peak', 'fill_gap'])
 export const advisorPerformanceSignalSchema = z.object({
   headline: z.string().min(1).max(220),
   bullets: z.array(z.string().min(1).max(220)).max(4).default([]),
@@ -171,6 +172,31 @@ export const advisorRenewalReactivationDraftSchema = advisorMembershipLifecycleD
   campaignType: z.literal('REACTIVATION'),
 })
 
+export const advisorProgrammingProposalSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(160),
+  dayOfWeek: z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']),
+  timeSlot: z.enum(['morning', 'afternoon', 'evening']),
+  startTime: z.string().min(1).max(20),
+  endTime: z.string().min(1).max(20),
+  format: z.enum(['OPEN_PLAY', 'CLINIC', 'DRILL', 'LEAGUE_PLAY', 'SOCIAL']),
+  skillLevel: z.enum(['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'ALL_LEVELS']),
+  maxPlayers: z.number().int().min(2).max(24),
+  projectedOccupancy: z.number().int().min(0).max(100),
+  estimatedInterestedMembers: z.number().int().nonnegative(),
+  confidence: z.number().int().min(0).max(100),
+  source: advisorProgramProposalSourceEnum,
+  rationale: z.array(z.string().min(1).max(220)).min(1).max(4),
+})
+
+export const advisorProgrammingDraftSchema = z.object({
+  goal: z.string().min(1).max(180),
+  primary: advisorProgrammingProposalSchema,
+  alternatives: z.array(advisorProgrammingProposalSchema).max(3).default([]),
+  insights: z.array(z.string().min(1).max(220)).max(4).default([]),
+  publishMode: z.literal('draft_only').default('draft_only'),
+})
+
 const createCohortActionCoreSchema = z.object({
   kind: z.literal('create_cohort'),
   title: z.string().min(1).max(120),
@@ -231,6 +257,14 @@ const renewalReactivationActionCoreSchema = z.object({
   defaultsApplied: advisorAdaptiveDefaultsAppliedSchema.optional(),
 })
 
+const programScheduleActionCoreSchema = z.object({
+  kind: z.literal('program_schedule'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  program: advisorProgrammingDraftSchema,
+})
+
 const updateContactPolicyActionCoreSchema = z.object({
   kind: z.literal('update_contact_policy'),
   title: z.string().min(1).max(120),
@@ -262,6 +296,7 @@ export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
   reactivateMembersActionCoreSchema,
   trialFollowUpActionCoreSchema,
   renewalReactivationActionCoreSchema,
+  programScheduleActionCoreSchema,
   updateContactPolicyActionCoreSchema,
   updateAutonomyPolicyActionCoreSchema,
   updateSandboxRoutingActionCoreSchema,

@@ -11,7 +11,7 @@ import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 import { parseAdvisorInactivityDays } from './advisor-reactivation'
 
 const advisorIntentSchema = z.object({
-  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']),
+  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
@@ -36,13 +36,14 @@ Supported actions:
 - reactivate_members: pick inactive members worth winning back and prepare direct reactivation outreach
 - trial_follow_up: prepare first-play outreach for trial members who joined recently but still have no confirmed booking
 - renewal_reactivation: prepare renewal outreach for recently active members whose membership expired, was cancelled, or was suspended
+- program_schedule: propose new recurring sessions or schedule changes as draft-only programming plans
 - update_contact_policy: change quiet hours, cooldowns, or contact frequency rules for the club
 - update_autonomy_policy: change what the agent can auto-run, what needs approval, or what stays off
 - update_sandbox_routing: change whether sandbox runs stay preview-only or route to approved test recipients
 - none: any analytics/support/general question
 
 Return ONLY valid JSON:
-{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members|trial_follow_up|renewal_reactivation|update_contact_policy|update_autonomy_policy|update_sandbox_routing","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
+{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members|trial_follow_up|renewal_reactivation|program_schedule|update_contact_policy|update_autonomy_policy|update_sandbox_routing","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
 
 Rules:
 - If the user asks to create/build/save an audience, segment, cohort, group, or list, use create_cohort.
@@ -51,6 +52,7 @@ Rules:
 - If the user asks to reactivate, win back, or bring back inactive/lapsed members directly, use reactivate_members.
 - If the user asks to follow up with trial members who have not booked yet, use trial_follow_up.
 - If the user asks for renewal outreach, expiring membership follow-up, or outreach to recently active expired/cancelled/suspended members, use renewal_reactivation.
+- If the user asks what session to add, how to improve programming, what belongs on the schedule, to add a clinic/open play/drill/league slot, or to propose schedule changes, use program_schedule.
 - If the user asks to change quiet hours, cooldowns, daily/weekly message caps, or outreach/contact policy rules, use update_contact_policy.
 - If the user asks to change what the agent can do automatically, what needs approval, disable autopilot for an action, or change autonomy thresholds, use update_autonomy_policy.
 - If the user asks to keep sandbox runs preview-only, route sandbox runs to test recipients, update sandbox whitelists, or change preview inbox routing, use update_sandbox_routing.
@@ -92,6 +94,12 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   const wantsRenewalReactivation =
     /\b(renew|renewal|membership expiring|expired membership|cancelled membership|canceled membership|suspended membership|renewal outreach)\b/.test(lower) &&
     /\b(outreach|message|reactivat|win[- ]?back|follow[- ]?up|draft|prepare|send)\b/.test(lower)
+  const wantsProgramming =
+    (
+      /\b(program|programming|schedule|calendar|session mix|weekly plan|add)\b/.test(lower) &&
+      /\b(session|clinic|drill|open play|league|social|slot|class|programming)\b/.test(lower)
+    ) ||
+    /\b(what should we add|what should i add|recommend sessions?|new session ideas?|add a beginner|add an intermediate|add an advanced)\b/.test(lower)
   const wantsSessionFill =
     /\b(fill|slot filler|underfilled|open spots?|empty slots?)\b/.test(lower) &&
     /\b(session|slot|court|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|beginner|intermediate|advanced|\d{1,2}(:\d{2})?\s*(am|pm))\b/.test(lower)
@@ -173,6 +181,13 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     }
   }
 
+  if (wantsProgramming) {
+    return {
+      action: 'program_schedule',
+      usePreviousCohort: false,
+    }
+  }
+
   if (wantsContactPolicy) {
     return {
       action: 'update_contact_policy',
@@ -231,11 +246,13 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
   trialEmpty: (label: string) => string
   renewalReady: (count: number, label: string) => string
   renewalEmpty: (label: string) => string
+  programmingReady: (count: number, title: string) => string
+  programmingEmpty: string
   contactPolicyReady: (changes: number) => string
   autonomyPolicyReady: (changes: number) => string
   sandboxRoutingReady: (changes: number) => string
   adminOnly: string
-  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation' | 'update_contact_policy' | 'update_autonomy_policy' | 'update_sandbox_routing', string[]>
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation' | 'program_schedule' | 'update_contact_policy' | 'update_autonomy_policy' | 'update_sandbox_routing', string[]>
 }> = {
   en: {
     audienceReady: (count, name) => `I drafted the audience "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
@@ -250,6 +267,8 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     trialEmpty: (label) => `I couldn't find strong trial follow-up candidates in "${label}" right now.`,
     renewalReady: (count, label) => `I found ${count} renewal candidates in "${label}". Review the outreach below, then approve when you're ready.`,
     renewalEmpty: (label) => `I couldn't find strong renewal outreach candidates in "${label}" right now.`,
+    programmingReady: (count, title) => `I drafted ${count} schedule ideas around "${title}". Review the programming plan below, then approve to save it into the workspace.`,
+    programmingEmpty: `I need a bit more schedule or preference data before I can draft strong programming ideas. Once the club has session history or member preferences, I can suggest what to add next.`,
     contactPolicyReady: (changes) => `I drafted ${changes} contact policy update${changes === 1 ? '' : 's'} for the club. Review the policy below, then approve to apply it.`,
     autonomyPolicyReady: (changes) => `I drafted ${changes} autonomy policy update${changes === 1 ? '' : 's'} for the club. Review the autopilot rules below, then approve to apply them.`,
     sandboxRoutingReady: (changes) => `I drafted ${changes} sandbox routing update${changes === 1 ? '' : 's'} for the club. Review the preview routing below, then approve to apply it.`,
@@ -285,6 +304,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Only top 5 renewal candidates',
         'Schedule this for tomorrow at 9am',
       ],
+      program_schedule: [
+        'Make the primary option an evening session',
+        'Focus this on beginner programming',
+        'Show me another schedule idea',
+      ],
       update_contact_policy: [
         'Set quiet hours to 10pm-8am',
         'Use a 6 hour cooldown',
@@ -315,6 +339,8 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     trialEmpty: (label) => `Сейчас я не вижу сильных trial-кандидатов для follow-up в сегменте "${label}".`,
     renewalReady: (count, label) => `Я нашел ${count} кандидатов на renewal outreach в сегменте "${label}". Проверь сообщение ниже и подтверди отправку.`,
     renewalEmpty: (label) => `Сейчас я не вижу сильных кандидатов на renewal outreach в сегменте "${label}".`,
+    programmingReady: (count, title) => `Я подготовил ${count} идеи для расписания вокруг "${title}". Проверь programming plan ниже и подтверди, чтобы сохранить его в workspace.`,
+    programmingEmpty: `Мне нужно чуть больше данных по расписанию или предпочтениям игроков, чтобы собрать сильный programming plan. Как только появится история сессий или member preferences, я предложу, что добавить в расписание.`,
     contactPolicyReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} contact policy клуба. Проверь правила ниже и подтверди применение.`,
     autonomyPolicyReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} autonomy policy клуба. Проверь правила автопилота ниже и подтверди применение.`,
     sandboxRoutingReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} sandbox routing клуба. Проверь preview-маршрутизацию ниже и подтверди применение.`,
@@ -350,6 +376,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Оставь только топ-5 renewal-кандидатов',
         'Запланируй это на завтра в 9 утра',
       ],
+      program_schedule: [
+        'Сделай основной вариант вечерней сессией',
+        'Сфокусируй это на beginner-программировании',
+        'Покажи другую идею для расписания',
+      ],
       update_contact_policy: [
         'Поставь quiet hours с 22:00 до 8:00',
         'Сделай cooldown 6 часов',
@@ -380,6 +411,8 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     trialEmpty: (label) => `No encuentro buenos candidatos trial para follow-up en "${label}" ahora mismo.`,
     renewalReady: (count, label) => `Encontré ${count} candidatos de renewal outreach en "${label}". Revisa el mensaje abajo y apruébalo cuando quieras.`,
     renewalEmpty: (label) => `No encuentro buenos candidatos de renewal outreach en "${label}" ahora mismo.`,
+    programmingReady: (count, title) => `Preparé ${count} ideas de programación alrededor de "${title}". Revisa el plan abajo y apruébalo para guardarlo en el workspace.`,
+    programmingEmpty: `Necesito un poco más de datos de horario o preferencias de miembros para armar un programming plan sólido. En cuanto haya más historial o preferencias, podré sugerir qué agregar al calendario.`,
     contactPolicyReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en la política de contacto del club. Revisa la política abajo y apruébala para aplicarla.`,
     autonomyPolicyReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en la política de autonomía del club. Revisa las reglas del autopiloto abajo y apruébalas para aplicarlas.`,
     sandboxRoutingReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en el sandbox routing del club. Revisa la ruta de preview abajo y apruébala para aplicarla.`,
@@ -414,6 +447,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Usa SMS en su lugar',
         'Solo los mejores 5 candidatos',
         'Programa esto para mañana a las 9am',
+      ],
+      program_schedule: [
+        'Haz la opción principal una sesión por la tarde',
+        'Enfócalo en programación para principiantes',
+        'Muéstrame otra idea de horario',
       ],
       update_contact_policy: [
         'Pon quiet hours de 10pm a 8am',

@@ -722,11 +722,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Determine if club has real data or is still empty
   const bookingsVal = activeDashboardData?.metrics?.bookings?.value;
   const totalSessions = typeof bookingsVal === 'number' ? bookingsVal : (typeof bookingsVal === 'string' && bookingsVal !== 'N/A' ? parseInt(bookingsVal, 10) || 0 : 0);
-  const totalMembers = (healthData?.summary?.healthy || 0) + (healthData?.summary?.watch || 0) + (healthData?.summary?.atRisk || 0) + (healthData?.summary?.critical || 0);
-  const hasRealData = !!realData && !!activeDashboardData && (totalSessions > 0 || totalMembers > 0);
-  const hasSessions = hasRealData && totalSessions > 0;
-  const hasMembers = totalMembers > 0;
+  const healthMemberCount =
+    (healthData?.summary?.healthy || 0) +
+    (healthData?.summary?.watch || 0) +
+    (healthData?.summary?.atRisk || 0) +
+    (healthData?.summary?.critical || 0);
+  const dashboardMemberCount =
+    (activeDashboardData?.players?.activeCount || 0) +
+    (activeDashboardData?.players?.inactiveCount || 0);
+  const totalMembers = Math.max(healthMemberCount, dashboardMemberCount);
+  const sessionCardCount =
+    (activeDashboardData?.sessions?.topSessions?.length || 0) +
+    (activeDashboardData?.sessions?.problematicSessions?.length || 0);
+  const occupancySessionCount =
+    (activeDashboardData?.occupancy?.byDay || []).reduce((sum: number, item: any) => sum + (item?.sessionCount || 0), 0);
+  const hasSessions = totalSessions > 0 || sessionCardCount > 0 || occupancySessionCount > 0;
+  const hasMembers = totalMembers > 0 || (activeDashboardData?.players?.newThisMonth || 0) > 0;
   const hasUploads = !!uploadHistoryData?.uploads?.length;
+  const hasOperationalData = hasUploads || (!!activeDashboardData && (hasSessions || hasMembers));
+  const hasRealData = !!realData && hasOperationalData;
 
   // Connector status for Quick Start + empty state
   const connectorStatusQuery = trpc.connectors.getStatus.useQuery({ clubId }, { enabled: !!clubId && !isDemo });
@@ -734,14 +748,14 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   const quickStartSteps = [
     { id: "settings", label: "Configure club settings", done: true, href: `/clubs/${clubId}/intelligence/settings`, icon: "⚙️" },
-    { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions, href: `/clubs/${clubId}/intelligence/integrations`, icon: "🔗" },
+    { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions || hasMembers, href: `/clubs/${clubId}/intelligence/integrations`, icon: "🔗" },
     { id: "members", label: "Members detected", done: hasMembers, href: `/clubs/${clubId}/intelligence/members`, icon: "👥" },
-    { id: "ai", label: "AI insights ready", done: hasRealData && hasSessions, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
+    { id: "ai", label: "AI insights ready", done: hasSessions || !!insightsQuery.data?.length, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
   ];
   const quickStartProgress = quickStartSteps.filter(s => s.done).length;
   const isStillLoading = externalLoading || isPeriodLoading || periodQuery.isLoading;
-  // Hide Quick Start if members exist (sync in progress or partially done)
-  const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length && !hasMembers;
+  // Hide Quick Start once the club already has real operational data
+  const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length && !hasOperationalData;
 
   return (
     <motion.div
@@ -885,7 +899,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       )}
 
       {/* Empty state — CourtReserve connection (same as Integrations) */}
-      {!hasRealData && (
+      {!hasOperationalData && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
