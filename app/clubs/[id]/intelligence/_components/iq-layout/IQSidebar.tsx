@@ -81,12 +81,17 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { theme, toggleTheme, isDark } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const { data: clubs } = trpc.club.list.useQuery({}, { staleTime: 60_000 });
+  const { data: notifications } = trpc.notification.list.useQuery(
+    { limit: 10 },
+    { staleTime: 15_000, refetchInterval: 30_000 }
+  );
   const { data: intelligenceSettings } = trpc.intelligence.getIntelligenceSettings.useQuery(
     { clubId },
     { enabled: !!clubId, staleTime: 60_000 }
@@ -100,6 +105,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const userEmail = session?.user?.email || "";
   const userInitials = userName.split(/\s+/).map((w: string) => w[0]?.toUpperCase()).join("").slice(0, 2) || "U";
   const myClubs = (clubs ?? []).filter((c: any) => c.isAdmin || c.isFollowing);
+  const unreadNotifications = notifications?.unreadCount ?? 0;
 
   const basePath = `/clubs/${clubId}/intelligence`;
   const demoParam = searchParams.get("demo") === "true" ? "?demo=true" : "";
@@ -109,6 +115,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   // Close mobile sidebar on navigation
   useEffect(() => {
     setMobileOpen(false);
+    setNotificationsOpen(false);
+    setProfileOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -121,6 +129,17 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  const formatNotificationTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const diffMs = Date.now() - date.getTime();
+    const diffMinutes = Math.round(diffMs / (60 * 1000));
+    if (Math.abs(diffMinutes) < 60) return `${Math.abs(diffMinutes)}m`;
+    const diffHours = Math.round(diffMinutes / 60);
+    if (Math.abs(diffHours) < 24) return `${Math.abs(diffHours)}h`;
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
 
   // Shared nav content rendered inside sidebar (desktop) or mobile drawer
   const sidebarNav = (isMobile: boolean) => {
@@ -399,6 +418,132 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                 </span>
               ) : null
             })()}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setNotificationsOpen((prev) => !prev);
+                  setProfileOpen(false);
+                }}
+                className="p-2 rounded-xl transition-colors relative"
+                style={{ color: "var(--t3)" }}
+                aria-label="Notifications"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadNotifications > 0 && (
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] text-white"
+                    style={{ background: "#EF4444", fontWeight: 700 }}
+                  >
+                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && typeof document !== 'undefined' && createPortal(
+                <>
+                  <div className="fixed inset-0" style={{ zIndex: 99998 }} onClick={() => setNotificationsOpen(false)} />
+                  <div
+                    className="fixed right-16 top-14 w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden"
+                    style={{
+                      zIndex: 99999,
+                      background: isDark ? "#1e2035" : "#ffffff",
+                      border: `1px solid ${isDark ? "rgba(139,92,246,0.25)" : "rgba(0,0,0,0.1)"}`,
+                      boxShadow: isDark ? "0 25px 80px rgba(0,0,0,0.9)" : "0 25px 80px rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    <div
+                      className="px-4 py-3 flex items-center justify-between"
+                      style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}
+                    >
+                      <div>
+                        <div className="text-sm" style={{ fontWeight: 700, color: isDark ? "#E2E8F0" : "#1E293B" }}>
+                          Notifications
+                        </div>
+                        <div className="text-[11px]" style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
+                          Agent reminders, requests, and club updates
+                        </div>
+                      </div>
+                      {unreadNotifications > 0 && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+                          style={{ background: "rgba(139,92,246,0.14)", color: "#A78BFA" }}
+                        >
+                          {unreadNotifications} unread
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="max-h-[420px] overflow-y-auto p-2">
+                      {(notifications?.items?.length ?? 0) === 0 ? (
+                        <div
+                          className="rounded-xl px-3 py-6 text-center text-sm"
+                          style={{ color: isDark ? "#94A3B8" : "#64748B" }}
+                        >
+                          No notifications right now.
+                        </div>
+                      ) : (
+                        notifications?.items?.map((item: any) => (
+                          <button
+                            key={item.id}
+                            onClick={() => {
+                              setNotificationsOpen(false);
+                              router.push(item.targetUrl);
+                            }}
+                            className="w-full text-left rounded-xl p-3 transition-all hover:opacity-90"
+                            style={{
+                              background: isDark ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.03)",
+                              border: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)"}`,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                                style={{
+                                  background:
+                                    item.type === "AGENT_ADMIN_REMINDER"
+                                      ? "rgba(245,158,11,0.14)"
+                                      : item.type === "CLUB_JOIN_REQUEST"
+                                        ? "rgba(34,211,238,0.14)"
+                                        : "rgba(139,92,246,0.14)",
+                                  color:
+                                    item.type === "AGENT_ADMIN_REMINDER"
+                                      ? "#F59E0B"
+                                      : item.type === "CLUB_JOIN_REQUEST"
+                                        ? "#22D3EE"
+                                        : "#A78BFA",
+                                }}
+                              >
+                                <Bell className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm truncate" style={{ fontWeight: 600, color: isDark ? "#E2E8F0" : "#1E293B" }}>
+                                    {item.title}
+                                  </div>
+                                  <div className="text-[10px] shrink-0" style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
+                                    {formatNotificationTime(item.createdAt)}
+                                  </div>
+                                </div>
+                                <div className="text-xs mt-1" style={{ color: isDark ? "#CBD5E1" : "#475569", lineHeight: 1.5 }}>
+                                  {item.body}
+                                </div>
+                                {item.clubName && (
+                                  <div className="text-[10px] mt-2" style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
+                                    {item.clubName}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>,
+                document.body
+              )}
+            </div>
             <button onClick={() => router.push(`/clubs/${clubId}/intelligence/settings`)} className="hidden md:block p-2 rounded-xl transition-colors" style={{ color: "var(--t3)" }}>
               <Settings className="w-5 h-5" />
             </button>

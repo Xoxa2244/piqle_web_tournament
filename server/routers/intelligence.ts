@@ -19,6 +19,7 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
+import { pushToUser } from '@/lib/realtime'
 import { advisorActionSchema, extractAdvisorAction, getAdvisorActionFromMetadata } from '@/lib/ai/advisor-actions'
 import { withAdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import {
@@ -2134,6 +2135,8 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
 
+        pushToUser(ctx.session.user.id, { type: 'invalidate', keys: ['notification.list'] })
+
         return {
           ok: true,
           persisted: true,
@@ -2167,6 +2170,8 @@ export const intelligenceRouter = createTRPCRouter({
             dateKey: input.dateKey,
           },
         })
+
+        pushToUser(ctx.session.user.id, { type: 'invalidate', keys: ['notification.list'] })
 
         return {
           ok: true,

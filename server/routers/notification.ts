@@ -6,6 +6,14 @@ function isMissingDbRelation(err: unknown, relationName: string): boolean {
   return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
 }
 
+function getReminderAt(metadata: unknown): Date | null {
+  if (!metadata || typeof metadata !== 'object') return null
+  const remindAt = (metadata as Record<string, unknown>).remindAt
+  if (typeof remindAt !== 'string') return null
+  const parsed = new Date(remindAt)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export const notificationRouter = createTRPCRouter({
   list: protectedProcedure
     .input(
@@ -74,6 +82,17 @@ export const notificationRouter = createTRPCRouter({
         clubName: string
         targetUrl: string
       }> = []
+      let adminReminderItems: Array<{
+        id: string
+        type: 'AGENT_ADMIN_REMINDER'
+        title: string
+        body: string
+        createdAt: string
+        readAt: string | null
+        clubId: string
+        clubName: string
+        targetUrl: string
+      }> = []
       const clubIds = adminClubs.map((a) => a.clubId)
       if (clubIds.length > 0) {
         try {
@@ -118,19 +137,70 @@ export const notificationRouter = createTRPCRouter({
               targetUrl: `/clubs/${r.clubId}?tab=members`,
             })
           }
+
         } catch (err) {
           if (!isMissingDbRelation(err, 'club_join_requests')) throw err
+        }
+
+        try {
+          const clubs = await ctx.prisma.club.findMany({
+            where: { id: { in: clubIds } },
+            select: { id: true, name: true },
+          })
+          const clubByNameId = new Map(clubs.map((c) => [c.id, c]))
+          const dueAdminTodoDecisions = await ctx.prisma.agentAdminTodoDecision.findMany({
+            where: {
+              clubId: { in: clubIds },
+              userId,
+              decision: 'not_now',
+              updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: limit,
+            select: {
+              clubId: true,
+              dateKey: true,
+              itemId: true,
+              title: true,
+              href: true,
+              metadata: true,
+              updatedAt: true,
+            },
+          })
+          const now = Date.now()
+          for (const item of dueAdminTodoDecisions) {
+            const remindAt = getReminderAt(item.metadata)
+            if (!remindAt || remindAt.getTime() > now) continue
+            const club = clubByNameId.get(item.clubId)
+            if (!club) continue
+            const metadata = item.metadata as Record<string, unknown> | null
+            const description = typeof metadata?.description === 'string' ? metadata.description : null
+            adminReminderItems.push({
+              id: `agent-admin-reminder-${item.clubId}-${item.dateKey}-${item.itemId}`,
+              type: 'AGENT_ADMIN_REMINDER',
+              title: item.title,
+              body: description || `A snoozed agent task for "${club.name}" is ready again.`,
+              createdAt: remindAt.toISOString(),
+              readAt: null,
+              clubId: item.clubId,
+              clubName: club.name,
+              targetUrl: item.href,
+            })
+          }
+        } catch (err) {
+          if (!isMissingDbRelation(err, 'agent_admin_todo_decisions')) throw err
         }
       }
 
       const allItems = [
         ...invitationItems.map((i) => ({ ...i, _sort: i.createdAt })),
         ...clubJoinItems.map((i) => ({ ...i, _sort: i.createdAt })),
+        ...adminReminderItems.map((i) => ({ ...i, _sort: i.createdAt })),
       ].sort((a, b) => (b._sort > a._sort ? 1 : -1))
       const items = allItems.slice(0, limit).map(({ _sort, ...rest }) => rest)
 
       return {
-        unreadCount: invitationCount + clubJoinItems.length,
+        unreadCount: invitationCount + clubJoinItems.length + adminReminderItems.length,
         items,
       }
     }),
