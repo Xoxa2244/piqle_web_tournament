@@ -15,6 +15,7 @@ import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
 import { advisorDraftStatusSchema, type AdvisorDraftMetadata } from './advisor-drafts'
 import { isAdvisorActionHidden } from './advisor-action-state'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
+import { advisorSandboxRoutingDraftSchema } from './advisor-sandbox-policy'
 import { advisorPendingClarificationSchema, type AdvisorPendingClarification } from './advisor-clarifications'
 import { advisorOutcomeMemorySchema, type AdvisorOutcomeMemory } from './advisor-outcomes'
 import { formatAdvisorScheduledLabel } from './advisor-scheduling'
@@ -34,9 +35,10 @@ export const advisorConversationStateSchema = z.object({
   currentMembershipLifecycle: z.union([advisorTrialFollowUpDraftSchema, advisorRenewalReactivationDraftSchema]).optional(),
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
   currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
+  currentSandboxRouting: advisorSandboxRoutingDraftSchema.optional(),
   latestOutcome: advisorOutcomeMemorySchema.optional(),
   recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'update_contact_policy', 'update_autonomy_policy']).optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -121,6 +123,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'update_autonomy_policy') {
     return finalizeAdvisorConversationState({
       currentAutonomyPolicy: action.policy,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    })
+  }
+
+  if (action.kind === 'update_sandbox_routing') {
+    return finalizeAdvisorConversationState({
+      currentSandboxRouting: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -314,6 +325,12 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     parts.push(`Renewal outreach auto thresholds: confidence ${state.currentAutonomyPolicy.renewalReactivation.minConfidenceAuto}, max ${state.currentAutonomyPolicy.renewalReactivation.maxRecipientsAuto}, membership required ${state.currentAutonomyPolicy.renewalReactivation.requireMembershipSignal ? 'yes' : 'no'}`)
   }
 
+  if (state.currentSandboxRouting) {
+    parts.push(`Active sandbox routing draft: ${state.currentSandboxRouting.mode}`)
+    parts.push(`Sandbox email test recipients: ${state.currentSandboxRouting.emailRecipients.length > 0 ? state.currentSandboxRouting.emailRecipients.join(', ') : 'none'}`)
+    parts.push(`Sandbox SMS test recipients: ${state.currentSandboxRouting.smsRecipients.length > 0 ? state.currentSandboxRouting.smsRecipients.join(', ') : 'none'}`)
+  }
+
   if (state.lastActionKind) {
     parts.push(`Last action: ${state.lastActionKind}${state.lastActionTitle ? ` (${state.lastActionTitle})` : ''}`)
   }
@@ -339,6 +356,7 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
   parts.push('If the user says "those inactive members", "the reactivation list", or asks to revise the win-back message, assume they mean the active reactivation draft above unless they clarify otherwise.')
   parts.push('If the user says "those rules", "that policy", or asks to tighten or relax messaging rules, assume they mean the active contact policy draft above unless they clarify otherwise.')
   parts.push('If the user says "autopilot", "autonomy rules", "approval matrix", or "that automation policy", assume they mean the active autonomy policy draft above unless they clarify otherwise.')
+  parts.push('If the user says "sandbox routing", "preview mode", "test recipients", or asks to add/remove QA recipients, assume they mean the active sandbox routing draft above unless they clarify otherwise.')
   parts.push('--- End of Active Advisor Working Memory ---')
 
   return parts.join('\n')

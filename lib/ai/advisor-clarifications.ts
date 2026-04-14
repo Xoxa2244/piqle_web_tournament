@@ -183,7 +183,8 @@ export function maybeStartAdvisorClarification(opts: {
     plan.action === 'trial_follow_up' ||
     plan.action === 'renewal_reactivation' ||
     plan.action === 'update_contact_policy' ||
-    plan.action === 'update_autonomy_policy'
+    plan.action === 'update_autonomy_policy' ||
+    plan.action === 'update_sandbox_routing'
   ) return null
 
   if (plan.action === 'create_cohort') {

@@ -41,6 +41,7 @@ import {
 } from '@/lib/ai/advisor-campaign-jobs'
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
+import { resolveAdvisorSandboxRoutingDraft } from '@/lib/ai/advisor-sandbox-policy'
 import { buildAdvisorSandboxRoutingSummary } from '@/lib/ai/advisor-sandbox-routing'
 import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
@@ -4818,6 +4819,41 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         return persistAdvisorOutcome({
           ok: true,
           kind: 'update_autonomy_policy' as const,
+          policy: input.action.policy,
+          changedFields: input.action.policy.changes,
+          previousPolicy: currentPolicy,
+        })
+      }
+
+      if (input.action.kind === 'update_sandbox_routing') {
+        const club = await ctx.prisma.club.findUniqueOrThrow({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        })
+        const currentPolicy = resolveAdvisorSandboxRoutingDraft(club.automationSettings)
+        const existingAutomationSettings = (club.automationSettings as Record<string, any> | null) || {}
+        const existingIntelligence = existingAutomationSettings.intelligence || {}
+
+        await ctx.prisma.club.update({
+          where: { id: input.clubId },
+          data: {
+            automationSettings: {
+              ...existingAutomationSettings,
+              intelligence: {
+                ...existingIntelligence,
+                sandboxRouting: {
+                  mode: input.action.policy.mode,
+                  emailRecipients: input.action.policy.emailRecipients,
+                  smsRecipients: input.action.policy.smsRecipients,
+                },
+              },
+            },
+          },
+        })
+
+        return persistAdvisorOutcome({
+          ok: true,
+          kind: 'update_sandbox_routing' as const,
           policy: input.action.policy,
           changedFields: input.action.policy.changes,
           previousPolicy: currentPolicy,

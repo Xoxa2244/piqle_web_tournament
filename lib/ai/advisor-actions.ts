@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
+import { advisorSandboxRoutingDraftSchema } from './advisor-sandbox-policy'
 
 export const advisorCampaignTypeEnum = z.enum([
   'CHECK_IN',
@@ -246,6 +247,14 @@ const updateAutonomyPolicyActionCoreSchema = z.object({
   policy: advisorAutonomyPolicyDraftSchema,
 })
 
+const updateSandboxRoutingActionCoreSchema = z.object({
+  kind: z.literal('update_sandbox_routing'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  policy: advisorSandboxRoutingDraftSchema,
+})
+
 export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
   createCohortActionCoreSchema,
   createCampaignActionCoreSchema,
@@ -255,6 +264,7 @@ export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
   renewalReactivationActionCoreSchema,
   updateContactPolicyActionCoreSchema,
   updateAutonomyPolicyActionCoreSchema,
+  updateSandboxRoutingActionCoreSchema,
 ])
 
 export const advisorActionRecommendationSchema = z.object({

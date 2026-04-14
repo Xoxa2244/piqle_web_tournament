@@ -16,6 +16,7 @@ type RenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_rea
 type MembershipLifecycleAction = TrialFollowUpAction | RenewalReactivationAction
 type ContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
 type AutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
+type SandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sandbox_routing' }>
 type CohortAction = Extract<AdvisorActionCore, { kind: 'create_cohort' }>
 
 function getRefinePrompt(action: AdvisorAction) {
@@ -26,6 +27,7 @@ function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'renewal_reactivation') return 'Use SMS instead and keep only the top 5 renewal candidates.'
   if (action.kind === 'update_contact_policy') return 'Tighten these messaging rules a bit.'
   if (action.kind === 'update_autonomy_policy') return 'Make this autopilot policy a bit safer.'
+  if (action.kind === 'update_sandbox_routing') return 'Keep sandbox preview only and trim the test recipient list.'
   return 'Narrow this audience a bit.'
 }
 
@@ -155,6 +157,7 @@ export function AdvisorActionCard({
   const isMembershipLifecycle = isTrialFollowUp || isRenewalReactivation
   const isContactPolicy = selectedBaseAction.kind === 'update_contact_policy'
   const isAutonomyPolicy = selectedBaseAction.kind === 'update_autonomy_policy'
+  const isSandboxRouting = selectedBaseAction.kind === 'update_sandbox_routing'
   const baseCampaignAction = isCampaign ? selectedBaseAction as CampaignAction : null
   const baseMembershipLifecycleAction = isMembershipLifecycle ? selectedBaseAction as MembershipLifecycleAction : null
 
@@ -235,6 +238,7 @@ export function AdvisorActionCard({
   const currentMembershipLifecycleAction = isMembershipLifecycle ? currentAction as MembershipLifecycleAction : null
   const currentContactPolicyAction = isContactPolicy ? currentAction as ContactPolicyAction : null
   const currentAutonomyPolicyAction = isAutonomyPolicy ? currentAction as AutonomyPolicyAction : null
+  const currentSandboxRoutingAction = isSandboxRouting ? currentAction as SandboxRoutingAction : null
   const currentCohortAction = currentAction.kind === 'create_cohort' ? currentAction as CohortAction : null
 
   const title = currentAction.title
@@ -360,6 +364,8 @@ export function AdvisorActionCard({
           : (sandboxMode ? 'Choose the sandbox path for this membership flow. The platform will prepare a preview and will not message live members yet.' : 'Choose the live send path for this membership flow, or park it for later.')
     : isAutonomyPolicy
       ? 'Review these autopilot changes, then apply, refine, snooze, or decline them.'
+      : isSandboxRouting
+        ? 'Review the sandbox preview routing, then decide whether to apply or park it.'
       : isContactPolicy
         ? 'Review the messaging guardrails, then decide whether to apply or park them.'
         : isFillSession
@@ -387,6 +393,8 @@ export function AdvisorActionCard({
         ? (sandboxMode ? 'Run Sandbox' : 'Send Reactivation')
       : isAutonomyPolicy
         ? 'Apply Autopilot Rules'
+        : isSandboxRouting
+          ? 'Apply Sandbox Routing'
         : 'Approve'
 
   const handleApprove = () => {
@@ -559,8 +567,10 @@ export function AdvisorActionCard({
                     ? 'Reactivation Draft'
                     : isTrialFollowUp
                       ? 'Trial Follow-up Draft'
-                      : isRenewalReactivation
-                        ? 'Renewal Outreach Draft'
+                    : isRenewalReactivation
+                      ? 'Renewal Outreach Draft'
+                    : isSandboxRouting
+                      ? 'Sandbox Routing Draft'
                     : isAutonomyPolicy
                       ? 'Autonomy Policy Draft'
                       : 'Contact Policy Draft'}
@@ -712,7 +722,7 @@ export function AdvisorActionCard({
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
               {isFillSession ? <CalendarDays className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {isFillSession ? 'Session' : isContactPolicy || isAutonomyPolicy ? 'Policy' : isMembershipLifecycle ? 'Member Flow' : 'Audience'}
+              {isFillSession ? 'Session' : isContactPolicy || isAutonomyPolicy || isSandboxRouting ? 'Policy' : isMembershipLifecycle ? 'Member Flow' : 'Audience'}
             </div>
             <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
               {currentCohortAction
@@ -727,6 +737,8 @@ export function AdvisorActionCard({
                         ? currentMembershipLifecycleAction?.lifecycle.label
                       : isAutonomyPolicy
                         ? 'Club autopilot rules'
+                      : isSandboxRouting
+                        ? 'Sandbox preview routing'
                       : 'Club messaging guardrails'}
             </div>
             <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
@@ -740,6 +752,8 @@ export function AdvisorActionCard({
                     ? currentContactPolicyAction?.policy.timeZone
                     : isAutonomyPolicy
                       ? `${currentAutonomyPolicyAction?.policy.changes.length} pending change${currentAutonomyPolicyAction?.policy.changes.length === 1 ? '' : 's'}`
+                    : isSandboxRouting
+                      ? `${currentSandboxRoutingAction?.policy.changes.length} pending change${currentSandboxRoutingAction?.policy.changes.length === 1 ? '' : 's'}`
                     : `${targetCount} matching member${targetCount === 1 ? '' : 's'}`}
             </div>
             {isFillSession ? (
@@ -764,6 +778,12 @@ export function AdvisorActionCard({
             ) : isAutonomyPolicy ? (
               <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
                 Welcome {currentAutonomyPolicyAction?.policy.welcome.mode} · Slot filler {currentAutonomyPolicyAction?.policy.slotFiller.mode} · Reactivation {currentAutonomyPolicyAction?.policy.reactivation.mode} · Trial {currentAutonomyPolicyAction?.policy.trialFollowUp.mode} · Renewal {currentAutonomyPolicyAction?.policy.renewalReactivation.mode}
+              </p>
+            ) : isSandboxRouting ? (
+              <p className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.5 }}>
+                {currentSandboxRoutingAction?.policy.mode === 'preview_only'
+                  ? 'Live delivery stays locked and sandbox runs only create preview inbox entries.'
+                  : `Sandbox runs route to ${currentSandboxRoutingAction?.policy.emailRecipients.length || 0} email test and ${currentSandboxRoutingAction?.policy.smsRecipients.length || 0} SMS test recipients.`}
               </p>
             ) : (
               (currentCohortAction ? currentCohortAction.cohort.description : currentCampaignAction?.audience.description) && (
@@ -1031,6 +1051,40 @@ export function AdvisorActionCard({
               ))}
             </div>
           </div>
+        ) : isSandboxRouting ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Sandbox Routing
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {currentSandboxRoutingAction?.policy.mode === 'preview_only' ? 'Preview only' : 'Test recipients'}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {currentSandboxRoutingAction?.policy.emailRecipients.length || 0} email test recipient{currentSandboxRoutingAction?.policy.emailRecipients.length === 1 ? '' : 's'} · {currentSandboxRoutingAction?.policy.smsRecipients.length || 0} SMS test recipient{currentSandboxRoutingAction?.policy.smsRecipients.length === 1 ? '' : 's'}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {currentSandboxRoutingAction?.policy.changes.slice(0, 5).map((change: string) => (
+                <span
+                  key={change}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                >
+                  {change}
+                </span>
+              ))}
+            </div>
+            {(currentSandboxRoutingAction?.policy.emailRecipients.length || 0) > 0 && (
+              <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                Email test: {currentSandboxRoutingAction?.policy.emailRecipients.join(', ')}
+              </div>
+            )}
+            {(currentSandboxRoutingAction?.policy.smsRecipients.length || 0) > 0 && (
+              <div className="text-xs mt-1" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                SMS test: {currentSandboxRoutingAction?.policy.smsRecipients.join(', ')}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -1098,11 +1152,11 @@ export function AdvisorActionCard({
         </div>
       )}
 
-      {(isCampaign || isFillSession || isReactivation || isMembershipLifecycle || isContactPolicy || isAutonomyPolicy) && (
+      {(isCampaign || isFillSession || isReactivation || isMembershipLifecycle || isContactPolicy || isAutonomyPolicy || isSandboxRouting) && (
         <div className="rounded-xl p-3 mt-3" style={{ background: 'var(--subtle)' }}>
           <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             <Send className="w-3.5 h-3.5" />
-            {isContactPolicy || isAutonomyPolicy ? 'Policy Preview' : 'Message Preview'}
+            {isContactPolicy || isAutonomyPolicy || isSandboxRouting ? 'Policy Preview' : 'Message Preview'}
           </div>
           <div className="text-xs mt-2 whitespace-pre-wrap" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
             {isCampaign
@@ -1110,10 +1164,10 @@ export function AdvisorActionCard({
               : isFillSession
                 ? currentFillAction?.outreach.message
                 : isReactivation
-                  ? currentReactivationAction?.reactivation.message
-                  : isMembershipLifecycle
-                    ? currentMembershipLifecycleAction?.lifecycle.message
-                  : (currentContactPolicyAction?.policy.changes || currentAutonomyPolicyAction?.policy.changes || []).join('\n')}
+                ? currentReactivationAction?.reactivation.message
+                : isMembershipLifecycle
+                  ? currentMembershipLifecycleAction?.lifecycle.message
+                  : (currentContactPolicyAction?.policy.changes || currentAutonomyPolicyAction?.policy.changes || currentSandboxRoutingAction?.policy.changes || []).join('\n')}
           </div>
         </div>
       )}
@@ -1371,6 +1425,8 @@ export function AdvisorActionCard({
                 ? `Contact policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'update_autonomy_policy'
                 ? `Autonomy policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
+              : result.kind === 'update_sandbox_routing'
+                ? `Sandbox routing updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'fill_session'
                 ? result.sandboxed
                   ? `Sandbox preview ready for ${result.sessionTitle}: ${result.previewRecipientCount} eligible recipients${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`

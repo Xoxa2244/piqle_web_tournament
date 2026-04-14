@@ -51,6 +51,12 @@ import {
   type AdvisorContactPolicyDraft,
 } from '@/lib/ai/advisor-contact-policy'
 import {
+  formatAdvisorSandboxRoutingDigest,
+  resolveAdvisorSandboxRoutingDraft,
+  updateAdvisorSandboxRoutingFromMessage,
+  type AdvisorSandboxRoutingDraft,
+} from '@/lib/ai/advisor-sandbox-policy'
+import {
   extractExplicitAdvisorChannel,
   maybeStartAdvisorClarification,
   resolveAdvisorClarification,
@@ -372,6 +378,7 @@ type AdvisorFillSessionAction = Extract<AdvisorActionCore, { kind: 'fill_session
 type AdvisorReactivationAction = Extract<AdvisorActionCore, { kind: 'reactivate_members' }>
 type AdvisorContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
 type AdvisorAutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
+type AdvisorSandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sandbox_routing' }>
 type AdvisorTrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
 type AdvisorRenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type AdvisorMembershipLifecycleAction = AdvisorTrialFollowUpAction | AdvisorRenewalReactivationAction
@@ -930,6 +937,16 @@ function buildAutonomyPolicyAction(policy: AdvisorAutonomyPolicyDraft): AdvisorA
   }
 }
 
+function buildSandboxRoutingAction(policy: AdvisorSandboxRoutingDraft): AdvisorSandboxRoutingAction {
+  return {
+    kind: 'update_sandbox_routing',
+    title: 'Update sandbox routing',
+    summary: formatAdvisorSandboxRoutingDigest(policy),
+    requiresApproval: true,
+    policy,
+  }
+}
+
 function getSlotFillerCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
@@ -1038,6 +1055,24 @@ function getAutonomyPolicyCopy(language: SupportedLanguage | string) {
 
   return {
     needChanges: 'Tell me what to change in the autonomy policy: which actions should be auto, approve, or off, and whether you want confidence thresholds, recipient caps, or membership signal requirements.',
+  }
+}
+
+function getSandboxRoutingCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      needChanges: 'Скажи, как должен работать sandbox: оставить только preview, маршрутизировать на test recipients, и какие email или SMS получатели должны быть в whitelist.',
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      needChanges: 'Dime como debe funcionar el sandbox: solo preview, routing a test recipients, y que emails o SMS deben quedar en whitelist.',
+    }
+  }
+
+  return {
+    needChanges: 'Tell me how sandbox should work: keep preview only, route to test recipients, and which email or SMS recipients should stay on the whitelist.',
   }
 }
 
@@ -1569,6 +1604,8 @@ function getSuggestionKeyForPlanAction(action: AdvisorIntentPlan['action']) {
       return 'update_contact_policy' as const
     case 'update_autonomy_policy':
       return 'update_autonomy_policy' as const
+    case 'update_sandbox_routing':
+      return 'update_sandbox_routing' as const
     default:
       return 'create_campaign' as const
   }
@@ -1582,7 +1619,13 @@ async function applyAdvisorAdaptiveDefaults(opts: {
   timeZone?: string | null
 }) {
   const explicitChannel = extractExplicitAdvisorChannel(opts.message)
-  if (opts.plan.action === 'none' || opts.plan.action === 'create_cohort' || opts.plan.action === 'update_contact_policy' || opts.plan.action === 'update_autonomy_policy') {
+  if (
+    opts.plan.action === 'none' ||
+    opts.plan.action === 'create_cohort' ||
+    opts.plan.action === 'update_contact_policy' ||
+    opts.plan.action === 'update_autonomy_policy' ||
+    opts.plan.action === 'update_sandbox_routing'
+  ) {
     return {
       plan: opts.plan,
       defaultsApplied: undefined,
@@ -1822,6 +1865,29 @@ export async function POST(req: Request) {
       }
 
       if (!assistantMessage && !hadPendingClarification) {
+        const editedSandboxRouting = memory.state?.currentSandboxRouting
+          ? updateAdvisorSandboxRoutingFromMessage({
+              message,
+              currentPolicy: memory.state.currentSandboxRouting,
+              allowImplicit: true,
+            })
+          : null
+        if (editedSandboxRouting) {
+          draftIdToReuse = memory.state?.currentDraftId || null
+          const action = buildSandboxRoutingAction(editedSandboxRouting)
+          assistantState = buildAdvisorConversationStateFromAction(action)
+          assistantMessage = withSuggested(
+            [
+              copy.sandboxRoutingReady(action.policy.changes.length),
+              ...action.policy.changes,
+              buildAdvisorActionTag(action),
+            ].join('\n\n'),
+            copy.suggestions.update_sandbox_routing,
+          )
+        }
+      }
+
+      if (!assistantMessage && !hadPendingClarification) {
         const activeFillSession = memory.lastAction?.kind === 'fill_session'
         const fillSessionEditSessions = activeFillSession
           ? await loadAdvisorSlotSessions(caller, clubId)
@@ -1958,6 +2024,16 @@ export async function POST(req: Request) {
                 buildAdvisorActionTag(editedAction),
               ].join('\n\n'),
               copy.suggestions.update_autonomy_policy,
+            )
+          } else if (editedAction.kind === 'update_sandbox_routing') {
+            assistantState = buildAdvisorConversationStateFromAction(editedAction)
+            assistantMessage = withSuggested(
+              [
+                copy.sandboxRoutingReady(editedAction.policy.changes.length),
+                ...editedAction.policy.changes,
+                buildAdvisorActionTag(editedAction),
+              ].join('\n\n'),
+              copy.suggestions.update_sandbox_routing,
             )
           } else {
             const editCopy = getAdvisorEditCopy(language)
@@ -2229,6 +2305,40 @@ export async function POST(req: Request) {
             buildAdvisorActionTag(action),
           ].join('\n\n'),
           copy.suggestions.update_autonomy_policy,
+        )
+      }
+    } else if (plan.action === 'update_sandbox_routing') {
+      const sandboxRoutingCopy = getSandboxRoutingCopy(language)
+      const currentPolicy = resolveAdvisorSandboxRoutingDraft(clubContext?.automationSettings)
+      const updatedPolicy = updateAdvisorSandboxRoutingFromMessage({
+        message: effectiveMessage,
+        currentPolicy,
+      })
+
+      if (!updatedPolicy) {
+        assistantState = {
+          ...(memory.state || {}),
+          latestOutcome: memory.state?.latestOutcome,
+          recentOutcomes: memory.state?.recentOutcomes || [],
+          currentSandboxRouting: currentPolicy,
+          lastActionKind: 'update_sandbox_routing',
+          lastActionTitle: 'Update sandbox routing',
+          updatedAt: new Date().toISOString(),
+        }
+        assistantMessage = withSuggested(
+          sandboxRoutingCopy.needChanges,
+          copy.suggestions.update_sandbox_routing,
+        )
+      } else {
+        const action = buildSandboxRoutingAction(updatedPolicy)
+        assistantState = buildAdvisorConversationStateFromAction(action)
+        assistantMessage = withSuggested(
+          [
+            copy.sandboxRoutingReady(action.policy.changes.length),
+            ...action.policy.changes,
+            buildAdvisorActionTag(action),
+          ].join('\n\n'),
+          copy.suggestions.update_sandbox_routing,
         )
       }
     } else {

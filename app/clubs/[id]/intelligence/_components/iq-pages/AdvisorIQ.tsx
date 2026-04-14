@@ -138,6 +138,7 @@ function formatDraftKind(kind: string) {
     case 'create_cohort': return 'Audience'
     case 'update_contact_policy': return 'Contact Policy'
     case 'update_autonomy_policy': return 'Autopilot Policy'
+    case 'update_sandbox_routing': return 'Sandbox Routing'
     default: return kind.replace(/_/g, ' ')
   }
 }

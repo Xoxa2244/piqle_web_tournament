@@ -123,7 +123,12 @@ export function resolveAdvisorDraftStatusFromResult(
   if (result?.sandboxed) return 'sandboxed'
   if (result?.savedAsDraft) return 'draft_saved'
   if (result?.deliveryMode === 'send_later') return 'scheduled'
-  if (action.kind === 'create_cohort' || action.kind === 'update_contact_policy' || action.kind === 'update_autonomy_policy') {
+  if (
+    action.kind === 'create_cohort' ||
+    action.kind === 'update_contact_policy' ||
+    action.kind === 'update_autonomy_policy' ||
+    action.kind === 'update_sandbox_routing'
+  ) {
     return 'approved'
   }
   return 'sent'

@@ -11,6 +11,7 @@ export const advisorOutcomeMemorySchema = z.object({
     'renewal_reactivation',
     'update_contact_policy',
     'update_autonomy_policy',
+    'update_sandbox_routing',
   ]),
   title: z.string().min(1).max(140),
   summary: z.string().min(1).max(320),
@@ -154,6 +155,16 @@ export function buildAdvisorOutcomeMemory(
       kind: action.kind,
       title: action.title,
       summary: `Autopilot policy updated with ${changedCount} change${changedCount === 1 ? '' : 's'}.`,
+      occurredAt,
+    }
+  }
+
+  if (action.kind === 'update_sandbox_routing') {
+    const changedCount = Array.isArray(result?.changedFields) ? result.changedFields.length : action.policy.changes.length
+    return {
+      kind: action.kind,
+      title: action.title,
+      summary: `Sandbox routing updated with ${changedCount} change${changedCount === 1 ? '' : 's'}.`,
       occurredAt,
     }
   }
