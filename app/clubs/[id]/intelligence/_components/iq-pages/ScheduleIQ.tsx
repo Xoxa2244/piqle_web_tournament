@@ -164,6 +164,23 @@ function buildAdvisorDraftHref(
   return `/clubs/${clubId}/intelligence/advisor`
 }
 
+function buildAgentFocusHref(
+  clubId: string,
+  options: {
+    focus: 'programming-cockpit' | 'ops-board' | 'ops-queue'
+    day?: string
+    draftId?: string
+    opsDraftId?: string
+  },
+) {
+  const params = new URLSearchParams()
+  params.set('focus', options.focus)
+  if (options.day) params.set('day', options.day)
+  if (options.draftId) params.set('draftId', options.draftId)
+  if (options.opsDraftId) params.set('opsDraftId', options.opsDraftId)
+  return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
+}
+
 // ── Main Component ──
 
 export function ScheduleIQ({
@@ -278,6 +295,26 @@ export function ScheduleIQ({
       .filter((session) => session.status !== 'past' && session.occupancy < 70)
       .sort((left, right) => left.occupancy - right.occupancy)
   }, [daySessions])
+  const selectedAgentHref = useMemo(() => {
+    if (selectedDayOpsDrafts.length > 0) {
+      return buildAgentFocusHref(clubId, {
+        focus: 'ops-queue',
+        day: selectedDayName,
+        opsDraftId: selectedDayOpsDrafts[0].id,
+      })
+    }
+
+    const topProgrammingDraft = programmingSignals.matching[0] || programmingSignals.strongest
+    if (topProgrammingDraft) {
+      return buildAgentFocusHref(clubId, {
+        focus: 'programming-cockpit',
+        day: selectedDayName,
+        draftId: topProgrammingDraft.id,
+      })
+    }
+
+    return `/clubs/${clubId}/intelligence/agent`
+  }, [clubId, programmingSignals.matching, programmingSignals.strongest, selectedDayName, selectedDayOpsDrafts])
 
   const handlePrev = useCallback(() => {
     setSelectedDate((d) => toDateStr(addDays(new Date(d + 'T12:00:00'), -1)))
@@ -382,11 +419,11 @@ export function ScheduleIQ({
             </div>
           </div>
           <Link
-            href={`/clubs/${clubId}/intelligence/agent`}
+            href={selectedAgentHref}
             className="inline-flex items-center gap-1 text-xs font-medium shrink-0"
             style={{ color: 'var(--heading)' }}
           >
-            Open Agent
+            Open in Agent
             <ArrowUpRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -464,14 +501,28 @@ export function ScheduleIQ({
                   <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
                     {draft.insights[0] || draft.summary || 'Agent-backed schedule opportunity ready for review.'}
                   </div>
-                  <Link
-                    href={buildAdvisorDraftHref(clubId, draft)}
-                    className="inline-flex items-center gap-1 mt-3 text-[11px] font-medium"
-                    style={{ color: 'var(--heading)' }}
-                  >
-                    Open programming draft
-                    <ArrowUpRight className="w-3 h-3" />
-                  </Link>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Link
+                      href={buildAgentFocusHref(clubId, {
+                        focus: 'programming-cockpit',
+                        day: selectedDayName,
+                        draftId: draft.id,
+                      })}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium"
+                      style={{ color: 'var(--heading)' }}
+                    >
+                      Review in Agent
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                    <Link
+                      href={buildAdvisorDraftHref(clubId, draft)}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium"
+                      style={{ color: 'var(--t3)' }}
+                    >
+                      Open draft
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                  </div>
                 </div>
               ))}
               {!programmingSignals.matching.length && !programmingSignals.strongest && (
@@ -520,17 +571,31 @@ export function ScheduleIQ({
                   <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
                     {draft.metadata?.sessionDraft?.nextStep || 'Internal-only session draft. Still manual and not live-published.'}
                   </div>
-                  <Link
-                    href={buildAdvisorDraftHref(clubId, {
-                      conversationId: draft.agentDraft?.conversationId || null,
-                      originalIntent: draft.agentDraft?.originalIntent || null,
-                    })}
-                    className="inline-flex items-center gap-1 mt-3 text-[11px] font-medium"
-                    style={{ color: 'var(--heading)' }}
-                  >
-                    Open source draft
-                    <ArrowUpRight className="w-3 h-3" />
-                  </Link>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Link
+                      href={buildAgentFocusHref(clubId, {
+                        focus: 'ops-queue',
+                        day: selectedDayName,
+                        opsDraftId: draft.id,
+                      })}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium"
+                      style={{ color: 'var(--heading)' }}
+                    >
+                      Review in Agent
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                    <Link
+                      href={buildAdvisorDraftHref(clubId, {
+                        conversationId: draft.agentDraft?.conversationId || null,
+                        originalIntent: draft.agentDraft?.originalIntent || null,
+                      })}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium"
+                      style={{ color: 'var(--t3)' }}
+                    >
+                      Open source draft
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                  </div>
                 </div>
               ))}
               {selectedDayOpsDrafts.length === 0 && (

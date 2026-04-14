@@ -1,6 +1,7 @@
 'use client'
 import Link from "next/link"
-import { useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { motion, useInView, AnimatePresence } from "motion/react"
 import {
   Bot, Zap, TrendingUp, CheckCircle2, Clock, Send,
@@ -273,6 +274,7 @@ interface ProgrammingOpsStage {
 }
 
 type OpsSessionDraftStageKey = 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
+type AgentDeepLinkFocus = 'programming-cockpit' | 'ops-board' | 'ops-queue'
 
 interface OpsSessionDraftStage {
   key: OpsSessionDraftStageKey
@@ -1084,6 +1086,22 @@ function buildAdvisorDraftRefineHref(
   return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
 }
 
+function isAgentDeepLinkFocus(value: string | null): value is AgentDeepLinkFocus {
+  return value === 'programming-cockpit' || value === 'ops-board' || value === 'ops-queue'
+}
+
+function prioritizeFocusedItems<T>(items: T[], isFocused: (item: T) => boolean) {
+  const focused: T[] = []
+  const rest: T[] = []
+
+  for (const item of items) {
+    if (isFocused(item)) focused.push(item)
+    else rest.push(item)
+  }
+
+  return [...focused, ...rest]
+}
+
 function buildProgrammingRefineActions(draft: ProgrammingDraftCard) {
   const actions: Array<{ label: string; prompt: string }> = []
   const primary = draft.primary
@@ -1215,8 +1233,13 @@ export function AgentIQ({
   promoteOpsSessionDraft,
 }: AgentIQProps) {
   const { isDark } = useTheme()
+  const searchParams = useSearchParams()
   const headerRef = useRef<HTMLDivElement>(null)
   const pendingQueueRef = useRef<HTMLDivElement>(null)
+  const programmingCockpitRef = useRef<HTMLDivElement>(null)
+  const opsBoardRef = useRef<HTMLDivElement>(null)
+  const opsQueueRef = useRef<HTMLDivElement>(null)
+  const lastDeepLinkRef = useRef<string | null>(null)
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
 
@@ -1235,6 +1258,11 @@ export function AgentIQ({
   const programmingCockpit = buildProgrammingCockpit(advisorDrafts || [])
   const programmingOpsBoard = buildProgrammingOpsBoard(advisorDrafts || [])
   const opsSessionDraftQueue = buildOpsSessionDraftQueue(opsSessionDrafts || [])
+  const deepLinkFocus = isAgentDeepLinkFocus(searchParams.get('focus')) ? searchParams.get('focus') : null
+  const deepLinkDay = searchParams.get('day')
+  const deepLinkDraftId = searchParams.get('draftId')
+  const deepLinkOpsDraftId = searchParams.get('opsDraftId')
+  const deepLinkKey = [deepLinkFocus, deepLinkDay, deepLinkDraftId, deepLinkOpsDraftId].filter(Boolean).join(':')
   const policyScenarios = buildAgentPolicyScenarios({
     items: [
       ...logs.map((item) => ({
@@ -1265,6 +1293,32 @@ export function AgentIQ({
     automationSettings: { intelligence: intelligenceSettings || {} },
     liveMode: agentLive,
   })
+
+  const isFocusedProgrammingDraft = (draft: ProgrammingDraftCard) =>
+    (deepLinkDraftId ? draft.id === deepLinkDraftId : false)
+    || (!!deepLinkDay && draft.primary.dayOfWeek === deepLinkDay)
+
+  const isFocusedOpsSessionDraft = (draft: OpsSessionDraftItem) =>
+    (deepLinkOpsDraftId ? draft.id === deepLinkOpsDraftId : false)
+    || (!!deepLinkDay && draft.dayOfWeek === deepLinkDay)
+
+  useEffect(() => {
+    if (!deepLinkFocus || isLoading || !deepLinkKey || lastDeepLinkRef.current === deepLinkKey) return
+
+    const targetRef =
+      deepLinkFocus === 'programming-cockpit'
+        ? programmingCockpitRef
+        : deepLinkFocus === 'ops-board'
+          ? opsBoardRef
+          : opsQueueRef
+
+    const timer = window.setTimeout(() => {
+      targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      lastDeepLinkRef.current = deepLinkKey
+    }, 120)
+
+    return () => window.clearTimeout(timer)
+  }, [deepLinkFocus, deepLinkKey, isLoading])
 
   const actionHref = (action: AutopilotSuggestionAction, prompt?: string) => {
     switch (action) {
@@ -1792,6 +1846,7 @@ export function AgentIQ({
 
       {programmingCockpit.cards.length > 0 && (
         <motion.div
+          ref={programmingCockpitRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.19 }}
@@ -1808,6 +1863,11 @@ export function AgentIQ({
                 <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
                   Draft-first schedule opportunities the agent believes are strongest right now. Nothing here publishes live.
                 </p>
+                {deepLinkFocus === 'programming-cockpit' && deepLinkDay && (
+                  <div className="text-[11px] mt-2 font-medium" style={{ color: "#67E8F9" }}>
+                    Focused from Schedule: {deepLinkDay}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1863,8 +1923,15 @@ export function AgentIQ({
               <div
                 className="rounded-xl p-4 mb-4"
                 style={{
-                  background: "rgba(139,92,246,0.08)",
-                  border: "1px solid rgba(139,92,246,0.16)",
+                  background: isFocusedProgrammingDraft(programmingCockpit.strongest)
+                    ? "rgba(103,232,249,0.12)"
+                    : "rgba(139,92,246,0.08)",
+                  border: isFocusedProgrammingDraft(programmingCockpit.strongest)
+                    ? "1px solid rgba(103,232,249,0.3)"
+                    : "1px solid rgba(139,92,246,0.16)",
+                  boxShadow: isFocusedProgrammingDraft(programmingCockpit.strongest)
+                    ? "0 0 0 1px rgba(103,232,249,0.18) inset"
+                    : undefined,
                 }}
               >
                 {(() => {
@@ -2009,16 +2076,20 @@ export function AgentIQ({
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {programmingCockpit.cards.slice(0, 4).map((draft) => {
+              {prioritizeFocusedItems(programmingCockpit.cards, isFocusedProgrammingDraft).slice(0, 4).map((draft) => {
                 const impact = buildProgrammingImpactAssessment(draft)
+                const isFocused = isFocusedProgrammingDraft(draft)
 
                 return (
                   <div
                     key={draft.id}
                     className="rounded-xl p-4"
                     style={{
-                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-                      border: "1px solid var(--card-border)",
+                      background: isFocused
+                        ? "rgba(103,232,249,0.08)"
+                        : isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                      border: isFocused ? "1px solid rgba(103,232,249,0.28)" : "1px solid var(--card-border)",
+                      boxShadow: isFocused ? "0 0 0 1px rgba(103,232,249,0.14) inset" : undefined,
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -2135,6 +2206,7 @@ export function AgentIQ({
 
       {programmingCockpit.cards.length > 0 && (
         <motion.div
+          ref={opsBoardRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -2151,6 +2223,11 @@ export function AgentIQ({
                 <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
                   Internal schedule-draft board for the club team. These ideas stay draft-only until someone chooses to operationalize them.
                 </p>
+                {deepLinkFocus === 'ops-board' && deepLinkDay && (
+                  <div className="text-[11px] mt-2 font-medium" style={{ color: "#67E8F9" }}>
+                    Focused from Schedule: {deepLinkDay}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2195,15 +2272,17 @@ export function AgentIQ({
                         No programming drafts in this stage yet.
                       </div>
                     ) : (
-                      stage.cards.slice(0, 4).map((draft) => {
+                      prioritizeFocusedItems(stage.cards, isFocusedProgrammingDraft).slice(0, 4).map((draft) => {
                         const impact = buildProgrammingImpactAssessment(draft)
+                        const isFocused = isFocusedProgrammingDraft(draft)
                         return (
                           <div
                             key={`${stage.key}-${draft.id}`}
                             className="rounded-lg p-3"
                             style={{
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.06)",
+                              background: isFocused ? "rgba(103,232,249,0.08)" : "rgba(255,255,255,0.04)",
+                              border: isFocused ? "1px solid rgba(103,232,249,0.24)" : "1px solid rgba(255,255,255,0.06)",
+                              boxShadow: isFocused ? "0 0 0 1px rgba(103,232,249,0.12) inset" : undefined,
                             }}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -2300,6 +2379,7 @@ export function AgentIQ({
 
       {opsSessionDraftQueue.some((stage) => stage.drafts.length > 0) && (
         <motion.div
+          ref={opsQueueRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.22 }}
@@ -2316,6 +2396,11 @@ export function AgentIQ({
                 <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
                   First-class internal session drafts created from agent programming approvals. These are still manual-only and never live-published here.
                 </p>
+                {deepLinkFocus === 'ops-queue' && deepLinkDay && (
+                  <div className="text-[11px] mt-2 font-medium" style={{ color: "#67E8F9" }}>
+                    Focused from Schedule: {deepLinkDay}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2360,18 +2445,20 @@ export function AgentIQ({
                         No internal session drafts in this stage yet.
                       </div>
                     ) : (
-                      stage.drafts.slice(0, 4).map((draft) => {
+                      prioritizeFocusedItems(stage.drafts, isFocusedOpsSessionDraft).slice(0, 4).map((draft) => {
                         const advisorHref = buildOpsSessionDraftHref(clubId, draft)
                         const isPromoting = processingId === `ops:${draft.id}`
                         const nextStep = draft.metadata?.sessionDraft?.nextStep
+                        const isFocused = isFocusedOpsSessionDraft(draft)
 
                         return (
                           <div
                             key={`${stage.key}-${draft.id}`}
                             className="rounded-lg p-3"
                             style={{
-                              background: "rgba(255,255,255,0.04)",
-                              border: "1px solid rgba(255,255,255,0.06)",
+                              background: isFocused ? "rgba(103,232,249,0.08)" : "rgba(255,255,255,0.04)",
+                              border: isFocused ? "1px solid rgba(103,232,249,0.24)" : "1px solid rgba(255,255,255,0.06)",
+                              boxShadow: isFocused ? "0 0 0 1px rgba(103,232,249,0.12) inset" : undefined,
                             }}
                           >
                             <div className="flex items-start justify-between gap-2">
