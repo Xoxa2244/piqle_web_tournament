@@ -1,7 +1,7 @@
 'use client'
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion, useInView, AnimatePresence } from "motion/react"
 import {
   Bot, Zap, TrendingUp, CheckCircle2, Clock, Send,
@@ -294,6 +294,8 @@ interface DailyAdminTodoSection {
   color: string
   items: DailyAdminTodoItem[]
 }
+
+type DailyAdminTodoDecision = 'accepted' | 'declined' | 'not_now'
 
 interface OpsSessionDraftStage {
   key: OpsSessionDraftStageKey
@@ -1526,6 +1528,7 @@ export function AgentIQ({
   promoteOpsSessionDraft,
 }: AgentIQProps) {
   const { isDark } = useTheme()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const headerRef = useRef<HTMLDivElement>(null)
   const pendingQueueRef = useRef<HTMLDivElement>(null)
@@ -1536,6 +1539,8 @@ export function AgentIQ({
   const lastDeepLinkRef = useRef<string | null>(null)
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [dailyTodoDecisions, setDailyTodoDecisions] = useState<Record<string, DailyAdminTodoDecision>>({})
+  const [dailyTodoDateKey] = useState(() => new Date().toLocaleDateString('en-CA'))
 
   const stats = activity?.stats
   const logs = activity?.logs || []
@@ -1598,6 +1603,20 @@ export function AgentIQ({
     sandboxDrafts,
     policyScenarios,
   })
+  const dailyTodoStorageKey = `iqsport:agent-daily-todo:${clubId}:${dailyTodoDateKey}`
+  const handledDailyTodoItems = dailyAdminTodoSections
+    .flatMap((section) => section.items)
+    .filter((item) => !!dailyTodoDecisions[item.id])
+  const handledDailyTodoCounts = handledDailyTodoItems.reduce(
+    (acc, item) => {
+      const decision = dailyTodoDecisions[item.id]
+      if (decision === 'accepted') acc.accepted += 1
+      if (decision === 'declined') acc.declined += 1
+      if (decision === 'not_now') acc.notNow += 1
+      return acc
+    },
+    { accepted: 0, declined: 0, notNow: 0 },
+  )
 
   const isFocusedProgrammingDraft = (draft: ProgrammingDraftCard) =>
     (deepLinkDraftId ? draft.id === deepLinkDraftId : false)
@@ -1628,6 +1647,29 @@ export function AgentIQ({
 
     return () => window.clearTimeout(timer)
   }, [deepLinkFocus, deepLinkKey, isLoading])
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(dailyTodoStorageKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Record<string, DailyAdminTodoDecision>
+      setDailyTodoDecisions(parsed)
+    } catch {
+      setDailyTodoDecisions({})
+    }
+  }, [dailyTodoStorageKey])
+
+  useEffect(() => {
+    try {
+      if (Object.keys(dailyTodoDecisions).length === 0) {
+        window.localStorage.removeItem(dailyTodoStorageKey)
+        return
+      }
+      window.localStorage.setItem(dailyTodoStorageKey, JSON.stringify(dailyTodoDecisions))
+    } catch {
+      // Ignore local persistence failures; the board still works in-memory.
+    }
+  }, [dailyTodoDecisions, dailyTodoStorageKey])
 
   const actionHref = (action: AutopilotSuggestionAction, prompt?: string) => {
     switch (action) {
@@ -1680,6 +1722,21 @@ export function AgentIQ({
       { clubId, opsSessionDraftId },
       { onSettled: () => setProcessingId(null) }
     )
+  }
+
+  const handleDailyTodoDecision = (item: DailyAdminTodoItem, decision: DailyAdminTodoDecision) => {
+    setDailyTodoDecisions((current) => ({
+      ...current,
+      [item.id]: decision,
+    }))
+
+    if (decision === 'accepted') {
+      router.push(item.href)
+    }
+  }
+
+  const resetDailyTodoDecisions = () => {
+    setDailyTodoDecisions({})
   }
 
   // Loading skeleton
@@ -1804,92 +1861,164 @@ export function AgentIQ({
                 The agent&apos;s recommended worklist for the club manager across today, tomorrow, and the next blockers.
               </p>
             </div>
+            {handledDailyTodoItems.length > 0 && (
+              <button
+                onClick={resetDailyTodoDecisions}
+                className="text-[11px] font-medium shrink-0"
+                style={{ color: "var(--t3)" }}
+              >
+                Reset today
+              </button>
+            )}
           </div>
+
+          {handledDailyTodoItems.length > 0 && (
+            <div
+              className="rounded-xl p-3 mb-4"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <div className="text-[11px] font-medium" style={{ color: "var(--heading)" }}>
+                Handled today
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {handledDailyTodoCounts.accepted > 0 && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: "rgba(16,185,129,0.12)", color: "#10B981" }}
+                  >
+                    {handledDailyTodoCounts.accepted} accepted
+                  </span>
+                )}
+                {handledDailyTodoCounts.notNow > 0 && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: "rgba(245,158,11,0.12)", color: "#F59E0B" }}
+                  >
+                    {handledDailyTodoCounts.notNow} not now
+                  </span>
+                )}
+                {handledDailyTodoCounts.declined > 0 && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444" }}
+                  >
+                    {handledDailyTodoCounts.declined} declined
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
             {dailyAdminTodoSections.map((section) => (
-              <div
-                key={section.key}
-                className="rounded-xl p-3"
-                style={{
-                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-                  border: "1px solid var(--card-border)",
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
-                      {section.label}
-                    </div>
-                    <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
-                      {section.description}
-                    </div>
-                  </div>
-                  <div
-                    className="min-w-[28px] h-7 px-2 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
-                    style={{ background: `${section.color}14`, color: section.color }}
-                  >
-                    {section.items.length}
-                  </div>
-                </div>
+              (() => {
+                const activeItems = section.items.filter((item) => !dailyTodoDecisions[item.id])
+                const handledItems = section.items.filter((item) => !!dailyTodoDecisions[item.id])
 
-                <div className="space-y-3 mt-4">
-                  {section.items.length === 0 ? (
-                    <div
-                      className="rounded-lg px-3 py-4 text-[11px]"
-                      style={{
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px dashed var(--card-border)",
-                        color: "var(--t4)",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      Nothing urgent here right now.
+                return (
+                  <div
+                    key={section.key}
+                    className="rounded-xl p-3"
+                    style={{
+                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                      border: "1px solid var(--card-border)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                          {section.label}
+                        </div>
+                        <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                          {section.description}
+                        </div>
+                      </div>
+                      <div
+                        className="min-w-[28px] h-7 px-2 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                        style={{ background: `${section.color}14`, color: section.color }}
+                      >
+                        {activeItems.length}
+                      </div>
                     </div>
-                  ) : (
-                    section.items.map((item) => {
-                      const styles = dailyTodoToneStyles(item.tone)
-                      return (
+
+                    <div className="space-y-3 mt-4">
+                      {activeItems.length === 0 ? (
                         <div
-                          key={item.id}
-                          className="rounded-lg p-3"
+                          className="rounded-lg px-3 py-4 text-[11px]"
                           style={{
-                            background: styles.bg,
-                            border: `1px solid ${styles.border}`,
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px dashed var(--card-border)",
+                            color: "var(--t4)",
+                            lineHeight: 1.5,
                           }}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="text-[12px] font-semibold" style={{ color: styles.title }}>
-                              {item.title}
-                            </div>
-                            {item.count !== undefined && item.count !== null && item.count !== '' && (
-                              <span
-                                className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
-                                style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
-                              >
-                                {item.count}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="text-[11px] mt-2 min-h-[44px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
-                            {item.description}
-                          </div>
-
-                          <Link
-                            href={item.href}
-                            className="inline-flex items-center gap-1 mt-3 text-[11px] font-medium"
-                            style={{ color: "var(--heading)" }}
-                          >
-                            {item.ctaLabel}
-                            <ArrowUpRight className="w-3 h-3" />
-                          </Link>
+                          {handledItems.length > 0 ? "Everything in this bucket is already handled for today." : "Nothing urgent here right now."}
                         </div>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
+                      ) : (
+                        activeItems.map((item) => {
+                          const styles = dailyTodoToneStyles(item.tone)
+                          return (
+                            <div
+                              key={item.id}
+                              className="rounded-lg p-3"
+                              style={{
+                                background: styles.bg,
+                                border: `1px solid ${styles.border}`,
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="text-[12px] font-semibold" style={{ color: styles.title }}>
+                                  {item.title}
+                                </div>
+                                {item.count !== undefined && item.count !== null && item.count !== '' && (
+                                  <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                                    style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                                  >
+                                    {item.count}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="text-[11px] mt-2 min-h-[44px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                                {item.description}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                <button
+                                  onClick={() => handleDailyTodoDecision(item, 'accepted')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                  style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.22)", color: "#10B981" }}
+                                >
+                                  Accept
+                                  <ArrowUpRight className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleDailyTodoDecision(item, 'not_now')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                  style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#F59E0B" }}
+                                >
+                                  Not now
+                                </button>
+                                <button
+                                  onClick={() => handleDailyTodoDecision(item, 'declined')}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                  style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.22)", color: "#EF4444" }}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )
+              })()
             ))}
           </div>
         </Card>
