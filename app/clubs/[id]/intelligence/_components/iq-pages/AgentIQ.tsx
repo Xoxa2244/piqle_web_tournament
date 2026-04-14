@@ -849,6 +849,10 @@ function dailyTodoToneStyles(tone: DailyAdminTodoItem["tone"]) {
 function buildDailyTodoReminderOptions(now: Date) {
   const oneHour = new Date(now.getTime() + 60 * 60 * 1000)
   const threeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+  const afterLunch = new Date(now)
+  afterLunch.setHours(13, 30, 0, 0)
+  const beforeSix = new Date(now)
+  beforeSix.setHours(17, 0, 0, 0)
   const todayEvening = new Date(now)
   todayEvening.setHours(18, 0, 0, 0)
   const tomorrowMorning = new Date(now)
@@ -871,6 +875,26 @@ function buildDailyTodoReminderOptions(now: Date) {
       remindLabel: 'in 3 hours',
     },
   ]
+
+  if (afterLunch.getTime() > now.getTime() + 20 * 60 * 1000) {
+    options.push({
+      id: 'after-lunch',
+      label: 'After lunch',
+      description: 'Bring this back after lunch',
+      remindAt: afterLunch.toISOString(),
+      remindLabel: 'after lunch',
+    })
+  }
+
+  if (beforeSix.getTime() > now.getTime() + 20 * 60 * 1000) {
+    options.push({
+      id: 'before-6pm',
+      label: 'Before 6 PM',
+      description: 'Bring this back before the evening push',
+      remindAt: beforeSix.toISOString(),
+      remindLabel: 'before 6 PM',
+    })
+  }
 
   if (todayEvening.getTime() > now.getTime() + 20 * 60 * 1000) {
     options.push({
