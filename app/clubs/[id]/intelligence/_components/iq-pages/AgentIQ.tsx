@@ -274,7 +274,26 @@ interface ProgrammingOpsStage {
 }
 
 type OpsSessionDraftStageKey = 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
-type AgentDeepLinkFocus = 'programming-cockpit' | 'ops-board' | 'ops-queue'
+type AgentDeepLinkFocus = 'programming-cockpit' | 'ops-board' | 'ops-queue' | 'preview-inbox' | 'pending-queue'
+type DailyAdminTodoBucket = 'today' | 'tomorrow' | 'waiting' | 'blocked' | 'recommended'
+
+interface DailyAdminTodoItem {
+  id: string
+  title: string
+  description: string
+  ctaLabel: string
+  href: string
+  tone: 'default' | 'warn' | 'danger' | 'success'
+  count?: string | number | null
+}
+
+interface DailyAdminTodoSection {
+  key: DailyAdminTodoBucket
+  label: string
+  description: string
+  color: string
+  items: DailyAdminTodoItem[]
+}
 
 interface OpsSessionDraftStage {
   key: OpsSessionDraftStageKey
@@ -787,6 +806,19 @@ function suggestionToneStyles(tone: AutopilotSuggestion["tone"]) {
   }
 }
 
+function dailyTodoToneStyles(tone: DailyAdminTodoItem["tone"]) {
+  switch (tone) {
+    case "warn":
+      return { bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.18)", title: "#F59E0B" }
+    case "danger":
+      return { bg: "rgba(239,68,68,0.10)", border: "rgba(239,68,68,0.18)", title: "#EF4444" }
+    case "success":
+      return { bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.18)", title: "#10B981" }
+    default:
+      return { bg: "rgba(139,92,246,0.10)", border: "rgba(139,92,246,0.18)", title: "#A78BFA" }
+  }
+}
+
 function actionLabel(action: string) {
   switch (action) {
     case "slotFiller": return "Slot filler"
@@ -1051,6 +1083,246 @@ function buildOpsSessionDraftQueue(drafts: OpsSessionDraftItem[]) {
   return stages
 }
 
+function buildDailyAdminTodoSections(args: {
+  clubId: string
+  pendingActions: PendingAction[]
+  autopilotSummary: ReturnType<typeof buildAutopilotSummary>
+  proactiveOpportunities: ProactiveOpportunity[]
+  membershipLifecycleCards: MembershipLifecycleAutopilotCard[]
+  programmingCockpit: ReturnType<typeof buildProgrammingCockpit>
+  opsSessionDraftQueue: ReturnType<typeof buildOpsSessionDraftQueue>
+  sandboxDrafts: AdvisorDraftWorkspaceItem[]
+  policyScenarios: AgentPolicyScenario[]
+}) {
+  const {
+    clubId,
+    pendingActions,
+    autopilotSummary,
+    proactiveOpportunities,
+    membershipLifecycleCards,
+    programmingCockpit,
+    opsSessionDraftQueue,
+    sandboxDrafts,
+    policyScenarios,
+  } = args
+
+  const newestSandboxDraft = [...sandboxDrafts]
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0] || null
+  const readyOpsDraft = opsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts[0] || null
+  const sessionDraft = opsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts[0] || null
+  const pendingLifecycleOpportunity = proactiveOpportunities.find((opportunity) => opportunity.pendingCount > 0) || null
+  const blockedLifecycleCard = [...membershipLifecycleCards]
+    .sort((left, right) => right.blockedCount - left.blockedCount)[0] || null
+  const bestScenario = [...policyScenarios]
+    .sort((left, right) => right.autoGain - left.autoGain)[0] || null
+
+  return [
+    {
+      key: 'today',
+      label: 'Today',
+      description: 'Operational work to clear right now.',
+      color: '#10B981',
+      items: [
+        pendingActions.length > 0 ? {
+          id: 'today-pending',
+          title: 'Clear the approval queue',
+          description: `${pendingActions.length} action${pendingActions.length === 1 ? '' : 's'} are waiting for manual review right now.`,
+          ctaLabel: 'Open pending actions',
+          href: buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
+          tone: 'warn' as const,
+          count: pendingActions.length,
+        } : null,
+        readyOpsDraft ? {
+          id: `today-ops-${readyOpsDraft.id}`,
+          title: 'Move a ready ops draft forward',
+          description: `${readyOpsDraft.title} is ready for scheduling ops review and can be converted into a session draft.`,
+          ctaLabel: 'Open ops queue',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: readyOpsDraft.dayOfWeek,
+            opsDraftId: readyOpsDraft.id,
+          }),
+          tone: 'success' as const,
+          count: `${readyOpsDraft.projectedOccupancy}%`,
+        } : null,
+        newestSandboxDraft ? {
+          id: `today-sandbox-${newestSandboxDraft.id}`,
+          title: 'Review the latest sandbox preview',
+          description: `${newestSandboxDraft.title} has a safe preview ready before anything reaches real members.`,
+          ctaLabel: 'Open preview inbox',
+          href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
+          tone: 'default' as const,
+          count: newestSandboxDraft.metadata?.sandboxPreview?.recipientCount || null,
+        } : null,
+      ].filter(Boolean) as DailyAdminTodoItem[],
+    },
+    {
+      key: 'tomorrow',
+      label: 'Tomorrow',
+      description: 'The next planning moves the agent wants lined up.',
+      color: '#06B6D4',
+      items: [
+        programmingCockpit.strongest ? {
+          id: `tomorrow-programming-${programmingCockpit.strongest.id}`,
+          title: 'Pressure-test the strongest programming idea',
+          description: `${programmingCockpit.strongest.primary.title} is the strongest next schedule move based on current demand and occupancy.`,
+          ctaLabel: 'Open programming cockpit',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'programming-cockpit',
+            day: programmingCockpit.strongest.primary.dayOfWeek,
+            draftId: programmingCockpit.strongest.id,
+          }),
+          tone: 'default' as const,
+          count: `${programmingCockpit.strongest.primary.projectedOccupancy}% fill`,
+        } : null,
+        sessionDraft ? {
+          id: `tomorrow-session-draft-${sessionDraft.id}`,
+          title: 'Finish the next internal session draft',
+          description: `${sessionDraft.title} is already in session-draft mode and is the cleanest ops handoff for tomorrow.`,
+          ctaLabel: 'Open session draft queue',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: sessionDraft.dayOfWeek,
+            opsDraftId: sessionDraft.id,
+          }),
+          tone: 'success' as const,
+          count: sessionDraft.estimatedInterestedMembers,
+        } : null,
+        pendingLifecycleOpportunity && pendingActions.length === 0 ? {
+          id: `tomorrow-lifecycle-${pendingLifecycleOpportunity.id}`,
+          title: 'Prepare the next lifecycle push',
+          description: pendingLifecycleOpportunity.description,
+          ctaLabel: pendingLifecycleOpportunity.ctaLabel,
+          href: pendingLifecycleOpportunity.advisorPrompt
+            ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(pendingLifecycleOpportunity.advisorPrompt)}`
+            : buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
+          tone: 'default' as const,
+          count: pendingLifecycleOpportunity.pendingCount + pendingLifecycleOpportunity.blockedCount,
+        } : null,
+      ].filter(Boolean) as DailyAdminTodoItem[],
+    },
+    {
+      key: 'waiting',
+      label: 'Waiting On You',
+      description: 'The agent is staged and needs a human decision.',
+      color: '#F59E0B',
+      items: [
+        pendingLifecycleOpportunity ? {
+          id: `waiting-lifecycle-${pendingLifecycleOpportunity.id}`,
+          title: pendingLifecycleOpportunity.title,
+          description: pendingLifecycleOpportunity.description,
+          ctaLabel: pendingLifecycleOpportunity.ctaLabel,
+          href: pendingLifecycleOpportunity.pendingCount > 0
+            ? buildAgentFocusHref(clubId, { focus: 'pending-queue' })
+            : pendingLifecycleOpportunity.advisorPrompt
+              ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(pendingLifecycleOpportunity.advisorPrompt)}`
+              : buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
+          tone: 'warn' as const,
+          count: pendingLifecycleOpportunity.pendingCount || null,
+        } : null,
+        readyOpsDraft ? {
+          id: `waiting-ready-ops-${readyOpsDraft.id}`,
+          title: 'An ops draft is waiting for review',
+          description: `${readyOpsDraft.title} is sitting in Ready For Ops until someone converts it into a session draft.`,
+          ctaLabel: 'Review ops draft',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: readyOpsDraft.dayOfWeek,
+            opsDraftId: readyOpsDraft.id,
+          }),
+          tone: 'warn' as const,
+          count: readyOpsDraft.confidence,
+        } : null,
+        newestSandboxDraft ? {
+          id: `waiting-sandbox-${newestSandboxDraft.id}`,
+          title: 'A sandbox run needs sign-off',
+          description: `${newestSandboxDraft.title} is staged in preview so routing and audience can be reviewed safely.`,
+          ctaLabel: 'Review preview',
+          href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
+          tone: 'warn' as const,
+          count: newestSandboxDraft.metadata?.sandboxPreview?.recipientCount || null,
+        } : null,
+      ].filter(Boolean) as DailyAdminTodoItem[],
+    },
+    {
+      key: 'blocked',
+      label: 'Blocked',
+      description: 'Things the agent still cannot move without a fix.',
+      color: '#EF4444',
+      items: [
+        autopilotSummary.counts.blocked > 0 ? {
+          id: 'blocked-autopilot',
+          title: 'Autopilot is blocking real volume',
+          description: autopilotSummary.topBlockedReasons[0]
+            ? `${autopilotSummary.topBlockedReasons[0].label} is the main blocker across recent actions.`
+            : `${autopilotSummary.counts.blocked} actions are currently blocked by policy or confidence rules.`,
+          ctaLabel: 'Open settings',
+          href: `/clubs/${clubId}/intelligence/settings`,
+          tone: 'danger' as const,
+          count: autopilotSummary.counts.blocked,
+        } : null,
+        blockedLifecycleCard && blockedLifecycleCard.blockedCount > 0 ? {
+          id: `blocked-lifecycle-${blockedLifecycleCard.id}`,
+          title: blockedLifecycleCard.title,
+          description: `${blockedLifecycleCard.blockedCount} lifecycle cases are still held back. ${blockedLifecycleCard.topReasons[0]?.label || ''}`.trim(),
+          ctaLabel: 'Tune in Advisor',
+          href: `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(blockedLifecycleCard.advisorPrompt)}`,
+          tone: 'danger' as const,
+          count: blockedLifecycleCard.blockedCount,
+        } : null,
+        autopilotSummary.membershipHeldCount > 0 ? {
+          id: 'blocked-membership',
+          title: 'Membership rules are holding actions',
+          description: 'Weak or unknown membership signals are forcing the agent back into safer review-first paths.',
+          ctaLabel: 'Open integrations',
+          href: `/clubs/${clubId}/intelligence/integrations`,
+          tone: 'danger' as const,
+          count: autopilotSummary.membershipHeldCount,
+        } : null,
+      ].filter(Boolean) as DailyAdminTodoItem[],
+    },
+    {
+      key: 'recommended',
+      label: 'Recommended Next',
+      description: 'The strongest next move if the admin does one thing.',
+      color: '#A78BFA',
+      items: [
+        bestScenario && bestScenario.autoGain > 0 ? {
+          id: `recommended-policy-${bestScenario.action}`,
+          title: `Consider moving ${actionLabel(bestScenario.action).toLowerCase()} to auto`,
+          description: `${bestScenario.autoGain} recent actions would likely move into auto-run while ${bestScenario.stillBlocked} would still stay blocked.`,
+          ctaLabel: 'Apply in Advisor',
+          href: `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(buildAdvisorPolicyPrompt(bestScenario))}`,
+          tone: 'default' as const,
+          count: bestScenario.autoGain,
+        } : null,
+        programmingCockpit.strongest ? {
+          id: `recommended-programming-${programmingCockpit.strongest.id}`,
+          title: 'Back the strongest schedule idea',
+          description: `${programmingCockpit.strongest.primary.title} currently has the best projected fill and demand signal in the club.`,
+          ctaLabel: 'Open programming cockpit',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'programming-cockpit',
+            day: programmingCockpit.strongest.primary.dayOfWeek,
+            draftId: programmingCockpit.strongest.id,
+          }),
+          tone: 'default' as const,
+          count: `${programmingCockpit.strongest.primary.projectedOccupancy}%`,
+        } : null,
+        autopilotSummary.counts.auto === 0 && autopilotSummary.counts.pending > 0 ? {
+          id: 'recommended-advisor',
+          title: 'Let Advisor reshape the bottleneck',
+          description: 'The club is still review-heavy. Advisor can propose the safest next policy move based on recent outcomes.',
+          ctaLabel: 'Open Advisor',
+          href: `/clubs/${clubId}/intelligence/advisor`,
+          tone: 'default' as const,
+          count: autopilotSummary.counts.pending,
+        } : null,
+      ].filter(Boolean) as DailyAdminTodoItem[],
+    },
+  ] satisfies DailyAdminTodoSection[]
+}
+
 function buildAdvisorDraftHref(
   clubId: string,
   draft: Pick<AdvisorDraftWorkspaceItem, 'conversationId' | 'originalIntent'>,
@@ -1086,8 +1358,29 @@ function buildAdvisorDraftRefineHref(
   return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
 }
 
+function buildAgentFocusHref(
+  clubId: string,
+  options: {
+    focus: AgentDeepLinkFocus
+    day?: string
+    draftId?: string
+    opsDraftId?: string
+  },
+) {
+  const params = new URLSearchParams()
+  params.set('focus', options.focus)
+  if (options.day) params.set('day', options.day)
+  if (options.draftId) params.set('draftId', options.draftId)
+  if (options.opsDraftId) params.set('opsDraftId', options.opsDraftId)
+  return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
+}
+
 function isAgentDeepLinkFocus(value: string | null): value is AgentDeepLinkFocus {
-  return value === 'programming-cockpit' || value === 'ops-board' || value === 'ops-queue'
+  return value === 'programming-cockpit'
+    || value === 'ops-board'
+    || value === 'ops-queue'
+    || value === 'preview-inbox'
+    || value === 'pending-queue'
 }
 
 function prioritizeFocusedItems<T>(items: T[], isFocused: (item: T) => boolean) {
@@ -1236,6 +1529,7 @@ export function AgentIQ({
   const searchParams = useSearchParams()
   const headerRef = useRef<HTMLDivElement>(null)
   const pendingQueueRef = useRef<HTMLDivElement>(null)
+  const previewInboxRef = useRef<HTMLDivElement>(null)
   const programmingCockpitRef = useRef<HTMLDivElement>(null)
   const opsBoardRef = useRef<HTMLDivElement>(null)
   const opsQueueRef = useRef<HTMLDivElement>(null)
@@ -1293,6 +1587,17 @@ export function AgentIQ({
     automationSettings: { intelligence: intelligenceSettings || {} },
     liveMode: agentLive,
   })
+  const dailyAdminTodoSections = buildDailyAdminTodoSections({
+    clubId,
+    pendingActions,
+    autopilotSummary,
+    proactiveOpportunities,
+    membershipLifecycleCards,
+    programmingCockpit,
+    opsSessionDraftQueue,
+    sandboxDrafts,
+    policyScenarios,
+  })
 
   const isFocusedProgrammingDraft = (draft: ProgrammingDraftCard) =>
     (deepLinkDraftId ? draft.id === deepLinkDraftId : false)
@@ -1310,7 +1615,11 @@ export function AgentIQ({
         ? programmingCockpitRef
         : deepLinkFocus === 'ops-board'
           ? opsBoardRef
-          : opsQueueRef
+          : deepLinkFocus === 'preview-inbox'
+            ? previewInboxRef
+            : deepLinkFocus === 'pending-queue'
+              ? pendingQueueRef
+              : opsQueueRef
 
     const timer = window.setTimeout(() => {
       targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1474,6 +1783,116 @@ export function AgentIQ({
             </Card>
           )
         })}
+      </motion.div>
+
+      {/* ── Daily Admin To-Do ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.13 }}
+      >
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" style={{ color: "#10B981" }} />
+                <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                  Daily Admin To-Do
+                </h2>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                The agent&apos;s recommended worklist for the club manager across today, tomorrow, and the next blockers.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
+            {dailyAdminTodoSections.map((section) => (
+              <div
+                key={section.key}
+                className="rounded-xl p-3"
+                style={{
+                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+                  border: "1px solid var(--card-border)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                      {section.label}
+                    </div>
+                    <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                      {section.description}
+                    </div>
+                  </div>
+                  <div
+                    className="min-w-[28px] h-7 px-2 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                    style={{ background: `${section.color}14`, color: section.color }}
+                  >
+                    {section.items.length}
+                  </div>
+                </div>
+
+                <div className="space-y-3 mt-4">
+                  {section.items.length === 0 ? (
+                    <div
+                      className="rounded-lg px-3 py-4 text-[11px]"
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px dashed var(--card-border)",
+                        color: "var(--t4)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Nothing urgent here right now.
+                    </div>
+                  ) : (
+                    section.items.map((item) => {
+                      const styles = dailyTodoToneStyles(item.tone)
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-lg p-3"
+                          style={{
+                            background: styles.bg,
+                            border: `1px solid ${styles.border}`,
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="text-[12px] font-semibold" style={{ color: styles.title }}>
+                              {item.title}
+                            </div>
+                            {item.count !== undefined && item.count !== null && item.count !== '' && (
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                                style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                              >
+                                {item.count}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-[11px] mt-2 min-h-[44px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                            {item.description}
+                          </div>
+
+                          <Link
+                            href={item.href}
+                            className="inline-flex items-center gap-1 mt-3 text-[11px] font-medium"
+                            style={{ color: "var(--heading)" }}
+                          >
+                            {item.ctaLabel}
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </motion.div>
 
       {/* ── Autopilot Summary ── */}
@@ -2789,6 +3208,7 @@ export function AgentIQ({
 
       {(sandboxDrafts.length > 0 || sandboxRouting.configuredMode === 'test_recipients') && (
         <motion.div
+          ref={previewInboxRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.22 }}
@@ -2805,6 +3225,11 @@ export function AgentIQ({
                 <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
                   Sandbox runs stop before live delivery and stage the exact audience, routing, and send window here for review.
                 </p>
+                {deepLinkFocus === 'preview-inbox' && (
+                  <div className="text-[11px] mt-2 font-medium" style={{ color: "#67E8F9" }}>
+                    Focused from the daily to-do or schedule layer.
+                  </div>
+                )}
               </div>
               <div
                 className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
@@ -3067,6 +3492,11 @@ export function AgentIQ({
                 </span>
               )}
             </div>
+            {deepLinkFocus === 'pending-queue' && (
+              <div className="text-[11px] font-medium" style={{ color: "#67E8F9" }}>
+                Focused from the daily to-do or schedule layer.
+              </div>
+            )}
           </div>
 
           {pendingActions.length === 0 ? (
