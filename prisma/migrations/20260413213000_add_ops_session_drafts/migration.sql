@@ -6,10 +6,10 @@ CREATE TYPE "OpsSessionDraftStatus" AS ENUM (
 );
 
 CREATE TABLE "ops_session_drafts" (
-  "id" TEXT NOT NULL,
-  "club_id" TEXT NOT NULL,
-  "agent_draft_id" TEXT NOT NULL,
-  "created_by_user_id" TEXT NOT NULL,
+  "id" UUID NOT NULL,
+  "club_id" UUID NOT NULL,
+  "agent_draft_id" UUID NOT NULL,
+  "created_by_user_id" UUID NOT NULL,
   "source_proposal_id" TEXT NOT NULL,
   "origin" TEXT NOT NULL,
   "status" "OpsSessionDraftStatus" NOT NULL DEFAULT 'READY_FOR_OPS',
