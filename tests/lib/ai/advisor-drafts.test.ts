@@ -41,7 +41,7 @@ function buildCampaignAction(channel: 'email' | 'sms'): AdvisorAction {
   }
 }
 
-function buildProgrammingAction(): AdvisorAction {
+function buildProgrammingAction(): Extract<AdvisorAction, { kind: 'program_schedule' }> {
   return {
     kind: 'program_schedule',
     title: 'Draft programming plan',
