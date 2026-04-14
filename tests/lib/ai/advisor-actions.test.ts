@@ -56,9 +56,13 @@ describe('advisor action recommendations', () => {
     })
     const parsed = extractAdvisorAction(tagged)
 
+    if (!parsed || !parsed.recommendation || parsed.recommendation.action.kind !== 'create_campaign') {
+      throw new Error('Expected a campaign recommendation to be parsed from the action tag')
+    }
+
     expect(parsed?.kind).toBe('create_campaign')
     expect(parsed?.recommendation?.action.kind).toBe('create_campaign')
-    expect(parsed?.recommendation?.action.campaign.channel).toBe('sms')
+    expect(parsed.recommendation.action.campaign.channel).toBe('sms')
     expect(parsed?.recommendation?.highlights).toContain('Switch to SMS')
   })
 
@@ -78,9 +82,12 @@ describe('advisor action recommendations', () => {
 
     const stripped = stripAdvisorRecommendation(next)
 
+    if (stripped.kind !== 'create_campaign') {
+      throw new Error('Expected stripped action to remain a campaign draft')
+    }
+
     expect(stripped.kind).toBe('create_campaign')
     expect('recommendation' in stripped).toBe(false)
     expect(stripped.campaign.channel).toBe('email')
   })
 })
-

@@ -57,10 +57,22 @@ describe('advisor drafts', () => {
       originalIntent: 'Send a renewal email',
     })
 
+    if (payload.requestedAction.kind !== 'create_campaign') {
+      throw new Error('Expected requested action to be a campaign draft')
+    }
+
+    if (!payload.recommendedAction || payload.recommendedAction.kind !== 'create_campaign') {
+      throw new Error('Expected recommended action to be a campaign draft')
+    }
+
+    if (payload.workingAction.kind !== 'create_campaign') {
+      throw new Error('Expected working action to be a campaign draft')
+    }
+
     expect(payload.selectedPlan).toBe('requested')
     expect(payload.requestedAction.kind).toBe('create_campaign')
     expect(payload.requestedAction.campaign.channel).toBe('email')
-    expect(payload.recommendedAction?.campaign.channel).toBe('sms')
+    expect(payload.recommendedAction.campaign.channel).toBe('sms')
     expect(payload.workingAction.campaign.channel).toBe('email')
     expect(payload.sandboxMode).toBe(true)
   })
