@@ -2053,14 +2053,22 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       try {
+        const recentDecisionWindow = new Date(Date.now() - 72 * 60 * 60 * 1000)
         return await ctx.prisma.agentAdminTodoDecision.findMany({
           where: {
             clubId: input.clubId,
             userId: ctx.session.user.id,
-            dateKey: input.dateKey,
+            OR: [
+              { dateKey: input.dateKey },
+              {
+                decision: 'not_now',
+                updatedAt: { gte: recentDecisionWindow },
+              },
+            ],
           },
           orderBy: { updatedAt: 'desc' },
           select: {
+            dateKey: true,
             itemId: true,
             decision: true,
             title: true,

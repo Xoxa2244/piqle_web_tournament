@@ -303,6 +303,7 @@ interface DailyAdminTodoSection {
 type DailyAdminTodoDecision = 'accepted' | 'declined' | 'not_now'
 
 interface AdminTodoDecisionRecord {
+  dateKey: string
   itemId: string
   decision: string
   title: string
@@ -319,6 +320,14 @@ interface OpsSessionDraftStage {
   description: string
   color: string
   drafts: OpsSessionDraftItem[]
+}
+
+interface DailyTodoReminderOption {
+  id: string
+  label: string
+  description: string
+  remindAt: string
+  remindLabel: string
 }
 
 interface AgentIQProps {
@@ -834,6 +843,69 @@ function dailyTodoToneStyles(tone: DailyAdminTodoItem["tone"]) {
       return { bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.18)", title: "#10B981" }
     default:
       return { bg: "rgba(139,92,246,0.10)", border: "rgba(139,92,246,0.18)", title: "#A78BFA" }
+  }
+}
+
+function buildDailyTodoReminderOptions(now: Date) {
+  const oneHour = new Date(now.getTime() + 60 * 60 * 1000)
+  const threeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+  const todayEvening = new Date(now)
+  todayEvening.setHours(18, 0, 0, 0)
+  const tomorrowMorning = new Date(now)
+  tomorrowMorning.setDate(tomorrowMorning.getDate() + 1)
+  tomorrowMorning.setHours(9, 0, 0, 0)
+
+  const options: DailyTodoReminderOption[] = [
+    {
+      id: '1h',
+      label: '1h',
+      description: 'Remind in 1 hour',
+      remindAt: oneHour.toISOString(),
+      remindLabel: 'in 1 hour',
+    },
+    {
+      id: '3h',
+      label: '3h',
+      description: 'Remind in 3 hours',
+      remindAt: threeHours.toISOString(),
+      remindLabel: 'in 3 hours',
+    },
+  ]
+
+  if (todayEvening.getTime() > now.getTime() + 20 * 60 * 1000) {
+    options.push({
+      id: 'today-6pm',
+      label: '6 PM',
+      description: 'Bring this back today at 6 PM',
+      remindAt: todayEvening.toISOString(),
+      remindLabel: 'today at 6 PM',
+    })
+  }
+
+  options.push({
+    id: 'tomorrow-9am',
+    label: 'Tomorrow',
+    description: 'Remind tomorrow at 9 AM',
+    remindAt: tomorrowMorning.toISOString(),
+    remindLabel: 'tomorrow at 9 AM',
+  })
+
+  return options
+}
+
+function getDailyTodoReminder(record: AdminTodoDecisionRecord) {
+  const metadata = record.metadata as Record<string, unknown> | null | undefined
+  const remindAtValue = typeof metadata?.remindAt === 'string' ? metadata.remindAt : null
+  const remindLabel = typeof metadata?.remindLabel === 'string' ? metadata.remindLabel : null
+
+  if (!remindAtValue) return null
+
+  const remindAt = new Date(remindAtValue)
+  if (Number.isNaN(remindAt.getTime())) return null
+
+  return {
+    remindAt,
+    remindLabel,
   }
 }
 
@@ -1556,6 +1628,7 @@ export function AgentIQ({
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [optimisticDailyTodoDecisions, setOptimisticDailyTodoDecisions] = useState<Record<string, DailyAdminTodoDecision>>({})
+  const [notNowPickerItemId, setNotNowPickerItemId] = useState<string | null>(null)
   const [dailyTodoDateKey] = useState(() => new Date().toLocaleDateString('en-CA'))
   const { data: dailyTodoDecisionRecordsData } = useAdminTodoDecisions(clubId, dailyTodoDateKey)
   const setAdminTodoDecision = useSetAdminTodoDecision()
@@ -1564,6 +1637,7 @@ export function AgentIQ({
     () => (dailyTodoDecisionRecordsData || []) as AdminTodoDecisionRecord[],
     [dailyTodoDecisionRecordsData],
   )
+  const dailyTodoReminderOptions = buildDailyTodoReminderOptions(new Date())
 
   const stats = activity?.stats
   const logs = activity?.logs || []
@@ -1626,17 +1700,45 @@ export function AgentIQ({
     sandboxDrafts,
     policyScenarios,
   })
-  const persistedDailyTodoDecisions = useMemo(
+  const latestDailyTodoDecisionByItem = useMemo(
     () =>
-      (dailyTodoDecisionRecords || []).reduce<Record<string, DailyAdminTodoDecision>>((acc, record) => {
-        const decision = record.decision
-        if (decision === 'accepted' || decision === 'declined' || decision === 'not_now') {
-          acc[record.itemId] = decision
+      dailyTodoDecisionRecords.reduce<Record<string, AdminTodoDecisionRecord>>((acc, record) => {
+        if (!acc[record.itemId]) {
+          acc[record.itemId] = record
         }
         return acc
       }, {}),
     [dailyTodoDecisionRecords],
   )
+  const persistedDailyTodoDecisions = useMemo(() => {
+    const now = Date.now()
+
+    return Object.values(latestDailyTodoDecisionByItem).reduce<Record<string, DailyAdminTodoDecision>>((acc, record) => {
+      const decision = record.decision
+      if (decision !== 'accepted' && decision !== 'declined' && decision !== 'not_now') {
+        return acc
+      }
+
+      if (decision === 'accepted' || decision === 'declined') {
+        if (record.dateKey === dailyTodoDateKey) {
+          acc[record.itemId] = decision
+        }
+        return acc
+      }
+
+      const reminder = getDailyTodoReminder(record)
+      if (reminder?.remindAt.getTime() && reminder.remindAt.getTime() > now) {
+        acc[record.itemId] = 'not_now'
+        return acc
+      }
+
+      if (!reminder && record.dateKey === dailyTodoDateKey) {
+        acc[record.itemId] = 'not_now'
+      }
+
+      return acc
+    }, {})
+  }, [dailyTodoDateKey, latestDailyTodoDecisionByItem])
   const dailyTodoDecisions = useMemo(
     () => ({
       ...persistedDailyTodoDecisions,
@@ -1647,6 +1749,22 @@ export function AgentIQ({
   const handledDailyTodoItems = dailyAdminTodoSections
     .flatMap((section) => section.items)
     .filter((item) => !!dailyTodoDecisions[item.id])
+  const upcomingDailyReminders = handledDailyTodoItems
+    .map((item) => ({
+      item,
+      record: latestDailyTodoDecisionByItem[item.id],
+    }))
+    .map(({ item, record }) => {
+      if (!record || dailyTodoDecisions[item.id] !== 'not_now') return null
+      const reminder = getDailyTodoReminder(record)
+      if (!reminder || reminder.remindAt.getTime() <= Date.now()) return null
+      return {
+        itemId: item.id,
+        title: item.title,
+        label: reminder.remindLabel || reminder.remindAt.toLocaleString(),
+      }
+    })
+    .filter(Boolean) as Array<{ itemId: string; title: string; label: string }>
   const handledDailyTodoCounts = handledDailyTodoItems.reduce(
     (acc, item) => {
       const decision = dailyTodoDecisions[item.id]
@@ -1761,11 +1879,13 @@ export function AgentIQ({
     item: DailyAdminTodoItem,
     decision: DailyAdminTodoDecision,
     bucket: DailyAdminTodoBucket,
+    metadata?: Record<string, unknown>,
   ) => {
     setOptimisticDailyTodoDecisions((current) => ({
       ...current,
       [item.id]: decision,
     }))
+    setNotNowPickerItemId(null)
 
     setAdminTodoDecision.mutate({
       clubId,
@@ -1779,6 +1899,7 @@ export function AgentIQ({
         description: item.description,
         ctaLabel: item.ctaLabel,
         tone: item.tone,
+        ...(metadata || {}),
       },
     })
 
@@ -1789,10 +1910,15 @@ export function AgentIQ({
 
   const resetDailyTodoDecisions = () => {
     setOptimisticDailyTodoDecisions({})
+    setNotNowPickerItemId(null)
     clearAdminTodoDecisions.mutate({
       clubId,
       dateKey: dailyTodoDateKey,
     })
+  }
+
+  const handleNotNowClick = (itemId: string) => {
+    setNotNowPickerItemId((current) => (current === itemId ? null : itemId))
   }
 
   // Loading skeleton
@@ -1965,6 +2091,21 @@ export function AgentIQ({
                   </span>
                 )}
               </div>
+              {upcomingDailyReminders.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {upcomingDailyReminders.slice(0, 3).map((reminder) => (
+                    <div
+                      key={reminder.itemId}
+                      className="text-[11px]"
+                      style={{ color: "var(--t3)", lineHeight: 1.45 }}
+                    >
+                      <span style={{ color: "var(--heading)" }}>{reminder.title}</span>
+                      {" "}
+                      comes back {reminder.label}.
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -2053,7 +2194,7 @@ export function AgentIQ({
                                   <ArrowUpRight className="w-3 h-3" />
                                 </button>
                                 <button
-                                  onClick={() => handleDailyTodoDecision(item, 'not_now', section.key)}
+                                  onClick={() => handleNotNowClick(item.id)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
                                   style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.22)", color: "#F59E0B" }}
                                 >
@@ -2067,6 +2208,50 @@ export function AgentIQ({
                                   Decline
                                 </button>
                               </div>
+                              {notNowPickerItemId === item.id && (
+                                <div
+                                  className="mt-3 rounded-lg p-2.5"
+                                  style={{
+                                    background: "rgba(255,255,255,0.04)",
+                                    border: "1px solid var(--card-border)",
+                                  }}
+                                >
+                                  <div className="text-[10px] font-medium mb-2" style={{ color: "var(--heading)" }}>
+                                    When should I remind you?
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {dailyTodoReminderOptions.map((option) => (
+                                      <button
+                                        key={option.id}
+                                        onClick={() => handleDailyTodoDecision(item, 'not_now', section.key, {
+                                          remindAt: option.remindAt,
+                                          remindLabel: option.remindLabel,
+                                        })}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium"
+                                        style={{
+                                          background: "rgba(245,158,11,0.12)",
+                                          border: "1px solid rgba(245,158,11,0.22)",
+                                          color: "#F59E0B",
+                                        }}
+                                        title={option.description}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    ))}
+                                    <button
+                                      onClick={() => setNotNowPickerItemId(null)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium"
+                                      style={{
+                                        background: "rgba(255,255,255,0.06)",
+                                        border: "1px solid var(--card-border)",
+                                        color: "var(--t3)",
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )
                         })
