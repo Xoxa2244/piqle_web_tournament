@@ -6,7 +6,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
-  TrendingUp,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity, Bot,
@@ -41,8 +40,6 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Schedule", path: "/sessions" },
-      { icon: TrendingUp, label: "Slot Filler", path: "/slot-filler" },
-      { icon: DollarSign, label: "Revenue", path: "/revenue" },
     ],
   },
   {
