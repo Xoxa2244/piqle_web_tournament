@@ -128,4 +128,20 @@ describe('advisor outcomes', () => {
     expect(state.latestOutcome?.summary).toContain('Trial follow-up scheduled')
     expect(buildAdvisorStatePrompt(state)).toContain('Latest completed outcome: Trial follow-up scheduled')
   })
+
+  it('builds sandbox preview summaries for campaign execution', () => {
+    const outcome = buildAdvisorOutcomeMemory(
+      createCampaignAction,
+      {
+        kind: 'create_campaign',
+        sandboxed: true,
+        previewRecipientCount: 7,
+        scheduledLabel: 'Tue, Apr 14, 9:00 AM PDT',
+      },
+      '2026-04-13T18:25:00.000Z',
+    )
+
+    expect(outcome.summary).toContain('Campaign sandbox preview prepared')
+    expect(outcome.summary).toContain('7 eligible members')
+  })
 })

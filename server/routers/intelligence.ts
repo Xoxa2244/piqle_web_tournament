@@ -154,6 +154,44 @@ function buildApprovedAgentMessage(opts: {
   }
 }
 
+function buildAdvisorSandboxPreviewRecipients(
+  recipients: Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>,
+  detailsById: Map<string, { name?: string | null; email?: string | null; phone?: string | null; score?: number | null }>,
+) {
+  return recipients.slice(0, 5).map((recipient) => {
+    const details = detailsById.get(recipient.memberId)
+    return {
+      memberId: recipient.memberId,
+      name: details?.name || 'Unknown member',
+      channel: recipient.channel,
+      ...(typeof details?.score === 'number' ? { score: details.score } : {}),
+      ...(details?.email ? { email: details.email } : {}),
+      ...(details?.phone ? { phone: details.phone } : {}),
+    }
+  })
+}
+
+function buildAdvisorSandboxDraftMetadata(result: Record<string, any>) {
+  if (!result?.sandboxed) {
+    return {
+      sandboxPreview: null,
+    }
+  }
+
+  return {
+    sandboxPreview: {
+      kind: result.kind,
+      channel: result.channel,
+      deliveryMode: result.deliveryMode || 'send_now',
+      recipientCount: result.previewRecipientCount || 0,
+      skippedCount: result.skipped || 0,
+      scheduledLabel: result.scheduledLabel || undefined,
+      note: 'Live delivery is safety-locked. This draft was executed in sandbox preview mode only.',
+      recipients: Array.isArray(result.previewRecipients) ? result.previewRecipients : [],
+    },
+  }
+}
+
 // ── Cohort filter helpers ──
 export interface CohortFilter {
   field: string
@@ -1786,6 +1824,7 @@ export const intelligenceRouter = createTRPCRouter({
             sandboxMode: true,
             scheduledFor: true,
             timeZone: true,
+            metadata: true,
             updatedAt: true,
             createdAt: true,
             conversationId: true,
@@ -4254,6 +4293,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const advisorDraft = advisorMessage
         ? getAdvisorDraftFromMetadata(advisorMessage.metadata)
         : null
+      const isSandboxExecution = advisorDraft?.sandboxMode ?? true
 
       const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {
         if (!advisorMessage) return result
@@ -4284,6 +4324,8 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             action: sourceAdvisorAction || input.action,
             selectedPlan,
             status: resolveAdvisorDraftStatusFromResult(input.action, result),
+            sandboxMode: advisorDraft.sandboxMode,
+            metadata: buildAdvisorSandboxDraftMetadata(result),
           })
 
           if (persistedDraft) {
@@ -4349,6 +4391,18 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             }
           })
           .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both'; customMessage: string }>
+        const previewRecipients = buildAdvisorSandboxPreviewRecipients(
+          eligibleCandidates,
+          new Map(
+            fillAction.outreach.candidates.map((candidate) => [
+              candidate.memberId,
+              {
+                name: candidate.name,
+                score: candidate.score,
+              },
+            ]),
+          ),
+        )
 
         if (eligibleCandidates.length === 0) {
           return persistAdvisorOutcome({
@@ -4362,6 +4416,25 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             failed: 0,
             skipped: guardrails.summary.excludedCount,
             guardrails: guardrails.summary,
+          })
+        }
+
+        if (isSandboxExecution) {
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            kind: 'fill_session' as const,
+            sessionId: fillAction.session.id,
+            sessionTitle: fillAction.session.title,
+            candidateCount: eligibleCandidates.length,
+            channel: fillAction.outreach.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            previewRecipientCount: eligibleCandidates.length,
+            previewRecipients,
           })
         }
 
@@ -4404,6 +4477,18 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             }
           })
           .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
+        const previewRecipients = buildAdvisorSandboxPreviewRecipients(
+          eligibleCandidates,
+          new Map(
+            reactivationAction.reactivation.candidates.map((candidate) => [
+              candidate.memberId,
+              {
+                name: candidate.name,
+                score: candidate.score,
+              },
+            ]),
+          ),
+        )
 
         if (eligibleCandidates.length === 0) {
           return persistAdvisorOutcome({
@@ -4417,6 +4502,25 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             failed: 0,
             skipped: guardrails.summary.excludedCount,
             guardrails: guardrails.summary,
+          })
+        }
+
+        if (isSandboxExecution) {
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            kind: 'reactivate_members' as const,
+            segmentLabel: reactivationAction.reactivation.segmentLabel,
+            inactivityDays: reactivationAction.reactivation.inactivityDays,
+            candidateCount: eligibleCandidates.length,
+            channel: reactivationAction.reactivation.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            previewRecipientCount: eligibleCandidates.length,
+            previewRecipients,
           })
         }
 
@@ -4468,6 +4572,18 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           })
           .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
         const memberIds = eligibleRecipients.map((recipient) => recipient.memberId)
+        const previewRecipients = buildAdvisorSandboxPreviewRecipients(
+          eligibleRecipients,
+          new Map(
+            lifecycleAction.lifecycle.candidates.map((candidate) => [
+              candidate.memberId,
+              {
+                name: candidate.name,
+                score: candidate.score,
+              },
+            ]),
+          ),
+        )
 
         if (lifecycleAction.lifecycle.execution.mode === 'save_draft') {
           return persistAdvisorOutcome({
@@ -4481,6 +4597,31 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             guardrails: guardrails.summary,
             deliveryMode: 'save_draft' as const,
             savedAsDraft: true,
+          })
+        }
+
+        if (isSandboxExecution) {
+          const scheduledFor = lifecycleAction.lifecycle.execution.scheduledFor
+          const timeZone = lifecycleAction.lifecycle.execution.timeZone || 'America/New_York'
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            kind: lifecycleAction.kind,
+            lifecycle: lifecycleAction.lifecycle.lifecycle,
+            label: lifecycleAction.lifecycle.label,
+            memberCount: memberIds.length,
+            candidateCount: lifecycleAction.lifecycle.candidates.length,
+            channel: lifecycleAction.lifecycle.channel,
+            guardrails: guardrails.summary,
+            deliveryMode: lifecycleAction.lifecycle.execution.mode,
+            scheduledFor,
+            timeZone,
+            scheduledLabel: scheduledFor ? formatAdvisorScheduledLabel(scheduledFor, timeZone) : undefined,
+            previewRecipientCount: memberIds.length,
+            previewRecipients,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
           })
         }
 
@@ -4727,6 +4868,19 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         })
         .filter(Boolean) as Array<{ memberId: string; channel: 'email' | 'sms' | 'both' }>
       const memberIds = recipients.map((recipient) => recipient.memberId)
+      const previewRecipients = buildAdvisorSandboxPreviewRecipients(
+        recipients,
+        new Map(
+          eligibleMembers.map((member: any) => [
+            member.id,
+            {
+              name: member.name,
+              email: member.email,
+              phone: member.phone,
+            },
+          ]),
+        ),
+      )
       const excludedByRules = Math.max(0, members.length - eligibleMembers.length)
       const excludedByGuardrails = guardrails.summary.excludedCount
 
@@ -4752,6 +4906,33 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           guardrails: guardrails.summary,
           deliveryMode: 'save_draft' as const,
           savedAsDraft: true,
+        })
+      }
+
+      if (isSandboxExecution) {
+        const scheduledFor = input.action.campaign.execution.scheduledFor
+        const timeZone = input.action.campaign.execution.timeZone || 'America/New_York'
+        return persistAdvisorOutcome({
+          ok: true,
+          sandboxed: true,
+          kind: 'create_campaign' as const,
+          cohortId,
+          cohortName,
+          memberCount: memberIds.length,
+          audienceCount: members.length,
+          excludedByRules,
+          excludedByGuardrails,
+          guardrails: guardrails.summary,
+          deliveryMode: input.action.campaign.execution.mode,
+          scheduledFor,
+          timeZone,
+          scheduledLabel: scheduledFor ? formatAdvisorScheduledLabel(scheduledFor, timeZone) : undefined,
+          previewRecipientCount: memberIds.length,
+          previewRecipients,
+          sent: 0,
+          failed: 0,
+          emailSent: 0,
+          smsSent: 0,
         })
       }
 

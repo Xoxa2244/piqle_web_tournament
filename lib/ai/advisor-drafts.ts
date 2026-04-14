@@ -10,6 +10,7 @@ import {
 
 export const advisorDraftStatusSchema = z.enum([
   'review_ready',
+  'sandboxed',
   'draft_saved',
   'approved',
   'scheduled',
@@ -32,6 +33,28 @@ export const advisorDraftMetadataSchema = z.object({
 export type AdvisorDraftStatus = z.infer<typeof advisorDraftStatusSchema>
 export type AdvisorDraftSelectedPlan = z.infer<typeof advisorDraftSelectedPlanSchema>
 export type AdvisorDraftMetadata = z.infer<typeof advisorDraftMetadataSchema>
+
+export const advisorDraftPreviewRecipientSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  channel: z.enum(['email', 'sms', 'both']),
+  score: z.number().int().min(0).max(100).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().min(3).optional(),
+})
+
+export const advisorDraftSandboxPreviewSchema = z.object({
+  kind: z.string().min(1),
+  channel: z.enum(['email', 'sms', 'both']).optional(),
+  deliveryMode: z.enum(['send_now', 'send_later']),
+  recipientCount: z.number().int().min(0),
+  skippedCount: z.number().int().min(0).default(0),
+  scheduledLabel: z.string().max(120).optional(),
+  note: z.string().max(240).optional(),
+  recipients: z.array(advisorDraftPreviewRecipientSchema).max(5).default([]),
+})
+
+export type AdvisorDraftSandboxPreview = z.infer<typeof advisorDraftSandboxPreviewSchema>
 
 function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
   if (action.kind === 'create_campaign') return action.campaign.execution
@@ -95,6 +118,7 @@ export function resolveAdvisorDraftStatusFromResult(
   result: Record<string, any>,
 ): AdvisorDraftStatus {
   if (result?.blocked) return 'blocked'
+  if (result?.sandboxed) return 'sandboxed'
   if (result?.savedAsDraft) return 'draft_saved'
   if (result?.deliveryMode === 'send_later') return 'scheduled'
   if (action.kind === 'create_cohort' || action.kind === 'update_contact_policy' || action.kind === 'update_autonomy_policy') {
@@ -132,7 +156,7 @@ export function buildAdvisorDraftPersistencePayload(opts: {
     requestedAction,
     recommendedAction,
     workingAction,
-    sandboxMode: opts.sandboxMode ?? false,
+    sandboxMode: opts.sandboxMode ?? true,
     status: opts.status || 'review_ready',
     scheduledFor: execution?.scheduledFor ? new Date(execution.scheduledFor) : null,
     timeZone: execution?.timeZone || null,
@@ -176,15 +200,26 @@ export async function persistAdvisorDraft(opts: {
               clubId: opts.clubId,
               createdByUserId: opts.userId,
             },
-            select: { id: true },
+            select: {
+              id: true,
+              metadata: true,
+            },
           })
         : null
+
+    const nextMetadata = existing
+      ? {
+          ...((existing.metadata as Record<string, any> | null) || {}),
+          ...((payload.metadata as Record<string, any> | null) || {}),
+        }
+      : payload.metadata
 
     const record = existing
       ? await opts.prisma.agentDraft.update({
           where: { id: existing.id },
           data: {
             ...payload,
+            metadata: nextMetadata,
             ...relationFields,
           } as any,
           select: {
@@ -200,6 +235,7 @@ export async function persistAdvisorDraft(opts: {
             clubId: opts.clubId,
             createdByUserId: opts.userId,
             ...payload,
+            metadata: nextMetadata,
             ...relationFields,
           } as any,
           select: {
@@ -272,4 +308,13 @@ export async function updateAdvisorDraftStatus(opts: {
     console.warn('[Advisor Draft] status update skipped:', error instanceof Error ? error.message : error)
     return null
   }
+}
+
+export function getAdvisorDraftSandboxPreview(
+  metadata: unknown,
+): AdvisorDraftSandboxPreview | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const preview = (metadata as Record<string, unknown>).sandboxPreview
+  const parsed = advisorDraftSandboxPreviewSchema.safeParse(preview)
+  return parsed.success ? parsed.data : null
 }

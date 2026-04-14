@@ -66,6 +66,15 @@ export function buildAdvisorOutcomeMemory(
   }
 
   if (action.kind === 'fill_session') {
+    if (result?.sandboxed) {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: `Sandbox preview prepared for ${result?.sessionTitle || action.session.title}: ${result?.previewRecipientCount || 0} eligible, ${result?.skipped || 0} skipped.`,
+        occurredAt,
+      }
+    }
+
     return {
       kind: action.kind,
       title: action.title,
@@ -75,6 +84,15 @@ export function buildAdvisorOutcomeMemory(
   }
 
   if (action.kind === 'reactivate_members') {
+    if (result?.sandboxed) {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: `Sandbox preview prepared for ${result?.segmentLabel || action.reactivation.segmentLabel}: ${result?.previewRecipientCount || 0} eligible, ${result?.skipped || 0} skipped.`,
+        occurredAt,
+      }
+    }
+
     return {
       kind: action.kind,
       title: action.title,
@@ -85,6 +103,15 @@ export function buildAdvisorOutcomeMemory(
 
   if (action.kind === 'trial_follow_up' || action.kind === 'renewal_reactivation') {
     const flowLabel = action.kind === 'trial_follow_up' ? 'Trial follow-up' : 'Renewal outreach'
+    if (result?.sandboxed) {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: `${flowLabel} sandbox preview prepared for ${result?.previewRecipientCount || 0} eligible members${result?.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}.`,
+        occurredAt,
+      }
+    }
+
     if (result?.savedAsDraft) {
       return {
         kind: action.kind,
@@ -136,6 +163,15 @@ export function buildAdvisorOutcomeMemory(
       kind: action.kind,
       title: action.title,
       summary: `Campaign draft saved for ${result?.memberCount || 0} eligible members.`,
+      occurredAt,
+    }
+  }
+
+  if (result?.sandboxed) {
+    return {
+      kind: action.kind,
+      title: action.title,
+      summary: `Campaign sandbox preview prepared for ${result?.previewRecipientCount || 0} eligible members${result?.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}.`,
       occurredAt,
     }
   }

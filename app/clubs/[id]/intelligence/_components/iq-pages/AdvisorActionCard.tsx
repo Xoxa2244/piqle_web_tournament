@@ -119,6 +119,8 @@ export function AdvisorActionCard({
   clubId,
   messageId,
   action,
+  sandboxMode,
+  draftStatus,
   actionState,
   persistedOutcome,
   onDraftPrompt,
@@ -126,6 +128,8 @@ export function AdvisorActionCard({
   clubId: string
   messageId?: string
   action: AdvisorAction
+  sandboxMode?: boolean
+  draftStatus?: string | null
   actionState?: AdvisorActionRuntimeState | null
   persistedOutcome?: AdvisorOutcomeMemory | null
   onDraftPrompt?: (prompt: string) => void
@@ -340,46 +344,47 @@ export function AdvisorActionCard({
   const recipientRuleExcludedCount = isCampaign && contactGuardrails
     ? Math.max(0, targetCount - contactGuardrails.eligibleCount - contactGuardrails.excludedCount)
     : 0
+  const isSandboxPreview = !!result?.sandboxed || draftStatus === 'sandboxed'
   const isDone = !!result?.ok || !!persistedOutcome
   const approvalHelperText = isCampaign
     ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
       ? 'Choose how the platform should handle this draft, then confirm the action.'
       : currentCampaignAction?.campaign.execution.mode === 'send_later'
-        ? 'Pick a send time, then approve the scheduling decision.'
-        : 'Choose the live send path, or park this draft for later.'
+        ? (sandboxMode ? 'Pick a send time, then run the draft in sandbox preview mode.' : 'Pick a send time, then approve the scheduling decision.')
+        : (sandboxMode ? 'Choose the sandbox path first. The platform will prepare a preview and will not message live members yet.' : 'Choose the live send path, or park this draft for later.')
     : isMembershipLifecycle
       ? currentMembershipLifecycleAction?.lifecycle.execution.mode === 'save_draft'
         ? 'Choose how the platform should handle this membership flow, then confirm the action.'
         : currentMembershipLifecycleAction?.lifecycle.execution.mode === 'send_later'
-          ? 'Pick a send time, then approve the scheduling decision.'
-          : 'Choose the live send path for this membership flow, or park it for later.'
+          ? (sandboxMode ? 'Pick a send time, then run the membership flow in sandbox preview mode.' : 'Pick a send time, then approve the scheduling decision.')
+          : (sandboxMode ? 'Choose the sandbox path for this membership flow. The platform will prepare a preview and will not message live members yet.' : 'Choose the live send path for this membership flow, or park it for later.')
     : isAutonomyPolicy
       ? 'Review these autopilot changes, then apply, refine, snooze, or decline them.'
       : isContactPolicy
         ? 'Review the messaging guardrails, then decide whether to apply or park them.'
         : isFillSession
-          ? 'This session-fill action is ready to go. Approve it, refine it, or park it.'
+          ? (sandboxMode ? 'This session-fill action will run in sandbox only and create a preview inbox entry.' : 'This session-fill action is ready to go. Approve it, refine it, or park it.')
           : isReactivation
-            ? 'This reactivation draft is ready. Approve, refine, snooze, or decline it.'
+            ? (sandboxMode ? 'This reactivation draft will run in sandbox only and create a preview inbox entry.' : 'This reactivation draft is ready. Approve, refine, snooze, or decline it.')
             : 'Review the draft and decide how the agent should proceed.'
   const primaryApproveLabel = isDone
-    ? 'Approved'
+    ? (isSandboxPreview ? 'Preview Ready' : 'Approved')
     : isCampaign
       ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
         ? 'Save Draft'
         : currentCampaignAction?.campaign.execution.mode === 'send_later'
-          ? 'Schedule Send'
-          : 'Send Now'
+          ? (sandboxMode ? 'Schedule Sandbox' : 'Schedule Send')
+          : (sandboxMode ? 'Run Sandbox' : 'Send Now')
       : isMembershipLifecycle
         ? currentMembershipLifecycleAction?.lifecycle.execution.mode === 'save_draft'
           ? 'Save Draft'
           : currentMembershipLifecycleAction?.lifecycle.execution.mode === 'send_later'
-            ? 'Schedule Send'
-            : 'Send Now'
+            ? (sandboxMode ? 'Schedule Sandbox' : 'Schedule Send')
+            : (sandboxMode ? 'Run Sandbox' : 'Send Now')
       : isFillSession
-        ? 'Send Invites'
+        ? (sandboxMode ? 'Run Sandbox' : 'Send Invites')
       : isReactivation
-        ? 'Send Reactivation'
+        ? (sandboxMode ? 'Run Sandbox' : 'Send Reactivation')
       : isAutonomyPolicy
         ? 'Apply Autopilot Rules'
         : 'Approve'
@@ -572,14 +577,25 @@ export function AdvisorActionCard({
         <div
           className="text-[10px] px-2 py-1 rounded-full"
           style={{
-            background: isDone ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.12)',
-            color: isDone ? '#10B981' : '#F59E0B',
+            background: isDone
+              ? (isSandboxPreview ? 'rgba(244,114,182,0.14)' : 'rgba(16,185,129,0.14)')
+              : 'rgba(245,158,11,0.12)',
+            color: isDone ? (isSandboxPreview ? '#F9A8D4' : '#10B981') : '#F59E0B',
             fontWeight: 700,
           }}
         >
-          {isDone ? 'Approved' : 'Needs approval'}
+          {isDone ? (isSandboxPreview ? 'Preview ready' : 'Approved') : 'Needs approval'}
         </div>
       </div>
+
+      {sandboxMode && !isDone && (
+        <div
+          className="mt-4 rounded-xl px-3 py-2 text-xs"
+          style={{ background: 'rgba(244,114,182,0.08)', border: '1px solid rgba(244,114,182,0.16)', color: 'var(--t2)', lineHeight: 1.6 }}
+        >
+          Live delivery is locked. Approving this draft will create a sandbox preview only, so we can test the full flow without messaging real members.
+        </div>
+      )}
 
       {recommendation && (
         <div
@@ -1356,23 +1372,33 @@ export function AdvisorActionCard({
               : result.kind === 'update_autonomy_policy'
                 ? `Autonomy policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'fill_session'
-                ? `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
+                ? result.sandboxed
+                  ? `Sandbox preview ready for ${result.sessionTitle}: ${result.previewRecipientCount} eligible recipients${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
+                  : `Invites sent for ${result.sessionTitle} to ${result.sent} recipients${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'reactivate_members'
-                ? `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
+                ? result.sandboxed
+                  ? `Sandbox preview ready for ${result.previewRecipientCount} reactivation recipients${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
+                  : `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'trial_follow_up'
                 ? result.savedAsDraft
                   ? `Trial follow-up draft saved for ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
+                  : result.sandboxed
+                    ? `Sandbox preview ready for ${result.previewRecipientCount} trial members${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
                   : result.deliveryMode === 'send_later'
                     ? `Trial follow-up scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
                     : `Trial follow-up sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'renewal_reactivation'
                 ? result.savedAsDraft
                   ? `Renewal outreach draft saved for ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
+                  : result.sandboxed
+                    ? `Sandbox preview ready for ${result.previewRecipientCount} renewal recipients${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
                   : result.deliveryMode === 'send_later'
                     ? `Renewal outreach scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
                     : `Renewal outreach sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.savedAsDraft
                 ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
+                : result.sandboxed
+                  ? `Sandbox preview ready for ${result.previewRecipientCount} campaign recipients${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
                 : result.deliveryMode === 'send_later'
                   ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
                 : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`
@@ -1380,10 +1406,59 @@ export function AdvisorActionCard({
           </div>
           <div
             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981', fontWeight: 700 }}
+            style={{
+              background: isSandboxPreview ? 'rgba(244,114,182,0.14)' : 'rgba(16,185,129,0.14)',
+              color: isSandboxPreview ? '#F9A8D4' : '#10B981',
+              fontWeight: 700,
+            }}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            Approved
+            {isSandboxPreview ? 'Preview Ready' : 'Approved'}
+          </div>
+        </div>
+      )}
+
+      {result?.sandboxed && Array.isArray(result.previewRecipients) && result.previewRecipients.length > 0 && (
+        <div
+          className="mt-3 rounded-xl p-3"
+          style={{ background: 'rgba(244,114,182,0.08)', border: '1px solid rgba(244,114,182,0.16)' }}
+        >
+          <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: '#F9A8D4', fontWeight: 700 }}>
+            Preview Inbox
+          </div>
+          <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+            The platform prepared this delivery in sandbox mode only. No live members were contacted.
+          </div>
+          <div className="space-y-2 mt-3">
+            {result.previewRecipients.slice(0, 5).map((recipient: any) => (
+              <div
+                key={recipient.memberId}
+                className="flex items-center justify-between gap-3 rounded-xl px-3 py-2"
+                style={{ background: 'rgba(255,255,255,0.04)' }}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs truncate" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+                    {recipient.name}
+                  </div>
+                  <div className="text-[11px]" style={{ color: 'var(--t3)' }}>
+                    {recipient.email || recipient.phone || recipient.memberId}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {typeof recipient.score === 'number' && (
+                    <span className="text-[11px]" style={{ color: 'var(--t3)' }}>
+                      {recipient.score}/100
+                    </span>
+                  )}
+                  <span
+                    className="px-2 py-1 rounded-full text-[10px]"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)', fontWeight: 700 }}
+                  >
+                    {recipient.channel === 'both' ? 'Email + SMS' : recipient.channel.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

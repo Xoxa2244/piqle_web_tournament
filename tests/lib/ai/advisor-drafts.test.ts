@@ -62,6 +62,7 @@ describe('advisor drafts', () => {
     expect(payload.requestedAction.campaign.channel).toBe('email')
     expect(payload.recommendedAction?.campaign.channel).toBe('sms')
     expect(payload.workingAction.campaign.channel).toBe('email')
+    expect(payload.sandboxMode).toBe(true)
   })
 
   it('detects when the recommended plan was chosen', () => {
@@ -84,17 +85,17 @@ describe('advisor drafts', () => {
   it('round-trips advisor draft metadata', () => {
     const metadata = withAdvisorDraftMetadata({}, {
       id: '4aa273d3-394f-4a9b-acbf-c71fd9a437bf',
-      status: 'review_ready',
+      status: 'sandboxed',
       selectedPlan: 'requested',
-      sandboxMode: false,
+      sandboxMode: true,
       updatedAt: '2026-04-13T22:30:00.000Z',
     })
 
     expect(getAdvisorDraftFromMetadata(metadata)).toEqual({
       id: '4aa273d3-394f-4a9b-acbf-c71fd9a437bf',
-      status: 'review_ready',
+      status: 'sandboxed',
       selectedPlan: 'requested',
-      sandboxMode: false,
+      sandboxMode: true,
       updatedAt: '2026-04-13T22:30:00.000Z',
     })
   })

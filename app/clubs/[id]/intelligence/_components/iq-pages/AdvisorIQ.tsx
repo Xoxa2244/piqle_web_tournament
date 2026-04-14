@@ -45,6 +45,25 @@ interface AdvisorDraftWorkspaceItem {
   sandboxMode: boolean
   scheduledFor?: string | Date | null
   timeZone?: string | null
+  metadata?: {
+    sandboxPreview?: {
+      kind?: string
+      channel?: 'email' | 'sms' | 'both'
+      deliveryMode?: 'send_now' | 'send_later'
+      recipientCount?: number
+      skippedCount?: number
+      scheduledLabel?: string
+      note?: string
+      recipients?: Array<{
+        memberId: string
+        name: string
+        channel: 'email' | 'sms' | 'both'
+        score?: number
+        email?: string
+        phone?: string
+      }>
+    } | null
+  } | null
   updatedAt: string | Date
   createdAt: string | Date
   conversationId?: string | null
@@ -56,6 +75,7 @@ interface AdvisorDraftWorkspaceItem {
 
 const advisorDraftSections = [
   { key: 'review_ready', label: 'Needs Review' },
+  { key: 'sandboxed', label: 'Preview Inbox' },
   { key: 'draft_saved', label: 'Drafts' },
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'completed', label: 'Recently Applied' },
@@ -65,6 +85,7 @@ const advisorDraftSections = [
 
 function getAdvisorDraftBucket(status: string) {
   if (status === 'review_ready') return 'review_ready'
+  if (status === 'sandboxed') return 'sandboxed'
   if (status === 'draft_saved') return 'draft_saved'
   if (status === 'scheduled') return 'scheduled'
   if (status === 'approved' || status === 'sent') return 'completed'
@@ -76,6 +97,7 @@ function formatDraftStatus(status: string) {
   switch (status) {
     case 'review_ready': return 'Review'
     case 'draft_saved': return 'Draft'
+    case 'sandboxed': return 'Preview'
     case 'scheduled': return 'Scheduled'
     case 'approved': return 'Applied'
     case 'sent': return 'Sent'
@@ -92,6 +114,8 @@ function getDraftStatusStyles(status: string) {
       return { background: "rgba(139,92,246,0.14)", color: "#C4B5FD" }
     case 'draft_saved':
       return { background: "rgba(6,182,212,0.14)", color: "#67E8F9" }
+    case 'sandboxed':
+      return { background: "rgba(244,114,182,0.14)", color: "#F9A8D4" }
     case 'scheduled':
       return { background: "rgba(245,158,11,0.14)", color: "#FCD34D" }
     case 'approved':
@@ -961,6 +985,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                       const statusStyles = getDraftStatusStyles(draft.status)
                       const scheduleLabel = formatDraftSchedule(draft.scheduledFor, draft.timeZone)
                       const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
+                      const sandboxPreview = draft.metadata?.sandboxPreview || null
+                      const sandboxRecipients = sandboxPreview?.recipients || []
+                      const sandboxSummary = draft.status === 'sandboxed'
+                        ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
+                        : null
 
                       return (
                         <button
@@ -1011,6 +1040,29 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                           {(draft.summary || scheduleLabel) && (
                             <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
                               {draft.summary || (scheduleLabel ? `Scheduled for ${scheduleLabel}` : '')}
+                            </div>
+                          )}
+
+                          {sandboxSummary && (
+                            <div
+                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
+                              style={{ background: "rgba(244,114,182,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
+                            >
+                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
+                                Sandbox preview
+                              </div>
+                              <div className="mt-1">
+                                {sandboxSummary}
+                                {sandboxPreview?.scheduledLabel ? ` · ${sandboxPreview.scheduledLabel}` : ''}
+                              </div>
+                              {sandboxRecipients.length > 0 && (
+                                <div className="mt-1" style={{ color: "var(--t3)" }}>
+                                  {sandboxRecipients.slice(0, 3).map((recipient) => recipient.name).join(', ')}
+                                  {sandboxPreview?.recipientCount && sandboxPreview.recipientCount > 3
+                                    ? ` +${sandboxPreview.recipientCount - 3} more`
+                                    : ''}
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1097,6 +1149,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               const action = msg.role === 'assistant'
                 ? getAdvisorActionFromMetadata((msg as any).metadata) || extractAdvisorAction(text)
                 : null;
+              const draftMetadata = msg.role === 'assistant'
+                ? ((msg as any).metadata?.advisorDraft as { sandboxMode?: boolean; status?: string } | undefined)
+                : undefined;
               const actionState = action ? getAdvisorActionRuntimeState((msg as any).metadata) : null;
               const persistedOutcome = action ? getAdvisorLatestOutcome((msg as any).metadata) : null;
               const pendingClarification = msg.role === 'assistant'
@@ -1163,6 +1218,8 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                         clubId={clubId}
                         messageId={String(msg.id)}
                         action={action}
+                        sandboxMode={draftMetadata?.sandboxMode}
+                        draftStatus={draftMetadata?.status}
                         actionState={actionState}
                         persistedOutcome={persistedOutcome}
                         onDraftPrompt={draftIntoComposer}
