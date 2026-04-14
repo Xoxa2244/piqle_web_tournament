@@ -78,8 +78,28 @@ export const advisorDraftProgrammingPreviewSchema = z.object({
   insights: z.array(z.string().min(1).max(220)).max(4).default([]),
 })
 
+export const advisorDraftProgrammingOpsSessionDraftSchema = z.object({
+  id: z.string().min(1).max(120),
+  sourceProposalId: z.string().min(1).max(80),
+  origin: z.enum(['primary', 'alternative']),
+  state: z.literal('ready_for_ops').default('ready_for_ops'),
+  title: z.string().min(1).max(160),
+  dayOfWeek: z.string().min(1).max(20),
+  timeSlot: z.enum(['morning', 'afternoon', 'evening']),
+  startTime: z.string().min(1).max(20),
+  endTime: z.string().min(1).max(20),
+  format: z.string().min(1).max(40),
+  skillLevel: z.string().min(1).max(40),
+  maxPlayers: z.number().int().min(2).max(24),
+  projectedOccupancy: z.number().int().min(0).max(100),
+  estimatedInterestedMembers: z.number().int().nonnegative(),
+  confidence: z.number().int().min(0).max(100),
+  note: z.string().min(1).max(220),
+})
+
 export type AdvisorDraftSandboxPreview = z.infer<typeof advisorDraftSandboxPreviewSchema>
 export type AdvisorDraftProgrammingPreview = z.infer<typeof advisorDraftProgrammingPreviewSchema>
+export type AdvisorDraftProgrammingOpsSessionDraft = z.infer<typeof advisorDraftProgrammingOpsSessionDraftSchema>
 
 function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
   if (action.kind === 'create_campaign') return action.campaign.execution
@@ -123,10 +143,45 @@ function buildAdvisorDraftWorkspaceMetadata(action: AdvisorAction | AdvisorActio
         })),
         insights: action.program.insights,
       },
+      opsSessionDrafts: [],
     }
   }
 
   return {}
+}
+
+export function buildAdvisorProgrammingOpsSessionDrafts(
+  action: Extract<AdvisorAction | AdvisorActionCore, { kind: 'program_schedule' }>,
+): AdvisorDraftProgrammingOpsSessionDraft[] {
+  const proposals = [
+    { proposal: action.program.primary, origin: 'primary' as const },
+    ...action.program.alternatives.map((proposal) => ({
+      proposal,
+      origin: 'alternative' as const,
+    })),
+  ]
+
+  return proposals.map(({ proposal, origin }) => ({
+    id: `ops-${proposal.id}`,
+    sourceProposalId: proposal.id,
+    origin,
+    state: 'ready_for_ops',
+    title: proposal.title,
+    dayOfWeek: proposal.dayOfWeek,
+    timeSlot: proposal.timeSlot,
+    startTime: proposal.startTime,
+    endTime: proposal.endTime,
+    format: proposal.format,
+    skillLevel: proposal.skillLevel,
+    maxPlayers: proposal.maxPlayers,
+    projectedOccupancy: proposal.projectedOccupancy,
+    estimatedInterestedMembers: proposal.estimatedInterestedMembers,
+    confidence: proposal.confidence,
+    note:
+      origin === 'primary'
+        ? 'Primary agent-backed session draft, ready for internal scheduling review.'
+        : 'Alternative agent-backed session draft, ready for internal scheduling review.',
+  }))
 }
 
 function safeJsonEqual(left: unknown, right: unknown) {
@@ -400,4 +455,13 @@ export function getAdvisorDraftProgrammingPreview(
   const preview = (metadata as Record<string, unknown>).programmingPreview
   const parsed = advisorDraftProgrammingPreviewSchema.safeParse(preview)
   return parsed.success ? parsed.data : null
+}
+
+export function getAdvisorDraftProgrammingOpsSessionDrafts(
+  metadata: unknown,
+): AdvisorDraftProgrammingOpsSessionDraft[] {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return []
+  const value = (metadata as Record<string, unknown>).opsSessionDrafts
+  const parsed = z.array(advisorDraftProgrammingOpsSessionDraftSchema).max(4).safeParse(value)
+  return parsed.success ? parsed.data : []
 }

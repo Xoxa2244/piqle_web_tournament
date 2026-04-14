@@ -56,6 +56,52 @@ const trialFollowUpAction: AdvisorAction = {
   },
 }
 
+const programmingAction: AdvisorAction = {
+  kind: 'program_schedule',
+  title: 'Draft stronger weekday programming',
+  summary: '2 schedule ideas around Wednesday Evening Intermediate Open Play',
+  requiresApproval: true,
+  program: {
+    goal: 'Add a stronger weekday evening intermediate option',
+    publishMode: 'draft_only',
+    primary: {
+      id: 'wed-evening-open-play',
+      title: 'Wednesday Evening Intermediate Open Play',
+      dayOfWeek: 'Wednesday',
+      timeSlot: 'evening',
+      startTime: '18:00',
+      endTime: '19:30',
+      format: 'OPEN_PLAY',
+      skillLevel: 'INTERMEDIATE',
+      maxPlayers: 8,
+      projectedOccupancy: 84,
+      estimatedInterestedMembers: 9,
+      confidence: 87,
+      source: 'expand_peak',
+      rationale: ['Strong repeat demand in this window.'],
+    },
+    alternatives: [
+      {
+        id: 'thu-evening-open-play',
+        title: 'Thursday Evening Intermediate Open Play',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        maxPlayers: 8,
+        projectedOccupancy: 79,
+        estimatedInterestedMembers: 7,
+        confidence: 82,
+        source: 'fill_gap',
+        rationale: ['Secondary demand signal.'],
+      },
+    ],
+    insights: ['Wednesday evening is the clearest programming opportunity right now.'],
+  },
+}
+
 describe('advisor outcomes', () => {
   it('reads the resolved advisor action from metadata', () => {
     expect(
@@ -143,5 +189,18 @@ describe('advisor outcomes', () => {
 
     expect(outcome.summary).toContain('Campaign sandbox preview prepared')
     expect(outcome.summary).toContain('7 eligible members')
+  })
+
+  it('summarizes created ops drafts for programming actions', () => {
+    const outcome = buildAdvisorOutcomeMemory(
+      programmingAction,
+      {
+        kind: 'program_schedule',
+        opsDraftsCreated: 2,
+      },
+      '2026-04-13T18:30:00.000Z',
+    )
+
+    expect(outcome.summary).toContain('Created 2 ops session drafts')
   })
 })

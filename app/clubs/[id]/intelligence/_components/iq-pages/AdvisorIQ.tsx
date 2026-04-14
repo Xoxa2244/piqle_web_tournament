@@ -94,6 +94,24 @@ interface AdvisorDraftWorkspaceItem {
       }>
       insights?: string[]
     } | null
+    opsSessionDrafts?: Array<{
+      id: string
+      sourceProposalId: string
+      origin: 'primary' | 'alternative'
+      state: 'ready_for_ops'
+      title: string
+      dayOfWeek: string
+      timeSlot: 'morning' | 'afternoon' | 'evening'
+      startTime: string
+      endTime: string
+      format: string
+      skillLevel: string
+      maxPlayers: number
+      projectedOccupancy: number
+      estimatedInterestedMembers: number
+      confidence: number
+      note: string
+    }> | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
@@ -1042,6 +1060,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                   <div className="space-y-2">
                     {programmingDrafts.map((draft) => {
                       const preview = draft.metadata?.programmingPreview || null
+                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
                       const statusStyles = getDraftStatusStyles(draft.status)
                       const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
                       const previewWindow = formatProgrammingWindow(preview || null)
@@ -1094,6 +1113,14 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                             >
                               Draft only
                             </span>
+                            {opsSessionDrafts.length > 0 && (
+                              <span
+                                className="px-2 py-1 rounded-full text-[10px]"
+                                style={{ background: "rgba(16,185,129,0.12)", color: "#86EFAC", fontWeight: 700 }}
+                              >
+                                {opsSessionDrafts.length} ops ready
+                              </span>
+                            )}
                           </div>
 
                           {previewWindow && (
@@ -1113,6 +1140,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                               <div className="mt-1">
                                 {preview.primary.projectedOccupancy}% projected fill · {preview.primary.estimatedInterestedMembers} likely players · {preview.primary.confidence}/100 confidence
                               </div>
+                              {opsSessionDrafts.length > 0 && (
+                                <div className="mt-1" style={{ color: "#67E8F9" }}>
+                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for scheduling review.
+                                </div>
+                              )}
                               {preview.insights?.[0] && (
                                 <div className="mt-1" style={{ color: "var(--t3)" }}>
                                   {preview.insights[0]}
@@ -1145,6 +1177,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                       const sandboxPreview = draft.metadata?.sandboxPreview || null
                       const sandboxRecipients = sandboxPreview?.recipients || []
                       const programmingPreview = draft.metadata?.programmingPreview || null
+                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
                       const programmingWindow = formatProgrammingWindow(programmingPreview || null)
                       const sandboxSummary = draft.status === 'sandboxed'
                         ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
@@ -1241,6 +1274,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                                 {programmingPreview.primary.projectedOccupancy}% projected fill · {programmingPreview.primary.estimatedInterestedMembers} likely players
                                 {programmingPreview.alternatives?.length ? ` · +${programmingPreview.alternatives.length} alternatives` : ''}
                               </div>
+                              {opsSessionDrafts.length > 0 && (
+                                <div className="mt-1" style={{ color: "#67E8F9" }}>
+                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for the club ops team
+                                </div>
+                              )}
                             </div>
                           )}
 

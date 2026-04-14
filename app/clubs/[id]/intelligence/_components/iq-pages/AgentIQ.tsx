@@ -177,6 +177,24 @@ interface AdvisorDraftWorkspaceItem {
       }>
       insights?: string[]
     } | null
+    opsSessionDrafts?: Array<{
+      id: string
+      sourceProposalId: string
+      origin: 'primary' | 'alternative'
+      state: 'ready_for_ops'
+      title: string
+      dayOfWeek: string
+      timeSlot: 'morning' | 'afternoon' | 'evening'
+      startTime: string
+      endTime: string
+      format: string
+      skillLevel: string
+      maxPlayers: number
+      projectedOccupancy: number
+      estimatedInterestedMembers: number
+      confidence: number
+      note: string
+    }> | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
@@ -197,6 +215,7 @@ interface ProgrammingDraftCard {
   primary: ProgrammingPreviewProposal
   alternatives: ProgrammingPreviewProposal[]
   insights: string[]
+  opsSessionDrafts: NonNullable<NonNullable<AdvisorDraftWorkspaceItem['metadata']>['opsSessionDrafts']>
 }
 
 type ProgrammingOpsStageKey = 'new' | 'ready_for_ops' | 'paused' | 'rejected'
@@ -783,11 +802,13 @@ function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
       primary: draft.metadata!.programmingPreview!.primary,
       alternatives: draft.metadata?.programmingPreview?.alternatives || [],
       insights: draft.metadata?.programmingPreview?.insights || [],
+      opsSessionDrafts: draft.metadata?.opsSessionDrafts || [],
     }))
 
   const ranked = sortProgrammingDrafts(cards)
   const strongest = ranked[0] || null
   const totalIdeas = ranked.reduce((sum, draft) => sum + 1 + draft.alternatives.length, 0)
+  const totalOpsDrafts = ranked.reduce((sum, draft) => sum + draft.opsSessionDrafts.length, 0)
   const avgProjectedFill = ranked.length
     ? Math.round(ranked.reduce((sum, draft) => sum + draft.primary.projectedOccupancy, 0) / ranked.length)
     : 0
@@ -802,6 +823,7 @@ function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
     cards: ranked,
     strongest,
     totalIdeas,
+    totalOpsDrafts,
     avgProjectedFill,
     topConfidence,
     topInterestedMembers,
@@ -809,11 +831,11 @@ function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
   }
 }
 
-function resolveProgrammingOpsStage(status: string): ProgrammingOpsStageKey {
+function resolveProgrammingOpsStage(card: ProgrammingDraftCard): ProgrammingOpsStageKey {
+  if (card.opsSessionDrafts.length > 0 || card.status === 'approved') return 'ready_for_ops'
+  const status = card.status
   if (status === 'review_ready') return 'new'
-  if (status === 'draft_saved' || status === 'approved' || status === 'sandboxed' || status === 'scheduled') {
-    return 'ready_for_ops'
-  }
+  if (status === 'draft_saved' || status === 'sandboxed' || status === 'scheduled') return 'new'
   if (status === 'snoozed') return 'paused'
   if (status === 'declined' || status === 'blocked') return 'rejected'
   return 'new'
@@ -887,7 +909,7 @@ function buildProgrammingOpsBoard(drafts: AdvisorDraftWorkspaceItem[]) {
 
   const stageMap = new Map<ProgrammingOpsStageKey, ProgrammingOpsStage>(stages.map((stage) => [stage.key, stage]))
   for (const card of cards) {
-    stageMap.get(resolveProgrammingOpsStage(card.status))?.cards.push(card)
+    stageMap.get(resolveProgrammingOpsStage(card))?.cards.push(card)
   }
 
   for (const stage of stages) {
@@ -1650,9 +1672,9 @@ export function AgentIQ({
                   color: "#A78BFA",
                 },
                 {
-                  label: "Session ideas",
-                  value: programmingCockpit.totalIdeas,
-                  note: "Primary + alternative schedule options",
+                  label: "Ops drafts ready",
+                  value: programmingCockpit.totalOpsDrafts,
+                  note: "Internal session drafts created for ops review",
                   color: "#06B6D4",
                 },
                 {
@@ -1728,6 +1750,11 @@ export function AgentIQ({
                           <div className="text-xs mt-2" style={{ color: "var(--heading)", lineHeight: 1.6, fontWeight: 600 }}>
                             {strongest.insights[0] || strongest.summary || "The agent sees the strongest demand signal in this slot based on recent occupancy and member preferences."}
                           </div>
+                          {strongest.opsSessionDrafts.length > 0 && (
+                            <div className="text-[11px] mt-2" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                              {strongest.opsSessionDrafts.length} internal ops draft{strongest.opsSessionDrafts.length === 1 ? "" : "s"} ready for scheduling review
+                            </div>
+                          )}
                         </div>
                         <Link
                           href={buildAdvisorDraftHref(clubId, strongest)}
@@ -1861,9 +1888,14 @@ export function AgentIQ({
                             </span>
                           )}
                         </div>
-                        <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
-                          {formatProgrammingWindow(draft.primary)}
-                        </div>
+                          <div className="text-xs mt-1" style={{ color: "var(--t3)" }}>
+                            {formatProgrammingWindow(draft.primary)}
+                          </div>
+                          {draft.opsSessionDrafts.length > 0 && (
+                            <div className="text-[11px] mt-1" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                              {draft.opsSessionDrafts.length} ops draft{draft.opsSessionDrafts.length === 1 ? "" : "s"} ready
+                            </div>
+                          )}
                       </div>
                       <Link
                         href={buildAdvisorDraftHref(clubId, draft)}
@@ -2043,6 +2075,11 @@ export function AgentIQ({
                             <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
                               {formatProgrammingWindow(draft.primary)}
                             </div>
+                            {draft.opsSessionDrafts.length > 0 && (
+                              <div className="text-[11px] mt-2" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                                {draft.opsSessionDrafts.length} internal ops draft{draft.opsSessionDrafts.length === 1 ? "" : "s"} ready for scheduling review
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-2 gap-2 mt-3">
                               <div

@@ -404,6 +404,19 @@ export function AdvisorActionCard({
     : 0
   const isSandboxPreview = !!result?.sandboxed || draftStatus === 'sandboxed'
   const isDone = !!result?.ok || !!persistedOutcome
+  const programmingOpsDrafts = isProgramming && Array.isArray(result?.opsSessionDrafts)
+    ? result.opsSessionDrafts as Array<{
+        id: string
+        title: string
+        dayOfWeek: string
+        startTime: string
+        endTime: string
+        format: string
+        skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+      }>
+    : []
   const approvalHelperText = isCampaign
     ? currentCampaignAction?.campaign.execution.mode === 'save_draft'
       ? 'Choose how the platform should handle this draft, then confirm the action.'
@@ -419,7 +432,7 @@ export function AdvisorActionCard({
     : isAutonomyPolicy
       ? 'Review these autopilot changes, then apply, refine, snooze, or decline them.'
       : isProgramming
-        ? 'Review this draft-first programming plan. Approving it only saves the schedule ideas into the agent workspace; nothing will publish live.'
+        ? 'Review this draft-first programming plan. Approving it creates internal ops session drafts for the club team to review; nothing will publish live.'
       : isSandboxRouting
         ? 'Review the sandbox preview routing, then decide whether to apply or park it.'
       : isContactPolicy
@@ -448,7 +461,7 @@ export function AdvisorActionCard({
       : isReactivation
         ? (sandboxMode ? 'Run Sandbox' : 'Send Reactivation')
       : isProgramming
-        ? 'Save Program Draft'
+        ? 'Create Ops Drafts'
       : isAutonomyPolicy
         ? 'Apply Autopilot Rules'
         : isSandboxRouting
@@ -1338,6 +1351,39 @@ export function AdvisorActionCard({
               ))}
             </div>
           ) : null}
+          {programmingOpsDrafts.length > 0 && (
+            <div className="mt-3 space-y-3">
+              <div className="text-[11px]" style={{ color: 'var(--t3)', fontWeight: 700 }}>
+                Internal ops drafts created
+              </div>
+              <div className="space-y-2">
+                {programmingOpsDrafts.slice(0, 3).map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="rounded-xl p-3"
+                    style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.16)' }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+                          {draft.title}
+                        </div>
+                        <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
+                          {draft.dayOfWeek} · {draft.startTime}-{draft.endTime} · {draft.format.replace(/_/g, ' ')} · {draft.skillLevel.replace(/_/g, ' ')}
+                        </div>
+                      </div>
+                      <div className="text-[11px] px-2 py-1 rounded-full" style={{ background: 'rgba(16,185,129,0.12)', color: '#86EFAC', fontWeight: 700 }}>
+                        {draft.projectedOccupancy}% fill
+                      </div>
+                    </div>
+                    <div className="text-[11px] mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                      {draft.estimatedInterestedMembers} likely players now sit behind this internal session draft.
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1617,7 +1663,7 @@ export function AdvisorActionCard({
               : result.kind === 'update_sandbox_routing'
                 ? `Sandbox routing updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'program_schedule'
-                ? `Programming draft saved${result.proposalCount ? `: ${result.proposalCount} schedule ideas around ${result.primaryTitle}` : ''}`
+                ? `Created ${result.opsDraftsCreated || result.proposalCount || 0} ops draft${(result.opsDraftsCreated || result.proposalCount || 0) === 1 ? '' : 's'}${result.primaryTitle ? ` around ${result.primaryTitle}` : ''}`
               : result.kind === 'fill_session'
                 ? result.sandboxed
                   ? `Sandbox preview ready for ${result.sessionTitle}: ${result.previewRecipientCount} eligible recipients${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`

@@ -142,12 +142,15 @@ export function buildAdvisorOutcomeMemory(
 
   if (action.kind === 'program_schedule') {
     const proposalCount = 1 + action.program.alternatives.length
+    const opsDraftCount = typeof result?.opsDraftsCreated === 'number' ? result.opsDraftsCreated : 0
     return {
       kind: action.kind,
       title: action.title,
-      summary: result?.savedAsDraft
-        ? `Programming draft saved with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`
-        : `Programming plan updated with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`,
+      summary: opsDraftCount > 0
+        ? `Created ${opsDraftCount} ops session draft${opsDraftCount === 1 ? '' : 's'} from ${proposalCount} programming idea${proposalCount === 1 ? '' : 's'}.`
+        : result?.savedAsDraft
+          ? `Programming draft saved with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`
+          : `Programming plan updated with ${proposalCount} schedule idea${proposalCount === 1 ? '' : 's'}.`,
       occurredAt,
     }
   }

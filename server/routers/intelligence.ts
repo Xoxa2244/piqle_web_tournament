@@ -28,6 +28,7 @@ import {
   withAdvisorOutcome,
 } from '@/lib/ai/advisor-conversation-state'
 import {
+  buildAdvisorProgrammingOpsSessionDrafts,
   detectAdvisorDraftSelectedPlan,
   getAdvisorDraftFromMetadata,
   persistAdvisorDraft,
@@ -174,24 +175,21 @@ function buildAdvisorSandboxPreviewRecipients(
 }
 
 function buildAdvisorSandboxDraftMetadata(result: Record<string, any>) {
-  if (!result?.sandboxed) {
-    return {
-      sandboxPreview: null,
-    }
-  }
-
   return {
-    sandboxPreview: {
-      kind: result.kind,
-      channel: result.channel,
-      deliveryMode: result.deliveryMode || 'send_now',
-      recipientCount: result.previewRecipientCount || 0,
-      skippedCount: result.skipped || 0,
-      scheduledLabel: result.scheduledLabel || undefined,
-      note: result?.sandboxRouting?.note || 'Live delivery is safety-locked. This draft was executed in sandbox preview mode only.',
-      routing: result?.sandboxRouting || undefined,
-      recipients: Array.isArray(result.previewRecipients) ? result.previewRecipients : [],
-    },
+    sandboxPreview: result?.sandboxed
+      ? {
+          kind: result.kind,
+          channel: result.channel,
+          deliveryMode: result.deliveryMode || 'send_now',
+          recipientCount: result.previewRecipientCount || 0,
+          skippedCount: result.skipped || 0,
+          scheduledLabel: result.scheduledLabel || undefined,
+          note: result?.sandboxRouting?.note || 'Live delivery is safety-locked. This draft was executed in sandbox preview mode only.',
+          routing: result?.sandboxRouting || undefined,
+          recipients: Array.isArray(result.previewRecipients) ? result.previewRecipients : [],
+        }
+      : null,
+    opsSessionDrafts: Array.isArray(result?.opsSessionDrafts) ? result.opsSessionDrafts : [],
   }
 }
 
@@ -4746,11 +4744,15 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
 
       if (input.action.kind === 'program_schedule') {
+        const opsSessionDrafts = buildAdvisorProgrammingOpsSessionDrafts(input.action)
+
         return persistAdvisorOutcome({
           ok: true,
           kind: 'program_schedule' as const,
           savedAsDraft: true,
-          proposalCount: 1 + input.action.program.alternatives.length,
+          proposalCount: opsSessionDrafts.length,
+          opsDraftsCreated: opsSessionDrafts.length,
+          opsSessionDrafts,
           primaryTitle: input.action.program.primary.title,
           goal: input.action.program.goal,
         })

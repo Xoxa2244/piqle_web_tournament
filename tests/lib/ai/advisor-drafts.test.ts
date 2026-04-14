@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { AdvisorAction } from '@/lib/ai/advisor-actions'
 import {
   buildAdvisorDraftPersistencePayload,
+  buildAdvisorProgrammingOpsSessionDrafts,
   detectAdvisorDraftSelectedPlan,
   getAdvisorDraftFromMetadata,
+  getAdvisorDraftProgrammingOpsSessionDrafts,
   getAdvisorDraftProgrammingPreview,
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
@@ -179,5 +181,35 @@ describe('advisor drafts', () => {
       },
     })
     expect(preview?.alternatives).toHaveLength(1)
+  })
+
+  it('builds internal ops session drafts for programming plans', () => {
+    const action = buildProgrammingAction()
+    const opsDrafts = buildAdvisorProgrammingOpsSessionDrafts(action)
+
+    expect(opsDrafts).toHaveLength(2)
+    expect(opsDrafts[0]).toMatchObject({
+      id: 'ops-wed-evening-open-play',
+      sourceProposalId: 'wed-evening-open-play',
+      origin: 'primary',
+      state: 'ready_for_ops',
+      title: 'Wednesday Evening Intermediate Open Play',
+      maxPlayers: 8,
+    })
+    expect(opsDrafts[1]).toMatchObject({
+      id: 'ops-thu-evening-open-play',
+      origin: 'alternative',
+      state: 'ready_for_ops',
+    })
+  })
+
+  it('round-trips programming ops drafts from metadata', () => {
+    const opsDrafts = buildAdvisorProgrammingOpsSessionDrafts(buildProgrammingAction())
+    const payload = buildAdvisorDraftPersistencePayload({
+      action: buildProgrammingAction(),
+      metadata: { opsSessionDrafts: opsDrafts },
+    })
+
+    expect(getAdvisorDraftProgrammingOpsSessionDrafts(payload.metadata)).toEqual(opsDrafts)
   })
 })
