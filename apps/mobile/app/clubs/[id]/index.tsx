@@ -371,6 +371,7 @@ export default function ClubDetailScreen() {
   const [announcementComposer, setAnnouncementComposer] = useState<AnnouncementComposerState>(null)
   const [announcementPreviewImage, setAnnouncementPreviewImage] = useState<string | null>(null)
   const [cachedAnnouncementPreviewImageUri, setCachedAnnouncementPreviewImageUri] = useState<string | null>(null)
+  const [cachedAnnouncementImageUris, setCachedAnnouncementImageUris] = useState<Record<string, string>>({})
   const [savingAnnouncementPreviewImage, setSavingAnnouncementPreviewImage] = useState(false)
   const [announcementSubmitBusy, setAnnouncementSubmitBusy] = useState(false)
   const [leaveClubSheetOpen, setLeaveClubSheetOpen] = useState(false)
@@ -406,6 +407,38 @@ export default function ClubDetailScreen() {
       cancelled = true
     }
   }, [announcementPreviewImage])
+
+  const announcementImageUrls = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (club?.announcements ?? [])
+            .map((announcement) => String(announcement.imageUrl ?? '').trim())
+            .filter((url): url is string => Boolean(url))
+        )
+      ),
+    [club?.announcements]
+  )
+
+  useEffect(() => {
+    if (tab !== 'feed' || announcementImageUrls.length === 0) return
+    let cancelled = false
+
+    void warmImageCache(announcementImageUrls)
+    announcementImageUrls.forEach((url) => {
+      void getCachedImageUri(url).then((cachedUri) => {
+        if (cancelled) return
+        setCachedAnnouncementImageUris((current) =>
+          current[url] === cachedUri ? current : { ...current, [url]: cachedUri }
+        )
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [announcementImageUrls, tab])
+
   const handleSaveAnnouncementPreviewImage = useCallback(async () => {
     const next = announcementPreviewImage
     if (!next || savingAnnouncementPreviewImage) return
@@ -1738,12 +1771,17 @@ export default function ClubDetailScreen() {
                           style={({ pressed }) => [styles.announcementImageWrap, pressed && styles.announcementImagePressed]}
                         >
                           <Image
-                            source={{ uri: announcement.imageUrl, cache: 'force-cache' }}
+                            source={{
+                              uri: cachedAnnouncementImageUris[announcement.imageUrl] || announcement.imageUrl,
+                              cache: 'force-cache',
+                            }}
                             style={[
                               styles.announcementImage,
                               { aspectRatio: getAnnouncementImageAspectRatio(announcement.imageWidth, announcement.imageHeight) },
                             ]}
                             resizeMode="cover"
+                            resizeMethod="resize"
+                            fadeDuration={80}
                           />
                         </Pressable>
                       ) : null}
