@@ -112,6 +112,7 @@ export default function AITab() {
   const tabBarHeight = useBottomTabBarHeight()
   const historyQuery = trpc.aiCoach.history.useQuery(undefined, { enabled: isAuthenticated })
   const scrollRef = useRef<ScrollView | null>(null)
+  const sendLockRef = useRef(false)
   const [hydrated, setHydrated] = useState(false)
   const chatFade = useRef(new Animated.Value(0)).current
   const initialMessages = useMemo(() => {
@@ -173,12 +174,13 @@ export default function AITab() {
   }, [historyQuery.isLoading, initialMessages, isAuthenticated])
 
   const send = async () => {
-    if (!input.trim() || chatMutation.isPending) return
+    if (!input.trim() || chatMutation.isPending || sendLockRef.current) return
     if (!isAuthenticated) {
       router.push('/sign-in')
       return
     }
 
+    sendLockRef.current = true
     const userContent = input.trim()
     setMessages((prev) => [
       ...prev,
@@ -196,6 +198,8 @@ export default function AITab() {
       ])
     } catch {
       // Error already handled in onError
+    } finally {
+      sendLockRef.current = false
     }
   }
 
