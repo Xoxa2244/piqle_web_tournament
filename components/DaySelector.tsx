@@ -91,7 +91,7 @@ export default function DaySelector({
           <select
             value={selectedDayId || ''}
             onChange={(e) => onDayChange(e.target.value || null)}
-            className="pl-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-[2.5rem]"
+            className="pl-3 py-1 border border-[#28CD41] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#28CD41] focus:border-[#28CD41] pr-[2.5rem]"
           >
             {matchDays.map((day) => (
               <option key={day.id} value={day.id}>
@@ -111,4 +111,3 @@ export default function DaySelector({
     </div>
   )
 }
-

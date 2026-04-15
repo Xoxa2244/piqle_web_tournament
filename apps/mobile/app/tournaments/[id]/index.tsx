@@ -3872,8 +3872,8 @@ const createStyles = (colors: ThemePalette) =>
     maxWidth: 200,
   },
   dashboardLeagueDayChipActive: {
-    borderColor: 'rgba(51, 65, 85, 0.45)',
-    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(40, 205, 65, 0.12)',
   },
   dashboardLeagueDayChipPressed: {
     opacity: 0.9,

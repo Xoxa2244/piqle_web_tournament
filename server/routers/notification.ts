@@ -6,6 +6,9 @@ import { buildChatMentionBellItems, buildExtraBellItems } from '../utils/bellNot
 const formatPromptDate = (value: Date) =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(value)
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const ONE_WEEK_MS = 7 * ONE_DAY_MS
+
 function isMissingDbRelation(err: unknown, relationName: string): boolean {
   const msg = String((err as Error)?.message ?? '').toLowerCase()
   return msg.includes(relationName.toLowerCase()) && msg.includes('does not exist')
@@ -269,7 +272,7 @@ export const notificationRouter = createTRPCRouter({
         const now = new Date()
         const tournamentCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000)
         const clubCutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
-        const appCutoff = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+        const appCutoff = new Date(now.getTime() - ONE_WEEK_MS)
         const [ratings, played, follows, me] = await Promise.all([
           ctx.prisma.feedback.findMany({
             where: { userId },
@@ -424,12 +427,15 @@ export const notificationRouter = createTRPCRouter({
           })
         }
         if (me?.createdAt && me.createdAt <= appCutoff && !rated.has('APP:GLOBAL')) {
+          const weeksSinceSignup = Math.floor((now.getTime() - me.createdAt.getTime()) / ONE_WEEK_MS)
+          const promptWeek = Math.max(1, weeksSinceSignup)
+          const promptDate = new Date(me.createdAt.getTime() + promptWeek * ONE_WEEK_MS)
           feedbackPromptItems.push({
-            id: 'feedback-prompt-app-global',
+            id: `feedback-prompt-app-global-week-${promptWeek}`,
             type: 'FEEDBACK_PROMPT',
             title: 'Rate app experience',
             body: 'Your opinion is very important to us. We are working to improve usability, your overall experience, and the speed and quality of our service.',
-            createdAt: me.createdAt.toISOString(),
+            createdAt: promptDate.toISOString(),
             readAt: null,
             targetUrl: '/profile',
             entityType: 'APP',
