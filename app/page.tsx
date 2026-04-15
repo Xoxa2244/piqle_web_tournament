@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, Suspense } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort, formatUsDateTimeShort, getTimezoneLabel } from '@/lib/dateFormat'
+import { normalizeLocationText } from '@/lib/locationText'
 import {
   getTournamentStatus,
   getTournamentStatusBadgeClass,
@@ -574,7 +575,7 @@ function HomePageContent() {
                           className={`flex items-center text-sm cursor-pointer hover:underline ${(tournament as { venueAddress?: string | null }).venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
                         >
                           <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>{tournament.venueName}</span>
+                          <span>{normalizeLocationText(tournament.venueName)}</span>
                         </div>
                       )}
                       

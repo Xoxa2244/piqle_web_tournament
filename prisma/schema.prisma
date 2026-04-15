@@ -161,6 +161,12 @@ model Tournament {
   rulesUrl                String?
   venueName               String?
   venueAddress            String?
+  venueAddressEn          String?                   @map("venue_address_en")
+  venueCityEn             String?                   @map("venue_city_en")
+  venueStateEn            String?                   @map("venue_state_en")
+  venueCountryEn          String?                   @map("venue_country_en")
+  venuePlaceId            String?                   @map("venue_place_id")
+  venueProvider           String?                   @map("venue_provider")
   clubId                  String?                   @map("club_id")
   startDate               DateTime
   endDate                 DateTime
@@ -230,9 +236,15 @@ model Club {
   description         String?
   logoUrl             String?        @map("logo_url")
   address             String?
+  addressEn           String?        @map("address_en")
   city                String?
+  cityEn              String?        @map("city_en")
   state               String?
+  stateEn             String?        @map("state_en")
   country             String?
+  countryEn           String?        @map("country_en")
+  placeId             String?        @map("place_id")
+  locationProvider    String?        @map("location_provider")
   isVerified          Boolean        @default(false) @map("is_verified")
   courtReserveUrl     String?        @map("court_reserve_url")
   bookingRequestEmail String?        @map("booking_request_email")
@@ -358,6 +370,14 @@ model ClubAnnouncement {
   locationLongitude Float? @map("location_longitude")
   locationTitle    String? @map("location_title")
   locationAddress  String? @map("location_address")
+  locationTitleCustom String? @map("location_title_custom")
+  locationTitleEn     String? @map("location_title_en")
+  locationAddressEn   String? @map("location_address_en")
+  locationCityEn      String? @map("location_city_en")
+  locationStateEn     String? @map("location_state_en")
+  locationCountryEn   String? @map("location_country_en")
+  locationPlaceId     String? @map("location_place_id")
+  locationProvider    String? @map("location_provider")
   fileUrl          String? @map("file_url")
   fileName         String? @map("file_name")
   fileMimeType     String? @map("file_mime_type")

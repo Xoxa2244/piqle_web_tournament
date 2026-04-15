@@ -884,8 +884,10 @@ export default function TournamentDetailScreen() {
   const feeLabel = entryFeeCents > 0 ? formatMoney(entryFeeCents) : 'Free'
   const quickFeeLabel = entryFeeCents > 0 ? `$${Math.round(entryFeeCents / 100)}+` : 'Free'
   const venueNameLabel = String(tournamentData?.venueName ?? '').trim()
-  const venueAddressLabel = String(tournamentData?.venueAddress ?? '').trim()
-  const locationLabel = venueAddressLabel || 'Location not set'
+  const venueAddressLabel = String(
+    (tournamentData as any)?.venueAddressEn ?? tournamentData?.venueAddress ?? ''
+  ).trim()
+  const locationLabel = formatLocation([venueNameLabel, venueAddressLabel])
   const playerCount = Number(tournamentData?._count?.players ?? 0)
   const totalTeams = ((tournamentData?.divisions ?? []) as any[]).reduce(
     (sum, division) => sum + Number(division?._count?.teams ?? 0),
@@ -1963,7 +1965,7 @@ export default function TournamentDetailScreen() {
                                     const active =
                                       dashboardLeagueDayMode === 'DAY_ONLY' &&
                                       day.id === dashboardLeagueDayId
-                                    const dayLabel = new Date(day.date).toLocaleDateString(undefined, {
+                                    const dayLabel = new Date(day.date).toLocaleDateString('en-US', {
                                       month: 'short',
                                       day: 'numeric',
                                     })

@@ -11,6 +11,7 @@ import {
 } from 'react-native'
 
 import type { ChatLocationMessagePayload } from '../lib/chatSpecialMessages'
+import { normalizeLocationText } from '../lib/formatters'
 import { spacing, type ThemePalette } from '../lib/theme'
 import { useAppTheme } from '../providers/ThemeProvider'
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
@@ -121,8 +122,8 @@ export function LocationPickerSheet({
             ]
               .filter(Boolean)
               .join(', ') || null
-          setPlaceTitle(title)
-          setPlaceAddress(address)
+          setPlaceTitle(normalizeLocationText(title) || 'Pinned location')
+          setPlaceAddress(normalizeLocationText(address) || null)
         } catch {
           if (!cancelled) {
             setPlaceTitle('Pinned location')

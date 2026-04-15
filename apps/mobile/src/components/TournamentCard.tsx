@@ -317,6 +317,10 @@ type TournamentSummary = {
   endDate: string | Date
   venueName?: string | null
   venueAddress?: string | null
+  venueAddressEn?: string | null
+  venueCityEn?: string | null
+  venueStateEn?: string | null
+  venueCountryEn?: string | null
   entryFee?: string | number | null
   entryFeeCents?: number | null
   format?: string | null
@@ -413,8 +417,8 @@ export const TournamentCard = ({
   const progressWidth = progress > 0 ? `${Math.max(progress, 8)}%` : '0%'
   const divisionLabels = useMemo(() => tournament.divisions.map((d) => d.name), [tournament.divisions])
   const venueName = String(tournament.venueName ?? '').trim()
-  const venueAddress = String(tournament.venueAddress ?? '').trim()
-  const locationLabel = venueAddress || venueName || 'Location not set'
+  const venueAddress = String(tournament.venueAddressEn ?? tournament.venueAddress ?? '').trim()
+  const locationLabel = formatLocation([venueAddress, venueName])
   /** Показываем флаг клуба только при реальной привязке турнира к клубу. */
   const linkedClubIdFromCard = String(tournament.clubId ?? tournament.club?.id ?? '').trim()
   const explicitClubName = String(tournament.club?.name ?? '').trim()

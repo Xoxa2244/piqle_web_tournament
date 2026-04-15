@@ -1,4 +1,5 @@
 import { Platform } from 'react-native'
+import { normalizeLocationText } from './formatters'
 
 const LOCATION_MESSAGE_PREFIX = '__piqle_location__:'
 const IMAGE_MESSAGE_PREFIX = '__piqle_image__:'
@@ -57,8 +58,8 @@ export function buildLocationMessageText(payload: ChatLocationMessagePayload): s
   const normalized = {
     latitude: roundCoord(payload.latitude),
     longitude: roundCoord(payload.longitude),
-    title: String(payload.title ?? '').trim() || 'Pinned location',
-    address: String(payload.address ?? '').trim() || null,
+    title: normalizeLocationText(payload.title) || 'Pinned location',
+    address: normalizeLocationText(payload.address) || null,
   }
   return `${LOCATION_MESSAGE_PREFIX}${encodeURIComponent(JSON.stringify(normalized))}`
 }
@@ -94,8 +95,8 @@ export function parseLocationMessageText(text: string | null | undefined): ChatL
     const latitude = Number(parsed.latitude)
     const longitude = Number(parsed.longitude)
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-    const title = String(parsed.title ?? '').trim() || 'Pinned location'
-    const address = String(parsed.address ?? '').trim() || null
+    const title = normalizeLocationText(parsed.title) || 'Pinned location'
+    const address = normalizeLocationText(parsed.address) || null
     return { latitude, longitude, title, address }
   } catch {
     return null

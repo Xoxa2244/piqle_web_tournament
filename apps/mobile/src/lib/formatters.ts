@@ -1,3 +1,5 @@
+import { normalizeLocationText } from './locationText'
+
 const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
@@ -77,8 +79,10 @@ export const formatMoney = (amountCents?: number | null, currency = 'USD') => {
 }
 
 export const formatLocation = (parts: Array<string | null | undefined>) => {
-  return parts.map((part) => String(part ?? '').trim()).filter(Boolean).join(', ') || 'Location not set'
+  return parts.map((part) => normalizeLocationText(part)).filter(Boolean).join(', ') || 'Location not set'
 }
+
+export { normalizeLocationText }
 
 /** Gender line under the name on profile (English only). */
 export const formatGenderLabel = (gender?: string | null) => {

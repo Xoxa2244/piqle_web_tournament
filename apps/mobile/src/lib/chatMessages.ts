@@ -94,7 +94,7 @@ export function groupMessagesByDate(
 export function formatChatTime(value?: string | Date | null): string {
   if (!value) return ''
   try {
-    return new Date(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   } catch {
     return ''
   }

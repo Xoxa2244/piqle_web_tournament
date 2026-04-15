@@ -18,6 +18,7 @@ import { ActionButton, EmptyState, LoadingBlock, SearchField, SegmentedContentFa
 import { buildWebUrl } from '../../src/lib/config'
 import { buildMentionCountMaps } from '../../src/lib/chatMentionNotifications'
 import { getChatSpecialPreviewText } from '../../src/lib/chatSpecialMessages'
+import { formatLocation } from '../../src/lib/formatters'
 import { useChatRealtimeQueryOptions, useRealtimeAwareQueryOptions } from '../../src/lib/realtimePoll'
 import { trpc } from '../../src/lib/trpc'
 import { radius, spacing, type ThemePalette } from '../../src/lib/theme'
@@ -521,7 +522,12 @@ export default function ChatsTab() {
                         <ChatPreviewCard
                           title={club.name}
                           imageUri={club.logoUrl}
-                          subtitle={[club.city, club.state].filter(Boolean).join(', ') || 'Club chat'}
+                          subtitle={
+                            (() => {
+                              const locationLabel = formatLocation([club.city, club.state])
+                              return locationLabel === 'Location not set' ? 'Club chat' : locationLabel
+                            })()
+                          }
                           unreadCount={club.unreadCount}
                           mentionCount={mentionCountMaps.clubCounts.get(club.id) ?? 0}
                           trailingTime={club.lastMessageAt}

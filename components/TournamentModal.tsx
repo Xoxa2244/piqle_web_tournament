@@ -7,7 +7,8 @@ import Image from 'next/image'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
-import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import { formatUsDateShort, formatUsDateTimeShort, formatUsTimeShort } from '@/lib/dateFormat'
+import { normalizeLocationText } from '@/lib/locationText'
 import {
   getTournamentStatus,
   getTournamentStatusBadgeClass,
@@ -517,11 +518,11 @@ export default function TournamentModal({
                           <span>
                             Registration:{' '}
                             {tournament.registrationStartDate
-                              ? new Date(tournament.registrationStartDate).toLocaleDateString()
+                              ? formatUsDateShort(tournament.registrationStartDate)
                               : '—'}{' '}
                             –{' '}
                             {tournament.registrationEndDate
-                              ? new Date(tournament.registrationEndDate).toLocaleDateString()
+                              ? formatUsDateShort(tournament.registrationEndDate)
                               : '—'}
                           </span>
                         </div>
@@ -552,7 +553,7 @@ export default function TournamentModal({
                           className={`flex items-center text-sm ${onVenueClick ? 'cursor-pointer hover:underline' : ''} ${tournament.venueAddress?.trim() ? 'text-blue-600 hover:text-blue-800' : 'text-gray-600 hover:text-blue-600'}`}
                         >
                           <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>{tournament.venueName}</span>
+                          <span>{normalizeLocationText(tournament.venueName)}</span>
                         </div>
                       )}
                       <div className="flex items-center text-sm text-gray-600">
@@ -638,8 +639,8 @@ export default function TournamentModal({
                                       {comment.user.name || comment.user.email}
                                     </span>
                                     <span className="text-xs text-gray-500">
-                                      {new Date(comment.createdAt).toLocaleDateString()}{' '}
-                                      {new Date(comment.createdAt).toLocaleTimeString()}
+                                      {formatUsDateShort(comment.createdAt)}{' '}
+                                      {formatUsTimeShort(comment.createdAt)}
                                     </span>
                                   </div>
                                   <div className="relative">

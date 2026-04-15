@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
+import { normalizeLocationText } from '@/lib/locationText'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -406,8 +407,8 @@ export default function ClubDetailPage() {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <MapPin className="h-4 w-4" />
                     <span className="truncate">
-                      {club.address || club.city || club.state
-                        ? `${club.address ? club.address : ''}${club.address && (club.city || club.state) ? ' • ' : ''}${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}`
+                      {club.addressEn || club.address || club.cityEn || club.city || club.stateEn || club.state
+                        ? `${normalizeLocationText(club.addressEn ?? club.address)}${(club.addressEn ?? club.address) && ((club.cityEn ?? club.city) || (club.stateEn ?? club.state)) ? ' • ' : ''}${normalizeLocationText(club.cityEn ?? club.city)}${(club.cityEn ?? club.city) && (club.stateEn ?? club.state) ? ', ' : ''}${normalizeLocationText(club.stateEn ?? club.state)}`
                         : 'Location not set'}
                     </span>
                   </div>

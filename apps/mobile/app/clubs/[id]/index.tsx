@@ -44,7 +44,7 @@ import {
   buildEventsByDay,
 } from '../../../src/lib/clubCalendar'
 import { formatFileSize, getExternalLocationUrl } from '../../../src/lib/chatSpecialMessages'
-import { formatDateTime, formatLocation } from '../../../src/lib/formatters'
+import { formatDateTime, formatLocation, normalizeLocationText } from '../../../src/lib/formatters'
 import { authApi } from '../../../src/lib/authApi'
 import { getCachedImageUri, warmImageCache } from '../../../src/lib/imageCache'
 import { trpc } from '../../../src/lib/trpc'
@@ -94,8 +94,12 @@ const getAnnouncementDraftFromAnnouncement = (announcement: any): ClubAnnounceme
       ? {
           latitude: Number(announcement.locationLatitude),
           longitude: Number(announcement.locationLongitude),
-          title: announcement.locationTitle || 'Pinned location',
-          address: announcement.locationAddress || null,
+          title:
+            normalizeLocationText(
+              announcement.locationTitleCustom ?? announcement.locationTitleEn ?? announcement.locationTitle
+            ) || 'Pinned location',
+          address:
+            normalizeLocationText(announcement.locationAddressEn ?? announcement.locationAddress) || null,
         }
       : null,
   file:
@@ -547,6 +551,9 @@ export default function ClubDetailScreen() {
           locationLongitude: currentComposer.draft.location?.longitude ?? null,
           locationTitle: currentComposer.draft.location?.title ?? null,
           locationAddress: currentComposer.draft.location?.address ?? null,
+          locationTitleCustom: currentComposer.draft.location?.title ?? null,
+          locationTitleEn: currentComposer.draft.location?.title ?? null,
+          locationAddressEn: currentComposer.draft.location?.address ?? null,
           fileUrl,
           fileName,
           fileMimeType,
@@ -569,6 +576,9 @@ export default function ClubDetailScreen() {
           locationLongitude: currentComposer.draft.location?.longitude ?? null,
           locationTitle: currentComposer.draft.location?.title ?? null,
           locationAddress: currentComposer.draft.location?.address ?? null,
+          locationTitleCustom: currentComposer.draft.location?.title ?? null,
+          locationTitleEn: currentComposer.draft.location?.title ?? null,
+          locationAddressEn: currentComposer.draft.location?.address ?? null,
           fileUrl,
           fileName,
           fileMimeType,
@@ -667,8 +677,12 @@ export default function ClubDetailScreen() {
       const next = {
         latitude,
         longitude,
-        title: String(announcement.locationTitle ?? '').trim() || 'Pinned location',
-        address: String(announcement.locationAddress ?? '').trim() || null,
+        title:
+          normalizeLocationText(
+            announcement.locationTitleCustom ?? announcement.locationTitleEn ?? announcement.locationTitle
+          ) || 'Pinned location',
+        address:
+          normalizeLocationText(announcement.locationAddressEn ?? announcement.locationAddress) || null,
       }
       Alert.alert(
         next.title,
@@ -1372,7 +1386,7 @@ export default function ClubDetailScreen() {
               <View style={styles.clubHeroMetaRow}>
                 <Feather name="map-pin" size={16} color={colors.primary} />
                 <Text style={styles.clubHeroMetaText} numberOfLines={1}>
-                  {formatLocation([club.city, club.state])}
+                  {formatLocation([club.cityEn ?? club.city, club.stateEn ?? club.state])}
                 </Text>
               </View>
             </View>
@@ -1795,10 +1809,14 @@ export default function ClubDetailScreen() {
                           </View>
                           <View style={styles.announcementLocationBody}>
                             <Text style={styles.announcementLocationTitle} numberOfLines={1}>
-                              {announcement.locationTitle || 'Pinned location'}
+                              {normalizeLocationText(
+                                announcement.locationTitleCustom ??
+                                  announcement.locationTitleEn ??
+                                  announcement.locationTitle
+                              ) || 'Pinned location'}
                             </Text>
                             <Text style={styles.announcementLocationAddress} numberOfLines={2}>
-                              {announcement.locationAddress ||
+                              {normalizeLocationText(announcement.locationAddressEn ?? announcement.locationAddress) ||
                                 `${Number(announcement.locationLatitude).toFixed(5)}, ${Number(announcement.locationLongitude).toFixed(5)}`}
                             </Text>
                           </View>
@@ -1992,8 +2010,8 @@ export default function ClubDetailScreen() {
                   <View key={tournament.id}>
                     <ClubTournamentCard
                       tournament={tournament as any}
-                      fallbackVenueName={club.city}
-                      fallbackVenueAddress={club.state}
+                      fallbackVenueName={club.cityEn ?? club.city}
+                      fallbackVenueAddress={club.stateEn ?? club.state}
                       onPress={() => router.push(`/tournaments/${tournament.id}`)}
                     />
                   </View>
@@ -2090,7 +2108,7 @@ export default function ClubDetailScreen() {
             entityType="CLUB"
             title={club.name}
             imageUrl={club.logoUrl}
-            addressLabel={formatLocation([club.city, club.state])}
+            addressLabel={formatLocation([club.cityEn ?? club.city, club.stateEn ?? club.state])}
             membersLabel={`${Math.max(1, Number(club.followersCount ?? 0) || 0)} members`}
           />
         }

@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics'
 import * as MediaLibrary from 'expo-media-library'
 import { Feather } from '@expo/vector-icons'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons'
+import LottieView from 'lottie-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
@@ -46,6 +47,7 @@ import { useToast } from '../providers/ToastProvider'
 import { AppBottomSheet, AppConfirmActions } from './AppBottomSheet'
 import { LocationMapSurface } from './LocationMapSurface'
 import { RemoteUserAvatar } from './RemoteUserAvatar'
+import likeBurstAnimation from '../assets/animations/like-burst.json'
 
 const AVATAR = 32
 const REPLY_AVATAR = 20
@@ -57,6 +59,25 @@ const LINK_PATTERN = /((?:https?:\/\/|www\.)[^\s]+)/gi
 const isLinkPart = (value: string) => /^(?:https?:\/\/|www\.)[^\s]+$/i.test(value)
 const LINK_WRAP_PATTERN = /([/:.?&=_-]+)/g
 const INLINE_TOKEN_PATTERN = /(\s+|(?:https?:\/\/|www\.)[^\s]+|@[^\s@]+)/giu
+const likeBurstStyles = StyleSheet.create({
+  iconWrap: {
+    width: STATIC_LIKE_ICON_SIZE,
+    height: STATIC_LIKE_ICON_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+  burst: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    left: -28,
+    top: -28,
+  },
+  outlineGlyph: {
+    zIndex: 1,
+  },
+})
 
 type DisplayMessageEntry = {
   type: 'message'
@@ -147,6 +168,57 @@ function LinkInlineText({
   )
 }
 
+function LikeChipIcon({
+  active,
+  color,
+  animateKey,
+  shouldAnimate,
+  onAnimationEnd,
+}: {
+  active: boolean
+  color: string
+  animateKey: number
+  shouldAnimate: boolean
+  onAnimationEnd?: () => void
+}) {
+  const lastAnimatedKeyRef = useRef(0)
+  const [visibleAnimationKey, setVisibleAnimationKey] = useState(0)
+
+  useEffect(() => {
+    if (!shouldAnimate || animateKey <= 0 || animateKey === lastAnimatedKeyRef.current) {
+      return
+    }
+    lastAnimatedKeyRef.current = animateKey
+    setVisibleAnimationKey(animateKey)
+  }, [animateKey, shouldAnimate])
+
+  return (
+    <View style={likeBurstStyles.iconWrap}>
+      {visibleAnimationKey > 0 ? (
+        <LottieView
+          key={visibleAnimationKey}
+          source={likeBurstAnimation}
+          autoPlay
+          loop={false}
+          pointerEvents="none"
+          style={likeBurstStyles.burst}
+          resizeMode="contain"
+          onAnimationFinish={() => {
+            setVisibleAnimationKey(0)
+            onAnimationEnd?.()
+          }}
+        />
+      ) : null}
+      <MaterialCommunityIcons
+        name={active ? 'heart' : 'heart-outline'}
+        size={STATIC_LIKE_ICON_SIZE}
+        color={color}
+        style={likeBurstStyles.outlineGlyph}
+      />
+    </View>
+  )
+}
+
 type Props = {
   messages: ChatMessage[]
   currentUserId?: string
@@ -207,6 +279,8 @@ export function ChatThreadMessageList({
   const [openingPreviewFile, setOpeningPreviewFile] = useState(false)
   const [cachedPreviewImageUri, setCachedPreviewImageUri] = useState<string | null>(null)
   const [cachedInlineImageUris, setCachedInlineImageUris] = useState<Record<string, string>>({})
+  const [likeAnimationTickByMessageId, setLikeAnimationTickByMessageId] = useState<Record<string, number>>({})
+  const [animatingLikeMessageIds, setAnimatingLikeMessageIds] = useState<Record<string, true>>({})
   const previewImageTranslateY = useRef(new Animated.Value(0)).current
   const lastPreviewImageCloseAtRef = useRef(0)
 
@@ -496,7 +570,14 @@ export function ChatThreadMessageList({
 
   const tryLike = useCallback(
     (m: ChatMessage) => {
-      if (!onToggleLike || likeDisabled) return
+      if (!onToggleLike || likeDisabled || m.isDeleted) return
+      if (!m.viewerHasLiked) {
+        setAnimatingLikeMessageIds((current) => ({ ...current, [m.id]: true }))
+        setLikeAnimationTickByMessageId((current) => ({
+          ...current,
+          [m.id]: (current[m.id] ?? 0) + 1,
+        }))
+      }
       void Haptics.selectionAsync().catch(() => {})
       onToggleLike(m)
     },
@@ -778,7 +859,8 @@ export function ChatThreadMessageList({
       const tightTop = sameAuthorAsPrev
       const deletable = canDelete(m) && !m.isDeleted && !deleteDisabled
       const likeCountValue = Math.max(0, Number(m.likeCount ?? 0))
-      const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked)
+      const isLikeAnimating = Boolean(animatingLikeMessageIds[m.id])
+      const showLikeChip = Boolean(likeCountValue > 0 || m.viewerHasLiked || isLikeAnimating)
       const replyCount = threadRootMessageId ? 0 : replyCountByRootId.get(m.id) ?? 0
       const hasLocationCard = Boolean(!m.isDeleted && parseLocationMessageText(m.text))
       const hasImageCard = Boolean(!m.isDeleted && parseImageMessageText(m.text))
@@ -882,10 +964,19 @@ export function ChatThreadMessageList({
             <View style={styles.metaRow}>
               {!isMine && showLikeChip ? (
                 <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
-                  <MaterialCommunityIcons
-                    name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
-                    size={STATIC_LIKE_ICON_SIZE}
+                  <LikeChipIcon
+                    active={Boolean(m.viewerHasLiked)}
                     color={m.viewerHasLiked ? colors.primary : colors.textMuted}
+                    animateKey={likeAnimationTickByMessageId[m.id] ?? 0}
+                    shouldAnimate={isLikeAnimating}
+                    onAnimationEnd={() => {
+                      setAnimatingLikeMessageIds((current) => {
+                        if (!current[m.id]) return current
+                        const nextState = { ...current }
+                        delete nextState[m.id]
+                        return nextState
+                      })
+                    }}
                   />
                   {likeCountValue > 1 ? (
                     <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
@@ -912,10 +1003,19 @@ export function ChatThreadMessageList({
                 <>
                   {showLikeChip ? (
                     <View style={[styles.likeChipInline, m.viewerHasLiked && styles.likeChipActive]}>
-                      <MaterialCommunityIcons
-                        name={m.viewerHasLiked ? 'heart' : 'heart-outline'}
-                        size={STATIC_LIKE_ICON_SIZE}
+                      <LikeChipIcon
+                        active={Boolean(m.viewerHasLiked)}
                         color={m.viewerHasLiked ? colors.primary : colors.textMuted}
+                        animateKey={likeAnimationTickByMessageId[m.id] ?? 0}
+                        shouldAnimate={isLikeAnimating}
+                        onAnimationEnd={() => {
+                          setAnimatingLikeMessageIds((current) => {
+                            if (!current[m.id]) return current
+                            const nextState = { ...current }
+                            delete nextState[m.id]
+                            return nextState
+                          })
+                        }}
                       />
                       {likeCountValue > 1 ? (
                         <Text style={[styles.likeChipText, m.viewerHasLiked && styles.likeChipTextActive]}>
@@ -961,6 +1061,7 @@ export function ChatThreadMessageList({
       )
     },
     [
+      animatingLikeMessageIds,
       canDelete,
       colors.primary,
       colors.textMuted,
@@ -983,6 +1084,7 @@ export function ChatThreadMessageList({
       threadRootMessageId,
       tryLike,
       userTagByUserId,
+      likeAnimationTickByMessageId,
     ]
   )
 

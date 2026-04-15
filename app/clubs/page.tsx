@@ -13,6 +13,7 @@ import { MapPin, Search, Plus, ExternalLink } from 'lucide-react'
 import Image from 'next/image'
 import { fromCents } from '@/lib/payment'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
+import { normalizeLocationText } from '@/lib/locationText'
 import TournamentModal from '@/components/TournamentModal'
 import CreateClubModal from '@/components/CreateClubModal'
 import { toast } from '@/components/ui/use-toast'
@@ -151,7 +152,9 @@ function ClubsPageContent() {
               <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4" />
                 <span className="truncate">
-                  {club.city || club.state ? `${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}` : 'Location not set'}
+                  {club.cityEn || club.city || club.stateEn || club.state
+                    ? `${normalizeLocationText(club.cityEn ?? club.city)}${(club.cityEn ?? club.city) && (club.stateEn ?? club.state) ? ', ' : ''}${normalizeLocationText(club.stateEn ?? club.state)}`
+                    : 'Location not set'}
                 </span>
               </div>
             </div>

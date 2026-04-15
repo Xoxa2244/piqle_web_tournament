@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort } from '@/lib/dateFormat'
+import { normalizeLocationText } from '@/lib/locationText'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -280,7 +281,7 @@ export default function PublicTournamentsPage() {
                       {tournament.venueName && (
                         <div className="flex items-center text-sm text-gray-600">
                           <MapPin className="h-4 w-4 mr-2" />
-                          <span>{tournament.venueName}</span>
+                          <span>{normalizeLocationText(tournament.venueName)}</span>
                         </div>
                       )}
                       

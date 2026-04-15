@@ -10,6 +10,7 @@ import {
   formatFileSize,
   type ChatLocationMessagePayload,
 } from '../lib/chatSpecialMessages'
+import { normalizeLocationText } from '../lib/formatters'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { compressImageLikeChat } from '../lib/imageCompression'
 import { useAppTheme } from '../providers/ThemeProvider'
@@ -283,8 +284,8 @@ export function ClubAnnouncementComposerSheet({
             ]
               .filter(Boolean)
               .join(', ') || null
-          setLocationTitle(title)
-          setLocationAddress(address)
+          setLocationTitle(normalizeLocationText(title) || 'Pinned location')
+          setLocationAddress(normalizeLocationText(address) || null)
         } catch {
           if (!cancelled) {
             setLocationTitle('Pinned location')

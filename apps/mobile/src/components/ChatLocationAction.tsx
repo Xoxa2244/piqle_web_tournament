@@ -13,6 +13,7 @@ import {
   buildLocationMessageText,
 } from '../lib/chatSpecialMessages'
 import { compressImageLikeChat } from '../lib/imageCompression'
+import { normalizeLocationText } from '../lib/formatters'
 import { radius, spacing, type ThemePalette } from '../lib/theme'
 import { useAuth } from '../providers/AuthProvider'
 import { useAppTheme } from '../providers/ThemeProvider'
@@ -244,8 +245,8 @@ export function ChatLocationAction({
             [first?.street, first?.city, first?.region, first?.postalCode, first?.country]
               .filter(Boolean)
               .join(', ') || null
-          setLocationPreviewTitle(title)
-          setLocationPreviewAddress(address)
+          setLocationPreviewTitle(normalizeLocationText(title) || 'Pinned location')
+          setLocationPreviewAddress(normalizeLocationText(address) || null)
         } catch {
           if (!cancelled) {
             setLocationPreviewTitle('Pinned location')

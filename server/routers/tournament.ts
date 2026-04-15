@@ -147,6 +147,12 @@ const tournamentCreateInput = z.object({
   rulesUrl: z.string().url().optional(),
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
+  venueAddressEn: z.string().optional(),
+  venueCityEn: z.string().optional(),
+  venueStateEn: z.string().optional(),
+  venueCountryEn: z.string().optional(),
+  venuePlaceId: z.string().optional(),
+  venueProvider: z.string().optional(),
   clubId: z.string().uuid().optional(),
   startDate: z.string().transform((str) => new Date(str)),
   endDate: z.string().transform((str) => new Date(str)),
@@ -534,7 +540,7 @@ export const tournamentRouter = createTRPCRouter({
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const timezone = resolveTimezoneFromVenue({
         timezone: input.timezone,
-        venueAddress: input.venueAddress,
+        venueAddress: input.venueAddressEn ?? input.venueAddress,
       })
       const entryFeeDecimal =
         entryFeeCents > 0
@@ -548,6 +554,12 @@ export const tournamentRouter = createTRPCRouter({
           rulesUrl: input.rulesUrl,
           venueName: input.venueName,
           venueAddress: input.venueAddress,
+          venueAddressEn: input.venueAddressEn ?? input.venueAddress,
+          venueCityEn: input.venueCityEn,
+          venueStateEn: input.venueStateEn,
+          venueCountryEn: input.venueCountryEn,
+          venuePlaceId: input.venuePlaceId,
+          venueProvider: input.venueProvider,
           clubId: input.clubId ?? null,
           startDate: input.startDate,
           endDate: input.endDate,
@@ -599,7 +611,7 @@ export const tournamentRouter = createTRPCRouter({
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const timezone = resolveTimezoneFromVenue({
         timezone: input.timezone,
-        venueAddress: input.venueAddress,
+        venueAddress: input.venueAddressEn ?? input.venueAddress,
       })
       const entryFeeDecimal =
         entryFeeCents > 0
@@ -614,6 +626,12 @@ export const tournamentRouter = createTRPCRouter({
             rulesUrl: input.rulesUrl,
             venueName: input.venueName,
             venueAddress: input.venueAddress,
+            venueAddressEn: input.venueAddressEn ?? input.venueAddress,
+            venueCityEn: input.venueCityEn,
+            venueStateEn: input.venueStateEn,
+            venueCountryEn: input.venueCountryEn,
+            venuePlaceId: input.venuePlaceId,
+            venueProvider: input.venueProvider,
             clubId: input.clubId ?? null,
             startDate: input.startDate,
             endDate: input.endDate,
@@ -676,7 +694,7 @@ export const tournamentRouter = createTRPCRouter({
       const paymentTiming = getEffectivePaymentTiming(input.paymentTiming)
       const timezone = resolveTimezoneFromVenue({
         timezone: input.timezone,
-        venueAddress: input.venueAddress,
+        venueAddress: input.venueAddressEn ?? input.venueAddress,
       })
       const entryFeeDecimal =
         entryFeeCents > 0
@@ -769,6 +787,12 @@ export const tournamentRouter = createTRPCRouter({
               rulesUrl: input.rulesUrl,
               venueName: input.venueName,
               venueAddress: input.venueAddress,
+              venueAddressEn: input.venueAddressEn ?? input.venueAddress,
+              venueCityEn: input.venueCityEn,
+              venueStateEn: input.venueStateEn,
+              venueCountryEn: input.venueCountryEn,
+              venuePlaceId: input.venuePlaceId,
+              venueProvider: input.venueProvider,
               clubId: input.clubId ?? null,
               startDate: occ.startDate,
               endDate: occ.endDate,
@@ -1051,6 +1075,12 @@ export const tournamentRouter = createTRPCRouter({
       rulesUrl: z.string().url().optional(),
       venueName: z.string().optional(),
       venueAddress: z.string().optional(),
+      venueAddressEn: z.string().optional(),
+      venueCityEn: z.string().optional(),
+      venueStateEn: z.string().optional(),
+      venueCountryEn: z.string().optional(),
+      venuePlaceId: z.string().optional(),
+      venueProvider: z.string().optional(),
       startDate: z.string().transform((str) => new Date(str)).optional(),
       endDate: z.string().transform((str) => new Date(str)).optional(),
       registrationStartDate: z.string().transform((str) => new Date(str)).optional().nullable(),
@@ -1079,6 +1109,7 @@ export const tournamentRouter = createTRPCRouter({
           allowDuprSubmission: true,
           timezone: true,
           venueAddress: true,
+          venueAddressEn: true,
         },
       })
 
@@ -1152,12 +1183,22 @@ export const tournamentRouter = createTRPCRouter({
       const resolvedTimezone = resolveTimezoneFromVenue({
         timezone: input.timezone,
         venueAddress:
-          input.venueAddress !== undefined ? input.venueAddress : currentTournament.venueAddress,
+          input.venueAddressEn !== undefined
+            ? input.venueAddressEn
+            : input.venueAddress !== undefined
+            ? input.venueAddress
+            : currentTournament.venueAddressEn ?? currentTournament.venueAddress,
         fallbackTimezone: currentTournament.timezone,
       })
 
       const data = {
         ...rest,
+        venueAddressEn:
+          input.venueAddressEn !== undefined
+            ? input.venueAddressEn
+            : input.venueAddress !== undefined
+            ? input.venueAddress
+            : undefined,
         entryFee: entryFeeDecimal,
         entryFeeCents,
         timezone: resolvedTimezone,

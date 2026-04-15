@@ -8,6 +8,7 @@ import { MessageCircle, Send, CalendarDays, Building2, ChevronRight } from 'luci
 import { trpc } from '@/lib/trpc'
 import { cn } from '@/lib/utils'
 import { formatUsDateTimeShort, formatUsDateShort, getTimezoneLabel } from '@/lib/dateFormat'
+import { normalizeLocationText } from '@/lib/locationText'
 import type { ChatMessage } from '@/lib/chatMessages'
 import { groupMessagesByDate } from '@/lib/chatMessages'
 import { ChatMessageRows } from '@/components/chat/ChatMessageRows'
@@ -433,9 +434,9 @@ export default function ChatsPage() {
                                 </Badge>
                               ) : null}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {club.city || club.state
-                                ? `${club.city ?? ''}${club.city && club.state ? ', ' : ''}${club.state ?? ''}`
+                              <div className="text-xs text-muted-foreground">
+                              {club.cityEn || club.city || club.stateEn || club.state
+                                ? `${normalizeLocationText(club.cityEn ?? club.city)}${(club.cityEn ?? club.city) && (club.stateEn ?? club.state) ? ', ' : ''}${normalizeLocationText(club.stateEn ?? club.state)}`
                                 : 'No location'}
                             </div>
                             <div className="mt-1 flex items-center gap-2">
