@@ -70,6 +70,10 @@
     {
       "path": "/api/campaigns/slot-filler?mode=lastminute",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/ai-budget-check",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
