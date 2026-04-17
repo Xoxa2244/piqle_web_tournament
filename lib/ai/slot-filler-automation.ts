@@ -20,6 +20,9 @@ import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
 } from './agent-trigger-runtime'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
+import { persistAgentDecisionRecord } from './agent-decision-records'
 import type { MemberData, UserPlayPreferenceData, BookingHistory, PlaySessionData } from '../../types/intelligence'
 
 export type SlotFillerMode = 'tomorrow' | 'lastminute'
@@ -73,11 +76,52 @@ export async function runSlotFillerAutomation(
   for (const club of clubs) {
     const settings = (club.automationSettings as any)?.intelligence || {}
     const isLive = settings.agentLive === true
+    const requestedLiveMode = isLive && !dryRun
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: club.automationSettings,
+      action: 'outreachSend',
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: club.id,
+      automationSettings: club.automationSettings,
+      actionKind: 'fill_session',
+    })
+    const liveModeAllowed = requestedLiveMode
+      && controlPlane.allowed
+      && !controlPlane.shadow
+      && rollout.allowed
 
     try {
+      if (requestedLiveMode && !liveModeAllowed) {
+        await persistAgentDecisionRecord(prisma, {
+          clubId: club.id,
+          actorType: 'system',
+          action: 'outreachSend',
+          targetType: 'slot_filler_automation_run',
+          targetId: `${club.id}:${mode}:${new Date().toISOString().slice(0, 13)}`,
+          mode: controlPlane.mode,
+          result: controlPlane.shadow ? 'shadowed' : 'blocked',
+          summary: controlPlane.shadow
+            ? `${controlPlane.reason} Slot filler automation stayed in shadow mode.`
+            : controlPlane.allowed
+              ? rollout.reason
+              : controlPlane.reason,
+          metadata: {
+            source: 'slot_filler_automation',
+            mode,
+            reason: controlPlane.allowed
+              ? (controlPlane.shadow ? 'control_plane_shadow' : 'outreach_rollout_blocked')
+              : 'control_plane_disabled',
+            actionKind: 'fill_session',
+            rolloutClubAllowlisted: rollout.clubAllowlisted,
+            rolloutActionEnabled: rollout.actionEnabled,
+          },
+        })
+      }
+
       const result = await processClub(prisma, club, mode, {
         dryRun,
-        liveMode: isLive,
+        liveMode: liveModeAllowed,
         maxCandidatesPerSession,
         minScore,
       })
@@ -243,10 +287,45 @@ async function processClub(
           ? 'pending'
           : 'sent'
 
-      // Send or log
-      if (deliveryStatus === 'sent' && rec.member.email) {
+      // CRITICAL: Create log FIRST so we have an ID to pass as metadata to Mandrill.
+      // Without this, webhook events (open/click/bounce) cannot be correlated back
+      // to the recommendation record. See: app/api/webhooks/mailchimp/route.ts
+      let logRecord: { id: string } | null = null
+      try {
+        logRecord = await prisma.aIRecommendationLog.create({
+          data: {
+            clubId: club.id,
+            userId: rec.member.id,
+            type: 'SLOT_FILLER',
+            channel: isLastMinute ? 'both' : 'email',
+            sessionId: session.id,
+            score: rec.score,
+            variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
+            // Start as 'pending' — will update to 'sent' after email dispatched
+            status: deliveryStatus === 'sent' ? 'pending' : deliveryStatus,
+            reasoning: {
+              ...buildAgentTriggerReasoning(runtime, {
+                mode,
+                score: rec.score,
+                estimatedLikelihood: rec.estimatedLikelihood,
+                spotsLeft,
+                socialProof: socialProof || null,
+                dryRun: deliveryStatus !== 'sent',
+              }),
+            } as any,
+          },
+          select: { id: true },
+        })
+      } catch (logErr: any) {
+        console.error(`[SlotFiller Auto] Log create failed for ${rec.member.email}:`, logErr.message)
+        result.errors++
+        continue
+      }
+
+      // Send email (only if status is 'sent' and we have a log record for metadata)
+      if (deliveryStatus === 'sent' && rec.member.email && logRecord) {
         try {
-          await sendSlotFillerInviteEmail({
+          const { messageId } = await sendSlotFillerInviteEmail({
             to: rec.member.email,
             memberName: rec.member.name || rec.member.email.split('@')[0],
             clubName: club.name,
@@ -257,36 +336,35 @@ async function processClub(
             bookingUrl: `https://app.iqsport.ai/clubs/${club.id}/intelligence/sessions`,
             customSubject: subject,
             customMessage: body,
+            // CRITICAL: metadata flows through Mandrill to webhooks for engagement tracking
+            metadata: {
+              logId: logRecord.id,
+              clubId: club.id,
+              userId: rec.member.id,
+              variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
+            },
+          })
+
+          // Update log with messageId + final status
+          await prisma.aIRecommendationLog.update({
+            where: { id: logRecord.id },
+            data: {
+              status: 'sent',
+              externalMessageId: messageId,
+            },
+          }).catch((updErr: any) => {
+            console.error(`[SlotFiller Auto] Log update failed (messageId lost):`, updErr.message)
           })
         } catch (err: any) {
           console.error(`[SlotFiller Auto] Email failed for ${rec.member.email}:`, err.message)
           result.errors++
+          // Mark log as failed so retry logic can find it
+          await prisma.aIRecommendationLog.update({
+            where: { id: logRecord.id },
+            data: { status: 'failed' },
+          }).catch(() => {})
         }
       }
-
-      // Log to AIRecommendationLog
-      await prisma.aIRecommendationLog.create({
-        data: {
-          clubId: club.id,
-          userId: rec.member.id,
-          type: 'SLOT_FILLER',
-          channel: isLastMinute ? 'both' : 'email',
-          sessionId: session.id,
-          score: rec.score,
-          variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
-          status: deliveryStatus,
-          reasoning: {
-            ...buildAgentTriggerReasoning(runtime, {
-              mode,
-              score: rec.score,
-              estimatedLikelihood: rec.estimatedLikelihood,
-              spotsLeft,
-              socialProof: socialProof || null,
-              dryRun: deliveryStatus !== 'sent',
-            }),
-          } as any,
-        },
-      }).catch(() => {})
 
       if (deliveryStatus === 'sent') {
         sessionResult.invitesSent++

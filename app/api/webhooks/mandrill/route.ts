@@ -21,6 +21,7 @@
 import { NextResponse } from 'next/server'
 import { webhookLogger as wlog } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
+import { verifyMandrillWebhook } from '@/lib/mailchimp'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -61,18 +62,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    // Security: warn if no auth header present (full signature verification can be added later)
-    const authHeader =
-      request.headers.get('x-mandrill-signature') ||
-      request.headers.get('authorization')
-    if (!authHeader) {
-      wlog.warn('[Mandrill Webhook] No auth header present — proceeding without verification')
-    }
-
     // Mandrill sends form-encoded body with a `mandrill_events` field containing a JSON array
     const contentType = request.headers.get('content-type') || ''
 
     let events: MandrillEvent[]
+    let rawParams: Record<string, string> = {}
 
     if (contentType.includes('application/x-www-form-urlencoded')) {
       const formData = await request.formData()
@@ -82,9 +76,24 @@ export async function POST(request: Request) {
         return NextResponse.json({ received: true, processed: 0 })
       }
 
+      // Build params map for signature verification
+      formData.forEach((value, key) => { rawParams[key] = String(value) })
+
+      // Verify Mandrill signature (strict — rejects in production if key missing)
+      const signature = request.headers.get('x-mandrill-signature') || ''
+      const isValid = await verifyMandrillWebhook(signature, request.url, rawParams)
+      if (!isValid) {
+        wlog.error('[Mandrill Webhook] Invalid signature — rejecting')
+        return new NextResponse('Invalid signature', { status: 403 })
+      }
+
       events = JSON.parse(eventsJson)
     } else {
-      // Fallback: accept JSON body (useful for local testing)
+      // Fallback: accept JSON body (useful for local testing only — not from real Mandrill)
+      if (process.env.NODE_ENV === 'production') {
+        wlog.error('[Mandrill Webhook] Non-form POST rejected in production')
+        return new NextResponse('Invalid content-type', { status: 400 })
+      }
       const text = await request.text()
       if (!text) {
         return NextResponse.json({ received: true, processed: 0 })

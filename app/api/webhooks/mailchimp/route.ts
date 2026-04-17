@@ -122,12 +122,19 @@ async function processMandrillEvent(event: MandrillEvent) {
   // We need at least one identifier to find the log record
   if (!logId && !externalId) return
 
-  // Find the log record
-  const whereClause = logId
-    ? { id: logId }
-    : { externalMessageId: externalId }
+  // Try logId first (most reliable — we control it), fall back to externalMessageId.
+  // This handles the case where logId metadata was not set during send (legacy emails)
+  // or was set but doesn't match (stale/recycled ID).
+  let log = logId
+    ? await prisma.aIRecommendationLog.findUnique({ where: { id: logId } })
+    : null
 
-  const log = await prisma.aIRecommendationLog.findFirst({ where: whereClause })
+  if (!log && externalId) {
+    log = await prisma.aIRecommendationLog.findFirst({
+      where: { externalMessageId: externalId },
+    })
+  }
+
   if (!log) {
     console.warn(`[Mandrill Webhook] Log not found: logId=${logId} externalId=${externalId}`)
     return

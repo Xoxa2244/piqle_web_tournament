@@ -29,20 +29,31 @@ if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
 }
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
-  debug: true,
+  // Only enable debug mode in development — prevents leaking OAuth tokens/PII in prod logs
+  debug: isDev,
   logger: {
     error(code, metadata) {
-      console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
+      // Always log errors, but redact metadata in production
+      if (isDev) {
+        console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
+      } else {
+        console.error('[NextAuth Error]', code)
+      }
     },
     warn(code) {
       console.warn('[NextAuth Warn]', code)
     },
     debug(code, metadata) {
-      console.log('[NextAuth Debug]', code, metadata)
+      // Never log debug info in production
+      if (isDev) {
+        console.log('[NextAuth Debug]', code, metadata)
+      }
     },
   },
   providers: [

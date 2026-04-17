@@ -36,9 +36,37 @@ function isBlockedEmail(to: string): boolean {
   return BLOCKED_EMAIL_DOMAINS.some(d => domain === d || domain?.endsWith('.' + d))
 }
 
+/**
+ * Metadata passed through to Mandrill — survives in webhook payloads as msg.metadata,
+ * enabling webhook events (open, click, bounce) to be correlated back to our DB logs.
+ * CRITICAL: without log_id, webhooks cannot match events to AIRecommendationLog records.
+ */
+export interface EmailMetadata {
+  /** AIRecommendationLog.id — primary key for webhook correlation */
+  logId?: string
+  /** Club this email belongs to */
+  clubId?: string
+  /** User receiving the email */
+  userId?: string
+  /** Campaign variant for A/B testing */
+  variantId?: string
+}
+
+export interface SafeSendMailOptions {
+  to: string
+  from?: string
+  subject: string
+  html?: string
+  text?: string
+  /** Metadata for webhook correlation — pass logId to enable Mandrill event tracking */
+  metadata?: EmailMetadata
+  /** Mandrill tags for filtering in Mandrill dashboard */
+  tags?: string[]
+}
+
 /** Wraps email sending with blocked email guard + Mandrill fallback */
-async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
-  const to = typeof opts.to === 'string' ? opts.to : String(opts.to)
+async function safeSendMail(opts: SafeSendMailOptions) {
+  const to = opts.to
   if (isBlockedEmail(to)) {
     log.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
     return { messageId: `blocked-${Date.now()}` }
@@ -48,6 +76,16 @@ async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
   const mandrillKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
   if (mandrillKey) {
     try {
+      // Build Mandrill metadata — survives through webhooks for correlation
+      const mandrillMetadata: Record<string, string> | undefined = opts.metadata
+        ? {
+            ...(opts.metadata.logId ? { log_id: opts.metadata.logId } : {}),
+            ...(opts.metadata.clubId ? { club_id: opts.metadata.clubId } : {}),
+            ...(opts.metadata.userId ? { user_id: opts.metadata.userId } : {}),
+            ...(opts.metadata.variantId ? { variant_id: opts.metadata.variantId } : {}),
+          }
+        : undefined
+
       const res = await fetch('https://mandrillapp.com/api/1.0/messages/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,9 +95,18 @@ async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
             from_email: fromEmail || 'noreply@iqsport.ai',
             from_name: fromName || 'IQSport',
             to: [{ email: to, type: 'to' }],
-            subject: opts.subject as string,
-            html: opts.html as string || undefined,
-            text: opts.text as string || undefined,
+            subject: opts.subject,
+            html: opts.html,
+            text: opts.text,
+            // Enable tracking — required for open/click webhook events
+            track_opens: true,
+            track_clicks: true,
+            // Metadata: critical for webhook → DB correlation
+            ...(mandrillMetadata && Object.keys(mandrillMetadata).length > 0
+              ? { metadata: mandrillMetadata }
+              : {}),
+            // Tags: useful for Mandrill dashboard filtering
+            ...(opts.tags && opts.tags.length > 0 ? { tags: opts.tags } : {}),
           },
         }),
       })
@@ -74,9 +121,16 @@ async function safeSendMail(opts: Parameters<typeof transporter.sendMail>[0]) {
     }
   }
 
-  // Fallback: SMTP (nodemailer)
+  // Fallback: SMTP (nodemailer) — no metadata support, but at least email gets delivered
   if (smtpHost && smtpPass) {
-    return transporter.sendMail(opts)
+    const info = await transporter.sendMail({
+      to: opts.to,
+      from: opts.from || fromHeader,
+      subject: opts.subject,
+      html: opts.html,
+      text: opts.text,
+    })
+    return { messageId: info.messageId }
   }
 
   log.error(`[Email] No email provider configured — cannot send to ${to}`)
@@ -599,6 +653,7 @@ export async function sendSlotFillerInviteEmail({
   bookingUrl,
   customMessage,
   customSubject,
+  metadata,
 }: {
   to: string
   memberName: string
@@ -610,6 +665,8 @@ export async function sendSlotFillerInviteEmail({
   bookingUrl: string
   customMessage?: string
   customSubject?: string
+  /** Metadata for webhook correlation — pass logId to track opens/clicks/bounces */
+  metadata?: EmailMetadata
 }): Promise<{ messageId: string }> {
   const firstName = memberName.split(' ')[0] || 'there'
   const subject = customSubject || `${firstName}, you're invited to ${sessionTitle}! 🎾`
@@ -633,6 +690,8 @@ export async function sendSlotFillerInviteEmail({
     subject,
     text,
     html,
+    metadata,
+    tags: ['slot-filler', 'outreach'],
   })
 
   return { messageId: info.messageId }
@@ -684,6 +743,8 @@ export async function sendOutreachEmail({
   clubName,
   bookingUrl,
   sessionCard,
+  metadata,
+  tags,
 }: {
   to: string
   subject: string
@@ -691,6 +752,10 @@ export async function sendOutreachEmail({
   clubName: string
   bookingUrl: string
   sessionCard?: OutreachSessionCard
+  /** Metadata for webhook correlation — pass logId to track opens/clicks/bounces */
+  metadata?: EmailMetadata
+  /** Mandrill tags for dashboard filtering */
+  tags?: string[]
 }): Promise<{ messageId: string }> {
   const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
@@ -772,6 +837,8 @@ export async function sendOutreachEmail({
     subject,
     text,
     html,
+    metadata,
+    tags: tags || ['outreach'],
   })
 
   return { messageId: info.messageId }

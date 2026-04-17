@@ -10,10 +10,16 @@ import { createHmac } from 'crypto'
 
 // ── Hoisted mocks ──
 
-const { mockFindUnique, mockUpdate, mockSendOutreachEmail } = vi.hoisted(() => ({
+const {
+  mockFindUnique,
+  mockUpdate,
+  mockSendOutreachEmail,
+  mockAgentDecisionRecordCreate,
+} = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
   mockSendOutreachEmail: vi.fn().mockResolvedValue({ success: true }),
+  mockAgentDecisionRecordCreate: vi.fn().mockResolvedValue({ id: 'decision-1' }),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -21,6 +27,10 @@ vi.mock('@/lib/prisma', () => ({
     aIRecommendationLog: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+    },
+    agentDecisionRecord: {
+      create: mockAgentDecisionRecordCreate,
+      findMany: vi.fn().mockResolvedValue([]),
     },
   },
 }))
@@ -47,13 +57,18 @@ const CLUB_ID = 'club-xyz-456'
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.CRON_SECRET = CRON_SECRET
+  // Allowlist test club for rollout (required by evaluateAgentOutreachRollout)
+  process.env.AGENT_OUTREACH_ROLLOUT_CLUB_IDS = CLUB_ID
+  // Re-set default success mock (vi.clearAllMocks resets implementation)
+  mockSendOutreachEmail.mockResolvedValue({ success: true })
+  mockAgentDecisionRecordCreate.mockResolvedValue({ id: 'decision-1' })
 })
 
 function generateToken(actionId: string, clubId: string): string {
+  // Full SHA256 hash (64 hex chars) — matches production code after security hardening
   return createHmac('sha256', CRON_SECRET)
     .update(`${actionId}:${clubId}`)
     .digest('hex')
-    .slice(0, 32)
 }
 
 function makeUrl(path: string, actionId: string, token: string): string {
@@ -67,9 +82,33 @@ function makePendingAction(overrides?: any) {
     status: 'pending',
     createdAt: new Date(),
     userId: 'user-1',
+    type: 'SLOT_FILLER',
     reasoning: { transition: 'healthy to watch' },
     user: { id: 'user-1', email: 'member@club.com', name: 'John Doe' },
-    club: { id: CLUB_ID, name: 'Test Club' },
+    club: {
+      id: CLUB_ID,
+      name: 'Test Club',
+      // agentLive=true + rollout allowlist covers both control plane and rollout gates
+      automationSettings: {
+        intelligence: {
+          agentLive: true,
+          controlPlane: {
+            killSwitch: false,
+            outreachSend: 'live',
+            // Per-action rollout flags (nested inside controlPlane)
+            outreachRollout: {
+              actions: {
+                fill_session: { enabled: true },
+                create_campaign: { enabled: true },
+                reactivate_members: { enabled: true },
+                trial_follow_up: { enabled: true },
+                renewal_reactivation: { enabled: true },
+              },
+            },
+          },
+        },
+      },
+    },
     ...overrides,
   }
 }

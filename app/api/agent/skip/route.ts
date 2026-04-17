@@ -14,8 +14,11 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function generateToken(actionId: string, clubId: string): string {
-  const secret = process.env.CRON_SECRET || 'fallback-dev-secret'
-  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex').slice(0, 32)
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    throw new Error('CRON_SECRET environment variable is required')
+  }
+  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex')
 }
 
 export async function GET(request: Request) {

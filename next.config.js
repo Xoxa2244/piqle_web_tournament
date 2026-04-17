@@ -1,5 +1,33 @@
 const { withSentryConfig } = require('@sentry/nextjs')
 
+// Security headers — applied to all routes
+// Docs: https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
+const securityHeaders = [
+  // Prevent clickjacking
+  { key: 'X-Frame-Options', value: 'DENY' },
+  // Prevent MIME-type sniffing
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  // Referrer policy — don't leak full URLs to external sites
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  // Permissions policy — disable unused browser APIs
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=(self), interest-cohort=()',
+  },
+  // HSTS — force HTTPS for 2 years, include subdomains
+  // Only enable in production (can break local http dev)
+  ...(process.env.NODE_ENV === 'production'
+    ? [
+        {
+          key: 'Strict-Transport-Security',
+          value: 'max-age=63072000; includeSubDomains; preload',
+        },
+      ]
+    : []),
+  // DNS prefetch control
+  { key: 'X-DNS-Prefetch-Control', value: 'on' },
+]
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['@prisma/client'],
@@ -24,6 +52,15 @@ const nextConfig = {
       },
     ],
     domains: ['localhost'],
+  },
+  async headers() {
+    return [
+      {
+        // Apply to all routes
+        source: '/:path*',
+        headers: securityHeaders,
+      },
+    ]
   },
 }
 
