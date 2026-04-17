@@ -86,6 +86,69 @@ export interface BookingHistory {
 export type MembershipSignal = 'strong' | 'weak' | 'missing'
 export type NormalizedMembershipStatus = 'active' | 'suspended' | 'expired' | 'cancelled' | 'trial' | 'guest' | 'none' | 'unknown'
 export type NormalizedMembershipType = 'unlimited' | 'monthly' | 'package' | 'drop_in' | 'trial' | 'guest' | 'discounted' | 'insurance' | 'staff' | 'unknown'
+export type MembershipMappingSource = 'type' | 'status' | 'either'
+export type MembershipMappingMatchMode = 'contains' | 'equals'
+export type GuestTrialOfferKind = 'guest_pass' | 'trial_pass' | 'starter_pack' | 'paid_intro' | 'membership_offer'
+export type GuestTrialOfferAudience = 'guest' | 'trial' | 'either'
+export type GuestTrialOfferStage = 'book_first_visit' | 'protect_first_show_up' | 'convert_to_paid' | 'any'
+export type GuestTrialOfferDestinationType = 'schedule' | 'landing_page' | 'external_url' | 'manual_follow_up'
+export type ReferralOfferKind = 'bring_a_friend' | 'vip_guest_pass' | 'trial_invite' | 'reward_credit' | 'guest_pass'
+export type ReferralOfferLane = 'vip_advocate' | 'social_regular' | 'dormant_advocate' | 'any'
+export type ReferralOfferDestinationType = 'schedule' | 'landing_page' | 'external_url' | 'manual_follow_up'
+
+export interface MembershipMappingRule {
+  rawLabel: string
+  source: MembershipMappingSource
+  matchMode: MembershipMappingMatchMode
+  normalizedType?: Exclude<NormalizedMembershipType, 'unknown'> | null
+  normalizedStatus?: Exclude<NormalizedMembershipStatus, 'unknown'> | null
+}
+
+export interface MembershipMappingSettings {
+  rules: MembershipMappingRule[]
+}
+
+export interface GuestTrialOffer {
+  key: string
+  name: string
+  kind: GuestTrialOfferKind
+  audience: GuestTrialOfferAudience
+  stage: GuestTrialOfferStage
+  priceLabel?: string | null
+  durationLabel?: string | null
+  summary?: string | null
+  ctaLabel?: string | null
+  destinationType?: GuestTrialOfferDestinationType | null
+  destinationLabel?: string | null
+  destinationUrl?: string | null
+  destinationNotes?: string | null
+  active?: boolean
+  highlight?: boolean
+}
+
+export interface GuestTrialOfferSettings {
+  offers: GuestTrialOffer[]
+}
+
+export interface ReferralOffer {
+  key: string
+  name: string
+  kind: ReferralOfferKind
+  lane: ReferralOfferLane
+  rewardLabel?: string | null
+  summary?: string | null
+  ctaLabel?: string | null
+  destinationType?: ReferralOfferDestinationType | null
+  destinationLabel?: string | null
+  destinationUrl?: string | null
+  destinationNotes?: string | null
+  active?: boolean
+  highlight?: boolean
+}
+
+export interface ReferralOfferSettings {
+  offers: ReferralOffer[]
+}
 
 export interface NormalizedMembership {
   rawType: string | null
@@ -94,6 +157,8 @@ export interface NormalizedMembership {
   normalizedStatus: NormalizedMembershipStatus
   confidence: number
   signal: MembershipSignal
+  mappedByClubRule?: boolean
+  matchedRuleLabel?: string | null
 }
 
 // ====== AI Scoring Types ======
@@ -525,7 +590,11 @@ export interface ClubIntelligenceSettings {
     maxMessagesPerWeek: number
     tone: CommunicationTone
   }
+  guestTrialOffers?: GuestTrialOfferSettings
+  referralOffers?: ReferralOfferSettings
   agentLive?: boolean
+  permissions?: ClubAgentPermissionSettings
+  controlPlane?: ClubAgentControlPlaneSettings
   lifecycleAutoExecutionEnabled?: boolean
   sandboxRouting?: {
     mode?: 'preview_only' | 'test_recipients'
@@ -562,6 +631,95 @@ export interface ClubAutonomyPolicySettings {
   reactivation?: ClubAutonomyPolicyRule
   trialFollowUp?: ClubAutonomyPolicyRule
   renewalReactivation?: ClubAutonomyPolicyRule
+}
+
+export type ClubAgentPermissionRole = 'ADMIN' | 'MODERATOR'
+export type ClubAgentPermissionAction =
+  | 'draftManage'
+  | 'approveActions'
+  | 'outreachSend'
+  | 'schedulePublish'
+  | 'scheduleLiveEdit'
+  | 'scheduleLiveRollback'
+  | 'controlPlaneManage'
+
+export interface ClubAgentPermissionRule {
+  minimumRole?: ClubAgentPermissionRole
+}
+
+export interface ClubAgentPermissionSettings {
+  actions?: {
+    draftManage?: ClubAgentPermissionRule
+    approveActions?: ClubAgentPermissionRule
+    outreachSend?: ClubAgentPermissionRule
+    schedulePublish?: ClubAgentPermissionRule
+    scheduleLiveEdit?: ClubAgentPermissionRule
+    scheduleLiveRollback?: ClubAgentPermissionRule
+    controlPlaneManage?: ClubAgentPermissionRule
+  }
+}
+
+export type ClubAgentControlPlaneMode = 'disabled' | 'shadow' | 'live'
+export type ClubAgentControlPlaneAuditChangeKey =
+  | 'killSwitch'
+  | 'outreachRollout'
+  | 'outreachSend'
+  | 'schedulePublish'
+  | 'scheduleLiveEdit'
+  | 'scheduleLiveRollback'
+  | 'adminReminderExternal'
+
+export type ClubAgentOutreachRolloutActionKind =
+  | 'create_campaign'
+  | 'fill_session'
+  | 'reactivate_members'
+  | 'trial_follow_up'
+  | 'renewal_reactivation'
+
+export interface ClubAgentOutreachRolloutActionRule {
+  enabled?: boolean
+}
+
+export interface ClubAgentOutreachRolloutSettings {
+  actions?: {
+    create_campaign?: ClubAgentOutreachRolloutActionRule
+    fill_session?: ClubAgentOutreachRolloutActionRule
+    reactivate_members?: ClubAgentOutreachRolloutActionRule
+    trial_follow_up?: ClubAgentOutreachRolloutActionRule
+    renewal_reactivation?: ClubAgentOutreachRolloutActionRule
+  }
+}
+
+export interface ClubAgentControlPlaneActionRule {
+  mode?: ClubAgentControlPlaneMode
+}
+
+export interface ClubAgentControlPlaneAuditChange {
+  key: ClubAgentControlPlaneAuditChangeKey
+  label: string
+  from: string
+  to: string
+}
+
+export interface ClubAgentControlPlaneAudit {
+  lastChangedAt?: string
+  lastChangedByUserId?: string
+  lastChangedByLabel?: string
+  summary?: string
+  changes?: ClubAgentControlPlaneAuditChange[]
+}
+
+export interface ClubAgentControlPlaneSettings {
+  killSwitch?: boolean
+  actions?: {
+    outreachSend?: ClubAgentControlPlaneActionRule
+    schedulePublish?: ClubAgentControlPlaneActionRule
+    scheduleLiveEdit?: ClubAgentControlPlaneActionRule
+    scheduleLiveRollback?: ClubAgentControlPlaneActionRule
+    adminReminderExternal?: ClubAgentControlPlaneActionRule
+  }
+  outreachRollout?: ClubAgentOutreachRolloutSettings
+  audit?: ClubAgentControlPlaneAudit
 }
 
 export interface ClubAutomationSettingsV2 {

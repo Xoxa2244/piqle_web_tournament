@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeMembership } from '@/lib/ai/membership-intelligence'
+import { normalizeMembership, resolveMembershipMappings } from '@/lib/ai/membership-intelligence'
 
 describe('membership intelligence', () => {
   it('returns missing signal when no membership data exists', () => {
@@ -43,5 +43,34 @@ describe('membership intelligence', () => {
     expect(normalized.normalizedStatus).toBe('none')
     expect(normalized.signal).toBe('weak')
   })
-})
 
+  it('applies club-specific membership mappings before fallback heuristics', () => {
+    const membershipMappings = resolveMembershipMappings({
+      intelligence: {
+        membershipMappings: {
+          rules: [
+            {
+              rawLabel: 'Founders Circle',
+              source: 'type',
+              matchMode: 'contains',
+              normalizedType: 'unlimited',
+              normalizedStatus: 'active',
+            },
+          ],
+        },
+      },
+    })
+
+    const normalized = normalizeMembership({
+      membershipType: 'Founders Circle - Legacy',
+      membershipStatus: 'Currently Active',
+      membershipMappings,
+    })
+
+    expect(normalized.normalizedType).toBe('unlimited')
+    expect(normalized.normalizedStatus).toBe('active')
+    expect(normalized.mappedByClubRule).toBe(true)
+    expect(normalized.matchedRuleLabel).toBe('Founders Circle')
+    expect(normalized.signal).toBe('strong')
+  })
+})

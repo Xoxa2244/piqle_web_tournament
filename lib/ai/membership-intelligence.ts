@@ -1,4 +1,7 @@
 import type {
+  MembershipMappingMatchMode,
+  MembershipMappingRule,
+  MembershipMappingSettings,
   MembershipSignal,
   NormalizedMembership,
   NormalizedMembershipStatus,
@@ -9,6 +12,105 @@ function normalizeText(value?: string | null) {
   return value
     ? value.toLowerCase().trim().replace(/\s+/g, ' ')
     : ''
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function normalizeMatchMode(value: unknown): MembershipMappingMatchMode {
+  return value === 'equals' ? 'equals' : 'contains'
+}
+
+function normalizeMembershipMappingRule(value: unknown): MembershipMappingRule | null {
+  const record = toRecord(value)
+  const rawLabel = typeof record.rawLabel === 'string' ? record.rawLabel.trim() : ''
+  if (!rawLabel) return null
+
+  const source = record.source === 'status' || record.source === 'either'
+    ? record.source
+    : 'type'
+  const matchMode = normalizeMatchMode(record.matchMode)
+  const normalizedType = typeof record.normalizedType === 'string'
+    ? record.normalizedType as Exclude<NormalizedMembershipType, 'unknown'>
+    : null
+  const normalizedStatus = typeof record.normalizedStatus === 'string'
+    ? record.normalizedStatus as Exclude<NormalizedMembershipStatus, 'unknown'>
+    : null
+
+  if (!normalizedType && !normalizedStatus) return null
+
+  return {
+    rawLabel,
+    source,
+    matchMode,
+    normalizedType,
+    normalizedStatus,
+  }
+}
+
+export function resolveMembershipMappings(automationSettings?: unknown): MembershipMappingSettings {
+  const automation = toRecord(automationSettings)
+  const intelligence = toRecord(automation.intelligence)
+  const rawMappings = toRecord(intelligence.membershipMappings)
+  const rawRules = Array.isArray(rawMappings.rules) ? rawMappings.rules : []
+
+  return {
+    rules: rawRules
+      .map((rule) => normalizeMembershipMappingRule(rule))
+      .filter((rule): rule is MembershipMappingRule => Boolean(rule)),
+  }
+}
+
+function matchesRule(rawValue: string | null, rule: MembershipMappingRule) {
+  const candidate = normalizeText(rawValue)
+  const target = normalizeText(rule.rawLabel)
+  if (!candidate || !target) return false
+  if (rule.matchMode === 'equals') return candidate === target
+  return candidate.includes(target)
+}
+
+function applyMembershipMappings(input: {
+  rawType: string | null
+  rawStatus: string | null
+  membershipMappings?: MembershipMappingSettings | null
+}) {
+  const rules = input.membershipMappings?.rules || []
+  let normalizedType: NormalizedMembershipType | null = null
+  let normalizedStatus: NormalizedMembershipStatus | null = null
+  let matchedRuleLabel: string | null = null
+  let matchedByClubRule = false
+
+  for (const rule of rules) {
+    const matchesType = (rule.source === 'type' || rule.source === 'either')
+      && matchesRule(input.rawType, rule)
+    const matchesStatus = (rule.source === 'status' || rule.source === 'either')
+      && matchesRule(input.rawStatus, rule)
+
+    if (!matchesType && !matchesStatus) continue
+
+    if (!matchedRuleLabel) matchedRuleLabel = rule.rawLabel
+    matchedByClubRule = true
+
+    if (!normalizedType && rule.normalizedType) {
+      normalizedType = rule.normalizedType
+    }
+
+    if (!normalizedStatus && rule.normalizedStatus) {
+      normalizedStatus = rule.normalizedStatus
+    }
+
+    if (normalizedType && normalizedStatus) break
+  }
+
+  return {
+    normalizedType,
+    normalizedStatus,
+    matchedByClubRule,
+    matchedRuleLabel,
+  }
 }
 
 function inferMembershipStatus(rawStatus: string, rawType: string): NormalizedMembershipStatus {
@@ -82,15 +184,21 @@ function resolveMembershipSignal(
 export function normalizeMembership(input: {
   membershipType?: string | null
   membershipStatus?: string | null
+  membershipMappings?: MembershipMappingSettings | null
 }): NormalizedMembership {
   const rawType = input.membershipType?.trim() || null
   const rawStatus = input.membershipStatus?.trim() || null
+  const mapped = applyMembershipMappings({
+    rawType,
+    rawStatus,
+    membershipMappings: input.membershipMappings,
+  })
 
-  const normalizedStatus = inferMembershipStatus(
+  const normalizedStatus = mapped.normalizedStatus || inferMembershipStatus(
     normalizeText(rawStatus),
     normalizeText(rawType),
   )
-  const normalizedType = inferMembershipType(
+  const normalizedType = mapped.normalizedType || inferMembershipType(
     normalizeText(rawType),
     normalizedStatus,
   )
@@ -100,6 +208,8 @@ export function normalizeMembership(input: {
   if (rawStatus) confidence += 25
   if (normalizedStatus !== 'unknown') confidence += 25
   if (normalizedType !== 'unknown') confidence += 15
+  if (mapped.normalizedStatus) confidence += 20
+  if (mapped.normalizedType) confidence += 20
   if (rawStatus && normalizedStatus !== 'unknown' && !rawType) confidence += 20
   if (statusTypeAlignment(normalizedStatus, normalizedType)) confidence += 10
   if (statusTypeConflict(normalizedStatus, normalizedType)) confidence -= 35
@@ -116,5 +226,7 @@ export function normalizeMembership(input: {
     normalizedStatus,
     confidence,
     signal: resolveMembershipSignal(confidence, normalizedStatus, normalizedType),
+    mappedByClubRule: mapped.matchedByClubRule,
+    matchedRuleLabel: mapped.matchedRuleLabel,
   }
 }
