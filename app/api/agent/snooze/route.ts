@@ -8,8 +8,10 @@
  */
 
 import { cronLogger as log } from '@/lib/logger'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createHmac } from 'crypto'
+import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +25,15 @@ function generateToken(actionId: string, clubId: string): string {
 }
 
 export async function GET(request: Request) {
+  const ip = getIpFromRequest(request)
+  const rateLimit = await checkRateLimit('agentAction', ip)
+  if (!rateLimit.success) {
+    return new NextResponse('Too many requests', {
+      status: 429,
+      headers: buildRateLimitHeaders(rateLimit),
+    })
+  }
+
   const url = new URL(request.url)
   const actionId = url.searchParams.get('id')
   const token = url.searchParams.get('token')

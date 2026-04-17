@@ -15,6 +15,7 @@ import { createHmac } from 'crypto'
 import { evaluateAgentControlPlaneAction } from '@/lib/ai/agent-control-plane'
 import { evaluateAgentOutreachRollout } from '@/lib/ai/agent-outreach-rollout'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
+import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,16 @@ function generateToken(actionId: string, clubId: string): string {
 }
 
 export async function GET(request: Request) {
+  // Rate limit per IP — blocks brute-forcing HMAC tokens
+  const ip = getIpFromRequest(request)
+  const rateLimit = await checkRateLimit('agentAction', ip)
+  if (!rateLimit.success) {
+    return new NextResponse('Too many requests — slow down', {
+      status: 429,
+      headers: buildRateLimitHeaders(rateLimit),
+    })
+  }
+
   const url = new URL(request.url)
   const actionId = url.searchParams.get('id')
   const token = url.searchParams.get('token')

@@ -50,6 +50,8 @@
     "@trpc/next": "^10.45.0",
     "@trpc/react-query": "^10.45.0",
     "@trpc/server": "^10.45.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
     "ai": "^6.0.116",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",

@@ -30,6 +30,9 @@ const RECOMMENDED_PROD_ENV = [
   'GOOGLE_CLIENT_SECRET',
   'SENTRY_DSN',
   'NEXT_PUBLIC_APP_URL',
+  // Rate limiting (Upstash Redis) — without these, rate limits silently disable
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
 ] as const
 
 // Secrets that must not use weak defaults
