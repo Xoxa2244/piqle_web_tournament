@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Session } from 'next-auth'
 import { parse as parseCookie } from 'cookie'
+import { assertSuperadminAccess } from './utils/superadminAccess'
 
 interface CreateContextOptions {
   session: Session | null
@@ -97,6 +98,17 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     ctx: {
       ...ctx,
       session: ctx.session as Session & { user: { id: string } },
+    },
+  })
+})
+
+export const superadminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const superadminAccess = assertSuperadminAccess({ session: ctx.session })
+
+  return next({
+    ctx: {
+      ...ctx,
+      superadminAccess,
     },
   })
 })
