@@ -21,6 +21,9 @@ model User {
   gender                   Gender?
   city                     String?
   phone                    String?
+  adminReminderEmail       String?                   @map("admin_reminder_email")
+  adminReminderPhone       String?                   @map("admin_reminder_phone")
+  adminReminderChannel     String                    @default("in_app") @map("admin_reminder_channel")
   duprLink                 String?
   duprId                   String?                   @map("dupr_id")
   duprNumericId            BigInt?                   @map("dupr_numeric_id")
@@ -88,6 +91,10 @@ model User {
   agentDrafts              AgentDraft[]              @relation("UserAgentDrafts")
   opsSessionDraftsCreated  OpsSessionDraft[]         @relation("UserOpsSessionDrafts")
   adminTodoDecisions       AgentAdminTodoDecision[]  @relation("UserAgentAdminTodoDecisions")
+  agentDecisionRecords     AgentDecisionRecord[]     @relation("UserAgentDecisionRecords")
+  referralRewardIssuancesAdvocate ReferralRewardIssuance[] @relation("UserReferralRewardIssuancesAdvocate")
+  referralRewardIssuancesGuest ReferralRewardIssuance[]    @relation("UserReferralRewardIssuancesGuest")
+  referralRewardIssuancesReviewed ReferralRewardIssuance[] @relation("UserReferralRewardIssuancesReviewed")
 
   // Session Interest
   sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
@@ -228,6 +235,10 @@ model Club {
   courtReserveUrl    String?              @map("court_reserve_url")
   bookingRequestEmail String?             @map("booking_request_email")
   automationSettings Json?                @default("{}") @map("automation_settings")
+  // AI Cost Tracking (null budget = unlimited)
+  aiMonthlyBudgetUsd Decimal?             @map("ai_monthly_budget_usd") @db.Decimal(10, 2)
+  aiSpendCurrentMonth Decimal             @default(0) @map("ai_spend_current_month") @db.Decimal(10, 6)
+  aiSpendMonthStart  DateTime             @default(now()) @map("ai_spend_month_start")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -262,6 +273,9 @@ model Club {
   agentDrafts             AgentDraft[]               @relation("ClubAgentDrafts")
   opsSessionDrafts        OpsSessionDraft[]          @relation("ClubOpsSessionDrafts")
   adminTodoDecisions      AgentAdminTodoDecision[]   @relation("ClubAgentAdminTodoDecisions")
+  agentDecisionRecords    AgentDecisionRecord[]      @relation("ClubAgentDecisionRecords")
+  integrationAnomalyIncidents IntegrationAnomalyIncident[] @relation("ClubIntegrationAnomalyIncidents")
+  referralRewardIssuances ReferralRewardIssuance[]   @relation("ClubReferralRewardIssuances")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   // Billing
@@ -272,6 +286,9 @@ model Club {
 
   // Session Interest
   sessionInterestRequests SessionInterestRequest[]   @relation("SessionInterestRequests")
+
+  // AI usage tracking
+  aiUsageLogs             AIUsageLog[]               @relation("ClubAIUsageLogs")
 
   @@map("clubs")
 }
@@ -1686,6 +1703,26 @@ model AIRecommendationLog {
   @@map("ai_recommendation_logs")
 }
 
+// ── AI Usage Tracking (cost visibility + per-club budgets) ──
+model AIUsageLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  clubId            String   @map("club_id") @db.Uuid
+  club              Club     @relation("ClubAIUsageLogs", fields: [clubId], references: [id], onDelete: Cascade)
+  model             String   // e.g. 'gpt-4o-mini', 'claude-3-5-haiku-20241022'
+  operation         String   // e.g. 'advisor_chat', 'member_profile', 'campaign_gen', 'embedding'
+  promptTokens      Int      @default(0) @map("prompt_tokens")
+  completionTokens  Int      @default(0) @map("completion_tokens")
+  totalTokens       Int      @default(0) @map("total_tokens")
+  costUsd           Decimal  @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([operation, createdAt(sort: Desc)])
+  @@index([model, createdAt(sort: Desc)])
+  @@map("ai_usage_logs")
+}
+
 // ── AI Embeddings (RAG) ──
 model DocumentEmbedding {
   id          String   @id @default(uuid())
@@ -1845,6 +1882,88 @@ model AgentAdminTodoDecision {
   @@unique([clubId, userId, dateKey, itemId])
   @@index([clubId, userId, dateKey, updatedAt(sort: Desc)])
   @@map("agent_admin_todo_decisions")
+}
+
+model AgentDecisionRecord {
+  id         String   @id @default(uuid())
+  clubId     String   @map("club_id")
+  userId     String?  @map("user_id")
+  actorType  String   @default("user") @map("actor_type")
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  mode       String
+  result     String
+  summary    String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  club Club  @relation("ClubAgentDecisionRecords", fields: [clubId], references: [id], onDelete: Cascade)
+  user User? @relation("UserAgentDecisionRecords", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([clubId, action, createdAt(sort: Desc)])
+  @@index([clubId, result, createdAt(sort: Desc)])
+  @@map("agent_decision_records")
+}
+
+model IntegrationAnomalyIncident {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  anomalyKey      String   @map("anomaly_key")
+  severity        String
+  category        String
+  title           String
+  summary         String
+  evidenceLabel   String   @map("evidence_label")
+  firstSeenAt     DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  lastSeenDateKey String   @map("last_seen_date_key")
+  activeDays      Int      @default(1) @map("active_days")
+  resolvedAt      DateTime? @map("resolved_at")
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  club Club @relation("ClubIntegrationAnomalyIncidents", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, anomalyKey, updatedAt(sort: Desc)])
+  @@index([clubId, resolvedAt, updatedAt(sort: Desc)])
+  @@map("integration_anomaly_incidents")
+}
+
+enum ReferralRewardIssuanceStatus {
+  READY
+  ON_HOLD
+  ISSUED
+}
+
+model ReferralRewardIssuance {
+  id                 String                       @id @default(uuid())
+  clubId             String                       @map("club_id")
+  advocateUserId     String                       @map("advocate_user_id")
+  referredGuestUserId String                      @map("referred_guest_user_id")
+  offerKey           String                       @map("offer_key")
+  lane               String
+  offerName          String                       @map("offer_name")
+  rewardLabel        String                       @map("reward_label")
+  status             ReferralRewardIssuanceStatus @default(READY)
+  metadata           Json                         @default("{}")
+  issuedAt           DateTime?                    @map("issued_at")
+  reviewedAt         DateTime?                    @map("reviewed_at")
+  reviewedByUserId   String?                      @map("reviewed_by_user_id")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  updatedAt          DateTime                     @updatedAt @map("updated_at")
+
+  club               Club                         @relation("ClubReferralRewardIssuances", fields: [clubId], references: [id], onDelete: Cascade)
+  advocateUser       User                         @relation("UserReferralRewardIssuancesAdvocate", fields: [advocateUserId], references: [id], onDelete: Cascade)
+  referredGuestUser  User                         @relation("UserReferralRewardIssuancesGuest", fields: [referredGuestUserId], references: [id], onDelete: Cascade)
+  reviewedByUser     User?                        @relation("UserReferralRewardIssuancesReviewed", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clubId, advocateUserId, referredGuestUserId, offerKey])
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([clubId, advocateUserId, updatedAt(sort: Desc)])
+  @@map("referral_reward_issuances")
 }
 
 // ── Member Health Snapshots (for ML training data) ──

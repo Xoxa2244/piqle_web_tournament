@@ -1,6 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText, generateText, type LanguageModel } from 'ai';
+import { trackUsage } from './usage-tracker';
 
 // ── Provider singletons ──
 const openai = createOpenAI({
@@ -84,8 +85,23 @@ export async function generateWithFallback(params: {
   maxTokens?: number;
   /** Per-call timeout in ms. Defaults to 30s. */
   timeoutMs?: number;
+  /** Club ID + operation name — when provided, usage is tracked for cost visibility. */
+  clubId?: string;
+  operation?: string;
 }): Promise<{ text: string; model: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }> {
-  const { system, prompt, tier = 'standard', maxTokens = 1000, timeoutMs = DEFAULT_TIMEOUT_MS } = params;
+  const { system, prompt, tier = 'standard', maxTokens = 1000, timeoutMs = DEFAULT_TIMEOUT_MS, clubId, operation } = params;
+
+  const recordUsage = (modelName: string, inputTokens: number | undefined, outputTokens: number | undefined) => {
+    if (!clubId || !operation) return; // tracking is opt-in
+    // Fire-and-forget — trackUsage handles its own errors
+    void trackUsage({
+      clubId,
+      model: modelName,
+      operation,
+      promptTokens: inputTokens ?? 0,
+      completionTokens: outputTokens ?? 0,
+    });
+  };
 
   // Try primary with timeout + retry. On persistent failure, fall back to secondary (no retry).
   try {
@@ -103,6 +119,7 @@ export async function generateWithFallback(params: {
         ),
       { maxRetries: 2, label: MODEL_MAP[tier].primary },
     );
+    recordUsage(MODEL_MAP[tier].primary, result.usage.inputTokens, result.usage.outputTokens);
     return {
       text: result.text,
       model: MODEL_MAP[tier].primary,
@@ -121,6 +138,7 @@ export async function generateWithFallback(params: {
       timeoutMs,
       `generateText(${MODEL_MAP[tier].fallback})`,
     );
+    recordUsage(MODEL_MAP[tier].fallback, result.usage.inputTokens, result.usage.outputTokens);
     return {
       text: result.text,
       model: MODEL_MAP[tier].fallback,
@@ -136,8 +154,27 @@ export async function streamWithFallback(params: {
   tier?: ModelTier;
   maxTokens?: number;
   onFinish?: (result: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }) => void | Promise<void>;
+  /** Club ID + operation name — when provided, usage is tracked for cost visibility. */
+  clubId?: string;
+  operation?: string;
 }) {
-  const { system, messages, tier = 'standard', maxTokens = 1500, onFinish } = params;
+  const { system, messages, tier = 'standard', maxTokens = 1500, onFinish, clubId, operation } = params;
+
+  // Build a wrapped onFinish that records usage before delegating to the caller's handler
+  const buildOnFinish = (modelName: string) => async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }) => {
+    if (clubId && operation) {
+      void trackUsage({
+        clubId,
+        model: modelName,
+        operation,
+        promptTokens: event.usage.inputTokens ?? 0,
+        completionTokens: event.usage.outputTokens ?? 0,
+      });
+    }
+    if (onFinish) {
+      await onFinish({ text: event.text, usage: event.usage });
+    }
+  };
 
   try {
     return streamText({
@@ -145,9 +182,7 @@ export async function streamWithFallback(params: {
       system,
       messages,
       maxOutputTokens: maxTokens,
-      onFinish: onFinish ? async (event) => {
-        await onFinish({ text: event.text, usage: event.usage });
-      } : undefined,
+      onFinish: buildOnFinish(MODEL_MAP[tier].primary),
     });
   } catch (error) {
     console.warn(`[AI] Primary stream failed, falling back:`, error);
@@ -157,9 +192,7 @@ export async function streamWithFallback(params: {
       system,
       messages,
       maxOutputTokens: maxTokens,
-      onFinish: onFinish ? async (event) => {
-        await onFinish({ text: event.text, usage: event.usage });
-      } : undefined,
+      onFinish: buildOnFinish(MODEL_MAP[tier].fallback),
     });
   }
 }
