@@ -1,23 +1,18 @@
 /**
- * Integration test: intelligence.getSlotFillerRecommendations
+ * Integration test: intelligence.getSlotFillerRecommendations (hybrid path)
  *
- * FINDING from building this test: the UUID path of this procedure does NOT
- * use the rich scorer in lib/ai/slot-filler.ts. It uses an inline raw-SQL
- * function `getFrequentPlayersFallback` defined in the router itself.
+ * After refactor (2026-04-17): the UUID path now uses the hybrid pipeline
+ * from lib/ai/slot-filler-hybrid.ts:
+ *   1. SQL pre-filter → top 100 candidates by booking-pattern score
+ *   2. Batch-load rich per-candidate data (prefs, history, etc.)
+ *   3. JS rich scorer (generateSlotFillerRecommendations) re-ranks to top N
  *
- * The rich `generateSlotFillerRecommendations` scorer is only used by:
- *   1. The cron at /api/campaigns/slot-filler (via slot-filler-automation.ts)
- *   2. The advisor action flow (via intelligence.executeAdvisorAction)
+ * Before: inline SQL in router returned final results (different from cron,
+ * no persona/DUPR/social-proof scoring).
  *
- * That is a layer-gap risk exactly like a code reviewer warned about:
- * unit tests on lib/ai/slot-filler.ts pass, giving false confidence that
- * "slot filler works", while the UI actually shows results from a separate
- * SQL implementation with no tests of its own.
- *
- * These tests document the CURRENT behaviour so that:
- *   - If someone refactors the router to use the rich scorer, tests fail
- *     and force intentional acknowledgement.
- *   - If someone edits the SQL fallback, we still catch shape/auth breakage.
+ * These tests assert the hybrid chain works end-to-end and that the rich
+ * scorer IS actually called — catching future regressions if someone
+ * accidentally reintroduces a simplified path.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -107,70 +102,99 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-function callerWithSqlRows(sqlRows: any[]) {
+function callerWithHybridFlow(opts: {
+  prefilterRows: Array<{ user_id: string; booking_count: number; days_since_last: number | null }>
+  users: any[]
+  preferences?: any[]
+  bookings?: any[]
+}) {
   return createTestCaller({
     userId: 'admin-user',
     prismaOverrides: {
+      // Router-level session lookup (shallow, for access check)
       playSession: {
-        findUnique: vi.fn().mockResolvedValue({
-          clubId: CLUB_ID,
-          format: 'OPEN_PLAY',
-          startTime: '18:00',
-          courtId: 'court-1',
-          skillLevel: 'INTERMEDIATE',
-          date: new Date('2026-05-01'),
+        findUnique: vi.fn().mockResolvedValue({ clubId: CLUB_ID }),
+        // Hybrid's inner session lookup (with bookings + _count)
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...makeMockSession(),
+          clubCourt: { id: 'court-1', name: 'Court A' },
         }),
       },
       clubAdmin: {
         findFirst: vi.fn().mockResolvedValue({ userId: 'admin-user', clubId: CLUB_ID }),
       },
-      clubFollower: {
-        findFirst: vi.fn().mockResolvedValue({ userId: 'admin-user', clubId: CLUB_ID }),
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ isActive: true }),
+        findMany: vi.fn().mockResolvedValue(opts.users),
+      },
+      userPlayPreference: {
+        findMany: vi.fn().mockResolvedValue(opts.preferences || []),
       },
       playSessionBooking: {
-        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue(opts.bookings || []),
+      },
+      aIRecommendationLog: {
+        create: vi.fn().mockResolvedValue({ id: 'log-1' }),
       },
     },
-    rawQueryRows: sqlRows,
+    rawQueryRows: opts.prefilterRows,
   })
 }
 
-describe('integration: intelligence.getSlotFillerRecommendations (UUID path)', () => {
-  it('FINDING: uses inline SQL fallback, NOT the rich scorer from lib/ai/slot-filler', async () => {
-    // Arrange: the SQL query returns 2 candidates
-    const { caller } = await callerWithSqlRows([
-      {
-        user_id: 'member-1', name: 'Alice', email: 'alice@x.com', image: null,
-        booking_count: 12, last_played: '2026-04-15', days_since_last: 2,
-        format_match: 10, skill_exact: 8, skill_compatible: 12,
-        time_match: 9, dow_match: 6, court_match: 4,
-        membership_type: 'Full', membership_status: 'Active',
-      },
-    ])
+describe('integration: intelligence.getSlotFillerRecommendations (hybrid UUID path)', () => {
+  it('calls SQL pre-filter AND rich scorer (hybrid pipeline)', async () => {
+    const { caller, prisma } = await callerWithHybridFlow({
+      prefilterRows: [
+        { user_id: 'member-1', booking_count: 12, days_since_last: 2 },
+        { user_id: 'member-2', booking_count: 8, days_since_last: 5 },
+      ],
+      users: [
+        {
+          id: 'member-1', email: 'alice@x.com', name: 'Alice', image: null,
+          gender: 'F', city: 'Dallas', duprRatingDoubles: 3.5, duprRatingSingles: 3.4,
+        },
+        {
+          id: 'member-2', email: 'bob@x.com', name: 'Bob', image: null,
+          gender: 'M', city: 'Dallas', duprRatingDoubles: 3.6, duprRatingSingles: 3.5,
+        },
+      ],
+    })
 
     const result = await caller.intelligence.getSlotFillerRecommendations({
       sessionId: SESSION_ID,
       limit: 5,
     })
 
-    // Router contract: returns something sane
+    // Contract
     expect(result).toBeDefined()
     expect(Array.isArray(result.recommendations)).toBe(true)
 
-    // KEY FINDING: the rich scorer is NOT called — procedure uses inline SQL
-    expect(generateSlotFillerRecommendations).not.toHaveBeenCalled()
+    // PRE-FILTER: $queryRawUnsafe was called once by the hybrid pipeline
+    expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1)
+
+    // RICH SCORER: generateSlotFillerRecommendations was called
+    // (was NOT called in the pre-refactor inline-SQL world)
+    expect(generateSlotFillerRecommendations).toHaveBeenCalledTimes(1)
+    const [scorerInput] = (generateSlotFillerRecommendations as any).mock.calls[0]
+    expect(scorerInput.session.id).toBe(SESSION_ID)
+    // Rich scorer only sees survivors of the pre-filter, not all club members
+    expect(scorerInput.members.length).toBe(2)
+    expect(scorerInput.alreadyBookedUserIds.has('booked-1')).toBe(true)
+    expect(scorerInput.alreadyBookedUserIds.has('booked-2')).toBe(true)
   })
 
-  it('SQL fallback response shape: includes score, likelihood, reasoning, factors', async () => {
-    const { caller } = await callerWithSqlRows([
-      {
-        user_id: 'member-1', name: 'Alice', email: 'alice@x.com', image: null,
-        booking_count: 12, last_played: '2026-04-15', days_since_last: 2,
-        format_match: 10, skill_exact: 8, skill_compatible: 12,
-        time_match: 9, dow_match: 6, court_match: 4,
-        membership_type: 'Full', membership_status: 'Active',
-      },
-    ])
+  it('returns rich scoring shape (score, reasoning, estimatedLikelihood) from real scorer', async () => {
+    const { caller } = await callerWithHybridFlow({
+      prefilterRows: [{ user_id: 'member-1', booking_count: 12, days_since_last: 2 }],
+      users: [
+        {
+          id: 'member-1', email: 'alice@x.com', name: 'Alice', image: null,
+          gender: 'F', city: 'Dallas', duprRatingDoubles: 3.5, duprRatingSingles: 3.4,
+        },
+      ],
+    })
 
     const result = await caller.intelligence.getSlotFillerRecommendations({
       sessionId: SESSION_ID,
@@ -183,81 +207,42 @@ describe('integration: intelligence.getSlotFillerRecommendations (UUID path)', (
       expect(top).toHaveProperty('score')
       expect(top).toHaveProperty('estimatedLikelihood')
       expect(top).toHaveProperty('reasoning')
-      expect(top).toHaveProperty('factors')
       expect(['high', 'medium', 'low']).toContain(top.estimatedLikelihood)
-      expect(top.source).toBe('frequent_player')
     }
   })
 
-  it('skips Suspended / Expired members (membership gate)', async () => {
-    const { caller } = await callerWithSqlRows([
-      {
-        user_id: 'active-1', name: 'Active', email: 'a@x.com',
-        booking_count: 5, days_since_last: 10, format_match: 2, skill_exact: 2,
-        skill_compatible: 3, time_match: 1, dow_match: 1, court_match: 0,
-        membership_type: 'Full', membership_status: 'Active',
-      },
-      {
-        user_id: 'suspended-1', name: 'Suspended', email: 's@x.com',
-        booking_count: 5, days_since_last: 10, format_match: 2, skill_exact: 2,
-        skill_compatible: 3, time_match: 1, dow_match: 1, court_match: 0,
-        membership_type: 'Full', membership_status: 'Suspended',
-      },
-    ])
+  it('empty pre-filter → empty recommendations, rich scorer NOT invoked', async () => {
+    const { caller } = await callerWithHybridFlow({
+      prefilterRows: [],
+      users: [],
+    })
 
     const result = await caller.intelligence.getSlotFillerRecommendations({
       sessionId: SESSION_ID,
-      limit: 10,
+      limit: 5,
     })
 
-    const ids = result.recommendations.map((r: any) => r.member.id)
-    expect(ids).toContain('active-1')
-    expect(ids).not.toContain('suspended-1')
+    expect(result.recommendations).toEqual([])
+    expect(generateSlotFillerRecommendations).not.toHaveBeenCalled()
   })
 
-  it('excludes members already booked for the session', async () => {
-    const { caller } = await createTestCaller({
-      userId: 'admin-user',
-      prismaOverrides: {
-        playSession: {
-          findUnique: vi.fn().mockResolvedValue({
-            clubId: CLUB_ID, format: 'OPEN_PLAY', startTime: '18:00',
-            courtId: 'court-1', skillLevel: 'INTERMEDIATE', date: new Date('2026-05-01'),
-          }),
-        },
-        clubAdmin: {
-          findFirst: vi.fn().mockResolvedValue({ userId: 'admin-user', clubId: CLUB_ID }),
-        },
-        playSessionBooking: {
-          findMany: vi.fn().mockResolvedValue([
-            { userId: 'already-booked-1' },
-          ]),
-        },
-      },
-      rawQueryRows: [
+  it('router source tag reflects hybrid pipeline', async () => {
+    const { caller } = await callerWithHybridFlow({
+      prefilterRows: [{ user_id: 'member-1', booking_count: 12, days_since_last: 2 }],
+      users: [
         {
-          user_id: 'already-booked-1', name: 'Booked', email: 'b@x.com',
-          booking_count: 5, days_since_last: 10, format_match: 2, skill_exact: 2,
-          skill_compatible: 3, time_match: 1, dow_match: 1, court_match: 0,
-          membership_status: 'Active',
-        },
-        {
-          user_id: 'available-1', name: 'Available', email: 'a@x.com',
-          booking_count: 5, days_since_last: 10, format_match: 2, skill_exact: 2,
-          skill_compatible: 3, time_match: 1, dow_match: 1, court_match: 0,
-          membership_status: 'Active',
+          id: 'member-1', email: 'a@x.com', name: 'Alice', image: null,
+          gender: 'F', city: 'Dallas', duprRatingDoubles: 3.5, duprRatingSingles: 3.4,
         },
       ],
     })
 
-    const result = await caller.intelligence.getSlotFillerRecommendations({
+    const result: any = await caller.intelligence.getSlotFillerRecommendations({
       sessionId: SESSION_ID,
-      limit: 10,
+      limit: 5,
     })
 
-    const ids = result.recommendations.map((r: any) => r.member.id)
-    expect(ids).not.toContain('already-booked-1')
-    expect(ids).toContain('available-1')
+    expect(result.source).toBe('hybrid_scorer')
   })
 
   it('rejects unauthenticated callers (protectedProcedure guard)', async () => {

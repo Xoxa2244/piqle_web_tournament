@@ -37,17 +37,66 @@ import {
   updateAdvisorDraftStatus,
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
+import { buildOpsSessionPublishReview } from '@/lib/ai/ops-session-publish'
+import { buildOpsSessionLiveFeedback } from '@/lib/ai/ops-session-feedback'
+import { buildOpsSessionAftercareReview } from '@/lib/ai/ops-session-aftercare'
+import { buildGuestTrialBookingSnapshot, type GuestTrialBookingRow } from '@/lib/ai/guest-trial-booking'
+import { buildSmartFirstSessionSnapshot, type SmartFirstSessionRow } from '@/lib/ai/smart-first-session'
+import { buildWinBackSnapshot, type WinBackRow } from '@/lib/ai/win-back'
+import {
+  buildReferralSnapshot,
+  evaluateReferralRewardGuardrails,
+  type ReferralCapturedGuestRow,
+  type ReferralOutcomeRow,
+  type ReferralRewardIssuanceRow,
+  type ReferralRow,
+} from '@/lib/ai/referral-engine'
+import {
+  buildAgentControlPlaneChangeSummary,
+  diffAgentControlPlaneResolved,
+  evaluateAgentControlPlaneAction,
+  getAgentControlPlaneAudit,
+  resolveAgentControlPlane,
+} from '@/lib/ai/agent-control-plane'
+import {
+  buildAgentOutreachRolloutSummary,
+  evaluateAgentOutreachRollout,
+  getAgentOutreachRolloutStatus,
+  resolveAgentOutreachRollout,
+  type AgentOutreachRolloutActionKind,
+} from '@/lib/ai/agent-outreach-rollout'
+import { buildAgentOutreachPilotSnapshot } from '@/lib/ai/agent-outreach-pilot'
+import { buildCampaignGuestTrialAnalytics } from '@/lib/ai/campaign-guest-trial-analytics'
+import { buildIntegrationHealthSnapshot } from '@/lib/ai/integration-health'
+import { syncIntegrationAnomalyHistory } from '@/lib/ai/integration-anomaly-history'
+import {
+  evaluateAgentPermission,
+  formatClubAdminRole,
+  resolveAgentPermissions,
+  type AgentPermissionAction,
+  type ClubAdminRole,
+} from '@/lib/ai/agent-permissions'
+import { normalizeMembership, resolveMembershipMappings } from '@/lib/ai/membership-intelligence'
+import {
+  listAgentDecisionRecordsSafe,
+  persistAgentDecisionRecord,
+} from '@/lib/ai/agent-decision-records'
 import {
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
+import { resolveAdvisorAdminReminderRouting } from '@/lib/ai/advisor-admin-reminder-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
 import { resolveAdvisorSandboxRoutingDraft } from '@/lib/ai/advisor-sandbox-policy'
 import { buildAdvisorSandboxRoutingSummary } from '@/lib/ai/advisor-sandbox-routing'
 import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
+import { buildAdvisorPerformanceSignalForAction } from '@/lib/ai/advisor-outcome-insights'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
+import type { GuestTrialExecutionContext } from '@/lib/ai/guest-trial-offers'
+import type { ReferralExecutionContext } from '@/lib/ai/referral-offers'
+import { formatAdvisorSlotSessionLabel } from '@/lib/ai/advisor-slot-filler'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -71,9 +120,292 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
         message: 'You must be a club member or admin to access intelligence features.',
       })
     }
-    return { isAdmin: false, isMember: true }
+    return { isAdmin: false, isMember: true, role: null as ClubAdminRole | null }
   }
-  return { isAdmin: true, isMember: true }
+  return {
+    isAdmin: true,
+    isMember: true,
+    role: admin.role as ClubAdminRole,
+  }
+}
+
+function assertAgentPermissionForAdmin(input: {
+  automationSettings?: unknown
+  action: AgentPermissionAction
+  adminRole: ClubAdminRole | null
+}) {
+  if (!input.adminRole) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: 'Only club admins can run this agent action.',
+    })
+  }
+
+  const evaluation = evaluateAgentPermission({
+    automationSettings: input.automationSettings,
+    action: input.action,
+    clubAdminRole: input.adminRole,
+  })
+
+  if (!evaluation.allowed) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: evaluation.reason,
+    })
+  }
+
+  return evaluation
+}
+
+async function enforceManualLiveOutreachGate(input: {
+  prisma: any
+  clubId: string
+  userId: string
+  automationSettings?: unknown
+  adminRole: ClubAdminRole | null
+  targetType: string
+  targetId?: string | null
+  actionKind: AgentOutreachRolloutActionKind
+  channel: 'email' | 'sms' | 'both'
+  recipientCount: number
+  label: string
+}) {
+  assertAgentPermissionForAdmin({
+    automationSettings: input.automationSettings,
+    action: 'outreachSend',
+    adminRole: input.adminRole,
+  })
+
+  const controlPlane = evaluateAgentControlPlaneAction({
+    automationSettings: input.automationSettings,
+    action: 'outreachSend',
+  })
+
+  if (!controlPlane.allowed || controlPlane.shadow) {
+    const result = controlPlane.shadow ? 'shadowed' : 'blocked'
+    const summary = controlPlane.shadow
+      ? `${controlPlane.reason} This live send stays in shadow mode only.`
+      : controlPlane.reason
+
+    await persistAgentDecisionRecord(input.prisma, {
+      clubId: input.clubId,
+      userId: input.userId,
+      action: 'outreachSend',
+      targetType: input.targetType,
+      targetId: input.targetId || null,
+      mode: controlPlane.mode,
+      result,
+      summary,
+      metadata: {
+        reason: controlPlane.shadow ? 'control_plane_shadow' : 'control_plane_disabled',
+        actionKind: input.actionKind,
+        channel: input.channel,
+        recipientCount: input.recipientCount,
+        label: input.label,
+      },
+    })
+
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: summary,
+    })
+  }
+
+  const rollout = evaluateAgentOutreachRollout({
+    clubId: input.clubId,
+    automationSettings: input.automationSettings,
+    actionKind: input.actionKind,
+  })
+
+  if (!rollout.allowed) {
+    await persistAgentDecisionRecord(input.prisma, {
+      clubId: input.clubId,
+      userId: input.userId,
+      action: 'outreachSend',
+      targetType: input.targetType,
+      targetId: input.targetId || null,
+      mode: controlPlane.mode,
+      result: 'blocked',
+      summary: rollout.reason,
+      metadata: {
+        reason: 'outreach_rollout_blocked',
+        actionKind: input.actionKind,
+        channel: input.channel,
+        recipientCount: input.recipientCount,
+        label: input.label,
+        rolloutClubAllowlisted: rollout.clubAllowlisted,
+        rolloutActionEnabled: rollout.actionEnabled,
+      },
+    })
+
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: rollout.reason,
+    })
+  }
+}
+
+function normalizeAdvisorSlotSession(raw: {
+  id: string
+  title: string | null
+  date: Date | string
+  startTime: string | null
+  endTime: string | null
+  format: string | null
+  skillLevel: string | null
+  court: string | null
+  registered: number
+  maxPlayers: number
+}) {
+  const registered = raw.registered ?? 0
+  const maxPlayers = raw.maxPlayers || 1
+  const occupancy = Math.round((registered / Math.max(maxPlayers, 1)) * 100)
+  return {
+    id: raw.id,
+    title: raw.title || raw.format || 'Session',
+    date: raw.date instanceof Date ? raw.date.toISOString().slice(0, 10) : String(raw.date || ''),
+    startTime: raw.startTime || '',
+    endTime: raw.endTime || null,
+    format: raw.format || null,
+    skillLevel: raw.skillLevel || null,
+    court: raw.court || null,
+    registered,
+    maxPlayers,
+    occupancy,
+    spotsRemaining: Math.max(0, maxPlayers - registered),
+  }
+}
+
+function buildScheduleFillDraftUserMessage(session: ReturnType<typeof normalizeAdvisorSlotSession>) {
+  return `Prepare a fill plan for ${session.title} on ${session.date} at ${session.startTime}.`
+}
+
+function buildScheduleFillDraftAssistantMessage(opts: {
+  session: ReturnType<typeof normalizeAdvisorSlotSession>
+  candidateCount: number
+  channel: 'email' | 'sms' | 'both'
+}) {
+  return `I prepared a slot-filler draft for ${formatAdvisorSlotSessionLabel(opts.session)}. It targets ${opts.candidateCount} matched players via ${opts.channel.toUpperCase()}. Review the shortlist and invite copy before sending.`
+}
+
+function buildScheduleFillDraftNoCandidateMessage(opts: {
+  session: ReturnType<typeof normalizeAdvisorSlotSession>
+  warning?: string | null
+}) {
+  const warning = opts.warning ? ` ${opts.warning}` : ''
+  return `I checked ${formatAdvisorSlotSessionLabel(opts.session)}, but I could not build a sendable fill draft right now because there are no eligible members after guardrails.${warning}`
+}
+
+async function createAdvisorConversationFromAction(opts: {
+  prisma: any
+  clubId: string
+  userId: string
+  title: string
+  userMessage: string
+  assistantMessage: string
+  action?: z.infer<typeof advisorActionSchema> | null
+}) {
+  const conversation = await opts.prisma.aIConversation.create({
+    data: {
+      clubId: opts.clubId,
+      userId: opts.userId,
+      title: opts.title.slice(0, 100),
+      language: 'en',
+    },
+    select: {
+      id: true,
+    },
+  })
+
+  await opts.prisma.aIMessage.create({
+    data: {
+      conversationId: conversation.id,
+      role: 'user',
+      content: opts.userMessage,
+      metadata: {
+        source: 'schedule_one_click',
+      },
+    },
+  })
+
+  const occurredAt = new Date().toISOString()
+  const baseState = opts.action
+    ? buildAdvisorConversationStateFromAction(opts.action, occurredAt)
+    : null
+  const assistantMetadata: Record<string, unknown> = {
+    source: 'schedule_one_click',
+    handled: true,
+    ...(baseState ? { advisorState: baseState } : {}),
+    ...(opts.action ? { advisorResolvedAction: opts.action } : {}),
+    ...(opts.action ? { advisorActionState: { status: 'active' as const, updatedAt: occurredAt } } : {}),
+  }
+
+  const assistantRecord = await opts.prisma.aIMessage.create({
+    data: {
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: opts.assistantMessage,
+      metadata: assistantMetadata as any,
+    },
+    select: {
+      id: true,
+      metadata: true,
+    },
+  })
+
+  let finalMetadata = assistantRecord.metadata as Record<string, unknown> | null
+  let draftId: string | null = null
+
+  if (opts.action) {
+    const persistedDraft = await persistAdvisorDraft({
+      prisma: opts.prisma,
+      clubId: opts.clubId,
+      userId: opts.userId,
+      conversationId: conversation.id,
+      sourceMessageId: assistantRecord.id,
+      action: opts.action,
+      originalIntent: opts.userMessage,
+    })
+
+    if (persistedDraft) {
+      draftId = persistedDraft.id
+      const nextState = withAdvisorCurrentDraft(
+        baseState || buildAdvisorConversationStateFromAction(opts.action, occurredAt),
+        persistedDraft,
+        occurredAt,
+      )
+
+      finalMetadata = withAdvisorDraftMetadata(
+        {
+          ...assistantMetadata,
+          advisorState: nextState,
+        },
+        persistedDraft,
+      ) as Record<string, unknown>
+
+      await opts.prisma.aIMessage.update({
+        where: { id: assistantRecord.id },
+        data: {
+          metadata: finalMetadata as any,
+        },
+      })
+    }
+  }
+
+  await opts.prisma.aIConversation.update({
+    where: { id: conversation.id },
+    data: {
+      title: opts.title.slice(0, 100),
+      updatedAt: new Date(),
+    },
+  }).catch(() => undefined)
+
+  return {
+    conversationId: conversation.id,
+    messageId: assistantRecord.id,
+    draftId,
+    metadata: finalMetadata,
+  }
 }
 
 // ── Helper: describe agent action for pending queue ──
@@ -208,6 +540,10 @@ function mapOpsSessionDraftStatusForMetadata(status: string) {
 }
 
 function serializeOpsSessionDraftRecordForMetadata(record: any) {
+  const metadata =
+    record.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata)
+      ? (record.metadata as Record<string, any>)
+      : null
   return {
     id: record.id,
     sourceProposalId: record.sourceProposalId,
@@ -225,7 +561,267 @@ function serializeOpsSessionDraftRecordForMetadata(record: any) {
     estimatedInterestedMembers: record.estimatedInterestedMembers,
     confidence: record.confidence,
     note: record.note,
+    conflict: metadata?.conflict || undefined,
+    handoff: metadata?.handoff || undefined,
+    opsWorkflow: metadata?.opsWorkflow || undefined,
+    timeline: Array.isArray(metadata?.timeline) ? metadata.timeline : undefined,
   }
+}
+
+function getOpsSessionDraftMetadataRoot(metadata: unknown) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
+  return { ...(metadata as Record<string, unknown>) }
+}
+
+function getOpsSessionDraftWorkflowMetadata(metadata: unknown) {
+  const current = getOpsSessionDraftMetadataRoot(metadata).opsWorkflow
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return {}
+  return { ...(current as Record<string, unknown>) }
+}
+
+function getOpsSessionDraftHandoffMetadata(metadata: unknown) {
+  const current = getOpsSessionDraftMetadataRoot(metadata).handoff
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return {}
+  return { ...(current as Record<string, unknown>) }
+}
+
+function getOpsSessionDraftTimelineMetadata(metadata: unknown) {
+  const current = getOpsSessionDraftMetadataRoot(metadata).timeline
+  if (!Array.isArray(current)) return []
+  return current
+    .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => ({ ...(entry as Record<string, unknown>) }))
+}
+
+function appendOpsSessionDraftTimelineEvent(
+  metadata: unknown,
+  event: {
+    kind: string
+    label: string
+    detail?: string | null
+    actorLabel?: string | null
+    createdAt: string
+  },
+) {
+  const existingTimeline = getOpsSessionDraftTimelineMetadata(metadata)
+  const nextEvent = {
+    id: `${event.kind}:${event.createdAt}`,
+    kind: event.kind,
+    label: event.label,
+    ...(event.detail ? { detail: event.detail } : {}),
+    ...(event.actorLabel ? { actorLabel: event.actorLabel } : {}),
+    createdAt: event.createdAt,
+  }
+  return [nextEvent, ...existingTimeline].slice(0, 8)
+}
+
+function getOpsSessionDraftSessionMetadata(metadata: unknown) {
+  const current = getOpsSessionDraftMetadataRoot(metadata).sessionDraft
+  if (!current || typeof current !== 'object' || Array.isArray(current)) return {}
+  return { ...(current as Record<string, unknown>) }
+}
+
+function buildOpsSessionDraftPlannedSnapshot(record: {
+  title: string
+  description?: string | null
+  startTime: string
+  endTime: string
+  format: string
+  skillLevel: string
+  maxPlayers: number
+  createdAt?: Date | string | null
+}, sessionDraft: Record<string, unknown>) {
+  const targetDateIso =
+    typeof sessionDraft.targetDateIso === 'string' && sessionDraft.targetDateIso
+      ? sessionDraft.targetDateIso
+      : null
+  const targetDate =
+    typeof sessionDraft.targetDate === 'string' && sessionDraft.targetDate
+      ? `${sessionDraft.targetDate}T12:00:00.000Z`
+      : null
+
+  return {
+    title:
+      typeof sessionDraft.title === 'string' && sessionDraft.title.trim()
+        ? sessionDraft.title
+        : record.title,
+    description:
+      typeof sessionDraft.description === 'string'
+        ? sessionDraft.description
+        : record.description || null,
+    date:
+      targetDateIso
+      || targetDate
+      || (record.createdAt instanceof Date
+        ? record.createdAt.toISOString()
+        : typeof record.createdAt === 'string'
+          ? record.createdAt
+          : new Date().toISOString()),
+    startTime: record.startTime,
+    endTime: record.endTime,
+    format: record.format,
+    skillLevel: record.skillLevel,
+    maxPlayers: record.maxPlayers,
+  }
+}
+
+function buildOpsSessionDraftHref(clubId: string, draft: { id: string; dayOfWeek?: string | null }) {
+  const params = new URLSearchParams({
+    focus: 'ops-queue',
+    opsDraftId: draft.id,
+  })
+  if (draft.dayOfWeek) params.set('day', draft.dayOfWeek)
+  return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
+}
+
+function parseSessionDraftPublishDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Publish date must be in YYYY-MM-DD format.',
+    })
+  }
+
+  const date = new Date(`${value}T12:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Publish date is invalid.',
+    })
+  }
+  return date
+}
+
+function getSessionDraftPublishDayRange(value: string) {
+  const dayStart = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(dayStart.getTime())) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Publish date is invalid.',
+    })
+  }
+  const dayEnd = new Date(dayStart)
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+  return { dayStart, dayEnd }
+}
+
+async function buildOpsSessionDraftPublishReviewForDate(opts: {
+  prisma: any
+  clubId: string
+  draft: {
+    id: string
+    title: string
+    startTime: string
+    endTime: string
+    format: string
+    skillLevel: string
+  }
+  publishDate: string
+  ignoreSessionId?: string | null
+}) {
+  const { dayStart, dayEnd } = getSessionDraftPublishDayRange(opts.publishDate)
+  const [existingSessions, courtCount] = await Promise.all([
+    opts.prisma.playSession.findMany({
+      where: {
+        clubId: opts.clubId,
+        date: {
+          gte: dayStart,
+          lt: dayEnd,
+        },
+        status: {
+          in: ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'],
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        date: true,
+        startTime: true,
+        endTime: true,
+        format: true,
+        skillLevel: true,
+        status: true,
+      },
+      orderBy: [
+        { date: 'asc' },
+        { startTime: 'asc' },
+      ],
+    }),
+    opts.prisma.clubCourt.count({
+      where: { clubId: opts.clubId },
+    }).catch(() => 0),
+  ])
+
+  return buildOpsSessionPublishReview({
+    draft: {
+      title: opts.draft.title,
+      date: `${opts.publishDate}T12:00:00.000Z`,
+      startTime: opts.draft.startTime,
+      endTime: opts.draft.endTime,
+      format: opts.draft.format,
+      skillLevel: opts.draft.skillLevel,
+    },
+    existingSessions,
+    courtCount,
+    ignoreSessionId: opts.ignoreSessionId,
+  })
+}
+
+async function createOpsOwnerPingRecord(opts: {
+  prisma: any
+  clubId: string
+  userId: string
+  draftId: string
+  draftTitle: string
+  dayOfWeek?: string | null
+  description: string
+  metadata?: Record<string, unknown>
+}) {
+  const dateKey = new Date().toISOString().slice(0, 10)
+  const itemId = `ops-owner-ping:${opts.draftId}`
+  const href = buildOpsSessionDraftHref(opts.clubId, { id: opts.draftId, dayOfWeek: opts.dayOfWeek })
+
+  await opts.prisma.agentAdminTodoDecision.upsert({
+    where: {
+      clubId_userId_dateKey_itemId: {
+        clubId: opts.clubId,
+        userId: opts.userId,
+        dateKey,
+        itemId,
+      },
+    },
+    create: {
+      clubId: opts.clubId,
+      userId: opts.userId,
+      dateKey,
+      itemId,
+      decision: 'proactive_ping',
+      title: opts.draftTitle,
+      bucket: 'waiting',
+      href,
+      metadata: {
+        description: opts.description,
+        proactiveKind: 'owner_due',
+        reminderChannel: 'in_app',
+        remindAt: new Date().toISOString(),
+        ...(opts.metadata || {}),
+      } as any,
+    },
+    update: {
+      title: opts.draftTitle,
+      href,
+      decision: 'proactive_ping',
+      metadata: {
+        description: opts.description,
+        proactiveKind: 'owner_due',
+        reminderChannel: 'in_app',
+        remindAt: new Date().toISOString(),
+        ...(opts.metadata || {}),
+      } as any,
+    },
+  }).catch((error: unknown) => {
+    log.warn('[Ops Session Draft] owner ping upsert failed:', error)
+  })
 }
 
 async function syncAgentDraftOpsSessionDraftMetadata(prisma: any, agentDraftId: string) {
@@ -269,13 +865,60 @@ async function upsertProgrammingOpsSessionDraftRecords(opts: {
   createdByUserId: string
   agentDraftId: string
   action: Extract<z.infer<typeof advisorActionSchema>, { kind: 'program_schedule' }>
+  sourceProposalId?: string
 }) {
-  const drafts = buildAdvisorProgrammingOpsSessionDrafts(opts.action)
+  const drafts = buildAdvisorProgrammingOpsSessionDrafts(opts.action).filter((draft) =>
+    opts.sourceProposalId ? draft.sourceProposalId === opts.sourceProposalId : true,
+  )
 
   try {
-    const records = await Promise.all(
-      drafts.map((draft) =>
-        opts.prisma.opsSessionDraft.upsert({
+    const existingDrafts = await opts.prisma.opsSessionDraft.findMany({
+      where: {
+        agentDraftId: opts.agentDraftId,
+        sourceProposalId: { in: drafts.map((draft) => draft.sourceProposalId) },
+      },
+      select: {
+        sourceProposalId: true,
+        status: true,
+        note: true,
+        archivedAt: true,
+        metadata: true,
+      },
+    })
+    const existingBySourceProposalId = new Map<string, {
+      sourceProposalId: string
+      status: string
+      note: string
+      archivedAt: Date | null
+      metadata: unknown
+    }>(
+      existingDrafts.map((existingDraft: any) => [existingDraft.sourceProposalId, existingDraft]),
+    )
+
+    const records = await Promise.all(drafts.map((draft) => {
+        const existing = existingBySourceProposalId.get(draft.sourceProposalId)
+        const existingMetadata = getOpsSessionDraftMetadataRoot(existing?.metadata)
+        const preservedWorkflow = existingMetadata.opsWorkflow
+        const preservedSessionDraft = existingMetadata.sessionDraft
+        const preservedHandoff = getOpsSessionDraftHandoffMetadata(existing?.metadata)
+        const preservedTimeline = getOpsSessionDraftTimelineMetadata(existing?.metadata)
+        const nextHandoff = {
+          ...(draft.handoff || {}),
+          ...(preservedHandoff.ownerLabel ? { ownerLabel: preservedHandoff.ownerLabel } : {}),
+          ...(preservedHandoff.ownerUserId ? { ownerUserId: preservedHandoff.ownerUserId } : {}),
+          ...(preservedHandoff.ownerBrief ? { ownerBrief: preservedHandoff.ownerBrief } : {}),
+        }
+        const nextMetadata = {
+          ...existingMetadata,
+          conflict: draft.conflict || null,
+          handoff: Object.keys(nextHandoff).length > 0 ? nextHandoff : null,
+          ...(preservedWorkflow ? { opsWorkflow: preservedWorkflow } : {}),
+          ...(preservedSessionDraft ? { sessionDraft: preservedSessionDraft } : {}),
+          ...(preservedTimeline.length > 0 ? { timeline: preservedTimeline } : {}),
+        }
+        const shouldPreserveNote = !!getOpsSessionDraftWorkflowMetadata(existing?.metadata).lastNoteAt
+
+        return opts.prisma.opsSessionDraft.upsert({
           where: {
             agentDraftId_sourceProposalId: {
               agentDraftId: opts.agentDraftId,
@@ -301,11 +944,19 @@ async function upsertProgrammingOpsSessionDraftRecords(opts: {
             estimatedInterestedMembers: draft.estimatedInterestedMembers,
             confidence: draft.confidence,
             note: draft.note,
-            metadata: {},
+            metadata: {
+              ...nextMetadata,
+              timeline: appendOpsSessionDraftTimelineEvent(null, {
+                kind: 'created',
+                label: 'Agent created ops draft',
+                detail: `${draft.title} was prepared for internal scheduling review.`,
+                createdAt: new Date().toISOString(),
+              }),
+            },
           },
           update: {
             origin: draft.origin,
-            status: 'READY_FOR_OPS',
+            status: existing?.status || 'READY_FOR_OPS',
             title: draft.title,
             dayOfWeek: draft.dayOfWeek,
             timeSlot: draft.timeSlot,
@@ -317,12 +968,12 @@ async function upsertProgrammingOpsSessionDraftRecords(opts: {
             projectedOccupancy: draft.projectedOccupancy,
             estimatedInterestedMembers: draft.estimatedInterestedMembers,
             confidence: draft.confidence,
-            note: draft.note,
-            archivedAt: null,
+            note: shouldPreserveNote ? existing?.note || draft.note : draft.note,
+            metadata: nextMetadata,
+            archivedAt: existing?.archivedAt,
           },
-        }),
-      ),
-    )
+        })
+      }))
 
     const serialized = records.map(serializeOpsSessionDraftRecordForMetadata)
     await syncAgentDraftOpsSessionDraftMetadata(opts.prisma, opts.agentDraftId)
@@ -338,6 +989,40 @@ export interface CohortFilter {
   field: string
   op: string
   value: string | number | string[]
+}
+
+const NORMALIZED_MEMBERSHIP_COHORT_FIELDS = new Set([
+  'normalizedMembershipType',
+  'normalizedMembershipStatus',
+])
+
+function isNormalizedMembershipCohortField(field: string) {
+  return NORMALIZED_MEMBERSHIP_COHORT_FIELDS.has(field)
+}
+
+function splitCohortFilters(filters: CohortFilter[]) {
+  return {
+    sqlFilters: filters.filter((filter) => !isNormalizedMembershipCohortField(filter.field)),
+    normalizedMembershipFilters: filters.filter((filter) => isNormalizedMembershipCohortField(filter.field)),
+  }
+}
+
+function matchesCohortTextFilter(candidate: string | null | undefined, filter: CohortFilter) {
+  const normalizedCandidate = (candidate || '').toLowerCase().trim()
+  const rawValues = Array.isArray(filter.value) ? filter.value : [String(filter.value)]
+  const values = rawValues
+    .map((value) => String(value).toLowerCase().trim())
+    .filter(Boolean)
+
+  if (filter.op === 'contains') {
+    return values.some((value) => normalizedCandidate.includes(value))
+  }
+
+  if (filter.op === 'neq') {
+    return values.every((value) => normalizedCandidate !== value)
+  }
+
+  return values.some((value) => normalizedCandidate === value)
 }
 
 export function buildCohortWhereClause(filters: CohortFilter[]): string {
@@ -437,8 +1122,59 @@ const ACTIVE_MEMBER_JOIN = `
   ) active ON active."userId" = u.id
 `
 
+async function getClubCohortMembershipMappings(prisma: any, clubId: string) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { automationSettings: true },
+  })
+
+  return resolveMembershipMappings(club?.automationSettings)
+}
+
+function hydrateCohortMembersWithNormalizedMembership(
+  members: any[],
+  filters: CohortFilter[],
+  membershipMappings: ReturnType<typeof resolveMembershipMappings>,
+) {
+  const normalizedMembers = members.map((member) => {
+    const normalizedMembership = normalizeMembership({
+      membershipType: member.membershipType || null,
+      membershipStatus: member.membershipStatus || null,
+      membershipMappings,
+    })
+
+    return {
+      ...member,
+      normalizedMembershipType: normalizedMembership.normalizedType,
+      normalizedMembershipStatus: normalizedMembership.normalizedStatus,
+      membershipConfidence: normalizedMembership.confidence,
+      membershipSignal: normalizedMembership.signal,
+    }
+  })
+
+  if (filters.length === 0) return normalizedMembers
+
+  return normalizedMembers.filter((member) =>
+    filters.every((filter) => {
+      if (filter.field === 'normalizedMembershipType') {
+        return matchesCohortTextFilter(member.normalizedMembershipType, filter)
+      }
+      if (filter.field === 'normalizedMembershipStatus') {
+        return matchesCohortTextFilter(member.normalizedMembershipStatus, filter)
+      }
+      return true
+    }),
+  )
+}
+
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
-  const where = buildCohortWhereClause(filters)
+  const { sqlFilters, normalizedMembershipFilters } = splitCohortFilters(filters)
+  if (normalizedMembershipFilters.length > 0) {
+    const members = await queryCohortMembers(prisma, clubId, filters, { limit: null })
+    return members.length
+  }
+
+  const where = buildCohortWhereClause(sqlFilters)
   const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
     SELECT COUNT(DISTINCT cf.user_id) as count
     FROM club_followers cf
@@ -449,9 +1185,18 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
   return Number(result[0]?.count ?? 0)
 }
 
-async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<any[]> {
-  const where = buildCohortWhereClause(filters)
-  return prisma.$queryRawUnsafe(`
+async function queryCohortMembers(
+  prisma: any,
+  clubId: string,
+  filters: CohortFilter[],
+  options?: { limit?: number | null },
+): Promise<any[]> {
+  const { sqlFilters, normalizedMembershipFilters } = splitCohortFilters(filters)
+  const where = buildCohortWhereClause(sqlFilters)
+  const shouldLimitInSql = normalizedMembershipFilters.length === 0 && options?.limit && options.limit > 0
+  const sqlLimitClause = shouldLimitInSql ? `LIMIT ${Math.trunc(options.limit as number)}` : ''
+
+  const members = await prisma.$queryRawUnsafe(`
     SELECT u.id, u.name, u.email, u.gender, u.city, u.phone,
            u.sms_opt_in as "smsOptIn",
            u.date_of_birth as "dateOfBirth",
@@ -469,8 +1214,21 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
     ${ACTIVE_MEMBER_JOIN}
     WHERE cf.club_id = $1 AND ${where}
     ORDER BY u.name ASC
-    LIMIT 500
+    ${sqlLimitClause}
   `, clubId)
+
+  const membershipMappings = await getClubCohortMembershipMappings(prisma, clubId)
+  const normalizedMembers = hydrateCohortMembersWithNormalizedMembership(
+    members,
+    normalizedMembershipFilters,
+    membershipMappings,
+  )
+
+  if (options?.limit && options.limit > 0) {
+    return normalizedMembers.slice(0, options.limit)
+  }
+
+  return normalizedMembers
 }
 
 function applyAdvisorRecipientRules(
@@ -491,6 +1249,128 @@ function applyAdvisorRecipientRules(
   })
 }
 
+async function getLookalikeExportMembers(prisma: any, clubId: string) {
+  type LookalikeExportMemberQueryRow = {
+    userId: string
+    name: string | null
+    email: string | null
+    phone: string | null
+    city: string | null
+    zipCode: string | null
+    gender: string | null
+    age: number | null
+    duprRating: number | null
+    joinedAt: Date | null
+    daysSinceJoined: number | null
+    lastPlayedAt: Date | null
+    daysSinceLastVisit: number | null
+    totalBookings: number
+    bookingsLast30: number
+    totalRevenue: number
+    healthScore: number | null
+    riskLevel: string | null
+    lifecycleStage: string | null
+    membershipType: string | null
+    membershipStatus: string | null
+  }
+
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { automationSettings: true },
+  })
+  const membershipMappings = resolveMembershipMappings(club?.automationSettings)
+
+  const rows = await prisma.$queryRawUnsafe(`
+    WITH latest_health AS (
+      SELECT DISTINCT ON (mhs.user_id)
+        mhs.user_id,
+        mhs.health_score,
+        mhs.risk_level,
+        mhs.lifecycle_stage,
+        mhs.date
+      FROM member_health_snapshots mhs
+      WHERE mhs.club_id = $1
+      ORDER BY mhs.user_id, mhs.date DESC
+    ),
+    booking_stats AS (
+      SELECT
+        psb."userId" as user_id,
+        COUNT(*) FILTER (WHERE psb.status = 'CONFIRMED')::int as total_bookings,
+        COUNT(*) FILTER (
+          WHERE psb.status = 'CONFIRMED'
+            AND ps.date >= CURRENT_DATE - INTERVAL '30 days'
+        )::int as bookings_last_30,
+        MAX(ps.date) FILTER (WHERE psb.status = 'CONFIRMED') as last_played_at,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN psb.status = 'CONFIRMED' THEN COALESCE(ps."pricePerSlot", 0)
+              ELSE 0
+            END
+          ),
+          0
+        )::float as total_revenue
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE ps."clubId" = $1
+      GROUP BY psb."userId"
+    )
+    SELECT
+      u.id as "userId",
+      u.name,
+      u.email,
+      u.phone,
+      u.city,
+      u.zip_code as "zipCode",
+      u.gender::text as gender,
+      CASE
+        WHEN u.date_of_birth IS NOT NULL THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
+        ELSE NULL
+      END as age,
+      COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles)::float as "duprRating",
+      cf.created_at as "joinedAt",
+      CASE
+        WHEN cf.created_at IS NOT NULL THEN (CURRENT_DATE - cf.created_at::date)::int
+        ELSE NULL
+      END as "daysSinceJoined",
+      bs.last_played_at as "lastPlayedAt",
+      CASE
+        WHEN bs.last_played_at IS NOT NULL THEN (CURRENT_DATE - bs.last_played_at::date)::int
+        ELSE NULL
+      END as "daysSinceLastVisit",
+      COALESCE(bs.total_bookings, 0)::int as "totalBookings",
+      COALESCE(bs.bookings_last_30, 0)::int as "bookingsLast30",
+      COALESCE(bs.total_revenue, 0)::float as "totalRevenue",
+      lh.health_score::int as "healthScore",
+      lh.risk_level as "riskLevel",
+      lh.lifecycle_stage as "lifecycleStage",
+      u.membership_type as "membershipType",
+      u.membership_status as "membershipStatus"
+    FROM club_followers cf
+    JOIN users u ON u.id = cf.user_id
+    LEFT JOIN latest_health lh ON lh.user_id = u.id
+    LEFT JOIN booking_stats bs ON bs.user_id = u.id
+    WHERE cf.club_id = $1
+    ORDER BY COALESCE(lh.health_score, 0) DESC, COALESCE(bs.total_revenue, 0) DESC, u.name ASC
+  `, clubId) as LookalikeExportMemberQueryRow[]
+
+  return rows.map((row) => {
+    const normalizedMembership = normalizeMembership({
+      membershipType: row.membershipType || null,
+      membershipStatus: row.membershipStatus || null,
+      membershipMappings,
+    })
+
+    return {
+      ...row,
+      totalRevenue: Number(row.totalRevenue || 0),
+      duprRating: row.duprRating != null ? Number(row.duprRating) : null,
+      normalizedMembershipType: normalizedMembership.normalizedType,
+      normalizedMembershipStatus: normalizedMembership.normalizedStatus,
+    }
+  })
+}
+
 const COHORT_PARSE_SYSTEM = `You convert natural language cohort descriptions into JSON filter arrays.
 
 Available fields and operators:
@@ -498,6 +1378,8 @@ Available fields and operators:
 - gender: eq (values: "M" or "F")
 - membershipType: contains, eq (text, e.g. "Open Play Pass", "Guest Pass")
 - membershipStatus: contains, eq (text, e.g. "Active", "Expired", "Cancelled")
+- normalizedMembershipType: eq (canonical values: "guest", "drop_in", "trial", "package", "monthly", "unlimited", "discounted", "insurance", "staff")
+- normalizedMembershipStatus: eq (canonical values: "active", "suspended", "expired", "cancelled", "trial", "guest", "none")
 - skillLevel: contains, eq, or "in" with array (text values in DB: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)")
 - city: eq, contains (text)
 - zipCode: eq (text)
@@ -515,7 +1397,15 @@ CRITICAL RULES:
 - "advanced" → skillLevel contains "Advanced"
 - "men" or "male" → gender eq "M"
 - "women" or "female" → gender eq "F"
-- "active members" → membershipStatus contains "Active"
+- "active members" → normalizedMembershipStatus eq "active"
+- "guests" or "guest players" → normalizedMembershipType eq "guest"
+- "drop-ins" or "drop in players" → normalizedMembershipType eq "drop_in"
+- "trial members" → normalizedMembershipStatus eq "trial"
+- "package holders" → normalizedMembershipType eq "package"
+- "monthly members" → normalizedMembershipType eq "monthly"
+- "VIPs" or "unlimited members" → normalizedMembershipType eq "unlimited"
+- "expired members" → normalizedMembershipStatus eq "expired"
+- "cancelled members" → normalizedMembershipStatus eq "cancelled"
 - NEVER use multiple skillLevel "contains" filters (they AND together and match nothing). Use ONE "in" filter with array instead.
 - Generate a cohort name and short description too
 
@@ -553,6 +1443,9 @@ type ManualCampaignInput = {
   smsBody?: string
   sessionId?: string
   source?: string
+  actionKind?: AgentOutreachRolloutActionKind
+  guestTrialContext?: GuestTrialExecutionContext | null
+  referralContext?: ReferralExecutionContext | null
 }
 
 async function enforceCampaignUsageLimits(
@@ -629,6 +1522,7 @@ async function runCreateCampaign(prisma: any, input: ManualCampaignInput) {
   return sendCampaignNow(prisma, {
     ...input,
     source: input.source || 'manual_campaign',
+    actionKind: input.actionKind || 'create_campaign',
   })
 }
 
@@ -882,10 +1776,11 @@ export const intelligenceRouter = createTRPCRouter({
         return { ...result, aiEnhancements: [] }
       }
 
-      // Standard PlaySession UUID path
+      // Standard PlaySession UUID path — delegate to hybrid (SQL pre-filter + rich re-rank).
+      // Single source of truth: same logic as advisor drafts and cron automation.
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
-        select: { clubId: true, format: true, startTime: true, courtId: true, skillLevel: true, date: true },
+        select: { clubId: true },
       })
       if (!session) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
@@ -893,29 +1788,15 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, session.clubId, ctx.session.user.id)
       await checkFeatureAccess(session.clubId, 'slot-filler')
 
-      // Get already booked users for this session
-      const alreadyBooked = new Set<string>()
-      try {
-        const bookings = await ctx.prisma.playSessionBooking.findMany({
-          where: { sessionId: input.sessionId, status: 'CONFIRMED' },
-          select: { userId: true },
-        })
-        bookings.forEach((b: any) => alreadyBooked.add(b.userId))
-      } catch { /* non-critical */ }
-
-      // Fast SQL-based recommendations from booking history
-      const players = await getFrequentPlayersFallback(
-        ctx.prisma, session.clubId,
-        { format: session.format, startTime: session.startTime, courtId: session.courtId, skillLevel: session.skillLevel, date: session.date },
-        alreadyBooked, input.limit,
-      )
+      const hybridResult = await getSlotFillerRecommendations(ctx.prisma, {
+        sessionId: input.sessionId,
+        limit: input.limit,
+      })
 
       return {
-        session: { id: input.sessionId, ...session },
-        recommendations: players,
-        totalCandidatesScored: players.length,
+        ...hybridResult,
         aiEnhancements: [],
-        source: 'frequent_players',
+        source: 'hybrid_scorer' as const,
       }
     }),
 
@@ -996,8 +1877,36 @@ export const intelligenceRouter = createTRPCRouter({
       })),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       await checkFeatureAccess(input.clubId, 'slot-filler')
+      await enforceManualLiveOutreachGate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        automationSettings: clubAutomationContext?.automationSettings,
+        adminRole: adminAccess.role,
+        targetType: 'manual_slot_filler',
+        targetId: input.sessionId,
+        actionKind: 'fill_session',
+        channel: input.candidates.some((candidate) => candidate.channel === 'both')
+          ? 'both'
+          : input.candidates.some((candidate) => candidate.channel === 'sms')
+            ? input.candidates.some((candidate) => candidate.channel === 'email')
+              ? 'both'
+              : 'sms'
+            : 'email',
+        recipientCount: input.candidates.length,
+        label: `Manual slot filler for ${input.candidates.length} candidates`,
+      })
       return sendInvites(ctx.prisma, input)
     }),
 
@@ -1012,7 +1921,16 @@ export const intelligenceRouter = createTRPCRouter({
       customMessage: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       await checkFeatureAccess(input.clubId, 'reactivation')
 
       // Usage limit checks
@@ -1036,6 +1954,25 @@ export const intelligenceRouter = createTRPCRouter({
         }
       }
 
+      await enforceManualLiveOutreachGate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        automationSettings: clubAutomationContext?.automationSettings,
+        adminRole: adminAccess.role,
+        targetType: 'manual_reactivation',
+        actionKind: 'reactivate_members',
+        channel: input.candidates.some((candidate) => candidate.channel === 'both')
+          ? 'both'
+          : input.candidates.some((candidate) => candidate.channel === 'sms')
+            ? input.candidates.some((candidate) => candidate.channel === 'email')
+              ? 'both'
+              : 'sms'
+            : 'email',
+        recipientCount: input.candidates.length,
+        label: `Manual reactivation for ${input.candidates.length} members`,
+      })
+
       return sendReactivationMessages(ctx.prisma, input)
     }),
 
@@ -1054,8 +1991,35 @@ export const intelligenceRouter = createTRPCRouter({
       })),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       await checkFeatureAccess(input.clubId, 'slot-filler')
+      await enforceManualLiveOutreachGate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        automationSettings: clubAutomationContext?.automationSettings,
+        adminRole: adminAccess.role,
+        targetType: 'manual_event_invites',
+        actionKind: 'create_campaign',
+        channel: input.candidates.some((candidate) => candidate.channel === 'both')
+          ? 'both'
+          : input.candidates.some((candidate) => candidate.channel === 'sms')
+            ? input.candidates.some((candidate) => candidate.channel === 'email')
+              ? 'both'
+              : 'sms'
+            : 'email',
+        recipientCount: input.candidates.length,
+        label: `Manual event invites for ${input.eventTitle}`,
+      })
       return sendEventInviteMessages(ctx.prisma, input)
     }),
 
@@ -2034,13 +2998,237 @@ export const intelligenceRouter = createTRPCRouter({
           },
         })
 
+        const publishedPlaySessionIds = Array.from(new Set(
+          drafts
+            .map((draft) => {
+              const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+              return typeof sessionDraft.publishedPlaySessionId === 'string'
+                ? sessionDraft.publishedPlaySessionId
+                : null
+            })
+            .filter((value): value is string => !!value),
+        ))
+
+        const publishedSessionsById = new Map<string, {
+          id: string
+          title: string
+          description: string | null
+          date: Date
+          startTime: string
+          endTime: string
+          format: string
+          skillLevel: string
+          maxPlayers: number
+          registeredCount: number | null
+          status: string
+          confirmedBookings: number
+          waitlistCount: number
+        }>()
+
+        if (publishedPlaySessionIds.length > 0) {
+          const publishedSessions = await ctx.prisma.playSession.findMany({
+            where: {
+              clubId: input.clubId,
+              id: { in: publishedPlaySessionIds },
+            },
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              format: true,
+              skillLevel: true,
+              maxPlayers: true,
+              registeredCount: true,
+              status: true,
+              _count: {
+                select: {
+                  bookings: {
+                    where: { status: 'CONFIRMED' },
+                  },
+                  waitlist: true,
+                },
+              },
+            },
+          }).catch((err) => {
+            log.warn('[Intelligence] listOpsSessionDrafts published sessions lookup failed:', err)
+            return []
+          })
+
+          for (const session of publishedSessions) {
+            publishedSessionsById.set(session.id, {
+              id: session.id,
+              title: session.title,
+              description: session.description,
+              date: session.date,
+              startTime: session.startTime,
+              endTime: session.endTime,
+              format: session.format,
+              skillLevel: session.skillLevel,
+              maxPlayers: session.maxPlayers,
+              registeredCount: session.registeredCount,
+              status: session.status,
+              confirmedBookings: session._count.bookings,
+              waitlistCount: session._count.waitlist,
+            })
+          }
+        }
+
         return drafts.map((draft) => ({
           ...draft,
           origin: draft.origin === 'alternative' ? 'alternative' : 'primary',
           status: mapOpsSessionDraftStatusForMetadata(draft.status),
+          conflict:
+            draft.metadata && typeof draft.metadata === 'object' && !Array.isArray(draft.metadata)
+              ? (draft.metadata as Record<string, any>).conflict || null
+              : null,
+          metadata:
+            draft.metadata && typeof draft.metadata === 'object' && !Array.isArray(draft.metadata)
+              ? (() => {
+                  const metadataRoot = { ...(draft.metadata as Record<string, any>) }
+                  const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+                  const publishedPlaySessionId =
+                    typeof sessionDraft.publishedPlaySessionId === 'string'
+                      ? sessionDraft.publishedPlaySessionId
+                      : null
+                  const publishedSession = publishedPlaySessionId
+                    ? publishedSessionsById.get(publishedPlaySessionId)
+                    : null
+
+                  if (!publishedPlaySessionId) {
+                    return metadataRoot
+                  }
+
+                  if (!publishedSession) {
+                    return {
+                      ...metadataRoot,
+                      sessionDraft: {
+                        ...sessionDraft,
+                        aftercare: buildOpsSessionAftercareReview({
+                          draft: {
+                            title: typeof sessionDraft.title === 'string' && sessionDraft.title.trim() ? sessionDraft.title : draft.title,
+                            description: typeof sessionDraft.description === 'string' ? sessionDraft.description : draft.description,
+                            date: typeof sessionDraft.targetDateIso === 'string' && sessionDraft.targetDateIso
+                              ? sessionDraft.targetDateIso
+                              : (typeof sessionDraft.targetDate === 'string' && sessionDraft.targetDate
+                                ? `${sessionDraft.targetDate}T12:00:00.000Z`
+                                : draft.createdAt),
+                            startTime: draft.startTime,
+                            endTime: draft.endTime,
+                            format: draft.format,
+                            skillLevel: draft.skillLevel,
+                            maxPlayers: draft.maxPlayers,
+                          },
+                          liveSession: null,
+                        }),
+                        liveSession: null,
+                      },
+                    }
+                  }
+
+                  const confirmedCount =
+                    (publishedSession.registeredCount != null && publishedSession.registeredCount > 0)
+                      ? publishedSession.registeredCount
+                      : publishedSession.confirmedBookings
+
+                  return {
+                    ...metadataRoot,
+                    sessionDraft: {
+                      ...sessionDraft,
+                      liveFeedback: buildOpsSessionLiveFeedback({
+                        projectedOccupancy: draft.projectedOccupancy,
+                        maxPlayers: publishedSession.maxPlayers,
+                        confirmedCount,
+                        waitlistCount: publishedSession.waitlistCount,
+                        sessionDate: publishedSession.date,
+                      }),
+                      aftercare: buildOpsSessionAftercareReview({
+                        draft: {
+                          title: typeof sessionDraft.title === 'string' && sessionDraft.title.trim() ? sessionDraft.title : draft.title,
+                          description: typeof sessionDraft.description === 'string' ? sessionDraft.description : draft.description,
+                          date: typeof sessionDraft.targetDateIso === 'string' && sessionDraft.targetDateIso
+                            ? sessionDraft.targetDateIso
+                            : (typeof sessionDraft.targetDate === 'string' && sessionDraft.targetDate
+                              ? `${sessionDraft.targetDate}T12:00:00.000Z`
+                              : publishedSession.date),
+                          startTime: draft.startTime,
+                          endTime: draft.endTime,
+                          format: draft.format,
+                          skillLevel: draft.skillLevel,
+                          maxPlayers: draft.maxPlayers,
+                        },
+                        liveSession: {
+                          id: publishedSession.id,
+                          title: publishedSession.title,
+                          description: publishedSession.description,
+                          date: publishedSession.date,
+                          startTime: publishedSession.startTime,
+                          endTime: publishedSession.endTime,
+                          format: publishedSession.format,
+                          skillLevel: publishedSession.skillLevel,
+                          maxPlayers: publishedSession.maxPlayers,
+                          status: publishedSession.status,
+                          confirmedCount,
+                          waitlistCount: publishedSession.waitlistCount,
+                        },
+                      }),
+                      liveSession: {
+                        id: publishedSession.id,
+                        title: publishedSession.title,
+                        description: publishedSession.description,
+                        date: publishedSession.date.toISOString(),
+                        startTime: publishedSession.startTime,
+                        endTime: publishedSession.endTime,
+                        format: publishedSession.format,
+                        skillLevel: publishedSession.skillLevel,
+                        maxPlayers: publishedSession.maxPlayers,
+                        status: publishedSession.status,
+                      },
+                    },
+                  }
+                })()
+              : draft.metadata,
         }))
       } catch (err) {
         log.warn('[Intelligence] listOpsSessionDrafts failed:', err)
+        return []
+      }
+    }),
+
+  listOpsTeammates: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        const teammates = await ctx.prisma.clubAdmin.findMany({
+          where: { clubId: input.clubId },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            role: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        })
+
+        return teammates.map((entry) => ({
+          id: entry.user.id,
+          role: entry.role,
+          name: entry.user.name || entry.user.email || 'Club admin',
+          email: entry.user.email || null,
+          label: entry.user.name || entry.user.email || 'Club admin',
+        }))
+      } catch (err) {
+        log.warn('[Intelligence] listOpsTeammates failed:', err)
         return []
       }
     }),
@@ -2084,6 +3272,79 @@ export const intelligenceRouter = createTRPCRouter({
         log.warn('[Intelligence] listAdminTodoDecisions failed:', err)
         return []
       }
+    }),
+
+  listAgentDecisionRecords: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(24).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        return await listAgentDecisionRecordsSafe(ctx.prisma, input)
+      } catch (err) {
+        log.warn('[Intelligence] listAgentDecisionRecords failed:', err)
+        return []
+      }
+    }),
+
+  getLookalikeExportHistory: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(24).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      try {
+        return await listAgentDecisionRecordsSafe(ctx.prisma, {
+          clubId: input.clubId,
+          limit: input.limit ?? 8,
+          action: 'lookalike_export',
+        })
+      } catch (err) {
+        log.warn('[Intelligence] getLookalikeExportHistory failed:', err)
+        return []
+      }
+    }),
+
+  getOutreachPilotHealth: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      days: z.number().int().min(3).max(30).optional().default(14),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.days * 86400000)
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          createdAt: { gte: since },
+        },
+        select: {
+          type: true,
+          channel: true,
+          status: true,
+          reasoning: true,
+          createdAt: true,
+          openedAt: true,
+          clickedAt: true,
+          respondedAt: true,
+          deliveredAt: true,
+          bouncedAt: true,
+          bounceType: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 2000,
+      })
+
+      return buildAgentOutreachPilotSnapshot({
+        logs,
+        days: input.days,
+      })
     }),
 
   setAdminTodoDecision: protectedProcedure
@@ -2366,6 +3627,11 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const membershipMappings = resolveMembershipMappings(clubAutomationContext?.automationSettings)
 
       try {
         // Get only club members who have at least 1 confirmed booking.
@@ -2451,6 +3717,7 @@ export const intelligenceRouter = createTRPCRouter({
             membershipStatus: membershipStatus || embedded?.membershipStatus || null,
             lastVisit: embedded?.lastVisit || null,
             firstVisit: embedded?.firstVisit || null,
+            membershipMappings,
           }
         }
 
@@ -2664,7 +3931,16 @@ export const intelligenceRouter = createTRPCRouter({
       totalBookings: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       return sendOutreachMessage(ctx.prisma, input)
     }),
 
@@ -2754,12 +4030,20 @@ export const intelligenceRouter = createTRPCRouter({
   getIntelligenceSettings: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const club: any = await ctx.prisma.club.findUniqueOrThrow({
         where: { id: input.clubId },
       })
       const settings = club.automationSettings?.intelligence || null
-      return { settings }
+      return {
+        settings,
+        clubRole: adminAccess.role,
+        resolvedPermissions: resolveAgentPermissions({ intelligence: settings || {} }),
+        outreachRolloutStatus: getAgentOutreachRolloutStatus({
+          clubId: input.clubId,
+          automationSettings: { intelligence: settings || {} },
+        }),
+      }
     }),
 
   // ── Intelligence Settings: Save onboarding/config ──
@@ -2769,7 +4053,8 @@ export const intelligenceRouter = createTRPCRouter({
       settings: z.record(z.any()),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { isAdmin } = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { isAdmin } = adminAccess
       if (!isAdmin) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can update intelligence settings' })
       }
@@ -2781,14 +4066,82 @@ export const intelligenceRouter = createTRPCRouter({
       })
       const existing = club.automationSettings || {}
       const existingIntelligence = existing.intelligence || {}
+      const previousControlPlane = resolveAgentControlPlane({ intelligence: existingIntelligence })
       const merged = { ...existingIntelligence, ...input.settings }
 
-      // Try full validation; if it fails (partial update), save raw merge
       let validated: any
       try {
         validated = intelligenceSettingsSchema.parse(merged)
-      } catch {
-        validated = merged
+      } catch (error) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Invalid intelligence settings payload',
+          cause: error,
+        })
+      }
+
+      const controlPlaneChanged =
+        input.settings.controlPlane !== undefined
+        && JSON.stringify(input.settings.controlPlane) !== JSON.stringify(existingIntelligence.controlPlane || undefined)
+      const permissionsChanged =
+        input.settings.permissions !== undefined
+        && JSON.stringify(input.settings.permissions) !== JSON.stringify(existingIntelligence.permissions || undefined)
+      const previousOutreachRollout = getAgentOutreachRolloutStatus({
+        clubId: input.clubId,
+        automationSettings: { intelligence: existingIntelligence },
+      })
+
+      if (permissionsChanged || controlPlaneChanged) {
+        assertAgentPermissionForAdmin({
+          automationSettings: { intelligence: existingIntelligence },
+          action: 'controlPlaneManage',
+          adminRole: adminAccess.role,
+        })
+      }
+
+      const nextControlPlane = resolveAgentControlPlane({ intelligence: validated })
+      const controlPlaneChanges = diffAgentControlPlaneResolved(previousControlPlane, nextControlPlane)
+      const nextOutreachRollout = getAgentOutreachRolloutStatus({
+        clubId: input.clubId,
+        automationSettings: { intelligence: validated },
+      })
+      if (previousOutreachRollout.summary !== nextOutreachRollout.summary) {
+        controlPlaneChanges.push({
+          key: 'outreachRollout',
+          label: 'Outreach rollout',
+          from: previousOutreachRollout.summary,
+          to: nextOutreachRollout.summary,
+        })
+      }
+      const previousControlPlaneAudit = getAgentControlPlaneAudit({ intelligence: existingIntelligence })
+      const nextIntelligence = { ...validated }
+      const sanitizedControlPlane = nextIntelligence.controlPlane
+        ? { ...nextIntelligence.controlPlane }
+        : undefined
+
+      if (sanitizedControlPlane && 'audit' in sanitizedControlPlane) {
+        delete sanitizedControlPlane.audit
+      }
+
+      if (controlPlaneChanges.length > 0) {
+        nextIntelligence.controlPlane = {
+          ...(sanitizedControlPlane || {}),
+          audit: {
+            ...(previousControlPlaneAudit || {}),
+            lastChangedAt: new Date().toISOString(),
+            lastChangedByUserId: ctx.session.user.id,
+            lastChangedByLabel: ctx.session.user.name || ctx.session.user.email || 'Club admin',
+            summary: buildAgentControlPlaneChangeSummary(controlPlaneChanges),
+            changes: controlPlaneChanges,
+          },
+        }
+      } else if (previousControlPlaneAudit) {
+        nextIntelligence.controlPlane = {
+          ...(sanitizedControlPlane || {}),
+          audit: previousControlPlaneAudit,
+        }
+      } else if (sanitizedControlPlane) {
+        nextIntelligence.controlPlane = sanitizedControlPlane
       }
 
       await (ctx.prisma.club as any).update({
@@ -2796,11 +4149,138 @@ export const intelligenceRouter = createTRPCRouter({
         data: {
           automationSettings: {
             ...existing,
-            intelligence: validated,
+            intelligence: nextIntelligence,
           },
         },
       })
-      return { success: true }
+      return {
+        success: true,
+        settings: nextIntelligence,
+      }
+    }),
+
+  shadowBackOutreachRolloutAction: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      actionKind: z.enum(['create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation']),
+      reason: z.string().min(1).max(400).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      if (!adminAccess.isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only admins can update outreach rollout settings' })
+      }
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+      })
+      const existing = club.automationSettings || {}
+      const existingIntelligence = existing.intelligence || {}
+
+      assertAgentPermissionForAdmin({
+        automationSettings: { intelligence: existingIntelligence },
+        action: 'controlPlaneManage',
+        adminRole: adminAccess.role,
+      })
+
+      const previousControlPlane = resolveAgentControlPlane({ intelligence: existingIntelligence })
+      const previousOutreachRollout = getAgentOutreachRolloutStatus({
+        clubId: input.clubId,
+        automationSettings: { intelligence: existingIntelligence },
+      })
+      const nextIntelligence = {
+        ...existingIntelligence,
+        controlPlane: {
+          ...(existingIntelligence.controlPlane || {}),
+          outreachRollout: {
+            ...(existingIntelligence.controlPlane?.outreachRollout || {}),
+            actions: {
+              ...(existingIntelligence.controlPlane?.outreachRollout?.actions || {}),
+              [input.actionKind]: {
+                ...(existingIntelligence.controlPlane?.outreachRollout?.actions?.[input.actionKind] || {}),
+                enabled: false,
+              },
+            },
+          },
+        },
+      }
+
+      const nextControlPlane = resolveAgentControlPlane({ intelligence: nextIntelligence })
+      const controlPlaneChanges = diffAgentControlPlaneResolved(previousControlPlane, nextControlPlane)
+      const nextOutreachRollout = getAgentOutreachRolloutStatus({
+        clubId: input.clubId,
+        automationSettings: { intelligence: nextIntelligence },
+      })
+      if (previousOutreachRollout.summary !== nextOutreachRollout.summary) {
+        controlPlaneChanges.push({
+          key: 'outreachRollout',
+          label: 'Outreach rollout',
+          from: previousOutreachRollout.summary,
+          to: nextOutreachRollout.summary,
+        })
+      }
+
+      const previousControlPlaneAudit = getAgentControlPlaneAudit({ intelligence: existingIntelligence })
+      const sanitizedControlPlane = nextIntelligence.controlPlane
+        ? { ...nextIntelligence.controlPlane }
+        : undefined
+      if (sanitizedControlPlane && 'audit' in sanitizedControlPlane) {
+        delete sanitizedControlPlane.audit
+      }
+
+      if (controlPlaneChanges.length > 0) {
+        nextIntelligence.controlPlane = {
+          ...(sanitizedControlPlane || {}),
+          audit: {
+            ...(previousControlPlaneAudit || {}),
+            lastChangedAt: new Date().toISOString(),
+            lastChangedByUserId: ctx.session.user.id,
+            lastChangedByLabel: ctx.session.user.name || ctx.session.user.email || 'Club admin',
+            summary: buildAgentControlPlaneChangeSummary(controlPlaneChanges),
+            changes: controlPlaneChanges,
+          },
+        }
+      } else if (previousControlPlaneAudit) {
+        nextIntelligence.controlPlane = {
+          ...(sanitizedControlPlane || {}),
+          audit: previousControlPlaneAudit,
+        }
+      }
+
+      await (ctx.prisma.club as any).update({
+        where: { id: input.clubId },
+        data: {
+          automationSettings: {
+            ...existing,
+            intelligence: nextIntelligence,
+          },
+        },
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        actorType: 'user',
+        action: 'outreachRolloutShadowBack',
+        targetType: 'outreach_action',
+        targetId: input.actionKind,
+        mode: 'shadow',
+        result: 'reviewed',
+        summary: `${ctx.session.user.name || ctx.session.user.email || 'Club admin'} moved ${input.actionKind} back to shadow.`,
+        metadata: {
+          actionKind: input.actionKind,
+          label: nextOutreachRollout.actions[input.actionKind]?.label,
+          reason: input.reason || null,
+        },
+      }).catch((err) => {
+        log.warn('[Intelligence] Failed to persist outreach shadow-back decision:', err)
+      })
+
+      return {
+        success: true,
+        settings: nextIntelligence,
+        outreachRolloutStatus: nextOutreachRollout,
+      }
     }),
 
   // ── Automation Settings: Get campaign triggers ──
@@ -2979,6 +4459,16 @@ export const intelligenceRouter = createTRPCRouter({
         byPersona: byPersona.map(p => ({ persona: p.persona, sent: p.sent, converted: p.converted })),
       })
 
+      const guestTrialAnalytics = buildCampaignGuestTrialAnalytics(recentLogs.map((log) => ({
+        id: log.id,
+        type: log.type,
+        status: log.status,
+        channel: log.channel,
+        createdAt: log.createdAt,
+        userName: log.user?.name || log.user?.email || 'Unknown',
+        reasoning: log.reasoning,
+      })))
+
       return {
         summary: {
           totalSent: totalSentNum,
@@ -2992,15 +4482,14 @@ export const intelligenceRouter = createTRPCRouter({
         byDay: Object.entries(byDay).map(([date, counts]) => ({ date, ...counts })),
         byPersona,
         alerts,
-        recentLogs: recentLogs.map(l => ({
-          id: l.id,
-          type: l.type,
-          status: l.status,
-          channel: l.channel,
-          reasoning: l.reasoning,
-          createdAt: l.createdAt,
-          userName: l.user?.name || l.user?.email || 'Unknown',
-        })),
+        topGuestTrialOffers: guestTrialAnalytics.topGuestTrialOffers,
+        topGuestTrialRoutes: guestTrialAnalytics.topGuestTrialRoutes,
+        topReferralOffers: guestTrialAnalytics.topReferralOffers,
+        topReferralLanes: guestTrialAnalytics.topReferralLanes,
+        topReferralRoutes: guestTrialAnalytics.topReferralRoutes,
+        topReferredGuestSources: guestTrialAnalytics.topReferredGuestSources,
+        topReferredGuestRoutes: guestTrialAnalytics.topReferredGuestRoutes,
+        recentLogs: guestTrialAnalytics.recentLogs,
       }
     }),
 
@@ -3486,6 +4975,366 @@ export const intelligenceRouter = createTRPCRouter({
       })
 
       return { campaigns, totalCampaigns: campaigns.length }
+    }),
+
+  getCampaignDrilldown: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      type: z.string().min(1),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const dayStart = new Date(`${input.date}T00:00:00.000Z`)
+      const dayEnd = new Date(dayStart.getTime() + 86400000)
+
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          type: input.type as any,
+          createdAt: {
+            gte: dayStart,
+            lt: dayEnd,
+          },
+          sequenceStep: 0,
+        },
+        select: {
+          id: true,
+          userId: true,
+          channel: true,
+          status: true,
+          variantId: true,
+          reasoning: true,
+          createdAt: true,
+          openedAt: true,
+          clickedAt: true,
+          respondedAt: true,
+          deliveredAt: true,
+          bouncedAt: true,
+          bounceType: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              membershipType: true,
+              membershipStatus: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      })
+
+      const getOutcome = (log: typeof logs[number]) => {
+        if (log.respondedAt) return 'booked'
+        if (log.clickedAt) return 'clicked'
+        if (log.openedAt) return 'opened'
+        if (log.deliveredAt) return 'delivered'
+        if (log.bouncedAt || log.status === 'bounced' || log.status === 'spam') return 'bounced'
+        if (log.status === 'failed') return 'failed'
+        if (log.status === 'pending') return 'pending'
+        return 'sent'
+      }
+
+      const sent = logs.length
+      const opened = logs.filter((log) => !!log.openedAt).length
+      const clicked = logs.filter((log) => !!log.clickedAt).length
+      const converted = logs.filter((log) => !!log.respondedAt).length
+      const delivered = logs.filter((log) => !!log.deliveredAt).length
+      const bounced = logs.filter((log) => !!log.bouncedAt || log.status === 'bounced' || log.status === 'spam').length
+      const failed = logs.filter((log) => log.status === 'failed').length
+      const pending = logs.filter((log) => log.status === 'pending').length
+
+      const channelMap = new Map<string, { channel: string; sent: number; opened: number; clicked: number; converted: number; failed: number }>()
+      const outcomeMap = new Map<string, number>()
+      const sourceMap = new Map<string, number>()
+      const variantMap = new Map<string, number>()
+      const guestTrialOfferMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        stage: string | null
+        destinationDescriptor: string | null
+      }>()
+      const guestTrialRouteMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        destinationType: string | null
+      }>()
+      const referralOfferMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        lane: string | null
+        destinationDescriptor: string | null
+      }>()
+      const referralRouteMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        destinationType: string | null
+      }>()
+      const referredGuestSourceMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        lane: string | null
+        destinationDescriptor: string | null
+      }>()
+      const referredGuestRouteMap = new Map<string, {
+        key: string
+        label: string
+        count: number
+        destinationType: string | null
+      }>()
+
+      for (const log of logs) {
+        const channel = log.channel || 'unknown'
+        const currentChannel = channelMap.get(channel) || {
+          channel,
+          sent: 0,
+          opened: 0,
+          clicked: 0,
+          converted: 0,
+          failed: 0,
+        }
+        currentChannel.sent += 1
+        if (log.openedAt) currentChannel.opened += 1
+        if (log.clickedAt) currentChannel.clicked += 1
+        if (log.respondedAt) currentChannel.converted += 1
+        if (log.status === 'failed' || log.status === 'bounced' || log.status === 'spam') currentChannel.failed += 1
+        channelMap.set(channel, currentChannel)
+
+        const outcome = getOutcome(log)
+        outcomeMap.set(outcome, (outcomeMap.get(outcome) || 0) + 1)
+
+        const reasoning = log.reasoning && typeof log.reasoning === 'object' && !Array.isArray(log.reasoning)
+          ? log.reasoning as Record<string, unknown>
+          : {}
+        const source = typeof reasoning.source === 'string' ? reasoning.source : null
+        if (source) sourceMap.set(source, (sourceMap.get(source) || 0) + 1)
+        if (log.variantId) variantMap.set(log.variantId, (variantMap.get(log.variantId) || 0) + 1)
+
+        const attribution = reasoning.guestTrialAttribution && typeof reasoning.guestTrialAttribution === 'object' && !Array.isArray(reasoning.guestTrialAttribution)
+          ? reasoning.guestTrialAttribution as Record<string, unknown>
+          : null
+        const referralAttribution = reasoning.referralAttribution && typeof reasoning.referralAttribution === 'object' && !Array.isArray(reasoning.referralAttribution)
+          ? reasoning.referralAttribution as Record<string, unknown>
+          : null
+        const offerKey = attribution && typeof attribution.offerKey === 'string' ? attribution.offerKey : null
+        const offerName = attribution && typeof attribution.offerName === 'string' ? attribution.offerName : null
+        const offerStage = attribution && typeof attribution.offerStage === 'string' ? attribution.offerStage : null
+        const destinationDescriptor = attribution && typeof attribution.destinationDescriptor === 'string'
+          ? attribution.destinationDescriptor
+          : null
+        const routeKey = attribution && typeof attribution.routeKey === 'string'
+          ? attribution.routeKey
+          : destinationDescriptor
+        const destinationType = attribution && typeof attribution.destinationType === 'string'
+          ? attribution.destinationType
+          : null
+        const referredGuestSource = attribution && attribution.referralSource && typeof attribution.referralSource === 'object' && !Array.isArray(attribution.referralSource)
+          ? attribution.referralSource as Record<string, unknown>
+          : null
+        const referredGuestSourceOfferKey = referredGuestSource && typeof referredGuestSource.offerKey === 'string'
+          ? referredGuestSource.offerKey
+          : null
+        const referredGuestSourceOfferName = referredGuestSource && typeof referredGuestSource.offerName === 'string'
+          ? referredGuestSource.offerName
+          : null
+        const referredGuestSourceLane = referredGuestSource && typeof referredGuestSource.offerLane === 'string'
+          ? referredGuestSource.offerLane
+          : null
+        const referredGuestSourceDestinationDescriptor = referredGuestSource && typeof referredGuestSource.destinationDescriptor === 'string'
+          ? referredGuestSource.destinationDescriptor
+          : null
+        const referredGuestSourceRouteKey = referredGuestSource && typeof referredGuestSource.routeKey === 'string'
+          ? referredGuestSource.routeKey
+          : referredGuestSourceDestinationDescriptor
+        const referredGuestSourceDestinationType = referredGuestSource && typeof referredGuestSource.destinationType === 'string'
+          ? referredGuestSource.destinationType
+          : null
+        const referralOfferKey = referralAttribution && typeof referralAttribution.offerKey === 'string' ? referralAttribution.offerKey : null
+        const referralOfferName = referralAttribution && typeof referralAttribution.offerName === 'string' ? referralAttribution.offerName : null
+        const referralOfferLane = referralAttribution && typeof referralAttribution.offerLane === 'string' ? referralAttribution.offerLane : null
+        const referralDestinationDescriptor = referralAttribution && typeof referralAttribution.destinationDescriptor === 'string'
+          ? referralAttribution.destinationDescriptor
+          : null
+        const referralRouteKey = referralAttribution && typeof referralAttribution.routeKey === 'string'
+          ? referralAttribution.routeKey
+          : referralDestinationDescriptor
+        const referralDestinationType = referralAttribution && typeof referralAttribution.destinationType === 'string'
+          ? referralAttribution.destinationType
+          : null
+
+        if (offerKey && offerName) {
+          const currentOffer = guestTrialOfferMap.get(offerKey) || {
+            key: offerKey,
+            label: offerName,
+            count: 0,
+            stage: offerStage,
+            destinationDescriptor,
+          }
+          currentOffer.count += 1
+          guestTrialOfferMap.set(offerKey, currentOffer)
+        }
+
+        if (routeKey && destinationDescriptor) {
+          const currentRoute = guestTrialRouteMap.get(routeKey) || {
+            key: routeKey,
+            label: destinationDescriptor,
+            count: 0,
+            destinationType,
+          }
+          currentRoute.count += 1
+          guestTrialRouteMap.set(routeKey, currentRoute)
+        }
+
+        if (referredGuestSourceOfferKey && referredGuestSourceOfferName) {
+          const currentSource = referredGuestSourceMap.get(referredGuestSourceOfferKey) || {
+            key: referredGuestSourceOfferKey,
+            label: referredGuestSourceOfferName,
+            count: 0,
+            lane: referredGuestSourceLane,
+            destinationDescriptor: referredGuestSourceDestinationDescriptor,
+          }
+          currentSource.count += 1
+          referredGuestSourceMap.set(referredGuestSourceOfferKey, currentSource)
+        }
+
+        if (referredGuestSourceRouteKey && referredGuestSourceDestinationDescriptor) {
+          const currentRoute = referredGuestRouteMap.get(referredGuestSourceRouteKey) || {
+            key: referredGuestSourceRouteKey,
+            label: referredGuestSourceDestinationDescriptor,
+            count: 0,
+            destinationType: referredGuestSourceDestinationType,
+          }
+          currentRoute.count += 1
+          referredGuestRouteMap.set(referredGuestSourceRouteKey, currentRoute)
+        }
+
+        if (referralOfferKey && referralOfferName) {
+          const currentOffer = referralOfferMap.get(referralOfferKey) || {
+            key: referralOfferKey,
+            label: referralOfferName,
+            count: 0,
+            lane: referralOfferLane,
+            destinationDescriptor: referralDestinationDescriptor,
+          }
+          currentOffer.count += 1
+          referralOfferMap.set(referralOfferKey, currentOffer)
+        }
+
+        if (referralRouteKey && referralDestinationDescriptor) {
+          const currentRoute = referralRouteMap.get(referralRouteKey) || {
+            key: referralRouteKey,
+            label: referralDestinationDescriptor,
+            count: 0,
+            destinationType: referralDestinationType,
+          }
+          currentRoute.count += 1
+          referralRouteMap.set(referralRouteKey, currentRoute)
+        }
+      }
+
+      const channels = Array.from(channelMap.values()).sort((a, b) => b.sent - a.sent)
+      const outcomes = Array.from(outcomeMap.entries())
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count)
+      const topSources = Array.from(sourceMap.entries())
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topVariants = Array.from(variantMap.entries())
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topGuestTrialOffers = Array.from(guestTrialOfferMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topGuestTrialRoutes = Array.from(guestTrialRouteMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topReferralOffers = Array.from(referralOfferMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topReferralRoutes = Array.from(referralRouteMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topReferredGuestSources = Array.from(referredGuestSourceMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+      const topReferredGuestRoutes = Array.from(referredGuestRouteMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3)
+
+      const recipients = logs.slice(0, 14).map((log) => {
+        const reasoning = log.reasoning && typeof log.reasoning === 'object' && !Array.isArray(log.reasoning)
+          ? log.reasoning as Record<string, unknown>
+          : {}
+        const attribution = reasoning.guestTrialAttribution && typeof reasoning.guestTrialAttribution === 'object' && !Array.isArray(reasoning.guestTrialAttribution)
+          ? reasoning.guestTrialAttribution as Record<string, unknown>
+          : null
+        const referredGuestSource = attribution && attribution.referralSource && typeof attribution.referralSource === 'object' && !Array.isArray(attribution.referralSource)
+          ? attribution.referralSource as Record<string, unknown>
+          : null
+        const referralAttribution = reasoning.referralAttribution && typeof reasoning.referralAttribution === 'object' && !Array.isArray(reasoning.referralAttribution)
+          ? reasoning.referralAttribution as Record<string, unknown>
+          : null
+        return {
+          id: log.id,
+          userId: log.userId,
+          name: log.user?.name || log.user?.email || 'Unknown member',
+          email: log.user?.email || null,
+          channel: log.channel || 'unknown',
+          outcome: getOutcome(log),
+          createdAt: log.createdAt,
+          membershipType: log.user?.membershipType || null,
+          membershipStatus: log.user?.membershipStatus || null,
+          source: typeof reasoning.source === 'string' ? reasoning.source : null,
+          variantId: log.variantId || null,
+          guestTrialOfferName: attribution && typeof attribution.offerName === 'string' ? attribution.offerName : null,
+          guestTrialOfferStage: attribution && typeof attribution.offerStage === 'string' ? attribution.offerStage : null,
+          guestTrialDestinationDescriptor: attribution && typeof attribution.destinationDescriptor === 'string' ? attribution.destinationDescriptor : null,
+          referredGuestSourceOfferName: referredGuestSource && typeof referredGuestSource.offerName === 'string' ? referredGuestSource.offerName : null,
+          referredGuestSourceLane: referredGuestSource && typeof referredGuestSource.offerLane === 'string' ? referredGuestSource.offerLane : null,
+          referredGuestSourceDestinationDescriptor: referredGuestSource && typeof referredGuestSource.destinationDescriptor === 'string' ? referredGuestSource.destinationDescriptor : null,
+          referralOfferName: referralAttribution && typeof referralAttribution.offerName === 'string' ? referralAttribution.offerName : null,
+          referralOfferLane: referralAttribution && typeof referralAttribution.offerLane === 'string' ? referralAttribution.offerLane : null,
+          referralDestinationDescriptor: referralAttribution && typeof referralAttribution.destinationDescriptor === 'string' ? referralAttribution.destinationDescriptor : null,
+        }
+      })
+
+      return {
+        campaign: {
+          id: `${input.type}-${input.date}`,
+          type: input.type,
+          date: input.date,
+          name: `${input.type.replace(/_/g, ' ')} — ${input.date}`,
+          sent,
+          opened,
+          clicked,
+          converted,
+          delivered,
+          bounced,
+          failed,
+          pending,
+        },
+        channels,
+        outcomes,
+        topSources,
+        topVariants,
+        topGuestTrialOffers,
+        topGuestTrialRoutes,
+        topReferralOffers,
+        topReferralRoutes,
+        topReferredGuestSources,
+        topReferredGuestRoutes,
+        recipients,
+      }
     }),
 
   // 1.3 Occupancy Heatmap
@@ -4441,6 +6290,577 @@ export const intelligenceRouter = createTRPCRouter({
       return { members: rows, count: rows.length }
     }),
 
+  getSmartFirstSession: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(45).default(21),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+        select: {
+          automationSettings: true,
+        },
+      })
+
+      const rows = await ctx.prisma.$queryRawUnsafe<SmartFirstSessionRow[]>(`
+        SELECT
+          cf.user_id as "userId",
+          cf.created_at as "followedAt",
+          u.created_at as "userCreatedAt",
+          u.name,
+          u.email,
+          u.membership_type as "membershipType",
+          u.membership_status as "membershipStatus",
+          MIN(psb."bookedAt") FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          ) as "firstConfirmedBookingAt",
+          MAX(psb."bookedAt") FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          ) as "lastConfirmedBookingAt",
+          COUNT(psb.id) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          )::int as "confirmedBookings"
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
+        LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE cf.club_id = $1
+          AND u.email NOT LIKE '%placeholder%'
+          AND u.email NOT LIKE '%demo%'
+        GROUP BY
+          cf.user_id,
+          cf.created_at,
+          u.created_at,
+          u.name,
+          u.email,
+          u.membership_type,
+          u.membership_status
+      `, input.clubId)
+
+      return buildSmartFirstSessionSnapshot({
+        rows,
+        automationSettings: club.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  getGuestTrialBooking: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(45).default(21),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+        select: {
+          automationSettings: true,
+        },
+      })
+
+      const rows = await ctx.prisma.$queryRawUnsafe<GuestTrialBookingRow[]>(`
+        SELECT
+          cf.user_id as "userId",
+          cf.created_at as "followedAt",
+          u.created_at as "userCreatedAt",
+          u.name,
+          u.email,
+          u.membership_type as "membershipType",
+          u.membership_status as "membershipStatus",
+          MIN(ps.date) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date >= NOW()
+          ) as "nextBookedSessionAt",
+          MIN(ps.date) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+          ) as "firstPlayedAt",
+          MAX(ps.date) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+          ) as "lastPlayedAt",
+          COUNT(psb.id) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          )::int as "confirmedBookings",
+          COUNT(psb.id) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+          )::int as "playedConfirmedBookings",
+          COUNT(psb.id) FILTER (
+            WHERE psb.status = 'NO_SHOW' AND ps."clubId" = $1
+          )::int as "noShowCount"
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
+        LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE cf.club_id = $1
+          AND u.email NOT LIKE '%placeholder%'
+          AND u.email NOT LIKE '%demo%'
+        GROUP BY
+          cf.user_id,
+          cf.created_at,
+          u.created_at,
+          u.name,
+          u.email,
+          u.membership_type,
+          u.membership_status
+      `, input.clubId)
+
+      return buildGuestTrialBookingSnapshot({
+        rows,
+        automationSettings: club.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  getWinBackSnapshot: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(21).max(120).default(60),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+        select: {
+          automationSettings: true,
+        },
+      })
+
+      const rows = await ctx.prisma.$queryRawUnsafe<WinBackRow[]>(`
+        SELECT
+          cf.user_id as "userId",
+          cf.created_at as "followedAt",
+          u.created_at as "userCreatedAt",
+          u.name,
+          u.email,
+          u.membership_type as "membershipType",
+          u.membership_status as "membershipStatus",
+          MAX(psb."bookedAt") FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          ) as "lastConfirmedBookingAt",
+          COUNT(psb.id) FILTER (
+            WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+          )::int as "confirmedBookings"
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
+        LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE cf.club_id = $1
+          AND u.email NOT LIKE '%placeholder%'
+          AND u.email NOT LIKE '%demo%'
+        GROUP BY
+          cf.user_id,
+          cf.created_at,
+          u.created_at,
+          u.name,
+          u.email,
+          u.membership_type,
+          u.membership_status
+      `, input.clubId)
+
+      return buildWinBackSnapshot({
+        rows,
+        automationSettings: club.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  getReferralSnapshot: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(21).max(120).default(60),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const lookbackDate = new Date()
+      lookbackDate.setDate(lookbackDate.getDate() - input.windowDays)
+
+      const club: any = await ctx.prisma.club.findUniqueOrThrow({
+        where: { id: input.clubId },
+        select: {
+          automationSettings: true,
+        },
+      })
+
+      const rows = await ctx.prisma.$queryRawUnsafe<ReferralRow[]>(`
+        WITH booking_stats AS (
+          SELECT
+            psb."userId",
+            MIN(ps.date) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+            ) as "firstConfirmedBookingAt",
+            MAX(ps.date) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+            ) as "lastConfirmedBookingAt",
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+            )::int as "confirmedBookings",
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED'
+                AND ps."clubId" = $1
+                AND ps.date >= CURRENT_DATE - INTERVAL '21 days'
+            )::int as "recentConfirmedBookings"
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          GROUP BY psb."userId"
+        ),
+        user_sessions AS (
+          SELECT b."userId", b."sessionId"
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE b.status = 'CONFIRMED'
+            AND ps."clubId" = $1
+            AND ps.date >= CURRENT_DATE - INTERVAL '90 days'
+            AND ps.date <= CURRENT_DATE
+        ),
+        co_player_counts AS (
+          SELECT us1."userId", us2."userId" as co_player_id, COUNT(*) as n
+          FROM user_sessions us1
+          JOIN user_sessions us2 ON us1."sessionId" = us2."sessionId"
+            AND us1."userId" != us2."userId"
+          GROUP BY us1."userId", us2."userId"
+          HAVING COUNT(*) >= 2
+        ),
+        top_co AS (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY "userId" ORDER BY n DESC) as rn
+          FROM co_player_counts
+        ),
+        limited AS (
+          SELECT "userId", co_player_id
+          FROM top_co
+          WHERE rn <= 12
+        ),
+        co_summary AS (
+          SELECT
+            l."userId",
+            COUNT(*)::int as "totalCoPlayers",
+            COUNT(*) FILTER (
+              WHERE EXISTS (
+                SELECT 1
+                FROM play_session_bookings b2
+                JOIN play_sessions ps2 ON ps2.id = b2."sessionId"
+                WHERE b2."userId" = l.co_player_id
+                  AND ps2."clubId" = $1
+                  AND b2.status = 'CONFIRMED'
+                  AND ps2.date >= CURRENT_DATE - INTERVAL '21 days'
+              )
+            )::int as "activeCoPlayers"
+          FROM limited l
+          GROUP BY l."userId"
+        )
+        SELECT
+          cf.user_id as "userId",
+          cf.created_at as "followedAt",
+          u.created_at as "userCreatedAt",
+          u.name,
+          u.email,
+          u.membership_type as "membershipType",
+          u.membership_status as "membershipStatus",
+          bs."firstConfirmedBookingAt",
+          bs."lastConfirmedBookingAt",
+          COALESCE(bs."confirmedBookings", 0)::int as "confirmedBookings",
+          COALESCE(bs."recentConfirmedBookings", 0)::int as "recentConfirmedBookings",
+          COALESCE(cs."activeCoPlayers", 0)::int as "activeCoPlayers",
+          COALESCE(cs."totalCoPlayers", 0)::int as "totalCoPlayers"
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        LEFT JOIN booking_stats bs ON bs."userId" = u.id
+        LEFT JOIN co_summary cs ON cs."userId" = u.id
+        WHERE cf.club_id = $1
+          AND u.email NOT LIKE '%placeholder%'
+          AND u.email NOT LIKE '%demo%'
+      `, input.clubId)
+
+      const outcomeRows = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          createdAt: { gte: lookbackDate },
+        },
+        select: {
+          id: true,
+          userId: true,
+          status: true,
+          createdAt: true,
+          openedAt: true,
+          clickedAt: true,
+          respondedAt: true,
+          deliveredAt: true,
+          bouncedAt: true,
+          reasoning: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 600,
+      }) as ReferralOutcomeRow[]
+
+      const referredGuestUserIds = Array.from(new Set(
+        outcomeRows.flatMap((row) => {
+          const reasoning = row.reasoning && typeof row.reasoning === 'object' && !Array.isArray(row.reasoning)
+            ? row.reasoning as Record<string, unknown>
+            : null
+          const guestTrialAttribution = reasoning?.guestTrialAttribution
+            && typeof reasoning.guestTrialAttribution === 'object'
+            && !Array.isArray(reasoning.guestTrialAttribution)
+            ? reasoning.guestTrialAttribution as Record<string, unknown>
+            : null
+          const referralSource = guestTrialAttribution?.referralSource
+            && typeof guestTrialAttribution.referralSource === 'object'
+            && !Array.isArray(guestTrialAttribution.referralSource)
+            ? guestTrialAttribution.referralSource as Record<string, unknown>
+            : null
+
+          return row.userId && referralSource ? [row.userId] : []
+        }),
+      ))
+
+      const capturedGuestRows = referredGuestUserIds.length > 0
+        ? await ctx.prisma.$queryRawUnsafe<ReferralCapturedGuestRow[]>(`
+          SELECT
+            u.id as "userId",
+            u.name,
+            u.email,
+            u.membership_type as "membershipType",
+            u.membership_status as "membershipStatus",
+            MIN(ps.date) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date >= NOW()
+            ) as "nextBookedSessionAt",
+            MIN(ps.date) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+            ) as "firstPlayedAt",
+            MAX(ps.date) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+            ) as "lastPlayedAt",
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+            )::int as "confirmedBookings",
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+            )::int as "playedConfirmedBookings"
+          FROM users u
+          LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
+          LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE u.id IN (${referredGuestUserIds.map((id) => `'${id}'`).join(', ')})
+          GROUP BY
+            u.id,
+            u.name,
+            u.email,
+            u.membership_type,
+            u.membership_status
+        `, input.clubId)
+        : []
+
+      const rewardIssuanceRows = await ctx.prisma.referralRewardIssuance.findMany({
+        where: {
+          clubId: input.clubId,
+        },
+        select: {
+          advocateUserId: true,
+          referredGuestUserId: true,
+          offerKey: true,
+          status: true,
+          issuedAt: true,
+          reviewedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+      }) as ReferralRewardIssuanceRow[]
+
+      return buildReferralSnapshot({
+        rows,
+        outcomeRows,
+        capturedGuestRows,
+        rewardIssuanceRows,
+        automationSettings: club.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  updateReferralRewardIssuance: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      advocateUserId: z.string().uuid(),
+      referredGuestUserId: z.string().uuid(),
+      offerKey: z.string().min(1).max(120),
+      lane: z.enum(['vip_advocate', 'social_regular', 'dormant_advocate']),
+      offerName: z.string().min(1).max(160),
+      rewardLabel: z.string().min(1).max(160),
+      status: z.enum(['ready_issue', 'on_hold', 'issued']),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const [advocate, referredGuest, guestEvidence, existingIssuances] = await Promise.all([
+        ctx.prisma.user.findUnique({
+          where: { id: input.advocateUserId },
+          select: { id: true, name: true, email: true },
+        }),
+        ctx.prisma.user.findUnique({
+          where: { id: input.referredGuestUserId },
+          select: { id: true, name: true, email: true },
+        }),
+        ctx.prisma.$queryRawUnsafe<Array<{
+          confirmedBookings: number | string | null
+          playedConfirmedBookings: number | string | null
+        }>>(`
+          SELECT
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1
+            )::int as "confirmedBookings",
+            COUNT(psb.id) FILTER (
+              WHERE psb.status = 'CONFIRMED' AND ps."clubId" = $1 AND ps.date < NOW()
+            )::int as "playedConfirmedBookings"
+          FROM users u
+          LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
+          LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE u.id = $2
+          GROUP BY u.id
+        `, input.clubId, input.referredGuestUserId),
+        ctx.prisma.referralRewardIssuance.findMany({
+          where: {
+            clubId: input.clubId,
+            referredGuestUserId: input.referredGuestUserId,
+          },
+          select: {
+            advocateUserId: true,
+            referredGuestUserId: true,
+            offerKey: true,
+            status: true,
+            issuedAt: true,
+            reviewedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ])
+
+      const guardrails = evaluateReferralRewardGuardrails({
+        advocateUserId: input.advocateUserId,
+        advocateEmail: advocate?.email || null,
+        referredGuestUserId: input.referredGuestUserId,
+        referredGuestEmail: referredGuest?.email || null,
+        offerKey: input.offerKey,
+        playedConfirmedBookings: Number(guestEvidence?.[0]?.playedConfirmedBookings || 0),
+        currentStatus: input.status,
+        existingRows: existingIssuances as ReferralRewardIssuanceRow[],
+      })
+
+      if (input.status === 'issued' && guardrails.guardrailStatus === 'blocked') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: guardrails.guardrailSummary,
+        })
+      }
+
+      const prismaStatus = input.status === 'issued'
+        ? 'ISSUED'
+        : input.status === 'on_hold'
+          ? 'ON_HOLD'
+          : 'READY'
+      const now = new Date()
+      const targetId = `${input.advocateUserId}:${input.referredGuestUserId}:${input.offerKey}`
+      const mergedMetadata = {
+        ...(input.metadata || {}),
+        guardrailStatus: guardrails.guardrailStatus,
+        guardrailReasons: guardrails.guardrailReasons,
+        guardrailSummary: guardrails.guardrailSummary,
+        autoIssueSuggested: guardrails.autoIssueSuggested,
+        duplicateRisk: guardrails.duplicateRisk,
+        abuseRisk: guardrails.abuseRisk,
+        advocateName: advocate?.name || null,
+        advocateEmail: advocate?.email || null,
+        referredGuestName: referredGuest?.name || null,
+        referredGuestEmail: referredGuest?.email || null,
+        playedConfirmedBookings: Number(guestEvidence?.[0]?.playedConfirmedBookings || 0),
+        confirmedBookings: Number(guestEvidence?.[0]?.confirmedBookings || 0),
+        ...(input.status === 'issued' && guardrails.guardrailStatus === 'review'
+          ? { issuedWithReview: true }
+          : {}),
+      }
+
+      const record = await ctx.prisma.referralRewardIssuance.upsert({
+        where: {
+          clubId_advocateUserId_referredGuestUserId_offerKey: {
+            clubId: input.clubId,
+            advocateUserId: input.advocateUserId,
+            referredGuestUserId: input.referredGuestUserId,
+            offerKey: input.offerKey,
+          },
+        },
+        update: {
+          lane: input.lane,
+          offerName: input.offerName,
+          rewardLabel: input.rewardLabel,
+          status: prismaStatus as any,
+          metadata: mergedMetadata as any,
+          reviewedAt: now,
+          reviewedByUserId: ctx.session.user.id,
+          issuedAt: input.status === 'issued' ? now : null,
+        },
+        create: {
+          clubId: input.clubId,
+          advocateUserId: input.advocateUserId,
+          referredGuestUserId: input.referredGuestUserId,
+          offerKey: input.offerKey,
+          lane: input.lane,
+          offerName: input.offerName,
+          rewardLabel: input.rewardLabel,
+          status: prismaStatus as any,
+          metadata: mergedMetadata as any,
+          reviewedAt: now,
+          reviewedByUserId: ctx.session.user.id,
+          ...(input.status === 'issued' ? { issuedAt: now } : {}),
+        },
+        select: {
+          status: true,
+          issuedAt: true,
+          reviewedAt: true,
+          updatedAt: true,
+        },
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        actorType: 'user',
+        action: 'referralRewardIssuance',
+        mode: 'manual_review',
+        result: input.status === 'issued' ? 'executed' : 'reviewed',
+        targetType: 'referral_reward_issuance',
+        targetId,
+        summary: input.status === 'issued'
+          ? guardrails.guardrailStatus === 'review'
+            ? `Marked ${input.rewardLabel} as issued for advocate ${input.advocateUserId} after review-only guardrails on referred guest ${input.referredGuestUserId}.`
+            : `Marked ${input.rewardLabel} as issued for advocate ${input.advocateUserId} after referred guest ${input.referredGuestUserId} converted.`
+          : input.status === 'on_hold'
+            ? `Put ${input.rewardLabel} on hold for advocate ${input.advocateUserId}.`
+            : `Re-opened ${input.rewardLabel} for advocate ${input.advocateUserId}.`,
+        metadata: {
+          advocateUserId: input.advocateUserId,
+          referredGuestUserId: input.referredGuestUserId,
+          offerKey: input.offerKey,
+          lane: input.lane,
+          ...mergedMetadata,
+        },
+      })
+
+      return {
+        ok: true,
+        clientStatus: input.status,
+        ...record,
+      }
+    }),
+
   // ── Generate Campaign Message (LLM-powered) ──
   generateCampaignMessage: protectedProcedure
     .input(z.object({
@@ -4579,8 +6999,29 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       sessionId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       await enforceCampaignUsageLimits(input.clubId, input.channel, input.memberIds.length)
+      await enforceManualLiveOutreachGate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        automationSettings: clubAutomationContext?.automationSettings,
+        adminRole: adminAccess.role,
+        targetType: 'manual_campaign',
+        actionKind: 'create_campaign',
+        channel: input.channel,
+        recipientCount: input.memberIds.length,
+        label: `Manual ${input.type} campaign`,
+      })
       return runCreateCampaign(ctx.prisma, input)
     }),
 
@@ -4591,7 +7032,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       action: advisorActionSchema,
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       const advisorMessage = input.messageId
         ? await ctx.prisma.aIMessage.findUnique({
@@ -4644,11 +7085,100 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         where: { id: input.clubId },
         select: { automationSettings: true },
       })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'approveActions',
+        adminRole: adminAccess.role,
+      })
       const buildSandboxRouting = (channel: 'email' | 'sms' | 'both') =>
         buildAdvisorSandboxRoutingSummary({
           settings: clubAutomationContext?.automationSettings,
           channel,
         })
+      const buildOutreachControlPlaneNote = (reason: string) =>
+        `${reason} This outreach was reviewed in shadow mode only, so no live delivery happened.`
+      const requireOutreachControlPlane = async (params: {
+        targetType: string
+        targetId?: string | null
+        deliveryMode: 'send_now' | 'send_later'
+        channel: 'email' | 'sms' | 'both'
+        recipientCount: number
+        actionKind: AgentOutreachRolloutActionKind
+        summaryLabel: string
+      }) => {
+        assertAgentPermissionForAdmin({
+          automationSettings: clubAutomationContext?.automationSettings,
+          action: 'outreachSend',
+          adminRole: adminAccess.role,
+        })
+
+        const controlPlane = evaluateAgentControlPlaneAction({
+          automationSettings: clubAutomationContext?.automationSettings,
+          action: 'outreachSend',
+        })
+
+        if (!controlPlane.allowed) {
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: params.targetType,
+            targetId: params.targetId || null,
+            mode: controlPlane.mode,
+            result: 'blocked',
+            summary: controlPlane.reason,
+            metadata: {
+              actionKind: params.actionKind,
+              deliveryMode: params.deliveryMode,
+              channel: params.channel,
+              recipientCount: params.recipientCount,
+              label: params.summaryLabel,
+              reason: 'control_plane_disabled',
+            },
+          })
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: controlPlane.reason,
+          })
+        }
+
+        if (!controlPlane.shadow) {
+          const rollout = evaluateAgentOutreachRollout({
+            clubId: input.clubId,
+            automationSettings: clubAutomationContext?.automationSettings,
+            actionKind: params.actionKind,
+          })
+
+          if (!rollout.allowed) {
+            await persistAgentDecisionRecord(ctx.prisma, {
+              clubId: input.clubId,
+              userId: ctx.session.user.id,
+              action: 'outreachSend',
+              targetType: params.targetType,
+              targetId: params.targetId || null,
+              mode: controlPlane.mode,
+              result: 'blocked',
+              summary: rollout.reason,
+              metadata: {
+                actionKind: params.actionKind,
+                deliveryMode: params.deliveryMode,
+                channel: params.channel,
+                recipientCount: params.recipientCount,
+                label: params.summaryLabel,
+                reason: 'outreach_rollout_blocked',
+                rolloutClubAllowlisted: rollout.clubAllowlisted,
+                rolloutActionEnabled: rollout.actionEnabled,
+              },
+            })
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: rollout.reason,
+            })
+          }
+        }
+
+        return controlPlane
+      }
 
       const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {
         if (!advisorMessage) return result
@@ -4794,10 +7324,84 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           })
         }
 
+        const fillControlPlane = await requireOutreachControlPlane({
+          targetType: 'play_session',
+          targetId: fillAction.session.id,
+          deliveryMode: 'send_now',
+          channel: fillAction.outreach.channel,
+          recipientCount: eligibleCandidates.length,
+          actionKind: 'fill_session',
+          summaryLabel: fillAction.session.title,
+        })
+
+        if (fillControlPlane.shadow) {
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: 'play_session',
+            targetId: fillAction.session.id,
+            mode: fillControlPlane.mode,
+            result: 'shadowed',
+            summary: `Slot-filler outreach for ${fillAction.session.title} was reviewed in shadow mode.`,
+            metadata: {
+              actionKind: 'fill_session',
+              deliveryMode: 'send_now',
+              channel: fillAction.outreach.channel,
+              recipientCount: eligibleCandidates.length,
+            },
+          })
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            shadowed: true,
+            kind: 'fill_session' as const,
+            sessionId: fillAction.session.id,
+            sessionTitle: fillAction.session.title,
+            candidateCount: eligibleCandidates.length,
+            channel: fillAction.outreach.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            previewRecipientCount: eligibleCandidates.length,
+            previewRecipients,
+            sandboxRouting: {
+              ...buildSandboxRouting(fillAction.outreach.channel),
+              note: buildOutreachControlPlaneNote(fillControlPlane.reason),
+            },
+            controlPlane: {
+              mode: fillControlPlane.mode,
+              reason: fillControlPlane.reason,
+            },
+          })
+        }
+
         const inviteResult = await sendInvites(ctx.prisma, {
           clubId: input.clubId,
           sessionId: fillAction.session.id,
           candidates: eligibleCandidates,
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'outreachSend',
+          targetType: 'play_session',
+          targetId: fillAction.session.id,
+          mode: fillControlPlane.mode,
+          result: 'executed',
+          summary: `Slot-filler outreach for ${fillAction.session.title} sent live to ${inviteResult.sent || 0} members.`,
+          metadata: {
+            actionKind: 'fill_session',
+            deliveryMode: 'send_now',
+            channel: fillAction.outreach.channel,
+            recipientCount: eligibleCandidates.length,
+            sent: inviteResult.sent || 0,
+            failed: inviteResult.failed || 0,
+            skipped: (inviteResult.skipped || 0) + guardrails.summary.excludedCount,
+          },
         })
 
         return persistAdvisorOutcome({
@@ -4881,10 +7485,84 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           })
         }
 
+        const reactivationControlPlane = await requireOutreachControlPlane({
+          targetType: 'reactivation_segment',
+          targetId: null,
+          deliveryMode: 'send_now',
+          channel: reactivationAction.reactivation.channel,
+          recipientCount: eligibleCandidates.length,
+          actionKind: 'reactivate_members',
+          summaryLabel: reactivationAction.reactivation.segmentLabel,
+        })
+
+        if (reactivationControlPlane.shadow) {
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: 'reactivation_segment',
+            targetId: null,
+            mode: reactivationControlPlane.mode,
+            result: 'shadowed',
+            summary: `Reactivation outreach for ${reactivationAction.reactivation.segmentLabel} was reviewed in shadow mode.`,
+            metadata: {
+              actionKind: 'reactivate_members',
+              deliveryMode: 'send_now',
+              channel: reactivationAction.reactivation.channel,
+              recipientCount: eligibleCandidates.length,
+            },
+          })
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            shadowed: true,
+            kind: 'reactivate_members' as const,
+            segmentLabel: reactivationAction.reactivation.segmentLabel,
+            inactivityDays: reactivationAction.reactivation.inactivityDays,
+            candidateCount: eligibleCandidates.length,
+            channel: reactivationAction.reactivation.channel,
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            previewRecipientCount: eligibleCandidates.length,
+            previewRecipients,
+            sandboxRouting: {
+              ...buildSandboxRouting(reactivationAction.reactivation.channel),
+              note: buildOutreachControlPlaneNote(reactivationControlPlane.reason),
+            },
+            controlPlane: {
+              mode: reactivationControlPlane.mode,
+              reason: reactivationControlPlane.reason,
+            },
+          })
+        }
+
         const sendResult = await sendReactivationMessages(ctx.prisma, {
           clubId: input.clubId,
           candidates: eligibleCandidates,
           customMessage: reactivationAction.reactivation.message,
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'outreachSend',
+          targetType: 'reactivation_segment',
+          targetId: null,
+          mode: reactivationControlPlane.mode,
+          result: 'executed',
+          summary: `Reactivation outreach for ${reactivationAction.reactivation.segmentLabel} sent live to ${sendResult.sent || 0} members.`,
+          metadata: {
+            actionKind: 'reactivate_members',
+            deliveryMode: 'send_now',
+            channel: reactivationAction.reactivation.channel,
+            recipientCount: eligibleCandidates.length,
+            sent: sendResult.sent || 0,
+            failed: sendResult.failed || 0,
+            skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
+          },
         })
 
         return persistAdvisorOutcome({
@@ -5014,6 +7692,66 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             })
           }
 
+          const lifecycleScheduleControlPlane = await requireOutreachControlPlane({
+            targetType: 'advisor_lifecycle_campaign',
+            targetId: advisorDraft?.id || advisorMessage?.id || null,
+            deliveryMode: 'send_later',
+            channel: lifecycleAction.lifecycle.channel,
+            recipientCount: memberIds.length,
+            actionKind: lifecycleAction.kind,
+            summaryLabel: lifecycleAction.lifecycle.label,
+          })
+
+          if (lifecycleScheduleControlPlane.shadow) {
+            await persistAgentDecisionRecord(ctx.prisma, {
+              clubId: input.clubId,
+              userId: ctx.session.user.id,
+              action: 'outreachSend',
+              targetType: 'advisor_lifecycle_campaign',
+              targetId: advisorDraft?.id || advisorMessage?.id || null,
+              mode: lifecycleScheduleControlPlane.mode,
+              result: 'shadowed',
+              summary: `${lifecycleAction.lifecycle.label} was reviewed for scheduled outreach but held in shadow mode.`,
+              metadata: {
+                actionKind: lifecycleAction.kind,
+                deliveryMode: 'send_later',
+                channel: lifecycleAction.lifecycle.channel,
+                recipientCount: memberIds.length,
+                scheduledFor,
+                timeZone,
+              },
+            })
+            return persistAdvisorOutcome({
+              ok: true,
+              sandboxed: true,
+              shadowed: true,
+              kind: lifecycleAction.kind,
+              lifecycle: lifecycleAction.lifecycle.lifecycle,
+              label: lifecycleAction.lifecycle.label,
+              memberCount: memberIds.length,
+              candidateCount: lifecycleAction.lifecycle.candidates.length,
+              channel: lifecycleAction.lifecycle.channel,
+              guardrails: guardrails.summary,
+              deliveryMode: 'send_later' as const,
+              scheduledFor,
+              timeZone,
+              scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+              previewRecipientCount: memberIds.length,
+              previewRecipients,
+              sandboxRouting: {
+                ...buildSandboxRouting(lifecycleAction.lifecycle.channel),
+                note: buildOutreachControlPlaneNote(lifecycleScheduleControlPlane.reason),
+              },
+              sent: 0,
+              failed: 0,
+              skipped: guardrails.summary.excludedCount,
+              controlPlane: {
+                mode: lifecycleScheduleControlPlane.mode,
+                reason: lifecycleScheduleControlPlane.reason,
+              },
+            })
+          }
+
           const scheduled = await scheduleCampaignSend(ctx.prisma, {
             clubId: input.clubId,
             type: lifecycleAction.lifecycle.campaignType,
@@ -5026,6 +7764,27 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             scheduledFor,
             timeZone,
             source: lifecycleAction.kind,
+            actionKind: lifecycleAction.kind,
+            guestTrialContext: lifecycleAction.lifecycle.guestTrialContext || null,
+          })
+
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: 'advisor_lifecycle_campaign',
+            targetId: advisorDraft?.id || advisorMessage?.id || null,
+            mode: lifecycleScheduleControlPlane.mode,
+            result: 'executed',
+            summary: `${lifecycleAction.lifecycle.label} was scheduled live for ${formatAdvisorScheduledLabel(scheduledFor, timeZone)}.`,
+            metadata: {
+              actionKind: lifecycleAction.kind,
+              deliveryMode: 'send_later',
+              channel: lifecycleAction.lifecycle.channel,
+              recipientCount: memberIds.length,
+              scheduledFor,
+              timeZone,
+            },
           })
 
           return persistAdvisorOutcome({
@@ -5062,6 +7821,61 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           })
         }
 
+        const lifecycleSendControlPlane = await requireOutreachControlPlane({
+          targetType: 'advisor_lifecycle_campaign',
+          targetId: advisorDraft?.id || advisorMessage?.id || null,
+          deliveryMode: 'send_now',
+          channel: lifecycleAction.lifecycle.channel,
+          recipientCount: memberIds.length,
+          actionKind: lifecycleAction.kind,
+          summaryLabel: lifecycleAction.lifecycle.label,
+        })
+
+        if (lifecycleSendControlPlane.shadow) {
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: 'advisor_lifecycle_campaign',
+            targetId: advisorDraft?.id || advisorMessage?.id || null,
+            mode: lifecycleSendControlPlane.mode,
+            result: 'shadowed',
+            summary: `${lifecycleAction.lifecycle.label} was reviewed for live outreach but held in shadow mode.`,
+            metadata: {
+              actionKind: lifecycleAction.kind,
+              deliveryMode: 'send_now',
+              channel: lifecycleAction.lifecycle.channel,
+              recipientCount: memberIds.length,
+            },
+          })
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            shadowed: true,
+            kind: lifecycleAction.kind,
+            lifecycle: lifecycleAction.lifecycle.lifecycle,
+            label: lifecycleAction.lifecycle.label,
+            memberCount: memberIds.length,
+            candidateCount: lifecycleAction.lifecycle.candidates.length,
+            channel: lifecycleAction.lifecycle.channel,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_now' as const,
+            previewRecipientCount: memberIds.length,
+            previewRecipients,
+            sandboxRouting: {
+              ...buildSandboxRouting(lifecycleAction.lifecycle.channel),
+              note: buildOutreachControlPlaneNote(lifecycleSendControlPlane.reason),
+            },
+            sent: 0,
+            failed: 0,
+            skipped: guardrails.summary.excludedCount,
+            controlPlane: {
+              mode: lifecycleSendControlPlane.mode,
+              reason: lifecycleSendControlPlane.reason,
+            },
+          })
+        }
+
         const sendResult = await runCreateCampaign(ctx.prisma, {
           clubId: input.clubId,
           type: lifecycleAction.lifecycle.campaignType,
@@ -5072,6 +7886,27 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           body: lifecycleAction.lifecycle.message,
           smsBody: lifecycleAction.lifecycle.smsBody,
           source: lifecycleAction.kind,
+          guestTrialContext: lifecycleAction.lifecycle.guestTrialContext || null,
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'outreachSend',
+          targetType: 'advisor_lifecycle_campaign',
+          targetId: advisorDraft?.id || advisorMessage?.id || null,
+          mode: lifecycleSendControlPlane.mode,
+          result: 'executed',
+          summary: `${lifecycleAction.lifecycle.label} sent live to ${sendResult.sent || 0} members.`,
+          metadata: {
+            actionKind: lifecycleAction.kind,
+            deliveryMode: 'send_now',
+            channel: lifecycleAction.lifecycle.channel,
+            recipientCount: memberIds.length,
+            sent: sendResult.sent || 0,
+            failed: sendResult.failed || 0,
+            skipped: (sendResult.skipped || 0) + guardrails.summary.excludedCount,
+          },
         })
 
         return persistAdvisorOutcome({
@@ -5220,6 +8055,35 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         return persistAdvisorOutcome({
           ok: true,
           kind: 'update_sandbox_routing' as const,
+          policy: input.action.policy,
+          changedFields: input.action.policy.changes,
+          previousPolicy: currentPolicy,
+        })
+      }
+
+      if (input.action.kind === 'update_admin_reminder_routing') {
+        const currentUser = await ctx.prisma.user.findUniqueOrThrow({
+          where: { id: ctx.session.user.id },
+          select: {
+            adminReminderChannel: true,
+            adminReminderEmail: true,
+            adminReminderPhone: true,
+          },
+        })
+        const currentPolicy = resolveAdvisorAdminReminderRouting(currentUser)
+
+        await ctx.prisma.user.update({
+          where: { id: ctx.session.user.id },
+          data: {
+            adminReminderChannel: input.action.policy.channel,
+            adminReminderEmail: input.action.policy.email || null,
+            adminReminderPhone: input.action.policy.phone || null,
+          },
+        })
+
+        return persistAdvisorOutcome({
+          ok: true,
+          kind: 'update_admin_reminder_routing' as const,
           policy: input.action.policy,
           changedFields: input.action.policy.changes,
           previousPolicy: currentPolicy,
@@ -5380,6 +8244,69 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           })
         }
 
+        const campaignScheduleControlPlane = await requireOutreachControlPlane({
+          targetType: 'advisor_campaign',
+          targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+          deliveryMode: 'send_later',
+          channel: input.action.campaign.channel,
+          recipientCount: memberIds.length,
+          actionKind: 'create_campaign',
+          summaryLabel: cohortName,
+        })
+
+        if (campaignScheduleControlPlane.shadow) {
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'outreachSend',
+            targetType: 'advisor_campaign',
+            targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+            mode: campaignScheduleControlPlane.mode,
+            result: 'shadowed',
+            summary: `${cohortName} was reviewed for scheduled outreach but held in shadow mode.`,
+            metadata: {
+              actionKind: 'create_campaign',
+              deliveryMode: 'send_later',
+              channel: input.action.campaign.channel,
+              recipientCount: memberIds.length,
+              scheduledFor,
+              timeZone,
+            },
+          })
+          return persistAdvisorOutcome({
+            ok: true,
+            sandboxed: true,
+            shadowed: true,
+            kind: 'create_campaign' as const,
+            cohortId,
+            cohortName,
+            memberCount: memberIds.length,
+            audienceCount: members.length,
+            excludedByRules,
+            excludedByGuardrails,
+            guardrails: guardrails.summary,
+            deliveryMode: 'send_later' as const,
+            scheduledFor,
+            timeZone,
+            scheduledLabel: formatAdvisorScheduledLabel(scheduledFor, timeZone),
+            previewRecipientCount: memberIds.length,
+            previewRecipients,
+            sandboxRouting: {
+              ...buildSandboxRouting(input.action.campaign.channel),
+              note: buildOutreachControlPlaneNote(campaignScheduleControlPlane.reason),
+            },
+            sent: 0,
+            failed: 0,
+            skipped: excludedByGuardrails,
+            emailSent: 0,
+            smsSent: 0,
+            controlPlane: {
+              mode: campaignScheduleControlPlane.mode,
+              reason: campaignScheduleControlPlane.reason,
+            },
+          })
+        }
+
         const scheduled = await scheduleCampaignSend(ctx.prisma, {
           clubId: input.clubId,
           type: input.action.campaign.type,
@@ -5392,6 +8319,28 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           scheduledFor,
           timeZone,
           recipientRules: input.action.campaign.execution.recipientRules || null,
+          actionKind: 'create_campaign',
+          guestTrialContext: input.action.campaign.guestTrialContext || null,
+          referralContext: input.action.campaign.referralContext || null,
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'outreachSend',
+          targetType: 'advisor_campaign',
+          targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+          mode: campaignScheduleControlPlane.mode,
+          result: 'executed',
+          summary: `${cohortName} was scheduled live for ${formatAdvisorScheduledLabel(scheduledFor, timeZone)}.`,
+          metadata: {
+            actionKind: 'create_campaign',
+            deliveryMode: 'send_later',
+            channel: input.action.campaign.channel,
+            recipientCount: memberIds.length,
+            scheduledFor,
+            timeZone,
+          },
         })
 
         return persistAdvisorOutcome({
@@ -5430,6 +8379,64 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         })
       }
 
+      const campaignSendControlPlane = await requireOutreachControlPlane({
+        targetType: 'advisor_campaign',
+        targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+        deliveryMode: 'send_now',
+        channel: input.action.campaign.channel,
+        recipientCount: memberIds.length,
+        actionKind: 'create_campaign',
+        summaryLabel: cohortName,
+      })
+
+      if (campaignSendControlPlane.shadow) {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'outreachSend',
+          targetType: 'advisor_campaign',
+          targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+          mode: campaignSendControlPlane.mode,
+          result: 'shadowed',
+          summary: `${cohortName} was reviewed for live outreach but held in shadow mode.`,
+          metadata: {
+            actionKind: 'create_campaign',
+            deliveryMode: 'send_now',
+            channel: input.action.campaign.channel,
+            recipientCount: memberIds.length,
+          },
+        })
+        return persistAdvisorOutcome({
+          ok: true,
+          sandboxed: true,
+          shadowed: true,
+          kind: 'create_campaign' as const,
+          cohortId,
+          cohortName,
+          memberCount: memberIds.length,
+          audienceCount: members.length,
+          excludedByRules,
+          excludedByGuardrails,
+          guardrails: guardrails.summary,
+          deliveryMode: 'send_now' as const,
+          previewRecipientCount: memberIds.length,
+          previewRecipients,
+          sandboxRouting: {
+            ...buildSandboxRouting(input.action.campaign.channel),
+            note: buildOutreachControlPlaneNote(campaignSendControlPlane.reason),
+          },
+          sent: 0,
+          failed: 0,
+          skipped: excludedByGuardrails,
+          emailSent: 0,
+          smsSent: 0,
+          controlPlane: {
+            mode: campaignSendControlPlane.mode,
+            reason: campaignSendControlPlane.reason,
+          },
+        })
+      }
+
       const result = await runCreateCampaign(ctx.prisma, {
         clubId: input.clubId,
         type: input.action.campaign.type,
@@ -5439,6 +8446,28 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         subject: input.action.campaign.subject,
         body: input.action.campaign.body,
         smsBody: input.action.campaign.smsBody,
+        guestTrialContext: input.action.campaign.guestTrialContext || null,
+        referralContext: input.action.campaign.referralContext || null,
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'outreachSend',
+        targetType: 'advisor_campaign',
+        targetId: advisorDraft?.id || advisorMessage?.id || cohortId || null,
+        mode: campaignSendControlPlane.mode,
+        result: 'executed',
+        summary: `${cohortName} sent live to ${result.sent || 0} members.`,
+        metadata: {
+          actionKind: 'create_campaign',
+          deliveryMode: 'send_now',
+          channel: input.action.campaign.channel,
+          recipientCount: memberIds.length,
+          sent: result.sent || 0,
+          failed: result.failed || 0,
+          skipped: (result.skipped || 0) + excludedByGuardrails,
+        },
       })
 
       return persistAdvisorOutcome({
@@ -5465,7 +8494,16 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       snoozeHours: z.number().int().min(1).max(168).default(24),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'approveActions',
+        adminRole: adminAccess.role,
+      })
 
       const message = await ctx.prisma.aIMessage.findUnique({
         where: { id: input.messageId },
@@ -5560,7 +8598,16 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       opsSessionDraftId: z.string().uuid(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'draftManage',
+        adminRole: adminAccess.role,
+      })
 
       try {
         const draft = await ctx.prisma.opsSessionDraft.findFirst({
@@ -5607,6 +8654,14 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
 
         const now = new Date()
+        const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+        const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+          kind: 'promoted',
+          label: 'Converted to session draft',
+          detail: 'Manual scheduling handoff is ready for a real date, court, and owner.',
+          actorLabel,
+          createdAt: now.toISOString(),
+        })
         const sessionDraftMetadata = {
           ...((draft.metadata as Record<string, any> | null) || {}),
           sessionDraft: {
@@ -5617,6 +8672,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
             recommendedWindow: `${draft.dayOfWeek} ${draft.startTime}-${draft.endTime}`,
             nextStep: 'Assign a real date, court, and owner before any live publish.',
           },
+          timeline: nextTimeline,
         }
 
         const updated = await ctx.prisma.opsSessionDraft.update({
@@ -5660,6 +8716,1752 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Unable to promote ops session draft right now.',
+        })
+      }
+    }),
+
+  updateOpsSessionDraftWorkflow: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+      action: z.enum([
+        'assign_self',
+        'assign_teammate',
+        'reassign_owner',
+        'ping_owner',
+        'due_today',
+        'due_tomorrow',
+        'add_note',
+        'reject',
+        'archive',
+        'reopen_ready',
+      ]),
+      assigneeUserId: z.string().optional(),
+      note: z.string().trim().max(400).optional(),
+      reason: z.string().trim().max(240).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'draftManage',
+        adminRole: adminAccess.role,
+      })
+
+      const draft = await ctx.prisma.opsSessionDraft.findFirst({
+        where: {
+          id: input.opsSessionDraftId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          note: true,
+          status: true,
+          dayOfWeek: true,
+          metadata: true,
+          agentDraftId: true,
+        },
+      })
+
+      if (!draft) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Ops session draft not found.',
+        })
+      }
+
+      const now = new Date()
+      const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+      const opsWorkflow = getOpsSessionDraftWorkflowMetadata(draft.metadata)
+      const handoff = getOpsSessionDraftHandoffMetadata(draft.metadata)
+      const metadataRoot =
+        draft.metadata && typeof draft.metadata === 'object' && !Array.isArray(draft.metadata)
+          ? { ...(draft.metadata as Record<string, unknown>) }
+          : {}
+      let timelineEvent:
+        | {
+            kind: string
+            label: string
+            detail?: string | null
+          }
+        | null = null
+
+      let status = draft.status as 'READY_FOR_OPS' | 'SESSION_DRAFT' | 'REJECTED' | 'ARCHIVED'
+      let archivedAt: Date | null | undefined = undefined
+      let note = draft.note
+
+      switch (input.action) {
+        case 'assign_self':
+          opsWorkflow.ownerUserId = ctx.session.user.id
+          opsWorkflow.ownerLabel = ctx.session.user.name || ctx.session.user.email || 'Assigned owner'
+          opsWorkflow.ownerAssignedAt = now.toISOString()
+          handoff.ownerUserId = ctx.session.user.id
+          handoff.ownerLabel = String(opsWorkflow.ownerLabel)
+          handoff.ownerBrief = `${String(opsWorkflow.ownerLabel)} now owns this draft. ${typeof handoff.nextStep === 'string' ? handoff.nextStep : 'Move the draft through ops review next.'}`
+          timelineEvent = {
+            kind: 'assigned',
+            label: 'Assigned owner',
+            detail: `${String(opsWorkflow.ownerLabel)} took ownership of this ops draft.`,
+          }
+          break
+        case 'assign_teammate': {
+          const assigneeUserId = input.assigneeUserId?.trim()
+          if (!assigneeUserId) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Choose a teammate to assign this ops draft.',
+            })
+          }
+
+          const assignee = await ctx.prisma.clubAdmin.findFirst({
+            where: {
+              clubId: input.clubId,
+              userId: assigneeUserId,
+            },
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          })
+
+          if (!assignee?.user) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'That teammate is not available in this club team.',
+            })
+          }
+
+          const teammateLabel = assignee.user.name || assignee.user.email || 'Assigned teammate'
+          opsWorkflow.ownerUserId = assignee.user.id
+          opsWorkflow.ownerLabel = teammateLabel
+          opsWorkflow.ownerAssignedAt = now.toISOString()
+          handoff.ownerUserId = assignee.user.id
+          handoff.ownerLabel = teammateLabel
+          handoff.ownerBrief = `${teammateLabel} was assigned this ops draft. ${typeof handoff.nextStep === 'string' ? handoff.nextStep : 'Move the draft through ops review next.'}`
+          timelineEvent = {
+            kind: 'assigned_teammate',
+            label: 'Assigned to teammate',
+            detail: `${teammateLabel} was assigned as the next owner for this ops draft.`,
+          }
+
+          await createOpsOwnerPingRecord({
+            prisma: ctx.prisma,
+            clubId: input.clubId,
+            userId: assignee.user.id,
+            draftId: draft.id,
+            draftTitle: `A draft was assigned to you: ${draft.title}`,
+            dayOfWeek: draft.dayOfWeek,
+            description: `${actorLabel} assigned ${draft.title} to you for ops follow-through.`,
+            metadata: {
+              proactiveKind: 'owner_due',
+              reminderChannel: 'in_app',
+            },
+          })
+          pushToUser(assignee.user.id, { type: 'invalidate', keys: ['notification.list'] })
+          break
+        }
+        case 'reassign_owner': {
+          const previousOwner = typeof opsWorkflow.ownerLabel === 'string' ? opsWorkflow.ownerLabel : 'the current owner'
+          delete opsWorkflow.ownerUserId
+          delete opsWorkflow.ownerLabel
+          delete opsWorkflow.ownerAssignedAt
+          delete handoff.ownerUserId
+          delete handoff.ownerLabel
+          delete handoff.ownerBrief
+          timelineEvent = {
+            kind: 'reassigned',
+            label: 'Returned to unassigned queue',
+            detail: `${previousOwner} was cleared so the team can reassign this ops draft.`,
+          }
+          break
+        }
+        case 'ping_owner': {
+          if (typeof opsWorkflow.ownerUserId !== 'string' || !opsWorkflow.ownerUserId.trim()) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'This ops draft does not currently have an owner to ping.',
+            })
+          }
+          const ownerLabel = typeof opsWorkflow.ownerLabel === 'string' ? opsWorkflow.ownerLabel : 'the current owner'
+          opsWorkflow.lastEscalatedAt = now.toISOString()
+          opsWorkflow.lastEscalatedBy = actorLabel
+          timelineEvent = {
+            kind: 'owner_pinged',
+            label: 'Escalated to owner',
+            detail: `${ownerLabel} was pinged to move this draft forward.`,
+          }
+
+          await createOpsOwnerPingRecord({
+            prisma: ctx.prisma,
+            clubId: input.clubId,
+            userId: String(opsWorkflow.ownerUserId),
+            draftId: draft.id,
+            draftTitle: `Your ops draft needs attention: ${draft.title}`,
+            dayOfWeek: draft.dayOfWeek,
+            description: `${actorLabel} escalated ${draft.title} because it is due soon or overdue.`,
+            metadata: {
+              proactiveKind: 'owner_due',
+              reminderChannel: 'in_app',
+            },
+          })
+          pushToUser(String(opsWorkflow.ownerUserId), { type: 'invalidate', keys: ['notification.list'] })
+          break
+        }
+        case 'due_today': {
+          const dueAt = new Date(now)
+          dueAt.setHours(18, 0, 0, 0)
+          opsWorkflow.dueAt = dueAt.toISOString()
+          opsWorkflow.dueLabel = 'Due today'
+          timelineEvent = {
+            kind: 'due_set',
+            label: 'Marked due today',
+            detail: `Ops review is now due by ${dueAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`,
+          }
+          break
+        }
+        case 'due_tomorrow': {
+          const dueAt = new Date(now)
+          dueAt.setDate(dueAt.getDate() + 1)
+          dueAt.setHours(12, 0, 0, 0)
+          opsWorkflow.dueAt = dueAt.toISOString()
+          opsWorkflow.dueLabel = 'Due tomorrow'
+          timelineEvent = {
+            kind: 'due_set',
+            label: 'Moved to tomorrow',
+            detail: `Ops review is now due tomorrow by ${dueAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`,
+          }
+          break
+        }
+        case 'add_note':
+          note = input.note?.trim() || draft.note
+          opsWorkflow.lastNoteAt = now.toISOString()
+          opsWorkflow.lastNoteBy = ctx.session.user.name || ctx.session.user.email || 'Admin'
+          timelineEvent = {
+            kind: 'note_added',
+            label: 'Added ops note',
+            detail: note,
+          }
+          break
+        case 'reject':
+          status = 'REJECTED'
+          archivedAt = null
+          opsWorkflow.blockedReason = input.reason?.trim() || 'Rejected in ops review'
+          opsWorkflow.blockedAt = now.toISOString()
+          timelineEvent = {
+            kind: 'rejected',
+            label: 'Rejected in ops review',
+            detail: String(opsWorkflow.blockedReason),
+          }
+          break
+        case 'archive':
+          status = 'ARCHIVED'
+          archivedAt = now
+          opsWorkflow.archivedAt = now.toISOString()
+          timelineEvent = {
+            kind: 'archived',
+            label: 'Archived draft',
+            detail: 'Kept for traceability only.',
+          }
+          break
+        case 'reopen_ready':
+          status = 'READY_FOR_OPS'
+          archivedAt = null
+          delete opsWorkflow.blockedReason
+          delete opsWorkflow.blockedAt
+          delete opsWorkflow.archivedAt
+          timelineEvent = {
+            kind: 'reopened',
+            label: 'Reopened for ops',
+            detail: 'The draft is back in the ready-for-ops queue.',
+          }
+          break
+      }
+
+      opsWorkflow.lastAction = input.action
+      opsWorkflow.lastActionAt = now.toISOString()
+
+      const metadata = {
+        ...metadataRoot,
+        handoff,
+        opsWorkflow,
+        timeline: timelineEvent
+          ? appendOpsSessionDraftTimelineEvent(draft.metadata, {
+              ...timelineEvent,
+              actorLabel,
+              createdAt: now.toISOString(),
+            })
+          : getOpsSessionDraftTimelineMetadata(draft.metadata),
+      }
+
+      const updated = await ctx.prisma.opsSessionDraft.update({
+        where: { id: draft.id },
+        data: {
+          status,
+          archivedAt,
+          note,
+          metadata: metadata as any,
+        },
+        select: {
+          id: true,
+          status: true,
+          title: true,
+          dayOfWeek: true,
+          note: true,
+          metadata: true,
+          updatedAt: true,
+        },
+      })
+
+      await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+      return {
+        ok: true,
+        id: updated.id,
+        title: updated.title,
+        dayOfWeek: updated.dayOfWeek,
+        status: mapOpsSessionDraftStatusForMetadata(updated.status),
+        note: updated.note,
+        metadata: updated.metadata,
+        updatedAt: updated.updatedAt,
+      }
+    }),
+
+  prepareOpsSessionDraftPublish: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+      publishDate: z.string().min(10).max(10),
+      title: z.string().trim().min(3).max(140).optional(),
+      description: z.string().trim().max(400).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'draftManage',
+        adminRole: adminAccess.role,
+      })
+
+      const publishDate = parseSessionDraftPublishDate(input.publishDate)
+      const draft = await ctx.prisma.opsSessionDraft.findFirst({
+        where: {
+          id: input.opsSessionDraftId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          status: true,
+          metadata: true,
+          agentDraftId: true,
+        },
+      })
+
+      if (!draft) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Ops session draft not found.',
+        })
+      }
+
+      if (draft.status !== 'SESSION_DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Only session-draft items can be prepared for publish.',
+        })
+      }
+
+      const now = new Date()
+      const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+      const metadataRoot = getOpsSessionDraftMetadataRoot(draft.metadata)
+      const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+      const publishReview = await buildOpsSessionDraftPublishReviewForDate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        draft: {
+          id: draft.id,
+          title: input.title?.trim() || String(sessionDraft.title || draft.title),
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          format: draft.format,
+          skillLevel: draft.skillLevel,
+        },
+        publishDate: input.publishDate,
+      })
+      const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+        kind: 'publish_prepared',
+        label: 'Prepared for controlled publish',
+        detail:
+          publishReview.status === 'blocked'
+            ? `Prepared for ${input.publishDate}, but live publish is blocked until the duplicate is resolved.`
+            : `Prepared for ${input.publishDate} at ${draft.startTime}-${draft.endTime}.`,
+        actorLabel,
+        createdAt: now.toISOString(),
+      })
+
+      const nextMetadata = {
+        ...metadataRoot,
+        sessionDraft: {
+          ...sessionDraft,
+          stage: 'publish_review',
+          publishMode: 'controlled_manual',
+          title: input.title?.trim() || String(sessionDraft.title || draft.title),
+          description: input.description?.trim() || draft.description || null,
+          targetDate: input.publishDate,
+          targetDateIso: publishDate.toISOString(),
+          preparedAt: now.toISOString(),
+          preparedBy: actorLabel,
+          review: publishReview,
+          nextStep:
+            publishReview.status === 'blocked'
+              ? publishReview.recommendedAction
+              : publishReview.status === 'warn'
+                ? publishReview.recommendedAction
+                : 'Final review is ready. Publish only when the date and format look right for the live schedule.',
+        },
+        timeline: nextTimeline,
+      }
+
+      const updated = await ctx.prisma.opsSessionDraft.update({
+        where: { id: draft.id },
+        data: {
+          metadata: nextMetadata as any,
+        },
+        select: {
+          id: true,
+          title: true,
+          metadata: true,
+          updatedAt: true,
+        },
+      })
+
+      await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+      return {
+        ok: true,
+        id: updated.id,
+        title: updated.title,
+        metadata: updated.metadata,
+        updatedAt: updated.updatedAt,
+      }
+    }),
+
+  publishOpsSessionDraftToSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: club?.automationSettings,
+        action: 'schedulePublish',
+        adminRole: adminAccess.role,
+      })
+      const controlPlane = evaluateAgentControlPlaneAction({
+        automationSettings: club?.automationSettings,
+        action: 'schedulePublish',
+      })
+
+      const draft = await ctx.prisma.opsSessionDraft.findFirst({
+        where: {
+          id: input.opsSessionDraftId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          maxPlayers: true,
+          status: true,
+          metadata: true,
+          agentDraftId: true,
+          archivedAt: true,
+        },
+      })
+
+      if (!draft) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Ops session draft not found.',
+        })
+      }
+
+      if (draft.status !== 'SESSION_DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Only session-draft items can be published.',
+        })
+      }
+
+      const metadataRoot = getOpsSessionDraftMetadataRoot(draft.metadata)
+      const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+      const targetDateRaw = typeof sessionDraft.targetDate === 'string' ? sessionDraft.targetDate : null
+      if (!targetDateRaw) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Prepare this session draft with a real publish date before publishing it live.',
+        })
+      }
+
+      const targetDate = parseSessionDraftPublishDate(targetDateRaw)
+      const existingSessionId =
+        typeof sessionDraft.publishedPlaySessionId === 'string' ? sessionDraft.publishedPlaySessionId : null
+
+      if (existingSessionId) {
+        const existingSession = await ctx.prisma.playSession.findUnique({
+          where: { id: existingSessionId },
+          select: { id: true, title: true, date: true },
+        })
+
+        if (existingSession) {
+          return {
+            ok: true,
+            alreadyPublished: true,
+            playSessionId: existingSession.id,
+            title: existingSession.title,
+            date: existingSession.date,
+          }
+        }
+      }
+
+      const title =
+        (typeof sessionDraft.title === 'string' && sessionDraft.title.trim()) ||
+        draft.title
+      const description =
+        (typeof sessionDraft.description === 'string' && sessionDraft.description.trim()) ||
+        draft.description ||
+        null
+      const publishReview = await buildOpsSessionDraftPublishReviewForDate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        draft: {
+          id: draft.id,
+          title,
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          format: draft.format,
+          skillLevel: draft.skillLevel,
+        },
+        publishDate: targetDateRaw,
+      })
+      const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+      const now = new Date()
+
+      if (publishReview.status === 'blocked') {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'schedulePublish',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: publishReview.summary,
+          metadata: {
+            reason: 'publish_review_blocked',
+            publishDate: targetDateRaw,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: publishReview.summary,
+        })
+      }
+
+      if (!controlPlane.allowed) {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'schedulePublish',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: controlPlane.reason,
+          metadata: {
+            reason: 'control_plane_disabled',
+            publishDate: targetDateRaw,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: controlPlane.reason,
+        })
+      }
+
+      if (controlPlane.shadow) {
+        const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+          kind: 'publish_shadowed',
+          label: 'Shadow-reviewed publish',
+          detail: `${title} was reviewed for live publish, but the control plane kept it in shadow mode.`,
+          actorLabel,
+          createdAt: now.toISOString(),
+        })
+
+        const updated = await ctx.prisma.opsSessionDraft.update({
+          where: { id: draft.id },
+          data: {
+            metadata: {
+              ...metadataRoot,
+              sessionDraft: {
+                ...sessionDraft,
+                stage: 'publish_review',
+                publishMode: 'controlled_manual',
+                title,
+                description,
+                targetDate: targetDateRaw,
+                targetDateIso: targetDate.toISOString(),
+                review: publishReview,
+                nextStep: 'Control plane shadow mode kept this publish out of the live schedule. Review the draft and move the action to live mode when you are ready.',
+                lastControlPlaneDecisionAt: now.toISOString(),
+                lastControlPlaneDecisionBy: actorLabel,
+                lastControlPlaneMode: controlPlane.mode,
+              },
+              timeline: nextTimeline,
+            } as any,
+          },
+          select: {
+            id: true,
+            status: true,
+            metadata: true,
+          },
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'schedulePublish',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'shadowed',
+          summary: `${title} was reviewed for publish but held in shadow mode.`,
+          metadata: {
+            publishDate: targetDateRaw,
+            reviewStatus: publishReview.status,
+          },
+        })
+
+        await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+        return {
+          ok: true,
+          shadowMode: true,
+          status: mapOpsSessionDraftStatusForMetadata(updated.status),
+          metadata: updated.metadata,
+        }
+      }
+
+      const playSession = await ctx.prisma.playSession.create({
+        data: {
+          clubId: input.clubId,
+          title,
+          description,
+          date: targetDate,
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          format: draft.format,
+          skillLevel: draft.skillLevel,
+          maxPlayers: draft.maxPlayers,
+          registeredCount: 0,
+          status: 'SCHEDULED',
+        },
+        select: {
+          id: true,
+          title: true,
+          date: true,
+        },
+      })
+
+      const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+        kind: 'published',
+        label: 'Published to live schedule',
+        detail: `${title} is now on the live schedule for ${targetDateRaw}.`,
+        actorLabel,
+        createdAt: now.toISOString(),
+      })
+
+      const updated = await ctx.prisma.opsSessionDraft.update({
+        where: { id: draft.id },
+        data: {
+          status: 'ARCHIVED',
+          archivedAt: now,
+          metadata: {
+            ...metadataRoot,
+            sessionDraft: {
+              ...sessionDraft,
+              stage: 'published',
+              publishMode: 'controlled_manual',
+              title,
+              description,
+              targetDate: targetDateRaw,
+              targetDateIso: targetDate.toISOString(),
+              review: publishReview,
+              publishedAt: now.toISOString(),
+              publishedBy: actorLabel,
+              publishedPlaySessionId: playSession.id,
+              nextStep: 'The session is live on the schedule. Watch bookings and fill risk from the schedule view.',
+            },
+            timeline: nextTimeline,
+          } as any,
+        },
+        select: {
+          id: true,
+          status: true,
+          metadata: true,
+        },
+      })
+
+      await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'schedulePublish',
+        targetType: 'ops_session_draft',
+        targetId: draft.id,
+        mode: controlPlane.mode,
+        result: 'executed',
+        summary: `${title} was published to the live schedule.`,
+        metadata: {
+          publishDate: targetDateRaw,
+          playSessionId: playSession.id,
+        },
+      })
+
+      return {
+        ok: true,
+        playSessionId: playSession.id,
+        title: playSession.title,
+        date: playSession.date,
+        status: mapOpsSessionDraftStatusForMetadata(updated.status),
+        metadata: updated.metadata,
+      }
+    }),
+
+  updatePublishedOpsSessionDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+      publishDate: z.string().min(10).max(10),
+      title: z.string().trim().min(3).max(140),
+      description: z.string().trim().max(400).optional(),
+      startTime: z.string().trim().min(4).max(5),
+      endTime: z.string().trim().min(4).max(5),
+      maxPlayers: z.number().int().min(2).max(64),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: club?.automationSettings,
+        action: 'scheduleLiveEdit',
+        adminRole: adminAccess.role,
+      })
+      const controlPlane = evaluateAgentControlPlaneAction({
+        automationSettings: club?.automationSettings,
+        action: 'scheduleLiveEdit',
+      })
+
+      const draft = await ctx.prisma.opsSessionDraft.findFirst({
+        where: {
+          id: input.opsSessionDraftId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          maxPlayers: true,
+          status: true,
+          metadata: true,
+          agentDraftId: true,
+          createdAt: true,
+        },
+      })
+
+      if (!draft) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Ops session draft not found.',
+        })
+      }
+
+      const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+      const publishedPlaySessionId =
+        typeof sessionDraft.publishedPlaySessionId === 'string'
+          ? sessionDraft.publishedPlaySessionId
+          : null
+
+      if (!publishedPlaySessionId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This ops draft does not currently have a live session to edit.',
+        })
+      }
+
+      const liveSession = await ctx.prisma.playSession.findFirst({
+        where: {
+          id: publishedPlaySessionId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          date: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          maxPlayers: true,
+          status: true,
+          _count: {
+            select: {
+              bookings: {
+                where: { status: 'CONFIRMED' },
+              },
+              waitlist: true,
+            },
+          },
+        },
+      })
+
+      if (!liveSession) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'The live session for this ops draft no longer exists.',
+        })
+      }
+
+      const liveDateKey = liveSession.date.toISOString().slice(0, 10)
+      const structuralChange =
+        input.publishDate !== liveDateKey
+        || input.startTime !== liveSession.startTime
+        || input.endTime !== liveSession.endTime
+        || input.maxPlayers !== liveSession.maxPlayers
+      const confirmedCount = liveSession._count.bookings
+      const waitlistCount = liveSession._count.waitlist
+
+      if (input.maxPlayers < confirmedCount) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Max players cannot drop below the ${confirmedCount} confirmed booking${confirmedCount === 1 ? '' : 's'} already on this live session.`,
+        })
+      }
+
+      if (
+        structuralChange
+        && (liveSession.status === 'IN_PROGRESS' || liveSession.status === 'COMPLETED')
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Only title and description can change once a live session is in progress or completed.',
+        })
+      }
+
+      if (structuralChange && (confirmedCount > 0 || waitlistCount > 0)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This live session already has players attached, so structural changes should stay manual-only.',
+        })
+      }
+
+      const publishDate = parseSessionDraftPublishDate(input.publishDate)
+      const publishReview = await buildOpsSessionDraftPublishReviewForDate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        draft: {
+          id: draft.id,
+          title: input.title.trim(),
+          startTime: input.startTime,
+          endTime: input.endTime,
+          format: draft.format,
+          skillLevel: draft.skillLevel,
+        },
+        publishDate: input.publishDate,
+        ignoreSessionId: liveSession.id,
+      })
+      const now = new Date()
+      const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+      const metadataRoot = getOpsSessionDraftMetadataRoot(draft.metadata)
+
+      if (publishReview.status === 'blocked') {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveEdit',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: publishReview.summary,
+          metadata: {
+            reason: 'publish_review_blocked',
+            publishDate: input.publishDate,
+            liveSessionId: liveSession.id,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: publishReview.summary,
+        })
+      }
+
+      if (!controlPlane.allowed) {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveEdit',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: controlPlane.reason,
+          metadata: {
+            reason: 'control_plane_disabled',
+            liveSessionId: liveSession.id,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: controlPlane.reason,
+        })
+      }
+
+      if (controlPlane.shadow) {
+        const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+          kind: 'live_edit_shadowed',
+          label: 'Shadow-reviewed live edit',
+          detail: `${input.title.trim()} was reviewed for a live edit, but the control plane kept the current session unchanged.`,
+          actorLabel,
+          createdAt: now.toISOString(),
+        })
+
+        const updatedDraft = await ctx.prisma.opsSessionDraft.update({
+          where: { id: draft.id },
+          data: {
+            metadata: {
+              ...metadataRoot,
+              sessionDraft: {
+                ...sessionDraft,
+                review: publishReview,
+                nextStep: 'Control plane shadow mode reviewed this live edit without changing the session. Move the action to live mode when you want the edit applied.',
+                lastControlPlaneDecisionAt: now.toISOString(),
+                lastControlPlaneDecisionBy: actorLabel,
+                lastControlPlaneMode: controlPlane.mode,
+              },
+              timeline: nextTimeline,
+            } as any,
+          },
+          select: {
+            id: true,
+            metadata: true,
+            updatedAt: true,
+          },
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveEdit',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'shadowed',
+          summary: `${input.title.trim()} was reviewed for a live edit but held in shadow mode.`,
+          metadata: {
+            publishDate: input.publishDate,
+            liveSessionId: liveSession.id,
+          },
+        })
+
+        await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+        return {
+          ok: true,
+          shadowMode: true,
+          id: updatedDraft.id,
+          playSessionId: liveSession.id,
+          title: liveSession.title,
+          date: liveSession.date,
+          metadata: updatedDraft.metadata,
+          updatedAt: updatedDraft.updatedAt,
+        }
+      }
+
+      const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+        kind: 'live_edited',
+        label: 'Edited live session',
+        detail: `${input.title.trim()} was updated directly on the live schedule.`,
+        actorLabel,
+        createdAt: now.toISOString(),
+      })
+
+      const updatedLiveSession = await ctx.prisma.playSession.update({
+        where: { id: liveSession.id },
+        data: {
+          title: input.title.trim(),
+          description: input.description?.trim() || null,
+          date: publishDate,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          maxPlayers: input.maxPlayers,
+        },
+        select: {
+          id: true,
+          title: true,
+          date: true,
+        },
+      })
+
+      const updatedDraft = await ctx.prisma.opsSessionDraft.update({
+        where: { id: draft.id },
+        data: {
+          metadata: {
+            ...metadataRoot,
+            sessionDraft: {
+              ...sessionDraft,
+              review: publishReview,
+              nextStep: 'The live session was edited after publish. Keep watching whether it now tracks to plan or needs a fill push.',
+              lastLiveEditedAt: now.toISOString(),
+              lastLiveEditedBy: actorLabel,
+            },
+            timeline: nextTimeline,
+          } as any,
+        },
+        select: {
+          id: true,
+          metadata: true,
+          updatedAt: true,
+        },
+      })
+
+      await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'scheduleLiveEdit',
+        targetType: 'ops_session_draft',
+        targetId: draft.id,
+        mode: controlPlane.mode,
+        result: 'executed',
+        summary: `${input.title.trim()} was edited directly on the live schedule.`,
+        metadata: {
+          publishDate: input.publishDate,
+          liveSessionId: updatedLiveSession.id,
+        },
+      })
+
+      return {
+        ok: true,
+        id: updatedDraft.id,
+        playSessionId: updatedLiveSession.id,
+        title: updatedLiveSession.title,
+        date: updatedLiveSession.date,
+        metadata: updatedDraft.metadata,
+        updatedAt: updatedDraft.updatedAt,
+      }
+    }),
+
+  rollbackPublishedOpsSessionDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      opsSessionDraftId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: club?.automationSettings,
+        action: 'scheduleLiveRollback',
+        adminRole: adminAccess.role,
+      })
+      const controlPlane = evaluateAgentControlPlaneAction({
+        automationSettings: club?.automationSettings,
+        action: 'scheduleLiveRollback',
+      })
+
+      const draft = await ctx.prisma.opsSessionDraft.findFirst({
+        where: {
+          id: input.opsSessionDraftId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          maxPlayers: true,
+          metadata: true,
+          agentDraftId: true,
+          createdAt: true,
+        },
+      })
+
+      if (!draft) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Ops session draft not found.',
+        })
+      }
+
+      const sessionDraft = getOpsSessionDraftSessionMetadata(draft.metadata)
+      const publishedPlaySessionId =
+        typeof sessionDraft.publishedPlaySessionId === 'string'
+          ? sessionDraft.publishedPlaySessionId
+          : null
+
+      if (!publishedPlaySessionId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'This ops draft does not currently have a live session to roll back.',
+        })
+      }
+
+      const liveSession = await ctx.prisma.playSession.findFirst({
+        where: {
+          id: publishedPlaySessionId,
+          clubId: input.clubId,
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          date: true,
+          startTime: true,
+          endTime: true,
+          format: true,
+          skillLevel: true,
+          maxPlayers: true,
+          status: true,
+          _count: {
+            select: {
+              bookings: {
+                where: { status: 'CONFIRMED' },
+              },
+              waitlist: true,
+            },
+          },
+        },
+      })
+
+      const plannedSession = buildOpsSessionDraftPlannedSnapshot(draft, sessionDraft)
+      const aftercareReview = buildOpsSessionAftercareReview({
+        draft: plannedSession,
+        liveSession: liveSession
+          ? {
+              id: liveSession.id,
+              title: liveSession.title,
+              description: liveSession.description,
+              date: liveSession.date,
+              startTime: liveSession.startTime,
+              endTime: liveSession.endTime,
+              format: liveSession.format,
+              skillLevel: liveSession.skillLevel,
+              maxPlayers: liveSession.maxPlayers,
+              status: liveSession.status,
+              confirmedCount: liveSession._count.bookings,
+              waitlistCount: liveSession._count.waitlist,
+            }
+          : null,
+      })
+
+      if (!liveSession) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'The live session for this ops draft no longer exists.',
+        })
+      }
+
+      if (!aftercareReview.canRollback) {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveRollback',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: aftercareReview.rollbackSummary,
+          metadata: {
+            reason: 'aftercare_blocked',
+            liveSessionId: liveSession.id,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: aftercareReview.rollbackSummary,
+        })
+      }
+
+      const plannedDateKey = String(plannedSession.date).slice(0, 10)
+      const rollbackReview = await buildOpsSessionDraftPublishReviewForDate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        draft: {
+          id: draft.id,
+          title: plannedSession.title,
+          startTime: plannedSession.startTime,
+          endTime: plannedSession.endTime,
+          format: plannedSession.format,
+          skillLevel: plannedSession.skillLevel,
+        },
+        publishDate: plannedDateKey,
+        ignoreSessionId: liveSession.id,
+      })
+
+      if (rollbackReview.status === 'blocked') {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveRollback',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: rollbackReview.summary,
+          metadata: {
+            reason: 'publish_review_blocked',
+            liveSessionId: liveSession.id,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: rollbackReview.summary,
+        })
+      }
+
+      const now = new Date()
+      const actorLabel = ctx.session.user.name || ctx.session.user.email || 'Admin'
+      const metadataRoot = getOpsSessionDraftMetadataRoot(draft.metadata)
+
+      if (!controlPlane.allowed) {
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveRollback',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: controlPlane.reason,
+          metadata: {
+            reason: 'control_plane_disabled',
+            liveSessionId: liveSession.id,
+          },
+        })
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: controlPlane.reason,
+        })
+      }
+
+      if (controlPlane.shadow) {
+        const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+          kind: 'live_rollback_shadowed',
+          label: 'Shadow-reviewed rollback',
+          detail: `${plannedSession.title} was reviewed for rollback, but the control plane kept the live session unchanged.`,
+          actorLabel,
+          createdAt: now.toISOString(),
+        })
+
+        const updatedDraft = await ctx.prisma.opsSessionDraft.update({
+          where: { id: draft.id },
+          data: {
+            metadata: {
+              ...metadataRoot,
+              sessionDraft: {
+                ...sessionDraft,
+                review: rollbackReview,
+                nextStep: 'Control plane shadow mode reviewed the rollback without changing the live session. Move this action to live mode when you are ready to restore the original plan.',
+                lastControlPlaneDecisionAt: now.toISOString(),
+                lastControlPlaneDecisionBy: actorLabel,
+                lastControlPlaneMode: controlPlane.mode,
+              },
+              timeline: nextTimeline,
+            } as any,
+          },
+          select: {
+            id: true,
+            metadata: true,
+            updatedAt: true,
+          },
+        })
+
+        await persistAgentDecisionRecord(ctx.prisma, {
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          action: 'scheduleLiveRollback',
+          targetType: 'ops_session_draft',
+          targetId: draft.id,
+          mode: controlPlane.mode,
+          result: 'shadowed',
+          summary: `${plannedSession.title} was reviewed for rollback but held in shadow mode.`,
+          metadata: {
+            liveSessionId: liveSession.id,
+          },
+        })
+
+        await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+
+        return {
+          ok: true,
+          shadowMode: true,
+          id: updatedDraft.id,
+          playSessionId: liveSession.id,
+          title: liveSession.title,
+          date: liveSession.date,
+          metadata: updatedDraft.metadata,
+          updatedAt: updatedDraft.updatedAt,
+        }
+      }
+
+      const nextTimeline = appendOpsSessionDraftTimelineEvent(draft.metadata, {
+        kind: 'live_rolled_back',
+        label: 'Rolled back live session',
+        detail: `${plannedSession.title} was restored back to the original publish plan.`,
+        actorLabel,
+        createdAt: now.toISOString(),
+      })
+
+      const updatedLiveSession = await ctx.prisma.playSession.update({
+        where: { id: liveSession.id },
+        data: {
+          title: plannedSession.title,
+          description: plannedSession.description,
+          date: parseSessionDraftPublishDate(plannedDateKey),
+          startTime: plannedSession.startTime,
+          endTime: plannedSession.endTime,
+          format: plannedSession.format as any,
+          skillLevel: plannedSession.skillLevel as any,
+          maxPlayers: plannedSession.maxPlayers,
+        },
+        select: {
+          id: true,
+          title: true,
+          date: true,
+        },
+      })
+
+      const updatedDraft = await ctx.prisma.opsSessionDraft.update({
+        where: { id: draft.id },
+        data: {
+          metadata: {
+            ...metadataRoot,
+            sessionDraft: {
+              ...sessionDraft,
+              review: rollbackReview,
+              nextStep: 'The live session is back on the original publish plan. Watch bookings and decide whether it still needs a fill action.',
+              lastRollbackAt: now.toISOString(),
+              lastRollbackBy: actorLabel,
+            },
+            timeline: nextTimeline,
+          } as any,
+        },
+        select: {
+          id: true,
+          metadata: true,
+          updatedAt: true,
+        },
+      })
+
+      await syncAgentDraftOpsSessionDraftMetadata(ctx.prisma, draft.agentDraftId)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'scheduleLiveRollback',
+        targetType: 'ops_session_draft',
+        targetId: draft.id,
+        mode: controlPlane.mode,
+        result: 'executed',
+        summary: `${plannedSession.title} was rolled back to the original publish plan.`,
+        metadata: {
+          liveSessionId: updatedLiveSession.id,
+        },
+      })
+
+      return {
+        ok: true,
+        id: updatedDraft.id,
+        playSessionId: updatedLiveSession.id,
+        title: updatedLiveSession.title,
+        date: updatedLiveSession.date,
+        metadata: updatedDraft.metadata,
+        updatedAt: updatedDraft.updatedAt,
+      }
+    }),
+
+  createOpsSessionDraftFromAdvisorDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      advisorDraftId: z.string().uuid(),
+      sourceProposalId: z.string().min(1).max(120),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'draftManage',
+        adminRole: adminAccess.role,
+      })
+
+      try {
+        const agentDraft = await ctx.prisma.agentDraft.findFirst({
+          where: {
+            id: input.advisorDraftId,
+            clubId: input.clubId,
+            createdByUserId: ctx.session.user.id,
+          },
+          select: {
+            id: true,
+            conversationId: true,
+            originalIntent: true,
+            workingAction: true,
+          },
+        })
+
+        if (!agentDraft) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Programming draft not found.',
+          })
+        }
+
+        const action = advisorActionSchema.parse(agentDraft.workingAction)
+        if (action.kind !== 'program_schedule') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Only programming drafts can create ops session drafts.',
+          })
+        }
+
+        const availableSourceIds = new Set([
+          action.program.primary.id,
+          ...action.program.alternatives.map((proposal) => proposal.id),
+        ])
+
+        if (!availableSourceIds.has(input.sourceProposalId)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Programming option not found in this draft.',
+          })
+        }
+
+        const opsSessionDrafts = await upsertProgrammingOpsSessionDraftRecords({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          createdByUserId: ctx.session.user.id,
+          agentDraftId: agentDraft.id,
+          action,
+          sourceProposalId: input.sourceProposalId,
+        })
+
+        const created = opsSessionDrafts.find((draft) => draft.sourceProposalId === input.sourceProposalId) || opsSessionDrafts[0]
+
+        if (!created) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Could not create ops session draft.',
+          })
+        }
+
+        return {
+          ok: true,
+          advisorDraftId: agentDraft.id,
+          conversationId: agentDraft.conversationId,
+          originalIntent: agentDraft.originalIntent,
+          opsSessionDraft: created,
+        }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        log.warn('[Intelligence] createOpsSessionDraftFromAdvisorDraft failed:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Could not create ops session draft.',
+        })
+      }
+    }),
+
+  createFillSessionDraftFromSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string().min(1),
+      channel: z.enum(['email', 'sms', 'both']).default('email'),
+      candidateLimit: z.number().int().min(1).max(20).default(5),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'draftManage',
+        adminRole: adminAccess.role,
+      })
+      await checkFeatureAccess(input.clubId, 'slot-filler')
+
+      try {
+        const existingFillDrafts = await ctx.prisma.agentDraft.findMany({
+          where: {
+            clubId: input.clubId,
+            createdByUserId: ctx.session.user.id,
+            kind: 'fill_session',
+            status: {
+              in: ['review_ready', 'sandboxed', 'draft_saved', 'approved', 'scheduled'],
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 12,
+          select: {
+            id: true,
+            conversationId: true,
+            originalIntent: true,
+            workingAction: true,
+          },
+        })
+
+        const existingDraft = existingFillDrafts.find((draft) => {
+          const parsed = advisorActionSchema.safeParse(draft.workingAction)
+          return parsed.success && parsed.data.kind === 'fill_session' && parsed.data.session.id === input.sessionId
+        })
+
+        if (existingDraft) {
+          return {
+            ok: true,
+            reused: true,
+            advisorDraftId: existingDraft.id,
+            conversationId: existingDraft.conversationId,
+            originalIntent: existingDraft.originalIntent,
+          }
+        }
+
+        const sessionRecord = await ctx.prisma.playSession.findFirst({
+          where: {
+            id: input.sessionId,
+            clubId: input.clubId,
+          },
+          select: {
+            id: true,
+            title: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            format: true,
+            skillLevel: true,
+            maxPlayers: true,
+            clubCourt: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: {
+                bookings: {
+                  where: {
+                    status: 'CONFIRMED',
+                  },
+                },
+              },
+            },
+          },
+        })
+
+        if (!sessionRecord) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Session not found.',
+          })
+        }
+
+        const normalizedSession = normalizeAdvisorSlotSession({
+          id: sessionRecord.id,
+          title: sessionRecord.title,
+          date: sessionRecord.date,
+          startTime: sessionRecord.startTime,
+          endTime: sessionRecord.endTime,
+          format: sessionRecord.format as string | null,
+          skillLevel: sessionRecord.skillLevel as string | null,
+          court: sessionRecord.clubCourt?.name || null,
+          registered: sessionRecord._count.bookings,
+          maxPlayers: sessionRecord.maxPlayers,
+        })
+
+        const userMessage = buildScheduleFillDraftUserMessage(normalizedSession)
+        const slotFiller = await getSlotFillerRecommendations(ctx.prisma, {
+          sessionId: input.sessionId,
+          limit: input.candidateLimit,
+        })
+        const rawCandidates = (slotFiller.recommendations || [])
+          .slice(0, input.candidateLimit)
+          .map((candidate: any) => ({
+            memberId: candidate.member?.id || candidate.memberId,
+            name: candidate.member?.name || 'Unknown',
+            score: Math.max(0, Math.min(100, Math.round(candidate.score || 0))),
+            likelihood: candidate.estimatedLikelihood || undefined,
+            email: candidate.member?.email || undefined,
+          }))
+          .filter((candidate: any) => !!candidate.memberId)
+
+        const guardrails = await evaluateAdvisorContactGuardrails({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          type: 'SLOT_FILLER',
+          requestedChannel: input.channel,
+          candidates: rawCandidates.map((candidate: any) => ({ memberId: candidate.memberId })),
+          sessionId: input.sessionId,
+        })
+
+        const eligibleCandidates = rawCandidates
+          .map((candidate: any) => {
+            const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
+            if (!eligible) return null
+            return {
+              ...candidate,
+              channel: eligible.channel,
+            }
+          })
+          .filter(Boolean) as Array<{
+            memberId: string
+            name: string
+            score: number
+            likelihood?: 'high' | 'medium' | 'low'
+            email?: string
+            channel: 'email' | 'sms' | 'both'
+          }>
+
+        if (eligibleCandidates.length === 0) {
+          const emptyConversation = await createAdvisorConversationFromAction({
+            prisma: ctx.prisma,
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            title: userMessage,
+            userMessage,
+            assistantMessage: buildScheduleFillDraftNoCandidateMessage({
+              session: normalizedSession,
+              warning: guardrails.summary.warnings[0] || null,
+            }),
+          })
+
+          return {
+            ok: true,
+            blocked: true,
+            advisorDraftId: null,
+            conversationId: emptyConversation.conversationId,
+            originalIntent: userMessage,
+          }
+        }
+
+        const club = await ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { name: true },
+        })
+        const clubName = club?.name || 'your club'
+        const inviteMessage = input.channel === 'sms'
+          ? `Hey {{name}}! A spot just opened in ${normalizedSession.title} on ${normalizedSession.date} at ${normalizedSession.startTime}. Want in?`
+          : `Hi {{name}},\n\nA spot just opened in ${normalizedSession.title} on ${normalizedSession.date} at ${normalizedSession.startTime} at ${clubName}. I pulled together a shortlist of players who look like a strong fit.\n\nWant me to send the invites?\n\n— ${clubName} Team`
+
+        const signals = await buildAdvisorPerformanceSignalForAction({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          type: 'SLOT_FILLER',
+          requestedChannel: input.channel,
+          advisorOutcomeKind: 'fill_session',
+          days: 30,
+        }).catch(() => null)
+
+        const action = advisorActionSchema.parse({
+          kind: 'fill_session',
+          title: `Fill session: ${normalizedSession.title}`,
+          summary: `${input.channel.toUpperCase()} invites for ${eligibleCandidates.length} matched players`,
+          requiresApproval: true,
+          session: normalizedSession,
+          outreach: {
+            channel: input.channel,
+            candidateCount: eligibleCandidates.length,
+            message: inviteMessage,
+            candidates: eligibleCandidates,
+            guardrails: guardrails.summary,
+          },
+          ...(signals ? { signals } : {}),
+        })
+
+        const conversation = await createAdvisorConversationFromAction({
+          prisma: ctx.prisma,
+          clubId: input.clubId,
+          userId: ctx.session.user.id,
+          title: userMessage,
+          userMessage,
+          assistantMessage: buildScheduleFillDraftAssistantMessage({
+            session: normalizedSession,
+            candidateCount: eligibleCandidates.length,
+            channel: input.channel,
+          }),
+          action,
+        })
+
+        return {
+          ok: true,
+          reused: false,
+          advisorDraftId: conversation.draftId,
+          conversationId: conversation.conversationId,
+          messageId: conversation.messageId,
+          originalIntent: userMessage,
+        }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        log.warn('[Intelligence] createFillSessionDraftFromSchedule failed:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Could not prepare a slot-filler draft right now.',
         })
       }
     }),
@@ -5769,7 +10571,21 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
   approveAction: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'approveActions',
+        adminRole: adminAccess.role,
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'outreachSend',
+        adminRole: adminAccess.role,
+      })
       const action = await ctx.prisma.aIRecommendationLog.findUnique({
         where: { id: input.actionId },
         include: { user: { select: { id: true, email: true, name: true } }, club: { select: { name: true } } },
@@ -5805,7 +10621,16 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
   skipAction: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'approveActions',
+        adminRole: adminAccess.role,
+      })
       await ctx.prisma.aIRecommendationLog.update({
         where: { id: input.actionId },
         data: { status: 'skipped' },
@@ -5816,7 +10641,16 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
   snoozeAction: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), actionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      assertAgentPermissionForAdmin({
+        automationSettings: clubAutomationContext?.automationSettings,
+        action: 'approveActions',
+        adminRole: adminAccess.role,
+      })
       await ctx.prisma.aIRecommendationLog.update({
         where: { id: input.actionId },
         data: { createdAt: new Date() },
@@ -5827,6 +10661,116 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
   // ══════════════════════════════════════════════════
   // ══════ COHORTS ═══════════════════════════════════
   // ══════════════════════════════════════════════════
+
+  getLookalikeAudienceExport: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const members = await getLookalikeExportMembers(ctx.prisma, input.clubId)
+      const { buildLookalikeAudienceExport } = await import('@/lib/ai/lookalike-export')
+      const snapshot = buildLookalikeAudienceExport({ members })
+      return {
+        summary: snapshot.summary,
+        audiences: snapshot.audiences,
+      }
+    }),
+
+  previewLookalikeAudienceExportConfig: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      audienceKeys: z.array(z.enum([
+        'healthy_paid_core',
+        'high_value_loyalists',
+        'new_successful_converters',
+        'vip_advocates',
+      ])).min(1),
+      preset: z.enum([
+        'generic_csv',
+        'meta_custom_audience',
+        'google_customer_match',
+        'tiktok_custom_audience',
+      ]).default('generic_csv'),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const members = await getLookalikeExportMembers(ctx.prisma, input.clubId)
+      const {
+        buildLookalikeAudienceExport,
+        buildLookalikeExportPreview,
+      } = await import('@/lib/ai/lookalike-export')
+      const snapshot = buildLookalikeAudienceExport({ members })
+      const preview = buildLookalikeExportPreview({
+        snapshot,
+        audienceKeys: input.audienceKeys,
+        preset: input.preset,
+      })
+
+      if (!preview) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Lookalike audience preview not available' })
+      }
+
+      return preview
+    }),
+
+  exportLookalikeAudienceCsv: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      audienceKeys: z.array(z.enum([
+        'healthy_paid_core',
+        'high_value_loyalists',
+        'new_successful_converters',
+        'vip_advocates',
+      ])).min(1),
+      preset: z.enum([
+        'generic_csv',
+        'meta_custom_audience',
+        'google_customer_match',
+        'tiktok_custom_audience',
+      ]).default('generic_csv'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const members = await getLookalikeExportMembers(ctx.prisma, input.clubId)
+      const {
+        buildLookalikeAudienceExport,
+        buildLookalikeAudienceCsv,
+        buildSelectedLookalikeAudience,
+      } = await import('@/lib/ai/lookalike-export')
+      const snapshot = buildLookalikeAudienceExport({ members })
+      const audience = buildSelectedLookalikeAudience({
+        snapshot,
+        audienceKeys: input.audienceKeys,
+      })
+
+      if (!audience) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Lookalike audience not found' })
+      }
+
+      const payload = buildLookalikeAudienceCsv({ audience, preset: input.preset })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'lookalike_export',
+        targetType: 'lookalike_audience',
+        targetId: input.audienceKeys.join('|'),
+        mode: input.preset,
+        result: 'executed',
+        summary: `Exported ${audience.name} as ${input.preset}.`,
+        metadata: {
+          audienceKeys: input.audienceKeys,
+          audienceName: audience.name,
+          audienceNames: snapshot.audiences
+            .filter((entry) => input.audienceKeys.includes(entry.key))
+            .map((entry) => entry.name),
+          preset: input.preset,
+          memberCount: payload.memberCount,
+          fileName: payload.fileName,
+        },
+      })
+
+      return payload
+    }),
 
   // Data coverage for cohort filters — shows what % of active members have each field filled
   getCohortDataCoverage: protectedProcedure
@@ -6004,17 +10948,24 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
 
       const filters = (cohort.filters as any[]) || []
-      const members = await queryCohortMembers(ctx.prisma, input.clubId, filters)
+      const members = await queryCohortMembers(ctx.prisma, input.clubId, filters, { limit: 500 })
+      const exactCount = await countCohortMembers(ctx.prisma, input.clubId, filters)
 
       // Refresh count
-      if (members.length !== cohort.memberCount) {
+      if (exactCount !== cohort.memberCount) {
         await ctx.prisma.clubCohort.update({
           where: { id: input.cohortId },
-          data: { memberCount: members.length, updatedAt: new Date() },
+          data: { memberCount: exactCount, updatedAt: new Date() },
         }).catch(() => {})
       }
 
-      return { cohort, members }
+      return {
+        cohort: {
+          ...cohort,
+          memberCount: exactCount,
+        },
+        members,
+      }
     }),
 
   parseCohortFromText: protectedProcedure
@@ -6042,15 +10993,14 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
       const filters = (cohort.filters as any[]) || []
       const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
-      const where = buildCohortWhereClause(filters)
+      const cohortMembers = await queryCohortMembers(ctx.prisma, input.clubId, filters, { limit: null })
+      const cohortUserIds = cohortMembers.map((member: any) => member.id).filter(Boolean)
 
       // Fetch real behavioral data for this cohort
-      const behaviorData = await ctx.prisma.$queryRawUnsafe<any[]>(`
+      const behaviorData = cohortUserIds.length > 0
+        ? await ctx.prisma.$queryRawUnsafe<any[]>(`
         WITH cohort_users AS (
-          SELECT DISTINCT cf.user_id
-          FROM club_followers cf
-          JOIN users u ON u.id = cf.user_id
-          WHERE cf.club_id = $1 AND ${where}
+          SELECT UNNEST(ARRAY[${cohortUserIds.map((id: string) => `'${id.replace(/'/g, "''")}'`).join(',')}])::text as user_id
         )
         SELECT
           to_char(ps.date, 'Day') as day_name,
@@ -6067,6 +11017,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         GROUP BY 1, 2, 3, 4
         ORDER BY bookings DESC
       `, input.clubId).catch(() => [])
+        : []
 
       // Aggregate: top days, top hours, top formats
       const dayAgg: Record<string, number> = {}
@@ -6084,7 +11035,8 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
 
       // Avg sessions per member
       const totalBookings = Object.values(dayAgg).reduce((a, b) => a + b, 0)
-      const avgPerMember = cohort.memberCount > 0 ? (totalBookings / cohort.memberCount).toFixed(1) : '0'
+      const cohortMemberCount = cohortMembers.length
+      const avgPerMember = cohortMemberCount > 0 ? (totalBookings / cohortMemberCount).toFixed(1) : '0'
 
       const { generateWithFallback } = await import('@/lib/ai/llm/provider')
       const result = await generateWithFallback({
@@ -6126,7 +11078,7 @@ Return ONLY valid JSON — an array of 3 objects:
         prompt: `Club: ${club?.name || 'Sports Club'}
 Cohort: "${cohort.name}" — ${cohort.description || 'No description'}
 Filters: ${filterDesc}
-Members: ${cohort.memberCount}
+Members: ${cohortMemberCount}
 
 REAL BEHAVIORAL DATA (last 90 days):
 - Most popular play days: ${topDays.join(', ') || 'No data'}
@@ -6403,6 +11355,169 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }))
     }),
 
+  // ── Integration Health Snapshot ──
+  getIntegrationHealthSnapshot: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubId = input.clubId
+      const now = new Date()
+
+      const [memberRows, sessionRows, bookingRows, courtCount, connector] = await Promise.all([
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint
+          has_email: bigint
+          has_phone: bigint
+          has_gender: bigint
+          has_dob: bigint
+          has_skill: bigint
+          has_membership: bigint
+          has_city: bigint
+          has_zip: bigint
+          has_dupr: bigint
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN u.email IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_email,
+            SUM(CASE WHEN u.phone IS NOT NULL AND u.phone != '' THEN 1 ELSE 0 END)::bigint as has_phone,
+            SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_gender,
+            SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dob,
+            SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_skill,
+            SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_membership,
+            SUM(CASE WHEN u.city IS NOT NULL AND u.city != '' THEN 1 ELSE 0 END)::bigint as has_city,
+            SUM(CASE WHEN u.zip_code IS NOT NULL AND u.zip_code != '' THEN 1 ELSE 0 END)::bigint as has_zip,
+            SUM(CASE WHEN u.dupr_rating_doubles IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dupr
+          FROM club_followers cf
+          JOIN users u ON u.id = cf.user_id
+          WHERE cf.club_id = $1
+        `, clubId),
+
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint
+          has_title: bigint
+          has_format: bigint
+          has_skill: bigint
+          has_court: bigint
+          has_price: bigint
+          has_description: bigint
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN title IS NOT NULL AND title != '' THEN 1 ELSE 0 END)::bigint as has_title,
+            SUM(CASE WHEN format IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_format,
+            SUM(CASE WHEN "skillLevel" IS NOT NULL AND "skillLevel" != 'ALL_LEVELS' THEN 1 ELSE 0 END)::bigint as has_skill,
+            SUM(CASE WHEN "courtId" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_court,
+            SUM(CASE WHEN "pricePerSlot" IS NOT NULL AND "pricePerSlot" > 0 THEN 1 ELSE 0 END)::bigint as has_price,
+            SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END)::bigint as has_description
+          FROM play_sessions
+          WHERE "clubId" = $1
+        `, clubId),
+
+        ctx.prisma.$queryRawUnsafe<[{
+          total: bigint
+          has_cancelled_at: bigint
+          has_checked_in: bigint
+          confirmed: bigint
+          cancelled: bigint
+          no_show: bigint
+        }]>(`
+          SELECT
+            COUNT(*)::bigint as total,
+            SUM(CASE WHEN psb."cancelledAt" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_cancelled_at,
+            SUM(CASE WHEN psb."checkedInAt" IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_checked_in,
+            SUM(CASE WHEN psb.status = 'CONFIRMED' THEN 1 ELSE 0 END)::bigint as confirmed,
+            SUM(CASE WHEN psb.status = 'CANCELLED' THEN 1 ELSE 0 END)::bigint as cancelled,
+            SUM(CASE WHEN psb.status = 'NO_SHOW' THEN 1 ELSE 0 END)::bigint as no_show
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = $1
+        `, clubId),
+
+        ctx.prisma.clubCourt.count({ where: { clubId, isActive: true } }),
+
+        ctx.prisma.clubConnector.findFirst({
+          where: { clubId, status: { not: 'disconnected' } },
+          select: {
+            provider: true,
+            status: true,
+            lastSyncAt: true,
+            lastSyncResult: true,
+            lastError: true,
+            autoSync: true,
+            syncIntervalHours: true,
+          },
+        }),
+      ])
+
+      const pct = (n: bigint, t: bigint) => Number(t) > 0 ? Math.round(Number(n) / Number(t) * 100) : 0
+      const m = memberRows[0]
+      const s = sessionRows[0]
+      const b = bookingRows[0]
+
+      const snapshot = buildIntegrationHealthSnapshot({
+        coverage: {
+          members: {
+            total: Number(m.total),
+            fields: {
+              email: { filled: Number(m.has_email), percent: pct(m.has_email, m.total), label: 'Email' },
+              phone: { filled: Number(m.has_phone), percent: pct(m.has_phone, m.total), label: 'Phone' },
+              gender: { filled: Number(m.has_gender), percent: pct(m.has_gender, m.total), label: 'Gender' },
+              dateOfBirth: { filled: Number(m.has_dob), percent: pct(m.has_dob, m.total), label: 'Date of Birth' },
+              skillLevel: { filled: Number(m.has_skill), percent: pct(m.has_skill, m.total), label: 'Skill Level' },
+              membershipType: { filled: Number(m.has_membership), percent: pct(m.has_membership, m.total), label: 'Membership' },
+              city: { filled: Number(m.has_city), percent: pct(m.has_city, m.total), label: 'City' },
+              zipCode: { filled: Number(m.has_zip), percent: pct(m.has_zip, m.total), label: 'Zip Code' },
+              duprDoubles: { filled: Number(m.has_dupr), percent: pct(m.has_dupr, m.total), label: 'DUPR Rating' },
+            },
+          },
+          sessions: {
+            total: Number(s.total),
+            fields: {
+              title: { filled: Number(s.has_title), percent: pct(s.has_title, s.total), label: 'Title' },
+              format: { filled: Number(s.has_format), percent: pct(s.has_format, s.total), label: 'Format' },
+              skillLevel: { filled: Number(s.has_skill), percent: pct(s.has_skill, s.total), label: 'Skill Level' },
+              court: { filled: Number(s.has_court), percent: pct(s.has_court, s.total), label: 'Court' },
+              price: { filled: Number(s.has_price), percent: pct(s.has_price, s.total), label: 'Price' },
+              description: { filled: Number(s.has_description), percent: pct(s.has_description, s.total), label: 'Description' },
+            },
+          },
+          bookings: {
+            total: Number(b.total),
+            fields: {
+              confirmed: { filled: Number(b.confirmed), percent: pct(b.confirmed, b.total), label: 'Confirmed' },
+              cancelled: { filled: Number(b.cancelled), percent: pct(b.cancelled, b.total), label: 'Cancelled' },
+              noShow: { filled: Number(b.no_show), percent: pct(b.no_show, b.total), label: 'No-Show' },
+              cancelledAt: { filled: Number(b.has_cancelled_at), percent: pct(b.has_cancelled_at, b.total), label: 'Cancel Date' },
+              checkedInAt: { filled: Number(b.has_checked_in), percent: pct(b.has_checked_in, b.total), label: 'Check-in' },
+            },
+          },
+          courts: { total: courtCount },
+        },
+        connector: connector
+          ? {
+              provider: connector.provider,
+              status: connector.status,
+              lastSyncAt: connector.lastSyncAt,
+              lastSyncResult: connector.lastSyncResult as Record<string, unknown> | null,
+              lastError: connector.lastError,
+              autoSync: connector.autoSync,
+              syncIntervalHours: connector.syncIntervalHours,
+            }
+          : null,
+        now,
+      })
+
+      return {
+        ...snapshot,
+        anomalyQueue: await syncIntegrationAnomalyHistory({
+          prisma: ctx.prisma,
+          clubId,
+          queue: snapshot.anomalyQueue,
+          now,
+        }),
+      }
+    }),
+
   // ── Data Coverage Checklist ──
   getDataCoverageChecklist: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
@@ -6637,7 +11752,24 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       channel: z.enum(['email', 'sms', 'both']).default('email'),
     }))
     .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const adminAccess = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const clubAutomationContext = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      await enforceManualLiveOutreachGate({
+        prisma: ctx.prisma,
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        automationSettings: clubAutomationContext?.automationSettings,
+        adminRole: adminAccess.role,
+        targetType: 'manual_event_campaign',
+        targetId: input.sessionId,
+        actionKind: 'create_campaign',
+        channel: input.channel,
+        recipientCount: input.recipientIds.length,
+        label: `Event campaign for ${input.recipientIds.length} recipients`,
+      })
 
       const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
       const session = await ctx.prisma.playSession.findUnique({
