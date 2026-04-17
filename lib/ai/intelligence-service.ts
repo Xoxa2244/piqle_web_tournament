@@ -16,11 +16,7 @@ import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail 
 import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
 import { checkAntiSpam } from './anti-spam';
 import { resolvePreferences } from './inferred-preferences';
-import { buildBookingHistory, toMemberData, toPreferenceData } from './intelligence-service-helpers';
 import type { BookingHistory, UserPlayPreferenceData, MemberData, BookingWithSession } from '../../types/intelligence';
-
-// Re-export for backwards compatibility (other modules may still import from here)
-export { buildBookingHistory, toMemberData, toPreferenceData };
 
 // ── Persona Detection & Persistence ──
 
@@ -149,60 +145,196 @@ const preferencesInput = z.object({
 
 // ── Helper: Build booking history for a user ──
 
-// NOTE: buildBookingHistory, toMemberData, toPreferenceData moved to
-// ./intelligence-service-helpers.ts so the hybrid slot filler (slot-filler-hybrid.ts)
-// can reuse them without pulling in all of intelligence-service (circular deps).
-// They're re-exported at the top of this file for backwards compatibility.
+export async function buildBookingHistory(prisma: any, userId: string): Promise<BookingHistory> {
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [allBookings, lastWeek, lastMonth, lastConfirmed] = await Promise.all([
+    prisma.playSessionBooking.count({ where: { userId } }),
+    prisma.playSessionBooking.count({ where: { userId, status: 'CONFIRMED', bookedAt: { gte: oneWeekAgo } } }),
+    prisma.playSessionBooking.count({ where: { userId, status: 'CONFIRMED', bookedAt: { gte: oneMonthAgo } } }),
+    prisma.playSessionBooking.findFirst({
+      where: { userId, status: 'CONFIRMED' },
+      orderBy: { bookedAt: 'desc' },
+      select: { bookedAt: true },
+    }),
+  ]);
+
+  const cancelled = await prisma.playSessionBooking.count({ where: { userId, status: 'CANCELLED' } });
+  const noShow = await prisma.playSessionBooking.count({ where: { userId, status: 'NO_SHOW' } });
+
+  const daysSince = lastConfirmed
+    ? Math.floor((now.getTime() - new Date(lastConfirmed.bookedAt).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const total = allBookings || 1;
+  const acceptRate = total > 0 ? Math.max(0, (total - cancelled - noShow) / total) : 0.5;
+
+  return {
+    totalBookings: allBookings,
+    bookingsLastWeek: lastWeek,
+    bookingsLastMonth: lastMonth,
+    daysSinceLastConfirmedBooking: daysSince,
+    cancelledCount: cancelled,
+    noShowCount: noShow,
+    inviteAcceptanceRate: acceptRate,
+  };
+}
+
+// ── Helper: Convert Prisma user to MemberData ──
+
+function toMemberData(user: any): MemberData {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    gender: user.gender,
+    city: user.city,
+    duprRatingDoubles: user.duprRatingDoubles ? Number(user.duprRatingDoubles) : null,
+    duprRatingSingles: user.duprRatingSingles ? Number(user.duprRatingSingles) : null,
+  };
+}
+
+// ── Helper: Convert Prisma preference to UserPlayPreferenceData ──
+
+function toPreferenceData(pref: any): UserPlayPreferenceData | null {
+  if (!pref) return null;
+  return {
+    id: pref.id,
+    userId: pref.userId,
+    clubId: pref.clubId,
+    preferredDays: pref.preferredDays || [],
+    preferredTimeSlots: pref.preferredTimeSlots || { morning: true, afternoon: true, evening: true },
+    skillLevel: pref.skillLevel,
+    preferredFormats: pref.preferredFormats || [],
+    targetSessionsPerWeek: pref.targetSessionsPerWeek,
+    isActive: pref.isActive,
+  };
+}
 
 /**
  * intelligence.getSlotFillerRecommendations
- *
- * Now a thin wrapper around the hybrid SQL-prefilter + JS-rich-scorer in
- * lib/ai/slot-filler-hybrid.ts. Single source of truth — tRPC UI, advisor
- * drafts, and cron automation all call the same logic.
- *
- * Old behaviour (load all 10k club members into memory + score each one)
- * was O(N) in members — fine at 3 clubs x 7k members, broken at 50k+.
- * New behaviour: SQL narrows to top 100, JS re-ranks → O(100) JS work.
+ * For a given underfilled session, recommend which members to invite
  */
 export async function getSlotFillerRecommendations(
   prisma: any,
   input: z.infer<typeof slotFillerInput>
 ) {
-  const { getHybridSlotFillerRecommendations } = await import('./slot-filler-hybrid')
-  const result = await getHybridSlotFillerRecommendations(prisma, {
-    sessionId: input.sessionId,
-    limit: input.limit,
-  })
+  // Get the session
+  const session = await prisma.playSession.findUniqueOrThrow({
+    where: { id: input.sessionId },
+    include: {
+      clubCourt: true,
+      bookings: { where: { status: 'CONFIRMED' }, select: { userId: true } },
+      _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+    },
+  });
 
-  // Side effect: detect + persist personas for the re-ranked candidates.
-  // This was inside the old implementation; preserve it by running after
-  // the hybrid call. Non-blocking — failure doesn't affect the response.
-  // Build minimal member+history shapes from the hybrid result for the
-  // existing detectAndPersistPersonas signature. (History isn't in the
-  // recommendations; a future refactor can expose it from hybrid if needed.)
-  if (result.recommendations.length > 0) {
-    Promise.resolve().then(async () => {
-      const session = await prisma.playSession.findUnique({
-        where: { id: input.sessionId },
-        select: { clubId: true },
-      })
-      if (!session?.clubId) return
-      const rich = await Promise.all(
-        result.recommendations.slice(0, 20).map(async (r) => ({
-          member: r.member,
-          preference: r.preference,
-          history: await buildBookingHistory(prisma, r.member.id),
-        }))
-      )
-      detectAndPersistPersonas(prisma, session.clubId, rich)
-    }).catch(() => { /* non-blocking */ })
+  const alreadyBookedUserIds: Set<string> = new Set(session.bookings.map((b: any) => b.userId));
+
+  // Get all club members with preferences
+  const clubMembers = await prisma.clubFollower.findMany({
+    where: { clubId: session.clubId },
+    include: {
+      user: {
+        select: {
+          id: true, email: true, name: true, image: true, gender: true, city: true,
+          duprRatingDoubles: true, duprRatingSingles: true,
+        },
+      },
+    },
+  });
+
+  // Batch-load preferences and bookings to avoid N+1 queries
+  const memberUserIds = clubMembers.map((cf: any) => cf.user.id)
+
+  const [allPreferences, allBookingsRaw] = await Promise.all([
+    prisma.userPlayPreference.findMany({
+      where: { userId: { in: memberUserIds }, clubId: session.clubId },
+    }),
+    prisma.playSessionBooking.findMany({
+      where: { userId: { in: memberUserIds } },
+      select: {
+        userId: true, status: true, bookedAt: true,
+        playSession: { select: { date: true, startTime: true, format: true, category: true } },
+      },
+      orderBy: { bookedAt: 'desc' },
+    }),
+  ])
+
+  const prefMap = new Map(allPreferences.map((p: any) => [p.userId, p]))
+
+  // Group bookings by userId
+  const bookingsByUser = new Map<string, typeof allBookingsRaw>()
+  for (const b of allBookingsRaw) {
+    if (!bookingsByUser.has(b.userId)) bookingsByUser.set(b.userId, [])
+    bookingsByUser.get(b.userId)!.push(b)
   }
 
-  // Shape: drop prefilterSize from the returned shape for callers that don't
-  // know/care about the hybrid pipeline. Router/advisor see the same contract.
-  const { prefilterSize: _ignored, ...publicShape } = result
-  return publicShape
+  // Build member data with batch-loaded preferences and histories
+  const membersWithData = await Promise.all(
+    clubMembers.map(async (cf: any) => {
+      const preference = prefMap.get(cf.user.id) || null
+      const history = await buildBookingHistory(prisma, cf.user.id)
+      const userBookings = (bookingsByUser.get(cf.user.id) || []).slice(0, 50)
+      const bookingsForInference: BookingWithSession[] = userBookings
+        .filter((b: any) => b.playSession)
+        .map((b: any) => ({ status: b.status, session: { date: b.playSession.date, startTime: b.playSession.startTime, format: b.playSession.format, category: b.playSession.category } }))
+      return {
+        member: toMemberData(cf.user),
+        preference: resolvePreferences(toPreferenceData(preference), bookingsForInference),
+        history,
+      }
+    })
+  );
+
+  const recommendations = generateSlotFillerRecommendations({
+    session: {
+      ...session,
+      confirmedCount: session._count.bookings,
+    },
+    members: membersWithData,
+    alreadyBookedUserIds,
+  });
+
+  // Detect & persist personas (non-blocking)
+  detectAndPersistPersonas(prisma, session.clubId, membersWithData);
+
+  // Log the recommendation
+  await prisma.aIRecommendationLog.create({
+    data: {
+      clubId: session.clubId,
+      userId: membersWithData[0]?.member?.id || 'system',
+      sessionId: session.id,
+      type: 'SLOT_FILLER',
+      reasoning: {
+        inputSessionId: session.id,
+        memberCount: membersWithData.length,
+        topRecommendations: recommendations.slice(0, input.limit).map(r => ({
+          userId: r.member.id, score: r.score, likelihood: r.estimatedLikelihood,
+        })),
+      },
+    },
+  });
+
+  return {
+    session: {
+      id: session.id,
+      title: session.title,
+      date: session.date,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      format: session.format,
+      skillLevel: session.skillLevel,
+      maxPlayers: session.maxPlayers,
+      confirmedCount: session._count.bookings,
+      spotsRemaining: session.maxPlayers - session._count.bookings,
+    },
+    recommendations: recommendations.slice(0, input.limit),
+    totalCandidatesScored: membersWithData.length,
+  };
 }
 
 /**
