@@ -13,12 +13,15 @@ import { createHmac } from 'crypto'
 const {
   mockFindUnique,
   mockUpdate,
+  mockUpdateMany,
   mockSendOutreachEmail,
   mockAgentDecisionRecordCreate,
 } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
-  mockSendOutreachEmail: vi.fn().mockResolvedValue({ success: true }),
+  // Atomic status transition: updateMany where status='pending' serializes concurrent clicks
+  mockUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  mockSendOutreachEmail: vi.fn().mockResolvedValue({ success: true, messageId: 'mandrill-abc' }),
   mockAgentDecisionRecordCreate: vi.fn().mockResolvedValue({ id: 'decision-1' }),
 }))
 
@@ -27,6 +30,7 @@ vi.mock('@/lib/prisma', () => ({
     aIRecommendationLog: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+      updateMany: mockUpdateMany,
     },
     agentDecisionRecord: {
       create: mockAgentDecisionRecordCreate,
@@ -59,9 +63,11 @@ beforeEach(() => {
   process.env.CRON_SECRET = CRON_SECRET
   // Allowlist test club for rollout (required by evaluateAgentOutreachRollout)
   process.env.AGENT_OUTREACH_ROLLOUT_CLUB_IDS = CLUB_ID
-  // Re-set default success mock (vi.clearAllMocks resets implementation)
-  mockSendOutreachEmail.mockResolvedValue({ success: true })
+  // Re-set default success mocks (vi.clearAllMocks resets implementation)
+  mockSendOutreachEmail.mockResolvedValue({ success: true, messageId: 'mandrill-abc' })
   mockAgentDecisionRecordCreate.mockResolvedValue({ id: 'decision-1' })
+  // Atomic claim returns {count:1} by default (action was still pending, we won the race)
+  mockUpdateMany.mockResolvedValue({ count: 1 })
 })
 
 function generateToken(actionId: string, clubId: string): string {
@@ -167,6 +173,22 @@ describe('Agent Actions > Approve', () => {
 
     const html = await res.text()
     expect(html).toContain('expired')
+    expect(mockSendOutreachEmail).not.toHaveBeenCalled()
+  })
+
+  it('race condition: второй клик проигрывает atomic claim → не отправляет email', async () => {
+    // Simulate: first request won the claim, second request finds status already pending
+    // in findUnique (race window) but updateMany returns count=0 because status was changed
+    const token = generateToken(ACTION_ID, CLUB_ID)
+    mockFindUnique.mockResolvedValue(makePendingAction())
+    // First updateMany call (atomic claim) returns 0 — someone else already won
+    mockUpdateMany.mockResolvedValueOnce({ count: 0 })
+
+    const req = new Request(makeUrl('/api/agent/approve', ACTION_ID, token))
+    const res = await approveGET(req)
+
+    const html = await res.text()
+    expect(html).toContain('already being processed')
     expect(mockSendOutreachEmail).not.toHaveBeenCalled()
   })
 })

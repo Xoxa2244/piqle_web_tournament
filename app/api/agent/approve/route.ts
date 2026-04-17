@@ -68,6 +68,18 @@ export async function GET(request: Request) {
     return redirectWithMessage(`Action already ${action.status}`, 'info')
   }
 
+  // ATOMIC STATUS TRANSITION: prevent double-processing on simultaneous clicks.
+  // updateMany with WHERE status='pending' either updates 1 row (we won the race)
+  // or 0 rows (someone else got there first). This is safer than the previous
+  // read-then-write pattern which allowed two requests to both pass the check.
+  const claimed = await prisma.aIRecommendationLog.updateMany({
+    where: { id: actionId, status: 'pending' },
+    data: { status: 'approving' },
+  })
+  if (claimed.count === 0) {
+    return redirectWithMessage('Action already being processed', 'info')
+  }
+
   // Execute the action
   try {
     const controlPlane = evaluateAgentControlPlaneAction({
@@ -105,6 +117,12 @@ export async function GET(request: Request) {
           rolloutActionEnabled: rollout.actionEnabled,
         },
       })
+
+      // Revert 'approving' → 'pending' so the user can retry once the gate is opened
+      await prisma.aIRecommendationLog.update({
+        where: { id: actionId },
+        data: { status: 'pending' },
+      }).catch(() => {})
 
       return redirectWithMessage(summary, controlPlane.shadow ? 'info' : 'error')
     }
@@ -159,6 +177,11 @@ export async function GET(request: Request) {
 
     return redirectWithMessage(`Approved! Message sent to ${action.user?.name || 'member'}`, 'success')
   } catch (err) {
+    // Revert 'approving' → 'pending' so the user can retry
+    await prisma.aIRecommendationLog.update({
+      where: { id: actionId },
+      data: { status: 'pending' },
+    }).catch(() => {})
     log.error(`Action ${actionId} approve failed:`, (err as Error).message)
     return redirectWithMessage('Failed to send message', 'error')
   }
