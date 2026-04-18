@@ -108,6 +108,95 @@ function humanizeCampaignType(type: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/**
+ * Aggregates per-follower booking stats for growth engine snapshots.
+ *
+ * Used by smart-first-session, guest-trial-booking, win-back (and
+ * referral-engine uses a similar pattern with an extra co-player CTE).
+ *
+ * Returns a superset of fields; each engine picks what it needs. Safe
+ * fallback: if the SQL fails, logs and returns an empty array so the
+ * engine renders a "no candidates" snapshot instead of crashing.
+ */
+async function fetchFollowerBookingRows(
+  prisma: any,
+  clubId: string,
+  windowDays: number,
+  opts: {
+    recentFollowersOnly?: boolean   // cf.createdAt within windowDays (for newcomer engines)
+    minBookings?: number            // HAVING confirmedBookings >= N (cheap pre-filter)
+    minDaysSinceLast?: number       // HAVING days since last >= N (win-back path)
+    includeGuestTrialFields?: boolean // adds nextBookedSessionAt + noShow count
+  } = {},
+): Promise<any[]> {
+  const recentFilter = opts.recentFollowersOnly
+    ? `AND cf."createdAt" >= NOW() - ($2::text || ' days')::interval`
+    : ''
+  const havingBookings = opts.minBookings
+    ? `HAVING COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED') >= ${Math.floor(opts.minBookings)}`
+    : ''
+  const havingDaysSince = opts.minDaysSinceLast
+    ? ` AND EXTRACT(EPOCH FROM (NOW() - MAX(b."bookedAt") FILTER (WHERE b.status::text = 'CONFIRMED'))) / 86400 >= ${Math.floor(opts.minDaysSinceLast)}`
+    : ''
+  const havingClause = havingBookings + (havingBookings && havingDaysSince ? havingDaysSince : havingDaysSince ? `HAVING 1=1${havingDaysSince}` : '')
+
+  const extraSelect = opts.includeGuestTrialFields
+    ? `,
+          MIN(ps.date) FILTER (
+            WHERE b.status::text = 'CONFIRMED'
+              AND ps.date > NOW()
+          ) AS "nextBookedSessionAt",
+          COUNT(*) FILTER (WHERE b.status::text = 'NO_SHOW')::int AS "noShowCount",
+          COUNT(*) FILTER (
+            WHERE b.status::text = 'CONFIRMED'
+              AND ps.date < NOW()
+          )::int AS "playedConfirmedBookings"`
+    : ''
+
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `
+      SELECT
+        cf."userId" AS "userId",
+        cf."createdAt" AS "followedAt",
+        u."createdAt" AS "userCreatedAt",
+        u.name,
+        u.email,
+        de.metadata->>'membership' AS "membershipType",
+        de.metadata->>'membershipStatus' AS "membershipStatus",
+        MIN(b."bookedAt") FILTER (WHERE b.status::text = 'CONFIRMED') AS "firstConfirmedBookingAt",
+        MAX(b."bookedAt") FILTER (WHERE b.status::text = 'CONFIRMED') AS "lastConfirmedBookingAt",
+        COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED')::int AS "confirmedBookings"
+        ${extraSelect}
+      FROM club_followers cf
+      JOIN users u ON u.id = cf."userId"
+      LEFT JOIN play_session_bookings b ON b."userId" = cf."userId"
+      LEFT JOIN play_sessions ps ON ps.id = b."sessionId" AND ps."clubId" = $1
+      LEFT JOIN document_embeddings de
+        ON de.source_id = cf."userId"
+        AND de.content_type = 'member'
+        AND de.source_table = 'csv_import'
+        AND de.club_id = $1
+      WHERE cf."clubId" = $1
+      ${recentFilter}
+      GROUP BY cf."userId", cf."createdAt", u.name, u.email, u."createdAt", de.metadata
+      ${havingClause}
+      ORDER BY cf."createdAt" DESC
+      LIMIT 500
+      `,
+      clubId,
+      String(windowDays),
+    )
+    return rows as any[]
+  } catch (err: any) {
+    log.warn(
+      '[GrowthSnapshot] fetchFollowerBookingRows failed, returning empty:',
+      err?.message?.slice(0, 200),
+    )
+    return []
+  }
+}
+
 function buildApprovedAgentMessage(opts: {
   type: string
   clubName: string
@@ -6981,10 +7070,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         where: { id: input.clubId },
         select: { automationSettings: true },
       })
-      // TODO: populate rows from real member+session data. Empty input returns
-      // an empty snapshot, so UI renders "no candidates" state safely.
+      // Newcomers: followed within windowDays. Engine keeps those with
+      // confirmedBookings >= 1 AND guest/trial membership (see smart-first-session.ts).
+      const rows = await fetchFollowerBookingRows(ctx.prisma, input.clubId, input.windowDays, {
+        recentFollowersOnly: true,
+      })
       return buildSmartFirstSessionSnapshot({
-        rows: [],
+        rows: rows as any,
         automationSettings: club?.automationSettings,
         windowDays: input.windowDays,
         limit: input.limit,
@@ -7005,8 +7097,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         where: { id: input.clubId },
         select: { automationSettings: true },
       })
+      // Guest trial: followed in window, includes noShow + next booking tracking
+      const rows = await fetchFollowerBookingRows(ctx.prisma, input.clubId, input.windowDays, {
+        recentFollowersOnly: true,
+        includeGuestTrialFields: true,
+      })
       return buildGuestTrialBookingSnapshot({
-        rows: [],
+        rows: rows as any,
         automationSettings: club?.automationSettings,
         windowDays: input.windowDays,
         limit: input.limit,
@@ -7027,8 +7124,14 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         where: { id: input.clubId },
         select: { automationSettings: true },
       })
+      // Win-back: members who used to play (≥6 bookings) but lastConfirmed was
+      // ≥21 days ago. Engine gate: daysSinceLastBooking between 21 and windowDays.
+      const rows = await fetchFollowerBookingRows(ctx.prisma, input.clubId, input.windowDays, {
+        minBookings: 6,
+        minDaysSinceLast: 21,
+      })
       return buildWinBackSnapshot({
-        rows: [],
+        rows: rows as any,
         automationSettings: club?.automationSettings,
         windowDays: input.windowDays,
         limit: input.limit,
