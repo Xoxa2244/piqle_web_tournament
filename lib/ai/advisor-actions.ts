@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
+import { advisorAdminReminderRoutingDraftSchema } from './advisor-admin-reminder-policy'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
+import { guestTrialExecutionContextSchema } from './guest-trial-offers'
+import { referralExecutionContextSchema } from './referral-offers'
 import { advisorSandboxRoutingDraftSchema } from './advisor-sandbox-policy'
 
 export const advisorCampaignTypeEnum = z.enum([
@@ -44,6 +47,7 @@ export const advisorCampaignExecutionSchema = z.object({
   timeZone: z.string().min(1).max(80).optional(),
 })
 export const advisorProgramProposalSourceEnum = z.enum(['expand_peak', 'fill_gap'])
+export const advisorProgrammingConflictRiskEnum = z.enum(['low', 'medium', 'high'])
 export const advisorPerformanceSignalSchema = z.object({
   headline: z.string().min(1).max(220),
   bullets: z.array(z.string().min(1).max(220)).max(4).default([]),
@@ -62,6 +66,16 @@ export const advisorAdaptiveScheduledDefaultSchema = z.object({
 export const advisorAdaptiveDefaultsAppliedSchema = z.object({
   channel: advisorAdaptiveChannelDefaultSchema.optional(),
   scheduledSend: advisorAdaptiveScheduledDefaultSchema.optional(),
+})
+export const advisorProgrammingConflictSchema = z.object({
+  overlapRisk: advisorProgrammingConflictRiskEnum,
+  cannibalizationRisk: advisorProgrammingConflictRiskEnum,
+  courtPressureRisk: advisorProgrammingConflictRiskEnum,
+  overallRisk: advisorProgrammingConflictRiskEnum,
+  riskSummary: z.string().min(1).max(220),
+  warnings: z.array(z.string().min(1).max(220)).max(3).default([]),
+  saferAlternativeId: z.string().min(1).max(80).optional(),
+  saferAlternativeReason: z.string().min(1).max(220).optional(),
 })
 
 export const cohortFilterSchema = z.object({
@@ -86,6 +100,8 @@ export const advisorCampaignDraftSchema = z.object({
   smsBody: z.string().max(500).optional(),
   execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
   guardrails: advisorContactGuardrailsSchema.optional(),
+  guestTrialContext: guestTrialExecutionContextSchema.optional(),
+  referralContext: referralExecutionContextSchema.optional(),
 })
 
 export const advisorSessionDraftSchema = z.object({
@@ -160,6 +176,7 @@ const advisorMembershipLifecycleDraftBaseSchema = z.object({
   execution: advisorCampaignExecutionSchema.default({ mode: 'save_draft' }),
   candidates: z.array(advisorMembershipLifecycleCandidateSchema).min(1).max(25),
   guardrails: advisorContactGuardrailsSchema.optional(),
+  guestTrialContext: guestTrialExecutionContextSchema.optional(),
 })
 
 export const advisorTrialFollowUpDraftSchema = advisorMembershipLifecycleDraftBaseSchema.extend({
@@ -187,6 +204,7 @@ export const advisorProgrammingProposalSchema = z.object({
   confidence: z.number().int().min(0).max(100),
   source: advisorProgramProposalSourceEnum,
   rationale: z.array(z.string().min(1).max(220)).min(1).max(4),
+  conflict: advisorProgrammingConflictSchema.optional(),
 })
 
 export const advisorProgrammingDraftSchema = z.object({
@@ -289,6 +307,14 @@ const updateSandboxRoutingActionCoreSchema = z.object({
   policy: advisorSandboxRoutingDraftSchema,
 })
 
+const updateAdminReminderRoutingActionCoreSchema = z.object({
+  kind: z.literal('update_admin_reminder_routing'),
+  title: z.string().min(1).max(120),
+  summary: z.string().max(240).optional(),
+  requiresApproval: z.boolean().default(true),
+  policy: advisorAdminReminderRoutingDraftSchema,
+})
+
 export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
   createCohortActionCoreSchema,
   createCampaignActionCoreSchema,
@@ -300,6 +326,7 @@ export const advisorActionCoreSchema = z.discriminatedUnion('kind', [
   updateContactPolicyActionCoreSchema,
   updateAutonomyPolicyActionCoreSchema,
   updateSandboxRoutingActionCoreSchema,
+  updateAdminReminderRoutingActionCoreSchema,
 ])
 
 export const advisorActionRecommendationSchema = z.object({

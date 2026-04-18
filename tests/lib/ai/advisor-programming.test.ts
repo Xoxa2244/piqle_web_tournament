@@ -113,4 +113,149 @@ describe('advisor programming planning', () => {
     })
     expect(plan.proposals.length).toBeGreaterThan(1)
   })
+
+  it('marks windows that could cannibalize existing sessions', () => {
+    const riskyPlan = buildAdvisorProgrammingPlan({
+      sessions: [
+        {
+          title: 'Wednesday Evening Intermediate Open Play',
+          date: '2026-04-01',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 4,
+        },
+        {
+          title: 'Wednesday Evening Intermediate Open Play',
+          date: '2026-04-08',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 5,
+        },
+        {
+          title: 'Thursday Evening Intermediate Open Play',
+          date: '2026-04-03',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 7,
+        },
+        {
+          title: 'Thursday Evening Intermediate Open Play',
+          date: '2026-04-10',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 8,
+        },
+      ],
+      preferences: [
+        ...preferences,
+        {
+          preferredDays: ['Thursday'],
+          preferredTimeMorning: false,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: true,
+          skillLevel: 'INTERMEDIATE' as const,
+          preferredFormats: ['Open Play'],
+          targetSessionsPerWeek: 2,
+          notificationsOptOut: false,
+        },
+      ],
+      request: parseAdvisorProgrammingRequest('Add a Wednesday evening intermediate open play'),
+      limit: 10,
+    })
+
+    const riskyWednesday = riskyPlan.requested
+    expect(riskyWednesday?.conflict?.cannibalizationRisk).toBe('high')
+    expect(riskyWednesday?.conflict?.warnings.length).toBeGreaterThan(0)
+    expect(riskyWednesday?.conflict?.saferAlternativeId).toBeTruthy()
+  })
+
+  it('uses queued interest requests as suppressed demand for programming', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [],
+      preferences: [],
+      interestRequests: [
+        {
+          preferredDays: ['Friday'],
+          preferredFormats: ['Clinic'],
+          preferredTimeSlots: { morning: false, afternoon: false, evening: true },
+          status: 'pending',
+          sessionId: null,
+        },
+        {
+          preferredDays: ['Friday'],
+          preferredFormats: ['Clinic'],
+          preferredTimeSlots: { morning: false, afternoon: false, evening: true },
+          status: 'notified',
+          sessionId: null,
+        },
+      ],
+      courtCount: 2,
+      limit: 3,
+    })
+
+    expect(plan.recommended).toMatchObject({
+      dayOfWeek: 'Friday',
+      timeSlot: 'evening',
+      format: 'CLINIC',
+    })
+    expect(plan.recommended?.rationale.join(' ')).toContain('notify-me')
+    expect(plan.insights.join(' ')).toContain('queued notify-me demand')
+  })
+
+  it('raises court pressure risk when the club has limited active courts', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [
+        {
+          title: 'Friday Evening Open Play A',
+          date: '2026-04-10',
+          startTime: '18:00',
+          endTime: '19:30',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 7,
+        },
+        {
+          title: 'Friday Evening Open Play B',
+          date: '2026-04-10',
+          startTime: '18:30',
+          endTime: '20:00',
+          format: 'OPEN_PLAY',
+          skillLevel: 'INTERMEDIATE',
+          maxPlayers: 8,
+          registeredCount: 7,
+        },
+      ],
+      preferences: [
+        {
+          preferredDays: ['Friday'],
+          preferredTimeMorning: false,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: true,
+          skillLevel: 'INTERMEDIATE' as const,
+          preferredFormats: ['Open Play'],
+          targetSessionsPerWeek: 2,
+          notificationsOptOut: false,
+        },
+      ],
+      request: parseAdvisorProgrammingRequest('Add a Friday evening open play'),
+      courtCount: 1,
+      limit: 5,
+    })
+
+    expect(plan.requested?.conflict?.courtPressureRisk).toBe('high')
+    expect(plan.requested?.conflict?.warnings.join(' ')).toContain('active court')
+  })
 })

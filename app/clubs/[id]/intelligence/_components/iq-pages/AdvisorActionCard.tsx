@@ -6,7 +6,16 @@ import { useTheme } from '../IQThemeProvider'
 import type { AdvisorAction, AdvisorActionCore } from '@/lib/ai/advisor-actions'
 import { getAdvisorActionRuntimeState, type AdvisorActionRuntimeState } from '@/lib/ai/advisor-action-state'
 import type { AdvisorOutcomeMemory } from '@/lib/ai/advisor-outcomes'
+import {
+  appendGuestTrialExecutionContextSummary,
+  type GuestTrialExecutionContext,
+} from '@/lib/ai/guest-trial-offers'
+import {
+  appendReferralExecutionContextSummary,
+  type ReferralExecutionContext,
+} from '@/lib/ai/referral-offers'
 import { useExecuteAdvisorAction, useUpdateAdvisorActionState } from '../../_hooks/use-intelligence'
+import { buildGrowthExecutionDisplay } from './shared/growth-context'
 
 type CampaignAction = Extract<AdvisorActionCore, { kind: 'create_campaign' }>
 type FillSessionAction = Extract<AdvisorActionCore, { kind: 'fill_session' }>
@@ -18,6 +27,7 @@ type ProgrammingAction = Extract<AdvisorActionCore, { kind: 'program_schedule' }
 type ContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
 type AutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
 type SandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sandbox_routing' }>
+type AdminReminderRoutingAction = Extract<AdvisorActionCore, { kind: 'update_admin_reminder_routing' }>
 type CohortAction = Extract<AdvisorActionCore, { kind: 'create_cohort' }>
 
 function getRefinePrompt(action: AdvisorAction) {
@@ -30,6 +40,7 @@ function getRefinePrompt(action: AdvisorAction) {
   if (action.kind === 'update_contact_policy') return 'Tighten these messaging rules a bit.'
   if (action.kind === 'update_autonomy_policy') return 'Make this autopilot policy a bit safer.'
   if (action.kind === 'update_sandbox_routing') return 'Keep sandbox preview only and trim the test recipient list.'
+  if (action.kind === 'update_admin_reminder_routing') return 'Use email reminders only and keep the current phone off for now.'
   return 'Narrow this audience a bit.'
 }
 
@@ -74,13 +85,44 @@ function getProgrammingRefinePrompts(action: ProgrammingAction) {
   return prompts.slice(0, 4)
 }
 
+function getProgrammingConflictStyles(level?: 'low' | 'medium' | 'high') {
+  if (level === 'high') {
+    return {
+      bg: 'rgba(239,68,68,0.10)',
+      border: 'rgba(239,68,68,0.18)',
+      text: '#FCA5A5',
+      label: 'High conflict',
+    }
+  }
+
+  if (level === 'medium') {
+    return {
+      bg: 'rgba(245,158,11,0.10)',
+      border: 'rgba(245,158,11,0.18)',
+      text: '#FBBF24',
+      label: 'Watch conflicts',
+    }
+  }
+
+  return {
+    bg: 'rgba(16,185,129,0.10)',
+    border: 'rgba(16,185,129,0.18)',
+    text: '#86EFAC',
+    label: 'Cleaner window',
+  }
+}
+
 function buildCampaignSummary(action: CampaignAction, execution: { mode: 'save_draft' | 'send_now' | 'send_later' }) {
   const modeLabel = execution.mode === 'send_now'
     ? 'outreach'
     : execution.mode === 'send_later'
       ? 'scheduled outreach'
       : 'draft'
-  return `${action.campaign.channel.toUpperCase()} ${modeLabel} for ${action.audience.count || 0} members`
+  const withGuestTrial = appendGuestTrialExecutionContextSummary(
+    `${action.campaign.channel.toUpperCase()} ${modeLabel} for ${action.audience.count || 0} members`,
+    action.campaign.guestTrialContext,
+  )
+  return appendReferralExecutionContextSummary(withGuestTrial, action.campaign.referralContext)
 }
 
 function buildMembershipLifecycleSummary(
@@ -93,7 +135,21 @@ function buildMembershipLifecycleSummary(
       ? 'scheduled outreach'
       : 'draft'
   const flowLabel = action.kind === 'trial_follow_up' ? 'trial follow-up' : 'renewal outreach'
-  return `${action.lifecycle.channel.toUpperCase()} ${modeLabel} for ${action.lifecycle.candidateCount || 0} ${flowLabel} members`
+  return appendGuestTrialExecutionContextSummary(
+    `${action.lifecycle.channel.toUpperCase()} ${modeLabel} for ${action.lifecycle.candidateCount || 0} ${flowLabel} members`,
+    action.lifecycle.guestTrialContext,
+  )
+}
+
+function getGuestTrialContext(action: AdvisorAction): GuestTrialExecutionContext | null {
+  if (action.kind === 'create_campaign') return action.campaign.guestTrialContext || null
+  if (action.kind === 'trial_follow_up') return action.lifecycle.guestTrialContext || null
+  return null
+}
+
+function getReferralContext(action: AdvisorAction): ReferralExecutionContext | null {
+  if (action.kind === 'create_campaign') return action.campaign.referralContext || null
+  return null
 }
 
 function buildQuickScheduleOption(hoursFromNow: number, hourOfDay: number, label: string) {
@@ -209,6 +265,7 @@ export function AdvisorActionCard({
   const isContactPolicy = selectedBaseAction.kind === 'update_contact_policy'
   const isAutonomyPolicy = selectedBaseAction.kind === 'update_autonomy_policy'
   const isSandboxRouting = selectedBaseAction.kind === 'update_sandbox_routing'
+  const isAdminReminderRouting = selectedBaseAction.kind === 'update_admin_reminder_routing'
   const baseCampaignAction = isCampaign ? selectedBaseAction as CampaignAction : null
   const baseMembershipLifecycleAction = isMembershipLifecycle ? selectedBaseAction as MembershipLifecycleAction : null
 
@@ -291,6 +348,7 @@ export function AdvisorActionCard({
   const currentContactPolicyAction = isContactPolicy ? currentAction as ContactPolicyAction : null
   const currentAutonomyPolicyAction = isAutonomyPolicy ? currentAction as AutonomyPolicyAction : null
   const currentSandboxRoutingAction = isSandboxRouting ? currentAction as SandboxRoutingAction : null
+  const currentAdminReminderRoutingAction = isAdminReminderRouting ? currentAction as AdminReminderRoutingAction : null
   const currentCohortAction = currentAction.kind === 'create_cohort' ? currentAction as CohortAction : null
 
   const title = currentAction.title
@@ -307,6 +365,19 @@ export function AdvisorActionCard({
         ? currentAction.signals
         : null
   const defaultsApplied = getActionAdaptiveDefaults(currentAction)
+  const guestTrialContext = getGuestTrialContext(currentAction)
+  const referralContext = getReferralContext(currentAction)
+  const {
+    guestTrialWorkspaceSummary,
+    referralWorkspaceSummary,
+    guestTrialSummary,
+    referralSummary,
+    guestTrialOutcomeSuffix,
+    referralOutcomeSuffix,
+  } = buildGrowthExecutionDisplay({
+    guestTrialContext,
+    referralContext,
+  })
 
   const quickScheduleOptions = useMemo(() => ([
     buildQuickScheduleOption(1, 9, 'Tomorrow 9 AM'),
@@ -415,6 +486,19 @@ export function AdvisorActionCard({
         skillLevel: string
         projectedOccupancy: number
         estimatedInterestedMembers: number
+        conflict?: {
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+        } | null
+        handoff?: {
+          summary?: string
+          whyNow?: string
+          nextStep?: string
+          watchouts?: string[]
+          ownerLabel?: string
+          ownerUserId?: string
+          ownerBrief?: string
+        } | null
       }>
     : []
   const approvalHelperText = isCampaign
@@ -644,6 +728,8 @@ export function AdvisorActionCard({
                       ? 'Programming Draft'
                     : isSandboxRouting
                       ? 'Sandbox Routing Draft'
+                    : isAdminReminderRouting
+                      ? 'Admin Reminder Routing Draft'
                     : isAutonomyPolicy
                       ? 'Autonomy Policy Draft'
                       : 'Contact Policy Draft'}
@@ -967,6 +1053,38 @@ export function AdvisorActionCard({
                 ))}
               </div>
             )}
+            {guestTrialContext && (
+              <div
+                className="mt-2 rounded-lg px-2.5 py-2"
+                style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.16)' }}
+              >
+                <div className="text-[10px]" style={{ color: '#67E8F9', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Guest / Trial Route
+                </div>
+                <div className="text-[11px] mt-2" style={{ color: 'var(--heading)', lineHeight: 1.5, fontWeight: 600 }}>
+                  {guestTrialContext.offerName}
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                  {guestTrialWorkspaceSummary?.stage || 'Guest / Trial'} · {guestTrialSummary}
+                </div>
+              </div>
+            )}
+            {referralContext && (
+              <div
+                className="mt-2 rounded-lg px-2.5 py-2"
+                style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.16)' }}
+              >
+                <div className="text-[10px]" style={{ color: '#FBBF24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Referral Route
+                </div>
+                <div className="text-[11px] mt-2" style={{ color: 'var(--heading)', lineHeight: 1.5, fontWeight: 600 }}>
+                  {referralContext.offerName}
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                  {referralWorkspaceSummary?.lane || 'Referral'} · {referralSummary}
+                </div>
+              </div>
+            )}
           </div>
         ) : isMembershipLifecycle ? (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
@@ -1025,6 +1143,22 @@ export function AdvisorActionCard({
                     {label}
                   </span>
                 ))}
+              </div>
+            )}
+            {guestTrialContext && (
+              <div
+                className="mt-2 rounded-lg px-2.5 py-2"
+                style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.16)' }}
+              >
+                <div className="text-[10px]" style={{ color: '#67E8F9', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Guest / Trial Route
+                </div>
+                <div className="text-[11px] mt-2" style={{ color: 'var(--heading)', lineHeight: 1.5, fontWeight: 600 }}>
+                  {guestTrialContext.offerName}
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                  {guestTrialWorkspaceSummary?.stage || 'Guest / Trial'} · {guestTrialSummary}
+                </div>
               </div>
             )}
           </div>
@@ -1202,6 +1336,36 @@ export function AdvisorActionCard({
               </div>
             )}
           </div>
+        ) : isAdminReminderRouting ? (
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Admin Reminder Routing
+            </div>
+            <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>
+              {currentAdminReminderRoutingAction?.policy.channel === 'in_app'
+                ? 'In-app only'
+                : currentAdminReminderRoutingAction?.policy.channel === 'email'
+                  ? 'Email reminders'
+                  : currentAdminReminderRoutingAction?.policy.channel === 'sms'
+                    ? 'SMS reminders'
+                    : 'Email + SMS reminders'}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              Email {currentAdminReminderRoutingAction?.policy.email || 'not set'} · Phone {currentAdminReminderRoutingAction?.policy.phone || 'not set'}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {currentAdminReminderRoutingAction?.policy.changes.slice(0, 5).map((change: string) => (
+                <span
+                  key={change}
+                  className="text-[11px] px-2 py-1 rounded-full"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                >
+                  {change}
+                </span>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
@@ -1310,6 +1474,16 @@ export function AdvisorActionCard({
                   border: index === 0 ? '1px solid rgba(139,92,246,0.18)' : '1px solid rgba(255,255,255,0.06)',
                 }}
               >
+                {(() => {
+                  const conflictStyles = getProgrammingConflictStyles(proposal.conflict?.overallRisk)
+                  const saferAlternative = proposal.conflict?.saferAlternativeId
+                    ? [currentProgrammingAction?.program.primary, ...(currentProgrammingAction?.program.alternatives || [])]
+                        .filter(Boolean)
+                        .find((candidate: any) => candidate.id === proposal.conflict?.saferAlternativeId)
+                    : null
+
+                  return (
+                    <>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: index === 0 ? '#A78BFA' : 'var(--t3)', fontWeight: 700 }}>
@@ -1329,6 +1503,49 @@ export function AdvisorActionCard({
                 <div className="text-xs mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
                   {proposal.estimatedInterestedMembers} likely players · {proposal.maxPlayers} max players · {proposal.confidence}/100 confidence
                 </div>
+                {proposal.conflict && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className="text-[10px] px-2 py-1 rounded-full font-medium"
+                        style={{ background: conflictStyles.bg, border: `1px solid ${conflictStyles.border}`, color: conflictStyles.text }}
+                      >
+                        {conflictStyles.label}
+                      </span>
+                      <span
+                        className="text-[10px] px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t3)' }}
+                      >
+                        Overlap {proposal.conflict.overlapRisk}
+                      </span>
+                      <span
+                        className="text-[10px] px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t3)' }}
+                      >
+                        Cannibalization {proposal.conflict.cannibalizationRisk}
+                      </span>
+                      <span
+                        className="text-[10px] px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t3)' }}
+                      >
+                        Court pressure {proposal.conflict.courtPressureRisk}
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
+                      {proposal.conflict.riskSummary}
+                    </p>
+                    {proposal.conflict.warnings.slice(0, 2).map((warning: string) => (
+                      <p key={warning} className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                        {warning}
+                      </p>
+                    ))}
+                    {saferAlternative && (
+                      <p className="text-xs" style={{ color: '#FBBF24', lineHeight: 1.6 }}>
+                        Safer alternative: {saferAlternative.title}. {proposal.conflict.saferAlternativeReason}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-2 mt-2">
                   {proposal.rationale.map((reason: string) => (
                     <p key={reason} className="text-xs" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
@@ -1336,6 +1553,9 @@ export function AdvisorActionCard({
                     </p>
                   ))}
                 </div>
+                    </>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -1379,6 +1599,41 @@ export function AdvisorActionCard({
                     <div className="text-[11px] mt-2" style={{ color: 'var(--t2)', lineHeight: 1.6 }}>
                       {draft.estimatedInterestedMembers} likely players now sit behind this internal session draft.
                     </div>
+                    {draft.handoff?.summary ? (
+                      <div className="mt-2 rounded-lg p-2.5" style={{ background: 'rgba(103,232,249,0.06)', border: '1px solid rgba(103,232,249,0.16)' }}>
+                        <div className="text-[10px]" style={{ color: '#67E8F9', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                          Agent handoff
+                        </div>
+                        <div className="text-[11px] mt-2" style={{ color: 'var(--heading)', lineHeight: 1.6, fontWeight: 600 }}>
+                          {draft.handoff.summary}
+                        </div>
+                        {draft.handoff.whyNow ? (
+                          <div className="text-[11px] mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                            Why now: {draft.handoff.whyNow}
+                          </div>
+                        ) : null}
+                        {draft.handoff.ownerBrief ? (
+                          <div className="text-[11px] mt-2" style={{ color: '#60A5FA', lineHeight: 1.6 }}>
+                            Owner handoff: {draft.handoff.ownerBrief}
+                          </div>
+                        ) : null}
+                        {draft.handoff.watchouts?.slice(0, 2).map((watchout) => (
+                          <div key={watchout} className="text-[11px] mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                            {watchout}
+                          </div>
+                        ))}
+                        {draft.handoff.nextStep ? (
+                          <div className="text-[11px] mt-2" style={{ color: '#A78BFA', lineHeight: 1.6 }}>
+                            Next step: {draft.handoff.nextStep}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {draft.conflict && (
+                      <div className="text-[11px] mt-2" style={{ color: draft.conflict.overallRisk === 'high' ? '#FCA5A5' : draft.conflict.overallRisk === 'medium' ? '#FBBF24' : '#86EFAC', lineHeight: 1.6 }}>
+                        {draft.conflict.riskSummary}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1662,6 +1917,8 @@ export function AdvisorActionCard({
                 ? `Autonomy policy updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'update_sandbox_routing'
                 ? `Sandbox routing updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
+              : result.kind === 'update_admin_reminder_routing'
+                ? `Admin reminder routing updated${result.changedFields?.length ? `: ${result.changedFields.length} changes applied` : ''}`
               : result.kind === 'program_schedule'
                 ? `Created ${result.opsDraftsCreated || result.proposalCount || 0} ops draft${(result.opsDraftsCreated || result.proposalCount || 0) === 1 ? '' : 's'}${result.primaryTitle ? ` around ${result.primaryTitle}` : ''}`
               : result.kind === 'fill_session'
@@ -1674,12 +1931,12 @@ export function AdvisorActionCard({
                   : `Reactivation sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.kind === 'trial_follow_up'
                 ? result.savedAsDraft
-                  ? `Trial follow-up draft saved for ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
+                  ? `Trial follow-up draft saved for ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}`
                   : result.sandboxed
-                    ? `Sandbox preview ready for ${result.previewRecipientCount} trial members${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
+                    ? `Sandbox preview ready for ${result.previewRecipientCount} trial members${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}`
                   : result.deliveryMode === 'send_later'
-                    ? `Trial follow-up scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
-                    : `Trial follow-up sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
+                    ? `Trial follow-up scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}`
+                    : `Trial follow-up sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}${guestTrialOutcomeSuffix}`
               : result.kind === 'renewal_reactivation'
                 ? result.savedAsDraft
                   ? `Renewal outreach draft saved for ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
@@ -1689,12 +1946,12 @@ export function AdvisorActionCard({
                     ? `Renewal outreach scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.guardrails?.excludedCount ? `, ${result.guardrails.excludedCount} excluded by guardrails` : ''}`
                     : `Renewal outreach sent to ${result.sent} members${result.failed ? `, ${result.failed} failed` : ''}${result.skipped ? `, ${result.skipped} skipped by guardrails` : ''}`
               : result.savedAsDraft
-                ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
+                ? `Draft saved for ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}${referralOutcomeSuffix}`
                 : result.sandboxed
-                  ? `Sandbox preview ready for ${result.previewRecipientCount} campaign recipients${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
+                  ? `Sandbox preview ready for ${result.previewRecipientCount} campaign recipients${result.scheduledLabel ? ` at ${result.scheduledLabel}` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}${referralOutcomeSuffix}`
                 : result.deliveryMode === 'send_later'
-                  ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}`
-                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}`
+                  ? `Campaign scheduled for ${result.scheduledLabel || scheduledLabel || 'later'} with ${result.memberCount} eligible members${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} excluded by guardrails` : ''}${guestTrialOutcomeSuffix}${referralOutcomeSuffix}`
+                : `Campaign sent to ${result.sent} members${result.emailSent ? `, ${result.emailSent} email` : ''}${result.smsSent ? `, ${result.smsSent} SMS` : ''}${result.failed ? `, ${result.failed} failed` : ''}${result.excludedByRules ? `, ${result.excludedByRules} excluded by rules` : ''}${result.excludedByGuardrails ? `, ${result.excludedByGuardrails} skipped by guardrails` : ''}${guestTrialOutcomeSuffix}${referralOutcomeSuffix}`
               : persistedOutcome?.summary || 'Approved'}
           </div>
           <div

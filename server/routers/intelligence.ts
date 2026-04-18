@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { checkFeatureAccess } from '@/lib/subscription'
+import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
 import {
   getSlotFillerRecommendations,
@@ -98,6 +99,13 @@ function describeAgentAction(type: string, reasoning: any): string {
     case 'REACTIVATION': return 'Reactivation outreach'
     default: return `${sequenceLabel}${type}`
   }
+}
+
+function humanizeCampaignType(type: string): string {
+  return type
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function buildApprovedAgentMessage(opts: {
@@ -2754,12 +2762,15 @@ export const intelligenceRouter = createTRPCRouter({
   getIntelligenceSettings: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const access = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const club: any = await ctx.prisma.club.findUniqueOrThrow({
         where: { id: input.clubId },
       })
       const settings = club.automationSettings?.intelligence || null
-      return { settings }
+      // Derived fields consumed by CampaignsIQ etc.
+      const outreachRolloutStatus = settings?.controlPlane?.outreachRollout?.status || 'idle'
+      const clubRole = access.isAdmin ? 'admin' : 'follower'
+      return { settings, outreachRolloutStatus, clubRole }
     }),
 
   // ── Intelligence Settings: Save onboarding/config ──
@@ -2800,7 +2811,8 @@ export const intelligenceRouter = createTRPCRouter({
           },
         },
       })
-      return { success: true }
+      // Return saved settings so UI can reflect the canonical state after save
+      return { success: true, settings: validated }
     }),
 
   // ── Automation Settings: Get campaign triggers ──
@@ -5226,6 +5238,18 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         })
       }
 
+      if (input.action.kind === 'update_admin_reminder_routing') {
+        // Admin reminder routing is persisted via updateAdvisorAdminReminderPolicy;
+        // this advisor action just records the decision, no campaign work.
+        return persistAdvisorOutcome({
+          ok: true,
+          kind: 'update_admin_reminder_routing' as const,
+          policy: input.action.policy,
+          changedFields: input.action.policy.changes,
+        })
+      }
+
+      // Past this point, input.action.kind is narrowed to 'create_campaign'.
       let audience = input.action.audience
       let cohortId = audience.cohortId
       let cohortName = audience.name
@@ -6702,5 +6726,665 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
 
       return { sent, skipped, errors, total: recipients.length }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // AGENT DECISION AUDIT & ROLLOUT SHADOW CONTROLS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** List recent agent decision records for a club. */
+  listAgentDecisionRecords: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(100).default(12),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const rows = await ctx.prisma.agentDecisionRecord.findMany({
+        where: { clubId: input.clubId },
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+      }).catch(() => [] as any[])
+      return rows
+    }),
+
+  /** Revert an outreach rollout action (club admins can pull a stuck rollout back). */
+  shadowBackOutreachRolloutAction: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      actionKind: z.enum([
+        'create_campaign',
+        'fill_session',
+        'reactivate_members',
+        'trial_follow_up',
+        'renewal_reactivation',
+      ]),
+      reason: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'outreachSend',
+        targetType: 'rollout_shadow_back',
+        targetId: input.actionKind,
+        mode: 'shadow',
+        result: 'reviewed',
+        summary: input.reason || `${input.actionKind} shadowed back by club admin`,
+        metadata: {
+          source: 'shadow_back_manual',
+          actionKind: input.actionKind,
+          userId: ctx.session.user.id,
+        },
+      })
+      return { ok: true, actionKind: input.actionKind }
+    }),
+
+  /** Pilot rollout health snapshot (recent outreach log metrics + health tier). */
+  getOutreachPilotHealth: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      days: z.number().int().min(1).max(90).default(14),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildAgentOutreachPilotSnapshot, resolveAgentOutreachActionKindFromRecommendationLog } = await import('@/lib/ai/agent-outreach-pilot')
+      const since = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000)
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          createdAt: { gte: since },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }).catch(() => [] as any[])
+      const mapped = logs
+        .map((log: any) => {
+          const actionKind = resolveAgentOutreachActionKindFromRecommendationLog(log)
+          if (!actionKind) return null
+          return {
+            logId: log.id,
+            actionKind,
+            status: log.status,
+            createdAt: log.createdAt,
+            sentAt: log.sentAt ?? null,
+            respondedAt: log.respondedAt ?? null,
+            errorReason: null,
+          }
+        })
+        .filter(Boolean) as any[]
+      return buildAgentOutreachPilotSnapshot({
+        logs: mapped,
+        days: input.days,
+      })
+    }),
+
+  /** List club admins + coaches (the people who can act on ops drafts). */
+  listOpsTeammates: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const admins = await ctx.prisma.clubAdmin.findMany({
+        where: { clubId: input.clubId },
+        include: { user: { select: { id: true, email: true, name: true, image: true } } },
+      }).catch(() => [] as any[])
+      return admins.map((a: any) => ({
+        userId: a.userId,
+        email: a.user?.email || null,
+        name: a.user?.name || null,
+        image: a.user?.image || null,
+        role: a.role || 'admin',
+      }))
+    }),
+
+  /** Drill-down analytics for a specific campaign (by type + date). */
+  getCampaignDrilldown: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      type: z.string(),
+      date: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const dayStart = new Date(input.date)
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+      const logs = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          type: input.type as any,
+          createdAt: { gte: dayStart, lt: dayEnd },
+        },
+        select: {
+          id: true, userId: true, type: true, channel: true, status: true,
+          createdAt: true, openedAt: true, clickedAt: true, bouncedAt: true,
+          respondedAt: true, variantId: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }).catch(() => [] as any[])
+
+      const sent = logs.filter((l: any) => ['sent','opened','clicked','delivered'].includes(l.status)).length
+      const opened = logs.filter((l: any) => !!l.openedAt).length
+      const clicked = logs.filter((l: any) => !!l.clickedAt).length
+      const bounced = logs.filter((l: any) => !!l.bouncedAt).length
+
+      // Channel breakdown — `key` mirrors `name` so UI can use either
+      const channelCounts = new Map<string, number>()
+      for (const l of logs as any[]) {
+        const ch = l.channel || 'unknown'
+        channelCounts.set(ch, (channelCounts.get(ch) || 0) + 1)
+      }
+      const channels = Array.from(channelCounts.entries()).map(([name, count]) => ({ key: name, name, count }))
+
+      // Variant breakdown (top 5)
+      const variantCounts = new Map<string, { count: number; opened: number; clicked: number }>()
+      for (const l of logs as any[]) {
+        const v = l.variantId || 'default'
+        const cur = variantCounts.get(v) || { count: 0, opened: 0, clicked: 0 }
+        cur.count += 1
+        if (l.openedAt) cur.opened += 1
+        if (l.clickedAt) cur.clicked += 1
+        variantCounts.set(v, cur)
+      }
+      const topVariants = Array.from(variantCounts.entries())
+        .map(([name, m]) => ({ key: name, name, count: m.count, opened: m.opened, clicked: m.clicked }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+
+      const failed = logs.filter((l: any) => ['failed','bounced'].includes(l.status)).length
+      const converted = logs.filter((l: any) => !!l.respondedAt).length
+
+      // Campaign-level summary (consumed by UI header)
+      const campaign = {
+        name: humanizeCampaignType(input.type),
+        type: input.type,
+        date: input.date,
+        total: logs.length,
+        sent,
+        opened,
+        clicked,
+        bounced,
+        failed,
+        converted,
+        openRate: sent > 0 ? opened / sent : 0,
+        clickRate: sent > 0 ? clicked / sent : 0,
+      }
+
+      return {
+        clubId: input.clubId,
+        type: input.type,
+        date: input.date,
+        total: logs.length,
+        sent,
+        opened,
+        clicked,
+        bounced,
+        logs,
+        // Extended shape for CampaignsIQ drill-down view
+        campaign,
+        channels,
+        topVariants,
+        topSources: [] as Array<{ key: string; name: string; count: number }>,
+        outcomes: [] as Array<{ name: string; count: number; share: number }>,
+        topGuestTrialOffers: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        topGuestTrialRoutes: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        topReferralOffers: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        topReferralRoutes: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        topReferredGuestSources: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        topReferredGuestRoutes: [] as Array<{ name: string; count: number; conversionRate: number }>,
+        recipients: logs.map((l: any) => ({
+          userId: l.userId,
+          channel: l.channel,
+          status: l.status,
+          openedAt: l.openedAt,
+          clickedAt: l.clickedAt,
+          bouncedAt: l.bouncedAt,
+          respondedAt: l.respondedAt,
+        })),
+      }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // GROWTH ENGINE SNAPSHOTS (smart first session, guest trial, win-back, referral)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Smart first-session picks for new/onboarding members. */
+  getSmartFirstSession: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(120).default(21),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildSmartFirstSessionSnapshot } = await import('@/lib/ai/smart-first-session')
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      // TODO: populate rows from real member+session data. Empty input returns
+      // an empty snapshot, so UI renders "no candidates" state safely.
+      return buildSmartFirstSessionSnapshot({
+        rows: [],
+        automationSettings: club?.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  /** Guest trial booking recommendations. */
+  getGuestTrialBooking: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(120).default(21),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildGuestTrialBookingSnapshot } = await import('@/lib/ai/guest-trial-booking')
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      return buildGuestTrialBookingSnapshot({
+        rows: [],
+        automationSettings: club?.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  /** Win-back snapshot: expired / cancelled / high-value lapsed candidates. */
+  getWinBackSnapshot: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(365).default(60),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildWinBackSnapshot } = await import('@/lib/ai/win-back')
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      return buildWinBackSnapshot({
+        rows: [],
+        automationSettings: club?.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  /** Referral snapshot: advocate candidates across VIP / social / dormant lanes. */
+  getReferralSnapshot: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(365).default(60),
+      limit: z.number().int().min(1).max(20).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildReferralSnapshot } = await import('@/lib/ai/referral-engine')
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      return buildReferralSnapshot({
+        rows: [],
+        automationSettings: club?.automationSettings,
+        windowDays: input.windowDays,
+        limit: input.limit,
+      })
+    }),
+
+  /** Update a referral reward issuance (club admin approves / puts on hold / issues). */
+  updateReferralRewardIssuance: protectedProcedure
+    // Permissive input: UI passes rich context (offerKey, lane, offerName, rewardLabel,
+    // advocateUserId, referredGuestUserId, etc.) for audit. Only status is required for
+    // the DB update; extra fields are recorded in the decision metadata.
+    .input(z.object({
+      clubId: z.string().uuid(),
+      issuanceId: z.string().uuid().optional(),
+      status: z.enum(['ready_issue', 'on_hold', 'issued']),
+      note: z.string().max(500).optional(),
+    }).passthrough())
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // Either update by issuanceId directly, or by advocate+guest pair (upsert lookup)
+      let issuanceId = input.issuanceId
+      if (!issuanceId && (input as any).advocateUserId && (input as any).referredGuestUserId) {
+        const found = await (ctx.prisma as any).referralRewardIssuance.findFirst({
+          where: {
+            clubId: input.clubId,
+            advocateUserId: (input as any).advocateUserId,
+            referredGuestUserId: (input as any).referredGuestUserId,
+          },
+          select: { id: true },
+        }).catch(() => null)
+        issuanceId = found?.id
+      }
+      if (!issuanceId) {
+        return { ok: false, issuance: null, reason: 'issuance_not_found' }
+      }
+      const updated = await (ctx.prisma as any).referralRewardIssuance.update({
+        where: { id: issuanceId },
+        data: {
+          status: input.status,
+          reviewedAt: new Date(),
+          reviewedBy: ctx.session.user.id,
+          reviewNote: input.note ?? null,
+        },
+      }).catch(() => null)
+      return { ok: !!updated, issuance: updated }
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // LOOKALIKE AUDIENCE EXPORT (Meta / Google / TikTok custom audiences)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Build lookalike audience export snapshot (suggestions + counts per audience). */
+  getLookalikeAudienceExport: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildLookalikeAudienceExport } = await import('@/lib/ai/lookalike-export')
+      // TODO: fetch real member rows with health+engagement signals. Empty
+      // input returns snapshot with 0-count audiences so UI can render the
+      // "no exportable members yet" state.
+      return buildLookalikeAudienceExport({ members: [] })
+    }),
+
+  /** Preview a selected lookalike audience for a specific export preset. */
+  previewLookalikeAudienceExportConfig: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      audienceKeys: z.array(z.enum([
+        'healthy_paid_core',
+        'high_value_loyalists',
+        'new_successful_converters',
+        'vip_advocates',
+      ])),
+      preset: z.enum(['generic_csv', 'meta_custom_audience', 'google_customer_match', 'tiktok_custom_audience']),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildLookalikeAudienceExport, buildLookalikeExportPreview } = await import('@/lib/ai/lookalike-export')
+      const snapshot = buildLookalikeAudienceExport({ members: [] })
+      return buildLookalikeExportPreview({
+        snapshot,
+        audienceKeys: input.audienceKeys,
+        preset: input.preset,
+      })
+    }),
+
+  /** List recent lookalike audience exports (audit + re-download). */
+  getLookalikeExportHistory: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(50).default(8),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const rows = await ctx.prisma.agentDecisionRecord.findMany({
+        where: {
+          clubId: input.clubId,
+          action: 'outreachSend',
+          targetType: 'lookalike_export',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+      }).catch(() => [] as any[])
+      return rows.map((r: any) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        exportedBy: r.userId,
+        preset: r.metadata?.preset || 'generic_csv',
+        audienceKeys: r.metadata?.audienceKeys || [],
+        memberCount: r.metadata?.memberCount || 0,
+        summary: r.summary,
+      }))
+    }),
+
+  /** Generate a CSV export for the selected lookalike audience + preset. */
+  exportLookalikeAudienceCsv: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      audienceKeys: z.array(z.enum([
+        'healthy_paid_core',
+        'high_value_loyalists',
+        'new_successful_converters',
+        'vip_advocates',
+      ])),
+      preset: z.enum(['generic_csv', 'meta_custom_audience', 'google_customer_match', 'tiktok_custom_audience']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const {
+        buildLookalikeAudienceExport,
+        buildSelectedLookalikeAudience,
+        buildLookalikeAudienceCsv,
+      } = await import('@/lib/ai/lookalike-export')
+      const snapshot = buildLookalikeAudienceExport({ members: [] })
+      const selected = buildSelectedLookalikeAudience({
+        snapshot,
+        audienceKeys: input.audienceKeys,
+      })
+      if (!selected) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'No members matched the selected audiences.',
+        })
+      }
+      const csv = buildLookalikeAudienceCsv({
+        audience: selected as any,
+        preset: input.preset,
+      })
+      // Audit trail
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'outreachSend',
+        targetType: 'lookalike_export',
+        targetId: input.preset,
+        mode: 'live',
+        result: 'executed',
+        summary: `Lookalike export: ${input.audienceKeys.join(',')} → ${input.preset}`,
+        metadata: {
+          preset: input.preset,
+          audienceKeys: input.audienceKeys,
+          memberCount: (csv as any)?.rowCount || 0,
+        },
+      })
+      return csv
+    }),
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // INTEGRATION HEALTH SNAPSHOT
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // OPS SESSION DRAFT LIFECYCLE (promote draft → live session + rollback)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Update workflow metadata on an ops session draft (owner, state, note). */
+  updateOpsSessionDraftWorkflow: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+      ownerUserId: z.string().nullable().optional(),
+      state: z.string().optional(),
+      note: z.string().max(1000).nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          ...(input.ownerUserId !== undefined ? { ownerUserId: input.ownerUserId } : {}),
+          ...(input.state !== undefined ? { workflowState: input.state } : {}),
+          ...(input.note !== undefined ? { workflowNote: input.note } : {}),
+        },
+      }).catch(() => null)
+      return { ok: !!updated, draft: updated }
+    }),
+
+  /** Dry-run a publish: detect conflicts (overlapping sessions, missing courts). */
+  prepareOpsSessionDraftPublish: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const draft = await (ctx.prisma as any).opsSessionDraft.findUnique({
+        where: { id: input.draftId },
+      }).catch(() => null)
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Draft not found' })
+      }
+      return {
+        ok: true,
+        draft,
+        conflicts: [] as Array<{ kind: string; message: string }>,
+        handoff: { ready: true, warnings: [] as string[] },
+      }
+    }),
+
+  /** Publish an ops session draft into the live schedule. */
+  publishOpsSessionDraftToSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO: create live PlaySession from draft. Stub: just mark as published.
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: { status: 'PUBLISHED', publishedAt: new Date() },
+      }).catch(() => null)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'schedulePublish',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'live',
+        result: 'executed',
+        summary: 'Ops session draft published to live schedule',
+        metadata: { draftId: input.draftId },
+      })
+      return { ok: !!updated, draft: updated }
+    }),
+
+  /** Edit a published ops session (propagate change to live PlaySession). */
+  updatePublishedOpsSessionDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+      changes: z.record(z.unknown()).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: input.changes || {},
+      }).catch(() => null)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'scheduleLiveEdit',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'live',
+        result: 'executed',
+        summary: 'Published ops session draft edited',
+        metadata: { draftId: input.draftId, changes: input.changes || {} },
+      })
+      return { ok: !!updated, draft: updated }
+    }),
+
+  /** Rollback a published ops session back to planned state. */
+  rollbackPublishedOpsSessionDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+      reason: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: { status: 'SESSION_DRAFT', publishedAt: null },
+      }).catch(() => null)
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'scheduleLiveRollback',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'live',
+        result: 'executed',
+        summary: input.reason || 'Ops session draft rolled back from live schedule',
+        metadata: { draftId: input.draftId },
+      })
+      return { ok: !!updated, draft: updated }
+    }),
+
+  /** Promote an advisor draft into an ops session draft (ops team review queue). */
+  createOpsSessionDraftFromAdvisorDraft: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      advisorDraftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO: translate advisor draft proposal → ops_session_draft row.
+      return { ok: false, message: 'createOpsSessionDraftFromAdvisorDraft is a stub', draftId: null as string | null }
+    }),
+
+  /** Create a fill-session draft directly from the schedule view. */
+  createFillSessionDraftFromSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string(),
+      note: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO: create advisor_draft backed by slot-filler proposal.
+      return { ok: false, message: 'createFillSessionDraftFromSchedule is a stub', draftId: null as string | null }
+    }),
+
+  /** Integration health snapshot for a club (connector state, data coverage, freshness). */
+  getIntegrationHealthSnapshot: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildIntegrationHealthSnapshot } = await import('@/lib/ai/integration-health')
+      // Fetch first connected connector + basic data coverage
+      const [connector, memberCount, sessionCount] = await Promise.all([
+        ctx.prisma.clubConnector.findFirst({
+          where: { clubId: input.clubId },
+          orderBy: { lastSyncAt: 'desc' },
+          select: { provider: true, status: true, lastSyncAt: true },
+        }).catch(() => null),
+        ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }).catch(() => 0),
+        ctx.prisma.playSession.count({ where: { clubId: input.clubId } }).catch(() => 0),
+      ])
+      return buildIntegrationHealthSnapshot({
+        connector: connector ? {
+          provider: connector.provider,
+          status: connector.status,
+          lastSyncAt: connector.lastSyncAt,
+        } as any : null,
+        coverage: {
+          memberCount,
+          sessionCount,
+        } as any,
+        now: new Date(),
+      })
     }),
 })

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { generateWithFallback } from '@/lib/ai/llm/provider'
 import type { SupportedLanguage } from '@/lib/ai/llm/language'
 import { advisorCampaignTypeEnum, advisorChannelEnum, advisorDeliveryModeEnum } from './advisor-actions'
+import { isAdvisorAdminReminderRoutingRequest } from './advisor-admin-reminder-policy'
 import { isAdvisorAutonomyPolicyRequest } from './advisor-autonomy-policy'
 import { isAdvisorContactPolicyRequest } from './advisor-contact-policy'
 import { isAdvisorSandboxRoutingRequest } from './advisor-sandbox-policy'
@@ -11,7 +12,7 @@ import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 import { parseAdvisorInactivityDays } from './advisor-reactivation'
 
 const advisorIntentSchema = z.object({
-  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']),
+  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing', 'update_admin_reminder_routing']),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
@@ -40,10 +41,11 @@ Supported actions:
 - update_contact_policy: change quiet hours, cooldowns, or contact frequency rules for the club
 - update_autonomy_policy: change what the agent can auto-run, what needs approval, or what stays off
 - update_sandbox_routing: change whether sandbox runs stay preview-only or route to approved test recipients
+- update_admin_reminder_routing: change how admin reminders are delivered and where reminder email/SMS should go
 - none: any analytics/support/general question
 
 Return ONLY valid JSON:
-{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members|trial_follow_up|renewal_reactivation|program_schedule|update_contact_policy|update_autonomy_policy|update_sandbox_routing","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
+{"action":"none|create_cohort|draft_campaign|fill_session|reactivate_members|trial_follow_up|renewal_reactivation|program_schedule|update_contact_policy|update_autonomy_policy|update_sandbox_routing|update_admin_reminder_routing","usePreviousCohort":true|false,"audienceText":"...","campaignType":"...","channel":"...","deliveryMode":"save_draft|send_now|send_later","candidateLimit":5,"inactivityDays":21}
 
 Rules:
 - If the user asks to create/build/save an audience, segment, cohort, group, or list, use create_cohort.
@@ -56,6 +58,7 @@ Rules:
 - If the user asks to change quiet hours, cooldowns, daily/weekly message caps, or outreach/contact policy rules, use update_contact_policy.
 - If the user asks to change what the agent can do automatically, what needs approval, disable autopilot for an action, or change autonomy thresholds, use update_autonomy_policy.
 - If the user asks to keep sandbox runs preview-only, route sandbox runs to test recipients, update sandbox whitelists, or change preview inbox routing, use update_sandbox_routing.
+- If the user asks how admin reminders should be delivered, asks to email/text them reminders, or wants to set the admin reminder email/phone, use update_admin_reminder_routing.
 - If the user is only asking what the current contact rules are, or wants an explanation of them, return action=none.
 - If the user is only asking what the current autonomy/autopilot setup is, or wants an explanation of it, return action=none.
 - If the user is only asking how sandbox preview works, or wants an explanation of it, return action=none.
@@ -106,6 +109,7 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   const wantsContactPolicy = isAdvisorContactPolicyRequest(message)
   const wantsAutonomyPolicy = isAdvisorAutonomyPolicyRequest(message)
   const wantsSandboxRouting = isAdvisorSandboxRoutingRequest(message)
+  const wantsAdminReminderRouting = isAdvisorAdminReminderRoutingRequest(message)
   const inactivityDays = parseAdvisorInactivityDays(message) || undefined
 
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
@@ -209,6 +213,13 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     }
   }
 
+  if (wantsAdminReminderRouting) {
+    return {
+      action: 'update_admin_reminder_routing',
+      usePreviousCohort: false,
+    }
+  }
+
   if (wantsCampaign) {
     return { action: 'draft_campaign', audienceText: message, usePreviousCohort, campaignType, channel, deliveryMode, candidateLimit, inactivityDays }
   }
@@ -251,8 +262,9 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
   contactPolicyReady: (changes: number) => string
   autonomyPolicyReady: (changes: number) => string
   sandboxRoutingReady: (changes: number) => string
+  adminReminderRoutingReady: (changes: number) => string
   adminOnly: string
-  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation' | 'program_schedule' | 'update_contact_policy' | 'update_autonomy_policy' | 'update_sandbox_routing', string[]>
+  suggestions: Record<'create_cohort' | 'create_campaign' | 'fill_session' | 'reactivate_members' | 'trial_follow_up' | 'renewal_reactivation' | 'program_schedule' | 'update_contact_policy' | 'update_autonomy_policy' | 'update_sandbox_routing' | 'update_admin_reminder_routing', string[]>
 }> = {
   en: {
     audienceReady: (count, name) => `I drafted the audience "${name}" and previewed ${count} matching members. Review it below and approve when you're ready.`,
@@ -272,6 +284,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     contactPolicyReady: (changes) => `I drafted ${changes} contact policy update${changes === 1 ? '' : 's'} for the club. Review the policy below, then approve to apply it.`,
     autonomyPolicyReady: (changes) => `I drafted ${changes} autonomy policy update${changes === 1 ? '' : 's'} for the club. Review the autopilot rules below, then approve to apply them.`,
     sandboxRoutingReady: (changes) => `I drafted ${changes} sandbox routing update${changes === 1 ? '' : 's'} for the club. Review the preview routing below, then approve to apply it.`,
+    adminReminderRoutingReady: (changes) => `I drafted ${changes} admin reminder routing update${changes === 1 ? '' : 's'}. Review the reminder delivery below, then approve to apply it.`,
     adminOnly: `I can help draft actions here, but only club admins can approve and run them.`,
     suggestions: {
       create_cohort: [
@@ -324,6 +337,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Route sandbox emails to qa@iqsport.ai',
         'Add +15555550123 as an SMS test recipient',
       ],
+      update_admin_reminder_routing: [
+        'Remind me by email',
+        'Text me admin reminders at +15555550123',
+        'Keep admin reminders in-app only',
+      ],
     },
   },
   ru: {
@@ -344,6 +362,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     contactPolicyReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} contact policy клуба. Проверь правила ниже и подтверди применение.`,
     autonomyPolicyReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} autonomy policy клуба. Проверь правила автопилота ниже и подтверди применение.`,
     sandboxRoutingReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} sandbox routing клуба. Проверь preview-маршрутизацию ниже и подтверди применение.`,
+    adminReminderRoutingReady: (changes) => `Я подготовил ${changes} изменени${changes === 1 ? 'е' : changes < 5 ? 'я' : 'й'} для admin reminders. Проверь способ доставки ниже и подтверди применение.`,
     adminOnly: `Я могу готовить такие действия в чате, но запускать их может только админ клуба.`,
     suggestions: {
       create_cohort: [
@@ -396,6 +415,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Маршрутизируй sandbox email на qa@iqsport.ai',
         'Добавь +15555550123 как SMS test recipient',
       ],
+      update_admin_reminder_routing: [
+        'Напоминай мне по email',
+        'Шли admin reminders на +15555550123',
+        'Оставь admin reminders только в приложении',
+      ],
     },
   },
   es: {
@@ -416,6 +440,7 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
     contactPolicyReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en la política de contacto del club. Revisa la política abajo y apruébala para aplicarla.`,
     autonomyPolicyReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en la política de autonomía del club. Revisa las reglas del autopiloto abajo y apruébalas para aplicarlas.`,
     sandboxRoutingReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en el sandbox routing del club. Revisa la ruta de preview abajo y apruébala para aplicarla.`,
+    adminReminderRoutingReady: (changes) => `Preparé ${changes} cambio${changes === 1 ? '' : 's'} en el routing de recordatorios del admin. Revisa la entrega abajo y apruébala para aplicarla.`,
     adminOnly: `Puedo preparar acciones aquí, pero solo los administradores del club pueden aprobarlas y ejecutarlas.`,
     suggestions: {
       create_cohort: [
@@ -467,6 +492,11 @@ const ACTION_COPY: Record<'en' | 'ru' | 'es', {
         'Mantén el sandbox solo en preview',
         'Enruta los emails sandbox a qa@iqsport.ai',
         'Agrega +15555550123 como destinatario de prueba por SMS',
+      ],
+      update_admin_reminder_routing: [
+        'Recuérdame por email',
+        'Envíame recordatorios admin por SMS al +15555550123',
+        'Deja los recordatorios solo dentro de la app',
       ],
     },
   },

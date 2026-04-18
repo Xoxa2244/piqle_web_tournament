@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { useTheme } from '../IQThemeProvider'
@@ -9,6 +11,7 @@ import {
   Plug, AlertCircle, Loader2, CheckCircle2, Unplug, Zap,
   Upload, FileSpreadsheet,
   CalendarDays, X, FileText, Users, LayoutGrid, Database,
+  RefreshCw,
 } from 'lucide-react'
 
 // ── Shared Card (same as BillingIQ) ──
@@ -17,6 +20,853 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
     <div className={`rounded-2xl p-5 ${className}`} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)', boxShadow: 'var(--card-shadow)' }}>
       {children}
     </div>
+  )
+}
+
+const INTEGRATION_TONE_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  healthy: { label: 'Healthy', bg: 'rgba(16,185,129,0.14)', color: '#10B981' },
+  watch: { label: 'Watch', bg: 'rgba(245,158,11,0.14)', color: '#F59E0B' },
+  at_risk: { label: 'At Risk', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
+}
+
+const INTEGRATION_DECISION_STYLES: Record<'accepted' | 'declined' | 'not_now', { bg: string; color: string; label: string }> = {
+  accepted: { bg: 'rgba(16,185,129,0.14)', color: '#10B981', label: 'Accepted' },
+  not_now: { bg: 'rgba(245,158,11,0.14)', color: '#F59E0B', label: 'Not now' },
+  declined: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444', label: 'Declined' },
+}
+
+const INTEGRATION_RECURRENCE_STYLES: Record<'new' | 'recurring' | 'chronic', { bg: string; color: string }> = {
+  new: { bg: 'rgba(59,130,246,0.14)', color: '#3B82F6' },
+  recurring: { bg: 'rgba(245,158,11,0.14)', color: '#F59E0B' },
+  chronic: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
+}
+
+function buildIntegrationAdvisorHref(clubId: string, prompt?: string | null) {
+  if (!prompt) return `/clubs/${clubId}/intelligence/advisor`
+  return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(prompt)}`
+}
+
+function TonePill({ tone }: { tone?: string | null }) {
+  const style = INTEGRATION_TONE_STYLES[tone || 'watch'] || INTEGRATION_TONE_STYLES.watch
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        borderRadius: 999,
+        background: style.bg,
+        color: style.color,
+        fontSize: 12,
+        fontWeight: 700,
+      }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: style.color }} />
+      {style.label}
+    </span>
+  )
+}
+
+function IntegrationHealthCommandCenter({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const utils = trpc.useUtils()
+  const suggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const { data, isLoading } = trpc.intelligence.getIntegrationHealthSnapshot.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 60_000 },
+  )
+  const { data: connectorStatus } = trpc.connectors.getStatus.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 15_000 },
+  )
+  const { data: mappingFixDecisions = [] } = trpc.intelligence.listAdminTodoDecisions.useQuery(
+    { clubId, dateKey: suggestionDateKey },
+    { enabled: !!clubId, staleTime: 30_000 },
+  )
+
+  const syncMutation = trpc.connectors.syncNow.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.connectors.getStatus.invalidate({ clubId }),
+        utils.intelligence.getDataCoverageChecklist.invalidate({ clubId }),
+        utils.intelligence.getIntegrationHealthSnapshot.invalidate({ clubId }),
+      ])
+    },
+  })
+  const setAdminTodoDecision = trpc.intelligence.setAdminTodoDecision.useMutation({
+    onSuccess: async () => {
+      await utils.intelligence.listAdminTodoDecisions.invalidate({
+        clubId,
+        dateKey: suggestionDateKey,
+      }).catch(() => undefined)
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Loader2 size={18} className="animate-spin" style={{ color: '#6366F1' }} />
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Building integration health snapshot
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                Pulling connector freshness, coverage gaps and the safest next fixes.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+    )
+  }
+
+  if (!data) return null
+
+  const activeConnector = connectorStatus && 'status' in connectorStatus ? connectorStatus : null
+  const canRunSync = Boolean(activeConnector && activeConnector.status !== 'syncing')
+  const leadAction = data.suggestedActions[0]
+  // Cast to any[] to avoid TS "type instantiation excessively deep" error —
+  // the tRPC inferred type chain is too deep for .reduce() generics to resolve.
+  const decisionsArray = mappingFixDecisions as unknown as Array<{
+    bucket?: string
+    decision?: string
+    itemId: string
+  }>
+  const mappingDecisionMap: Record<string, 'accepted' | 'declined' | 'not_now'> = {}
+  const anomalyDecisionMap: Record<string, 'accepted' | 'declined' | 'not_now'> = {}
+  for (const record of decisionsArray) {
+    const decision = record.decision
+    if (decision !== 'accepted' && decision !== 'declined' && decision !== 'not_now') continue
+    if (record.bucket === 'integration_mapping_review') {
+      mappingDecisionMap[record.itemId] = decision
+    } else if (record.bucket === 'integration_anomalies') {
+      anomalyDecisionMap[record.itemId] = decision
+    }
+  }
+
+  const handleMappingFixDecision = async (options: {
+    itemId: string
+    title: string
+    href: string
+    decision: 'accepted' | 'declined' | 'not_now'
+    metadata?: Record<string, unknown>
+  }) => {
+    await setAdminTodoDecision.mutateAsync({
+      clubId,
+      dateKey: suggestionDateKey,
+      itemId: options.itemId,
+      decision: options.decision,
+      title: options.title,
+      bucket: 'integration_mapping_review',
+      href: options.href,
+      metadata: options.metadata,
+    })
+  }
+
+  const handleAcceptMappingFix = async (options: {
+    itemId: string
+    title: string
+    href: string
+    metadata?: Record<string, unknown>
+  }) => {
+    await handleMappingFixDecision({
+      ...options,
+      decision: 'accepted',
+    })
+    router.push(options.href)
+  }
+
+  const handleAnomalyDecision = async (options: {
+    itemId: string
+    title: string
+    href: string
+    decision: 'accepted' | 'declined' | 'not_now'
+    metadata?: Record<string, unknown>
+  }) => {
+    await setAdminTodoDecision.mutateAsync({
+      clubId,
+      dateKey: suggestionDateKey,
+      itemId: options.itemId,
+      decision: options.decision,
+      title: options.title,
+      bucket: 'integration_anomalies',
+      href: options.href,
+      metadata: options.metadata,
+    })
+  }
+
+  const handleAcceptAnomaly = async (options: {
+    itemId: string
+    title: string
+    href: string
+    metadata?: Record<string, unknown>
+  }) => {
+    await handleAnomalyDecision({
+      ...options,
+      decision: 'accepted',
+    })
+    router.push(options.href)
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: 'linear-gradient(135deg, #0EA5E9, #6366F1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Zap size={18} color="#fff" />
+              </div>
+              <div>
+                <p style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Integration command center</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                  Agent read on connector freshness, coverage posture and the next safe fixes.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <TonePill tone={data.summary.status} />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{data.summary.connectorLabel}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{data.summary.freshnessLabel}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {canRunSync ? (
+              <button
+                onClick={() => syncMutation.mutate({ clubId, isInitial: !activeConnector?.lastSyncAt })}
+                disabled={syncMutation.isPending}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(59,130,246,0.24)',
+                  background: 'rgba(59,130,246,0.08)',
+                  color: '#3B82F6',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: syncMutation.isPending ? 'not-allowed' : 'pointer',
+                  opacity: syncMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                {syncMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Run sync now
+              </button>
+            ) : null}
+
+            <Link
+              href={buildIntegrationAdvisorHref(clubId, leadAction?.playbookPrompt)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid rgba(99,102,241,0.24)',
+                background: 'rgba(99,102,241,0.08)',
+                color: '#6366F1',
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              <FileText size={14} />
+              Open fix playbook
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ marginBottom: 18 }}>
+          {[
+            { key: 'connector', title: 'Connector posture', card: data.cards.connector },
+            { key: 'memberData', title: 'Member identity', card: data.cards.memberData },
+            { key: 'sessionData', title: 'Session structure', card: data.cards.sessionData },
+            { key: 'bookingData', title: 'Booking ops', card: data.cards.bookingData },
+          ].map(({ key, title, card }) => (
+            <div
+              key={key}
+              style={{
+                borderRadius: 16,
+                border: '1px solid var(--card-border)',
+                padding: 16,
+                background: 'var(--subtle)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{title}</p>
+                <TonePill tone={card.status} />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>
+                {card.label}
+                {'score' in card ? ` • ${card.score}%` : ''}
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                {card.description}
+                {'detail' in card && card.detail ? ` ${card.detail}` : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {data.issues.length === 0 ? (
+          <div style={{
+            borderRadius: 16,
+            border: '1px solid rgba(16,185,129,0.18)',
+            background: 'rgba(16,185,129,0.08)',
+            padding: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <CheckCircle2 size={18} style={{ color: '#10B981' }} />
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Agent trust is in a good place
+              </p>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Members, sessions, bookings and connector freshness all look stable enough for the agent to reason without a big data trust warning.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Priority issues</p>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                {data.summary.atRiskCount} at risk • {data.summary.watchCount} watch
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {data.issues.map((issue) => (
+                <div
+                  key={issue.key}
+                  style={{
+                    borderRadius: 16,
+                    border: '1px solid var(--card-border)',
+                    padding: 16,
+                    background: 'var(--subtle)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                        <TonePill tone={issue.severity} />
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{issue.category}</span>
+                      </div>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{issue.title}</p>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{issue.metricLabel}</span>
+                  </div>
+
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.55 }}>
+                    {issue.summary}
+                  </p>
+
+                  <div style={{
+                    borderRadius: 12,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    padding: '10px 12px',
+                    marginBottom: 12,
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Next best move</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{issue.nextBestMove}</p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <Link
+                      href={buildIntegrationAdvisorHref(clubId, issue.playbookPrompt)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '9px 12px',
+                        borderRadius: 10,
+                        background: 'rgba(99,102,241,0.08)',
+                        border: '1px solid rgba(99,102,241,0.22)',
+                        color: '#6366F1',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <FileText size={13} />
+                      {issue.actionLabel}
+                    </Link>
+
+                    {issue.category === 'connector' && canRunSync ? (
+                      <button
+                        onClick={() => syncMutation.mutate({ clubId, isInitial: !activeConnector?.lastSyncAt })}
+                        disabled={syncMutation.isPending}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '9px 12px',
+                          borderRadius: 10,
+                          background: 'rgba(59,130,246,0.08)',
+                          border: '1px solid rgba(59,130,246,0.22)',
+                          color: '#3B82F6',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: syncMutation.isPending ? 'not-allowed' : 'pointer',
+                          opacity: syncMutation.isPending ? 0.6 : 1,
+                        }}
+                      >
+                        {syncMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                        Run sync now
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 20 }}>
+	          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+	            <div>
+	              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Anomaly queue</p>
+	              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+	                {data.anomalyQueue.summary}
+	              </p>
+	            </div>
+	            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+	              {data.anomalyQueue.recurringCount > 0 ? (
+	                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+	                  {data.anomalyQueue.recurringCount} recurring
+	                  {data.anomalyQueue.chronicCount > 0 ? ` • ${data.anomalyQueue.chronicCount} chronic` : ''}
+	                </span>
+	              ) : null}
+	              <TonePill tone={data.anomalyQueue.status} />
+	            </div>
+	          </div>
+
+          {data.anomalyQueue.suggested.length === 0 ? (
+            <div style={{
+              borderRadius: 16,
+              border: '1px solid rgba(16,185,129,0.18)',
+              background: 'rgba(16,185,129,0.06)',
+              padding: 16,
+            }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                No systemic integration anomaly is active right now. This queue will light up when connector freshness, sync execution or core warehouse layers drift into risky territory.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {data.anomalyQueue.suggested.map((anomaly) => {
+                const href = buildIntegrationAdvisorHref(clubId, anomaly.playbookPrompt)
+                const decision = anomalyDecisionMap[anomaly.id]
+                const decisionStyle = decision ? INTEGRATION_DECISION_STYLES[decision] : null
+                const isAccepted = decision === 'accepted'
+                const isDeclined = decision === 'declined'
+                const isNotNow = decision === 'not_now'
+
+                return (
+                  <div
+                    key={anomaly.id}
+                    style={{
+                      borderRadius: 16,
+                      border: '1px solid var(--card-border)',
+                      padding: 16,
+                      background: 'var(--subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <div>
+	                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+	                          <TonePill tone={anomaly.severity} />
+	                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{anomaly.category}</span>
+	                          {anomaly.history ? (
+	                            <span
+	                              style={{
+	                                padding: '4px 8px',
+	                                borderRadius: 999,
+	                                background: INTEGRATION_RECURRENCE_STYLES[anomaly.history.status].bg,
+	                                color: INTEGRATION_RECURRENCE_STYLES[anomaly.history.status].color,
+	                                fontSize: 10,
+	                                fontWeight: 700,
+	                              }}
+	                            >
+	                              {anomaly.history.label}
+	                            </span>
+	                          ) : null}
+	                          {decisionStyle ? (
+	                            <span
+	                              style={{
+                                padding: '4px 8px',
+                                borderRadius: 999,
+                                background: decisionStyle.bg,
+                                color: decisionStyle.color,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {decisionStyle.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{anomaly.title}</p>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{anomaly.evidenceLabel}</span>
+                    </div>
+
+	                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.55 }}>
+	                      {anomaly.summary}
+	                    </p>
+	                    {anomaly.history ? (
+	                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+	                        {anomaly.history.summary}
+	                      </p>
+	                    ) : null}
+	                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+	                      {anomaly.nextBestMove}
+	                    </p>
+
+                    {isDeclined ? (
+                      <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 12px 0' }}>
+                        Declined for today. It will stay out of the queue until the next review cycle.
+                      </p>
+                    ) : null}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {isAccepted ? (
+                        <Link
+                          href={href}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <FileText size={13} />
+                          Open playbook
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleAcceptAnomaly({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          <FileText size={13} />
+                          Accept anomaly
+                        </button>
+                      )}
+
+                      {!isDeclined ? (
+                        <button
+                          onClick={() => handleAnomalyDecision({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            decision: 'not_now',
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.22)',
+                            color: '#F59E0B',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          {isNotNow ? 'Snoozed' : 'Not now'}
+                        </button>
+                      ) : null}
+
+                      {!isAccepted ? (
+                        <button
+                          onClick={() => handleAnomalyDecision({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            decision: 'declined',
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.22)',
+                            color: '#EF4444',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          Decline
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Mapping review</p>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                {data.mappingReview.summary}
+              </p>
+            </div>
+            <TonePill tone={data.mappingReview.status} />
+          </div>
+
+          {data.mappingReview.suggestedFixes.length === 0 ? (
+            <div style={{
+              borderRadius: 16,
+              border: '1px solid rgba(16,185,129,0.18)',
+              background: 'rgba(16,185,129,0.06)',
+              padding: 16,
+            }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                No field-level mapping fix is urgent right now. The connector may still need monitoring, but the core field layer looks solid enough for the agent to trust.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {data.mappingReview.suggestedFixes.map((fix) => {
+                const href = buildIntegrationAdvisorHref(clubId, fix.playbookPrompt)
+                const decision = mappingDecisionMap[fix.key]
+                const decisionStyle = decision ? INTEGRATION_DECISION_STYLES[decision] : null
+                const isAccepted = decision === 'accepted'
+                const isDeclined = decision === 'declined'
+                const isNotNow = decision === 'not_now'
+
+                return (
+                  <div
+                    key={fix.key}
+                    style={{
+                      borderRadius: 16,
+                      border: '1px solid var(--card-border)',
+                      padding: 16,
+                      background: 'var(--subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <TonePill tone={fix.severity} />
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{fix.domain}</span>
+                          {decisionStyle ? (
+                            <span
+                              style={{
+                                padding: '4px 8px',
+                                borderRadius: 999,
+                                background: decisionStyle.bg,
+                                color: decisionStyle.color,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {decisionStyle.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{fix.fieldLabel}</p>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        {fix.coveragePercent}% covered
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                      {fix.summary}
+                    </p>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                      {fix.suggestedFix}
+                    </p>
+
+                    {isDeclined ? (
+                      <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 12px 0' }}>
+                        Declined for today. This fix will stay out of the queue until the next cycle.
+                      </p>
+                    ) : null}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {isAccepted ? (
+                        <Link
+                          href={href}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <FileText size={13} />
+                          Open playbook
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleAcceptMappingFix({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                              fieldLabel: fix.fieldLabel,
+                              coveragePercent: fix.coveragePercent,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          <FileText size={13} />
+                          Accept fix
+                        </button>
+                      )}
+
+                      {!isDeclined ? (
+                        <button
+                          onClick={() => handleMappingFixDecision({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            decision: 'not_now',
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.22)',
+                            color: '#F59E0B',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          {isNotNow ? 'Snoozed' : 'Not now'}
+                        </button>
+                      ) : null}
+
+                      {!isAccepted ? (
+                        <button
+                          onClick={() => handleMappingFixDecision({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            decision: 'declined',
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.22)',
+                            color: '#EF4444',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          Decline
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    </motion.div>
   )
 }
 
@@ -39,6 +889,8 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
           </div>
         </div>
       </motion.div>
+
+      <IntegrationHealthCommandCenter clubId={clubId} />
 
       <CourtReserveConnector clubId={clubId} />
 

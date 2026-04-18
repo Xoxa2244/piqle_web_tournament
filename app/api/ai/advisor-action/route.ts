@@ -45,6 +45,13 @@ import {
 } from '@/lib/ai/advisor-outcome-insights'
 import { buildAdvisorRecommendation } from '@/lib/ai/advisor-recommendations'
 import {
+  formatAdvisorAdminReminderRoutingDigest,
+  getAdvisorAdminReminderMissingFields,
+  resolveAdvisorAdminReminderRouting,
+  updateAdvisorAdminReminderRoutingFromMessage,
+  type AdvisorAdminReminderRoutingDraft,
+} from '@/lib/ai/advisor-admin-reminder-policy'
+import {
   formatAdvisorContactPolicyDigest,
   resolveAdvisorContactPolicy,
   updateAdvisorContactPolicyFromMessage,
@@ -81,6 +88,16 @@ import {
   getAdvisorMembershipLifecycleMeta,
   type AdvisorMembershipLifecycleKind,
 } from '@/lib/ai/advisor-membership-lifecycle'
+import {
+  appendGuestTrialExecutionContextSummary,
+  parseGuestTrialExecutionContext,
+  type GuestTrialExecutionContext,
+} from '@/lib/ai/guest-trial-offers'
+import {
+  appendReferralExecutionContextSummary,
+  parseReferralExecutionContext,
+  type ReferralExecutionContext,
+} from '@/lib/ai/referral-offers'
 import {
   getAdvisorProgrammingDraft,
   type AdvisorProgrammingRequestSpec,
@@ -383,6 +400,7 @@ type AdvisorReactivationAction = Extract<AdvisorActionCore, { kind: 'reactivate_
 type AdvisorContactPolicyAction = Extract<AdvisorActionCore, { kind: 'update_contact_policy' }>
 type AdvisorAutonomyPolicyAction = Extract<AdvisorActionCore, { kind: 'update_autonomy_policy' }>
 type AdvisorSandboxRoutingAction = Extract<AdvisorActionCore, { kind: 'update_sandbox_routing' }>
+type AdvisorAdminReminderRoutingAction = Extract<AdvisorActionCore, { kind: 'update_admin_reminder_routing' }>
 type AdvisorTrialFollowUpAction = Extract<AdvisorActionCore, { kind: 'trial_follow_up' }>
 type AdvisorRenewalReactivationAction = Extract<AdvisorActionCore, { kind: 'renewal_reactivation' }>
 type AdvisorMembershipLifecycleAction = AdvisorTrialFollowUpAction | AdvisorRenewalReactivationAction
@@ -487,13 +505,19 @@ function buildCampaignSummary(
   channel: 'email' | 'sms' | 'both',
   mode: 'save_draft' | 'send_now' | 'send_later',
   eligibleCount: number,
+  guestTrialContext?: GuestTrialExecutionContext | null,
+  referralContext?: ReferralExecutionContext | null,
 ) {
   const modeLabel = mode === 'send_now'
     ? 'outreach'
     : mode === 'send_later'
       ? 'scheduled outreach'
       : 'draft'
-  return `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible member${eligibleCount === 1 ? '' : 's'}`
+  const withGuestTrial = appendGuestTrialExecutionContextSummary(
+    `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible member${eligibleCount === 1 ? '' : 's'}`,
+    guestTrialContext,
+  )
+  return appendReferralExecutionContextSummary(withGuestTrial, referralContext)
 }
 
 function buildMembershipLifecycleSummary(
@@ -501,6 +525,7 @@ function buildMembershipLifecycleSummary(
   channel: 'email' | 'sms' | 'both',
   mode: 'save_draft' | 'send_now' | 'send_later',
   eligibleCount: number,
+  guestTrialContext?: GuestTrialExecutionContext | null,
 ) {
   const modeLabel = mode === 'send_now'
     ? 'outreach'
@@ -508,7 +533,10 @@ function buildMembershipLifecycleSummary(
       ? 'scheduled outreach'
       : 'draft'
   const flowLabel = kind === 'trial_follow_up' ? 'trial follow-up' : 'renewal outreach'
-  return `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible ${flowLabel} member${eligibleCount === 1 ? '' : 's'}`
+  return appendGuestTrialExecutionContextSummary(
+    `${channel.toUpperCase()} ${modeLabel} for ${eligibleCount} eligible ${flowLabel} member${eligibleCount === 1 ? '' : 's'}`,
+    guestTrialContext,
+  )
 }
 
 async function hydrateAdvisorCampaignAction(opts: {
@@ -550,6 +578,8 @@ async function hydrateAdvisorCampaignAction(opts: {
       opts.action.campaign.channel,
       opts.action.campaign.execution.mode,
       guardrails.summary.eligibleCount,
+      opts.action.campaign.guestTrialContext,
+      opts.action.campaign.referralContext,
     ),
     audience: {
       ...opts.action.audience,
@@ -617,6 +647,7 @@ async function hydrateAdvisorMembershipLifecycleAction(opts: {
             opts.action.lifecycle.channel,
             opts.action.lifecycle.execution.mode,
             guardrails.summary.eligibleCount,
+            opts.action.lifecycle.guestTrialContext,
           ),
           lifecycle: {
             ...opts.action.lifecycle,
@@ -633,6 +664,7 @@ async function hydrateAdvisorMembershipLifecycleAction(opts: {
             opts.action.lifecycle.channel,
             opts.action.lifecycle.execution.mode,
             guardrails.summary.eligibleCount,
+            opts.action.lifecycle.guestTrialContext,
           ),
           lifecycle: {
             ...opts.action.lifecycle,
@@ -973,6 +1005,43 @@ function buildSandboxRoutingAction(policy: AdvisorSandboxRoutingDraft): AdvisorS
   }
 }
 
+function buildAdminReminderRoutingAction(policy: AdvisorAdminReminderRoutingDraft): AdvisorAdminReminderRoutingAction {
+  return {
+    kind: 'update_admin_reminder_routing',
+    title: 'Update admin reminder routing',
+    summary: formatAdvisorAdminReminderRoutingDigest(policy),
+    requiresApproval: true,
+    policy,
+  }
+}
+
+function getAdminReminderRoutingCopy(language: SupportedLanguage | string) {
+  if (language === 'ru') {
+    return {
+      needChanges: 'Скажи, как напоминать админу: только в приложении, по email, по SMS или по обоим каналам. Если уже знаешь контакт, просто пришли его прямо сюда.',
+      needEmail: 'Какой email использовать для admin reminders?',
+      needPhone: 'Какой номер использовать для admin reminders по SMS?',
+      needBoth: 'Чтобы включить email + SMS reminders, пришли email и номер телефона для админских напоминаний.',
+    }
+  }
+
+  if (language === 'es') {
+    return {
+      needChanges: 'Dime cómo quieres recibir recordatorios de admin: solo dentro de la app, por email, por SMS o por ambos. Si ya tienes el contacto, pégalo aquí.',
+      needEmail: '¿Qué email debo usar para los recordatorios del admin?',
+      needPhone: '¿Qué teléfono debo usar para los recordatorios del admin por SMS?',
+      needBoth: 'Para activar recordatorios por email + SMS, compárteme el email y el teléfono del admin.',
+    }
+  }
+
+  return {
+    needChanges: 'Tell me how admin reminders should arrive: in-app only, by email, by SMS, or both. If you already know the contact, just paste it here.',
+    needEmail: 'What email should I use for admin reminders?',
+    needPhone: 'What phone number should I use for admin SMS reminders?',
+    needBoth: 'To turn on email + SMS admin reminders, send me the reminder email and phone number to use.',
+  }
+}
+
 function buildProgrammingSummary(action: AdvisorProgrammingAction) {
   const proposalCount = 1 + action.program.alternatives.length
   return `${proposalCount} draft session idea${proposalCount === 1 ? '' : 's'} led by ${action.program.primary.title}`
@@ -997,6 +1066,22 @@ function buildProgrammingAction(input: {
       publishMode: 'draft_only',
     },
   }
+}
+
+function getProgrammingConflictWeight(level?: 'low' | 'medium' | 'high') {
+  if (level === 'high') return 3
+  if (level === 'medium') return 2
+  return 1
+}
+
+function getProgrammingConflictDelta(
+  current: AdvisorProgrammingAction['program']['primary'],
+  candidate: AdvisorProgrammingAction['program']['primary'],
+) {
+  return (
+    getProgrammingConflictWeight(current.conflict?.overallRisk) -
+    getProgrammingConflictWeight(candidate.conflict?.overallRisk)
+  )
 }
 
 function getProgrammingCopy(language: SupportedLanguage | string) {
@@ -1505,6 +1590,8 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
   scheduledFor?: string
   planTimeZone?: string
   allowRecommendation?: boolean
+  guestTrialContext?: GuestTrialExecutionContext | null
+  referralContext?: ReferralExecutionContext | null
 }) {
   const { caller, clubId, language, state, kind } = opts
   const meta = getAdvisorMembershipLifecycleMeta(kind)
@@ -1517,6 +1604,7 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
     clubId,
     kind,
     limit: candidateLimit,
+    automationSettings: opts.automationSettings,
   })
 
   if (candidates.length === 0) {
@@ -1581,6 +1669,7 @@ async function buildMembershipLifecycleAssistantResponse(opts: {
             } : {}),
           },
           candidates,
+          guestTrialContext: opts.guestTrialContext || undefined,
         },
         defaultsApplied: opts.defaultsApplied,
       }
@@ -1650,9 +1739,11 @@ function maybeAttachProgrammingRecommendation(opts: {
   const recommendedPrimary = opts.recommendedPrimary
   if (!recommendedPrimary) return opts.action
   if (sameProgrammingProposal(opts.action.program.primary, recommendedPrimary)) return opts.action
-  if (recommendedPrimary.confidence < opts.action.program.primary.confidence + 5) return opts.action
-
+  const conflictDelta = getProgrammingConflictDelta(opts.action.program.primary, recommendedPrimary)
+  const confidenceDelta = recommendedPrimary.confidence - opts.action.program.primary.confidence
   const deltaOccupancy = recommendedPrimary.projectedOccupancy - opts.action.program.primary.projectedOccupancy
+  if (confidenceDelta < 5 && conflictDelta <= 0) return opts.action
+  if (conflictDelta > 0 && (confidenceDelta < -4 || deltaOccupancy < -6)) return opts.action
   const recommendedAction = buildProgrammingAction({
     goal: opts.action.program.goal,
     primary: recommendedPrimary,
@@ -1671,16 +1762,21 @@ function maybeAttachProgrammingRecommendation(opts: {
       title: buildRecommendationTitle(recommendedAction),
       summary: buildProgrammingSummary(recommendedAction),
       why: [
-        `The agent sees stronger demand in ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot).toLowerCase()} for this format mix.`,
-        deltaOccupancy > 0
-          ? `Projected fill improves from ${opts.action.program.primary.projectedOccupancy}% to ${recommendedPrimary.projectedOccupancy}%.`
-          : `This window carries a stronger confidence score (${recommendedPrimary.confidence}/100).`,
+        conflictDelta > 0
+          ? `The agent sees a safer schedule shape in ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot).toLowerCase()} for this format mix.`
+          : `The agent sees stronger demand in ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot).toLowerCase()} for this format mix.`,
+        conflictDelta > 0 && recommendedPrimary.conflict?.riskSummary
+          ? recommendedPrimary.conflict.riskSummary
+          : deltaOccupancy > 0
+            ? `Projected fill improves from ${opts.action.program.primary.projectedOccupancy}% to ${recommendedPrimary.projectedOccupancy}%.`
+            : `This window carries a stronger confidence score (${recommendedPrimary.confidence}/100).`,
         ...recommendedPrimary.rationale.slice(0, 2),
       ],
       highlights: [
         `Move to ${recommendedPrimary.dayOfWeek} ${formatProgrammingTimeSlot(recommendedPrimary.timeSlot)}`,
         `${recommendedPrimary.projectedOccupancy}% projected fill`,
-      ].filter(Boolean),
+        conflictDelta > 0 ? 'Lower conflict risk' : null,
+      ].filter((value): value is string => Boolean(value)),
     }),
   }
 }
@@ -1774,6 +1870,8 @@ function getSuggestionKeyForPlanAction(action: AdvisorIntentPlan['action']) {
       return 'update_autonomy_policy' as const
     case 'update_sandbox_routing':
       return 'update_sandbox_routing' as const
+    case 'update_admin_reminder_routing':
+      return 'update_admin_reminder_routing' as const
     default:
       return 'create_campaign' as const
   }
@@ -1793,7 +1891,8 @@ async function applyAdvisorAdaptiveDefaults(opts: {
     opts.plan.action === 'program_schedule' ||
     opts.plan.action === 'update_contact_policy' ||
     opts.plan.action === 'update_autonomy_policy' ||
-    opts.plan.action === 'update_sandbox_routing'
+    opts.plan.action === 'update_sandbox_routing' ||
+    opts.plan.action === 'update_admin_reminder_routing'
   ) {
     return {
       plan: opts.plan,
@@ -1866,6 +1965,16 @@ export async function POST(req: Request) {
       message?: string
       conversationId?: string | null
     }
+    const guestTrialContext = parseGuestTrialExecutionContext(
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as Record<string, unknown>).guestTrialContext
+        : null,
+    )
+    const referralContext = parseReferralExecutionContext(
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as Record<string, unknown>).referralContext
+        : null,
+    )
 
     if (!clubId || !message?.trim()) {
       return Response.json({ error: 'clubId and message are required' }, { status: 400 })
@@ -2057,6 +2166,57 @@ export async function POST(req: Request) {
       }
 
       if (!assistantMessage && !hadPendingClarification) {
+        const editedAdminReminderRouting = memory.state?.currentAdminReminderRouting
+          ? updateAdvisorAdminReminderRoutingFromMessage({
+              message,
+              currentPolicy: memory.state.currentAdminReminderRouting,
+              allowImplicit: true,
+            })
+          : null
+        if (editedAdminReminderRouting) {
+          draftIdToReuse = memory.state?.currentDraftId || null
+          const missingFields = getAdvisorAdminReminderMissingFields(editedAdminReminderRouting)
+          const reminderCopy = getAdminReminderRoutingCopy(language)
+
+          if (missingFields.length > 0) {
+            assistantState = {
+              ...(memory.state || {}),
+              latestOutcome: memory.state?.latestOutcome,
+              recentOutcomes: memory.state?.recentOutcomes || [],
+              currentAdminReminderRouting: editedAdminReminderRouting,
+              lastActionKind: 'update_admin_reminder_routing',
+              lastActionTitle: 'Update admin reminder routing',
+              updatedAt: new Date().toISOString(),
+            }
+
+            const question = missingFields.length === 2
+              ? reminderCopy.needBoth
+              : missingFields[0] === 'email'
+                ? reminderCopy.needEmail
+                : reminderCopy.needPhone
+
+            const sessionEmail = session?.user?.email || null
+            const suggestions = missingFields[0] === 'email' && sessionEmail
+              ? [sessionEmail, ...copy.suggestions.update_admin_reminder_routing]
+              : copy.suggestions.update_admin_reminder_routing
+
+            assistantMessage = withSuggested(question, suggestions.slice(0, 3))
+          } else {
+            const action = buildAdminReminderRoutingAction(editedAdminReminderRouting)
+            assistantState = buildAdvisorConversationStateFromAction(action)
+            assistantMessage = withSuggested(
+              [
+                copy.adminReminderRoutingReady(action.policy.changes.length),
+                ...action.policy.changes,
+                buildAdvisorActionTag(action),
+              ].join('\n\n'),
+              copy.suggestions.update_admin_reminder_routing,
+            )
+          }
+        }
+      }
+
+      if (!assistantMessage && !hadPendingClarification) {
         const activeFillSession = memory.lastAction?.kind === 'fill_session'
         const fillSessionEditSessions = activeFillSession
           ? await loadAdvisorSlotSessions(caller, clubId)
@@ -2224,6 +2384,38 @@ export async function POST(req: Request) {
               ].join('\n\n'),
               copy.suggestions.update_sandbox_routing,
             )
+          } else if (editedAction.kind === 'update_admin_reminder_routing') {
+            const missingFields = getAdvisorAdminReminderMissingFields(editedAction.policy)
+            const reminderCopy = getAdminReminderRoutingCopy(language)
+
+            if (missingFields.length > 0) {
+              assistantState = {
+                ...(memory.state || {}),
+                latestOutcome: memory.state?.latestOutcome,
+                recentOutcomes: memory.state?.recentOutcomes || [],
+                currentAdminReminderRouting: editedAction.policy,
+                lastActionKind: 'update_admin_reminder_routing',
+                lastActionTitle: 'Update admin reminder routing',
+                updatedAt: new Date().toISOString(),
+              }
+
+              const question = missingFields.length === 2
+                ? reminderCopy.needBoth
+                : missingFields[0] === 'email'
+                  ? reminderCopy.needEmail
+                  : reminderCopy.needPhone
+              assistantMessage = withSuggested(question, copy.suggestions.update_admin_reminder_routing)
+            } else {
+              assistantState = buildAdvisorConversationStateFromAction(editedAction)
+              assistantMessage = withSuggested(
+                [
+                  copy.adminReminderRoutingReady(editedAction.policy.changes.length),
+                  ...editedAction.policy.changes,
+                  buildAdvisorActionTag(editedAction),
+                ].join('\n\n'),
+                copy.suggestions.update_admin_reminder_routing,
+              )
+            }
           } else {
             const editCopy = getAdvisorEditCopy(language)
             assistantState = buildAdvisorConversationStateFromAction(editedAction)
@@ -2401,6 +2593,7 @@ export async function POST(req: Request) {
         defaultsApplied,
         timeZone: clubTimeZone,
         automationSettings: clubContext?.automationSettings,
+        guestTrialContext,
       })
 
       assistantState = lifecycleResponse.assistantState
@@ -2421,6 +2614,7 @@ export async function POST(req: Request) {
         defaultsApplied,
         timeZone: clubTimeZone,
         automationSettings: clubContext?.automationSettings,
+        guestTrialContext,
       })
 
       assistantState = lifecycleResponse.assistantState
@@ -2541,6 +2735,74 @@ export async function POST(req: Request) {
           copy.suggestions.update_sandbox_routing,
         )
       }
+    } else if (plan.action === 'update_admin_reminder_routing') {
+      const reminderCopy = getAdminReminderRoutingCopy(language)
+      const currentUser = await prisma.user.findUnique({
+        where: { id: session.userId },
+        select: {
+          email: true,
+          adminReminderEmail: true,
+          adminReminderPhone: true,
+          adminReminderChannel: true,
+        },
+      })
+      const currentPolicy = resolveAdvisorAdminReminderRouting(currentUser)
+      const updatedPolicy = updateAdvisorAdminReminderRoutingFromMessage({
+        message: effectiveMessage,
+        currentPolicy,
+      })
+
+      if (!updatedPolicy) {
+        assistantState = {
+          ...(memory.state || {}),
+          latestOutcome: memory.state?.latestOutcome,
+          recentOutcomes: memory.state?.recentOutcomes || [],
+          currentAdminReminderRouting: currentPolicy,
+          lastActionKind: 'update_admin_reminder_routing',
+          lastActionTitle: 'Update admin reminder routing',
+          updatedAt: new Date().toISOString(),
+        }
+        const baseSuggestions = currentUser?.email
+          ? [currentUser.email, ...copy.suggestions.update_admin_reminder_routing]
+          : copy.suggestions.update_admin_reminder_routing
+        assistantMessage = withSuggested(
+          reminderCopy.needChanges,
+          baseSuggestions.slice(0, 3),
+        )
+      } else {
+        const missingFields = getAdvisorAdminReminderMissingFields(updatedPolicy)
+        if (missingFields.length > 0) {
+          assistantState = {
+            ...(memory.state || {}),
+            latestOutcome: memory.state?.latestOutcome,
+            recentOutcomes: memory.state?.recentOutcomes || [],
+            currentAdminReminderRouting: updatedPolicy,
+            lastActionKind: 'update_admin_reminder_routing',
+            lastActionTitle: 'Update admin reminder routing',
+            updatedAt: new Date().toISOString(),
+          }
+          const question = missingFields.length === 2
+            ? reminderCopy.needBoth
+            : missingFields[0] === 'email'
+              ? reminderCopy.needEmail
+              : reminderCopy.needPhone
+          const suggestions = missingFields[0] === 'email' && currentUser?.email
+            ? [currentUser.email, ...copy.suggestions.update_admin_reminder_routing]
+            : copy.suggestions.update_admin_reminder_routing
+          assistantMessage = withSuggested(question, suggestions.slice(0, 3))
+        } else {
+          const action = buildAdminReminderRoutingAction(updatedPolicy)
+          assistantState = buildAdvisorConversationStateFromAction(action)
+          assistantMessage = withSuggested(
+            [
+              copy.adminReminderRoutingReady(action.policy.changes.length),
+              ...action.policy.changes,
+              buildAdvisorActionTag(action),
+            ].join('\n\n'),
+            copy.suggestions.update_admin_reminder_routing,
+          )
+        }
+      }
     } else {
       let audienceDraft: AdvisorCampaignAction['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
@@ -2605,6 +2867,8 @@ export async function POST(req: Request) {
           subject: generated.subject,
           body: generated.body,
           smsBody: generated.smsBody || undefined,
+          guestTrialContext: guestTrialContext || undefined,
+          referralContext: referralContext || undefined,
           execution: {
             mode: deliveryMode,
             ...(scheduledSend

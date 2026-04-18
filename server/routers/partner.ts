@@ -1,11 +1,11 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
-import { createTRPCRouter, publicProcedure } from '../trpc'
+import { createTRPCRouter, superadminProcedure } from '../trpc'
 import { generateApiKey, hashSecret } from '../utils/partnerAuth'
 
 export const partnerRouter = createTRPCRouter({
   // List all partners
-  list: publicProcedure.query(async ({ ctx }) => {
+  list: superadminProcedure.query(async ({ ctx }) => {
     try {
       // First, try a simple query to check if table exists
       const partners = await ctx.prisma.partner.findMany({
@@ -56,7 +56,7 @@ export const partnerRouter = createTRPCRouter({
   }),
 
   // Get partner by ID
-  get: publicProcedure
+  get: superadminProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const partner = await ctx.prisma.partner.findUnique({
@@ -86,7 +86,7 @@ export const partnerRouter = createTRPCRouter({
     }),
 
   // Create partner
-  create: publicProcedure
+  create: superadminProcedure
     .input(
       z.object({
         name: z.string().min(1),
@@ -147,7 +147,7 @@ export const partnerRouter = createTRPCRouter({
     }),
 
   // Update partner
-  update: publicProcedure
+  update: superadminProcedure
     .input(
       z.object({
         id: z.string(),
@@ -215,7 +215,7 @@ export const partnerRouter = createTRPCRouter({
     }),
 
   // Create partner app (credentials)
-  createApp: publicProcedure
+  createApp: superadminProcedure
     .input(
       z.object({
         partnerId: z.string(),
@@ -263,7 +263,7 @@ export const partnerRouter = createTRPCRouter({
     }),
 
   // Revoke partner app
-  revokeApp: publicProcedure
+  revokeApp: superadminProcedure
     .input(z.object({ appId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const app = await ctx.prisma.partnerApp.update({
@@ -275,7 +275,7 @@ export const partnerRouter = createTRPCRouter({
     }),
 
   // Get API request logs
-  getRequestLogs: publicProcedure
+  getRequestLogs: superadminProcedure
     .input(
       z.object({
         partnerId: z.string().optional(),
@@ -325,4 +325,3 @@ export const partnerRouter = createTRPCRouter({
       }
     }),
 })
-

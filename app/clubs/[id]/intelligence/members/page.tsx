@@ -14,7 +14,7 @@ import {
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo, useMemberGrowth, useReactivationCandidates, useMemberAiProfiles, useRegenerateMemberProfiles } from '../_hooks/use-intelligence'
+import { useMemberHealth, useSendOutreach, useMemberOutreachHistory, useIsDemo, useMemberGrowth, useReactivationCandidates, useMemberAiProfiles, useRegenerateMemberProfiles, useSmartFirstSession, useGuestTrialBooking, useWinBackSnapshot, useReferralSnapshot } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
@@ -85,6 +85,10 @@ export default function MembersPage() {
 
   const { data, isLoading: healthLoading, error } = useMemberHealth(clubId)
   const { data: memberGrowthData, isLoading: growthLoading } = useMemberGrowth(clubId)
+  const { data: smartFirstSessionData } = useSmartFirstSession(clubId)
+  const { data: guestTrialBookingData } = useGuestTrialBooking(clubId)
+  const { data: winBackSnapshot } = useWinBackSnapshot(clubId)
+  const { data: referralSnapshot } = useReferralSnapshot(clubId)
   const isLoading = healthLoading || growthLoading
 
   const setPageContext = useSetPageContext()
@@ -154,7 +158,7 @@ export default function MembersPage() {
   }, [aiProfilesRaw])
 
   const brand = useBrand()
-  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} memberGrowthData={memberGrowthData} isLoading={isLoading} sendOutreach={sendOutreach} clubId={clubId} reactivationCandidates={reactivationData?.candidates} aiProfiles={aiProfilesMap} onRegenerateProfiles={() => regenerateProfiles.mutate({ clubId })} />
+  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} memberGrowthData={memberGrowthData} smartFirstSessionData={smartFirstSessionData} guestTrialBookingData={guestTrialBookingData} winBackSnapshot={winBackSnapshot} referralSnapshot={referralSnapshot} isLoading={isLoading} sendOutreach={sendOutreach} clubId={clubId} reactivationCandidates={reactivationData?.candidates} aiProfiles={aiProfilesMap} onRegenerateProfiles={() => regenerateProfiles.mutate({ clubId })} />
 
   return (
     <div className="space-y-6">

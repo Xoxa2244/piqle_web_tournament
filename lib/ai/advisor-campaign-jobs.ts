@@ -2,6 +2,22 @@ import { sendOutreachEmail } from '@/lib/email'
 import { sendSms } from '@/lib/sms'
 import { reportUsage } from '@/lib/stripe-usage'
 import { evaluateAdvisorContactGuardrails } from './advisor-contact-guardrails'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import {
+  evaluateAgentOutreachRollout,
+  type AgentOutreachRolloutActionKind,
+} from './agent-outreach-rollout'
+import { persistAgentDecisionRecord } from './agent-decision-records'
+import {
+  buildGuestTrialOfferAttributionFromContext,
+  inferGuestTrialOfferAttribution,
+  type GuestTrialExecutionContext,
+} from './guest-trial-offers'
+import {
+  buildReferralOfferAttributionFromContext,
+  inferReferralOfferAttribution,
+  type ReferralExecutionContext,
+} from './referral-offers'
 
 type CampaignChannel = 'email' | 'sms' | 'both'
 type CampaignType =
@@ -40,6 +56,9 @@ type CampaignDraftInput = {
   smsBody?: string
   sessionId?: string
   source?: string
+  actionKind?: AgentOutreachRolloutActionKind
+  guestTrialContext?: GuestTrialExecutionContext | null
+  referralContext?: ReferralExecutionContext | null
   scheduledFor?: string
   timeZone?: string
   recipientRules?: {
@@ -173,11 +192,62 @@ async function getCampaignContext(prisma: any, input: CampaignDraftInput) {
   return { club, users }
 }
 
+function resolveScheduledCampaignActionKind(log: {
+  type: CampaignType
+  reasoning?: Record<string, any>
+}): AgentOutreachRolloutActionKind {
+  const explicit = typeof log.reasoning?.actionKind === 'string' ? log.reasoning.actionKind : null
+  if (
+    explicit === 'create_campaign'
+    || explicit === 'fill_session'
+    || explicit === 'reactivate_members'
+    || explicit === 'trial_follow_up'
+    || explicit === 'renewal_reactivation'
+  ) {
+    return explicit
+  }
+
+  if (log.reasoning?.membershipLifecycle === 'trial_follow_up') {
+    return 'trial_follow_up'
+  }
+  if (log.reasoning?.membershipLifecycle === 'renewal_reactivation') {
+    return 'renewal_reactivation'
+  }
+  if (log.type === 'SLOT_FILLER') {
+    return 'fill_session'
+  }
+  if (log.type === 'REACTIVATION') {
+    return 'reactivate_members'
+  }
+
+  return 'create_campaign'
+}
+
 export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
   const { club, users } = await getCampaignContext(prisma, input)
   const recipientChannelByUserId = new Map(
     (input.recipients || []).map((recipient) => [recipient.memberId, recipient.channel]),
   )
+  const guestTrialAttribution = inferGuestTrialOfferAttribution({
+    automationSettings: club.automationSettings,
+    subject: input.subject,
+    body: input.body,
+    smsBody: input.smsBody,
+    source: input.source,
+  })
+  const referralAttribution = inferReferralOfferAttribution({
+    automationSettings: club.automationSettings,
+    subject: input.subject,
+    body: input.body,
+    smsBody: input.smsBody,
+    source: input.source,
+  })
+  const resolvedGuestTrialAttribution = input.guestTrialContext
+    ? buildGuestTrialOfferAttributionFromContext(input.guestTrialContext)
+    : guestTrialAttribution
+  const resolvedReferralAttribution = input.referralContext
+    ? buildReferralOfferAttributionFromContext(input.referralContext)
+    : referralAttribution
 
   let sent = 0
   let failed = 0
@@ -208,8 +278,11 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
         variantId: input.type,
         reasoning: {
           source: input.source || 'manual_campaign',
+          actionKind: input.actionKind || null,
           subject: input.subject || null,
           bodyPreview: input.body.slice(0, 200),
+          guestTrialAttribution: resolvedGuestTrialAttribution || null,
+          referralAttribution: resolvedReferralAttribution || null,
           emailDelivered: delivery.emailDelivered,
           smsDelivered: delivery.smsDelivered,
         },
@@ -248,9 +321,33 @@ export async function scheduleCampaignSend(prisma: any, input: CampaignDraftInpu
   timeZone: string
 }) {
   const { users } = await getCampaignContext(prisma, input)
+  const club = await prisma.club.findUnique({
+    where: { id: input.clubId },
+    select: { automationSettings: true },
+  })
   const recipientChannelByUserId = new Map(
     (input.recipients || []).map((recipient) => [recipient.memberId, recipient.channel]),
   )
+  const guestTrialAttribution = inferGuestTrialOfferAttribution({
+    automationSettings: club?.automationSettings,
+    subject: input.subject,
+    body: input.body,
+    smsBody: input.smsBody,
+    source: input.source,
+  })
+  const referralAttribution = inferReferralOfferAttribution({
+    automationSettings: club?.automationSettings,
+    subject: input.subject,
+    body: input.body,
+    smsBody: input.smsBody,
+    source: input.source,
+  })
+  const resolvedGuestTrialAttribution = input.guestTrialContext
+    ? buildGuestTrialOfferAttributionFromContext(input.guestTrialContext)
+    : guestTrialAttribution
+  const resolvedReferralAttribution = input.referralContext
+    ? buildReferralOfferAttributionFromContext(input.referralContext)
+    : referralAttribution
   if (users.length === 0) {
     return {
       scheduled: 0,
@@ -270,9 +367,12 @@ export async function scheduleCampaignSend(prisma: any, input: CampaignDraftInpu
       status: 'scheduled',
       reasoning: {
         source: 'advisor_scheduled_campaign',
+        actionKind: input.actionKind || null,
         subject: input.subject || null,
         body: input.body,
         smsBody: input.smsBody || null,
+        guestTrialAttribution: resolvedGuestTrialAttribution || null,
+        referralAttribution: resolvedReferralAttribution || null,
         scheduledFor: input.scheduledFor,
         timeZone: input.timeZone,
         recipientRules: input.recipientRules || null,
@@ -344,6 +444,92 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
     const reasoning = (log.reasoning || {}) as Record<string, any>
 
     try {
+      const rolloutActionKind = resolveScheduledCampaignActionKind({
+        type: log.type as CampaignType,
+        reasoning,
+      })
+      const controlPlane = evaluateAgentControlPlaneAction({
+        automationSettings: log.club.automationSettings,
+        action: 'outreachSend',
+      })
+      const rollout = evaluateAgentOutreachRollout({
+        clubId: log.clubId,
+        automationSettings: log.club.automationSettings,
+        actionKind: rolloutActionKind,
+      })
+
+      if (!controlPlane.allowed) {
+        skipped += 1
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: {
+            status: 'skipped',
+            reasoning: {
+              ...reasoning,
+              processedAt: new Date().toISOString(),
+              controlPlane: {
+                mode: controlPlane.mode,
+                reason: controlPlane.reason,
+              },
+            },
+          },
+        })
+        await persistAgentDecisionRecord(prisma, {
+          clubId: log.clubId,
+          actorType: 'system',
+          action: 'outreachSend',
+          targetType: 'recommendation_log',
+          targetId: log.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: controlPlane.reason,
+          metadata: {
+            reason: 'control_plane_disabled',
+            source: reasoning.source || 'advisor_scheduled_campaign',
+            channel: log.channel,
+            recipientUserId: log.userId,
+          },
+        })
+        continue
+      }
+
+      if (!controlPlane.shadow && !rollout.allowed) {
+        skipped += 1
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: {
+            status: 'skipped',
+            reasoning: {
+              ...reasoning,
+              processedAt: new Date().toISOString(),
+              rollout: {
+                clubAllowlisted: rollout.clubAllowlisted,
+                actionEnabled: rollout.actionEnabled,
+                reason: rollout.reason,
+              },
+            },
+          },
+        })
+        await persistAgentDecisionRecord(prisma, {
+          clubId: log.clubId,
+          actorType: 'system',
+          action: 'outreachSend',
+          targetType: 'recommendation_log',
+          targetId: log.id,
+          mode: controlPlane.mode,
+          result: 'blocked',
+          summary: rollout.reason,
+          metadata: {
+            reason: 'outreach_rollout_blocked',
+            source: reasoning.source || 'advisor_scheduled_campaign',
+            channel: log.channel,
+            recipientUserId: log.userId,
+            actionKind: rolloutActionKind,
+          },
+        })
+        continue
+      }
+
       const guardrails = await evaluateAdvisorContactGuardrails({
         prisma,
         clubId: log.clubId,
@@ -367,6 +553,41 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
               processedAt: new Date().toISOString(),
               guardrails: guardrails.summary,
             },
+          },
+        })
+        continue
+      }
+
+      if (controlPlane.shadow) {
+        skipped += 1
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: {
+            status: 'skipped',
+            reasoning: {
+              ...reasoning,
+              processedAt: new Date().toISOString(),
+              controlPlane: {
+                mode: controlPlane.mode,
+                reason: controlPlane.reason,
+              },
+              shadowed: true,
+            },
+          },
+        })
+        await persistAgentDecisionRecord(prisma, {
+          clubId: log.clubId,
+          actorType: 'system',
+          action: 'outreachSend',
+          targetType: 'recommendation_log',
+          targetId: log.id,
+          mode: controlPlane.mode,
+          result: 'shadowed',
+          summary: `Scheduled outreach for ${log.user.name || log.user.email || 'member'} was reviewed in shadow mode.`,
+          metadata: {
+            source: reasoning.source || 'advisor_scheduled_campaign',
+            channel: log.channel,
+            recipientUserId: log.userId,
           },
         })
         continue
@@ -418,6 +639,28 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
       } else {
         failed += 1
       }
+
+      await persistAgentDecisionRecord(prisma, {
+        clubId: log.clubId,
+        actorType: 'system',
+        action: 'outreachSend',
+        targetType: 'recommendation_log',
+        targetId: log.id,
+        mode: controlPlane.mode,
+        result: delivery.status === 'sent' ? 'executed' : delivery.status === 'skipped' ? 'reviewed' : 'failed',
+        summary: delivery.status === 'sent'
+          ? `Scheduled outreach for ${log.user.name || log.user.email || 'member'} sent live.`
+          : delivery.status === 'skipped'
+            ? `Scheduled outreach for ${log.user.name || log.user.email || 'member'} was skipped at delivery time.`
+            : `Scheduled outreach for ${log.user.name || log.user.email || 'member'} failed at delivery time.`,
+        metadata: {
+          source: reasoning.source || 'advisor_scheduled_campaign',
+          channel: resolvedChannel,
+          recipientUserId: log.userId,
+          emailDelivered: delivery.emailDelivered,
+          smsDelivered: delivery.smsDelivered,
+        },
+      })
     } catch (error) {
       failed += 1
       await prisma.aIRecommendationLog.update({

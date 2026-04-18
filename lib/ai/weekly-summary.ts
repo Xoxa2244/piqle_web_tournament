@@ -2,6 +2,8 @@ import { generateWithFallback } from '@/lib/ai/llm/provider'
 import { getVariantAnalytics } from '@/lib/ai/variant-optimizer'
 import { sendWeeklySummaryEmail } from '@/lib/ai/weekly-summary-email'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { persistAgentDecisionRecord } from './agent-decision-records'
 
 // ══════════════════════════════════════════════
 //  Weekly AI Summary — Data Collection + LLM
@@ -580,6 +582,7 @@ export async function sendWeeklySummaryEmails(
         select: {
           id: true,
           name: true,
+          automationSettings: true,
           admins: {
             select: {
               user: { select: { email: true } },
@@ -597,6 +600,30 @@ export async function sendWeeklySummaryEmails(
     const content = summary.summary as WeeklySummaryContent
     const clubName = summary.club.name
     const clubId = summary.club.id
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: summary.club.automationSettings,
+      action: 'adminReminderExternal',
+    })
+
+    if (!controlPlane.allowed || controlPlane.shadow) {
+      await persistAgentDecisionRecord(prisma, {
+        clubId,
+        actorType: 'system',
+        action: 'adminReminderExternal',
+        targetType: 'weekly_summary',
+        targetId: summary.id,
+        mode: controlPlane.mode,
+        result: controlPlane.shadow ? 'shadowed' : 'blocked',
+        summary: controlPlane.shadow
+          ? `${controlPlane.reason} Weekly summary stayed in shadow mode.`
+          : controlPlane.reason,
+        metadata: {
+          source: 'weekly_summary_cron',
+          reason: controlPlane.shadow ? 'control_plane_shadow' : 'control_plane_disabled',
+        },
+      })
+      continue
+    }
 
     // Collect admin emails (deduplicate)
     const allEmails: string[] = summary.club.admins

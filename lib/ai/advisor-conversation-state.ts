@@ -13,6 +13,7 @@ import {
   type AdvisorAction,
 } from './advisor-actions'
 import { advisorAutonomyPolicyDraftSchema } from './advisor-autonomy-policy'
+import { advisorAdminReminderRoutingDraftSchema } from './advisor-admin-reminder-policy'
 import { advisorDraftStatusSchema, type AdvisorDraftMetadata } from './advisor-drafts'
 import { isAdvisorActionHidden } from './advisor-action-state'
 import { advisorContactPolicyDraftSchema } from './advisor-contact-policy'
@@ -38,9 +39,10 @@ export const advisorConversationStateSchema = z.object({
   currentContactPolicy: advisorContactPolicyDraftSchema.optional(),
   currentAutonomyPolicy: advisorAutonomyPolicyDraftSchema.optional(),
   currentSandboxRouting: advisorSandboxRoutingDraftSchema.optional(),
+  currentAdminReminderRouting: advisorAdminReminderRoutingDraftSchema.optional(),
   latestOutcome: advisorOutcomeMemorySchema.optional(),
   recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing']).optional(),
+  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing', 'update_admin_reminder_routing']).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),
@@ -143,6 +145,15 @@ export function buildAdvisorConversationStateFromAction(
   if (action.kind === 'update_sandbox_routing') {
     return finalizeAdvisorConversationState({
       currentSandboxRouting: action.policy,
+      lastActionKind: action.kind,
+      lastActionTitle: action.title,
+      updatedAt,
+    })
+  }
+
+  if (action.kind === 'update_admin_reminder_routing') {
+    return finalizeAdvisorConversationState({
+      currentAdminReminderRouting: action.policy,
       lastActionKind: action.kind,
       lastActionTitle: action.title,
       updatedAt,
@@ -277,6 +288,12 @@ export function buildAdvisorStatePrompt(state: AdvisorConversationState | null):
     if (ruleParts.length > 0) parts.push(`Campaign recipient rules: ${ruleParts.join(', ')}`)
     if (state.currentCampaign.subject) parts.push(`Campaign subject: ${state.currentCampaign.subject}`)
     parts.push(`Campaign body preview: ${state.currentCampaign.body.slice(0, 280)}`)
+  }
+
+  if (state.currentAdminReminderRouting) {
+    parts.push(`Active admin reminder routing: ${state.currentAdminReminderRouting.channel}`)
+    if (state.currentAdminReminderRouting.email) parts.push(`Reminder email: ${state.currentAdminReminderRouting.email}`)
+    if (state.currentAdminReminderRouting.phone) parts.push(`Reminder phone: ${state.currentAdminReminderRouting.phone}`)
   }
 
   if (state.currentSession) {

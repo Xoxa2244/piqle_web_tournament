@@ -279,7 +279,30 @@ export function useIntelligenceSettings(clubId: string) {
 }
 
 export function useSaveIntelligenceSettings() {
-  return trpc.intelligence.saveIntelligenceSettings.useMutation()
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.saveIntelligenceSettings.useMutation({
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        utils.intelligence.getIntelligenceSettings.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useShadowBackOutreachRolloutAction() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.shadowBackOutreachRolloutAction.useMutation({
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        utils.intelligence.getIntelligenceSettings.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+        utils.intelligence.getOutreachPilotHealth.invalidate({ clubId: variables.clubId, days: 14 }).catch(() => undefined),
+      ])
+    },
+  })
 }
 
 // ── Automation Settings (campaign triggers) ──
@@ -400,6 +423,16 @@ export function useCampaignList(clubId: string, days = 90) {
   const query = trpc.intelligence.getCampaignList.useQuery(
     { clubId, days },
     { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+  )
+  if (isDemo) return { data: null, isLoading: false, error: null }
+  return query
+}
+
+export function useCampaignDrilldown(clubId: string, type?: string | null, date?: string | null) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getCampaignDrilldown.useQuery(
+    { clubId, type: type || '', date: date || '' },
+    { enabled: !!clubId && !!type && !!date && !isDemo, staleTime: 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
@@ -568,6 +601,63 @@ export function useOpsSessionDrafts(clubId: string, limit = 24) {
   return query
 }
 
+export function useOpsTeammates(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listOpsTeammates.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: [] }),
+    } as any
+  }
+
+  return query
+}
+
+export function useAgentDecisionRecords(clubId: string, limit = 12) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listAgentDecisionRecords.useQuery(
+    { clubId, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 30 * 1000, refetchInterval: 15000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: [] }),
+    } as any
+  }
+
+  return query
+}
+
+export function useOutreachPilotHealth(clubId: string, days = 14) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getOutreachPilotHealth.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: null }),
+    } as any
+  }
+
+  return query
+}
+
 export function useAdminTodoDecisions(clubId: string, dateKey: string) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.listAdminTodoDecisions.useQuery(
@@ -593,6 +683,170 @@ export function useNewMembers(clubId: string, days: number = 14) {
     { clubId, joinedWithinDays: days },
     { enabled: !!clubId, staleTime: 5 * 60 * 1000 }
   )
+}
+
+export function useSmartFirstSession(clubId: string, windowDays: number = 21, limit: number = 8) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getSmartFirstSession.useQuery(
+    { clubId, windowDays, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useGuestTrialBooking(clubId: string, windowDays: number = 21, limit: number = 8) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getGuestTrialBooking.useQuery(
+    { clubId, windowDays, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useWinBackSnapshot(clubId: string, windowDays: number = 60, limit: number = 8) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getWinBackSnapshot.useQuery(
+    { clubId, windowDays, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useReferralSnapshot(clubId: string, windowDays: number = 60, limit: number = 8) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getReferralSnapshot.useQuery(
+    { clubId, windowDays, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useLookalikeAudienceExport(clubId: string) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getLookalikeAudienceExport.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 60000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useLookalikeAudienceExportPreview(
+  clubId: string,
+  audienceKeys: string[],
+  preset: 'generic_csv' | 'meta_custom_audience' | 'google_customer_match' | 'tiktok_custom_audience'
+) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.previewLookalikeAudienceExportConfig.useQuery(
+    {
+      clubId,
+      audienceKeys: audienceKeys as Array<'healthy_paid_core' | 'high_value_loyalists' | 'new_successful_converters' | 'vip_advocates'>,
+      preset,
+    },
+    {
+      enabled: !!clubId && audienceKeys.length > 0 && !isDemo,
+      staleTime: 30 * 1000,
+      refetchInterval: 30000,
+    }
+  )
+
+  if (isDemo) {
+    return {
+      data: null,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+export function useLookalikeExportHistory(clubId: string, limit = 8) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getLookalikeExportHistory.useQuery(
+    { clubId, limit },
+    { enabled: !!clubId && !isDemo, staleTime: 30 * 1000, refetchInterval: 15000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+    } as any
+  }
+
+  return query
+}
+
+export function useExportLookalikeAudienceCsv() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.exportLookalikeAudienceCsv.useMutation({
+    onSuccess: async (_data, variables) => {
+      await Promise.all([
+        utils.intelligence.getLookalikeExportHistory.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate({ clubId: variables.clubId }).catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useUpdateReferralRewardIssuance() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.updateReferralRewardIssuance.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.getReferralSnapshot.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
 }
 
 // ══════ AI Agent Dashboard ══════
@@ -638,6 +892,110 @@ export function usePromoteOpsSessionDraft() {
     onSuccess: async (_result, _variables) => {
       await Promise.all([
         utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useUpdateOpsSessionDraftWorkflow() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.updateOpsSessionDraftWorkflow.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+        utils.notification.list.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function usePrepareOpsSessionDraftPublish() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.prepareOpsSessionDraftPublish.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function usePublishOpsSessionDraftToSchedule() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.publishOpsSessionDraftToSchedule.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useUpdatePublishedOpsSessionDraft() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.updatePublishedOpsSessionDraft.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useRollbackPublishedOpsSessionDraft() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.rollbackPublishedOpsSessionDraft.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useCreateOpsSessionDraftFromAdvisorDraft() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.createOpsSessionDraftFromAdvisorDraft.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+}
+
+export function useCreateFillSessionDraftFromSchedule() {
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.createFillSessionDraftFromSchedule.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
         utils.intelligence.listAdvisorDrafts.invalidate().catch(() => undefined),
         utils.intelligence.getAgentActivity.invalidate().catch(() => undefined),
       ])

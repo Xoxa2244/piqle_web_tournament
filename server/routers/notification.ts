@@ -148,16 +148,17 @@ export const notificationRouter = createTRPCRouter({
             select: { id: true, name: true },
           })
           const clubByNameId = new Map(clubs.map((c) => [c.id, c]))
-          const dueAdminTodoDecisions = await ctx.prisma.agentAdminTodoDecision.findMany({
+          const adminTodoDecisions = await ctx.prisma.agentAdminTodoDecision.findMany({
             where: {
               clubId: { in: clubIds },
               userId,
-              decision: 'not_now',
               updatedAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+              decision: { in: ['not_now', 'proactive_ping'] },
             },
             orderBy: { updatedAt: 'desc' },
             take: limit,
             select: {
+              decision: true,
               clubId: true,
               dateKey: true,
               itemId: true,
@@ -168,19 +169,36 @@ export const notificationRouter = createTRPCRouter({
             },
           })
           const now = Date.now()
-          for (const item of dueAdminTodoDecisions) {
-            const remindAt = getReminderAt(item.metadata)
-            if (!remindAt || remindAt.getTime() > now) continue
+          for (const item of adminTodoDecisions) {
             const club = clubByNameId.get(item.clubId)
             if (!club) continue
             const metadata = item.metadata as Record<string, unknown> | null
             const description = typeof metadata?.description === 'string' ? metadata.description : null
+            const remindAt = getReminderAt(item.metadata)
+
+            if (item.decision === 'not_now') {
+              if (!remindAt || remindAt.getTime() > now) continue
+              adminReminderItems.push({
+                id: `agent-admin-reminder-${item.clubId}-${item.dateKey}-${item.itemId}`,
+                type: 'AGENT_ADMIN_REMINDER',
+                title: item.title,
+                body: description || `A snoozed agent task for "${club.name}" is ready again.`,
+                createdAt: remindAt.toISOString(),
+                readAt: null,
+                clubId: item.clubId,
+                clubName: club.name,
+                targetUrl: item.href,
+              })
+              continue
+            }
+
+            if (item.decision !== 'proactive_ping') continue
             adminReminderItems.push({
               id: `agent-admin-reminder-${item.clubId}-${item.dateKey}-${item.itemId}`,
               type: 'AGENT_ADMIN_REMINDER',
               title: item.title,
-              body: description || `A snoozed agent task for "${club.name}" is ready again.`,
-              createdAt: remindAt.toISOString(),
+              body: description || `A proactive agent update for "${club.name}" is ready.`,
+              createdAt: item.updatedAt.toISOString(),
               readAt: null,
               clubId: item.clubId,
               clubName: club.name,

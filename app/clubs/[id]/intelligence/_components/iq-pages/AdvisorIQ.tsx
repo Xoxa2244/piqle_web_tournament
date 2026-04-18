@@ -15,10 +15,25 @@ import { AdvisorActionCard } from "./AdvisorActionCard";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
 import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
 import { getAdvisorLatestOutcome } from "@/lib/ai/advisor-outcomes";
+import {
+  parseGuestTrialExecutionContext,
+  type GuestTrialExecutionContext,
+} from "@/lib/ai/guest-trial-offers";
+import {
+  parseReferralExecutionContext,
+  type ReferralExecutionContext,
+} from "@/lib/ai/referral-offers";
 import { useAdvisorDrafts } from "../../_hooks/use-intelligence";
+import {
+  formatGuestTrialWorkspaceSummary,
+  formatReferralWorkspaceSummary,
+} from "./shared/growth-context";
 
 /* --- Suggested Prompts --- */
 const suggestedPrompts = [
+  { icon: Sparkles, text: "Draft a first-booking outreach plan for trial and guest members who still have no confirmed session", category: "Smart First Session" },
+  { icon: CalendarDays, text: "Draft a second-session follow-up for newcomers who only booked once", category: "Smart First Session" },
+  { icon: Mail, text: "Draft a guest-to-paid conversion campaign for recent first-time players", category: "Smart First Session" },
   { icon: TrendingUp, text: "Why is Tuesday morning occupancy so low?", category: "Occupancy" },
   { icon: DollarSign, text: "How can I increase revenue by 20% this quarter?", category: "Revenue" },
   { icon: Users, text: "Which members are at risk of churning?", category: "Members" },
@@ -112,6 +127,8 @@ interface AdvisorDraftWorkspaceItem {
       confidence: number
       note: string
     }> | null
+    guestTrialContext?: GuestTrialExecutionContext | null
+    referralContext?: ReferralExecutionContext | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
@@ -189,6 +206,7 @@ function formatDraftKind(kind: string) {
     case 'update_contact_policy': return 'Contact Policy'
     case 'update_autonomy_policy': return 'Autopilot Policy'
     case 'update_sandbox_routing': return 'Sandbox Routing'
+    case 'update_admin_reminder_routing': return 'Admin Reminder Routing'
     default: return kind.replace(/_/g, ' ')
   }
 }
@@ -764,6 +782,8 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const pendingConvIdRef = useRef<string | null>(null);
   const loadFromDbRef = useRef(false);
   const appliedPromptRef = useRef<string | null>(null);
+  const pendingGuestTrialContextRef = useRef<GuestTrialExecutionContext | null>(null);
+  const pendingReferralContextRef = useRef<ReferralExecutionContext | null>(null);
   convIdRef.current = conversationId;
 
   // Build transport (memoized on clubId)
@@ -835,6 +855,15 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     });
   }, [searchParams]);
 
+  useEffect(() => {
+    pendingGuestTrialContextRef.current = parseGuestTrialExecutionContext(
+      searchParams.get('guestTrialContext'),
+    );
+    pendingReferralContextRef.current = parseReferralExecutionContext(
+      searchParams.get('referralContext'),
+    );
+  }, [searchParams]);
+
   // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
     try {
@@ -890,12 +919,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           clubId,
           message: msg,
           conversationId: convIdRef.current,
+          guestTrialContext: pendingGuestTrialContextRef.current,
+          referralContext: pendingReferralContextRef.current,
         }),
       });
 
       if (response.ok) {
         const payload = await response.json();
         if (payload?.handled) {
+          pendingGuestTrialContextRef.current = null;
+          pendingReferralContextRef.current = null;
           const nextConvId = payload.conversationId || convIdRef.current;
           if (nextConvId) {
             setConversationId(nextConvId);
@@ -927,6 +960,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       // Fall through to normal chat flow
     }
 
+    pendingGuestTrialContextRef.current = null;
     sendMessage({ text: msg });
   }, [clubId, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
 
@@ -1178,6 +1212,10 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                       const sandboxRecipients = sandboxPreview?.recipients || []
                       const programmingPreview = draft.metadata?.programmingPreview || null
                       const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
+                      const guestTrialContext = parseGuestTrialExecutionContext(draft.metadata?.guestTrialContext || null)
+                      const guestTrialWorkspaceSummary = formatGuestTrialWorkspaceSummary(guestTrialContext)
+                      const referralContext = parseReferralExecutionContext(draft.metadata?.referralContext || null)
+                      const referralWorkspaceSummary = formatReferralWorkspaceSummary(referralContext)
                       const programmingWindow = formatProgrammingWindow(programmingPreview || null)
                       const sandboxSummary = draft.status === 'sandboxed'
                         ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
@@ -1226,6 +1264,38 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                               >
                                 Sandbox
                               </span>
+                            )}
+                            {guestTrialWorkspaceSummary && (
+                              <>
+                                <span
+                                  className="px-2 py-1 rounded-full text-[10px]"
+                                  style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
+                                >
+                                  {guestTrialWorkspaceSummary.stage}
+                                </span>
+                                <span
+                                  className="px-2 py-1 rounded-full text-[10px]"
+                                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--t2)" }}
+                                >
+                                  {guestTrialWorkspaceSummary.detail}
+                                </span>
+                              </>
+                            )}
+                            {referralWorkspaceSummary && (
+                              <>
+                                <span
+                                  className="px-2 py-1 rounded-full text-[10px]"
+                                  style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
+                                >
+                                  {referralWorkspaceSummary.lane}
+                                </span>
+                                <span
+                                  className="px-2 py-1 rounded-full text-[10px]"
+                                  style={{ background: "rgba(245,158,11,0.10)", color: "#FDE68A", fontWeight: 700 }}
+                                >
+                                  {referralWorkspaceSummary.detail}
+                                </span>
+                              </>
                             )}
                           </div>
 

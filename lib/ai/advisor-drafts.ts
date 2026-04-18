@@ -3,6 +3,7 @@ import 'server-only'
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import {
+  advisorProgrammingConflictSchema,
   stripAdvisorRecommendation,
   type AdvisorAction,
   type AdvisorActionCore,
@@ -68,6 +69,7 @@ export const advisorDraftProgrammingPreviewProposalSchema = z.object({
   projectedOccupancy: z.number().int().min(0).max(100),
   estimatedInterestedMembers: z.number().int().nonnegative(),
   confidence: z.number().int().min(0).max(100),
+  conflict: advisorProgrammingConflictSchema.optional(),
 })
 
 export const advisorDraftProgrammingPreviewSchema = z.object({
@@ -76,6 +78,20 @@ export const advisorDraftProgrammingPreviewSchema = z.object({
   primary: advisorDraftProgrammingPreviewProposalSchema,
   alternatives: z.array(advisorDraftProgrammingPreviewProposalSchema).max(3).default([]),
   insights: z.array(z.string().min(1).max(220)).max(4).default([]),
+})
+
+export const advisorDraftSlotFillerPreviewSchema = z.object({
+  sessionId: z.string().min(1),
+  title: z.string().min(1).max(160),
+  date: z.string().min(1).max(40),
+  startTime: z.string().min(1).max(20),
+  endTime: z.string().max(20).optional().nullable(),
+  format: z.string().max(80).optional().nullable(),
+  skillLevel: z.string().max(40).optional().nullable(),
+  occupancy: z.number().int().min(0).max(100),
+  spotsRemaining: z.number().int().nonnegative(),
+  candidateCount: z.number().int().nonnegative(),
+  channel: z.enum(['email', 'sms', 'both']),
 })
 
 export const advisorDraftProgrammingOpsSessionDraftSchema = z.object({
@@ -95,11 +111,57 @@ export const advisorDraftProgrammingOpsSessionDraftSchema = z.object({
   estimatedInterestedMembers: z.number().int().nonnegative(),
   confidence: z.number().int().min(0).max(100),
   note: z.string().min(1).max(220),
+  conflict: advisorProgrammingConflictSchema.optional(),
+  handoff: z.object({
+    summary: z.string().min(1).max(240),
+    whyNow: z.string().min(1).max(220).optional(),
+    nextStep: z.string().min(1).max(220),
+    watchouts: z.array(z.string().min(1).max(220)).max(3).default([]),
+    ownerLabel: z.string().min(1).max(120).optional(),
+    ownerUserId: z.string().min(1).max(120).optional(),
+    ownerBrief: z.string().min(1).max(240).optional(),
+  }).optional(),
 })
 
 export type AdvisorDraftSandboxPreview = z.infer<typeof advisorDraftSandboxPreviewSchema>
 export type AdvisorDraftProgrammingPreview = z.infer<typeof advisorDraftProgrammingPreviewSchema>
+export type AdvisorDraftSlotFillerPreview = z.infer<typeof advisorDraftSlotFillerPreviewSchema>
 export type AdvisorDraftProgrammingOpsSessionDraft = z.infer<typeof advisorDraftProgrammingOpsSessionDraftSchema>
+
+function buildProgrammingOpsSessionDraftHandoff(
+  action: Extract<AdvisorAction | AdvisorActionCore, { kind: 'program_schedule' }>,
+  proposal: Extract<AdvisorAction | AdvisorActionCore, { kind: 'program_schedule' }>['program']['primary'],
+  origin: 'primary' | 'alternative',
+) {
+  const whyNow =
+    proposal.rationale[0]
+    || action.program.insights[0]
+    || `${proposal.dayOfWeek} ${proposal.timeSlot} is currently the strongest programming window for this goal.`
+
+  const nextStep =
+    proposal.conflict?.overallRisk === 'high'
+      ? 'Keep this in internal review and compare it with the safer option before turning it into a session draft.'
+      : proposal.conflict?.overallRisk === 'medium'
+        ? 'Assign an ops owner, sanity-check nearby sessions, then move it into the internal session draft queue.'
+        : 'Assign an ops owner and move it into the internal session draft queue when the team is ready.'
+
+  const watchouts = [
+    proposal.conflict?.riskSummary,
+    ...(proposal.conflict?.warnings || []),
+  ]
+    .filter(Boolean)
+    .slice(0, 3) as string[]
+
+  return {
+    summary:
+      origin === 'primary'
+        ? `${proposal.title} is the lead programming recommendation for "${action.program.goal}".`
+        : `${proposal.title} is the fallback programming option if the lead slot feels too risky or crowded.`,
+    whyNow,
+    nextStep,
+    watchouts,
+  }
+}
 
 function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
   if (action.kind === 'create_campaign') return action.campaign.execution
@@ -110,6 +172,23 @@ function getAdvisorDraftExecution(action: AdvisorAction | AdvisorActionCore) {
 }
 
 function buildAdvisorDraftWorkspaceMetadata(action: AdvisorAction | AdvisorActionCore) {
+  if (action.kind === 'create_campaign') {
+    return {
+      ...(action.campaign.guestTrialContext
+        ? { guestTrialContext: action.campaign.guestTrialContext }
+        : {}),
+      ...(action.campaign.referralContext
+        ? { referralContext: action.campaign.referralContext }
+        : {}),
+    }
+  }
+
+  if (action.kind === 'trial_follow_up') {
+    return action.lifecycle.guestTrialContext
+      ? { guestTrialContext: action.lifecycle.guestTrialContext }
+      : {}
+  }
+
   if (action.kind === 'program_schedule') {
     return {
       programmingPreview: {
@@ -127,6 +206,7 @@ function buildAdvisorDraftWorkspaceMetadata(action: AdvisorAction | AdvisorActio
           projectedOccupancy: action.program.primary.projectedOccupancy,
           estimatedInterestedMembers: action.program.primary.estimatedInterestedMembers,
           confidence: action.program.primary.confidence,
+          conflict: action.program.primary.conflict,
         },
         alternatives: action.program.alternatives.map((proposal) => ({
           id: proposal.id,
@@ -140,10 +220,29 @@ function buildAdvisorDraftWorkspaceMetadata(action: AdvisorAction | AdvisorActio
           projectedOccupancy: proposal.projectedOccupancy,
           estimatedInterestedMembers: proposal.estimatedInterestedMembers,
           confidence: proposal.confidence,
+          conflict: proposal.conflict,
         })),
         insights: action.program.insights,
       },
       opsSessionDrafts: [],
+    }
+  }
+
+  if (action.kind === 'fill_session') {
+    return {
+      slotFillerPreview: {
+        sessionId: action.session.id,
+        title: action.session.title,
+        date: action.session.date,
+        startTime: action.session.startTime,
+        endTime: action.session.endTime,
+        format: action.session.format,
+        skillLevel: action.session.skillLevel,
+        occupancy: action.session.occupancy,
+        spotsRemaining: action.session.spotsRemaining,
+        candidateCount: action.outreach.candidateCount,
+        channel: action.outreach.channel,
+      },
     }
   }
 
@@ -178,9 +277,15 @@ export function buildAdvisorProgrammingOpsSessionDrafts(
     estimatedInterestedMembers: proposal.estimatedInterestedMembers,
     confidence: proposal.confidence,
     note:
-      origin === 'primary'
-        ? 'Primary agent-backed session draft, ready for internal scheduling review.'
-        : 'Alternative agent-backed session draft, ready for internal scheduling review.',
+      proposal.conflict?.overallRisk === 'high'
+        ? `${origin === 'primary' ? 'Primary' : 'Alternative'} agent-backed session draft with a higher conflict warning. Compare one safer option before scheduling.`
+        : proposal.conflict?.overallRisk === 'medium'
+          ? `${origin === 'primary' ? 'Primary' : 'Alternative'} agent-backed session draft with moderate overlap risk. Keep this in internal review first.`
+          : origin === 'primary'
+            ? 'Primary agent-backed session draft, ready for internal scheduling review.'
+            : 'Alternative agent-backed session draft, ready for internal scheduling review.',
+    conflict: proposal.conflict,
+    handoff: buildProgrammingOpsSessionDraftHandoff(action, proposal, origin),
   }))
 }
 
@@ -245,7 +350,8 @@ export function resolveAdvisorDraftStatusFromResult(
     action.kind === 'create_cohort' ||
     action.kind === 'update_contact_policy' ||
     action.kind === 'update_autonomy_policy' ||
-    action.kind === 'update_sandbox_routing'
+    action.kind === 'update_sandbox_routing' ||
+    action.kind === 'update_admin_reminder_routing'
   ) {
     return 'approved'
   }
@@ -454,6 +560,15 @@ export function getAdvisorDraftProgrammingPreview(
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
   const preview = (metadata as Record<string, unknown>).programmingPreview
   const parsed = advisorDraftProgrammingPreviewSchema.safeParse(preview)
+  return parsed.success ? parsed.data : null
+}
+
+export function getAdvisorDraftSlotFillerPreview(
+  metadata: unknown,
+): AdvisorDraftSlotFillerPreview | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null
+  const preview = (metadata as Record<string, unknown>).slotFillerPreview
+  const parsed = advisorDraftSlotFillerPreviewSchema.safeParse(preview)
   return parsed.success ? parsed.data : null
 }
 

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 
+const adminReminderChannelSchema = z.enum(['in_app', 'email', 'sms', 'both'])
+
 const maskEmail = (email: string) => {
   try {
     const [localRaw, domainRaw] = email.split('@')
@@ -173,6 +175,9 @@ export const userRouter = createTRPCRouter({
           city: true,
           phone: true,
           smsOptIn: true,
+          adminReminderEmail: true,
+          adminReminderPhone: true,
+          adminReminderChannel: true,
           duprLink: true,
           duprId: true,
           duprRatingSingles: true,
@@ -255,6 +260,9 @@ export const userRouter = createTRPCRouter({
       image: z.string().url().optional(),
       phone: z.string().optional(),
       smsOptIn: z.boolean().optional(),
+      adminReminderEmail: z.string().email().optional().or(z.literal('')),
+      adminReminderPhone: z.string().optional(),
+      adminReminderChannel: adminReminderChannelSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const updatedUser = await ctx.prisma.user.update({
@@ -273,6 +281,13 @@ export const userRouter = createTRPCRouter({
             phone: input.phone === '' ? null : input.phone,
           }),
           ...(input.smsOptIn !== undefined && { smsOptIn: input.smsOptIn }),
+          ...(input.adminReminderEmail !== undefined && {
+            adminReminderEmail: input.adminReminderEmail === '' ? null : input.adminReminderEmail.trim(),
+          }),
+          ...(input.adminReminderPhone !== undefined && {
+            adminReminderPhone: input.adminReminderPhone === '' ? null : input.adminReminderPhone.trim(),
+          }),
+          ...(input.adminReminderChannel !== undefined && { adminReminderChannel: input.adminReminderChannel }),
         },
         select: {
           id: true,
@@ -283,6 +298,9 @@ export const userRouter = createTRPCRouter({
           city: true,
           phone: true,
           smsOptIn: true,
+          adminReminderEmail: true,
+          adminReminderPhone: true,
+          adminReminderChannel: true,
           duprLink: true,
           role: true,
         },

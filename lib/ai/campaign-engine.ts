@@ -28,7 +28,9 @@ import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
 } from './agent-trigger-runtime'
-import { normalizeMembership } from './membership-intelligence'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
+import { normalizeMembership, resolveMembershipMappings } from './membership-intelligence'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -306,9 +308,11 @@ async function executeSequenceStep(
   // Get original subject from Step 0 reasoning
   const step0Reasoning = sequence.rootLog.reasoning as any
   const autonomyAction = mapOutreachTypeToAutonomyAction(String(sequence.rootLog.type))
+  const membershipMappings = resolveMembershipMappings(automationSettings)
   const normalizedMembership = normalizeMembership({
     membershipType: user.membershipType,
     membershipStatus: user.membershipStatus,
+    membershipMappings,
   })
   const sequenceRuntime = autonomyAction
     ? evaluateAgentTriggerRuntime({
@@ -641,6 +645,7 @@ export async function runHealthCampaign(
           id: true, email: true, name: true, image: true,
           gender: true, city: true,
           duprRatingDoubles: true, duprRatingSingles: true,
+          membershipType: true, membershipStatus: true,
         },
       },
     },
@@ -692,6 +697,7 @@ export async function runHealthCampaign(
   const d60 = new Date(now.getTime() - 60 * 86400000)
 
   const prefMap = new Map<string, any>(preferences.map((p: any) => [p.userId, p]))
+  const membershipMappings = resolveMembershipMappings(rawSettings)
   const bookingMap = new Map<string, any[]>()
   for (const b of bookings) {
     if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
@@ -771,6 +777,13 @@ export async function runHealthCampaign(
         status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
       })),
       previousPeriodBookings: bookings30to60,
+      membershipInfo: {
+        membership: f.user.membershipType || null,
+        membershipStatus: f.user.membershipStatus || null,
+        lastVisit: null,
+        firstVisit: null,
+        membershipMappings,
+      },
     }
   })
 
@@ -890,6 +903,7 @@ export async function runHealthCampaign(
     const normalizedMembership = normalizeMembership({
       membershipType: member.membershipType,
       membershipStatus: member.membershipStatus,
+      membershipMappings,
     })
     const runtime = autonomyAction
       ? evaluateAgentTriggerRuntime({
@@ -1258,8 +1272,6 @@ export async function runHealthCampaignForAllClubs(
   prisma: any,
   options?: { dryRun?: boolean },
 ): Promise<{ results: CampaignResult[]; totalSent: number; totalSkipped: number }> {
-  // Get clubs that have at least one follower AND agent is live (opt-in)
-  // Without agentLive=true, club only gets dryRun regardless of param
   const allClubs = await prisma.club.findMany({
     where: {
       followers: { some: {} },
@@ -1267,11 +1279,22 @@ export async function runHealthCampaignForAllClubs(
     select: { id: true, automationSettings: true },
     take: 100, // safety limit
   })
-  // Filter: only clubs with agentLive=true get real emails; others forced dryRun
-  const clubs = allClubs.map((c: any) => ({
-    id: c.id,
-    forceDryRun: !(c.automationSettings as any)?.intelligence?.agentLive,
-  }))
+  const clubs = allClubs.map((c: any) => {
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: c.automationSettings,
+      action: 'outreachSend',
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: c.id,
+      automationSettings: c.automationSettings,
+      actionKind: 'create_campaign',
+    })
+    return {
+      id: c.id,
+      controlPlane,
+      forceDryRun: !!options?.dryRun || !controlPlane.allowed || controlPlane.shadow || !rollout.allowed,
+    }
+  })
 
   const results: CampaignResult[] = []
   let totalSent = 0

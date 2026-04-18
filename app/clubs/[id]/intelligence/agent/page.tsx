@@ -11,8 +11,17 @@ import {
   useSnoozeAction,
   useAdvisorDrafts,
   useOpsSessionDrafts,
+  useOpsTeammates,
+  useAgentDecisionRecords,
   usePromoteOpsSessionDraft,
+  useCreateFillSessionDraftFromSchedule,
+  usePrepareOpsSessionDraftPublish,
+  usePublishOpsSessionDraftToSchedule,
+  useUpdatePublishedOpsSessionDraft,
+  useRollbackPublishedOpsSessionDraft,
+  useUpdateOpsSessionDraftWorkflow,
   useIntelligenceSettings,
+  useShadowBackOutreachRolloutAction,
 } from '../_hooks/use-intelligence'
 
 export default function AgentPage() {
@@ -23,11 +32,20 @@ export default function AgentPage() {
   const { data: pending, isLoading: pendingLoading } = usePendingActions(clubId)
   const { data: advisorDrafts, isLoading: draftsLoading } = useAdvisorDrafts(clubId, 16)
   const { data: opsSessionDrafts, isLoading: opsDraftsLoading } = useOpsSessionDrafts(clubId, 24)
+  const { data: opsTeammates, isLoading: opsTeammatesLoading } = useOpsTeammates(clubId)
+  const { data: decisionRecords, isLoading: decisionRecordsLoading } = useAgentDecisionRecords(clubId, 10)
   const { data: settings } = useIntelligenceSettings(clubId)
   const approveAction = useApproveAction()
   const skipAction = useSkipAction()
   const snoozeAction = useSnoozeAction()
   const promoteOpsSessionDraft = usePromoteOpsSessionDraft()
+  const createFillSessionDraftFromSchedule = useCreateFillSessionDraftFromSchedule()
+  const prepareOpsSessionDraftPublish = usePrepareOpsSessionDraftPublish()
+  const publishOpsSessionDraftToSchedule = usePublishOpsSessionDraftToSchedule()
+  const updatePublishedOpsSessionDraft = useUpdatePublishedOpsSessionDraft()
+  const rollbackPublishedOpsSessionDraft = useRollbackPublishedOpsSessionDraft()
+  const updateOpsSessionDraftWorkflow = useUpdateOpsSessionDraftWorkflow()
+  const shadowBackOutreachRolloutAction = useShadowBackOutreachRolloutAction()
 
   const brand = useBrand()
   if (brand.key === 'iqsport') {
@@ -38,13 +56,23 @@ export default function AgentPage() {
         pending={pending}
         advisorDrafts={advisorDrafts || []}
         opsSessionDrafts={opsSessionDrafts || []}
-        isLoading={activityLoading || pendingLoading || draftsLoading || opsDraftsLoading}
+        opsTeammates={opsTeammates || []}
+        decisionRecords={decisionRecords || []}
+        isLoading={activityLoading || pendingLoading || draftsLoading || opsDraftsLoading || opsTeammatesLoading || decisionRecordsLoading}
         agentLive={!!(settings?.settings as any)?.agentLive}
         intelligenceSettings={settings?.settings || null}
+        outreachRolloutStatus={(settings as any)?.outreachRolloutStatus || null}
         approveAction={approveAction}
         skipAction={skipAction}
         snoozeAction={snoozeAction}
         promoteOpsSessionDraft={promoteOpsSessionDraft}
+        createFillSessionDraftFromSchedule={createFillSessionDraftFromSchedule}
+        prepareOpsSessionDraftPublish={prepareOpsSessionDraftPublish}
+        publishOpsSessionDraftToSchedule={publishOpsSessionDraftToSchedule}
+        updatePublishedOpsSessionDraft={updatePublishedOpsSessionDraft}
+        rollbackPublishedOpsSessionDraft={rollbackPublishedOpsSessionDraft}
+        updateOpsSessionDraftWorkflow={updateOpsSessionDraftWorkflow}
+        shadowBackOutreachRolloutAction={shadowBackOutreachRolloutAction}
       />
     )
   }

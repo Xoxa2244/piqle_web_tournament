@@ -1,9 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Megaphone, Send, Eye, MousePointer } from 'lucide-react'
-import { useTheme } from '../../IQThemeProvider'
+import { AlertTriangle, ArrowRight, Eye, Megaphone, MousePointer, Send, Sparkles, TestTube2 } from 'lucide-react'
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -47,6 +47,19 @@ const STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   active: { bg: 'rgba(59,130,246,0.15)', color: '#3B82F6' },
 }
 
+const MODE_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  disabled: { label: 'Disabled', bg: 'rgba(239,68,68,0.15)', color: '#EF4444' },
+  shadow: { label: 'Shadow only', bg: 'rgba(245,158,11,0.15)', color: '#F59E0B' },
+  live: { label: 'Live', bg: 'rgba(16,185,129,0.15)', color: '#10B981' },
+}
+
+const HEALTH_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  idle: { label: 'Idle', bg: 'rgba(148,163,184,0.15)', color: '#94A3B8' },
+  healthy: { label: 'Healthy', bg: 'rgba(16,185,129,0.15)', color: '#10B981' },
+  watch: { label: 'Watch', bg: 'rgba(245,158,11,0.15)', color: '#F59E0B' },
+  at_risk: { label: 'At Risk', bg: 'rgba(239,68,68,0.15)', color: '#EF4444' },
+}
+
 function formatDate(dateStr: string | undefined): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
@@ -61,23 +74,70 @@ function getCampaignName(c: any): string {
   return `${type}${date ? ` - ${date}` : ''}`.trim() || 'Untitled'
 }
 
-interface CampaignListProps {
-  campaigns: any[]
-  onCampaignClick?: (id: string) => void
+function formatRelativeTime(value?: string | null) {
+  if (!value) return 'Just updated'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const diffMs = Date.now() - date.getTime()
+  const diffH = Math.floor(diffMs / 3600000)
+  const diffD = Math.floor(diffMs / 86400000)
+
+  if (diffH < 1) return 'Just now'
+  if (diffH < 24) return `${diffH}h ago`
+  if (diffD < 7) return `${diffD}d ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export function CampaignList({ campaigns, onCampaignClick }: CampaignListProps) {
-  const { isDark } = useTheme()
+function buildCampaignAdvisorHref(clubId: string, options: { prompt?: string; conversationId?: string | null }) {
+  const params = new URLSearchParams()
+  if (options.conversationId) {
+    params.set('conversationId', options.conversationId)
+  } else if (options.prompt) {
+    params.set('prompt', options.prompt)
+  }
+  const query = params.toString()
+  return `/clubs/${clubId}/intelligence/advisor${query ? `?${query}` : ''}`
+}
+
+function mapCampaignTypeToActionKind(type?: string | null) {
+  switch (type) {
+    case 'SLOT_FILLER':
+      return 'fill_session'
+    case 'REACTIVATION':
+      return 'reactivate_members'
+    default:
+      return 'create_campaign'
+  }
+}
+
+interface CampaignListProps {
+  campaigns: any[]
+  clubId: string
+  advisorDrafts?: any[]
+  outreachMode?: string
+  rolloutStatus?: any
+  pilotHealth?: any
+  onCampaignClick?: (campaign: any) => void
+}
+
+export function CampaignList({
+  campaigns,
+  clubId,
+  advisorDrafts = [],
+  outreachMode = 'shadow',
+  rolloutStatus,
+  pilotHealth,
+  onCampaignClick,
+}: CampaignListProps) {
   const [filter, setFilter] = useState<string>('all')
 
-  const items = campaigns ?? []
-
   const filtered = useMemo(() => {
+    const items = campaigns ?? []
     if (filter === 'all') return items
     return items.filter(
       (c: any) => (c.type || c.campaignType) === filter
     )
-  }, [items, filter])
+  }, [campaigns, filter])
 
   return (
     <motion.div
@@ -149,6 +209,56 @@ export function CampaignList({ campaigns, onCampaignClick }: CampaignListProps) 
                 const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.sent
                 const openRate = c.openRate != null ? c.openRate : c.sent > 0 ? (c.opened ?? 0) / c.sent : 0
                 const clickRate = c.clickRate != null ? c.clickRate : c.sent > 0 ? (c.clicked ?? 0) / c.sent : 0
+                const actionKind = mapCampaignTypeToActionKind(type)
+                const relevantDrafts = advisorDrafts.filter((draft: any) => {
+                  if (actionKind === 'create_campaign') return draft.kind === 'create_campaign'
+                  if (actionKind === 'fill_session') return draft.kind === 'fill_session'
+                  return ['reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'create_campaign'].includes(draft.kind)
+                })
+                const reviewReadyDrafts = relevantDrafts.filter((draft: any) => draft.status === 'review_ready')
+                const latestDraft = reviewReadyDrafts[0] || relevantDrafts[0] || null
+                const pilotAction = pilotHealth?.actions?.find((action: any) => action.actionKind === actionKind) || null
+                const rolloutAction = rolloutStatus?.actions?.[actionKind]
+                const modeKey = outreachMode !== 'live'
+                  ? outreachMode
+                  : rolloutStatus?.clubAllowlisted && rolloutAction?.enabled
+                    ? 'live'
+                    : 'shadow'
+                const modeStyle = MODE_STYLES[modeKey] || MODE_STYLES.shadow
+                const healthStyle = HEALTH_STYLES[pilotAction?.health || 'idle'] || HEALTH_STYLES.idle
+                const primaryHref = latestDraft
+                  ? buildCampaignAdvisorHref(clubId, {
+                    conversationId: latestDraft.conversationId || null,
+                    prompt: latestDraft.originalIntent || undefined,
+                  })
+                  : buildCampaignAdvisorHref(clubId, {
+                    prompt:
+                      actionKind === 'fill_session'
+                        ? 'Draft a slot filler campaign for underfilled sessions, but keep it in review-ready draft mode first.'
+                        : actionKind === 'reactivate_members'
+                          ? 'Draft a reactivation campaign for drifting and expired members. Keep it as a review-ready draft first.'
+                          : `Draft a ${type ? type.replace(/_/g, ' ').toLowerCase() : 'campaign'} and keep it as a review-ready draft first.`,
+                  })
+                const secondaryHref = modeKey === 'live'
+                  ? buildCampaignAdvisorHref(clubId, {
+                    prompt: pilotAction?.health === 'at_risk' || pilotAction?.health === 'watch'
+                      ? `Draft a safer ${type ? type.replace(/_/g, ' ').toLowerCase() : 'campaign'} with a tighter audience and calmer copy. Keep it draft-only.`
+                      : `Draft another ${type ? type.replace(/_/g, ' ').toLowerCase() : 'campaign'} based on our strongest current signal, but keep it as a review-ready draft first.`,
+                  })
+                  : `/clubs/${clubId}/intelligence/settings`
+                const primaryLabel = latestDraft ? 'Review draft' : 'Open in Advisor'
+                const secondaryLabel = modeKey === 'live'
+                  ? pilotAction?.health === 'at_risk' || pilotAction?.health === 'watch'
+                    ? 'Rework'
+                    : 'Draft next'
+                  : 'Rollout'
+                const helperLine = latestDraft
+                  ? `${reviewReadyDrafts.length > 0 ? `${reviewReadyDrafts.length} review-ready` : 'Existing'} draft · ${formatRelativeTime(latestDraft.updatedAt)}`
+                  : pilotAction
+                    ? `${pilotAction.sent} sends · ${pilotAction.converted} booked · ${healthStyle.label}`
+                    : modeKey === 'live'
+                      ? 'Live is armed, but this campaign type has not produced enough signal yet.'
+                      : 'This campaign type is still gated by shadow or rollout settings.'
 
                 return (
                   <motion.div
@@ -157,67 +267,128 @@ export function CampaignList({ campaigns, onCampaignClick }: CampaignListProps) 
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    onClick={() => onCampaignClick?.(c.id)}
-                    className="grid gap-3 px-3 py-2.5 text-xs items-center transition-colors"
+                    className="px-3 py-2.5 text-xs transition-colors"
                     style={{
-                      gridTemplateColumns: '1fr 100px 60px 60px 60px 70px',
-                      cursor: onCampaignClick ? 'pointer' : 'default',
                       borderBottom: i < filtered.length - 1 ? '1px solid var(--divider)' : 'none',
                       background: i % 2 === 0 ? 'transparent' : 'var(--subtle)',
                     }}
                   >
-                    {/* Name + type badge */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] shrink-0"
-                        style={{
-                          background: `${typeColor}20`,
-                          color: typeColor,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {(type || 'OTHER').replace(/_/g, ' ')}
+                    <div
+                      onClick={() => onCampaignClick?.(c)}
+                      className="grid gap-3 text-xs items-center"
+                      style={{
+                        gridTemplateColumns: '1fr 100px 60px 60px 60px 70px',
+                        cursor: onCampaignClick ? 'pointer' : 'default',
+                      }}
+                    >
+                      {/* Name + type badge */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] shrink-0"
+                          style={{
+                            background: `${typeColor}20`,
+                            color: typeColor,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {(type || 'OTHER').replace(/_/g, ' ')}
+                        </span>
+                        <span className="truncate" style={{ color: 'var(--t1)', fontWeight: 600 }}>
+                          {getCampaignName(c)}
+                        </span>
+                      </div>
+
+                      {/* Date */}
+                      <span className="hidden sm:block" style={{ color: 'var(--t3)' }}>
+                        {formatDate(c.createdAt || c.sentAt || c.date)}
                       </span>
-                      <span className="truncate" style={{ color: 'var(--t1)', fontWeight: 600 }}>
-                        {getCampaignName(c)}
+
+                      {/* Sent count */}
+                      <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
+                        <Send className="w-3 h-3" style={{ color: 'var(--t4)' }} />
+                        {c.sent ?? c.sentCount ?? 0}
                       </span>
+
+                      {/* Open rate */}
+                      <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
+                        <Eye className="w-3 h-3" style={{ color: 'var(--t4)' }} />
+                        {(openRate * 100).toFixed(0)}%
+                      </span>
+
+                      {/* Click rate */}
+                      <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
+                        <MousePointer className="w-3 h-3" style={{ color: 'var(--t4)' }} />
+                        {(clickRate * 100).toFixed(0)}%
+                      </span>
+
+                      {/* Status badge */}
+                      <div className="flex justify-end">
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[10px]"
+                          style={{
+                            background: statusStyle.bg,
+                            color: statusStyle.color,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Date */}
-                    <span className="hidden sm:block" style={{ color: 'var(--t3)' }}>
-                      {formatDate(c.createdAt || c.sentAt)}
-                    </span>
+                    <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span
+                          className="px-2 py-1 rounded-full text-[10px] font-semibold"
+                          style={{ background: modeStyle.bg, color: modeStyle.color }}
+                        >
+                          {modeStyle.label}
+                        </span>
+                        <span
+                          className="px-2 py-1 rounded-full text-[10px] font-semibold"
+                          style={{ background: healthStyle.bg, color: healthStyle.color }}
+                        >
+                          {healthStyle.label}
+                        </span>
+                        {reviewReadyDrafts.length > 0 ? (
+                          <span
+                            className="px-2 py-1 rounded-full text-[10px] font-semibold"
+                            style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6' }}
+                          >
+                            {reviewReadyDrafts.length} review-ready
+                          </span>
+                        ) : null}
+                        <span className="text-[11px] truncate" style={{ color: 'var(--t3)' }}>
+                          {helperLine}
+                        </span>
+                      </div>
 
-                    {/* Sent count */}
-                    <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
-                      <Send className="w-3 h-3" style={{ color: 'var(--t4)' }} />
-                      {c.sent ?? c.sentCount ?? 0}
-                    </span>
-
-                    {/* Open rate */}
-                    <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
-                      <Eye className="w-3 h-3" style={{ color: 'var(--t4)' }} />
-                      {(openRate * 100).toFixed(0)}%
-                    </span>
-
-                    {/* Click rate */}
-                    <span className="text-right flex items-center justify-end gap-1" style={{ color: 'var(--t2)' }}>
-                      <MousePointer className="w-3 h-3" style={{ color: 'var(--t4)' }} />
-                      {(clickRate * 100).toFixed(0)}%
-                    </span>
-
-                    {/* Status badge */}
-                    <div className="flex justify-end">
-                      <span
-                        className="px-2 py-0.5 rounded-md text-[10px]"
-                        style={{
-                          background: statusStyle.bg,
-                          color: statusStyle.color,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={primaryHref}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all hover:translate-x-[2px]"
+                          style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          {primaryLabel}
+                        </Link>
+                        <Link
+                          href={secondaryHref}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all hover:translate-x-[2px]"
+                          style={{
+                            background: modeKey === 'live' ? 'rgba(6,182,212,0.14)' : 'rgba(148,163,184,0.14)',
+                            color: modeKey === 'live' ? '#06B6D4' : '#64748B',
+                          }}
+                        >
+                          {pilotAction?.health === 'at_risk' || pilotAction?.health === 'watch' ? (
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                          ) : (
+                            <TestTube2 className="w-3.5 h-3.5" />
+                          )}
+                          {secondaryLabel}
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </div>
                   </motion.div>
                 )

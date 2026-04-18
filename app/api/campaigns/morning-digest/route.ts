@@ -15,6 +15,8 @@
 import { NextResponse } from 'next/server'
 import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
+import { evaluateAgentControlPlaneAction } from '@/lib/ai/agent-control-plane'
+import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +33,7 @@ function getAuthorized(request: Request) {
 async function sendDigests(dryRun: boolean) {
   // Find clubs with active API connector (not CSV-only)
   const connectedClubs: any[] = await prisma.$queryRawUnsafe(`
-    SELECT DISTINCT cc.club_id as "clubId", c.name as "clubName"
+    SELECT DISTINCT cc.club_id as "clubId", c.name as "clubName", c.automation_settings as "automationSettings"
     FROM club_connectors cc
     JOIN clubs c ON c.id = cc.club_id
     WHERE cc.provider = 'courtreserve'
@@ -52,6 +54,36 @@ async function sendDigests(dryRun: boolean) {
 
   for (const club of connectedClubs) {
     try {
+      const controlPlane = evaluateAgentControlPlaneAction({
+        automationSettings: club.automationSettings,
+        action: 'adminReminderExternal',
+      })
+
+      if (!controlPlane.allowed || controlPlane.shadow) {
+        skipped++
+        results.push({
+          clubId: club.clubId,
+          clubName: club.clubName,
+          status: controlPlane.shadow ? 'shadowed' : 'blocked',
+        })
+        await persistAgentDecisionRecord(prisma, {
+          clubId: club.clubId,
+          actorType: 'system',
+          action: 'adminReminderExternal',
+          targetType: 'morning_digest',
+          mode: controlPlane.mode,
+          result: controlPlane.shadow ? 'shadowed' : 'blocked',
+          summary: controlPlane.shadow
+            ? `${controlPlane.reason} Morning digest stayed in shadow mode.`
+            : controlPlane.reason,
+          metadata: {
+            source: 'morning_digest_cron',
+            reason: controlPlane.shadow ? 'control_plane_shadow' : 'control_plane_disabled',
+          },
+        })
+        continue
+      }
+
       // Get club admin emails
       const admins = await prisma.clubAdmin.findMany({
         where: { clubId: club.clubId },

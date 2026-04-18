@@ -3,7 +3,7 @@ import {
   MemberHealthResult, MemberHealthData, MemberHealthSummary,
   HealthScoreComponent, LifecycleStage, RiskLevel,
   DayOfWeek,
-  ActivityLevel, EngagementTrend, ValueTier, MemberSegment, SegmentLabel, NormalizedMembership,
+  ActivityLevel, EngagementTrend, ValueTier, MemberSegment, SegmentLabel, MembershipMappingSettings, NormalizedMembership,
   TimePref, DayPattern, FormatPref,
 } from '../../types/intelligence';
 import { clamp, getDayName, getTimeSlot } from './scoring';
@@ -75,6 +75,7 @@ interface MembershipInfo {
   membershipStatus: string | null;
   lastVisit: string | null;
   firstVisit: string | null;
+  membershipMappings?: MembershipMappingSettings | null;
 }
 
 interface MemberHealthInput {
@@ -255,6 +256,7 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
   const normalizedMembership = normalizeMembership({
     membershipType: input.membershipInfo?.membership || null,
     membershipStatus: input.membershipInfo?.membershipStatus || null,
+    membershipMappings: input.membershipInfo?.membershipMappings || null,
   });
 
   // Apply membership tier adjustment — guest/trial/drop-in members churn faster

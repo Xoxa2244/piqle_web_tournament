@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { motion } from "motion/react"
 import {
   ChevronLeft, ChevronRight, CalendarDays, ArrowUpRight, Brain, Sparkles,
@@ -78,6 +79,31 @@ interface ScheduleIQProps {
   dashboardData: any
   isLoading: boolean
   clubId: string
+  createOpsSessionDraftFromAdvisorDraft?: {
+    mutate: (input: {
+      clubId: string
+      advisorDraftId: string
+      sourceProposalId: string
+    }, opts?: {
+      onSuccess?: (result: any) => void
+      onError?: (...args: any[]) => void
+      onSettled?: (...args: any[]) => void
+    }) => void
+    isPending?: boolean
+  }
+  createFillSessionDraftFromSchedule?: {
+    mutate: (input: {
+      clubId: string
+      sessionId: string
+      channel?: 'email' | 'sms' | 'both'
+      candidateLimit?: number
+    }, opts?: {
+      onSuccess?: (result: any) => void
+      onError?: (...args: any[]) => void
+      onSettled?: (...args: any[]) => void
+    }) => void
+    isPending?: boolean
+  }
   advisorDrafts?: Array<{
     id: string
     kind: string
@@ -97,11 +123,21 @@ interface ScheduleIQProps {
           endTime: string
           format: string
           skillLevel: string
-          projectedOccupancy: number
-          estimatedInterestedMembers: number
-          confidence: number
-        }
-        alternatives?: Array<{
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
+      }
+      alternatives?: Array<{
           id: string
           title: string
           dayOfWeek: string
@@ -110,11 +146,34 @@ interface ScheduleIQProps {
           endTime: string
           format: string
           skillLevel: string
-          projectedOccupancy: number
-          estimatedInterestedMembers: number
-          confidence: number
-        }>
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
+      }>
         insights?: string[]
+        slotFillerPreview?: {
+          sessionId: string
+          title: string
+          date: string
+          startTime: string
+          endTime?: string | null
+          format?: string | null
+          skillLevel?: string | null
+          occupancy: number
+          spotsRemaining: number
+          candidateCount: number
+          channel: 'email' | 'sms' | 'both'
+        } | null
       } | null
     } | null
   }>
@@ -131,6 +190,16 @@ interface ScheduleIQProps {
     projectedOccupancy: number
     estimatedInterestedMembers: number
     confidence: number
+    conflict?: {
+      overlapRisk: 'low' | 'medium' | 'high'
+      cannibalizationRisk: 'low' | 'medium' | 'high'
+      courtPressureRisk: 'low' | 'medium' | 'high'
+      overallRisk: 'low' | 'medium' | 'high'
+      riskSummary: string
+      warnings: string[]
+      saferAlternativeId?: string
+      saferAlternativeReason?: string
+    } | null
     agentDraft?: {
       conversationId?: string | null
       originalIntent?: string | null
@@ -164,6 +233,19 @@ function buildAdvisorDraftHref(
   return `/clubs/${clubId}/intelligence/advisor`
 }
 
+function buildAdvisorDraftPromptHref(
+  clubId: string,
+  draft: { conversationId?: string | null; originalIntent?: string | null },
+  prompt: string,
+) {
+  const params = new URLSearchParams()
+  if (draft.conversationId) {
+    params.set('conversationId', draft.conversationId)
+  }
+  params.set('prompt', prompt)
+  return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
+}
+
 function buildAgentFocusHref(
   clubId: string,
   options: {
@@ -181,6 +263,145 @@ function buildAgentFocusHref(
   return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
 }
 
+function buildProgrammingPrimaryPrompt(proposal: {
+  dayOfWeek: string
+  timeSlot: 'morning' | 'afternoon' | 'evening'
+  format: string
+}) {
+  return `Use the ${proposal.dayOfWeek} ${proposal.timeSlot} ${proposal.format.replace(/_/g, ' ').toLowerCase()} option as the primary programming plan instead.`
+}
+
+function buildProgrammingOpsPrompt(proposal: {
+  dayOfWeek: string
+  timeSlot: 'morning' | 'afternoon' | 'evening'
+  format: string
+}) {
+  return `Keep the ${proposal.dayOfWeek} ${proposal.timeSlot} ${proposal.format.replace(/_/g, ' ').toLowerCase()} option as the primary programming plan and prepare it for ops review.`
+}
+
+function buildFillSessionPrompt(session: {
+  format: string
+  date: string
+  startTime: string
+}) {
+  return `Prepare a fill plan for the ${session.format.replace(/_/g, ' ').toLowerCase()} session on ${session.date} at ${session.startTime}.`
+}
+
+function buildAdvisorConversationHref(
+  clubId: string,
+  result: {
+    conversationId?: string | null
+    originalIntent?: string | null
+  },
+  fallbackPrompt?: string,
+) {
+  if (result.conversationId) {
+    return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(result.conversationId)}`
+  }
+
+  if (result.originalIntent) {
+    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(result.originalIntent)}`
+  }
+
+  if (fallbackPrompt) {
+    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
+  }
+
+  return `/clubs/${clubId}/intelligence/advisor`
+}
+
+function getProgrammingConflictStyles(level?: 'low' | 'medium' | 'high' | null) {
+  if (level === 'high') {
+    return {
+      label: 'High conflict',
+      text: '#FCA5A5',
+      bg: 'rgba(239,68,68,0.10)',
+      border: 'rgba(239,68,68,0.18)',
+    }
+  }
+
+  if (level === 'medium') {
+    return {
+      label: 'Watch conflicts',
+      text: '#FBBF24',
+      bg: 'rgba(245,158,11,0.10)',
+      border: 'rgba(245,158,11,0.18)',
+    }
+  }
+
+  return {
+    label: 'Cleaner opening',
+    text: '#86EFAC',
+    bg: 'rgba(16,185,129,0.10)',
+    border: 'rgba(16,185,129,0.18)',
+  }
+}
+
+function getProgrammingOperationalScore(proposal: {
+  confidence: number
+  projectedOccupancy: number
+  estimatedInterestedMembers: number
+  conflict?: {
+    overlapRisk: 'low' | 'medium' | 'high'
+    cannibalizationRisk: 'low' | 'medium' | 'high'
+    courtPressureRisk: 'low' | 'medium' | 'high'
+  } | null
+}) {
+  const conflictPenalty = proposal.conflict
+    ? (
+      (proposal.conflict.overlapRisk === 'high' ? 6 : proposal.conflict.overlapRisk === 'medium' ? 3 : 0) +
+      (proposal.conflict.cannibalizationRisk === 'high' ? 8 : proposal.conflict.cannibalizationRisk === 'medium' ? 4 : 0) +
+      (proposal.conflict.courtPressureRisk === 'high' ? 5 : proposal.conflict.courtPressureRisk === 'medium' ? 2 : 0)
+    )
+    : 0
+
+  return (
+    proposal.confidence * 1.2 +
+    proposal.projectedOccupancy * 0.45 +
+    proposal.estimatedInterestedMembers * 1.3 -
+    conflictPenalty
+  )
+}
+
+function getProgrammingConflictSeverity(level?: 'low' | 'medium' | 'high' | null) {
+  if (level === 'high') return 2
+  if (level === 'medium') return 1
+  return 0
+}
+
+function sortProgrammingDraftsBySafety<T extends {
+  primary: {
+    confidence: number
+    projectedOccupancy: number
+    estimatedInterestedMembers: number
+    conflict?: {
+      overlapRisk: 'low' | 'medium' | 'high'
+      cannibalizationRisk: 'low' | 'medium' | 'high'
+      courtPressureRisk: 'low' | 'medium' | 'high'
+      overallRisk: 'low' | 'medium' | 'high'
+    } | null
+  }
+}>(drafts: T[]) {
+  return [...drafts].sort((left, right) => {
+    const riskComparisons = [
+      getProgrammingConflictSeverity(left.primary.conflict?.overallRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overallRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.cannibalizationRisk) - getProgrammingConflictSeverity(right.primary.conflict?.cannibalizationRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.overlapRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overlapRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.courtPressureRisk) - getProgrammingConflictSeverity(right.primary.conflict?.courtPressureRisk),
+    ]
+
+    for (const delta of riskComparisons) {
+      if (delta !== 0) return delta
+    }
+
+    if (right.primary.confidence !== left.primary.confidence) return right.primary.confidence - left.primary.confidence
+    if (right.primary.projectedOccupancy !== left.primary.projectedOccupancy) {
+      return right.primary.projectedOccupancy - left.primary.projectedOccupancy
+    }
+    return right.primary.estimatedInterestedMembers - left.primary.estimatedInterestedMembers
+  })
+}
+
 // ── Main Component ──
 
 export function ScheduleIQ({
@@ -188,12 +409,17 @@ export function ScheduleIQ({
   dashboardData,
   isLoading,
   clubId,
+  createOpsSessionDraftFromAdvisorDraft,
+  createFillSessionDraftFromSchedule,
   advisorDrafts,
   opsSessionDrafts,
 }: ScheduleIQProps) {
   const { isDark } = useTheme()
+  const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()))
   const [selectedSession, setSelectedSession] = useState<SessionCalendarItem | null>(null)
+  const [creatingOpsDraftKey, setCreatingOpsDraftKey] = useState<string | null>(null)
+  const [creatingFillDraftSessionId, setCreatingFillDraftSessionId] = useState<string | null>(null)
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
@@ -271,6 +497,7 @@ export function ScheduleIQ({
         primary: draft.metadata!.programmingPreview!.primary,
         insights: draft.metadata?.programmingPreview?.insights || [],
         alternatives: draft.metadata?.programmingPreview?.alternatives || [],
+        opsSessionDrafts: ((draft.metadata as { opsSessionDrafts?: Array<{ id: string }> } | null | undefined)?.opsSessionDrafts || []),
       }))
 
     const matching = cards.filter((draft) =>
@@ -278,11 +505,68 @@ export function ScheduleIQ({
       draft.alternatives.some((proposal) => proposal.dayOfWeek === selectedDayName),
     )
 
+    const rankedMatching = [...matching].sort((left, right) => getProgrammingOperationalScore(right.primary) - getProgrammingOperationalScore(left.primary))
+    const rankedAll = [...cards].sort((left, right) => getProgrammingOperationalScore(right.primary) - getProgrammingOperationalScore(left.primary))
+    const safestMatching = sortProgrammingDraftsBySafety(matching)
+    const safestAll = sortProgrammingDraftsBySafety(cards)
+
     return {
-      matching: matching.sort((left, right) => right.primary.confidence - left.primary.confidence),
-      strongest: cards.sort((left, right) => right.primary.confidence - left.primary.confidence)[0] || null,
+      matching: rankedMatching,
+      strongest: rankedAll[0] || null,
+      strongestForDay: rankedMatching[0] || null,
+      safestForDay: safestMatching[0] || null,
+      safest: safestAll[0] || null,
     }
   }, [advisorDrafts, selectedDayName])
+
+  const fillSessionDraftBySessionId = useMemo(() => {
+    const drafts = new Map<string, {
+      id: string
+      conversationId?: string | null
+      originalIntent?: string | null
+      preview: {
+        sessionId: string
+        title: string
+        date: string
+        startTime: string
+        endTime?: string | null
+        format?: string | null
+        skillLevel?: string | null
+        occupancy: number
+        spotsRemaining: number
+        candidateCount: number
+        channel: 'email' | 'sms' | 'both'
+      }
+    }>()
+
+    for (const draft of advisorDrafts || []) {
+      const slotFillerPreview = (draft.metadata as {
+        slotFillerPreview?: {
+          sessionId: string
+          title: string
+          date: string
+          startTime: string
+          endTime?: string | null
+          format?: string | null
+          skillLevel?: string | null
+          occupancy: number
+          spotsRemaining: number
+          candidateCount: number
+          channel: 'email' | 'sms' | 'both'
+        } | null
+      } | null | undefined)?.slotFillerPreview
+
+      if (draft.kind !== 'fill_session' || !slotFillerPreview?.sessionId) continue
+      drafts.set(slotFillerPreview.sessionId, {
+        id: draft.id,
+        conversationId: draft.conversationId || null,
+        originalIntent: draft.originalIntent || null,
+        preview: slotFillerPreview,
+      })
+    }
+
+    return drafts
+  }, [advisorDrafts])
 
   const selectedDayOpsDrafts = useMemo(() => {
     return (opsSessionDrafts || [])
@@ -455,16 +739,85 @@ export function ScheduleIQ({
                   No clear slot-filler pressure on this day right now.
                 </div>
               ) : (
-                selectedDayUnderfilled.slice(0, 3).map((session) => (
-                  <div key={session.id} className="rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div className="text-[11px] font-semibold" style={{ color: 'var(--heading)' }}>
-                      {session.format} · {session.startTime}
+                selectedDayUnderfilled.slice(0, 3).map((session) => {
+                  const existingFillDraft = fillSessionDraftBySessionId.get(session.id)
+                  const fallbackPrompt = buildFillSessionPrompt({
+                    format: session.format,
+                    date: session.date,
+                    startTime: session.startTime,
+                  })
+                  const fallbackHref = existingFillDraft
+                    ? buildAdvisorDraftHref(clubId, existingFillDraft)
+                    : `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
+                  const createFillDraft = () => {
+                    if (!createFillSessionDraftFromSchedule?.mutate) {
+                      router.push(fallbackHref)
+                      return
+                    }
+
+                    setCreatingFillDraftSessionId(session.id)
+                    createFillSessionDraftFromSchedule.mutate(
+                      {
+                        clubId,
+                        sessionId: session.id,
+                        channel: 'email',
+                        candidateLimit: 5,
+                      },
+                      {
+                        onSuccess: (result) => {
+                          router.push(buildAdvisorConversationHref(clubId, result, fallbackPrompt))
+                        },
+                        onError: () => {
+                          router.push(fallbackHref)
+                        },
+                        onSettled: () => {
+                          setCreatingFillDraftSessionId((current) => (current === session.id ? null : current))
+                        },
+                      },
+                    )
+                  }
+                  const isCreatingFillDraft = creatingFillDraftSessionId === session.id
+
+                  return (
+                    <div key={session.id} className="rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="text-[11px] font-semibold" style={{ color: 'var(--heading)' }}>
+                        {session.format} · {session.startTime}
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
+                        {session.occupancy}% occupancy · {session.registered}/{session.capacity} booked
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {existingFillDraft ? (
+                          <Link
+                            href={buildAdvisorDraftHref(clubId, existingFillDraft)}
+                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold"
+                            style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
+                          >
+                            Open fill draft
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={createFillDraft}
+                            disabled={isCreatingFillDraft}
+                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold transition-all disabled:opacity-60"
+                            style={{ background: 'rgba(139,92,246,0.16)', color: '#DDD6FE' }}
+                          >
+                            {isCreatingFillDraft ? 'Preparing fill draft…' : 'Create fill draft'}
+                          </button>
+                        )}
+                        <Link
+                          href={fallbackHref}
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
+                        >
+                          Review in Advisor
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                      </div>
                     </div>
-                    <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-                      {session.occupancy}% occupancy · {session.registered}/{session.capacity} booked
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -480,52 +833,199 @@ export function ScheduleIQ({
               </div>
             </div>
             <div className="space-y-3 mt-3">
-              {(programmingSignals.matching.length ? programmingSignals.matching : programmingSignals.strongest ? [programmingSignals.strongest] : []).slice(0, 2).map((draft) => (
-                <div key={draft.id} className="rounded-lg p-3" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.16)' }}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
-                        {draft.primary.title}
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-                        {draft.primary.dayOfWeek} · {draft.primary.startTime}-{draft.primary.endTime} · {formatProgrammingValue(draft.primary.format)} · {formatProgrammingValue(draft.primary.skillLevel)}
-                      </div>
-                    </div>
-                    <div className="text-[11px] px-2 py-1 rounded-full" style={{ background: 'rgba(103,232,249,0.12)', color: '#67E8F9', fontWeight: 700 }}>
-                      {draft.primary.confidence}/100
-                    </div>
-                  </div>
-                  <div className="text-[11px] mt-2" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
-                    {draft.primary.projectedOccupancy}% projected fill · {draft.primary.estimatedInterestedMembers} likely players
-                  </div>
-                  <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                    {draft.insights[0] || draft.summary || 'Agent-backed schedule opportunity ready for review.'}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Link
-                      href={buildAgentFocusHref(clubId, {
+              {(() => {
+                const highUpsideDraft = programmingSignals.strongestForDay || programmingSignals.strongest
+                const safeDraft = programmingSignals.safestForDay || programmingSignals.safest
+                const cards = [
+                  highUpsideDraft ? {
+                    key: `upside-${highUpsideDraft.id}`,
+                    eyebrow: 'Highest upside here',
+                    draft: highUpsideDraft,
+                    description:
+                      highUpsideDraft.primary.conflict?.overallRisk === 'high'
+                        ? 'This window has the strongest upside, but it may eat into an existing session if ops does not compare it first.'
+                        : 'This is the strongest demand-weighted option the agent sees around this day right now.',
+                  } : null,
+                  safeDraft ? {
+                    key: `safe-${safeDraft.id}`,
+                    eyebrow: 'Safer option here',
+                    draft: safeDraft,
+                    description:
+                      safeDraft.id === highUpsideDraft?.id
+                        ? 'The top-upside idea is also the cleanest operational shape for this day.'
+                        : safeDraft.primary.conflict?.riskSummary || 'This option carries the cleanest conflict profile for this day.',
+                  } : null,
+                ].filter(Boolean) as Array<{
+                  key: string
+                  eyebrow: string
+                  draft: NonNullable<typeof highUpsideDraft>
+                  description: string
+                }>
+
+                return cards.map(({ key, eyebrow, draft, description }) => {
+                  const conflictStyles = getProgrammingConflictStyles(draft.primary.conflict?.overallRisk)
+                  const isHighUpsideCard = draft.id === highUpsideDraft?.id
+                  const comparisonDraft = isHighUpsideCard ? safeDraft : highUpsideDraft
+                  const comparisonLabel = isHighUpsideCard ? 'Open safer option' : 'Open higher-upside option'
+                  const comparisonHref = comparisonDraft
+                    ? buildAgentFocusHref(clubId, {
                         focus: 'programming-cockpit',
-                        day: selectedDayName,
-                        draftId: draft.id,
-                      })}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium"
-                      style={{ color: 'var(--heading)' }}
-                    >
-                      Review in Agent
-                      <ArrowUpRight className="w-3 h-3" />
-                    </Link>
-                    <Link
-                      href={buildAdvisorDraftHref(clubId, draft)}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium"
-                      style={{ color: 'var(--t3)' }}
-                    >
-                      Open draft
-                      <ArrowUpRight className="w-3 h-3" />
-                    </Link>
-                  </div>
-                </div>
-              ))}
-              {!programmingSignals.matching.length && !programmingSignals.strongest && (
+                        day: comparisonDraft.primary.dayOfWeek,
+                        draftId: comparisonDraft.id,
+                      })
+                    : null
+                  const useThisHref = buildAdvisorDraftPromptHref(
+                    clubId,
+                    draft,
+                    buildProgrammingPrimaryPrompt(draft.primary),
+                  )
+                  const opsHref = draft.opsSessionDrafts?.length
+                    ? buildAgentFocusHref(clubId, {
+                        focus: 'ops-queue',
+                        day: draft.primary.dayOfWeek,
+                        opsDraftId: draft.opsSessionDrafts[0]?.id,
+                      })
+                    : buildAdvisorDraftPromptHref(
+                        clubId,
+                        draft,
+                        buildProgrammingOpsPrompt(draft.primary),
+                      )
+                  const createOpsDraft = () => {
+                    if (!createOpsSessionDraftFromAdvisorDraft?.mutate) {
+                      router.push(opsHref)
+                      return
+                    }
+
+                    setCreatingOpsDraftKey(key)
+                    createOpsSessionDraftFromAdvisorDraft.mutate(
+                      {
+                        clubId,
+                        advisorDraftId: draft.id,
+                        sourceProposalId: draft.primary.id,
+                      },
+                      {
+                        onSuccess: (result) => {
+                          router.push(buildAgentFocusHref(clubId, {
+                            focus: 'ops-queue',
+                            day: draft.primary.dayOfWeek,
+                            opsDraftId: result.opsSessionDraft?.id,
+                          }))
+                        },
+                        onSettled: () => {
+                          setCreatingOpsDraftKey((current) => (current === key ? null : current))
+                        },
+                      },
+                    )
+                  }
+                  const isCreatingOpsDraft = creatingOpsDraftKey === key
+                  return (
+                    <div key={key} className="rounded-lg p-3" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.16)' }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: '#A78BFA', fontWeight: 700 }}>
+                            {eyebrow}
+                          </div>
+                          <div className="text-xs font-semibold mt-1" style={{ color: 'var(--heading)' }}>
+                            {draft.primary.title}
+                          </div>
+                          <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
+                            {draft.primary.dayOfWeek} · {draft.primary.startTime}-{draft.primary.endTime} · {formatProgrammingValue(draft.primary.format)} · {formatProgrammingValue(draft.primary.skillLevel)}
+                          </div>
+                        </div>
+                        <div className="text-[11px] px-2 py-1 rounded-full" style={{ background: 'rgba(103,232,249,0.12)', color: '#67E8F9', fontWeight: 700 }}>
+                          {draft.primary.confidence}/100
+                        </div>
+                      </div>
+                      <div className="text-[11px] mt-2" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                        {draft.primary.projectedOccupancy}% projected fill · {draft.primary.estimatedInterestedMembers} likely players
+                      </div>
+                      {draft.primary.conflict && (
+                        <div className="mt-2 space-y-2">
+                          <div
+                            className="inline-flex items-center text-[10px] px-2 py-1 rounded-full font-medium"
+                            style={{ background: conflictStyles.bg, border: `1px solid ${conflictStyles.border}`, color: conflictStyles.text }}
+                          >
+                            {conflictStyles.label}
+                          </div>
+                          <div className="text-[11px]" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                            {description}
+                          </div>
+                          {draft.primary.conflict.warnings?.[0] ? (
+                            <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
+                              {draft.primary.conflict.warnings[0]}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                      {!draft.primary.conflict && (
+                        <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
+                          {description}
+                        </div>
+                      )}
+                      <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
+                        {draft.insights[0] || draft.summary || 'Agent-backed schedule opportunity ready for review.'}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <Link
+                          href={useThisHref}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium"
+                          style={{ color: '#67E8F9' }}
+                        >
+                          {isHighUpsideCard ? 'Back this option' : 'Use safer option'}
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                        <Link
+                          href={buildAgentFocusHref(clubId, {
+                            focus: 'programming-cockpit',
+                            day: selectedDayName,
+                            draftId: draft.id,
+                          })}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium"
+                          style={{ color: 'var(--heading)' }}
+                        >
+                          Review in Agent
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                        {comparisonHref ? (
+                          <Link
+                            href={comparisonHref}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            style={{ color: 'var(--t3)' }}
+                          >
+                            {comparisonLabel}
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={createOpsDraft}
+                          disabled={isCreatingOpsDraft || !!createOpsSessionDraftFromAdvisorDraft?.isPending}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium"
+                          style={{ color: 'var(--t3)', opacity: isCreatingOpsDraft ? 0.7 : 1 }}
+                        >
+                          {draft.opsSessionDrafts?.length
+                            ? 'Open ops queue'
+                            : isCreatingOpsDraft
+                              ? 'Creating ops draft…'
+                              : 'Create ops draft'}
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                        {!draft.opsSessionDrafts?.length ? (
+                          <Link
+                            href={opsHref}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium"
+                            style={{ color: 'var(--t3)' }}
+                          >
+                            Prep in Advisor
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
+              {!programmingSignals.matching.length && !programmingSignals.strongest && !programmingSignals.safest && (
                 <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
                   No programming draft is attached to this day yet. Ask the agent what format should be added here.
                 </div>
@@ -546,6 +1046,10 @@ export function ScheduleIQ({
             <div className="space-y-3 mt-3">
               {selectedDayOpsDrafts.slice(0, 2).map((draft) => (
                 <div key={draft.id} className="rounded-lg p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.16)' }}>
+                  {(() => {
+                    const conflictStyles = getProgrammingConflictStyles(draft.conflict?.overallRisk)
+                    return (
+                      <>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
@@ -569,8 +1073,23 @@ export function ScheduleIQ({
                     {draft.projectedOccupancy}% projected fill · {draft.estimatedInterestedMembers} likely players
                   </div>
                   <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                    {draft.metadata?.sessionDraft?.nextStep || 'Internal-only session draft. Still manual and not live-published.'}
+                    {draft.metadata?.sessionDraft?.nextStep || draft.conflict?.riskSummary || 'Internal-only session draft. Still manual and not live-published.'}
                   </div>
+                  {draft.conflict && (
+                    <div className="mt-2 space-y-1">
+                      <div
+                        className="inline-flex items-center text-[10px] px-2 py-1 rounded-full font-medium"
+                        style={{ background: conflictStyles.bg, border: `1px solid ${conflictStyles.border}`, color: conflictStyles.text }}
+                      >
+                        {conflictStyles.label}
+                      </div>
+                      {draft.conflict.warnings.slice(0, 1).map((warning) => (
+                        <div key={warning} className="text-[11px]" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
+                          {warning}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-3">
                     <Link
                       href={buildAgentFocusHref(clubId, {
@@ -596,6 +1115,9 @@ export function ScheduleIQ({
                       <ArrowUpRight className="w-3 h-3" />
                     </Link>
                   </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
               {selectedDayOpsDrafts.length === 0 && (

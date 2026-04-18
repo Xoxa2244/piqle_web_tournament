@@ -1,13 +1,38 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useMemo, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'motion/react'
-import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2 } from 'lucide-react'
+import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
+import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
+import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession } from '../../_hooks/use-intelligence'
 
 // ── Filter field definitions ──
+const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = [
+  { label: 'Guest', value: 'guest' },
+  { label: 'Drop-In', value: 'drop_in' },
+  { label: 'Trial', value: 'trial' },
+  { label: 'Package', value: 'package' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'VIP / Unlimited', value: 'unlimited' },
+  { label: 'Discounted', value: 'discounted' },
+  { label: 'Insurance', value: 'insurance' },
+  { label: 'Staff', value: 'staff' },
+]
+
+const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = [
+  { label: 'Active', value: 'active' },
+  { label: 'Suspended', value: 'suspended' },
+  { label: 'Expired', value: 'expired' },
+  { label: 'Cancelled', value: 'cancelled' },
+  { label: 'Trial', value: 'trial' },
+  { label: 'Guest', value: 'guest' },
+  { label: 'No Membership', value: 'none' },
+]
+
 const FILTER_FIELDS = [
   { key: 'age', label: 'Age', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
   { key: 'gender', label: 'Gender', type: 'select' as const, ops: ['eq'], options: [{ label: 'Male', value: 'M' }, { label: 'Female', value: 'F' }] },
@@ -21,6 +46,8 @@ const FILTER_FIELDS = [
   ] },
   { key: 'frequency', label: 'Sessions/Month', type: 'number' as const, ops: ['gte', 'lte', 'eq'] },
   { key: 'recency', label: 'Days Since Last Visit', type: 'number' as const, ops: ['lte', 'gte'] },
+  { key: 'normalizedMembershipType', label: 'Membership Segment', type: 'select' as const, ops: ['eq'], options: NORMALIZED_MEMBERSHIP_TYPE_OPTIONS },
+  { key: 'normalizedMembershipStatus', label: 'Membership State', type: 'select' as const, ops: ['eq'], options: NORMALIZED_MEMBERSHIP_STATUS_OPTIONS },
   { key: 'membershipType', label: 'Membership Type', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'membershipStatus', label: 'Membership Status', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'skillLevel', label: 'Skill Level', type: 'text' as const, ops: ['contains', 'eq'] },
@@ -32,9 +59,50 @@ const OP_LABELS: Record<string, string> = {
   eq: '=', neq: '!=', gt: '>', gte: '>=', lt: '<', lte: '<=', contains: 'contains', in: 'in',
 }
 
+function formatCohortFilterValue(field: string, value: string | number | string[]) {
+  const fieldDef = FILTER_FIELDS.find((entry) => entry.key === field)
+  const options = fieldDef?.options || []
+  const labels = new Map(options.map((option) => [option.value, option.label]))
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => labels.get(entry) || entry).join(', ')
+  }
+
+  if (typeof value === 'string') {
+    return labels.get(value) || value
+  }
+
+  return String(value)
+}
+
 function parseCohortFilters(raw: unknown): CohortFilter[] {
   if (!Array.isArray(raw)) return []
   return raw as CohortFilter[]
+}
+
+function buildCohortAdvisorHref(clubId: string, prompt: string) {
+  const params = new URLSearchParams()
+  params.set('prompt', prompt)
+  return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
+}
+
+function isLookalikePresetBlocked(input: {
+  preset: LookalikeExportPreset
+  contactableCount: number
+}) {
+  return input.preset !== 'generic_csv' && input.contactableCount === 0
+}
+
+const SMART_FIRST_SESSION_STAGE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  book_first_session: { bg: 'rgba(6,182,212,0.12)', color: '#06B6D4', label: 'First Booking' },
+  book_second_session: { bg: 'rgba(139,92,246,0.12)', color: '#8B5CF6', label: 'Second Session' },
+  convert_after_first_session: { bg: 'rgba(16,185,129,0.12)', color: '#10B981', label: 'Paid Conversion' },
+}
+
+const SUGGESTION_DECISION_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  accepted: { bg: 'rgba(16,185,129,0.14)', color: '#10B981', label: 'Accepted' },
+  not_now: { bg: 'rgba(245,158,11,0.14)', color: '#F59E0B', label: 'Not now' },
+  declined: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444', label: 'Declined' },
 }
 
 type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in'
@@ -47,15 +115,29 @@ interface CohortFilter {
 
 export default function CohortsIQ() {
   const params = useParams()
+  const router = useRouter()
   const clubId = params.id as string
+  const suggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   const [showCreate, setShowCreate] = useState(false)
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null)
   const [campaignCohort, setCampaignCohort] = useState<{ id: string; name: string; filters: any } | null>(null)
+  const [activeLookalikeExportKey, setActiveLookalikeExportKey] = useState<string | null>(null)
+  const [activeLookalikeSaveKey, setActiveLookalikeSaveKey] = useState<string | null>(null)
+  const [selectedLookalikeAudienceKeys, setSelectedLookalikeAudienceKeys] = useState<string[]>([])
+  const [lookalikeExportPreset, setLookalikeExportPreset] = useState<LookalikeExportPreset>('generic_csv')
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
   const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
+  const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8)
+  const { data: lookalikeExportData } = useLookalikeAudienceExport(clubId)
+  const { data: lookalikeExportHistory = [], isLoading: lookalikeExportHistoryLoading } = useLookalikeExportHistory(clubId, 8)
+  const { data: smartSuggestionDecisions = [] } = useAdminTodoDecisions(clubId, suggestionDateKey)
+  const setAdminTodoDecision = useSetAdminTodoDecision()
+  const clearAdminTodoDecisions = useClearAdminTodoDecisions()
+  const exportLookalikeAudienceCsv = useExportLookalikeAudienceCsv()
   const deleteMutation = trpc.intelligence.deleteCohort.useMutation({ onSuccess: () => refetch() })
+  const createCohortMutation = trpc.intelligence.createCohort.useMutation({ onSuccess: () => refetch() })
   const enrichMutation = trpc.intelligence.enrichMemberData.useMutation({
     onSuccess: (data) => {
       refetchCoverage()
@@ -71,6 +153,129 @@ export default function CohortsIQ() {
       alert(lines.join('\n'))
     },
   })
+
+  const suggestionDecisionMap = useMemo(() => {
+    const initialMap: Record<string, 'accepted' | 'declined' | 'not_now'> = {}
+    return smartSuggestionDecisions.reduce((acc: Record<string, 'accepted' | 'declined' | 'not_now'>, record: any) => {
+      if (record.bucket !== 'newcomer_cohorts') return acc
+      if (record.decision === 'accepted' || record.decision === 'declined' || record.decision === 'not_now') {
+        acc[record.itemId] = record.decision
+      }
+      return acc
+    }, initialMap)
+  }, [smartSuggestionDecisions])
+
+  const hasSmartSuggestionDecisions = Object.keys(suggestionDecisionMap).length > 0
+  const effectiveLookalikeSelection = useMemo(() => {
+    const audiences = lookalikeExportData?.audiences || []
+    const selectedKeys = selectedLookalikeAudienceKeys.length > 0
+      ? selectedLookalikeAudienceKeys
+      : audiences.slice(0, 1).map((audience: any) => audience.key)
+    const selectedAudiences = audiences.filter((audience: any) => selectedKeys.includes(audience.key))
+    const memberIds = Array.from(new Set(selectedAudiences.flatMap((audience: any) => audience.memberIds || [])))
+    return {
+      selectedKeys,
+      selectedAudiences,
+      memberIds,
+      combinedName: selectedAudiences.length <= 1
+        ? selectedAudiences[0]?.name || 'Lookalike Seed'
+        : `Custom Seed — ${selectedAudiences.map((audience: any) => audience.name).join(' + ')}`,
+    }
+  }, [lookalikeExportData, selectedLookalikeAudienceKeys])
+
+  const { data: lookalikePreviewData, isLoading: lookalikePreviewLoading } = useLookalikeAudienceExportPreview(
+    clubId,
+    effectiveLookalikeSelection.selectedKeys,
+    lookalikeExportPreset
+  )
+
+  const activeLookalikePreset = LOOKALIKE_EXPORT_PRESETS.find((preset) => preset.key === lookalikeExportPreset) || LOOKALIKE_EXPORT_PRESETS[0]
+  const lookalikeExportBlockedByCoverage =
+    !!lookalikePreviewData &&
+    isLookalikePresetBlocked({
+      preset: lookalikeExportPreset,
+      contactableCount: lookalikePreviewData.coverage.contactableCount,
+    })
+
+  const handleSuggestionDecision = async (options: {
+    itemId: string
+    title: string
+    href: string
+    decision: 'accepted' | 'declined' | 'not_now'
+    metadata?: Record<string, unknown>
+  }) => {
+    await setAdminTodoDecision.mutateAsync({
+      clubId,
+      dateKey: suggestionDateKey,
+      itemId: options.itemId,
+      decision: options.decision,
+      title: options.title,
+      bucket: 'newcomer_cohorts',
+      href: options.href,
+      metadata: options.metadata,
+    })
+  }
+
+  const handleAcceptSuggestion = async (options: {
+    itemId: string
+    title: string
+    href: string
+    action: 'build_cohort' | 'draft_campaign'
+  }) => {
+    await handleSuggestionDecision({
+      itemId: options.itemId,
+      title: options.title,
+      href: options.href,
+      decision: 'accepted',
+      metadata: { action: options.action },
+    })
+    router.push(options.href)
+  }
+
+  const handleExportLookalikeAudience = async (audienceKeys: string[], token?: string) => {
+    try {
+      setActiveLookalikeExportKey(token || audienceKeys.join('|'))
+      const result = await exportLookalikeAudienceCsv.mutateAsync({
+        clubId,
+        audienceKeys: audienceKeys as any,
+        preset: lookalikeExportPreset,
+      })
+      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = result.fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+    } finally {
+      setActiveLookalikeExportKey(null)
+    }
+  }
+
+  const handleSaveLookalikeAudience = async (audience: any) => {
+    try {
+      setActiveLookalikeSaveKey(audience.key)
+      await createCohortMutation.mutateAsync({
+        clubId,
+        name: `Lookalike — ${audience.name}`,
+        description: `${audience.description} Seed export audience from the agent lookalike builder.`,
+        filters: [{ field: 'userId', op: 'in', value: audience.memberIds }],
+      })
+    } finally {
+      setActiveLookalikeSaveKey(null)
+    }
+  }
+
+  const toggleLookalikeAudience = (audienceKey: string) => {
+    setSelectedLookalikeAudienceKeys((current) => {
+      if (current.includes(audienceKey)) {
+        return current.filter((key) => key !== audienceKey)
+      }
+      return [...current, audienceKey]
+    })
+  }
 
   return (
     <motion.div
@@ -163,6 +368,577 @@ export default function CohortsIQ() {
         </div>
       )}
 
+      {lookalikeExportData?.audiences?.length && !showCreate && !selectedCohortId ? (
+        <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#06B6D4' }} />
+                <span className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>
+                  Lookalike Audience Export
+                </span>
+              </div>
+              <p className="text-sm mt-2" style={{ color: 'var(--t3)', maxWidth: 760 }}>
+                The agent is turning your healthiest paid members into export-ready seed audiences, so you can save them as reusable cohorts or download a CSV for paid acquisition.
+              </p>
+            </div>
+            <span className="text-xs px-3 py-1.5 rounded-full" style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4', fontWeight: 700 }}>
+              {lookalikeExportData.summary.summary}
+            </span>
+          </div>
+
+          <div className="rounded-2xl p-4 space-y-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Custom source builder</div>
+                <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                  Choose one or more source audiences, pick the export schema, then save the combined seed or download the channel-ready CSV.
+                </div>
+              </div>
+              <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(148,163,184,0.14)', color: 'var(--t2)', fontWeight: 700 }}>
+                {effectiveLookalikeSelection.memberIds.length} unique members
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {lookalikeExportData.audiences.map((audience: any) => {
+                const selected = effectiveLookalikeSelection.selectedKeys.includes(audience.key)
+                return (
+                  <button
+                    key={audience.key}
+                    type="button"
+                    onClick={() => toggleLookalikeAudience(audience.key)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+                    style={{
+                      background: selected ? 'rgba(6,182,212,0.12)' : 'rgba(148,163,184,0.12)',
+                      color: selected ? '#06B6D4' : 'var(--t2)',
+                    }}
+                  >
+                    {audience.name}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {LOOKALIKE_EXPORT_PRESETS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => setLookalikeExportPreset(preset.key)}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left"
+                  style={{
+                    background: lookalikeExportPreset === preset.key ? 'rgba(139,92,246,0.12)' : 'rgba(148,163,184,0.12)',
+                    color: lookalikeExportPreset === preset.key ? '#8B5CF6' : 'var(--t2)',
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+              <span style={{ fontWeight: 700, color: 'var(--heading)' }}>{activeLookalikePreset.label}:</span> {activeLookalikePreset.description} {activeLookalikePreset.fieldsSummary ? `(${activeLookalikePreset.fieldsSummary})` : ''}
+            </div>
+
+            {lookalikePreviewLoading ? (
+              <div className="rounded-2xl p-4" style={{ background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                  Building handoff preview...
+                </div>
+                <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                  The agent is checking coverage and channel fit for the currently selected seed audience.
+                </div>
+              </div>
+            ) : lookalikePreviewData ? (
+              <div className="rounded-2xl p-4 space-y-4" style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.18)' }}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {lookalikePreviewData.presetLabel} handoff
+                    </div>
+                    <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6, maxWidth: 760 }}>
+                      {lookalikePreviewData.objective}
+                    </div>
+                  </div>
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.12)', color: '#06B6D4', fontWeight: 700 }}>
+                    {lookalikePreviewData.audienceCount} members in seed
+                  </span>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-4">
+                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="text-[11px]" style={{ color: 'var(--t4)' }}>Contactable</div>
+                    <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {lookalikePreviewData.coverage.contactableRate}% ({lookalikePreviewData.coverage.contactableCount})
+                    </div>
+                  </div>
+                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="text-[11px]" style={{ color: 'var(--t4)' }}>Email match</div>
+                    <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {lookalikePreviewData.coverage.emailCount}
+                    </div>
+                  </div>
+                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="text-[11px]" style={{ color: 'var(--t4)' }}>Phone match</div>
+                    <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {lookalikePreviewData.coverage.phoneCount}
+                    </div>
+                  </div>
+                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="text-[11px]" style={{ color: 'var(--t4)' }}>Dual match</div>
+                    <div className="text-sm mt-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {lookalikePreviewData.coverage.dualMatchRate}% ({lookalikePreviewData.coverage.dualMatchCount})
+                    </div>
+                  </div>
+                </div>
+
+                {lookalikePreviewData.warnings.length > 0 ? (
+                  <div className="space-y-2">
+                    {lookalikePreviewData.warnings.map((warning) => (
+                      <div
+                        key={warning}
+                        className="rounded-xl px-3 py-2 text-xs"
+                        style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B', fontWeight: 600 }}
+                      >
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 600 }}>
+                    This seed has enough matchable coverage to hand off cleanly into {lookalikePreviewData.presetLabel}.
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="text-[11px] uppercase tracking-[0.16em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>
+                    Next steps
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    {lookalikePreviewData.nextSteps.map((step, index) => (
+                      <div
+                        key={step}
+                        className="rounded-xl px-3 py-2.5 text-xs"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t3)', lineHeight: 1.6 }}
+                      >
+                        <span style={{ fontWeight: 700, color: 'var(--heading)' }}>{index + 1}.</span> {step}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl p-4" style={{ background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.18)' }}>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                  No channel handoff preview yet
+                </div>
+                <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                  Pick a valid source audience and preset to see match coverage, warnings and channel-specific next steps.
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleSaveLookalikeAudience({
+                  key: 'custom-builder',
+                  name: effectiveLookalikeSelection.combinedName,
+                  description: 'Combined lookalike source audience from the custom builder.',
+                  memberIds: effectiveLookalikeSelection.memberIds,
+                })}
+                disabled={createCohortMutation.isPending || effectiveLookalikeSelection.memberIds.length === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
+              >
+                {activeLookalikeSaveKey === 'custom-builder' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Filter className="w-3.5 h-3.5" />}
+                Save combined cohort
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportLookalikeAudience(effectiveLookalikeSelection.selectedKeys, 'custom-builder')}
+                disabled={exportLookalikeAudienceCsv.isPending || effectiveLookalikeSelection.selectedKeys.length === 0 || lookalikeExportBlockedByCoverage}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
+              >
+                {activeLookalikeExportKey === 'custom-builder' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Export selected CSV
+              </button>
+              {effectiveLookalikeSelection.selectedKeys.length > 0 ? (
+                <Link
+                  href={buildCohortAdvisorHref(
+                    clubId,
+                    `Build a lookalike export playbook from these seed audiences: ${effectiveLookalikeSelection.selectedAudiences.map((audience: any) => audience.name).join(', ')}. Use the ${activeLookalikePreset.label} schema and explain the best acquisition angle for this club.`
+                  )}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
+                  style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Open combined playbook
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-60"
+                  style={{ background: 'rgba(148,163,184,0.12)', color: 'var(--t2)' }}
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Pick a source first
+                </button>
+              )}
+            </div>
+
+	            {lookalikeExportBlockedByCoverage ? (
+	              <div className="text-[11px]" style={{ color: '#F59E0B', fontWeight: 600 }}>
+	                This preset is blocked because the selected seed has no usable email or phone coverage yet. Switch to `Generic CSV` or widen the source audience first.
+	              </div>
+	            ) : null}
+
+              {lookalikeExportHistoryLoading ? (
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                    Loading export history...
+                  </div>
+                  <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                    Pulling recent lookalike exports and operator handoff trail for this club.
+                  </div>
+                </div>
+              ) : lookalikeExportHistory.length > 0 ? (
+                <div className="rounded-2xl p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                        Export history
+                      </div>
+                      <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                        Recent lookalike exports, with source mix, preset and operator handoff trail.
+                      </div>
+                    </div>
+                    <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4', fontWeight: 700 }}>
+                      {lookalikeExportHistory.length} recent exports
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {lookalikeExportHistory.map((record: any) => {
+                      const metadata = (record.metadata || {}) as Record<string, any>
+                      const preset = LOOKALIKE_EXPORT_PRESETS.find((entry) => entry.key === metadata.preset)
+                      const audienceNames = Array.isArray(metadata.audienceNames) && metadata.audienceNames.length > 0
+                        ? metadata.audienceNames
+                        : [metadata.audienceName].filter(Boolean)
+                      const exportedAt = record.createdAt
+                        ? new Date(record.createdAt).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        : 'Just now'
+
+                      return (
+                        <div
+                          key={record.id}
+                          className="rounded-xl px-3 py-3"
+                          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                        >
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="min-w-0">
+                              <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                                {metadata.audienceName || record.summary}
+                              </div>
+                              <div className="text-[11px] mt-1" style={{ color: 'var(--t4)', lineHeight: 1.6 }}>
+                                {audienceNames.length > 1 ? `Source mix: ${audienceNames.join(' + ')}` : `Source: ${audienceNames[0] || 'Custom seed'}`}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="text-[10px] px-2 py-1 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', fontWeight: 700 }}>
+                                {preset?.label || metadata.preset || record.mode}
+                              </span>
+                              <span className="text-[10px] px-2 py-1 rounded-full" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 700 }}>
+                                {metadata.memberCount || 0} members
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
+                            <div className="text-[11px]" style={{ color: 'var(--t3)' }}>
+                              {metadata.fileName || 'CSV export'} • {record.user?.name || record.user?.email || 'Team member'} • {exportedAt}
+                            </div>
+                            <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                              {preset?.fieldsSummary || 'Channel-ready handoff'}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                    No exports yet
+                  </div>
+                  <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                    The first lookalike CSV you export will appear here with preset, seed mix and operator trail.
+                  </div>
+                </div>
+              )}
+	          </div>
+
+	          <div className="grid gap-3 lg:grid-cols-2">
+            {lookalikeExportData.audiences.map((audience: any) => {
+              const isExporting = activeLookalikeExportKey === audience.key
+              const isSaving = activeLookalikeSaveKey === audience.key
+              const audienceExportBlockedByCoverage = isLookalikePresetBlocked({
+                preset: lookalikeExportPreset,
+                contactableCount: audience.contactableCount || 0,
+              })
+              return (
+                <div key={audience.key} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{audience.name}</div>
+                      <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>{audience.description}</div>
+                    </div>
+                    <span className="px-2 py-1 rounded-full text-[10px]" style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4', fontWeight: 700 }}>
+                      {audience.memberCount} seed members
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', fontWeight: 700 }}>
+                      Avg health {audience.averageHealthScore}
+                    </span>
+                    <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 700 }}>
+                      Avg revenue ${Math.round(audience.averageRevenue)}
+                    </span>
+                    <span className="text-[11px] px-2.5 py-1 rounded-lg" style={{ background: 'rgba(148,163,184,0.14)', color: 'var(--t2)', fontWeight: 700 }}>
+                      {audience.traitsSummary}
+                    </span>
+                  </div>
+
+                  <div className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                    {audience.useCase}
+                  </div>
+
+                  <div className="space-y-2">
+                    {audience.previewMembers.slice(0, 3).map((member: any) => (
+                      <div key={member.userId} className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm truncate" style={{ fontWeight: 700, color: 'var(--heading)' }}>{member.name}</div>
+                            <div className="text-[11px] mt-1" style={{ color: 'var(--t4)' }}>{member.reason}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[11px]" style={{ color: '#06B6D4', fontWeight: 700 }}>H {member.healthScore ?? '—'}</div>
+                            <div className="text-[11px]" style={{ color: 'var(--t4)' }}>${Math.round(member.totalRevenue || 0)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveLookalikeAudience(audience)}
+                      disabled={createCohortMutation.isPending || isSaving}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                      style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
+                    >
+                      {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Filter className="w-3.5 h-3.5" />}
+                      {isSaving ? 'Saving cohort...' : 'Save as cohort'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportLookalikeAudience([audience.key], audience.key)}
+                      disabled={exportLookalikeAudienceCsv.isPending || isExporting || audienceExportBlockedByCoverage}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                      style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}
+                    >
+                      {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                      {isExporting ? 'Exporting...' : 'Export CSV'}
+                    </button>
+                    <Link
+                      href={buildCohortAdvisorHref(clubId, audience.advisorPrompt)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
+                      style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Open playbook
+                    </Link>
+                  </div>
+
+                  {audienceExportBlockedByCoverage ? (
+                    <div className="text-[11px]" style={{ color: '#F59E0B', fontWeight: 600, lineHeight: 1.6 }}>
+                      This preset is blocked for {audience.name} because this seed has no usable email or phone coverage yet. Switch to `Generic CSV` or widen the audience first.
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {smartFirstSessionData?.suggestedCohorts?.length && !showCreate && !selectedCohortId ? (
+        <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                <span className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>
+                  Agent Suggested Newcomer Cohorts
+                </span>
+              </div>
+              <p className="text-sm mt-2" style={{ color: 'var(--t3)', maxWidth: 760 }}>
+                The agent is suggesting reusable newcomer cohorts directly from the smart first session funnel, so you can save the audience first or jump straight into the related campaign draft.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs px-3 py-1.5 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', fontWeight: 700 }}>
+                {smartFirstSessionData.summary.totalCandidates} newcomer opportunities
+              </span>
+              {hasSmartSuggestionDecisions ? (
+                <button
+                  type="button"
+                  onClick={() => clearAdminTodoDecisions.mutate({ clubId, dateKey: suggestionDateKey })}
+                  disabled={clearAdminTodoDecisions.isPending}
+                  className="text-xs px-3 py-1.5 rounded-full transition-all disabled:opacity-60"
+                  style={{ background: 'rgba(148,163,184,0.14)', color: 'var(--t2)', fontWeight: 700 }}
+                >
+                  {clearAdminTodoDecisions.isPending ? 'Resetting...' : 'Reset newcomer suggestions'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-3">
+            {smartFirstSessionData.suggestedCohorts.map((cohort: any) => {
+              const tone = SMART_FIRST_SESSION_STAGE_STYLES[cohort.stage] || SMART_FIRST_SESSION_STAGE_STYLES.book_first_session
+              const decision = suggestionDecisionMap[cohort.key]
+              const decisionStyle = decision ? SUGGESTION_DECISION_STYLES[decision] : null
+              const isAccepted = decision === 'accepted'
+              const isDeclined = decision === 'declined'
+              const isNotNow = decision === 'not_now'
+              return (
+                <div key={cohort.key} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{cohort.name}</div>
+                      <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>{cohort.description}</div>
+                    </div>
+                    <span className="px-2 py-1 rounded-full text-[10px]" style={{ background: tone.bg, color: tone.color, fontWeight: 700 }}>
+                      {tone.label}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Users className="w-4 h-4" style={{ color: tone.color }} />
+                      <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{cohort.count}</span>
+                      <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
+                    </div>
+                    {decisionStyle ? (
+                      <span className="px-2 py-1 rounded-full text-[10px]" style={{ background: decisionStyle.bg, color: decisionStyle.color, fontWeight: 700 }}>
+                        {decisionStyle.label}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {isDeclined ? (
+                    <div className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+                      Declined for today. Reset newcomer suggestions if you want this stage to come back into the queue.
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptSuggestion({
+                          itemId: cohort.key,
+                          title: cohort.name,
+                          href: buildCohortAdvisorHref(clubId, cohort.createCohortPrompt),
+                          action: 'build_cohort',
+                        })}
+                        disabled={setAdminTodoDecision.isPending}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                        style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
+                      >
+                        <Filter className="w-3.5 h-3.5" />
+                        {isAccepted ? 'Open cohort flow' : 'Build cohort'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptSuggestion({
+                          itemId: cohort.key,
+                          title: cohort.name,
+                          href: buildCohortAdvisorHref(clubId, cohort.draftCampaignPrompt),
+                          action: 'draft_campaign',
+                        })}
+                        disabled={setAdminTodoDecision.isPending}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px] disabled:opacity-60"
+                        style={{ background: tone.bg, color: tone.color }}
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        {isAccepted ? 'Open campaign flow' : 'Draft campaign'}
+                      </button>
+                      {!isAccepted ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleSuggestionDecision({
+                              itemId: cohort.key,
+                              title: cohort.name,
+                              href: buildCohortAdvisorHref(clubId, cohort.createCohortPrompt),
+                              decision: 'not_now',
+                              metadata: { action: 'snooze' },
+                            })}
+                            disabled={setAdminTodoDecision.isPending}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-60"
+                            style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B' }}
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            {isNotNow ? 'Snoozed' : 'Not now'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSuggestionDecision({
+                              itemId: cohort.key,
+                              title: cohort.name,
+                              href: buildCohortAdvisorHref(clubId, cohort.createCohortPrompt),
+                              decision: 'declined',
+                              metadata: { action: 'decline' },
+                            })}
+                            disabled={setAdminTodoDecision.isPending}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-60"
+                            style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Decline
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                  {isNotNow ? (
+                    <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.6 }}>
+                      Snoozed for now. Reset newcomer suggestions when you want the agent to surface this stage again.
+                    </div>
+                  ) : null}
+                  {isAccepted ? (
+                    <div className="text-[11px]" style={{ color: tone.color, lineHeight: 1.6, fontWeight: 600 }}>
+                      Accepted into the newcomer workflow. Re-open the cohort or campaign flow from here whenever you need it.
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {/* Cohort list */}
       {!showCreate && !selectedCohortId && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -211,7 +987,7 @@ export default function CohortsIQ() {
               <div className="flex flex-wrap gap-1 mt-3">
                 {parseCohortFilters(c.filters).map((f, i) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
-                    {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {String(f.value)}
+                    {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
                   </span>
                 ))}
               </div>
@@ -654,11 +1430,11 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
 
         {/* Filter tags */}
         <div className="flex flex-wrap gap-1.5">
-          {parseCohortFilters(cohort?.filters).map((f, i) => (
-            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
-              {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {String(f.value)}
-            </span>
-          ))}
+              {parseCohortFilters(cohort?.filters).map((f, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
+                  {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
+                </span>
+              ))}
           <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(6,182,212,0.1)', color: '#06B6D4' }}>
             {members.length} members
           </span>
@@ -683,6 +1459,12 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
                   {[
                     m.age ? `${m.age}y` : null,
                     m.gender === 'M' ? 'Male' : m.gender === 'F' ? 'Female' : null,
+                    m.normalizedMembershipType && m.normalizedMembershipType !== 'unknown'
+                      ? formatCohortFilterValue('normalizedMembershipType', m.normalizedMembershipType)
+                      : null,
+                    m.normalizedMembershipStatus && !['unknown', 'active'].includes(m.normalizedMembershipStatus)
+                      ? formatCohortFilterValue('normalizedMembershipStatus', m.normalizedMembershipStatus)
+                      : null,
                     m.membershipType,
                     m.skillLevel,
                   ].filter(Boolean).join(' · ') || m.email}

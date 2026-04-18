@@ -18,7 +18,7 @@ import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
 } from '@/lib/ai/agent-trigger-runtime'
-import { normalizeMembership } from '@/lib/ai/membership-intelligence'
+import { normalizeMembership, resolveMembershipMappings } from '@/lib/ai/membership-intelligence'
 
 export interface EventResult {
   clubId: string
@@ -55,6 +55,7 @@ export async function detectEventsForClub(
     select: { automationSettings: true },
   }).catch(() => null)
   const automationSettings = club?.automationSettings
+  const membershipMappings = resolveMembershipMappings(automationSettings)
   let actionsTaken = 0
 
   // 1. Recent cancellations → slot filler opportunity
@@ -132,6 +133,7 @@ export async function detectEventsForClub(
     const normalizedMembership = normalizeMembership({
       membershipType: member.membershipType,
       membershipStatus: member.membershipStatus,
+      membershipMappings,
     })
     const followedAt = member.followedAt ? new Date(member.followedAt) : null
     const joinedAt = followedAt || (member.userCreatedAt ? new Date(member.userCreatedAt) : null)
@@ -148,6 +150,7 @@ export async function detectEventsForClub(
     const normalizedMembership = normalizeMembership({
       membershipType: member.membershipType,
       membershipStatus: member.membershipStatus,
+      membershipMappings,
     })
     const lastConfirmedBookingAt = member.lastConfirmedBookingAt ? new Date(member.lastConfirmedBookingAt) : null
 
@@ -212,6 +215,7 @@ export async function detectEventsForClub(
       const normalizedMembership = normalizeMembership({
         membershipType: member.membershipType,
         membershipStatus: member.membershipStatus,
+        membershipMappings,
       })
       const welcomeRuntime = evaluateAgentTriggerRuntime({
         source: 'event_detection',
@@ -295,6 +299,7 @@ export async function detectEventsForClub(
       const normalizedMembership = normalizeMembership({
         membershipType: member.membershipType,
         membershipStatus: member.membershipStatus,
+        membershipMappings,
       })
       const joinedAt = member.followedAt ? new Date(member.followedAt) : new Date(member.userCreatedAt)
       const daysSinceJoined = Math.max(1, Math.floor((now.getTime() - joinedAt.getTime()) / 86400000))
@@ -361,6 +366,7 @@ export async function detectEventsForClub(
       const normalizedMembership = normalizeMembership({
         membershipType: member.membershipType,
         membershipStatus: member.membershipStatus,
+        membershipMappings,
       })
       const lastConfirmedBookingAt = member.lastConfirmedBookingAt ? new Date(member.lastConfirmedBookingAt) : null
       if (!lastConfirmedBookingAt) continue

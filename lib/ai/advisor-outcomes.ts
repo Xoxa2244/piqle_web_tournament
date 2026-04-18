@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import type { AdvisorAction } from './advisor-actions'
+import { appendGuestTrialExecutionContextSummary } from './guest-trial-offers'
+import { appendReferralExecutionContextSummary } from './referral-offers'
 
 export const advisorOutcomeMemorySchema = z.object({
   kind: z.enum([
@@ -13,6 +15,7 @@ export const advisorOutcomeMemorySchema = z.object({
     'update_contact_policy',
     'update_autonomy_policy',
     'update_sandbox_routing',
+    'update_admin_reminder_routing',
   ]),
   title: z.string().min(1).max(140),
   summary: z.string().min(1).max(320),
@@ -20,6 +23,34 @@ export const advisorOutcomeMemorySchema = z.object({
 })
 
 export type AdvisorOutcomeMemory = z.infer<typeof advisorOutcomeMemorySchema>
+
+function getGuestTrialContextForAction(action: AdvisorAction) {
+  if (action.kind === 'create_campaign') return action.campaign.guestTrialContext || null
+  if (action.kind === 'trial_follow_up') return action.lifecycle.guestTrialContext || null
+  return null
+}
+
+function getReferralContextForAction(action: AdvisorAction) {
+  if (action.kind === 'create_campaign') return action.campaign.referralContext || null
+  return null
+}
+
+function appendCampaignExecutionContextSummary(
+  summary: string,
+  action: AdvisorAction,
+  maxLength: number = 320,
+) {
+  const withGuestTrial = appendGuestTrialExecutionContextSummary(
+    summary,
+    getGuestTrialContextForAction(action),
+    maxLength,
+  )
+  return appendReferralExecutionContextSummary(
+    withGuestTrial,
+    getReferralContextForAction(action),
+    maxLength,
+  )
+}
 
 function parseAdvisorOutcomeMemory(value: unknown): AdvisorOutcomeMemory | null {
   const parsed = advisorOutcomeMemorySchema.safeParse(value)
@@ -118,7 +149,11 @@ export function buildAdvisorOutcomeMemory(
       return {
         kind: action.kind,
         title: action.title,
-        summary: `${flowLabel} draft saved for ${result?.memberCount || 0} eligible members.`,
+        summary: appendGuestTrialExecutionContextSummary(
+          `${flowLabel} draft saved for ${result?.memberCount || 0} eligible members.`,
+          getGuestTrialContextForAction(action),
+          320,
+        ),
         occurredAt,
       }
     }
@@ -127,7 +162,11 @@ export function buildAdvisorOutcomeMemory(
       return {
         kind: action.kind,
         title: action.title,
-        summary: `${flowLabel} scheduled for ${result?.scheduledLabel || 'later'} with ${result?.memberCount || 0} eligible members.`,
+        summary: appendGuestTrialExecutionContextSummary(
+          `${flowLabel} scheduled for ${result?.scheduledLabel || 'later'} with ${result?.memberCount || 0} eligible members.`,
+          getGuestTrialContextForAction(action),
+          320,
+        ),
         occurredAt,
       }
     }
@@ -135,7 +174,11 @@ export function buildAdvisorOutcomeMemory(
     return {
       kind: action.kind,
       title: action.title,
-      summary: `${flowLabel} sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
+      summary: appendGuestTrialExecutionContextSummary(
+        `${flowLabel} sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
+        getGuestTrialContextForAction(action),
+        320,
+      ),
       occurredAt,
     }
   }
@@ -185,13 +228,27 @@ export function buildAdvisorOutcomeMemory(
     }
   }
 
-  if (result?.savedAsDraft) {
+  if (action.kind === 'update_admin_reminder_routing') {
+    const changedCount = Array.isArray(result?.changedFields) ? result.changedFields.length : action.policy.changes.length
     return {
       kind: action.kind,
       title: action.title,
-      summary: `Campaign draft saved for ${result?.memberCount || 0} eligible members.`,
+      summary: `Admin reminder routing updated with ${changedCount} change${changedCount === 1 ? '' : 's'}.`,
       occurredAt,
     }
+  }
+
+  if (result?.savedAsDraft) {
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: appendCampaignExecutionContextSummary(
+          `Campaign draft saved for ${result?.memberCount || 0} eligible members.`,
+          action,
+          320,
+        ),
+        occurredAt,
+      }
   }
 
   if (result?.sandboxed) {
@@ -204,18 +261,26 @@ export function buildAdvisorOutcomeMemory(
   }
 
   if (result?.deliveryMode === 'send_later') {
-    return {
-      kind: action.kind,
-      title: action.title,
-      summary: `Campaign scheduled for ${result?.scheduledLabel || 'later'} with ${result?.memberCount || 0} eligible members.`,
-      occurredAt,
-    }
+      return {
+        kind: action.kind,
+        title: action.title,
+        summary: appendCampaignExecutionContextSummary(
+          `Campaign scheduled for ${result?.scheduledLabel || 'later'} with ${result?.memberCount || 0} eligible members.`,
+          action,
+          320,
+        ),
+        occurredAt,
+      }
   }
 
   return {
     kind: action.kind,
     title: action.title,
-    summary: `Campaign sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
+    summary: appendCampaignExecutionContextSummary(
+      `Campaign sent to ${result?.sent || 0} members${result?.skipped ? ` with ${result.skipped} skipped` : ''}.`,
+      action,
+      320,
+    ),
     occurredAt,
   }
 }

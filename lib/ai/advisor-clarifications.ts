@@ -184,7 +184,8 @@ export function maybeStartAdvisorClarification(opts: {
     plan.action === 'renewal_reactivation' ||
     plan.action === 'update_contact_policy' ||
     plan.action === 'update_autonomy_policy' ||
-    plan.action === 'update_sandbox_routing'
+    plan.action === 'update_sandbox_routing' ||
+    plan.action === 'update_admin_reminder_routing'
   ) return null
 
   if (plan.action === 'create_cohort') {

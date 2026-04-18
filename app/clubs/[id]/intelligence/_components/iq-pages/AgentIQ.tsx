@@ -3,14 +3,27 @@ import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion, useInView, AnimatePresence } from "motion/react"
+import { useSession } from "next-auth/react"
 import {
   Bot, Zap, TrendingUp, CheckCircle2, Clock, Send,
   XCircle, SkipForward, Timer, UserPlus, Heart, Puzzle,
   ArrowUpRight, Activity, Shield, CalendarDays,
 } from "lucide-react"
+import { trpc } from "@/lib/trpc"
 import { useTheme } from "../IQThemeProvider"
 import { buildAgentPolicyScenarios } from "@/lib/ai/agent-policy-simulator"
 import { resolveAgentAutonomyPolicy } from "@/lib/ai/agent-autonomy"
+import {
+  buildAgentControlPlaneSummary,
+  getAgentControlPlaneAudit,
+  resolveAgentControlPlane,
+} from "@/lib/ai/agent-control-plane"
+import {
+  buildAgentPermissionSummary,
+  evaluateAgentPermission,
+  formatClubAdminRole,
+  resolveAgentPermissions,
+} from "@/lib/ai/agent-permissions"
 import { buildAdvisorSandboxRoutingSummary } from "@/lib/ai/advisor-sandbox-routing"
 import type {
   MembershipSignal,
@@ -22,7 +35,21 @@ import {
   useAdminTodoDecisions,
   useClearAdminTodoDecisions,
   useSetAdminTodoDecision,
+  useUpdateOpsSessionDraftWorkflow,
 } from "../../_hooks/use-intelligence"
+import {
+  buildIntegrationAnomalyTodoItem,
+  getTopIntegrationAnomalies,
+  IntegrationWatchlistCard,
+  type IntegrationAnomalySnapshot,
+} from "./agentiq/integration-anomalies"
+import {
+  buildDailyAdminTodoSections as buildDailyAdminTodoSectionsComposer,
+  type DailyAdminTodoBucket,
+  type DailyAdminTodoItem,
+  type DailyAdminTodoSection,
+  type DailyOwnershipView,
+} from "./agentiq/daily-admin-todos"
 
 // ── Types ──
 interface AgentLog {
@@ -69,6 +96,23 @@ interface PendingAction {
   membershipStatus?: NormalizedMembershipStatus | null
   membershipType?: NormalizedMembershipType | null
   sequenceStep?: number | null
+}
+
+interface AgentDecisionRecordItem {
+  id: string
+  action: string
+  mode: string
+  result: string
+  summary: string
+  targetType?: string | null
+  targetId?: string | null
+  metadata?: Record<string, any> | null
+  createdAt: string | Date
+  user?: {
+    id: string
+    name?: string | null
+    email?: string | null
+  } | null
 }
 
 type AutopilotOutcome = "auto" | "pending" | "blocked" | "other"
@@ -152,6 +196,19 @@ interface AdvisorDraftWorkspaceItem {
         phone?: string
       }>
     } | null
+    slotFillerPreview?: {
+      sessionId: string
+      title: string
+      date: string
+      startTime: string
+      endTime?: string | null
+      format?: string | null
+      skillLevel?: string | null
+      occupancy: number
+      spotsRemaining: number
+      candidateCount: number
+      channel: 'email' | 'sms' | 'both'
+    } | null
     programmingPreview?: {
       goal: string
       publishMode: 'draft_only'
@@ -167,6 +224,16 @@ interface AdvisorDraftWorkspaceItem {
         projectedOccupancy: number
         estimatedInterestedMembers: number
         confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
       }
       alternatives?: Array<{
         id: string
@@ -180,6 +247,16 @@ interface AdvisorDraftWorkspaceItem {
         projectedOccupancy: number
         estimatedInterestedMembers: number
         confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
       }>
       insights?: string[]
     } | null
@@ -200,10 +277,62 @@ interface AdvisorDraftWorkspaceItem {
       estimatedInterestedMembers: number
       confidence: number
       note: string
+      conflict?: {
+        overlapRisk: 'low' | 'medium' | 'high'
+        cannibalizationRisk: 'low' | 'medium' | 'high'
+        courtPressureRisk: 'low' | 'medium' | 'high'
+        overallRisk: 'low' | 'medium' | 'high'
+        riskSummary: string
+        warnings: string[]
+        saferAlternativeId?: string
+        saferAlternativeReason?: string
+      } | null
     }> | null
   } | null
   updatedAt: string | Date
   createdAt: string | Date
+}
+
+interface OutreachPilotActionSummary {
+  actionKind: string
+  label: string
+  health: 'idle' | 'healthy' | 'watch' | 'at_risk'
+  sent: number
+  delivered: number
+  opened: number
+  clicked: number
+  converted: number
+  failed: number
+  unsubscribed: number
+  deliveryRate: number
+  openRate: number
+  clickRate: number
+  conversionRate: number
+  failureRate: number
+}
+
+interface OutreachPilotHealthSnapshot {
+  health: 'idle' | 'healthy' | 'watch' | 'at_risk'
+  summary: string
+  totals: {
+    sent: number
+    delivered: number
+    opened: number
+    clicked: number
+    converted: number
+    failed: number
+    bounced: number
+    unsubscribed: number
+  }
+  actions: OutreachPilotActionSummary[]
+  topAction?: OutreachPilotActionSummary | null
+  atRiskAction?: OutreachPilotActionSummary | null
+  recommendation?: {
+    actionKind: string
+    label: string
+    health: 'watch' | 'at_risk'
+    reason: string
+  } | null
 }
 
 type ProgrammingPreview = NonNullable<NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']>
@@ -227,7 +356,34 @@ interface OpsSessionDraftItem {
   estimatedInterestedMembers: number
   confidence: number
   note: string
+  conflict?: {
+    overlapRisk: 'low' | 'medium' | 'high'
+    cannibalizationRisk: 'low' | 'medium' | 'high'
+    courtPressureRisk: 'low' | 'medium' | 'high'
+    overallRisk: 'low' | 'medium' | 'high'
+    riskSummary: string
+    warnings: string[]
+    saferAlternativeId?: string
+    saferAlternativeReason?: string
+  } | null
   metadata?: {
+    timeline?: Array<{
+      id?: string
+      kind?: string
+      label?: string
+      detail?: string
+      actorLabel?: string
+      createdAt?: string
+    }> | null
+    handoff?: {
+      summary?: string
+      whyNow?: string
+      nextStep?: string
+      watchouts?: string[]
+      ownerLabel?: string
+      ownerUserId?: string
+      ownerBrief?: string
+    } | null
     sessionDraft?: {
       stage?: string
       createdAt?: string
@@ -235,6 +391,100 @@ interface OpsSessionDraftItem {
       nextStep?: string
       title?: string
       recommendedWindow?: string
+      targetDate?: string
+      targetDateIso?: string
+      preparedAt?: string
+      preparedBy?: string
+      description?: string | null
+      publishedAt?: string
+      publishedBy?: string
+      publishedPlaySessionId?: string
+      lastLiveEditedAt?: string
+      lastLiveEditedBy?: string
+      lastRollbackAt?: string
+      lastRollbackBy?: string
+      liveSession?: {
+        id?: string
+        title?: string
+        description?: string | null
+        date?: string
+        startTime?: string
+        endTime?: string
+        format?: string
+        skillLevel?: string
+        maxPlayers?: number
+        status?: string
+      } | null
+      liveFeedback?: {
+        status?: 'ahead' | 'tracking' | 'behind' | 'at_risk'
+        actualOccupancy?: number
+        projectedOccupancy?: number
+        occupancyDelta?: number
+        confirmedCount?: number
+        spotsRemaining?: number
+        waitlistCount?: number
+        sessionDate?: string
+        summary?: string
+        recommendedAction?: string
+      } | null
+      review?: {
+        status?: 'ready' | 'warn' | 'blocked'
+        summary?: string
+        blockers?: string[]
+        warnings?: string[]
+        recommendedAction?: string
+        exactMatchSessionId?: string | null
+        exactFormatSessionId?: string | null
+        sameDaySessionCount?: number
+        overlappingSessionCount?: number
+        sameFormatOverlapCount?: number
+        sameSkillOverlapCount?: number
+        courtPressure?: 'low' | 'medium' | 'high'
+        relatedSessions?: Array<{
+          id?: string
+          title?: string
+          startTime?: string
+          endTime?: string
+          format?: string
+          skillLevel?: string
+          reason?: 'exact_duplicate' | 'format_duplicate' | 'overlap' | 'same_day'
+        }>
+      } | null
+      aftercare?: {
+        status?: 'aligned' | 'drifted' | 'missing'
+        summary?: string
+        recommendedAction?: string
+        blockerCount?: number
+        warningCount?: number
+        blockers?: string[]
+        warnings?: string[]
+        rollbackStatus?: 'ready' | 'warn' | 'blocked'
+        rollbackSummary?: string
+        canEdit?: boolean
+        canRollback?: boolean
+        driftedFields?: Array<{
+          field?: 'title' | 'description' | 'date' | 'startTime' | 'endTime' | 'format' | 'skillLevel' | 'maxPlayers'
+          label?: string
+          draftValue?: string
+          liveValue?: string
+        }>
+      } | null
+    } | null
+    opsWorkflow?: {
+      ownerLabel?: string
+      ownerUserId?: string
+      ownerAssignedAt?: string
+      dueAt?: string
+      dueLabel?: string
+      blockedReason?: string
+      blockedAt?: string
+      archivedAt?: string
+      lastAction?: string
+      lastActionAt?: string
+      lastNoteAt?: string
+      lastNoteBy?: string
+      lastEscalatedAt?: string
+      lastEscalatedBy?: string
     } | null
   } | null
   sessionDraftedAt?: string | Date | null
@@ -253,6 +503,8 @@ interface OpsSessionDraftItem {
   } | null
 }
 
+type OpsDueState = 'overdue' | 'due_soon' | 'due_today' | 'due_tomorrow' | 'scheduled' | 'none'
+
 interface ProgrammingDraftCard {
   id: string
   title: string
@@ -269,7 +521,7 @@ interface ProgrammingDraftCard {
 }
 
 type ProgrammingOpsStageKey = 'new' | 'ready_for_ops' | 'paused' | 'rejected'
-
+type OpsOwnershipFilter = 'all' | 'mine' | 'unassigned'
 interface ProgrammingOpsStage {
   key: ProgrammingOpsStageKey
   label: string
@@ -280,27 +532,9 @@ interface ProgrammingOpsStage {
 
 type OpsSessionDraftStageKey = 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
 type AgentDeepLinkFocus = 'programming-cockpit' | 'ops-board' | 'ops-queue' | 'preview-inbox' | 'pending-queue'
-type DailyAdminTodoBucket = 'today' | 'tomorrow' | 'waiting' | 'blocked' | 'recommended'
-
-interface DailyAdminTodoItem {
-  id: string
-  title: string
-  description: string
-  ctaLabel: string
-  href: string
-  tone: 'default' | 'warn' | 'danger' | 'success'
-  count?: string | number | null
-}
-
-interface DailyAdminTodoSection {
-  key: DailyAdminTodoBucket
-  label: string
-  description: string
-  color: string
-  items: DailyAdminTodoItem[]
-}
 
 type DailyAdminTodoDecision = 'accepted' | 'declined' | 'not_now'
+type AdminReminderDeliveryMode = 'in_app' | 'email' | 'sms' | 'both'
 
 interface AdminTodoDecisionRecord {
   dateKey: string
@@ -330,6 +564,104 @@ interface DailyTodoReminderOption {
   remindLabel: string
 }
 
+interface DailyTodoReminderChannelOption {
+  id: AdminReminderDeliveryMode
+  label: string
+  description: string
+  available: boolean
+}
+
+interface DailyOpsBriefCard {
+  id: string
+  eyebrow: string
+  title: string
+  description: string
+  ctaLabel: string
+  href: string
+  tone: 'default' | 'warn' | 'danger' | 'success'
+  count?: string | number | null
+  bullets?: string[]
+  secondaryActions?: Array<{
+    label: string
+    href: string
+    tone?: 'default' | 'warn' | 'danger' | 'success'
+  }>
+  workflowActions?: Array<{
+    label: string
+    action:
+      | 'promote'
+      | 'create_fill_draft'
+      | 'reject'
+      | 'assign_self'
+      | 'assign_teammate'
+      | 'reassign_owner'
+      | 'ping_owner'
+      | 'due_today'
+      | 'add_note'
+      | 'prepare_publish'
+      | 'publish_now'
+    opsDraftId: string
+    tone?: 'default' | 'warn' | 'danger' | 'success'
+  }>
+}
+
+interface DailyOpsBrief {
+  headline: string
+  summary: string
+  cards: DailyOpsBriefCard[]
+}
+
+interface DailyCommandCenterAction {
+  label: string
+  href: string
+  tone?: 'default' | 'warn' | 'danger' | 'success'
+}
+
+interface DailyCommandCenter {
+  headline: string
+  summary: string
+  modules: DailyOpsBriefCard[]
+  quickActions: DailyCommandCenterAction[]
+}
+
+interface AdminReminderProfile {
+  adminReminderEmail?: string | null
+  adminReminderPhone?: string | null
+  adminReminderChannel?: string | null
+}
+
+interface OpsTeammate {
+  id: string
+  role: string
+  name: string
+  email?: string | null
+  label: string
+}
+
+type OpsActionPanelState =
+  | {
+      type: 'assign_teammate'
+      draftId: string
+      assigneeUserId: string
+    }
+  | {
+      type: 'prepare_publish'
+      draftId: string
+      publishDate: string
+      title: string
+      description: string
+    }
+  | {
+      type: 'edit_published_session'
+      draftId: string
+      publishDate: string
+      title: string
+      description: string
+      startTime: string
+      endTime: string
+      maxPlayers: string
+    }
+
 interface AgentIQProps {
   clubId: string
   activity?: {
@@ -344,13 +676,23 @@ interface AgentIQProps {
   pending?: PendingAction[] | null
   advisorDrafts?: AdvisorDraftWorkspaceItem[] | null
   opsSessionDrafts?: OpsSessionDraftItem[] | null
+  opsTeammates?: OpsTeammate[] | null
+  decisionRecords?: AgentDecisionRecordItem[] | null
   isLoading: boolean
   agentLive: boolean
   intelligenceSettings?: any
+  outreachRolloutStatus?: any
   approveAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   skipAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   snoozeAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
   promoteOpsSessionDraft: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  createFillSessionDraftFromSchedule?: { mutate: (input: any, opts?: any) => void; isPending?: boolean }
+  prepareOpsSessionDraftPublish: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  publishOpsSessionDraftToSchedule: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  updatePublishedOpsSessionDraft: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  rollbackPublishedOpsSessionDraft: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  updateOpsSessionDraftWorkflow: { mutate: (input: any, opts?: any) => void; isPending: boolean }
+  shadowBackOutreachRolloutAction: { mutate: (input: any, opts?: any) => void; isPending: boolean }
 }
 
 // ── Card ──
@@ -434,6 +776,71 @@ function TriggerOutcomeBadge({ outcome }: { outcome?: string | null }) {
       {item.label}
     </span>
   )
+}
+
+function ControlPlaneModeBadge({ mode }: { mode: string }) {
+  const map: Record<string, { label: string; bg: string; text: string }> = {
+    live: { label: 'Live', bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
+    shadow: { label: 'Shadow', bg: 'rgba(59,130,246,0.12)', text: '#60A5FA' },
+    disabled: { label: 'Locked', bg: 'rgba(239,68,68,0.12)', text: '#F87171' },
+  }
+  const item = map[mode] || { label: mode, bg: 'rgba(107,114,128,0.12)', text: '#9CA3AF' }
+  return (
+    <span
+      className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+      style={{ background: item.bg, color: item.text }}
+    >
+      {item.label}
+    </span>
+  )
+}
+
+function PilotHealthBadge({ health }: { health: 'idle' | 'healthy' | 'watch' | 'at_risk' }) {
+  const map = {
+    healthy: { label: 'Healthy', bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
+    watch: { label: 'Watch', bg: 'rgba(245,158,11,0.12)', text: '#F59E0B' },
+    at_risk: { label: 'At Risk', bg: 'rgba(239,68,68,0.12)', text: '#F87171' },
+    idle: { label: 'Idle', bg: 'rgba(148,163,184,0.14)', text: '#CBD5E1' },
+  } as const
+  const item = map[health] || map.idle
+  return (
+    <span
+      className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+      style={{ background: item.bg, color: item.text }}
+    >
+      {item.label}
+    </span>
+  )
+}
+
+function ControlPlaneDecisionResultBadge({ result }: { result: string }) {
+  const map: Record<string, { label: string; bg: string; text: string }> = {
+    executed: { label: 'Executed', bg: 'rgba(16,185,129,0.12)', text: '#10B981' },
+    shadowed: { label: 'Shadowed', bg: 'rgba(59,130,246,0.12)', text: '#60A5FA' },
+    blocked: { label: 'Blocked', bg: 'rgba(239,68,68,0.12)', text: '#F87171' },
+    reviewed: { label: 'Reviewed', bg: 'rgba(139,92,246,0.12)', text: '#A78BFA' },
+    failed: { label: 'Failed', bg: 'rgba(239,68,68,0.12)', text: '#F87171' },
+  }
+  const item = map[result] || { label: result, bg: 'rgba(107,114,128,0.12)', text: '#9CA3AF' }
+  return (
+    <span
+      className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
+      style={{ background: item.bg, color: item.text }}
+    >
+      {item.label}
+    </span>
+  )
+}
+
+function formatControlPlaneActionLabel(action: string) {
+  const map: Record<string, string> = {
+    outreachSend: 'Outreach send',
+    schedulePublish: 'Schedule publish',
+    scheduleLiveEdit: 'Live edit',
+    scheduleLiveRollback: 'Live rollback',
+    adminReminderExternal: 'Admin reminders',
+  }
+  return map[action] || action
 }
 
 // ── Type icon ──
@@ -847,80 +1254,172 @@ function dailyTodoToneStyles(tone: DailyAdminTodoItem["tone"]) {
 }
 
 function buildDailyTodoReminderOptions(now: Date) {
+  const options: DailyTodoReminderOption[] = []
+  const seen = new Set<string>()
+  const pushOption = (option: DailyTodoReminderOption) => {
+    if (seen.has(option.id)) return
+    const remindAt = new Date(option.remindAt)
+    if (Number.isNaN(remindAt.getTime())) return
+    if (remindAt.getTime() <= now.getTime() + 20 * 60 * 1000) return
+    seen.add(option.id)
+    options.push(option)
+  }
+
   const oneHour = new Date(now.getTime() + 60 * 60 * 1000)
   const threeHours = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+  const beforeLunch = new Date(now)
+  beforeLunch.setHours(11, 30, 0, 0)
   const afterLunch = new Date(now)
   afterLunch.setHours(13, 30, 0, 0)
-  const beforeSix = new Date(now)
-  beforeSix.setHours(17, 0, 0, 0)
+  const beforeEveningPush = new Date(now)
+  beforeEveningPush.setHours(17, 0, 0, 0)
   const todayEvening = new Date(now)
   todayEvening.setHours(18, 0, 0, 0)
   const tomorrowMorning = new Date(now)
   tomorrowMorning.setDate(tomorrowMorning.getDate() + 1)
   tomorrowMorning.setHours(9, 0, 0, 0)
+  const tomorrowAfterLunch = new Date(now)
+  tomorrowAfterLunch.setDate(tomorrowAfterLunch.getDate() + 1)
+  tomorrowAfterLunch.setHours(13, 30, 0, 0)
+  const tomorrowBeforeClose = new Date(now)
+  tomorrowBeforeClose.setDate(tomorrowBeforeClose.getDate() + 1)
+  tomorrowBeforeClose.setHours(17, 0, 0, 0)
 
-  const options: DailyTodoReminderOption[] = [
-    {
-      id: '1h',
-      label: '1h',
-      description: 'Remind in 1 hour',
-      remindAt: oneHour.toISOString(),
-      remindLabel: 'in 1 hour',
-    },
-    {
-      id: '3h',
-      label: '3h',
-      description: 'Remind in 3 hours',
-      remindAt: threeHours.toISOString(),
-      remindLabel: 'in 3 hours',
-    },
-  ]
-
-  if (afterLunch.getTime() > now.getTime() + 20 * 60 * 1000) {
-    options.push({
-      id: 'after-lunch',
-      label: 'After lunch',
-      description: 'Bring this back after lunch',
-      remindAt: afterLunch.toISOString(),
-      remindLabel: 'after lunch',
-    })
-  }
-
-  if (beforeSix.getTime() > now.getTime() + 20 * 60 * 1000) {
-    options.push({
-      id: 'before-6pm',
-      label: 'Before 6 PM',
-      description: 'Bring this back before the evening push',
-      remindAt: beforeSix.toISOString(),
-      remindLabel: 'before 6 PM',
-    })
-  }
-
-  if (todayEvening.getTime() > now.getTime() + 20 * 60 * 1000) {
-    options.push({
-      id: 'today-6pm',
-      label: '6 PM',
-      description: 'Bring this back today at 6 PM',
-      remindAt: todayEvening.toISOString(),
-      remindLabel: 'today at 6 PM',
-    })
-  }
-
-  options.push({
+  pushOption({
+    id: '1h',
+    label: '1h',
+    description: 'Remind in 1 hour',
+    remindAt: oneHour.toISOString(),
+    remindLabel: 'in 1 hour',
+  })
+  pushOption({
+    id: '3h',
+    label: '3h',
+    description: 'Remind in 3 hours',
+    remindAt: threeHours.toISOString(),
+    remindLabel: 'in 3 hours',
+  })
+  pushOption({
+    id: 'before-lunch',
+    label: 'Before lunch',
+    description: 'Bring this back before lunch service starts',
+    remindAt: beforeLunch.toISOString(),
+    remindLabel: 'before lunch',
+  })
+  pushOption({
+    id: 'after-lunch',
+    label: 'After lunch',
+    description: 'Bring this back after lunch',
+    remindAt: afterLunch.toISOString(),
+    remindLabel: 'after lunch',
+  })
+  pushOption({
+    id: 'before-evening-push',
+    label: 'Before evening push',
+    description: 'Bring this back before the evening member push',
+    remindAt: beforeEveningPush.toISOString(),
+    remindLabel: 'before the evening push',
+  })
+  pushOption({
+    id: 'today-6pm',
+    label: 'At close',
+    description: 'Bring this back today around close',
+    remindAt: todayEvening.toISOString(),
+    remindLabel: 'today at close',
+  })
+  pushOption({
     id: 'tomorrow-9am',
-    label: 'Tomorrow',
-    description: 'Remind tomorrow at 9 AM',
+    label: 'Before open',
+    description: 'Remind tomorrow before the club opens',
     remindAt: tomorrowMorning.toISOString(),
-    remindLabel: 'tomorrow at 9 AM',
+    remindLabel: 'tomorrow before open',
+  })
+  pushOption({
+    id: 'tomorrow-lunch',
+    label: 'Tomorrow lunch',
+    description: 'Bring this back tomorrow after lunch',
+    remindAt: tomorrowAfterLunch.toISOString(),
+    remindLabel: 'tomorrow after lunch',
+  })
+  pushOption({
+    id: 'tomorrow-5pm',
+    label: 'Tomorrow PM',
+    description: 'Bring this back tomorrow before the evening push',
+    remindAt: tomorrowBeforeClose.toISOString(),
+    remindLabel: 'tomorrow before close',
   })
 
   return options
+}
+
+function normalizeAdminReminderDeliveryMode(value: unknown): AdminReminderDeliveryMode {
+  return value === 'email' || value === 'sms' || value === 'both' ? value : 'in_app'
+}
+
+function formatAdminReminderDeliveryMode(value: AdminReminderDeliveryMode) {
+  switch (value) {
+    case 'email':
+      return 'email'
+    case 'sms':
+      return 'SMS'
+    case 'both':
+      return 'email + SMS'
+    default:
+      return 'in-app'
+  }
+}
+
+function getPreferredDailyTodoReminderChannel(profile?: AdminReminderProfile | null): AdminReminderDeliveryMode {
+  const preferred = normalizeAdminReminderDeliveryMode(profile?.adminReminderChannel)
+  const hasEmail = Boolean(profile?.adminReminderEmail?.trim())
+  const hasPhone = Boolean(profile?.adminReminderPhone?.trim())
+
+  if (preferred === 'email') return hasEmail ? 'email' : 'in_app'
+  if (preferred === 'sms') return hasPhone ? 'sms' : 'in_app'
+  if (preferred === 'both') return hasEmail && hasPhone ? 'both' : 'in_app'
+
+  return 'in_app'
+}
+
+function buildDailyTodoReminderChannelOptions(
+  profile?: AdminReminderProfile | null,
+): DailyTodoReminderChannelOption[] {
+  const hasEmail = Boolean(profile?.adminReminderEmail?.trim())
+  const hasPhone = Boolean(profile?.adminReminderPhone?.trim())
+
+  return [
+    {
+      id: 'in_app',
+      label: 'In app',
+      description: 'Bring this back in the daily board and inbox',
+      available: true,
+    },
+    {
+      id: 'email',
+      label: 'Email',
+      description: hasEmail ? 'Email me when it is due' : 'Add a reminder email first',
+      available: hasEmail,
+    },
+    {
+      id: 'sms',
+      label: 'SMS',
+      description: hasPhone ? 'Text me when it is due' : 'Add a reminder phone first',
+      available: hasPhone,
+    },
+    {
+      id: 'both',
+      label: 'Both',
+      description: hasEmail && hasPhone ? 'Use email and SMS together' : 'Need both reminder email and phone',
+      available: hasEmail && hasPhone,
+    },
+  ]
 }
 
 function getDailyTodoReminder(record: AdminTodoDecisionRecord) {
   const metadata = record.metadata as Record<string, unknown> | null | undefined
   const remindAtValue = typeof metadata?.remindAt === 'string' ? metadata.remindAt : null
   const remindLabel = typeof metadata?.remindLabel === 'string' ? metadata.remindLabel : null
+  const reminderChannel = normalizeAdminReminderDeliveryMode(metadata?.reminderChannel)
 
   if (!remindAtValue) return null
 
@@ -930,7 +1429,191 @@ function getDailyTodoReminder(record: AdminTodoDecisionRecord) {
   return {
     remindAt,
     remindLabel,
+    reminderChannel,
   }
+}
+
+function getOpsWorkflowMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.opsWorkflow || null
+}
+
+function getOpsHandoffMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.handoff || null
+}
+
+function getOpsSessionDraftPublishMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.sessionDraft || null
+}
+
+function getOpsSessionDraftPublishReviewMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.sessionDraft?.review || null
+}
+
+function getOpsSessionDraftLiveFeedbackMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.sessionDraft?.liveFeedback || null
+}
+
+function getOpsSessionDraftAftercareMeta(draft: OpsSessionDraftItem) {
+  return draft.metadata?.sessionDraft?.aftercare || null
+}
+
+function getOpsTimelineMeta(draft: OpsSessionDraftItem) {
+  return Array.isArray(draft.metadata?.timeline)
+    ? draft.metadata.timeline.filter((event) => event && typeof event === 'object')
+    : []
+}
+
+function isSameCalendarDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate()
+  )
+}
+
+function getOpsDueMeta(draft: OpsSessionDraftItem, now = new Date()) {
+  if (draft.status === 'archived' || draft.status === 'rejected') return null
+  const workflow = getOpsWorkflowMeta(draft)
+  if (!workflow?.dueAt) {
+    return workflow?.dueLabel
+      ? {
+          state: 'none' as OpsDueState,
+          label: workflow.dueLabel,
+          accent: '#94A3B8',
+          background: 'rgba(148,163,184,0.12)',
+          border: 'rgba(148,163,184,0.2)',
+          dueAt: null,
+        }
+      : null
+  }
+
+  const dueAt = new Date(workflow.dueAt)
+  if (Number.isNaN(dueAt.getTime())) {
+    return workflow?.dueLabel
+      ? {
+          state: 'none' as OpsDueState,
+          label: workflow.dueLabel,
+          accent: '#94A3B8',
+          background: 'rgba(148,163,184,0.12)',
+          border: 'rgba(148,163,184,0.2)',
+          dueAt: null,
+        }
+      : null
+  }
+
+  const diffMs = dueAt.getTime() - now.getTime()
+  const twoHoursMs = 2 * 60 * 60 * 1000
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  let state: OpsDueState = 'scheduled'
+  let label = workflow?.dueLabel || dueAt.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  let accent = '#94A3B8'
+  let background = 'rgba(148,163,184,0.12)'
+  let border = 'rgba(148,163,184,0.2)'
+
+  if (diffMs < 0) {
+    state = 'overdue'
+    label = 'Overdue'
+    accent = '#EF4444'
+    background = 'rgba(239,68,68,0.12)'
+    border = 'rgba(239,68,68,0.2)'
+  } else if (diffMs <= twoHoursMs) {
+    state = 'due_soon'
+    label = 'Due soon'
+    accent = '#F97316'
+    background = 'rgba(249,115,22,0.12)'
+    border = 'rgba(249,115,22,0.2)'
+  } else if (isSameCalendarDay(dueAt, now)) {
+    state = 'due_today'
+    label = workflow?.dueLabel || 'Due today'
+    accent = '#F59E0B'
+    background = 'rgba(245,158,11,0.12)'
+    border = 'rgba(245,158,11,0.2)'
+  } else if (isSameCalendarDay(dueAt, tomorrow)) {
+    state = 'due_tomorrow'
+    label = workflow?.dueLabel || 'Due tomorrow'
+    accent = '#60A5FA'
+    background = 'rgba(96,165,250,0.12)'
+    border = 'rgba(96,165,250,0.2)'
+  }
+
+  return {
+    state,
+    label,
+    accent,
+    background,
+    border,
+    dueAt,
+  }
+}
+
+function getOpsWorkflowDueLabel(draft: OpsSessionDraftItem) {
+  return getOpsDueMeta(draft)?.label || null
+}
+
+function getOpsDueRank(draft: OpsSessionDraftItem, now = new Date()) {
+  const state = getOpsDueMeta(draft, now)?.state || 'none'
+  switch (state) {
+    case 'overdue':
+      return 0
+    case 'due_soon':
+      return 1
+    case 'due_today':
+      return 2
+    case 'due_tomorrow':
+      return 3
+    case 'scheduled':
+      return 4
+    default:
+      return 5
+  }
+}
+
+function getDailyOwnershipViewCopy(view: DailyOwnershipView) {
+  if (view === 'mine') {
+    return {
+      briefTitle: 'Today’s Ops Brief · My Work',
+      briefDescription: 'Your assigned and owned ops work first, with club-wide approvals still visible when they need a human.',
+      todoDescription: 'The agent’s recommended worklist for what is on you right now, with shared approvals still kept visible.',
+    }
+  }
+
+  return {
+    briefTitle: "Today’s Ops Brief",
+    briefDescription: 'The full club operating picture across approvals, ops drafts, programming, and blockers.',
+    todoDescription: 'The agent’s recommended worklist for the club manager across today, tomorrow, and the next blockers.',
+  }
+}
+
+function getNextDateForDay(dayOfWeek: string, now = new Date()) {
+  const targetIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    .findIndex((day) => day.toLowerCase() === dayOfWeek.toLowerCase())
+  if (targetIndex < 0) return now.toISOString().slice(0, 10)
+
+  const next = new Date(now)
+  next.setHours(12, 0, 0, 0)
+  const delta = (targetIndex - next.getDay() + 7) % 7 || 7
+  next.setDate(next.getDate() + delta)
+  return next.toISOString().slice(0, 10)
+}
+
+function getOpsSessionLiveFeedbackTone(status?: 'ahead' | 'tracking' | 'behind' | 'at_risk' | null) {
+  if (status === 'ahead') {
+    return { label: 'Ahead of plan', color: '#10B981', background: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.18)' }
+  }
+  if (status === 'at_risk') {
+    return { label: 'Needs help soon', color: '#EF4444', background: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.18)' }
+  }
+  if (status === 'behind') {
+    return { label: 'Behind plan', color: '#F59E0B', background: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.18)' }
+  }
+  return { label: 'Tracking', color: '#06B6D4', background: 'rgba(6,182,212,0.08)', border: 'rgba(6,182,212,0.18)' }
 }
 
 function actionLabel(action: string) {
@@ -981,9 +1664,60 @@ function formatProgrammingWindow(primary: ProgrammingPreviewProposal) {
   return `${primary.dayOfWeek} · ${primary.startTime}-${primary.endTime} · ${formatProgrammingValue(primary.format)} · ${formatProgrammingValue(primary.skillLevel)}`
 }
 
+function getProgrammingOperationalScore(proposal: ProgrammingPreviewProposal) {
+  const conflictPenalty = proposal.conflict
+    ? (
+      (proposal.conflict.overlapRisk === 'high' ? 6 : proposal.conflict.overlapRisk === 'medium' ? 3 : 0) +
+      (proposal.conflict.cannibalizationRisk === 'high' ? 8 : proposal.conflict.cannibalizationRisk === 'medium' ? 4 : 0) +
+      (proposal.conflict.courtPressureRisk === 'high' ? 5 : proposal.conflict.courtPressureRisk === 'medium' ? 2 : 0)
+    )
+    : 0
+
+  return (
+    proposal.confidence * 1.2 +
+    proposal.projectedOccupancy * 0.45 +
+    proposal.estimatedInterestedMembers * 1.3 -
+    conflictPenalty
+  )
+}
+
+function getProgrammingConflictSeverity(level?: 'low' | 'medium' | 'high' | null) {
+  if (level === 'high') return 2
+  if (level === 'medium') return 1
+  return 0
+}
+
 function sortProgrammingDrafts(drafts: ProgrammingDraftCard[]) {
   return [...drafts].sort((left, right) => {
+    const rightOperationalScore = getProgrammingOperationalScore(right.primary)
+    const leftOperationalScore = getProgrammingOperationalScore(left.primary)
+    if (rightOperationalScore !== leftOperationalScore) {
+      return rightOperationalScore - leftOperationalScore
+    }
     if (right.primary.confidence !== left.primary.confidence) return right.primary.confidence - left.primary.confidence
+    if (right.primary.projectedOccupancy !== left.primary.projectedOccupancy) {
+      return right.primary.projectedOccupancy - left.primary.projectedOccupancy
+    }
+    return right.primary.estimatedInterestedMembers - left.primary.estimatedInterestedMembers
+  })
+}
+
+function sortProgrammingDraftsBySafety(drafts: ProgrammingDraftCard[]) {
+  return [...drafts].sort((left, right) => {
+    const riskComparisons = [
+      getProgrammingConflictSeverity(left.primary.conflict?.overallRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overallRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.cannibalizationRisk) - getProgrammingConflictSeverity(right.primary.conflict?.cannibalizationRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.overlapRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overlapRisk),
+      getProgrammingConflictSeverity(left.primary.conflict?.courtPressureRisk) - getProgrammingConflictSeverity(right.primary.conflict?.courtPressureRisk),
+    ]
+
+    for (const delta of riskComparisons) {
+      if (delta !== 0) return delta
+    }
+
+    if (right.primary.confidence !== left.primary.confidence) {
+      return right.primary.confidence - left.primary.confidence
+    }
     if (right.primary.projectedOccupancy !== left.primary.projectedOccupancy) {
       return right.primary.projectedOccupancy - left.primary.projectedOccupancy
     }
@@ -1010,7 +1744,9 @@ function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
     }))
 
   const ranked = sortProgrammingDrafts(cards)
+  const safestRanked = sortProgrammingDraftsBySafety(cards)
   const strongest = ranked[0] || null
+  const safest = safestRanked[0] || null
   const totalIdeas = ranked.reduce((sum, draft) => sum + 1 + draft.alternatives.length, 0)
   const totalOpsDrafts = ranked.reduce((sum, draft) => sum + draft.opsSessionDrafts.length, 0)
   const avgProjectedFill = ranked.length
@@ -1026,6 +1762,7 @@ function buildProgrammingCockpit(drafts: AdvisorDraftWorkspaceItem[]) {
   return {
     cards: ranked,
     strongest,
+    safest,
     totalIdeas,
     totalOpsDrafts,
     avgProjectedFill,
@@ -1123,7 +1860,7 @@ function buildProgrammingOpsBoard(drafts: AdvisorDraftWorkspaceItem[]) {
   return stages
 }
 
-function sortOpsSessionDrafts(drafts: OpsSessionDraftItem[]) {
+function sortOpsSessionDrafts(drafts: OpsSessionDraftItem[], now = new Date()) {
   const dayOrder = new Map([
     ['Monday', 1],
     ['Tuesday', 2],
@@ -1140,6 +1877,14 @@ function sortOpsSessionDrafts(drafts: OpsSessionDraftItem[]) {
   ])
 
   return [...drafts].sort((left, right) => {
+    const leftDueRank = getOpsDueRank(left, now)
+    const rightDueRank = getOpsDueRank(right, now)
+    if (leftDueRank !== rightDueRank) return leftDueRank - rightDueRank
+
+    const leftDueAt = getOpsDueMeta(left, now)?.dueAt?.getTime() || Number.POSITIVE_INFINITY
+    const rightDueAt = getOpsDueMeta(right, now)?.dueAt?.getTime() || Number.POSITIVE_INFINITY
+    if (leftDueAt !== rightDueAt) return leftDueAt - rightDueAt
+
     const leftDay = dayOrder.get(left.dayOfWeek) || 99
     const rightDay = dayOrder.get(right.dayOfWeek) || 99
     if (leftDay !== rightDay) return leftDay - rightDay
@@ -1153,7 +1898,16 @@ function sortOpsSessionDrafts(drafts: OpsSessionDraftItem[]) {
   })
 }
 
-function buildOpsSessionDraftQueue(drafts: OpsSessionDraftItem[]) {
+function getOpsDraftOwnerUserId(draft: OpsSessionDraftItem) {
+  return draft.metadata?.opsWorkflow?.ownerUserId || draft.metadata?.handoff?.ownerUserId || null
+}
+
+function buildOpsSessionDraftQueue(
+  drafts: OpsSessionDraftItem[],
+  currentUserId?: string | null,
+  ownershipFilter: OpsOwnershipFilter = 'all',
+) {
+  const now = new Date()
   const stages: OpsSessionDraftStage[] = [
     {
       key: 'ready_for_ops',
@@ -1191,250 +1945,1171 @@ function buildOpsSessionDraftQueue(drafts: OpsSessionDraftItem[]) {
   }
 
   for (const stage of stages) {
-    stage.drafts = sortOpsSessionDrafts(stage.drafts)
+    const filteredDrafts = stage.drafts.filter((draft) => {
+      if (ownershipFilter === 'all') return true
+      const ownerUserId = getOpsDraftOwnerUserId(draft)
+      if (ownershipFilter === 'mine') return !!currentUserId && ownerUserId === currentUserId
+      return !ownerUserId
+    })
+
+    stage.drafts = sortOpsSessionDrafts(filteredDrafts, now).sort((left, right) => {
+      if (!currentUserId) return 0
+
+      const getOwnershipRank = (draft: OpsSessionDraftItem) => {
+        const ownerUserId = getOpsDraftOwnerUserId(draft)
+        if (ownerUserId === currentUserId) return 0
+        if (!ownerUserId) return 1
+        return 2
+      }
+
+      return getOwnershipRank(left) - getOwnershipRank(right)
+    })
   }
 
   return stages
 }
 
-function buildDailyAdminTodoSections(args: {
+function buildOpsEscalationSignals(args: {
+  opsSessionDraftQueue: ReturnType<typeof buildOpsSessionDraftQueue>
+  currentUserId?: string | null
+  ownershipView: DailyOwnershipView
+  now?: Date
+}) {
+  const { opsSessionDraftQueue, currentUserId, ownershipView, now = new Date() } = args
+  const readyOpsDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts || []
+  const sessionDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts || []
+  const activeDrafts = [...readyOpsDrafts, ...sessionDrafts]
+
+  const overdueDrafts = activeDrafts.filter((draft) => getOpsDueMeta(draft, now)?.state === 'overdue')
+  const dueSoonDrafts = activeDrafts.filter((draft) => getOpsDueMeta(draft, now)?.state === 'due_soon')
+  const unassignedOverdueDrafts = overdueDrafts.filter((draft) => !getOpsDraftOwnerUserId(draft))
+  const assignedOverdueDrafts = overdueDrafts.filter((draft) => !!getOpsDraftOwnerUserId(draft))
+  const mineOverdueDrafts = currentUserId
+    ? overdueDrafts.filter((draft) => getOpsDraftOwnerUserId(draft) === currentUserId)
+    : []
+  const mineDueSoonDrafts = currentUserId
+    ? dueSoonDrafts.filter((draft) => getOpsDraftOwnerUserId(draft) === currentUserId)
+    : []
+  const staleAssignedDrafts = activeDrafts.filter((draft) => {
+    const ownerUserId = getOpsDraftOwnerUserId(draft)
+    if (!ownerUserId) return false
+    const workflow = getOpsWorkflowMeta(draft)
+    const staleAt = workflow?.lastActionAt || workflow?.ownerAssignedAt
+    if (!staleAt) return false
+    const staleDate = new Date(staleAt)
+    if (Number.isNaN(staleDate.getTime())) return false
+    return now.getTime() - staleDate.getTime() >= 24 * 60 * 60 * 1000
+  })
+  const needsReassignmentDrafts = staleAssignedDrafts.filter((draft) => {
+    const ownerUserId = getOpsDraftOwnerUserId(draft)
+    if (!ownerUserId) return false
+    if (ownershipView === 'mine') return ownerUserId === currentUserId
+    return !currentUserId || ownerUserId !== currentUserId
+  })
+
+  return {
+    overdueDrafts,
+    dueSoonDrafts,
+    unassignedOverdueDrafts,
+    assignedOverdueDrafts,
+    mineOverdueDrafts,
+    mineDueSoonDrafts,
+    staleAssignedDrafts,
+    needsReassignmentDrafts,
+    topOverdueDraft: overdueDrafts[0] || null,
+    topUnassignedOverdueDraft: unassignedOverdueDrafts[0] || null,
+    topMineOverdueDraft: mineOverdueDrafts[0] || null,
+    topMineDueSoonDraft: mineDueSoonDrafts[0] || null,
+    topNeedsReassignmentDraft: needsReassignmentDrafts[0] || null,
+  }
+}
+
+function buildPublishedSessionSignals(opsSessionDraftQueue: ReturnType<typeof buildOpsSessionDraftQueue>) {
+  const archivedDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'archived')?.drafts || []
+  const publishedDrafts = archivedDrafts.filter((draft) =>
+    !!getOpsSessionDraftPublishMeta(draft)?.publishedPlaySessionId && !!getOpsSessionDraftLiveFeedbackMeta(draft),
+  )
+
+  const ranked = [...publishedDrafts].sort((left, right) => {
+    const getRank = (draft: OpsSessionDraftItem) => {
+      const status = getOpsSessionDraftLiveFeedbackMeta(draft)?.status
+      if (status === 'at_risk') return 0
+      if (status === 'behind') return 1
+      if (status === 'tracking') return 2
+      return 3
+    }
+    const rankDelta = getRank(left) - getRank(right)
+    if (rankDelta !== 0) return rankDelta
+    const leftDelta = getOpsSessionDraftLiveFeedbackMeta(left)?.occupancyDelta || 0
+    const rightDelta = getOpsSessionDraftLiveFeedbackMeta(right)?.occupancyDelta || 0
+    return leftDelta - rightDelta
+  })
+
+  const atRiskDrafts = ranked.filter((draft) => {
+    const status = getOpsSessionDraftLiveFeedbackMeta(draft)?.status
+    return status === 'at_risk' || status === 'behind'
+  })
+  const healthyDrafts = ranked.filter((draft) => {
+    const status = getOpsSessionDraftLiveFeedbackMeta(draft)?.status
+    return status === 'tracking' || status === 'ahead'
+  })
+
+  return {
+    publishedDrafts: ranked,
+    atRiskDrafts,
+    healthyDrafts,
+    topAtRiskDraft: atRiskDrafts[0] || null,
+    topHealthyDraft: healthyDrafts[0] || null,
+  }
+}
+
+function getOpsMomentLabel(now: Date) {
+  const hour = now.getHours()
+  if (hour < 12) return 'before lunch'
+  if (hour < 17) return 'this afternoon'
+  return 'before close'
+}
+
+function buildDailyOpsBrief(args: {
   clubId: string
+  now: Date
+  actionsToday: number
   pendingActions: PendingAction[]
   autopilotSummary: ReturnType<typeof buildAutopilotSummary>
-  proactiveOpportunities: ProactiveOpportunity[]
-  membershipLifecycleCards: MembershipLifecycleAutopilotCard[]
   programmingCockpit: ReturnType<typeof buildProgrammingCockpit>
   opsSessionDraftQueue: ReturnType<typeof buildOpsSessionDraftQueue>
   sandboxDrafts: AdvisorDraftWorkspaceItem[]
   policyScenarios: AgentPolicyScenario[]
-}) {
+  currentUserId?: string | null
+  ownershipView: DailyOwnershipView
+  upcomingReminders: Array<{
+    itemId: string
+    title: string
+    label: string
+    channel: AdminReminderDeliveryMode
+    remindAt: Date
+  }>
+}): DailyOpsBrief {
   const {
     clubId,
+    now,
+    actionsToday,
     pendingActions,
     autopilotSummary,
-    proactiveOpportunities,
-    membershipLifecycleCards,
     programmingCockpit,
     opsSessionDraftQueue,
     sandboxDrafts,
     policyScenarios,
+    currentUserId,
+    ownershipView,
+    upcomingReminders,
   } = args
 
-  const newestSandboxDraft = [...sandboxDrafts]
-    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0] || null
-  const readyOpsDraft = opsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts[0] || null
-  const sessionDraft = opsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts[0] || null
-  const pendingLifecycleOpportunity = proactiveOpportunities.find((opportunity) => opportunity.pendingCount > 0) || null
-  const blockedLifecycleCard = [...membershipLifecycleCards]
-    .sort((left, right) => right.blockedCount - left.blockedCount)[0] || null
-  const bestScenario = [...policyScenarios]
-    .sort((left, right) => right.autoGain - left.autoGain)[0] || null
+  const dayStart = new Date(now)
+  dayStart.setHours(0, 0, 0, 0)
+  const closeTime = new Date(now)
+  closeTime.setHours(18, 0, 0, 0)
+  const momentLabel = getOpsMomentLabel(now)
 
-  return [
+  const readyOpsDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts || []
+  const sessionDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts || []
+  const activeOpsDrafts = [...readyOpsDrafts, ...sessionDrafts]
+  const opsEscalations = buildOpsEscalationSignals({ opsSessionDraftQueue, currentUserId, ownershipView, now })
+  const publishedSignals = buildPublishedSessionSignals(opsSessionDraftQueue)
+  const publishedDrafts = publishedSignals.publishedDrafts
+  const publishedAtRiskDrafts = publishedSignals.atRiskDrafts
+  const topPublishedAtRisk = publishedSignals.topAtRiskDraft
+  const topPublishedHealthy = publishedSignals.topHealthyDraft
+  const overdueOpsDrafts = activeOpsDrafts.filter((draft) => getOpsDueMeta(draft, now)?.state === 'overdue')
+  const dueSoonOpsDrafts = activeOpsDrafts.filter((draft) => getOpsDueMeta(draft, now)?.state === 'due_soon')
+  const dueTodayOpsDrafts = activeOpsDrafts.filter((draft) => {
+    const state = getOpsDueMeta(draft, now)?.state
+    return state === 'overdue' || state === 'due_soon' || state === 'due_today'
+  })
+  const topUrgentOpsDraft =
+    [...activeOpsDrafts].sort((left, right) => getOpsDueRank(left, now) - getOpsDueRank(right, now))[0] || null
+  const freshSandboxDrafts = sandboxDrafts.filter((draft) => new Date(draft.updatedAt).getTime() >= dayStart.getTime())
+  const remindersBeforeClose = upcomingReminders.filter((reminder) => reminder.remindAt.getTime() <= closeTime.getTime())
+  const topBlockedReason = autopilotSummary.topBlockedReasons[0] || null
+  const bestScenario = [...policyScenarios].sort((left, right) => right.autoGain - left.autoGain)[0] || null
+  const strongestProgramming = programmingCockpit.strongest || null
+  const safestProgramming = programmingCockpit.safest || null
+  const urgentOpsDraftIds = new Set([
+    ...readyOpsDrafts.map((draft) => draft.id),
+    ...dueTodayOpsDrafts.map((draft) => draft.id),
+  ])
+  const urgentCount = pendingActions.length + urgentOpsDraftIds.size + remindersBeforeClose.length + publishedAtRiskDrafts.length
+  const blockedCount = autopilotSummary.counts.blocked + autopilotSummary.membershipHeldCount
+
+  const headline = urgentCount > 0
+    ? `${urgentCount} operator move${urgentCount === 1 ? '' : 's'} need attention ${momentLabel}`
+    : `The board looks clear ${momentLabel}`
+
+  const summary = [
+    `${actionsToday} agent action${actionsToday === 1 ? '' : 's'} landed today`,
+    freshSandboxDrafts.length > 0 ? `${freshSandboxDrafts.length} fresh sandbox preview${freshSandboxDrafts.length === 1 ? '' : 's'} are ready` : null,
+    sessionDrafts.length > 0 ? `${sessionDrafts.length} internal session draft${sessionDrafts.length === 1 ? '' : 's'} are already staged` : null,
+    publishedDrafts.length > 0
+      ? `${publishedDrafts.length} published session${publishedDrafts.length === 1 ? '' : 's'} are feeding back into the agent now`
+      : null,
+    ownershipView === 'mine' && opsEscalations.mineOverdueDrafts.length > 0
+      ? `${opsEscalations.mineOverdueDrafts.length} of your draft${opsEscalations.mineOverdueDrafts.length === 1 ? ' is' : 's are'} overdue`
+      : ownershipView === 'team' && opsEscalations.unassignedOverdueDrafts.length > 0
+        ? `${opsEscalations.unassignedOverdueDrafts.length} overdue ops draft${opsEscalations.unassignedOverdueDrafts.length === 1 ? '' : 's'} still have no owner`
+        : null,
+    publishedAtRiskDrafts.length > 0
+      ? `${publishedAtRiskDrafts.length} published session${publishedAtRiskDrafts.length === 1 ? ' is' : 's are'} trailing plan`
+      : null,
+    overdueOpsDrafts.length > 0
+      ? `${overdueOpsDrafts.length} ops draft${overdueOpsDrafts.length === 1 ? ' is' : 's are'} overdue`
+      : dueSoonOpsDrafts.length > 0
+        ? `${dueSoonOpsDrafts.length} ops draft${dueSoonOpsDrafts.length === 1 ? '' : 's'} are due soon`
+        : null,
+    blockedCount > 0 ? `${blockedCount} path${blockedCount === 1 ? ' is' : 's are'} still blocked` : 'no major autopilot blockers are showing right now',
+  ].filter(Boolean).join(', ') + '.'
+
+  const cards: DailyOpsBriefCard[] = [
     {
-      key: 'today',
-      label: 'Today',
-      description: 'Operational work to clear right now.',
-      color: '#10B981',
-      items: [
-        pendingActions.length > 0 ? {
-          id: 'today-pending',
-          title: 'Clear the approval queue',
-          description: `${pendingActions.length} action${pendingActions.length === 1 ? '' : 's'} are waiting for manual review right now.`,
-          ctaLabel: 'Open pending actions',
-          href: buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
-          tone: 'warn' as const,
-          count: pendingActions.length,
-        } : null,
-        readyOpsDraft ? {
-          id: `today-ops-${readyOpsDraft.id}`,
-          title: 'Move a ready ops draft forward',
-          description: `${readyOpsDraft.title} is ready for scheduling ops review and can be converted into a session draft.`,
-          ctaLabel: 'Open ops queue',
+      id: 'ops-brief-changes',
+      eyebrow: 'What changed',
+      title: actionsToday > 0 ? 'The agent already moved the day forward' : 'The agent has not moved much yet today',
+      description: actionsToday > 0
+        ? 'Use this as the fast read on what the system already prepared before you start making manual decisions.'
+        : 'This is a quieter day so far, which makes it a good window to review drafts and set up the next push.',
+      ctaLabel: topPublishedHealthy
+        ? 'Review live winner'
+        : freshSandboxDrafts.length > 0 ? 'Open preview inbox' : sessionDrafts.length > 0 ? 'Open session drafts' : 'Open agent cockpit',
+      href: topPublishedHealthy
+        ? buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            opsDraftId: topPublishedHealthy.id,
+            day: topPublishedHealthy.dayOfWeek,
+          })
+        : freshSandboxDrafts.length > 0
+          ? buildAgentFocusHref(clubId, { focus: 'preview-inbox' })
+        : sessionDrafts.length > 0
+          ? buildAgentFocusHref(clubId, { focus: 'ops-queue', opsDraftId: sessionDrafts[0]?.id, day: sessionDrafts[0]?.dayOfWeek })
+          : `/clubs/${clubId}/intelligence/agent`,
+      tone: actionsToday > 0 ? 'success' : 'default',
+      count: actionsToday,
+      bullets: [
+        `${actionsToday} action${actionsToday === 1 ? '' : 's'} already landed today`,
+        `${freshSandboxDrafts.length} preview${freshSandboxDrafts.length === 1 ? '' : 's'} refreshed today`,
+        `${sessionDrafts.length} internal session draft${sessionDrafts.length === 1 ? '' : 's'} already in ops`,
+        topPublishedHealthy
+          ? `${topPublishedHealthy.title} is ${getOpsSessionLiveFeedbackTone(getOpsSessionDraftLiveFeedbackMeta(topPublishedHealthy)?.status).label.toLowerCase()}`
+          : `${publishedDrafts.length} published session${publishedDrafts.length === 1 ? '' : 's'} are sending live feedback back to the agent`,
+      ],
+      secondaryActions: [
+        topPublishedHealthy ? {
+          label: 'Open live winner',
           href: buildAgentFocusHref(clubId, {
             focus: 'ops-queue',
-            day: readyOpsDraft.dayOfWeek,
-            opsDraftId: readyOpsDraft.id,
+            opsDraftId: topPublishedHealthy.id,
+            day: topPublishedHealthy.dayOfWeek,
           }),
           tone: 'success' as const,
-          count: `${readyOpsDraft.projectedOccupancy}%`,
         } : null,
-        newestSandboxDraft ? {
-          id: `today-sandbox-${newestSandboxDraft.id}`,
-          title: 'Review the latest sandbox preview',
-          description: `${newestSandboxDraft.title} has a safe preview ready before anything reaches real members.`,
-          ctaLabel: 'Open preview inbox',
-          href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
-          tone: 'default' as const,
-          count: newestSandboxDraft.metadata?.sandboxPreview?.recipientCount || null,
-        } : null,
-      ].filter(Boolean) as DailyAdminTodoItem[],
-    },
-    {
-      key: 'tomorrow',
-      label: 'Tomorrow',
-      description: 'The next planning moves the agent wants lined up.',
-      color: '#06B6D4',
-      items: [
-        programmingCockpit.strongest ? {
-          id: `tomorrow-programming-${programmingCockpit.strongest.id}`,
-          title: 'Pressure-test the strongest programming idea',
-          description: `${programmingCockpit.strongest.primary.title} is the strongest next schedule move based on current demand and occupancy.`,
-          ctaLabel: 'Open programming cockpit',
-          href: buildAgentFocusHref(clubId, {
-            focus: 'programming-cockpit',
-            day: programmingCockpit.strongest.primary.dayOfWeek,
-            draftId: programmingCockpit.strongest.id,
-          }),
-          tone: 'default' as const,
-          count: `${programmingCockpit.strongest.primary.projectedOccupancy}% fill`,
-        } : null,
-        sessionDraft ? {
-          id: `tomorrow-session-draft-${sessionDraft.id}`,
-          title: 'Finish the next internal session draft',
-          description: `${sessionDraft.title} is already in session-draft mode and is the cleanest ops handoff for tomorrow.`,
-          ctaLabel: 'Open session draft queue',
-          href: buildAgentFocusHref(clubId, {
-            focus: 'ops-queue',
-            day: sessionDraft.dayOfWeek,
-            opsDraftId: sessionDraft.id,
-          }),
+        topPublishedHealthy ? {
+          label: 'Repeat this slot',
+          href: buildPublishedSessionRepeatHref(clubId, topPublishedHealthy),
           tone: 'success' as const,
-          count: sessionDraft.estimatedInterestedMembers,
         } : null,
-        pendingLifecycleOpportunity && pendingActions.length === 0 ? {
-          id: `tomorrow-lifecycle-${pendingLifecycleOpportunity.id}`,
-          title: 'Prepare the next lifecycle push',
-          description: pendingLifecycleOpportunity.description,
-          ctaLabel: pendingLifecycleOpportunity.ctaLabel,
-          href: pendingLifecycleOpportunity.advisorPrompt
-            ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(pendingLifecycleOpportunity.advisorPrompt)}`
-            : buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
-          tone: 'default' as const,
-          count: pendingLifecycleOpportunity.pendingCount + pendingLifecycleOpportunity.blockedCount,
-        } : null,
-      ].filter(Boolean) as DailyAdminTodoItem[],
-    },
-    {
-      key: 'waiting',
-      label: 'Waiting On You',
-      description: 'The agent is staged and needs a human decision.',
-      color: '#F59E0B',
-      items: [
-        pendingLifecycleOpportunity ? {
-          id: `waiting-lifecycle-${pendingLifecycleOpportunity.id}`,
-          title: pendingLifecycleOpportunity.title,
-          description: pendingLifecycleOpportunity.description,
-          ctaLabel: pendingLifecycleOpportunity.ctaLabel,
-          href: pendingLifecycleOpportunity.pendingCount > 0
-            ? buildAgentFocusHref(clubId, { focus: 'pending-queue' })
-            : pendingLifecycleOpportunity.advisorPrompt
-              ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(pendingLifecycleOpportunity.advisorPrompt)}`
-              : buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
-          tone: 'warn' as const,
-          count: pendingLifecycleOpportunity.pendingCount || null,
-        } : null,
-        readyOpsDraft ? {
-          id: `waiting-ready-ops-${readyOpsDraft.id}`,
-          title: 'An ops draft is waiting for review',
-          description: `${readyOpsDraft.title} is sitting in Ready For Ops until someone converts it into a session draft.`,
-          ctaLabel: 'Review ops draft',
+        sessionDrafts.length > 0 ? {
+          label: 'Open session drafts',
           href: buildAgentFocusHref(clubId, {
             focus: 'ops-queue',
-            day: readyOpsDraft.dayOfWeek,
-            opsDraftId: readyOpsDraft.id,
+            opsDraftId: sessionDrafts[0]?.id,
+            day: sessionDrafts[0]?.dayOfWeek,
           }),
-          tone: 'warn' as const,
-          count: readyOpsDraft.confidence,
-        } : null,
-        newestSandboxDraft ? {
-          id: `waiting-sandbox-${newestSandboxDraft.id}`,
-          title: 'A sandbox run needs sign-off',
-          description: `${newestSandboxDraft.title} is staged in preview so routing and audience can be reviewed safely.`,
-          ctaLabel: 'Review preview',
-          href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
-          tone: 'warn' as const,
-          count: newestSandboxDraft.metadata?.sandboxPreview?.recipientCount || null,
-        } : null,
-      ].filter(Boolean) as DailyAdminTodoItem[],
-    },
-    {
-      key: 'blocked',
-      label: 'Blocked',
-      description: 'Things the agent still cannot move without a fix.',
-      color: '#EF4444',
-      items: [
-        autopilotSummary.counts.blocked > 0 ? {
-          id: 'blocked-autopilot',
-          title: 'Autopilot is blocking real volume',
-          description: autopilotSummary.topBlockedReasons[0]
-            ? `${autopilotSummary.topBlockedReasons[0].label} is the main blocker across recent actions.`
-            : `${autopilotSummary.counts.blocked} actions are currently blocked by policy or confidence rules.`,
-          ctaLabel: 'Open settings',
-          href: `/clubs/${clubId}/intelligence/settings`,
-          tone: 'danger' as const,
-          count: autopilotSummary.counts.blocked,
-        } : null,
-        blockedLifecycleCard && blockedLifecycleCard.blockedCount > 0 ? {
-          id: `blocked-lifecycle-${blockedLifecycleCard.id}`,
-          title: blockedLifecycleCard.title,
-          description: `${blockedLifecycleCard.blockedCount} lifecycle cases are still held back. ${blockedLifecycleCard.topReasons[0]?.label || ''}`.trim(),
-          ctaLabel: 'Tune in Advisor',
-          href: `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(blockedLifecycleCard.advisorPrompt)}`,
-          tone: 'danger' as const,
-          count: blockedLifecycleCard.blockedCount,
-        } : null,
-        autopilotSummary.membershipHeldCount > 0 ? {
-          id: 'blocked-membership',
-          title: 'Membership rules are holding actions',
-          description: 'Weak or unknown membership signals are forcing the agent back into safer review-first paths.',
-          ctaLabel: 'Open integrations',
-          href: `/clubs/${clubId}/intelligence/integrations`,
-          tone: 'danger' as const,
-          count: autopilotSummary.membershipHeldCount,
-        } : null,
-      ].filter(Boolean) as DailyAdminTodoItem[],
-    },
-    {
-      key: 'recommended',
-      label: 'Recommended Next',
-      description: 'The strongest next move if the admin does one thing.',
-      color: '#A78BFA',
-      items: [
-        bestScenario && bestScenario.autoGain > 0 ? {
-          id: `recommended-policy-${bestScenario.action}`,
-          title: `Consider moving ${actionLabel(bestScenario.action).toLowerCase()} to auto`,
-          description: `${bestScenario.autoGain} recent actions would likely move into auto-run while ${bestScenario.stillBlocked} would still stay blocked.`,
-          ctaLabel: 'Apply in Advisor',
-          href: `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(buildAdvisorPolicyPrompt(bestScenario))}`,
           tone: 'default' as const,
-          count: bestScenario.autoGain,
         } : null,
-        programmingCockpit.strongest ? {
-          id: `recommended-programming-${programmingCockpit.strongest.id}`,
-          title: 'Back the strongest schedule idea',
-          description: `${programmingCockpit.strongest.primary.title} currently has the best projected fill and demand signal in the club.`,
-          ctaLabel: 'Open programming cockpit',
+        {
+          label: 'Open agent',
+          href: `/clubs/${clubId}/intelligence/agent`,
+          tone: 'default' as const,
+        },
+      ].filter(Boolean) as DailyOpsBriefCard['secondaryActions'],
+    },
+    {
+      id: 'ops-brief-before-close',
+      eyebrow: 'Before close',
+      title: ownershipView === 'mine' && opsEscalations.mineOverdueDrafts.length > 0
+        ? `${opsEscalations.mineOverdueDrafts.length} of your ops draft${opsEscalations.mineOverdueDrafts.length === 1 ? ' is' : 's are'} already overdue`
+        : ownershipView === 'team' && opsEscalations.unassignedOverdueDrafts.length > 0
+          ? `${opsEscalations.unassignedOverdueDrafts.length} overdue ops draft${opsEscalations.unassignedOverdueDrafts.length === 1 ? ' still has' : 's still have'} no owner`
+        : topPublishedAtRisk
+          ? `${topPublishedAtRisk.title} is slipping behind live plan`
+        : overdueOpsDrafts.length > 0
+        ? `${overdueOpsDrafts.length} ops draft${overdueOpsDrafts.length === 1 ? ' is' : 's are'} already overdue`
+        : dueSoonOpsDrafts.length > 0
+          ? `${dueSoonOpsDrafts.length} ops draft${dueSoonOpsDrafts.length === 1 ? ' is' : 's are'} heating up in the next two hours`
+          : urgentCount > 0
+            ? 'A few items still want a same-day decision'
+            : 'Nothing urgent is piling up before close',
+      description: ownershipView === 'mine' && opsEscalations.topMineOverdueDraft
+        ? `${opsEscalations.topMineOverdueDraft.title} is already past due, so the agent is putting your own queue ahead of the rest of the club.`
+        : ownershipView === 'team' && opsEscalations.topUnassignedOverdueDraft
+          ? `${opsEscalations.topUnassignedOverdueDraft.title} is overdue and still unassigned, which is usually a sign the team needs a faster owner handoff.`
+        : topPublishedAtRisk
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.summary || `${topPublishedAtRisk.title} is lagging live bookings.`} The agent is surfacing it before close so you can decide whether it needs a fill push or same-day ops intervention.`
+        : overdueOpsDrafts.length > 0
+        ? 'These drafts are already past their due time, so the agent is surfacing them ahead of less urgent queue work.'
+        : dueSoonOpsDrafts.length > 0
+          ? 'These drafts are about to go stale before close unless someone takes ownership or moves them forward.'
+          : urgentCount > 0
+            ? 'These are the items most likely to drift if nobody clears them before the club hits the evening window.'
+        : 'The board is relatively clear, so you can safely keep focus on strategy and tomorrow’s setup.',
+      ctaLabel: pendingActions.length > 0
+        ? 'Open pending actions'
+        : topPublishedAtRisk
+          ? 'Review published session'
+          : topUrgentOpsDraft ? 'Open ops queue' : 'Stay in agent',
+      href: pendingActions.length > 0
+        ? buildAgentFocusHref(clubId, { focus: 'pending-queue' })
+        : topPublishedAtRisk
+          ? buildAgentFocusHref(clubId, {
+              focus: 'ops-queue',
+              opsDraftId: topPublishedAtRisk.id,
+              day: topPublishedAtRisk.dayOfWeek,
+            })
+        : topUrgentOpsDraft
+          ? buildAgentFocusHref(clubId, { focus: 'ops-queue', opsDraftId: topUrgentOpsDraft.id, day: topUrgentOpsDraft.dayOfWeek })
+          : `/clubs/${clubId}/intelligence/agent`,
+      tone: overdueOpsDrafts.length > 0 || topPublishedAtRisk?.metadata?.sessionDraft?.liveFeedback?.status === 'at_risk' ? 'danger' : urgentCount > 0 ? 'warn' : 'success',
+      count: topPublishedAtRisk
+        ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.actualOccupancy || 0}%`
+        : overdueOpsDrafts.length > 0 ? overdueOpsDrafts.length : urgentCount,
+      bullets: [
+        `${pendingActions.length} approval${pendingActions.length === 1 ? '' : 's'} still waiting`,
+        topPublishedAtRisk
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.actualOccupancy || 0}% live fill vs ${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.projectedOccupancy || 0}% projected`
+          : null,
+        ownershipView === 'mine' && opsEscalations.mineOverdueDrafts.length > 0
+          ? `${opsEscalations.mineOverdueDrafts.length} of your draft${opsEscalations.mineOverdueDrafts.length === 1 ? '' : 's'} are overdue`
+          : ownershipView === 'team' && opsEscalations.unassignedOverdueDrafts.length > 0
+            ? `${opsEscalations.unassignedOverdueDrafts.length} overdue ops draft${opsEscalations.unassignedOverdueDrafts.length === 1 ? '' : 's'} still need an owner`
+        : overdueOpsDrafts.length > 0
+          ? `${overdueOpsDrafts.length} ops draft${overdueOpsDrafts.length === 1 ? '' : 's'} are overdue`
+          : dueSoonOpsDrafts.length > 0
+            ? `${dueSoonOpsDrafts.length} ops draft${dueSoonOpsDrafts.length === 1 ? '' : 's'} are due soon`
+            : `${readyOpsDrafts.length} ready-for-ops draft${readyOpsDrafts.length === 1 ? '' : 's'} can move today`,
+        `${remindersBeforeClose.length} snoozed reminder${remindersBeforeClose.length === 1 ? '' : 's'} come back before close`,
+      ].filter(Boolean) as string[],
+      secondaryActions: [
+        topPublishedAtRisk ? {
+          label: 'Open published draft',
           href: buildAgentFocusHref(clubId, {
-            focus: 'programming-cockpit',
-            day: programmingCockpit.strongest.primary.dayOfWeek,
-            draftId: programmingCockpit.strongest.id,
+            focus: 'ops-queue',
+            opsDraftId: topPublishedAtRisk.id,
+            day: topPublishedAtRisk.dayOfWeek,
           }),
-          tone: 'default' as const,
-          count: `${programmingCockpit.strongest.primary.projectedOccupancy}%`,
+          tone: getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.status === 'at_risk' ? 'danger' as const : 'warn' as const,
         } : null,
-        autopilotSummary.counts.auto === 0 && autopilotSummary.counts.pending > 0 ? {
-          id: 'recommended-advisor',
-          title: 'Let Advisor reshape the bottleneck',
-          description: 'The club is still review-heavy. Advisor can propose the safest next policy move based on recent outcomes.',
-          ctaLabel: 'Open Advisor',
+        topUrgentOpsDraft ? {
+          label: 'Open ops queue',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            opsDraftId: topUrgentOpsDraft.id,
+            day: topUrgentOpsDraft.dayOfWeek,
+          }),
+          tone: overdueOpsDrafts.length > 0 ? 'danger' as const : 'warn' as const,
+        } : null,
+        {
+          label: 'Review daily to-do',
+          href: `/clubs/${clubId}/intelligence/agent`,
+          tone: 'default' as const,
+        },
+      ].filter(Boolean) as DailyOpsBriefCard['secondaryActions'],
+      workflowActions: topUrgentOpsDraft ? [
+        ...(topUrgentOpsDraft.status === 'ready_for_ops'
+          ? [{
+              label: 'Convert top draft',
+              action: 'promote' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: 'success' as const,
+            }]
+          : []),
+        {
+          label: 'Assign to me',
+          action: 'assign_self',
+          opsDraftId: topUrgentOpsDraft.id,
+          tone: 'default' as const,
+        },
+        ...(ownershipView === 'team'
+          ? [{
+              label: 'Assign teammate',
+              action: 'assign_teammate' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: 'default' as const,
+            }]
+          : []),
+        ...(ownershipView === 'team' && getOpsWorkflowMeta(topUrgentOpsDraft)?.ownerUserId
+          ? [{
+              label: 'Ping owner',
+              action: 'ping_owner' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: 'warn' as const,
+            }]
+          : []),
+        ...(!getOpsWorkflowMeta(topUrgentOpsDraft)?.dueAt
+          ? [{
+              label: 'Due today',
+              action: 'due_today' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: overdueOpsDrafts.length > 0 ? 'danger' as const : 'warn' as const,
+            }]
+          : []),
+        ...(topUrgentOpsDraft.status === 'session_draft'
+          ? [getOpsSessionDraftPublishMeta(topUrgentOpsDraft)?.publishedPlaySessionId
+              ? null
+              : getOpsSessionDraftPublishMeta(topUrgentOpsDraft)?.targetDate
+                && getOpsSessionDraftPublishReviewMeta(topUrgentOpsDraft)?.status !== 'blocked'
+                ? {
+                    label: 'Publish now',
+                    action: 'publish_now' as const,
+                    opsDraftId: topUrgentOpsDraft.id,
+                    tone: 'success' as const,
+                  }
+                : {
+                    label: 'Prepare publish',
+                    action: 'prepare_publish' as const,
+                    opsDraftId: topUrgentOpsDraft.id,
+                    tone: 'success' as const,
+                  }]
+          : []),
+        {
+          label: 'Add note',
+          action: 'add_note',
+          opsDraftId: topUrgentOpsDraft.id,
+          tone: 'default' as const,
+        },
+        {
+          label: 'Reject',
+          action: 'reject',
+          opsDraftId: topUrgentOpsDraft.id,
+          tone: 'danger' as const,
+        },
+      ].filter(Boolean) as DailyOpsBriefCard['workflowActions'] : undefined,
+    },
+    {
+      id: 'ops-brief-risk',
+      eyebrow: 'At risk',
+      title: topPublishedAtRisk
+        ? 'A published session is now underperforming'
+        : ownershipView === 'team' && opsEscalations.needsReassignmentDrafts.length > 0
+        ? 'A few owned drafts may need attention or reassignment'
+        : blockedCount > 0 ? 'A few blockers are still shaping today’s ceiling' : 'No major blockers are pressuring the day',
+      description: topPublishedAtRisk
+        ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.summary || `${topPublishedAtRisk.title} is underperforming live.`} ${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.recommendedAction || 'The agent wants this reviewed before it drifts further.'}`
+        : ownershipView === 'team' && opsEscalations.topNeedsReassignmentDraft
+        ? `${opsEscalations.topNeedsReassignmentDraft.title} has been sitting with ${getOpsWorkflowMeta(opsEscalations.topNeedsReassignmentDraft)?.ownerLabel || 'its owner'} long enough that the handoff may be stalling.`
+        : blockedCount > 0
+        ? topBlockedReason
+          ? `${topBlockedReason.label} is the strongest drag on agent throughput right now.`
+          : 'A chunk of work is still being held back by policy, confidence, or missing member signals.'
+        : 'The biggest risk today is mostly execution bandwidth, not policy or routing friction.',
+      ctaLabel: topPublishedAtRisk
+        ? 'Review published draft'
+        : ownershipView === 'team' && opsEscalations.topNeedsReassignmentDraft
+        ? 'Open ops queue'
+        : blockedCount > 0
+        ? (topBlockedReason && isMembershipReason(topBlockedReason.label) ? 'Open integrations' : 'Open settings')
+        : 'Open advisor',
+      href: topPublishedAtRisk
+        ? buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: topPublishedAtRisk.dayOfWeek,
+            opsDraftId: topPublishedAtRisk.id,
+          })
+        : ownershipView === 'team' && opsEscalations.topNeedsReassignmentDraft
+        ? buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: opsEscalations.topNeedsReassignmentDraft.dayOfWeek,
+            opsDraftId: opsEscalations.topNeedsReassignmentDraft.id,
+          })
+        : blockedCount > 0
+        ? (topBlockedReason && isMembershipReason(topBlockedReason.label)
+          ? `/clubs/${clubId}/intelligence/integrations`
+          : `/clubs/${clubId}/intelligence/settings`)
+        : `/clubs/${clubId}/intelligence/advisor`,
+      tone: topPublishedAtRisk
+        ? getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.status === 'at_risk' ? 'danger' : 'warn'
+        : ownershipView === 'team' && opsEscalations.needsReassignmentDrafts.length > 0
+        ? 'warn'
+        : blockedCount > 0 ? 'danger' : 'success',
+      count: topPublishedAtRisk
+        ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.spotsRemaining || 0} spots`
+        : ownershipView === 'team' && opsEscalations.needsReassignmentDrafts.length > 0
+        ? opsEscalations.needsReassignmentDrafts.length
+        : blockedCount,
+      bullets: [
+        topPublishedAtRisk
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.confirmedCount || 0} confirmed players with ${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.spotsRemaining || 0} spot${(getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.spotsRemaining || 0) === 1 ? '' : 's'} still open`
+          : ownershipView === 'team' && opsEscalations.needsReassignmentDrafts.length > 0
+          ? `${opsEscalations.needsReassignmentDrafts.length} owned draft${opsEscalations.needsReassignmentDrafts.length === 1 ? '' : 's'} look stale enough to check`
+          : `${autopilotSummary.counts.blocked} action${autopilotSummary.counts.blocked === 1 ? '' : 's'} recently blocked`,
+        topPublishedAtRisk
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.waitlistCount || 0} on the waitlist / same-week backup list`
+          : `${autopilotSummary.counts.blocked} action${autopilotSummary.counts.blocked === 1 ? '' : 's'} recently blocked`,
+        topPublishedAtRisk
+          ? `${publishedAtRiskDrafts.length} published session${publishedAtRiskDrafts.length === 1 ? '' : 's'} are currently behind or at risk`
+          : `${autopilotSummary.membershipHeldCount} membership-held case${autopilotSummary.membershipHeldCount === 1 ? '' : 's'} need cleaner data or policy`,
+        topPublishedAtRisk
+          ? getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.recommendedAction || 'Review whether this live session now needs a fill action.'
+          : ownershipView === 'team' && opsEscalations.topNeedsReassignmentDraft
+          ? `Top handoff risk: ${getOpsWorkflowMeta(opsEscalations.topNeedsReassignmentDraft)?.ownerLabel || 'Owned draft'} may need a reset`
+          : topBlockedReason ? `Top blocker: ${topBlockedReason.label}` : 'Top blocker: none right now',
+      ],
+      secondaryActions: [
+        topPublishedAtRisk ? {
+          label: 'Open schedule',
+          href: `/clubs/${clubId}/intelligence/sessions`,
+          tone: 'default' as const,
+        } : null,
+        topPublishedAtRisk ? {
+          label: 'Prepare fill in Advisor',
+          href: buildPublishedSessionFillHref(clubId, topPublishedAtRisk),
+          tone: 'warn' as const,
+        } : null,
+        {
+          label: 'Ask Advisor',
+          href: blockedCount > 0
+            ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(
+              topBlockedReason && isMembershipReason(topBlockedReason.label)
+                ? 'Show me the safest way to reduce today’s membership-related blockers without making the club too aggressive.'
+                : 'Show me the safest change to reduce today’s blocked agent work without losing guardrails.',
+            )}`
+            : `/clubs/${clubId}/intelligence/advisor`,
+          tone: blockedCount > 0 ? 'danger' as const : 'default' as const,
+        },
+      ].filter(Boolean) as DailyOpsBriefCard['secondaryActions'],
+      workflowActions: topPublishedAtRisk ? [
+        {
+          label: 'Create fill draft',
+          action: 'create_fill_draft',
+          opsDraftId: topPublishedAtRisk.id,
+          tone: getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.status === 'at_risk' ? 'danger' as const : 'warn' as const,
+        },
+        ...(ownershipView === 'team' && getOpsWorkflowMeta(topPublishedAtRisk)?.ownerUserId
+          ? [{
+              label: 'Ping owner',
+              action: 'ping_owner' as const,
+              opsDraftId: topPublishedAtRisk.id,
+              tone: 'warn' as const,
+            }]
+          : []),
+        {
+          label: 'Add note',
+          action: 'add_note',
+          opsDraftId: topPublishedAtRisk.id,
+          tone: 'default' as const,
+        },
+      ] : ownershipView === 'team' && opsEscalations.topNeedsReassignmentDraft ? [
+        {
+          label: 'Ping owner',
+          action: 'ping_owner',
+          opsDraftId: opsEscalations.topNeedsReassignmentDraft.id,
+          tone: 'warn' as const,
+        },
+        {
+          label: 'Reassign owner',
+          action: 'reassign_owner',
+          opsDraftId: opsEscalations.topNeedsReassignmentDraft.id,
+          tone: 'warn' as const,
+        },
+        {
+          label: 'Assign teammate',
+          action: 'assign_teammate',
+          opsDraftId: opsEscalations.topNeedsReassignmentDraft.id,
+          tone: 'default' as const,
+        },
+        {
+          label: 'Add note',
+          action: 'add_note',
+          opsDraftId: opsEscalations.topNeedsReassignmentDraft.id,
+          tone: 'default' as const,
+        },
+      ] : undefined,
+    },
+    {
+      id: 'ops-brief-upside',
+      eyebrow: 'Best high-upside move',
+      title: strongestProgramming
+        ? strongestProgramming.primary.title
+        : bestScenario && bestScenario.autoGain > 0
+          ? `Unlock ${actionLabel(bestScenario.action).toLowerCase()} next`
+          : 'Advisor can shape the next move',
+      description: strongestProgramming
+        ? 'This is the strongest schedule opportunity the agent sees right now based on demand, occupancy, and recent signals.'
+        : bestScenario && bestScenario.autoGain > 0
+          ? `${bestScenario.autoGain} recent actions could likely move into auto-run with a safe policy adjustment.`
+          : 'There is no single dominant move yet, so Advisor is the best place to ask for a tailored next step.',
+      ctaLabel: strongestProgramming
+        ? 'Open programming cockpit'
+        : bestScenario && bestScenario.autoGain > 0
+          ? 'Apply in Advisor'
+          : 'Open Advisor',
+      href: strongestProgramming
+        ? buildAgentFocusHref(clubId, {
+          focus: 'programming-cockpit',
+          day: strongestProgramming.primary.dayOfWeek,
+          draftId: strongestProgramming.id,
+        })
+        : bestScenario && bestScenario.autoGain > 0
+          ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(buildAdvisorPolicyPrompt(bestScenario))}`
+          : `/clubs/${clubId}/intelligence/advisor`,
+      tone: 'default',
+      count: strongestProgramming
+        ? `${strongestProgramming.primary.projectedOccupancy}%`
+        : bestScenario && bestScenario.autoGain > 0
+          ? bestScenario.autoGain
+          : null,
+      bullets: strongestProgramming
+        ? [
+          `${strongestProgramming.primary.estimatedInterestedMembers} likely interested members`,
+          `${strongestProgramming.primary.projectedOccupancy}% projected fill`,
+          strongestProgramming.primary.conflict
+            ? `${getProgrammingConflictTone(strongestProgramming.primary.conflict.overallRisk).label} in this window`
+            : `${strongestProgramming.primary.confidence}% confidence`,
+        ]
+        : bestScenario && bestScenario.autoGain > 0
+        ? [
+            `${bestScenario.autoGain} actions could move to auto`,
+            `${bestScenario.stillPending} would still stay review-first`,
+            `${bestScenario.stillBlocked} would still remain blocked`,
+          ]
+          : ['No single move dominates yet', 'Advisor can tailor the next plan from context', 'Good moment for a custom ask'],
+      secondaryActions: strongestProgramming
+        ? [
+            {
+              label: 'Refine in Advisor',
+              href: buildAdvisorDraftRefineHref(
+                clubId,
+                {
+                  conversationId: strongestProgramming.conversationId || null,
+                  originalIntent: strongestProgramming.originalIntent,
+                },
+                `Refine this programming plan for ${strongestProgramming.primary.dayOfWeek} and show me one safer alternative before we move it into ops.`,
+              ),
+              tone: 'default',
+            },
+          ]
+        : bestScenario && bestScenario.autoGain > 0
+          ? [
+              {
+                label: 'Open settings',
+                href: `/clubs/${clubId}/intelligence/settings`,
+                tone: 'default',
+              },
+            ]
+          : [
+              {
+                label: 'Review in Advisor',
+                href: `/clubs/${clubId}/intelligence/advisor`,
+                tone: 'default',
+              },
+            ],
+    },
+    {
+      id: 'ops-brief-safe',
+      eyebrow: 'Best safe move',
+      title: safestProgramming
+        ? safestProgramming.id === strongestProgramming?.id
+          ? `${safestProgramming.primary.title} is also the cleanest window`
+          : safestProgramming.primary.title
+        : bestScenario && bestScenario.autoGain > 0
+          ? 'Take the safer policy route first'
+          : 'Keep the next move review-first',
+      description: safestProgramming
+        ? safestProgramming.id === strongestProgramming?.id
+          ? 'The top upside idea is already the cleanest operational shape, so the club does not need to trade safety for upside here.'
+          : safestProgramming.primary.conflict?.riskSummary || 'This is the cleanest programming option on the board right now if you want the lowest-friction next move.'
+        : bestScenario && bestScenario.autoGain > 0
+          ? 'If you want the safer path, keep policy review-first and let Advisor tighten the change before you widen autonomy.'
+          : 'No obvious low-risk programming move is standing out yet, so keeping the next change in review is still the safer path.',
+      ctaLabel: safestProgramming
+        ? 'Review safer option'
+        : bestScenario && bestScenario.autoGain > 0
+          ? 'Refine in Advisor'
+          : 'Open Advisor',
+      href: safestProgramming
+        ? buildAgentFocusHref(clubId, {
+          focus: 'programming-cockpit',
+          day: safestProgramming.primary.dayOfWeek,
+          draftId: safestProgramming.id,
+        })
+        : bestScenario && bestScenario.autoGain > 0
+          ? `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent('Show me the safest version of this policy change first, even if it keeps more work in review.')}`
+          : `/clubs/${clubId}/intelligence/advisor`,
+      tone: safestProgramming
+        ? safestProgramming.primary.conflict?.overallRisk === 'high'
+          ? 'warn'
+          : 'success'
+        : 'default',
+      count: safestProgramming
+        ? getProgrammingConflictTone(safestProgramming.primary.conflict?.overallRisk).label
+        : null,
+      bullets: safestProgramming
+        ? [
+            safestProgramming.primary.conflict?.riskSummary || 'Cleaner schedule shape than the surrounding options.',
+            safestProgramming.primary.conflict?.saferAlternativeReason || `${safestProgramming.primary.confidence}% confidence with ${safestProgramming.primary.projectedOccupancy}% projected fill`,
+            strongestProgramming && safestProgramming.id !== strongestProgramming.id
+              ? `${safestProgramming.primary.projectedOccupancy - strongestProgramming.primary.projectedOccupancy >= 0 ? '+' : ''}${safestProgramming.primary.projectedOccupancy - strongestProgramming.primary.projectedOccupancy} fill pts vs the highest-upside option`
+              : `${safestProgramming.primary.estimatedInterestedMembers} likely interested members`,
+          ]
+        : bestScenario && bestScenario.autoGain > 0
+          ? [
+              'Keep the change in review-first mode',
+              `${bestScenario.stillPending} actions would still wait for approval`,
+              'Advisor can tighten the policy before any live rollout',
+            ]
+          : ['No low-risk move dominates yet', 'Good moment to compare alternatives', 'Advisor can help narrow the safest next step'],
+      secondaryActions: safestProgramming
+        ? [
+            safestProgramming.id !== strongestProgramming?.id
+              ? {
+                  label: 'Open high-upside move',
+                  href: buildAgentFocusHref(clubId, {
+                    focus: 'programming-cockpit',
+                    day: strongestProgramming?.primary.dayOfWeek,
+                    draftId: strongestProgramming?.id,
+                  }),
+                  tone: 'default' as const,
+                }
+              : null,
+            {
+              label: 'Refine in Advisor',
+              href: buildAdvisorDraftRefineHref(
+                clubId,
+                {
+                  conversationId: safestProgramming.conversationId || null,
+                  originalIntent: safestProgramming.originalIntent,
+                },
+                safestProgramming.id === strongestProgramming?.id
+                  ? `Keep this programming plan in the same window, but make it even safer operationally before we move it into ops.`
+                  : `Refine this programming plan around the safer alternative for ${safestProgramming.primary.dayOfWeek} and explain what risk it avoids.`,
+              ),
+              tone: 'success' as const,
+            },
+          ].filter(Boolean) as DailyOpsBriefCard['secondaryActions']
+        : bestScenario && bestScenario.autoGain > 0
+          ? [
+              {
+                label: 'Open settings',
+                href: `/clubs/${clubId}/intelligence/settings`,
+                tone: 'default',
+              },
+            ]
+          : [
+              {
+                label: 'Review in Advisor',
+                href: `/clubs/${clubId}/intelligence/advisor`,
+                tone: 'default',
+              },
+            ],
+    },
+  ]
+
+  return {
+    headline,
+    summary,
+    cards,
+  }
+}
+
+function buildUnifiedDailyCommandCenter(args: {
+  clubId: string
+  pendingActions: PendingAction[]
+  autopilotSummary: ReturnType<typeof buildAutopilotSummary>
+  programmingCockpit: ReturnType<typeof buildProgrammingCockpit>
+  opsSessionDraftQueue: ReturnType<typeof buildOpsSessionDraftQueue>
+  sandboxDrafts: AdvisorDraftWorkspaceItem[]
+  currentUserId?: string | null
+  ownershipView: DailyOwnershipView
+  upcomingReminders: Array<{
+    itemId: string
+    title: string
+    label: string
+    channel: AdminReminderDeliveryMode
+    remindAt: Date
+  }>
+}): DailyCommandCenter {
+  const {
+    clubId,
+    pendingActions,
+    autopilotSummary,
+    programmingCockpit,
+    opsSessionDraftQueue,
+    sandboxDrafts,
+    currentUserId,
+    ownershipView,
+    upcomingReminders,
+  } = args
+
+  const now = new Date()
+  const closeTime = new Date(now)
+  closeTime.setHours(18, 0, 0, 0)
+
+  const readyOpsDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts || []
+  const sessionDrafts = opsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts || []
+  const activeOpsDrafts = [...readyOpsDrafts, ...sessionDrafts]
+  const topUrgentOpsDraft =
+    [...activeOpsDrafts].sort((left, right) => getOpsDueRank(left, now) - getOpsDueRank(right, now))[0] || null
+  const opsEscalations = buildOpsEscalationSignals({ opsSessionDraftQueue, currentUserId, ownershipView, now })
+  const publishedSignals = buildPublishedSessionSignals(opsSessionDraftQueue)
+  const publishedDrafts = publishedSignals.publishedDrafts
+  const topPublishedAtRisk = publishedSignals.topAtRiskDraft
+  const topPublishedHealthy = publishedSignals.topHealthyDraft
+  const remindersBeforeClose = upcomingReminders.filter((reminder) => reminder.remindAt.getTime() <= closeTime.getTime())
+  const freshSandboxDrafts = [...sandboxDrafts]
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  const strongestProgramming = programmingCockpit.strongest || null
+  const safestProgramming = programmingCockpit.safest || null
+  const blockedCount = autopilotSummary.counts.blocked + autopilotSummary.membershipHeldCount
+
+  const headline = topPublishedAtRisk
+    ? 'Run the live session, approvals, and ops queue from one command surface'
+    : pendingActions.length > 0 || topUrgentOpsDraft || strongestProgramming || remindersBeforeClose.length > 0
+      ? 'The key approvals, live feedback, ops work, and reminders are now in one lane'
+      : 'The board is quiet enough to steer tomorrow from one command surface'
+
+  const summary = [
+    `${pendingActions.length} approval${pendingActions.length === 1 ? '' : 's'} waiting`,
+    topPublishedAtRisk
+      ? `${topPublishedAtRisk.title} is trailing live plan`
+      : publishedDrafts.length > 0
+        ? `${publishedDrafts.length} published session${publishedDrafts.length === 1 ? '' : 's'} are feeding back`
+        : 'no live schedule issues are pressing right now',
+    topUrgentOpsDraft
+      ? `${topUrgentOpsDraft.title} is the top ops handoff`
+      : `${readyOpsDrafts.length} ready ops draft${readyOpsDrafts.length === 1 ? '' : 's'} are staged`,
+    strongestProgramming
+      ? `${strongestProgramming.primary.title} is the strongest next programming move`
+      : 'no programming pressure is building right now',
+    remindersBeforeClose.length > 0
+      ? `${remindersBeforeClose.length} reminder${remindersBeforeClose.length === 1 ? '' : 's'} return before close`
+      : `${freshSandboxDrafts.length} fresh sandbox preview${freshSandboxDrafts.length === 1 ? '' : 's'} ready`,
+  ].join(' · ') + '.'
+
+  const modules: DailyOpsBriefCard[] = [
+    {
+      id: 'command-center-approvals',
+      eyebrow: 'Approvals',
+      title: pendingActions.length > 0
+        ? `${pendingActions.length} action${pendingActions.length === 1 ? '' : 's'} still need a human`
+        : 'Approval lane is clear',
+      description: pendingActions.length > 0
+        ? 'This is the fastest place to clear review-only actions before they start clogging the rest of the day.'
+        : 'Nothing is stuck waiting for approval right now, so you can keep focus on ops and live sessions.',
+      ctaLabel: pendingActions.length > 0 ? 'Open pending actions' : 'Open agent',
+      href: pendingActions.length > 0
+        ? buildAgentFocusHref(clubId, { focus: 'pending-queue' })
+        : `/clubs/${clubId}/intelligence/agent`,
+      tone: pendingActions.length > 0 ? 'warn' : 'success',
+      count: pendingActions.length,
+      bullets: [
+        `${autopilotSummary.counts.pending} item${autopilotSummary.counts.pending === 1 ? '' : 's'} currently in review`,
+        blockedCount > 0
+          ? `${blockedCount} blocked path${blockedCount === 1 ? '' : 's'} still shaping throughput`
+          : 'No major autopilot blockers attached to the current queue',
+        pendingActions.length > 0
+          ? 'Clearing approvals first keeps the ops queue from drifting later in the day'
+          : 'The approval lane is not the bottleneck today',
+      ],
+      secondaryActions: [
+        {
+          label: 'Open Advisor',
           href: `/clubs/${clubId}/intelligence/advisor`,
-          tone: 'default' as const,
-          count: autopilotSummary.counts.pending,
-        } : null,
-      ].filter(Boolean) as DailyAdminTodoItem[],
+          tone: 'default',
+        },
+      ],
     },
-  ] satisfies DailyAdminTodoSection[]
+    {
+      id: 'command-center-live',
+      eyebrow: 'Live sessions',
+      title: topPublishedAtRisk
+        ? 'A published session wants intervention'
+        : topPublishedHealthy
+          ? 'One live session is outperforming plan'
+          : publishedDrafts.length > 0
+            ? 'Published sessions are feeding live outcomes back'
+            : 'No published-session aftercare is pressing right now',
+      description: topPublishedAtRisk
+        ? getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.summary
+          || `${topPublishedAtRisk.title} is underperforming live and likely needs the next operator move from this command surface.`
+        : topPublishedHealthy
+          ? getOpsSessionDraftLiveFeedbackMeta(topPublishedHealthy)?.summary
+            || `${topPublishedHealthy.title} is outperforming plan and is a good candidate to repeat or expand.`
+          : publishedDrafts.length > 0
+            ? `${publishedDrafts.length} published session${publishedDrafts.length === 1 ? '' : 's'} are sending live feedback back to the agent.`
+            : 'Once a session is live, its drift and outcomes will show up here first.',
+      ctaLabel: topPublishedAtRisk
+        ? 'Review live session'
+        : topPublishedHealthy
+          ? 'Open live winner'
+          : publishedDrafts.length > 0
+            ? 'Open published drafts'
+            : 'Open schedule',
+      href: topPublishedAtRisk
+        ? buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: topPublishedAtRisk.dayOfWeek,
+            opsDraftId: topPublishedAtRisk.id,
+          })
+        : topPublishedHealthy
+          ? buildAgentFocusHref(clubId, {
+              focus: 'ops-queue',
+              day: topPublishedHealthy.dayOfWeek,
+              opsDraftId: topPublishedHealthy.id,
+            })
+          : publishedDrafts.length > 0
+            ? buildAgentFocusHref(clubId, {
+                focus: 'ops-queue',
+                day: publishedDrafts[0]?.dayOfWeek,
+                opsDraftId: publishedDrafts[0]?.id,
+              })
+            : `/clubs/${clubId}/intelligence/sessions`,
+      tone: topPublishedAtRisk
+        ? getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.status === 'at_risk' ? 'danger' : 'warn'
+        : topPublishedHealthy ? 'success' : 'default',
+      count: topPublishedAtRisk
+        ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.actualOccupancy || 0}%`
+        : topPublishedHealthy
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedHealthy)?.actualOccupancy || 0}%`
+          : publishedDrafts.length,
+      bullets: [
+        topPublishedAtRisk
+          ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.confirmedCount || 0} confirmed with ${getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.spotsRemaining || 0} spot${(getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.spotsRemaining || 0) === 1 ? '' : 's'} still open`
+          : topPublishedHealthy
+            ? `${getOpsSessionDraftLiveFeedbackMeta(topPublishedHealthy)?.confirmedCount || 0} confirmed players and ${getOpsSessionDraftLiveFeedbackMeta(topPublishedHealthy)?.waitlistCount || 0} on the waitlist`
+            : `${publishedDrafts.length} published session${publishedDrafts.length === 1 ? '' : 's'} currently tracked by aftercare`,
+        topPublishedAtRisk
+          ? getOpsSessionDraftLiveFeedbackMeta(topPublishedAtRisk)?.recommendedAction || 'Review whether this live session now needs a fill action.'
+          : topPublishedHealthy
+            ? 'This is the best live signal to repeat if you want a safe win next week.'
+            : 'Live edit and rollback stay available from the same published-draft queue.',
+      ],
+      secondaryActions: [
+        topPublishedAtRisk ? {
+          label: 'Open schedule',
+          href: `/clubs/${clubId}/intelligence/sessions`,
+          tone: 'default' as const,
+        } : null,
+        topPublishedHealthy ? {
+          label: 'Repeat this slot',
+          href: buildPublishedSessionRepeatHref(clubId, topPublishedHealthy),
+          tone: 'success' as const,
+        } : null,
+      ].filter(Boolean) as DailyOpsBriefCard['secondaryActions'],
+      workflowActions: topPublishedAtRisk ? [
+        {
+          label: 'Create fill draft',
+          action: 'create_fill_draft',
+          opsDraftId: topPublishedAtRisk.id,
+          tone: 'warn' as const,
+        },
+      ] : undefined,
+    },
+    {
+      id: 'command-center-ops',
+      eyebrow: 'Ops queue',
+      title: ownershipView === 'mine' && opsEscalations.topMineOverdueDraft
+        ? 'Your top overdue draft needs a decision'
+        : ownershipView === 'team' && opsEscalations.topUnassignedOverdueDraft
+          ? 'An overdue draft still needs an owner'
+          : topUrgentOpsDraft
+            ? 'One ops draft is the clearest next handoff'
+            : 'Ops queue is staged but not pressuring the day',
+      description: ownershipView === 'mine' && opsEscalations.topMineOverdueDraft
+        ? `${opsEscalations.topMineOverdueDraft.title} is already past due, so the command center is putting your own queue first.`
+        : ownershipView === 'team' && opsEscalations.topUnassignedOverdueDraft
+          ? `${opsEscalations.topUnassignedOverdueDraft.title} is overdue and still unassigned, which usually means the team needs a faster owner handoff.`
+          : topUrgentOpsDraft
+            ? `${topUrgentOpsDraft.title} is the top operational draft to push from idea into scheduling work.`
+            : 'Ready-for-ops and session-draft work will surface here once the queue heats up.',
+      ctaLabel: topUrgentOpsDraft ? 'Open ops queue' : 'Open agent',
+      href: topUrgentOpsDraft
+        ? buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: topUrgentOpsDraft.dayOfWeek,
+            opsDraftId: topUrgentOpsDraft.id,
+          })
+        : `/clubs/${clubId}/intelligence/agent`,
+      tone: ownershipView === 'mine' && opsEscalations.topMineOverdueDraft
+        ? 'danger'
+        : ownershipView === 'team' && opsEscalations.topUnassignedOverdueDraft
+          ? 'danger'
+          : topUrgentOpsDraft
+            ? 'success'
+            : 'default',
+      count: topUrgentOpsDraft ? getOpsWorkflowDueLabel(topUrgentOpsDraft) || topUrgentOpsDraft.status : readyOpsDrafts.length + sessionDrafts.length,
+      bullets: [
+        `${readyOpsDrafts.length} ready-for-ops draft${readyOpsDrafts.length === 1 ? '' : 's'}`,
+        `${sessionDrafts.length} session draft${sessionDrafts.length === 1 ? '' : 's'} in manual scheduling`,
+        ownershipView === 'team'
+          ? `${opsEscalations.needsReassignmentDrafts.length} stale owned draft${opsEscalations.needsReassignmentDrafts.length === 1 ? '' : 's'} may need a reset`
+          : `${opsEscalations.mineDueSoonDrafts.length} of your draft${opsEscalations.mineDueSoonDrafts.length === 1 ? '' : 's'} are due soon`,
+      ],
+      workflowActions: topUrgentOpsDraft ? [
+        ...(topUrgentOpsDraft.status === 'ready_for_ops'
+          ? [{
+              label: 'Convert draft',
+              action: 'promote' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: 'success' as const,
+            }]
+          : []),
+        {
+          label: 'Assign to me',
+          action: 'assign_self' as const,
+          opsDraftId: topUrgentOpsDraft.id,
+          tone: 'default' as const,
+        },
+        ...(ownershipView === 'team'
+          ? [{
+              label: 'Assign teammate',
+              action: 'assign_teammate' as const,
+              opsDraftId: topUrgentOpsDraft.id,
+              tone: 'default' as const,
+            }]
+          : []),
+      ] : undefined,
+      secondaryActions: topUrgentOpsDraft ? [
+        {
+          label: 'Add note',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'ops-queue',
+            day: topUrgentOpsDraft.dayOfWeek,
+            opsDraftId: topUrgentOpsDraft.id,
+          }),
+          tone: 'default' as const,
+        },
+      ] : undefined,
+    },
+    {
+      id: 'command-center-programming',
+      eyebrow: 'Programming',
+      title: strongestProgramming
+        ? 'The best next schedule move is ready'
+        : 'Programming pressure is light right now',
+      description: strongestProgramming
+        ? `${strongestProgramming.primary.title} is the highest-upside idea, and ${safestProgramming?.id && safestProgramming.id !== strongestProgramming.id ? `${safestProgramming.primary.title} is the safer fallback if you want less overlap risk.` : 'it is already the cleanest option available today.'}`
+        : 'When the agent sees demand or capacity pressure, the next schedule move will appear here first.',
+      ctaLabel: strongestProgramming ? 'Open programming cockpit' : 'Open Advisor',
+      href: strongestProgramming
+        ? buildAgentFocusHref(clubId, {
+            focus: 'programming-cockpit',
+            day: strongestProgramming.primary.dayOfWeek,
+            draftId: strongestProgramming.id,
+          })
+        : `/clubs/${clubId}/intelligence/advisor`,
+      tone: strongestProgramming ? 'default' : 'success',
+      count: strongestProgramming ? `${strongestProgramming.primary.projectedOccupancy}% fill` : programmingCockpit.totalIdeas,
+      bullets: strongestProgramming ? [
+        `${strongestProgramming.primary.estimatedInterestedMembers} likely interested members`,
+        `${strongestProgramming.primary.confidence}% confidence on the strongest option`,
+        safestProgramming && safestProgramming.id !== strongestProgramming.id
+          ? `Safer fallback: ${safestProgramming.primary.title}`
+          : 'The strongest idea is already the safest current option',
+      ] : [
+        `${programmingCockpit.totalIdeas} draft idea${programmingCockpit.totalIdeas === 1 ? '' : 's'} tracked`,
+        `${programmingCockpit.totalOpsDrafts} internal ops draft${programmingCockpit.totalOpsDrafts === 1 ? '' : 's'} already created`,
+      ],
+      secondaryActions: strongestProgramming && safestProgramming && safestProgramming.id !== strongestProgramming.id ? [
+        {
+          label: 'Open safer option',
+          href: buildAgentFocusHref(clubId, {
+            focus: 'programming-cockpit',
+            day: safestProgramming.primary.dayOfWeek,
+            draftId: safestProgramming.id,
+          }),
+          tone: 'default' as const,
+        },
+      ] : undefined,
+    },
+    {
+      id: 'command-center-previews',
+      eyebrow: 'Previews & reminders',
+      title: remindersBeforeClose.length > 0
+        ? `${remindersBeforeClose.length} reminder${remindersBeforeClose.length === 1 ? '' : 's'} return before close`
+        : freshSandboxDrafts.length > 0
+          ? 'Fresh previews are ready for a safe review'
+          : 'Reminder and preview lane is calm right now',
+      description: remindersBeforeClose.length > 0
+        ? `${remindersBeforeClose[0]?.title} is the next task coming back, and the command center is surfacing it before the evening window.`
+        : freshSandboxDrafts.length > 0
+          ? `${freshSandboxDrafts[0].title} is the freshest sandbox preview, so you can inspect it before anything goes live.`
+          : 'Snoozed reminders and sandbox previews will collect here when they need a same-day look.',
+      ctaLabel: remindersBeforeClose.length > 0 || freshSandboxDrafts.length > 0 ? 'Open preview & reminders' : 'Open agent',
+      href: remindersBeforeClose.length > 0 || freshSandboxDrafts.length > 0
+        ? buildAgentFocusHref(clubId, { focus: 'preview-inbox' })
+        : `/clubs/${clubId}/intelligence/agent`,
+      tone: remindersBeforeClose.length > 0 ? 'warn' : freshSandboxDrafts.length > 0 ? 'default' : 'success',
+      count: remindersBeforeClose.length > 0 ? remindersBeforeClose.length : freshSandboxDrafts.length,
+      bullets: [
+        remindersBeforeClose.length > 0
+          ? `${formatAdminReminderDeliveryMode(remindersBeforeClose[0].channel)} reminder returns ${remindersBeforeClose[0].label}`
+          : `${upcomingReminders.length} reminder${upcomingReminders.length === 1 ? '' : 's'} currently snoozed`,
+        `${freshSandboxDrafts.length} sandbox preview${freshSandboxDrafts.length === 1 ? '' : 's'} ready`,
+        'This lane keeps safe previews and delayed tasks from disappearing behind the rest of the day',
+      ],
+      secondaryActions: [
+        {
+          label: 'Open inbox',
+          href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
+          tone: 'default' as const,
+        },
+      ],
+    },
+  ]
+
+  const quickActions: DailyCommandCenterAction[] = [
+    pendingActions.length > 0 ? {
+      label: 'Pending approvals',
+      href: buildAgentFocusHref(clubId, { focus: 'pending-queue' }),
+      tone: 'warn',
+    } : null,
+    topPublishedAtRisk ? {
+      label: 'Live at risk',
+      href: buildAgentFocusHref(clubId, {
+        focus: 'ops-queue',
+        day: topPublishedAtRisk.dayOfWeek,
+        opsDraftId: topPublishedAtRisk.id,
+      }),
+      tone: 'danger',
+    } : null,
+    topUrgentOpsDraft ? {
+      label: 'Ops queue',
+      href: buildAgentFocusHref(clubId, {
+        focus: 'ops-queue',
+        day: topUrgentOpsDraft.dayOfWeek,
+        opsDraftId: topUrgentOpsDraft.id,
+      }),
+      tone: 'success',
+    } : null,
+    strongestProgramming ? {
+      label: 'Programming cockpit',
+      href: buildAgentFocusHref(clubId, {
+        focus: 'programming-cockpit',
+        day: strongestProgramming.primary.dayOfWeek,
+        draftId: strongestProgramming.id,
+      }),
+      tone: 'default',
+    } : null,
+    remindersBeforeClose.length > 0 || freshSandboxDrafts.length > 0 ? {
+      label: 'Preview inbox',
+      href: buildAgentFocusHref(clubId, { focus: 'preview-inbox' }),
+      tone: 'default',
+    } : null,
+  ].filter(Boolean) as DailyCommandCenterAction[]
+
+  return {
+    headline,
+    summary,
+    modules,
+    quickActions,
+  }
 }
 
 function buildAdvisorDraftHref(
@@ -1472,6 +3147,29 @@ function buildAdvisorDraftRefineHref(
   return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
 }
 
+function buildAdvisorConversationHref(
+  clubId: string,
+  result: {
+    conversationId?: string | null
+    originalIntent?: string | null
+  },
+  fallbackPrompt?: string,
+) {
+  if (result.conversationId) {
+    return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(result.conversationId)}`
+  }
+
+  if (result.originalIntent) {
+    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(result.originalIntent)}`
+  }
+
+  if (fallbackPrompt) {
+    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
+  }
+
+  return `/clubs/${clubId}/intelligence/advisor`
+}
+
 function buildAgentFocusHref(
   clubId: string,
   options: {
@@ -1487,6 +3185,42 @@ function buildAgentFocusHref(
   if (options.draftId) params.set('draftId', options.draftId)
   if (options.opsDraftId) params.set('opsDraftId', options.opsDraftId)
   return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
+}
+
+function buildPublishedSessionFillPrompt(draft: OpsSessionDraftItem) {
+  const liveSession = getOpsSessionDraftPublishMeta(draft)?.liveSession
+  const sessionTitle = liveSession?.title || draft.title
+  const sessionDate = liveSession?.date || draft.dayOfWeek
+  const sessionTime = liveSession?.startTime || draft.startTime
+  return `Prepare a fill plan for the live ${sessionTitle} session on ${sessionDate} at ${sessionTime}.`
+}
+
+function buildPublishedSessionRepeatPrompt(draft: OpsSessionDraftItem) {
+  return `This published ${draft.format.replace(/_/g, ' ').toLowerCase()} session on ${draft.dayOfWeek} at ${draft.startTime} is outperforming plan. Prepare a follow-up programming draft for next week in the same window and explain whether we should repeat it as-is or expand it.`
+}
+
+function buildPublishedSessionRepeatHref(clubId: string, draft: OpsSessionDraftItem) {
+  const prompt = buildPublishedSessionRepeatPrompt(draft)
+  if (draft.agentDraft?.conversationId || draft.agentDraft?.originalIntent) {
+    return buildAdvisorDraftRefineHref(clubId, {
+      conversationId: draft.agentDraft?.conversationId || null,
+      originalIntent: draft.agentDraft?.originalIntent || null,
+    }, prompt)
+  }
+
+  return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(prompt)}`
+}
+
+function buildPublishedSessionFillHref(clubId: string, draft: OpsSessionDraftItem) {
+  const prompt = buildPublishedSessionFillPrompt(draft)
+  if (draft.agentDraft?.conversationId || draft.agentDraft?.originalIntent) {
+    return buildAdvisorDraftRefineHref(clubId, {
+      conversationId: draft.agentDraft?.conversationId || null,
+      originalIntent: draft.agentDraft?.originalIntent || null,
+    }, prompt)
+  }
+
+  return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(prompt)}`
 }
 
 function isAgentDeepLinkFocus(value: string | null): value is AgentDeepLinkFocus {
@@ -1570,10 +3304,40 @@ function buildProgrammingConfidenceBand(confidence: number) {
   }
 }
 
+function getProgrammingConflictTone(level?: 'low' | 'medium' | 'high' | null) {
+  if (level === 'high') {
+    return {
+      label: 'High conflict',
+      color: '#EF4444',
+    }
+  }
+
+  if (level === 'medium') {
+    return {
+      label: 'Watch conflicts',
+      color: '#F59E0B',
+    }
+  }
+
+  return {
+    label: 'Cleaner opening',
+    color: '#10B981',
+  }
+}
+
 function buildProgrammingRiskCheck(
   primary: ProgrammingPreviewProposal,
   alternative?: ProgrammingPreviewProposal | null,
 ) {
+  if (primary.conflict) {
+    const tone = getProgrammingConflictTone(primary.conflict.overallRisk)
+    return {
+      label: tone.label,
+      color: tone.color,
+      note: primary.conflict.saferAlternativeReason || primary.conflict.riskSummary,
+    }
+  }
+
   const closeFill = alternative
     ? Math.abs(primary.projectedOccupancy - alternative.projectedOccupancy) <= 3
     : false
@@ -1605,13 +3369,16 @@ function buildProgrammingRiskCheck(
 }
 
 function buildProgrammingImpactAssessment(draft: ProgrammingDraftCard) {
-  const nextBest = draft.alternatives[0] || null
+  const nextBest = draft.primary.conflict?.saferAlternativeId
+    ? draft.alternatives.find((proposal) => proposal.id === draft.primary.conflict?.saferAlternativeId) || draft.alternatives[0] || null
+    : draft.alternatives[0] || null
   return {
     nextBest,
     fillDelta: nextBest ? draft.primary.projectedOccupancy - nextBest.projectedOccupancy : null,
     demandDelta: nextBest ? draft.primary.estimatedInterestedMembers - nextBest.estimatedInterestedMembers : null,
     confidenceBand: buildProgrammingConfidenceBand(draft.primary.confidence),
     riskCheck: buildProgrammingRiskCheck(draft.primary, nextBest),
+    warnings: draft.primary.conflict?.warnings || [],
   }
 }
 
@@ -1631,15 +3398,26 @@ export function AgentIQ({
   pending,
   advisorDrafts,
   opsSessionDrafts,
+  opsTeammates,
+  decisionRecords,
   isLoading,
   agentLive,
   intelligenceSettings,
+  outreachRolloutStatus,
   approveAction,
   skipAction,
   snoozeAction,
   promoteOpsSessionDraft,
+  createFillSessionDraftFromSchedule,
+  prepareOpsSessionDraftPublish,
+  publishOpsSessionDraftToSchedule,
+  updatePublishedOpsSessionDraft,
+  rollbackPublishedOpsSessionDraft,
+  updateOpsSessionDraftWorkflow,
+  shadowBackOutreachRolloutAction,
 }: AgentIQProps) {
   const { isDark } = useTheme()
+  const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -1651,10 +3429,26 @@ export function AgentIQ({
   const lastDeepLinkRef = useRef<string | null>(null)
   const headerInView = useInView(headerRef, { once: true })
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [creatingPublishedFillDraftId, setCreatingPublishedFillDraftId] = useState<string | null>(null)
+  const [opsActionPanel, setOpsActionPanel] = useState<OpsActionPanelState | null>(null)
+  const [opsOwnershipFilter, setOpsOwnershipFilter] = useState<OpsOwnershipFilter>('all')
+  const [dailyOwnershipView, setDailyOwnershipView] = useState<DailyOwnershipView>('team')
   const [optimisticDailyTodoDecisions, setOptimisticDailyTodoDecisions] = useState<Record<string, DailyAdminTodoDecision>>({})
   const [notNowPickerItemId, setNotNowPickerItemId] = useState<string | null>(null)
+  const [notNowReminderChannel, setNotNowReminderChannel] = useState<AdminReminderDeliveryMode>('in_app')
   const [dailyTodoDateKey] = useState(() => new Date().toLocaleDateString('en-CA'))
+  const { data: reminderProfile } = trpc.user.getProfile.useQuery(undefined, {
+    staleTime: 60 * 1000,
+  })
   const { data: dailyTodoDecisionRecordsData } = useAdminTodoDecisions(clubId, dailyTodoDateKey)
+  const { data: outreachPilotHealthData } = trpc.intelligence.getOutreachPilotHealth.useQuery(
+    { clubId, days: 14 },
+    { enabled: !!clubId, staleTime: 60 * 1000 },
+  )
+  const { data: integrationHealthData } = trpc.intelligence.getIntegrationHealthSnapshot.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 60 * 1000 },
+  )
   const setAdminTodoDecision = useSetAdminTodoDecision()
   const clearAdminTodoDecisions = useClearAdminTodoDecisions()
   const dailyTodoDecisionRecords = useMemo(
@@ -1662,10 +3456,86 @@ export function AgentIQ({
     [dailyTodoDecisionRecordsData],
   )
   const dailyTodoReminderOptions = buildDailyTodoReminderOptions(new Date())
+  const integrationAnomalyDecisionMap = useMemo(
+    () =>
+      dailyTodoDecisionRecords.reduce((acc: Record<string, 'accepted' | 'declined' | 'not_now'>, record) => {
+        if (record.bucket !== 'integration_anomalies') return acc
+        if (record.decision === 'accepted' || record.decision === 'declined' || record.decision === 'not_now') {
+          acc[record.itemId] = record.decision
+        }
+        return acc
+      }, {}),
+    [dailyTodoDecisionRecords],
+  )
+  const dailyTodoReminderChannelOptions = useMemo(
+    () => buildDailyTodoReminderChannelOptions(reminderProfile),
+    [reminderProfile],
+  )
+  const preferredDailyTodoReminderChannel = useMemo(
+    () => getPreferredDailyTodoReminderChannel(reminderProfile),
+    [reminderProfile],
+  )
+  const advisorReminderRoutingHref = useMemo(
+    () => `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent('Set up my admin reminder delivery so you can remind me by email or SMS when I snooze daily tasks.')}`,
+    [clubId],
+  )
 
   const stats = activity?.stats
-  const logs = activity?.logs || []
-  const pendingActions = pending || []
+  const logs = useMemo(() => activity?.logs || [], [activity?.logs])
+  const recentDecisionRecords = useMemo(() => decisionRecords || [], [decisionRecords])
+  const outreachPilotHealth = useMemo(
+    () => (outreachPilotHealthData || null) as OutreachPilotHealthSnapshot | null,
+    [outreachPilotHealthData],
+  )
+  const integrationAnomalyQueue = useMemo(
+    () => ((integrationHealthData as any)?.anomalyQueue || null) as IntegrationAnomalySnapshot | null,
+    [integrationHealthData],
+  )
+  const pendingActions = useMemo(() => pending || [], [pending])
+  const controlPlane = useMemo(
+    () => resolveAgentControlPlane({ intelligence: intelligenceSettings || {} }),
+    [intelligenceSettings],
+  )
+  const controlPlaneSummary = useMemo(
+    () => buildAgentControlPlaneSummary(controlPlane),
+    [controlPlane],
+  )
+  const controlPlaneAudit = useMemo(
+    () => getAgentControlPlaneAudit({ intelligence: intelligenceSettings || {} }),
+    [intelligenceSettings],
+  )
+  const outreachRolloutSummary = useMemo(
+    () =>
+      outreachRolloutStatus?.summary
+        || 'No rollout clubs configured · No live outreach actions armed',
+    [outreachRolloutStatus],
+  )
+  const outreachRolloutActions = useMemo(
+    () => Object.values(outreachRolloutStatus?.actions || {}) as Array<{ actionKind: string; enabled: boolean; label: string }>,
+    [outreachRolloutStatus],
+  )
+  const armedOutreachRolloutActions = useMemo(
+    () => outreachRolloutActions.filter((action) => action.enabled),
+    [outreachRolloutActions],
+  )
+  const recentOutreachRolloutDecisions = useMemo(
+    () =>
+      recentDecisionRecords.filter((record) =>
+        record.action === 'outreachSend'
+        && (record.result === 'blocked' || record.result === 'shadowed'),
+      ),
+    [recentDecisionRecords],
+  )
+  const outreachPilotRecommendation = useMemo(() => {
+    const recommendation = outreachPilotHealth?.recommendation
+    if (!recommendation) return null
+    const rolloutAction = outreachRolloutStatus?.actions?.[recommendation.actionKind]
+    if (!rolloutAction?.enabled) return null
+    return {
+      ...recommendation,
+      label: rolloutAction.label || recommendation.label,
+    }
+  }, [outreachPilotHealth, outreachRolloutStatus])
   const sandboxDrafts = (advisorDrafts || []).filter((draft) => draft.status === 'sandboxed' || !!draft.metadata?.sandboxPreview)
   const sandboxRouting = buildAdvisorSandboxRoutingSummary({
     settings: { sandboxRouting: intelligenceSettings?.sandboxRouting },
@@ -1677,12 +3547,87 @@ export function AgentIQ({
   const membershipLifecycleCards = buildMembershipLifecycleAutopilotCards(logs, pendingActions, intelligenceSettings)
   const programmingCockpit = buildProgrammingCockpit(advisorDrafts || [])
   const programmingOpsBoard = buildProgrammingOpsBoard(advisorDrafts || [])
-  const opsSessionDraftQueue = buildOpsSessionDraftQueue(opsSessionDrafts || [])
+  const currentUserId = session?.user?.id || null
+  const currentClubRole = useMemo(
+    () => ((opsTeammates || []).find((teammate) => teammate.id === currentUserId)?.role as "ADMIN" | "MODERATOR" | null) || null,
+    [currentUserId, opsTeammates],
+  )
+  const permissionPosture = useMemo(
+    () => resolveAgentPermissions({ intelligence: intelligenceSettings || {} }),
+    [intelligenceSettings],
+  )
+  const permissionSummary = useMemo(
+    () => buildAgentPermissionSummary(permissionPosture),
+    [permissionPosture],
+  )
+  const rolloutManagePermission = useMemo(
+    () =>
+      currentClubRole
+        ? evaluateAgentPermission({
+            automationSettings: { intelligence: intelligenceSettings || {} },
+            action: "controlPlaneManage",
+            clubAdminRole: currentClubRole,
+          })
+        : null,
+    [currentClubRole, intelligenceSettings],
+  )
+  const assignableOpsTeammates = useMemo(
+    () => (opsTeammates || []).filter((teammate) => teammate.id !== currentUserId),
+    [currentUserId, opsTeammates],
+  )
+  const fillSessionDraftBySessionId = useMemo(
+    () =>
+      (advisorDrafts || []).reduce<Map<string, AdvisorDraftWorkspaceItem>>((acc, draft) => {
+        const sessionId = draft.kind === 'fill_session'
+          ? draft.metadata?.slotFillerPreview?.sessionId
+          : null
+        if (sessionId && !acc.has(sessionId)) {
+          acc.set(sessionId, draft)
+        }
+        return acc
+      }, new Map()),
+    [advisorDrafts],
+  )
+  const opsSessionDraftQueue = buildOpsSessionDraftQueue(opsSessionDrafts || [], currentUserId, 'all')
+  const visibleOpsSessionDraftQueue = buildOpsSessionDraftQueue(opsSessionDrafts || [], currentUserId, opsOwnershipFilter)
+  const dailyOpsSessionDraftQueue = useMemo(
+    () =>
+      dailyOwnershipView === 'mine'
+        ? buildOpsSessionDraftQueue(opsSessionDrafts || [], currentUserId, 'mine')
+        : opsSessionDraftQueue,
+    [currentUserId, dailyOwnershipView, opsSessionDraftQueue, opsSessionDrafts],
+  )
+  const dailyOwnershipCopy = useMemo(
+    () => getDailyOwnershipViewCopy(dailyOwnershipView),
+    [dailyOwnershipView],
+  )
+  const opsOwnershipCounts = useMemo(() => {
+    const drafts = opsSessionDrafts || []
+    const mine = drafts.filter((draft) => getOpsDraftOwnerUserId(draft) === currentUserId).length
+    const unassigned = drafts.filter((draft) => !getOpsDraftOwnerUserId(draft)).length
+    return {
+      all: drafts.length,
+      mine,
+      unassigned,
+    }
+  }, [currentUserId, opsSessionDrafts])
   const deepLinkFocus = isAgentDeepLinkFocus(searchParams.get('focus')) ? searchParams.get('focus') : null
   const deepLinkDay = searchParams.get('day')
   const deepLinkDraftId = searchParams.get('draftId')
   const deepLinkOpsDraftId = searchParams.get('opsDraftId')
   const deepLinkKey = [deepLinkFocus, deepLinkDay, deepLinkDraftId, deepLinkOpsDraftId].filter(Boolean).join(':')
+  const opsDraftById = useMemo(
+    () =>
+      (opsSessionDrafts || []).reduce<Record<string, OpsSessionDraftItem>>((acc, draft) => {
+        acc[draft.id] = draft
+        return acc
+      }, {}),
+    [opsSessionDrafts],
+  )
+  const opsActionPanelDraft = opsActionPanel ? opsDraftById[opsActionPanel.draftId] || null : null
+  const opsActionPanelPublishReview = opsActionPanelDraft ? getOpsSessionDraftPublishReviewMeta(opsActionPanelDraft) : null
+  const opsActionPanelPublishMeta = opsActionPanelDraft ? getOpsSessionDraftPublishMeta(opsActionPanelDraft) : null
+  const opsActionPanelAftercare = opsActionPanelDraft ? getOpsSessionDraftAftercareMeta(opsActionPanelDraft) : null
   const policyScenarios = buildAgentPolicyScenarios({
     items: [
       ...logs.map((item) => ({
@@ -1713,16 +3658,50 @@ export function AgentIQ({
     automationSettings: { intelligence: intelligenceSettings || {} },
     liveMode: agentLive,
   })
-  const dailyAdminTodoSections = buildDailyAdminTodoSections({
+  const newestSandboxDraft = [...sandboxDrafts]
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0] || null
+  const readyOpsDraft = dailyOpsSessionDraftQueue.find((stage) => stage.key === 'ready_for_ops')?.drafts[0] || null
+  const sessionDraft = dailyOpsSessionDraftQueue.find((stage) => stage.key === 'session_draft')?.drafts[0] || null
+  const opsEscalations = buildOpsEscalationSignals({
+    opsSessionDraftQueue: dailyOpsSessionDraftQueue,
+    currentUserId,
+    ownershipView: dailyOwnershipView,
+  })
+  const publishedSignals = buildPublishedSessionSignals(dailyOpsSessionDraftQueue)
+  const pendingLifecycleOpportunity = proactiveOpportunities.find((opportunity) => opportunity.pendingCount > 0) || null
+  const blockedLifecycleCard = [...membershipLifecycleCards]
+    .sort((left, right) => right.blockedCount - left.blockedCount)[0] || null
+  const bestScenario = [...policyScenarios]
+    .sort((left, right) => right.autoGain - left.autoGain)[0] || null
+  const { topIntegrationAtRisk, topIntegrationWatch } = getTopIntegrationAnomalies(integrationAnomalyQueue)
+  const dailyAdminTodoSections = buildDailyAdminTodoSectionsComposer({
     clubId,
-    pendingActions,
+    pendingActionsCount: pendingActions.length,
     autopilotSummary,
-    proactiveOpportunities,
-    membershipLifecycleCards,
+    pendingLifecycleOpportunity,
+    blockedLifecycleCard,
+    bestScenario,
     programmingCockpit,
-    opsSessionDraftQueue,
-    sandboxDrafts,
-    policyScenarios,
+    readyOpsDraft,
+    sessionDraft,
+    newestSandboxDraft,
+    opsEscalations,
+    publishedSignals,
+    ownershipView: dailyOwnershipView,
+    topIntegrationAtRisk,
+    topIntegrationWatch,
+    buildAgentFocusHref: (options) => buildAgentFocusHref(clubId, options),
+    buildPublishedSessionRepeatHref: (draft) => buildPublishedSessionRepeatHref(clubId, draft),
+    buildIntegrationTodoItem: ({ anomaly, title, description }) => buildIntegrationAnomalyTodoItem({
+      anomaly,
+      clubId,
+      title,
+      description,
+    }),
+    getPublishedLiveFeedbackMeta: getOpsSessionDraftLiveFeedbackMeta,
+    getOpsWorkflowMeta,
+    buildAdvisorPolicyPrompt,
+    actionLabel,
   })
   const latestDailyTodoDecisionByItem = useMemo(
     () =>
@@ -1786,9 +3765,73 @@ export function AgentIQ({
         itemId: item.id,
         title: item.title,
         label: reminder.remindLabel || reminder.remindAt.toLocaleString(),
+        channel: reminder.reminderChannel,
+        remindAt: reminder.remindAt,
       }
     })
-    .filter(Boolean) as Array<{ itemId: string; title: string; label: string }>
+    .filter(Boolean) as Array<{
+      itemId: string
+      title: string
+      label: string
+      channel: AdminReminderDeliveryMode
+      remindAt: Date
+    }>
+  const hasUnavailableExternalReminderChannels = dailyTodoReminderChannelOptions.some(
+    (option) => option.id !== 'in_app' && !option.available,
+  )
+  const dailyOpsBrief = useMemo(
+    () => buildDailyOpsBrief({
+      clubId,
+      now: new Date(),
+      actionsToday: stats?.actionsToday ?? 0,
+      pendingActions,
+      autopilotSummary,
+      programmingCockpit,
+      opsSessionDraftQueue: dailyOpsSessionDraftQueue,
+      sandboxDrafts,
+      policyScenarios,
+      currentUserId,
+      ownershipView: dailyOwnershipView,
+      upcomingReminders: upcomingDailyReminders,
+    }),
+    [
+      clubId,
+      stats?.actionsToday,
+      pendingActions,
+      autopilotSummary,
+      currentUserId,
+      dailyOwnershipView,
+      programmingCockpit,
+      dailyOpsSessionDraftQueue,
+      sandboxDrafts,
+      policyScenarios,
+      upcomingDailyReminders,
+    ],
+  )
+  const dailyCommandCenter = useMemo(
+    () => buildUnifiedDailyCommandCenter({
+      clubId,
+      pendingActions,
+      autopilotSummary,
+      programmingCockpit,
+      opsSessionDraftQueue: dailyOpsSessionDraftQueue,
+      sandboxDrafts,
+      currentUserId,
+      ownershipView: dailyOwnershipView,
+      upcomingReminders: upcomingDailyReminders,
+    }),
+    [
+      clubId,
+      pendingActions,
+      autopilotSummary,
+      programmingCockpit,
+      dailyOpsSessionDraftQueue,
+      sandboxDrafts,
+      currentUserId,
+      dailyOwnershipView,
+      upcomingDailyReminders,
+    ],
+  )
   const handledDailyTodoCounts = handledDailyTodoItems.reduce(
     (acc, item) => {
       const decision = dailyTodoDecisions[item.id]
@@ -1891,11 +3934,327 @@ export function AgentIQ({
     )
   }
 
+  const handleShadowBackOutreachAction = () => {
+    if (!outreachPilotRecommendation) return
+    const confirmed = window.confirm(
+      `${outreachPilotRecommendation.reason}\n\nMove ${outreachPilotRecommendation.label} back to shadow for this club?`,
+    )
+    if (!confirmed) return
+
+    setProcessingId(`shadowback:${outreachPilotRecommendation.actionKind}`)
+    shadowBackOutreachRolloutAction.mutate(
+      {
+        clubId,
+        actionKind: outreachPilotRecommendation.actionKind,
+        reason: outreachPilotRecommendation.reason,
+      },
+      {
+        onError: (error: any) => {
+          window.alert(error?.message || 'Could not move this outreach action back to shadow.')
+        },
+        onSettled: () => setProcessingId(null),
+      },
+    )
+  }
+
   const handlePromoteOpsSessionDraft = (opsSessionDraftId: string) => {
     setProcessingId(`ops:${opsSessionDraftId}`)
     promoteOpsSessionDraft.mutate(
       { clubId, opsSessionDraftId },
       { onSettled: () => setProcessingId(null) }
+    )
+  }
+
+  const handleUpdateOpsSessionDraftWorkflow = (
+    opsSessionDraftId: string,
+    action:
+      | 'assign_self'
+      | 'assign_teammate'
+      | 'reassign_owner'
+      | 'ping_owner'
+      | 'due_today'
+      | 'due_tomorrow'
+      | 'add_note'
+      | 'reject'
+      | 'archive'
+      | 'reopen_ready',
+  ) => {
+    let note: string | undefined
+    let reason: string | undefined
+    let assigneeUserId: string | undefined
+
+    if (action === 'assign_teammate') {
+      return
+    }
+
+    if (action === 'add_note') {
+      const value = window.prompt('Add an ops note for this session draft:')
+      if (value === null) return
+      note = value.trim()
+      if (!note) return
+    }
+
+    if (action === 'reject') {
+      const value = window.prompt('Why is this ops draft blocked or rejected?', 'Rejected in ops review')
+      if (value === null) return
+      reason = value.trim() || 'Rejected in ops review'
+    }
+
+    if (action === 'archive') {
+      const confirmed = window.confirm('Archive this ops session draft? It will stay visible for traceability.')
+      if (!confirmed) return
+    }
+
+    if (action === 'reassign_owner') {
+      const confirmed = window.confirm('Return this ops draft to the unassigned queue so the team can reassign it?')
+      if (!confirmed) return
+    }
+
+    if (action === 'ping_owner') {
+      const confirmed = window.confirm('Ping the current owner and drop this draft into their agent reminders now?')
+      if (!confirmed) return
+    }
+
+    setProcessingId(`opswf:${action}:${opsSessionDraftId}`)
+    updateOpsSessionDraftWorkflow.mutate(
+      { clubId, opsSessionDraftId, action, assigneeUserId, note, reason },
+      { onSettled: () => setProcessingId(null) }
+    )
+  }
+
+  const handleAssignTeammateStart = (draftId: string) => {
+    if (!assignableOpsTeammates.length) {
+      window.alert('No teammate roster is available yet for this club.')
+      return
+    }
+
+    setOpsActionPanel({
+      type: 'assign_teammate',
+      draftId,
+      assigneeUserId: assignableOpsTeammates[0]?.id || '',
+    })
+  }
+
+  const submitAssignTeammate = () => {
+    if (!opsActionPanel || opsActionPanel.type !== 'assign_teammate') return
+    if (!opsActionPanel.assigneeUserId) {
+      window.alert('Choose a teammate first.')
+      return
+    }
+
+    setProcessingId(`opswf:assign_teammate:${opsActionPanel.draftId}`)
+    updateOpsSessionDraftWorkflow.mutate(
+      {
+        clubId,
+        opsSessionDraftId: opsActionPanel.draftId,
+        action: 'assign_teammate',
+        assigneeUserId: opsActionPanel.assigneeUserId,
+      },
+      {
+        onSettled: () => setProcessingId(null),
+        onSuccess: () => setOpsActionPanel(null),
+      },
+    )
+  }
+
+  const handlePrepareOpsSessionDraftPublish = (draft: OpsSessionDraftItem) => {
+    const publishMeta = getOpsSessionDraftPublishMeta(draft)
+    setOpsActionPanel({
+      type: 'prepare_publish',
+      draftId: draft.id,
+      publishDate: publishMeta?.targetDate || getNextDateForDay(draft.dayOfWeek),
+      title: publishMeta?.title || draft.title,
+      description: publishMeta?.description || draft.description || draft.note || '',
+    })
+  }
+
+  const handleEditPublishedOpsSessionDraft = (draft: OpsSessionDraftItem) => {
+    const publishMeta = getOpsSessionDraftPublishMeta(draft)
+    const liveSession = publishMeta?.liveSession
+    if (!publishMeta?.publishedPlaySessionId || !liveSession?.date) {
+      window.alert('This session does not have a live publish to edit yet.')
+      return
+    }
+
+    setOpsActionPanel({
+      type: 'edit_published_session',
+      draftId: draft.id,
+      publishDate: liveSession.date.slice(0, 10),
+      title: liveSession.title || publishMeta.title || draft.title,
+      description: liveSession.description || '',
+      startTime: liveSession.startTime || draft.startTime,
+      endTime: liveSession.endTime || draft.endTime,
+      maxPlayers: String(liveSession.maxPlayers || draft.maxPlayers || 8),
+    })
+  }
+
+  const submitPreparedPublishPlan = () => {
+    if (!opsActionPanel || opsActionPanel.type !== 'prepare_publish') return
+    const normalizedDate = opsActionPanel.publishDate.trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      window.alert('Use YYYY-MM-DD for the publish date.')
+      return
+    }
+
+    setProcessingId(`opspubprep:${opsActionPanel.draftId}`)
+    prepareOpsSessionDraftPublish.mutate(
+      {
+        clubId,
+        opsSessionDraftId: opsActionPanel.draftId,
+        publishDate: normalizedDate,
+        title: opsActionPanel.title.trim() || undefined,
+        description: opsActionPanel.description.trim() || undefined,
+      },
+      {
+        onError: (error: any) => {
+          window.alert(error?.message || 'Could not prepare this session draft for controlled publish.')
+        },
+        onSettled: () => setProcessingId(null),
+        onSuccess: () => setOpsActionPanel(null),
+      },
+    )
+  }
+
+  const submitPublishedSessionAftercareEdit = () => {
+    if (!opsActionPanel || opsActionPanel.type !== 'edit_published_session') return
+    const normalizedDate = opsActionPanel.publishDate.trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      window.alert('Use YYYY-MM-DD for the live schedule date.')
+      return
+    }
+    const maxPlayers = Number(opsActionPanel.maxPlayers)
+    if (!Number.isFinite(maxPlayers) || maxPlayers < 2) {
+      window.alert('Choose a realistic max player count for the live session.')
+      return
+    }
+
+    setProcessingId(`opsaftercare:update:${opsActionPanel.draftId}`)
+    updatePublishedOpsSessionDraft.mutate(
+      {
+        clubId,
+        opsSessionDraftId: opsActionPanel.draftId,
+        publishDate: normalizedDate,
+        title: opsActionPanel.title.trim(),
+        description: opsActionPanel.description.trim() || undefined,
+        startTime: opsActionPanel.startTime.trim(),
+        endTime: opsActionPanel.endTime.trim(),
+        maxPlayers,
+      },
+      {
+        onError: (error: any) => {
+          window.alert(error?.message || 'Could not update this live session.')
+        },
+        onSettled: () => setProcessingId(null),
+        onSuccess: () => setOpsActionPanel(null),
+      },
+    )
+  }
+
+  const handlePublishOpsSessionDraft = (draft: OpsSessionDraftItem) => {
+    const publishMeta = getOpsSessionDraftPublishMeta(draft)
+    const publishReview = getOpsSessionDraftPublishReviewMeta(draft)
+    const targetDate = publishMeta?.targetDate
+    if (!targetDate) {
+      window.alert('Prepare this session draft first so the publish date is explicit.')
+      return
+    }
+    if (publishReview?.status === 'blocked') {
+      window.alert(publishReview.summary || 'This session still has a live schedule conflict and cannot be published yet.')
+      return
+    }
+    const confirmed = window.confirm(
+      publishReview?.status === 'warn'
+        ? `Publish ${draft.title} to the live schedule for ${targetDate} at ${draft.startTime}-${draft.endTime}?\n\nReview note: ${publishReview.summary || 'There are overlapping live sessions in this window.'}`
+        : `Publish ${draft.title} to the live schedule for ${targetDate} at ${draft.startTime}-${draft.endTime}?`,
+    )
+    if (!confirmed) return
+
+    setProcessingId(`opspublish:${draft.id}`)
+    publishOpsSessionDraftToSchedule.mutate(
+      { clubId, opsSessionDraftId: draft.id },
+      {
+        onSuccess: () => {
+          router.push(`/clubs/${clubId}/intelligence/sessions`)
+        },
+        onError: (error: any) => {
+          window.alert(error?.message || 'Could not publish this session draft to the live schedule.')
+        },
+        onSettled: () => setProcessingId(null),
+      },
+    )
+  }
+
+  const handleRollbackPublishedOpsSessionDraft = (draft: OpsSessionDraftItem) => {
+    const aftercare = getOpsSessionDraftAftercareMeta(draft)
+    if (!aftercare?.canRollback) {
+      window.alert(aftercare?.rollbackSummary || 'Rollback is not available for this live session.')
+      return
+    }
+    const confirmed = window.confirm(
+      `Roll ${draft.title} back to the original publish plan?\n\n${aftercare.rollbackSummary || 'This will restore the live session to the draft you originally published.'}`,
+    )
+    if (!confirmed) return
+
+    setProcessingId(`opsaftercare:rollback:${draft.id}`)
+    rollbackPublishedOpsSessionDraft.mutate(
+      { clubId, opsSessionDraftId: draft.id },
+      {
+        onError: (error: any) => {
+          window.alert(error?.message || 'Could not roll this live session back to the original publish plan.')
+        },
+        onSettled: () => setProcessingId(null),
+      },
+    )
+  }
+
+  const handleCreatePublishedFillDraft = (draft: OpsSessionDraftItem) => {
+    const publishMeta = getOpsSessionDraftPublishMeta(draft)
+    const sessionId = publishMeta?.publishedPlaySessionId
+    const fallbackPrompt = buildPublishedSessionFillPrompt(draft)
+    const fallbackHref = draft.agentDraft
+      ? buildAdvisorDraftRefineHref(clubId, {
+          conversationId: draft.agentDraft.conversationId || null,
+          originalIntent: draft.agentDraft.originalIntent || null,
+        }, fallbackPrompt)
+      : `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
+
+    if (!sessionId) {
+      router.push(fallbackHref)
+      return
+    }
+
+    const existingFillDraft = fillSessionDraftBySessionId.get(sessionId)
+    if (existingFillDraft) {
+      router.push(buildAdvisorDraftHref(clubId, existingFillDraft))
+      return
+    }
+
+    if (!createFillSessionDraftFromSchedule?.mutate) {
+      router.push(fallbackHref)
+      return
+    }
+
+    setProcessingId(`filldraft:${draft.id}`)
+    setCreatingPublishedFillDraftId(draft.id)
+    createFillSessionDraftFromSchedule.mutate(
+      {
+        clubId,
+        sessionId,
+        channel: 'email',
+        candidateLimit: 5,
+      },
+      {
+        onSuccess: (result: any) => {
+          router.push(buildAdvisorConversationHref(clubId, result, fallbackPrompt))
+        },
+        onError: () => {
+          router.push(fallbackHref)
+        },
+        onSettled: () => {
+          setProcessingId((current) => (current === `filldraft:${draft.id}` ? null : current))
+          setCreatingPublishedFillDraftId((current) => (current === draft.id ? null : current))
+        },
+      },
     )
   }
 
@@ -1917,12 +4276,13 @@ export function AgentIQ({
       itemId: item.id,
       decision,
       title: item.title,
-      bucket,
+      bucket: item.decisionBucket || bucket,
       href: item.href,
       metadata: {
         description: item.description,
         ctaLabel: item.ctaLabel,
         tone: item.tone,
+        ...(item.decisionMetadata || {}),
         ...(metadata || {}),
       },
     })
@@ -1942,7 +4302,11 @@ export function AgentIQ({
   }
 
   const handleNotNowClick = (itemId: string) => {
-    setNotNowPickerItemId((current) => (current === itemId ? null : itemId))
+    const nextItemId = notNowPickerItemId === itemId ? null : itemId
+    setNotNowPickerItemId(nextItemId)
+    if (nextItemId) {
+      setNotNowReminderChannel(preferredDailyTodoReminderChannel)
+    }
   }
 
   // Loading skeleton
@@ -1990,6 +4354,1002 @@ export function AgentIQ({
           </p>
         </div>
       </motion.div>
+
+      <Card className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+              Agent Control Plane
+            </div>
+            <div className="text-base font-semibold mt-1" style={{ color: "var(--heading)" }}>
+              Live actions now run through explicit rollout modes
+            </div>
+            <div className="text-xs mt-1" style={{ color: "var(--t4)", lineHeight: 1.6 }}>
+              Publish, live edit, rollback, outreach, and external admin reminders now advertise whether they are locked, shadowed, or live.
+            </div>
+          </div>
+          {controlPlane.killSwitch ? (
+            <span
+              className="text-[11px] px-2.5 py-1 rounded-full font-semibold"
+              style={{ background: "rgba(239,68,68,0.12)", color: "#F87171" }}
+            >
+              Kill Switch Active
+            </span>
+          ) : null}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-5">
+          {Object.values(controlPlane.actions).map((rule) => (
+            <div
+              key={rule.action}
+              className="rounded-2xl p-3"
+              style={{
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.06)",
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                  {rule.label}
+                </div>
+                <ControlPlaneModeBadge mode={rule.mode} />
+              </div>
+              <div className="text-[11px] mt-2" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                {rule.description}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+            Current rollout
+          </div>
+          <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+            {controlPlaneSummary}
+          </div>
+          <div className="text-[11px] mt-2" style={{ color: "var(--t4)", lineHeight: 1.6 }}>
+            {controlPlaneAudit ? (
+              <>
+                <div>
+                  Last changed by <span style={{ color: "var(--t3)", fontWeight: 600 }}>{controlPlaneAudit.lastChangedByLabel || "Club admin"}</span>
+                  {controlPlaneAudit.lastChangedAt
+                    ? ` on ${new Date(controlPlaneAudit.lastChangedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                    : ''}
+                </div>
+                {controlPlaneAudit.summary ? <div>{controlPlaneAudit.summary}</div> : null}
+              </>
+            ) : (
+              <div>No rollout changes have been recorded yet. The latest arm, shadow, or disable decision will appear here.</div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#34D399", fontWeight: 700 }}>
+                Live outreach health
+              </div>
+              <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                {outreachPilotHealth?.summary || "No live outreach outcomes yet."}
+              </div>
+            </div>
+            <PilotHealthBadge health={outreachPilotHealth?.health || "idle"} />
+          </div>
+
+          <div className="grid gap-2 mt-3 sm:grid-cols-3">
+            <div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="text-[10px]" style={{ color: "var(--t4)" }}>Delivery</div>
+              <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                {outreachPilotHealth?.totals.sent || 0} sent · {outreachPilotHealth?.totals.delivered || 0} delivered
+              </div>
+            </div>
+            <div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="text-[10px]" style={{ color: "var(--t4)" }}>Engagement</div>
+              <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                {outreachPilotHealth?.totals.opened || 0} opened · {outreachPilotHealth?.totals.clicked || 0} clicked
+              </div>
+            </div>
+            <div className="rounded-2xl px-3 py-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+              <div className="text-[10px]" style={{ color: "var(--t4)" }}>Results</div>
+              <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                {outreachPilotHealth?.totals.converted || 0} booked · {outreachPilotHealth?.totals.failed || 0} failed
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 mt-3 lg:grid-cols-2">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
+                Strongest live action
+              </div>
+              {outreachPilotHealth?.topAction ? (
+                <div className="rounded-2xl px-3 py-2 mt-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                      {outreachPilotHealth.topAction.label}
+                    </div>
+                    <PilotHealthBadge health={outreachPilotHealth.topAction.health} />
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                    {outreachPilotHealth.topAction.sent} sent · {outreachPilotHealth.topAction.deliveryRate}% delivered · {outreachPilotHealth.topAction.conversionRate}% booked
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[11px] mt-2" style={{ color: "var(--t4)" }}>
+                  No live outreach actions have executed in this window yet.
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#FCA5A5", fontWeight: 700 }}>
+                Current pilot risk
+              </div>
+              {outreachPilotHealth?.atRiskAction ? (
+                <div className="rounded-2xl px-3 py-2 mt-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                      {outreachPilotHealth.atRiskAction.label}
+                    </div>
+                    <PilotHealthBadge health={outreachPilotHealth.atRiskAction.health} />
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                    {outreachPilotHealth.atRiskAction.failed} failed · {outreachPilotHealth.atRiskAction.unsubscribed} opt-outs · {outreachPilotHealth.atRiskAction.failureRate}% failure rate
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[11px] mt-2" style={{ color: "var(--t4)" }}>
+                  No immediate live outreach risk surfaced in the recent pilot window.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {outreachPilotRecommendation ? (
+            <div
+              className="rounded-2xl px-4 py-3 mt-3"
+              style={{
+                background: outreachPilotRecommendation.health === 'at_risk'
+                  ? 'rgba(239,68,68,0.08)'
+                  : 'rgba(245,158,11,0.08)',
+                border: outreachPilotRecommendation.health === 'at_risk'
+                  ? '1px solid rgba(248,113,113,0.22)'
+                  : '1px solid rgba(251,191,36,0.18)',
+              }}
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: outreachPilotRecommendation.health === 'at_risk' ? '#FCA5A5' : '#FDE68A', fontWeight: 700 }}>
+                    Shadow-back recommendation
+                  </div>
+                  <div className="text-sm font-semibold mt-1" style={{ color: 'var(--heading)' }}>
+                    {outreachPilotRecommendation.label} is the current rollout risk.
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: 'var(--t4)', lineHeight: 1.6 }}>
+                    {outreachPilotRecommendation.reason}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleShadowBackOutreachAction}
+                  disabled={
+                    !!processingId
+                    || shadowBackOutreachRolloutAction.isPending
+                    || rolloutManagePermission?.allowed === false
+                  }
+                  className="px-3 py-2 rounded-xl text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--heading)',
+                  }}
+                >
+                  {processingId === `shadowback:${outreachPilotRecommendation.actionKind}` || shadowBackOutreachRolloutAction.isPending
+                    ? 'Moving to shadow...'
+                    : 'Move back to shadow'}
+                </button>
+              </div>
+              {rolloutManagePermission?.allowed === false ? (
+                <div className="text-[11px] mt-2" style={{ color: '#FCA5A5', lineHeight: 1.5 }}>
+                  {rolloutManagePermission.reason || 'Only admins with rollout permissions can change live outreach posture.'}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#FDE68A", fontWeight: 700 }}>
+            Outreach live rollout
+          </div>
+          <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+            {outreachRolloutSummary}
+          </div>
+          <div className="text-[11px] mt-2" style={{ color: "var(--t4)", lineHeight: 1.6 }}>
+            {outreachRolloutStatus?.envAllowlistConfigured
+              ? outreachRolloutStatus?.clubAllowlisted
+                ? "This club is on the server rollout allowlist, so armed outreach actions can go live."
+                : "This club is still outside the server rollout allowlist, so outreach stays shadow-only."
+              : "No rollout clubs are configured in the server env yet, so outreach stays shadow-only."}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
+                Rollout dashboard
+              </div>
+              <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                {armedOutreachRolloutActions.length} of {outreachRolloutActions.length || 5} outreach actions armed
+              </div>
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--t4)", textAlign: "right" }}>
+              {outreachRolloutStatus?.clubAllowlisted
+                ? "Live-ready once the control plane stays in Live."
+                : "Still shadow-only until this club is allowlisted."}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            {outreachRolloutActions.length > 0 ? outreachRolloutActions.map((action) => (
+              <div
+                key={action.actionKind}
+                className="px-2.5 py-1 rounded-full text-[10px]"
+                style={{
+                  fontWeight: 700,
+                  background: action.enabled ? "rgba(16,185,129,0.12)" : "rgba(148,163,184,0.14)",
+                  color: action.enabled ? "#10B981" : "var(--t3)",
+                }}
+              >
+                {action.label}: {action.enabled ? "armed" : "shadow"}
+              </div>
+            )) : (
+              <div className="text-[11px]" style={{ color: "var(--t4)" }}>
+                No outreach rollout actions configured yet.
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#FCA5A5", fontWeight: 700 }}>
+              Recent blocked or shadowed outreach
+            </div>
+            {recentOutreachRolloutDecisions.length === 0 ? (
+              <div className="text-[11px]" style={{ color: "var(--t4)" }}>
+                No recent outreach rollout interruptions. When live outreach is shadowed or blocked, the reason will show up here.
+              </div>
+            ) : (
+              recentOutreachRolloutDecisions.slice(0, 4).map((record) => (
+                <div
+                  key={record.id}
+                  className="rounded-2xl px-3 py-2"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold" style={{ color: "var(--heading)" }}>
+                      {record.metadata?.label || record.summary}
+                    </div>
+                    <div
+                      className="px-2 py-0.5 rounded-full text-[10px]"
+                      style={{
+                        fontWeight: 700,
+                        background: record.result === "shadowed" ? "rgba(250,204,21,0.14)" : "rgba(248,113,113,0.14)",
+                        color: record.result === "shadowed" ? "#FACC15" : "#F87171",
+                      }}
+                    >
+                      {record.result}
+                    </div>
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                    {record.summary}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+            Action permissions
+          </div>
+          <div className="text-sm font-semibold mt-1" style={{ color: "var(--heading)" }}>
+            {permissionSummary}
+          </div>
+          <div className="text-[11px] mt-2" style={{ color: "var(--t4)", lineHeight: 1.6 }}>
+            {currentClubRole ? (
+              <div>
+                Your club role: <span style={{ color: "var(--t3)", fontWeight: 600 }}>{formatClubAdminRole(currentClubRole)}</span>
+              </div>
+            ) : null}
+            {rolloutManagePermission && !rolloutManagePermission.allowed ? (
+              <div style={{ color: "#F87171" }}>{rolloutManagePermission.reason}</div>
+            ) : (
+              <div>Action-level permissions now decide who can draft, approve, publish, roll back, and manage rollout settings.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+              Recent Live Decisions
+            </div>
+            <div className="text-[11px]" style={{ color: "var(--t4)" }}>
+              Ledger of recent publish/edit/rollback control-plane outcomes
+            </div>
+          </div>
+          {recentDecisionRecords.length === 0 ? (
+            <div
+              className="rounded-2xl px-4 py-3 text-sm"
+              style={{
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                color: "var(--t4)",
+              }}
+            >
+              No live decisions recorded yet. Once someone publishes, edits, rolls back, or shadows a live action, the ledger will show it here.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentDecisionRecords.slice(0, 5).map((record) => (
+                <div
+                  key={record.id}
+                  className="rounded-2xl px-4 py-3"
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                          {formatControlPlaneActionLabel(record.action)}
+                        </div>
+                        <ControlPlaneModeBadge mode={record.mode} />
+                        <ControlPlaneDecisionResultBadge result={record.result} />
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                        {record.summary}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-right shrink-0" style={{ color: "var(--t4)" }}>
+                      <div>{new Date(record.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                      <div className="mt-1">
+                        {record.user?.name || record.user?.email || 'Agent'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {opsActionPanel && opsActionPanelDraft ? (
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+        >
+          <Card className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.08em]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                  {opsActionPanel.type === 'assign_teammate'
+                    ? 'Assign teammate'
+                    : opsActionPanel.type === 'prepare_publish'
+                      ? 'Prepare controlled publish'
+                      : 'Published session aftercare'}
+                </div>
+                <div className="text-base font-semibold mt-1" style={{ color: "var(--heading)" }}>
+                  {opsActionPanelDraft.title}
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--t4)", lineHeight: 1.5 }}>
+                  {opsActionPanelDraft.dayOfWeek} · {opsActionPanelDraft.startTime}-{opsActionPanelDraft.endTime} · {formatProgrammingValue(opsActionPanelDraft.format)} · {formatProgrammingValue(opsActionPanelDraft.skillLevel)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpsActionPanel(null)}
+                className="text-[11px] px-3 py-1.5 rounded-full font-medium"
+                style={{
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid var(--card-border)",
+                  color: "var(--t3)",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {opsActionPanel.type === 'assign_teammate' ? (
+              <>
+                <p className="text-sm" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+                  Pick who should own this ops draft next. The agent will update the owner handoff and drop it into that teammate’s queue.
+                </p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {assignableOpsTeammates.map((teammate) => {
+                    const active = opsActionPanel.assigneeUserId === teammate.id
+                    const currentOwnerId = getOpsWorkflowMeta(opsActionPanelDraft)?.ownerUserId
+                    const isCurrentOwner = currentOwnerId === teammate.id
+                    return (
+                      <button
+                        key={teammate.id}
+                        type="button"
+                        onClick={() =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'assign_teammate'
+                              ? { ...current, assigneeUserId: teammate.id }
+                              : current,
+                          )
+                        }
+                        className="rounded-xl p-3 text-left transition-colors"
+                        style={{
+                          background: active ? "rgba(103,232,249,0.10)" : "rgba(255,255,255,0.04)",
+                          border: active ? "1px solid rgba(103,232,249,0.22)" : "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-semibold" style={{ color: active ? "#67E8F9" : "var(--heading)" }}>
+                              {teammate.label}
+                            </div>
+                            <div className="text-[11px] mt-1" style={{ color: "var(--t4)" }}>
+                              {teammate.role}
+                              {teammate.email ? ` · ${teammate.email}` : ''}
+                            </div>
+                          </div>
+                          {isCurrentOwner ? (
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                              style={{ background: "rgba(59,130,246,0.12)", color: "#60A5FA" }}
+                            >
+                              Current owner
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={submitAssignTeammate}
+                    disabled={processingId === `opswf:assign_teammate:${opsActionPanel.draftId}`}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium transition-opacity"
+                    style={{
+                      background: "rgba(6,182,212,0.12)",
+                      border: "1px solid rgba(6,182,212,0.22)",
+                      color: "#67E8F9",
+                      opacity: processingId === `opswf:assign_teammate:${opsActionPanel.draftId}` ? 0.7 : 1,
+                    }}
+                  >
+                    {processingId === `opswf:assign_teammate:${opsActionPanel.draftId}` ? 'Assigning…' : 'Assign teammate'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpsActionPanel(null)}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium"
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid var(--card-border)",
+                      color: "var(--t3)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : opsActionPanel.type === 'prepare_publish' ? (
+              <>
+                <p className="text-sm" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+                  Set the live schedule date and any title or description override before this session goes through controlled publish review.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                  <div className="space-y-3">
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Live schedule date
+                      </div>
+                      <input
+                        type="date"
+                        value={opsActionPanel.publishDate}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'prepare_publish'
+                              ? { ...current, publishDate: event.target.value }
+                              : current,
+                          )
+                        }
+                        className="w-full rounded-xl px-3 py-2 text-sm"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Session title
+                      </div>
+                      <input
+                        type="text"
+                        value={opsActionPanel.title}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'prepare_publish'
+                              ? { ...current, title: event.target.value }
+                              : current,
+                          )
+                        }
+                        className="w-full rounded-xl px-3 py-2 text-sm"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Description override
+                      </div>
+                      <textarea
+                        value={opsActionPanel.description}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'prepare_publish'
+                              ? { ...current, description: event.target.value }
+                              : current,
+                          )
+                        }
+                        rows={4}
+                        className="w-full rounded-xl px-3 py-2 text-sm resize-none"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div
+                    className="rounded-xl p-4 space-y-3"
+                    style={{
+                      background:
+                        opsActionPanelPublishReview?.status === 'blocked'
+                          ? "rgba(239,68,68,0.06)"
+                          : opsActionPanelPublishReview?.status === 'warn'
+                            ? "rgba(245,158,11,0.08)"
+                            : "rgba(16,185,129,0.06)",
+                      border:
+                        opsActionPanelPublishReview?.status === 'blocked'
+                          ? "1px solid rgba(239,68,68,0.16)"
+                          : opsActionPanelPublishReview?.status === 'warn'
+                            ? "1px solid rgba(245,158,11,0.16)"
+                            : "1px solid rgba(16,185,129,0.16)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                        Publish review snapshot
+                      </div>
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background:
+                            opsActionPanelPublishReview?.status === 'blocked'
+                              ? "rgba(239,68,68,0.12)"
+                              : opsActionPanelPublishReview?.status === 'warn'
+                                ? "rgba(245,158,11,0.12)"
+                                : "rgba(16,185,129,0.12)",
+                          color:
+                            opsActionPanelPublishReview?.status === 'blocked'
+                              ? "#EF4444"
+                              : opsActionPanelPublishReview?.status === 'warn'
+                                ? "#F59E0B"
+                                : "#10B981",
+                        }}
+                      >
+                        {opsActionPanelPublishReview?.status === 'blocked'
+                          ? 'Blocked'
+                          : opsActionPanelPublishReview?.status === 'warn'
+                            ? 'Review needed'
+                            : 'Clear'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                      {opsActionPanelPublishMeta?.targetDate
+                        ? `Latest review for ${opsActionPanelPublishMeta.targetDate}`
+                        : 'This draft has not been reviewed for publish yet'}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                      {opsActionPanelPublishReview?.summary || 'Saving this publish plan will refresh the review against the current live schedule before you publish.'}
+                    </div>
+                    {opsActionPanelPublishReview ? (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: 'Blockers', value: opsActionPanelPublishReview.blockers?.length || 0, color: '#EF4444' },
+                          { label: 'Warnings', value: opsActionPanelPublishReview.warnings?.length || 0, color: '#F59E0B' },
+                          { label: 'Related live', value: opsActionPanelPublishReview.relatedSessions?.length || 0, color: '#06B6D4' },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-lg px-2.5 py-2 min-w-[88px]"
+                            style={{ background: `${item.color}10`, border: `1px solid ${item.color}16` }}
+                          >
+                            <div className="text-[10px]" style={{ color: item.color }}>{item.label}</div>
+                            <div className="text-sm font-bold tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {opsActionPanelPublishReview?.relatedSessions?.length ? (
+                      <div className="space-y-1">
+                        {opsActionPanelPublishReview.relatedSessions.slice(0, 2).map((session) => (
+                          <div key={`${session.id || session.title}:${session.reason || 'related'}`} className="text-[10px]" style={{ color: "var(--t4)", lineHeight: 1.45 }}>
+                            {session.title || 'Live session'} · {session.startTime}-{session.endTime}
+                            {session.reason ? ` · ${session.reason.replace(/_/g, ' ')}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={submitPreparedPublishPlan}
+                    disabled={processingId === `opspubprep:${opsActionPanel.draftId}`}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium transition-opacity"
+                    style={{
+                      background: "rgba(16,185,129,0.10)",
+                      border: "1px solid rgba(16,185,129,0.18)",
+                      color: "#10B981",
+                      opacity: processingId === `opspubprep:${opsActionPanel.draftId}` ? 0.7 : 1,
+                    }}
+                  >
+                    {processingId === `opspubprep:${opsActionPanel.draftId}` ? 'Preparing…' : 'Save publish plan'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpsActionPanel(null)}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium"
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid var(--card-border)",
+                      color: "var(--t3)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
+                  Review how the live session drifted from the original publish plan, then either update the live session in place or roll it back to the baseline draft.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="space-y-3">
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Live schedule date
+                      </div>
+                      <input
+                        type="date"
+                        value={opsActionPanel.publishDate}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'edit_published_session'
+                              ? { ...current, publishDate: event.target.value }
+                              : current,
+                          )
+                        }
+                        className="w-full rounded-xl px-3 py-2 text-sm"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="block">
+                        <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                          Start time
+                        </div>
+                        <input
+                          type="time"
+                          value={opsActionPanel.startTime}
+                          onChange={(event) =>
+                            setOpsActionPanel((current) =>
+                              current?.type === 'edit_published_session'
+                                ? { ...current, startTime: event.target.value }
+                                : current,
+                            )
+                          }
+                          className="w-full rounded-xl px-3 py-2 text-sm"
+                          style={{
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid var(--card-border)",
+                            color: "var(--heading)",
+                          }}
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                          End time
+                        </div>
+                        <input
+                          type="time"
+                          value={opsActionPanel.endTime}
+                          onChange={(event) =>
+                            setOpsActionPanel((current) =>
+                              current?.type === 'edit_published_session'
+                                ? { ...current, endTime: event.target.value }
+                                : current,
+                            )
+                          }
+                          className="w-full rounded-xl px-3 py-2 text-sm"
+                          style={{
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid var(--card-border)",
+                            color: "var(--heading)",
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Session title
+                      </div>
+                      <input
+                        type="text"
+                        value={opsActionPanel.title}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'edit_published_session'
+                              ? { ...current, title: event.target.value }
+                              : current,
+                          )
+                        }
+                        className="w-full rounded-xl px-3 py-2 text-sm"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Max players
+                      </div>
+                      <input
+                        type="number"
+                        min={2}
+                        max={64}
+                        value={opsActionPanel.maxPlayers}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'edit_published_session'
+                              ? { ...current, maxPlayers: event.target.value }
+                              : current,
+                          )
+                        }
+                        className="w-full rounded-xl px-3 py-2 text-sm"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] font-medium mb-1.5" style={{ color: "var(--heading)" }}>
+                        Live description
+                      </div>
+                      <textarea
+                        value={opsActionPanel.description}
+                        onChange={(event) =>
+                          setOpsActionPanel((current) =>
+                            current?.type === 'edit_published_session'
+                              ? { ...current, description: event.target.value }
+                              : current,
+                          )
+                        }
+                        rows={4}
+                        className="w-full rounded-xl px-3 py-2 text-sm resize-none"
+                        style={{
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid var(--card-border)",
+                          color: "var(--heading)",
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div
+                    className="rounded-xl p-4 space-y-3"
+                    style={{
+                      background:
+                        opsActionPanelAftercare?.rollbackStatus === 'blocked'
+                          ? "rgba(239,68,68,0.06)"
+                          : opsActionPanelAftercare?.rollbackStatus === 'warn'
+                            ? "rgba(245,158,11,0.08)"
+                            : "rgba(16,185,129,0.06)",
+                      border:
+                        opsActionPanelAftercare?.rollbackStatus === 'blocked'
+                          ? "1px solid rgba(239,68,68,0.16)"
+                          : opsActionPanelAftercare?.rollbackStatus === 'warn'
+                            ? "1px solid rgba(245,158,11,0.16)"
+                            : "1px solid rgba(16,185,129,0.16)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                        Aftercare diff
+                      </div>
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          background:
+                            opsActionPanelAftercare?.status === 'missing'
+                              ? "rgba(239,68,68,0.12)"
+                              : opsActionPanelAftercare?.status === 'drifted'
+                                ? "rgba(245,158,11,0.12)"
+                                : "rgba(16,185,129,0.12)",
+                          color:
+                            opsActionPanelAftercare?.status === 'missing'
+                              ? "#EF4444"
+                              : opsActionPanelAftercare?.status === 'drifted'
+                                ? "#F59E0B"
+                                : "#10B981",
+                        }}
+                      >
+                        {opsActionPanelAftercare?.status === 'missing'
+                          ? 'Missing live session'
+                          : opsActionPanelAftercare?.status === 'drifted'
+                            ? 'Drift detected'
+                            : 'Aligned'}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                      {opsActionPanelAftercare?.summary || 'The live session still matches the original publish plan.'}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                      {opsActionPanelAftercare?.recommendedAction || 'Use this panel to keep the live session aligned with the original publish plan.'}
+                    </div>
+                    {opsActionPanelAftercare?.driftedFields?.length ? (
+                      <div className="space-y-2">
+                        {opsActionPanelAftercare.driftedFields.slice(0, 4).map((item) => (
+                          <div
+                            key={`${item.field || item.label}:${item.liveValue || item.draftValue}`}
+                            className="rounded-lg p-2"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                          >
+                            <div className="text-[10px]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                              {item.label || item.field}
+                            </div>
+                            <div className="text-[10px] mt-1" style={{ color: "var(--t4)", lineHeight: 1.45 }}>
+                              Draft: {item.draftValue || 'None'}
+                            </div>
+                            <div className="text-[10px]" style={{ color: "var(--t3)", lineHeight: 1.45 }}>
+                              Live: {item.liveValue || 'None'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {(opsActionPanelAftercare?.blockers?.length || opsActionPanelAftercare?.warnings?.length) ? (
+                      <div className="space-y-1">
+                        {(opsActionPanelAftercare.blockers || []).slice(0, 2).map((item) => (
+                          <div key={item} className="text-[10px]" style={{ color: "#EF4444", lineHeight: 1.45 }}>
+                            {item}
+                          </div>
+                        ))}
+                        {!(opsActionPanelAftercare.blockers || []).length && (opsActionPanelAftercare.warnings || []).slice(0, 2).map((item) => (
+                          <div key={item} className="text-[10px]" style={{ color: "#F59E0B", lineHeight: 1.45 }}>
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="text-[10px]" style={{ color: "var(--t4)", lineHeight: 1.45 }}>
+                      {opsActionPanelAftercare?.rollbackSummary || 'Rollback is available only when the live session is still safe to restore.'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={submitPublishedSessionAftercareEdit}
+                    disabled={processingId === `opsaftercare:update:${opsActionPanel.draftId}`}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium transition-opacity"
+                    style={{
+                      background: "rgba(6,182,212,0.12)",
+                      border: "1px solid rgba(6,182,212,0.22)",
+                      color: "#67E8F9",
+                      opacity: processingId === `opsaftercare:update:${opsActionPanel.draftId}` ? 0.7 : 1,
+                    }}
+                  >
+                    {processingId === `opsaftercare:update:${opsActionPanel.draftId}` ? 'Saving live edit…' : 'Save live edits'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRollbackPublishedOpsSessionDraft(opsActionPanelDraft)}
+                    disabled={!opsActionPanelAftercare?.canRollback || processingId === `opsaftercare:rollback:${opsActionPanel.draftId}`}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium transition-opacity"
+                    style={{
+                      background: "rgba(245,158,11,0.10)",
+                      border: "1px solid rgba(245,158,11,0.18)",
+                      color: "#F59E0B",
+                      opacity: !opsActionPanelAftercare?.canRollback || processingId === `opsaftercare:rollback:${opsActionPanel.draftId}` ? 0.55 : 1,
+                    }}
+                  >
+                    {processingId === `opsaftercare:rollback:${opsActionPanel.draftId}` ? 'Rolling back…' : 'Rollback to publish plan'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOpsActionPanel(null)}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-full text-[11px] font-medium"
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid var(--card-border)",
+                      color: "var(--t3)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </Card>
+        </motion.div>
+      ) : null}
 
       {/* ── KPI Cards ── */}
       <motion.div
@@ -2045,14 +5405,496 @@ export function AgentIQ({
               </div>
             </Card>
           )
-        })}
+      })}
+      </motion.div>
+
+      {/* ── Unified Daily Command Center ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.08 }}
+      >
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4" style={{ color: "#10B981" }} />
+                <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                  Unified Daily Command Center
+                </h2>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                One command surface for approvals, live aftercare, ops handoffs, programming pressure, and reminders. {dailyCommandCenter.summary}
+              </p>
+            </div>
+            <div
+              className="text-[11px] px-3 py-1.5 rounded-full font-medium shrink-0"
+              style={{ background: "rgba(16,185,129,0.12)", color: "#10B981" }}
+            >
+              {dailyCommandCenter.headline}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            {dailyCommandCenter.quickActions.map((action) => {
+              const isDanger = action.tone === 'danger'
+              const isWarn = action.tone === 'warn'
+              const isSuccess = action.tone === 'success'
+
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                  style={{
+                    background: isDanger
+                      ? "rgba(239,68,68,0.10)"
+                      : isWarn
+                        ? "rgba(245,158,11,0.10)"
+                        : isSuccess
+                          ? "rgba(16,185,129,0.10)"
+                          : "rgba(255,255,255,0.05)",
+                    color: isDanger
+                      ? "#EF4444"
+                      : isWarn
+                        ? "#F59E0B"
+                        : isSuccess
+                          ? "#10B981"
+                          : "var(--t3)",
+                    border: isDanger
+                      ? "1px solid rgba(239,68,68,0.18)"
+                      : isWarn
+                        ? "1px solid rgba(245,158,11,0.18)"
+                        : isSuccess
+                          ? "1px solid rgba(16,185,129,0.18)"
+                          : "1px solid var(--card-border)",
+                  }}
+                >
+                  {action.label}
+                </Link>
+              )
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
+            {dailyCommandCenter.modules.map((card) => {
+              const styles = dailyTodoToneStyles(card.tone)
+
+              return (
+                <div
+                  key={card.id}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: styles.bg,
+                    border: `1px solid ${styles.border}`,
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: styles.title }}>
+                        {card.eyebrow}
+                      </div>
+                      <div className="text-[13px] font-semibold mt-1" style={{ color: "var(--heading)", lineHeight: 1.35 }}>
+                        {card.title}
+                      </div>
+                    </div>
+                    {card.count !== undefined && card.count !== null && card.count !== '' && (
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                      >
+                        {card.count}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] mt-2 min-h-[52px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                    {card.description}
+                  </div>
+
+                  {card.bullets && card.bullets.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      {card.bullets.slice(0, 3).map((bullet) => (
+                        <div
+                          key={bullet}
+                          className="text-[10px]"
+                          style={{ color: "var(--t3)", lineHeight: 1.45 }}
+                        >
+                          • {bullet}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href={card.href}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                      style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                    >
+                      {card.ctaLabel}
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                    {card.secondaryActions?.map((action) => {
+                      const isDanger = action.tone === 'danger'
+                      const isWarn = action.tone === 'warn'
+                      const isSuccess = action.tone === 'success'
+
+                      return (
+                        <Link
+                          key={action.label}
+                          href={action.href}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            background: isDanger
+                              ? "rgba(239,68,68,0.10)"
+                              : isWarn
+                                ? "rgba(245,158,11,0.10)"
+                                : isSuccess
+                                  ? "rgba(16,185,129,0.10)"
+                                  : "rgba(255,255,255,0.05)",
+                            color: isDanger
+                              ? "#EF4444"
+                              : isWarn
+                                ? "#F59E0B"
+                                : isSuccess
+                                  ? "#10B981"
+                                  : "var(--t3)",
+                            border: isDanger
+                              ? "1px solid rgba(239,68,68,0.18)"
+                              : isWarn
+                                ? "1px solid rgba(245,158,11,0.18)"
+                                : isSuccess
+                                  ? "1px solid rgba(16,185,129,0.18)"
+                                  : "1px solid var(--card-border)",
+                          }}
+                        >
+                          {action.label}
+                        </Link>
+                      )
+                    })}
+                    {card.workflowActions?.map((action) => {
+                      const key =
+                        action.action === 'promote'
+                          ? `ops:${action.opsDraftId}`
+                          : action.action === 'create_fill_draft'
+                            ? `filldraft:${action.opsDraftId}`
+                            : action.action === 'prepare_publish'
+                              ? `opspubprep:${action.opsDraftId}`
+                              : action.action === 'publish_now'
+                                ? `opspublish:${action.opsDraftId}`
+                                : `opswf:${action.action}:${action.opsDraftId}`
+                      const isRunning = processingId === key
+                      const isDanger = action.tone === 'danger'
+                      const isWarn = action.tone === 'warn'
+                      const isSuccess = action.tone === 'success'
+
+                      return (
+                        <button
+                          key={`${action.label}-${action.opsDraftId}`}
+                          onClick={() => {
+                            if (action.action === 'promote') {
+                              handlePromoteOpsSessionDraft(action.opsDraftId)
+                            } else if (action.action === 'create_fill_draft') {
+                              const draft = (opsSessionDrafts || []).find((item) => item.id === action.opsDraftId)
+                              if (!draft) return
+                              handleCreatePublishedFillDraft(draft)
+                            } else if (action.action === 'assign_teammate') {
+                              handleAssignTeammateStart(action.opsDraftId)
+                            } else if (action.action === 'prepare_publish' || action.action === 'publish_now') {
+                              const draft = (opsSessionDrafts || []).find((item) => item.id === action.opsDraftId)
+                              if (!draft) return
+                              if (action.action === 'prepare_publish') {
+                                handlePrepareOpsSessionDraftPublish(draft)
+                              } else {
+                                handlePublishOpsSessionDraft(draft)
+                              }
+                            } else {
+                              handleUpdateOpsSessionDraftWorkflow(action.opsDraftId, action.action)
+                            }
+                          }}
+                          disabled={isRunning}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            background: isDanger
+                              ? "rgba(239,68,68,0.10)"
+                              : isWarn
+                                ? "rgba(245,158,11,0.10)"
+                                : isSuccess
+                                  ? "rgba(16,185,129,0.10)"
+                                  : "rgba(255,255,255,0.05)",
+                            color: isDanger
+                              ? "#EF4444"
+                              : isWarn
+                                ? "#F59E0B"
+                                : isSuccess
+                                  ? "#10B981"
+                                  : "var(--t3)",
+                            border: isDanger
+                              ? "1px solid rgba(239,68,68,0.18)"
+                              : isWarn
+                                ? "1px solid rgba(245,158,11,0.18)"
+                                : isSuccess
+                                  ? "1px solid rgba(16,185,129,0.18)"
+                                  : "1px solid var(--card-border)",
+                            opacity: isRunning ? 0.7 : 1,
+                          }}
+                        >
+                          {isRunning ? 'Working…' : action.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      </motion.div>
+
+      {integrationAnomalyQueue && integrationAnomalyQueue.suggested.length > 0 && (
+        <IntegrationWatchlistCard
+          clubId={clubId}
+          isDark={isDark}
+          queue={integrationAnomalyQueue}
+          decisionMap={integrationAnomalyDecisionMap}
+        />
+      )}
+
+      {/* ── Today's Ops Brief ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.11 }}
+      >
+        <Card>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4" style={{ color: "#06B6D4" }} />
+                <h2 className="text-sm font-semibold" style={{ color: "var(--heading)" }}>
+                  {dailyOwnershipCopy.briefTitle}
+                </h2>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
+                {dailyOwnershipCopy.briefDescription} {dailyOpsBrief.summary}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+              {[
+                { key: 'team' as const, label: 'Team view' },
+                { key: 'mine' as const, label: 'My work' },
+              ].map((option) => {
+                const active = dailyOwnershipView === option.key
+                const disabled = option.key === 'mine' && !currentUserId
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => !disabled && setDailyOwnershipView(option.key)}
+                    disabled={disabled}
+                    className="text-[11px] px-3 py-1.5 rounded-full font-medium"
+                    style={{
+                      background: active ? "rgba(6,182,212,0.12)" : "rgba(255,255,255,0.05)",
+                      color: disabled ? "var(--t4)" : active ? "#06B6D4" : "var(--t3)",
+                      border: active ? "1px solid rgba(6,182,212,0.2)" : "1px solid var(--card-border)",
+                      opacity: disabled ? 0.6 : 1,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+              <div
+                className="text-[11px] px-3 py-1.5 rounded-full font-medium"
+                style={{ background: "rgba(6,182,212,0.12)", color: "#06B6D4" }}
+              >
+                {dailyOpsBrief.headline}
+              </div>
+            </div>
+          </div>
+
+          <div className={`grid grid-cols-1 ${dailyOpsBrief.cards.length >= 5 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-3`}>
+            {dailyOpsBrief.cards.map((card) => {
+              const styles = dailyTodoToneStyles(card.tone)
+
+              return (
+                <div
+                  key={card.id}
+                  className="rounded-xl p-3"
+                  style={{
+                    background: styles.bg,
+                    border: `1px solid ${styles.border}`,
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: styles.title }}>
+                        {card.eyebrow}
+                      </div>
+                      <div className="text-[13px] font-semibold mt-1" style={{ color: "var(--heading)", lineHeight: 1.35 }}>
+                        {card.title}
+                      </div>
+                    </div>
+                    {card.count !== undefined && card.count !== null && card.count !== '' && (
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                      >
+                        {card.count}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-[11px] mt-2 min-h-[52px]" style={{ color: "var(--t3)", lineHeight: 1.55 }}>
+                    {card.description}
+                  </div>
+
+                  {card.bullets && card.bullets.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      {card.bullets.slice(0, 3).map((bullet) => (
+                        <div
+                          key={bullet}
+                          className="text-[10px]"
+                          style={{ color: "var(--t3)", lineHeight: 1.45 }}
+                        >
+                          • {bullet}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href={card.href}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                      style={{ background: "rgba(255,255,255,0.08)", color: "var(--heading)" }}
+                    >
+                      {card.ctaLabel}
+                      <ArrowUpRight className="w-3 h-3" />
+                    </Link>
+                    {card.secondaryActions?.map((action) => {
+                      const isDanger = action.tone === 'danger'
+                      const isWarn = action.tone === 'warn'
+                      const isSuccess = action.tone === 'success'
+
+                      return (
+                        <Link
+                          key={action.label}
+                          href={action.href}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            background: isDanger
+                              ? "rgba(239,68,68,0.10)"
+                              : isWarn
+                                ? "rgba(245,158,11,0.10)"
+                                : isSuccess
+                                  ? "rgba(16,185,129,0.10)"
+                                  : "rgba(255,255,255,0.05)",
+                            color: isDanger
+                              ? "#EF4444"
+                              : isWarn
+                                ? "#F59E0B"
+                                : isSuccess
+                                  ? "#10B981"
+                                  : "var(--t3)",
+                            border: isDanger
+                              ? "1px solid rgba(239,68,68,0.18)"
+                              : isWarn
+                                ? "1px solid rgba(245,158,11,0.18)"
+                                : isSuccess
+                                  ? "1px solid rgba(16,185,129,0.18)"
+                                  : "1px solid var(--card-border)",
+                          }}
+                        >
+                          {action.label}
+                        </Link>
+                      )
+                    })}
+                    {card.workflowActions?.map((action) => {
+                      const key =
+                        action.action === 'promote'
+                          ? `ops:${action.opsDraftId}`
+                          : action.action === 'create_fill_draft'
+                            ? `filldraft:${action.opsDraftId}`
+                          : action.action === 'prepare_publish'
+                            ? `opspubprep:${action.opsDraftId}`
+                            : action.action === 'publish_now'
+                              ? `opspublish:${action.opsDraftId}`
+                              : `opswf:${action.action}:${action.opsDraftId}`
+                      const isRunning = processingId === key
+                      const isDanger = action.tone === 'danger'
+                      const isWarn = action.tone === 'warn'
+                      const isSuccess = action.tone === 'success'
+
+                      return (
+                        <button
+                          key={`${action.label}-${action.opsDraftId}`}
+                          onClick={() => {
+                            if (action.action === 'promote') {
+                              handlePromoteOpsSessionDraft(action.opsDraftId)
+                            } else if (action.action === 'create_fill_draft') {
+                              const draft = (opsSessionDrafts || []).find((item) => item.id === action.opsDraftId)
+                              if (!draft) return
+                              handleCreatePublishedFillDraft(draft)
+                            } else if (action.action === 'assign_teammate') {
+                              handleAssignTeammateStart(action.opsDraftId)
+                            } else if (action.action === 'prepare_publish' || action.action === 'publish_now') {
+                              const draft = (opsSessionDrafts || []).find((item) => item.id === action.opsDraftId)
+                              if (!draft) return
+                              if (action.action === 'prepare_publish') {
+                                handlePrepareOpsSessionDraftPublish(draft)
+                              } else {
+                                handlePublishOpsSessionDraft(draft)
+                              }
+                            } else {
+                              handleUpdateOpsSessionDraftWorkflow(action.opsDraftId, action.action)
+                            }
+                          }}
+                          disabled={isRunning}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            background: isDanger
+                              ? "rgba(239,68,68,0.10)"
+                              : isWarn
+                                ? "rgba(245,158,11,0.10)"
+                                : isSuccess
+                                  ? "rgba(16,185,129,0.10)"
+                                  : "rgba(255,255,255,0.05)",
+                            color: isDanger
+                              ? "#EF4444"
+                              : isWarn
+                                ? "#F59E0B"
+                                : isSuccess
+                                  ? "#10B981"
+                                  : "var(--t3)",
+                            border: isDanger
+                              ? "1px solid rgba(239,68,68,0.18)"
+                              : isWarn
+                                ? "1px solid rgba(245,158,11,0.18)"
+                                : isSuccess
+                                  ? "1px solid rgba(16,185,129,0.18)"
+                                  : "1px solid var(--card-border)",
+                            opacity: isRunning ? 0.7 : 1,
+                          }}
+                        >
+                          {isRunning ? 'Working…' : action.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
       </motion.div>
 
       {/* ── Daily Admin To-Do ── */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.13 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
       >
         <Card>
           <div className="flex items-start justify-between gap-4 mb-4">
@@ -2064,18 +5906,44 @@ export function AgentIQ({
                 </h2>
               </div>
               <p className="text-xs mt-1" style={{ color: "var(--t4)" }}>
-                The agent&apos;s recommended worklist for the club manager across today, tomorrow, and the next blockers.
+                {dailyOwnershipCopy.todoDescription}
               </p>
             </div>
-            {handledDailyTodoItems.length > 0 && (
-              <button
-                onClick={resetDailyTodoDecisions}
-                className="text-[11px] font-medium shrink-0"
-                style={{ color: "var(--t3)" }}
-              >
-                Reset today
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {[
+                { key: 'team' as const, label: 'Team view' },
+                { key: 'mine' as const, label: 'My work' },
+              ].map((option) => {
+                const active = dailyOwnershipView === option.key
+                const disabled = option.key === 'mine' && !currentUserId
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => !disabled && setDailyOwnershipView(option.key)}
+                    disabled={disabled}
+                    className="text-[11px] px-3 py-1.5 rounded-full font-medium"
+                    style={{
+                      background: active ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.05)",
+                      color: disabled ? "var(--t4)" : active ? "#10B981" : "var(--t3)",
+                      border: active ? "1px solid rgba(16,185,129,0.2)" : "1px solid var(--card-border)",
+                      opacity: disabled ? 0.6 : 1,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+              {handledDailyTodoItems.length > 0 && (
+                <button
+                  onClick={resetDailyTodoDecisions}
+                  className="text-[11px] font-medium"
+                  style={{ color: "var(--t3)" }}
+                >
+                  Reset today
+                </button>
+              )}
+            </div>
           </div>
 
           {handledDailyTodoItems.length > 0 && (
@@ -2125,7 +5993,7 @@ export function AgentIQ({
                     >
                       <span style={{ color: "var(--heading)" }}>{reminder.title}</span>
                       {" "}
-                      comes back {reminder.label}.
+                      comes back {reminder.label} via {formatAdminReminderDeliveryMode(reminder.channel)}.
                     </div>
                   ))}
                 </div>
@@ -2241,15 +6109,81 @@ export function AgentIQ({
                                   }}
                                 >
                                   <div className="text-[10px] font-medium mb-2" style={{ color: "var(--heading)" }}>
-                                    When should I remind you?
+                                    How should I remind you?
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {dailyTodoReminderChannelOptions.map((option) => {
+                                      const isSelected = notNowReminderChannel === option.id
+                                      return (
+                                        <button
+                                          key={option.id}
+                                          type="button"
+                                          disabled={!option.available}
+                                          onClick={() => setNotNowReminderChannel(option.id)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium transition-colors disabled:cursor-not-allowed"
+                                          style={{
+                                            background: option.available
+                                              ? isSelected
+                                                ? "rgba(6,182,212,0.14)"
+                                                : "rgba(255,255,255,0.06)"
+                                              : "rgba(255,255,255,0.03)",
+                                            border: option.available
+                                              ? isSelected
+                                                ? "1px solid rgba(6,182,212,0.28)"
+                                                : "1px solid var(--card-border)"
+                                              : "1px solid rgba(255,255,255,0.05)",
+                                            color: option.available
+                                              ? isSelected
+                                                ? "#06B6D4"
+                                                : "var(--t3)"
+                                              : "rgba(148,163,184,0.45)",
+                                          }}
+                                          title={option.description}
+                                        >
+                                          {option.label}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.45 }}>
+                                    This reminder will come back via{" "}
+                                    <span style={{ color: "var(--heading)" }}>
+                                      {formatAdminReminderDeliveryMode(notNowReminderChannel)}
+                                    </span>.
+                                  </div>
+                                  {hasUnavailableExternalReminderChannels && (
+                                    <div className="text-[10px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                      The grayed-out reminder routes need saved admin contact details.{" "}
+                                      <Link
+                                        href="/profile"
+                                        className="underline underline-offset-2"
+                                        style={{ color: "var(--heading)" }}
+                                      >
+                                        Open profile
+                                      </Link>
+                                      {" "}or{" "}
+                                      <Link
+                                        href={advisorReminderRoutingHref}
+                                        className="underline underline-offset-2"
+                                        style={{ color: "#A78BFA" }}
+                                      >
+                                        ask Advisor
+                                      </Link>
+                                      {" "}to save them for you.
+                                    </div>
+                                  )}
+                                  <div className="text-[10px] font-medium mt-3 mb-2" style={{ color: "var(--heading)" }}>
+                                    When should I bring this back?
                                   </div>
                                   <div className="flex flex-wrap gap-2">
                                     {dailyTodoReminderOptions.map((option) => (
                                       <button
                                         key={option.id}
+                                        type="button"
                                         onClick={() => handleDailyTodoDecision(item, 'not_now', section.key, {
                                           remindAt: option.remindAt,
                                           remindLabel: option.remindLabel,
+                                          reminderChannel: notNowReminderChannel,
                                         })}
                                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium"
                                         style={{
@@ -2263,6 +6197,7 @@ export function AgentIQ({
                                       </button>
                                     ))}
                                     <button
+                                      type="button"
                                       onClick={() => setNotNowPickerItemId(null)}
                                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[10px] font-medium"
                                       style={{
@@ -2860,6 +6795,22 @@ export function AgentIQ({
                         </div>
                       </div>
 
+                      {impact.warnings.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {impact.warnings.slice(0, 2).map((warning) => (
+                            <div
+                              key={warning}
+                              className="rounded-lg p-2"
+                              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                            >
+                              <div className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                {warning}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="mt-4">
                         <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
                           Quick refine controls
@@ -2976,12 +6927,30 @@ export function AgentIQ({
                           {impact.riskCheck.label}
                         </div>
                         <div className="text-[11px] mt-1" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                          {impact.fillDelta !== null
-                            ? `${impact.fillDelta >= 0 ? "+" : ""}${impact.fillDelta} fill pts vs next best.`
-                            : impact.riskCheck.note}
+                          {draft.primary.conflict
+                            ? impact.riskCheck.note
+                            : impact.fillDelta !== null
+                              ? `${impact.fillDelta >= 0 ? "+" : ""}${impact.fillDelta} fill pts vs next best.`
+                              : impact.riskCheck.note}
                         </div>
                       </div>
                     </div>
+
+                    {impact.warnings.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {impact.warnings.slice(0, 2).map((warning) => (
+                          <div
+                            key={warning}
+                            className="rounded-lg p-2"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                          >
+                            <div className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                              {warning}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="text-[11px] mt-3" style={{ color: "var(--t3)", lineHeight: 1.6 }}>
                       {draft.insights[0] || draft.summary || "Draft-only programming suggestion ready for review."}
@@ -3214,11 +7183,44 @@ export function AgentIQ({
                     Focused from Schedule: {deepLinkDay}
                   </div>
                 )}
+                <div className="text-[11px] mt-2" style={{ color: "var(--t4)" }}>
+                  Your assigned drafts are automatically ranked first in every stage.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                {[
+                  { key: 'all' as const, label: 'All', count: opsOwnershipCounts.all },
+                  { key: 'mine' as const, label: 'Mine', count: opsOwnershipCounts.mine },
+                  { key: 'unassigned' as const, label: 'Unassigned', count: opsOwnershipCounts.unassigned },
+                ].map((filter) => {
+                  const active = opsOwnershipFilter === filter.key
+                  return (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setOpsOwnershipFilter(filter.key)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-medium"
+                      style={{
+                        background: active ? "rgba(103,232,249,0.12)" : "rgba(255,255,255,0.05)",
+                        border: active ? "1px solid rgba(103,232,249,0.24)" : "1px solid var(--card-border)",
+                        color: active ? "#67E8F9" : "var(--t3)",
+                      }}
+                    >
+                      {filter.label}
+                      <span
+                        className="px-1.5 py-0.5 rounded-full text-[10px]"
+                        style={{ background: active ? "rgba(103,232,249,0.16)" : "rgba(255,255,255,0.08)" }}
+                      >
+                        {filter.count}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
-              {opsSessionDraftQueue.map((stage) => (
+              {visibleOpsSessionDraftQueue.map((stage) => (
                 <div
                   key={stage.key}
                   className="rounded-xl p-3"
@@ -3261,6 +7263,37 @@ export function AgentIQ({
                       prioritizeFocusedItems(stage.drafts, isFocusedOpsSessionDraft).slice(0, 4).map((draft) => {
                         const advisorHref = buildOpsSessionDraftHref(clubId, draft)
                         const isPromoting = processingId === `ops:${draft.id}`
+                        const opsWorkflow = getOpsWorkflowMeta(draft)
+                        const handoff = getOpsHandoffMeta(draft)
+                        const publishMeta = getOpsSessionDraftPublishMeta(draft)
+                        const publishReview = getOpsSessionDraftPublishReviewMeta(draft)
+                        const liveFeedback = getOpsSessionDraftLiveFeedbackMeta(draft)
+                        const aftercare = getOpsSessionDraftAftercareMeta(draft)
+                        const liveFeedbackTone = getOpsSessionLiveFeedbackTone(liveFeedback?.status)
+                        const publishedSessionId = typeof publishMeta?.publishedPlaySessionId === 'string'
+                          ? publishMeta.publishedPlaySessionId
+                          : null
+                        const existingFillDraft = publishedSessionId
+                          ? fillSessionDraftBySessionId.get(publishedSessionId)
+                          : null
+                        const dueMeta = getOpsDueMeta(draft)
+                        const dueLabel = dueMeta?.label || getOpsWorkflowDueLabel(draft)
+                        const timeline = getOpsTimelineMeta(draft)
+                        const isAssigning = processingId === `opswf:assign_self:${draft.id}`
+                        const isAssigningTeammate = processingId === `opswf:assign_teammate:${draft.id}`
+                        const isReassigning = processingId === `opswf:reassign_owner:${draft.id}`
+                        const isPingingOwner = processingId === `opswf:ping_owner:${draft.id}`
+                        const isDueToday = processingId === `opswf:due_today:${draft.id}`
+                        const isDueTomorrow = processingId === `opswf:due_tomorrow:${draft.id}`
+                        const isAddingNote = processingId === `opswf:add_note:${draft.id}`
+                        const isRejecting = processingId === `opswf:reject:${draft.id}`
+                        const isArchiving = processingId === `opswf:archive:${draft.id}`
+                        const isReopening = processingId === `opswf:reopen_ready:${draft.id}`
+                        const isPreparingPublish = processingId === `opspubprep:${draft.id}`
+                        const isPublishing = processingId === `opspublish:${draft.id}`
+                        const isEditingAftercare = processingId === `opsaftercare:update:${draft.id}`
+                        const isRollingBackAftercare = processingId === `opsaftercare:rollback:${draft.id}`
+                        const isCreatingFillDraft = creatingPublishedFillDraftId === draft.id
                         const nextStep = draft.metadata?.sessionDraft?.nextStep
                         const isFocused = isFocusedOpsSessionDraft(draft)
 
@@ -3311,8 +7344,444 @@ export function AgentIQ({
                             </div>
 
                             <div className="text-[11px] mt-3" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                              {nextStep || draft.note || 'Internal session draft ready for manual scheduling review.'}
+                              {nextStep || draft.conflict?.riskSummary || draft.note || 'Internal session draft ready for manual scheduling review.'}
                             </div>
+
+                            {publishMeta?.targetDate ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background:
+                                    publishReview?.status === 'blocked'
+                                      ? "rgba(239,68,68,0.06)"
+                                      : publishReview?.status === 'warn'
+                                        ? "rgba(245,158,11,0.08)"
+                                        : "rgba(16,185,129,0.06)",
+                                  border:
+                                    publishReview?.status === 'blocked'
+                                      ? "1px solid rgba(239,68,68,0.16)"
+                                      : publishReview?.status === 'warn'
+                                        ? "1px solid rgba(245,158,11,0.16)"
+                                        : "1px solid rgba(16,185,129,0.16)",
+                                }}
+                              >
+                                <div
+                                  className="text-[10px] uppercase tracking-[0.08em]"
+                                  style={{
+                                    color:
+                                      publishReview?.status === 'blocked'
+                                        ? "#EF4444"
+                                        : publishReview?.status === 'warn'
+                                          ? "#F59E0B"
+                                          : "#10B981",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Controlled publish
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--heading)", lineHeight: 1.55, fontWeight: 600 }}>
+                                  {publishMeta.stage === 'published'
+                                    ? 'Published to live schedule'
+                                    : `Ready for ${publishMeta.targetDate}`}
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                  {(publishMeta.title || draft.title)} · {draft.startTime}-{draft.endTime}
+                                </div>
+                                {publishReview ? (
+                                  <div className="mt-3 space-y-2">
+                                    <div className="text-[11px]" style={{ color: "var(--heading)", lineHeight: 1.55, fontWeight: 600 }}>
+                                      {publishReview.status === 'blocked'
+                                        ? 'Publish blocked'
+                                        : publishReview.status === 'warn'
+                                          ? 'Publish review needed'
+                                          : 'Publish review clear'}
+                                    </div>
+                                    <div className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                      {publishReview.summary}
+                                    </div>
+                                    {publishReview.relatedSessions?.length ? (
+                                      <div className="space-y-1">
+                                        {publishReview.relatedSessions.slice(0, 2).map((session) => (
+                                          <div key={`${draft.id}:${session.id || session.title}:${session.reason || 'related'}`} className="text-[10px]" style={{ color: "var(--t4)", lineHeight: 1.45 }}>
+                                            {session.title || 'Live session'} · {session.startTime}-{session.endTime}
+                                            {session.reason ? ` · ${session.reason.replace(/_/g, ' ')}` : ''}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {publishReview.blockers?.length ? (
+                                      <div className="space-y-1">
+                                        {publishReview.blockers.slice(0, 2).map((item) => (
+                                          <div key={item} className="text-[10px]" style={{ color: "#EF4444", lineHeight: 1.45 }}>
+                                            {item}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {!publishReview.blockers?.length && publishReview.warnings?.length ? (
+                                      <div className="space-y-1">
+                                        {publishReview.warnings.slice(0, 2).map((item) => (
+                                          <div key={item} className="text-[10px]" style={{ color: "#F59E0B", lineHeight: 1.45 }}>
+                                            {item}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                                {publishMeta.preparedBy ? (
+                                  <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>
+                                    Prepared by {publishMeta.preparedBy}{publishMeta.preparedAt ? ` · ${new Date(publishMeta.preparedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+                                  </div>
+                                ) : null}
+                                {publishMeta.publishedAt ? (
+                                  <div className="text-[10px] mt-2" style={{ color: "#10B981" }}>
+                                    Live at {new Date(publishMeta.publishedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            {publishMeta?.publishedPlaySessionId && aftercare ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background:
+                                    aftercare.status === 'missing'
+                                      ? "rgba(239,68,68,0.06)"
+                                      : aftercare.status === 'drifted'
+                                        ? "rgba(245,158,11,0.08)"
+                                        : "rgba(16,185,129,0.06)",
+                                  border:
+                                    aftercare.status === 'missing'
+                                      ? "1px solid rgba(239,68,68,0.16)"
+                                      : aftercare.status === 'drifted'
+                                        ? "1px solid rgba(245,158,11,0.16)"
+                                        : "1px solid rgba(16,185,129,0.16)",
+                                }}
+                              >
+                                <div
+                                  className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em]"
+                                  style={{
+                                    color:
+                                      aftercare.status === 'missing'
+                                        ? "#EF4444"
+                                        : aftercare.status === 'drifted'
+                                          ? "#F59E0B"
+                                          : "#10B981",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <span>Publish aftercare</span>
+                                  <span>
+                                    {aftercare.status === 'missing'
+                                      ? 'Missing live session'
+                                      : aftercare.status === 'drifted'
+                                        ? 'Drift detected'
+                                        : 'Aligned'}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--heading)", lineHeight: 1.55, fontWeight: 600 }}>
+                                  {aftercare.summary}
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                  {aftercare.recommendedAction}
+                                </div>
+                                {aftercare.driftedFields?.length ? (
+                                  <div className="mt-3 space-y-1">
+                                    {aftercare.driftedFields.slice(0, 2).map((item) => (
+                                      <div key={`${draft.id}:${item.field || item.label}`} className="text-[10px]" style={{ color: "var(--t4)", lineHeight: 1.45 }}>
+                                        {item.label || item.field}: {item.liveValue || 'None'} live vs {item.draftValue || 'None'} planned
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                  {aftercare.canEdit ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEditPublishedOpsSessionDraft(draft)}
+                                      disabled={isEditingAftercare}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                      style={{
+                                        background: "rgba(6,182,212,0.12)",
+                                        border: "1px solid rgba(6,182,212,0.22)",
+                                        color: "#67E8F9",
+                                        opacity: isEditingAftercare ? 0.7 : 1,
+                                      }}
+                                    >
+                                      {isEditingAftercare ? 'Opening…' : 'Edit live session'}
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRollbackPublishedOpsSessionDraft(draft)}
+                                    disabled={!aftercare.canRollback || isRollingBackAftercare}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                    style={{
+                                      background: "rgba(245,158,11,0.10)",
+                                      border: "1px solid rgba(245,158,11,0.18)",
+                                      color: "#F59E0B",
+                                      opacity: !aftercare.canRollback || isRollingBackAftercare ? 0.55 : 1,
+                                    }}
+                                  >
+                                    {isRollingBackAftercare ? 'Rolling back…' : 'Rollback to plan'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {liveFeedback ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background: liveFeedbackTone.background,
+                                  border: `1px solid ${liveFeedbackTone.border}`,
+                                }}
+                              >
+                                <div
+                                  className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.08em]"
+                                  style={{ color: liveFeedbackTone.color, fontWeight: 700 }}
+                                >
+                                  <span>Live feedback</span>
+                                  <span>{liveFeedbackTone.label}</span>
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--heading)", lineHeight: 1.55, fontWeight: 600 }}>
+                                  {publishMeta?.liveSession?.title || publishMeta?.title || draft.title}
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                  {liveFeedback.summary}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 mt-3">
+                                  {[
+                                    { label: 'Live fill', value: `${liveFeedback.actualOccupancy || 0}%`, color: liveFeedbackTone.color },
+                                    { label: 'Plan', value: `${liveFeedback.projectedOccupancy || 0}%`, color: '#06B6D4' },
+                                    { label: 'Open spots', value: liveFeedback.spotsRemaining || 0, color: '#F59E0B' },
+                                  ].map((item) => (
+                                    <div
+                                      key={`${draft.id}:${item.label}`}
+                                      className="rounded-md p-2"
+                                      style={{ background: `${item.color}10`, border: `1px solid ${item.color}16` }}
+                                    >
+                                      <div className="text-[10px]" style={{ color: item.color }}>{item.label}</div>
+                                      <div className="text-sm font-bold tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="text-[11px] mt-3" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                  {liveFeedback.recommendedAction}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                  {existingFillDraft ? (
+                                    <Link
+                                      href={buildAdvisorDraftHref(clubId, existingFillDraft)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                      style={{
+                                        background: "rgba(139,92,246,0.14)",
+                                        border: "1px solid rgba(139,92,246,0.2)",
+                                        color: "#DDD6FE",
+                                      }}
+                                    >
+                                      Open fill draft
+                                      <ArrowUpRight className="w-3 h-3" />
+                                    </Link>
+                                  ) : (liveFeedback.status === 'behind' || liveFeedback.status === 'at_risk') ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCreatePublishedFillDraft(draft)}
+                                      disabled={isCreatingFillDraft}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                      style={{
+                                        background: liveFeedback.status === 'at_risk' ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)",
+                                        border: liveFeedback.status === 'at_risk' ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(245,158,11,0.2)",
+                                        color: liveFeedback.status === 'at_risk' ? "#FCA5A5" : "#F59E0B",
+                                        opacity: isCreatingFillDraft ? 0.7 : 1,
+                                      }}
+                                    >
+                                      {isCreatingFillDraft ? 'Preparing fill draft…' : 'Create fill draft'}
+                                    </button>
+                                  ) : null}
+
+                                  {liveFeedback.status === 'ahead' ? (
+                                    <Link
+                                      href={buildPublishedSessionRepeatHref(clubId, draft)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium"
+                                      style={{
+                                        background: "rgba(16,185,129,0.12)",
+                                        border: "1px solid rgba(16,185,129,0.2)",
+                                        color: "#10B981",
+                                      }}
+                                    >
+                                      Repeat this slot
+                                      <ArrowUpRight className="w-3 h-3" />
+                                    </Link>
+                                  ) : null}
+
+                                  {dailyOwnershipView === 'team' && opsWorkflow?.ownerUserId && (liveFeedback.status === 'at_risk' || liveFeedback.status === 'behind') ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'ping_owner')}
+                                      disabled={isPingingOwner}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                      style={{
+                                        background: "rgba(245,158,11,0.10)",
+                                        border: "1px solid rgba(245,158,11,0.18)",
+                                        color: "#F59E0B",
+                                        opacity: isPingingOwner ? 0.7 : 1,
+                                      }}
+                                    >
+                                      {isPingingOwner ? 'Pinging…' : 'Ping owner'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {handoff ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background: "rgba(103,232,249,0.06)",
+                                  border: "1px solid rgba(103,232,249,0.16)",
+                                }}
+                              >
+                                <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "#67E8F9", fontWeight: 700 }}>
+                                  Agent handoff
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--heading)", lineHeight: 1.55, fontWeight: 600 }}>
+                                  {handoff.summary}
+                                </div>
+                                {handoff.whyNow ? (
+                                  <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                    Why now: {handoff.whyNow}
+                                  </div>
+                                ) : null}
+                                {handoff.ownerBrief ? (
+                                  <div className="text-[11px] mt-2" style={{ color: "#60A5FA", lineHeight: 1.5 }}>
+                                    Owner handoff: {handoff.ownerBrief}
+                                  </div>
+                                ) : null}
+                                {handoff.watchouts?.length ? (
+                                  <div className="space-y-1 mt-2">
+                                    {handoff.watchouts.slice(0, 2).map((watchout) => (
+                                      <div key={watchout} className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                        {watchout}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                <div className="text-[11px] mt-2" style={{ color: "#A78BFA", lineHeight: 1.5 }}>
+                                  Next step: {handoff.nextStep}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {(opsWorkflow?.ownerLabel || dueLabel || opsWorkflow?.blockedReason) ? (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {opsWorkflow?.ownerLabel ? (
+                                  <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                    style={{ background: "rgba(59,130,246,0.12)", color: "#60A5FA" }}
+                                  >
+                                    Owner: {opsWorkflow.ownerLabel}
+                                  </span>
+                                ) : null}
+                                {dueLabel ? (
+                                  <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                    style={{
+                                      background: dueMeta?.background || "rgba(245,158,11,0.12)",
+                                      color: dueMeta?.accent || "#F59E0B",
+                                      border: dueMeta ? `1px solid ${dueMeta.border}` : undefined,
+                                    }}
+                                  >
+                                    {dueLabel}
+                                  </span>
+                                ) : null}
+                                {opsWorkflow?.blockedReason ? (
+                                  <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                    style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444" }}
+                                  >
+                                    {opsWorkflow.blockedReason}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            {opsWorkflow?.lastNoteAt ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background: "rgba(255,255,255,0.04)",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                }}
+                              >
+                                <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                                  Ops note
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: "var(--t2)", lineHeight: 1.55 }}>
+                                  {draft.note}
+                                </div>
+                                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>
+                                  {opsWorkflow.lastNoteBy || 'Admin'} · {new Date(opsWorkflow.lastNoteAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {timeline.length > 0 ? (
+                              <div
+                                className="rounded-lg p-3 mt-3"
+                                style={{
+                                  background: "rgba(255,255,255,0.03)",
+                                  border: "1px solid rgba(255,255,255,0.06)",
+                                }}
+                              >
+                                <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
+                                  Ops timeline
+                                </div>
+                                <div className="space-y-2 mt-2">
+                                  {timeline.slice(0, 3).map((event) => (
+                                    <div
+                                      key={event.id || `${event.kind || 'event'}:${event.createdAt || event.label || draft.id}`}
+                                      className="text-[11px]"
+                                      style={{ lineHeight: 1.5 }}
+                                    >
+                                      <div style={{ color: "var(--heading)", fontWeight: 600 }}>
+                                        {event.label || 'Ops update'}
+                                      </div>
+                                      {event.detail ? (
+                                        <div style={{ color: "var(--t3)" }}>
+                                          {event.detail}
+                                        </div>
+                                      ) : null}
+                                      <div style={{ color: "var(--t4)" }}>
+                                        {[event.actorLabel, event.createdAt
+                                          ? new Date(event.createdAt).toLocaleString([], {
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: 'numeric',
+                                              minute: '2-digit',
+                                            })
+                                          : null]
+                                          .filter(Boolean)
+                                          .join(' · ')}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {draft.conflict?.warnings?.length ? (
+                              <div className="space-y-1 mt-2">
+                                {draft.conflict.warnings.slice(0, 2).map((warning) => (
+                                  <div key={warning} className="text-[11px]" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
+                                    {warning}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
 
                             <div className="flex flex-wrap gap-2 mt-3">
                               {draft.status === 'ready_for_ops' && (
@@ -3330,6 +7799,195 @@ export function AgentIQ({
                                   {isPromoting ? 'Converting…' : 'Convert to Session Draft'}
                                 </button>
                               )}
+
+                              {draft.status !== 'archived' && (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'assign_self')}
+                                  disabled={isAssigning}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(59,130,246,0.10)",
+                                    border: "1px solid rgba(59,130,246,0.18)",
+                                    color: "#60A5FA",
+                                    opacity: isAssigning ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isAssigning ? 'Assigning…' : 'Assign to me'}
+                                </button>
+                              )}
+
+                              {dailyOwnershipView === 'team' && draft.status !== 'archived' && assignableOpsTeammates.length ? (
+                                <button
+                                  onClick={() => handleAssignTeammateStart(draft.id)}
+                                  disabled={isAssigningTeammate}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(6,182,212,0.10)",
+                                    border: "1px solid rgba(6,182,212,0.18)",
+                                    color: "#67E8F9",
+                                    opacity: isAssigningTeammate ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isAssigningTeammate ? 'Assigning…' : 'Assign teammate'}
+                                </button>
+                              ) : null}
+
+                              {dailyOwnershipView === 'team' && draft.status !== 'archived' && opsWorkflow?.ownerUserId && (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'reassign_owner')}
+                                  disabled={isReassigning}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(245,158,11,0.10)",
+                                    border: "1px solid rgba(245,158,11,0.18)",
+                                    color: "#F59E0B",
+                                    opacity: isReassigning ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isReassigning ? 'Reassigning…' : 'Reassign'}
+                                </button>
+                              )}
+
+                              {dailyOwnershipView === 'team' && draft.status !== 'archived' && opsWorkflow?.ownerUserId ? (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'ping_owner')}
+                                  disabled={isPingingOwner}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(245,158,11,0.10)",
+                                    border: "1px solid rgba(245,158,11,0.18)",
+                                    color: "#F59E0B",
+                                    opacity: isPingingOwner ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isPingingOwner ? 'Pinging…' : 'Ping owner'}
+                                </button>
+                              ) : null}
+
+                              {draft.status !== 'archived' && draft.status !== 'rejected' && (
+                                <>
+                                  <button
+                                    onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'due_today')}
+                                    disabled={isDueToday}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                    style={{
+                                      background: "rgba(245,158,11,0.10)",
+                                      border: "1px solid rgba(245,158,11,0.18)",
+                                      color: "#F59E0B",
+                                      opacity: isDueToday ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {isDueToday ? 'Setting…' : 'Due today'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'due_tomorrow')}
+                                    disabled={isDueTomorrow}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                    style={{
+                                      background: "rgba(255,255,255,0.06)",
+                                      border: "1px solid rgba(255,255,255,0.08)",
+                                      color: "var(--heading)",
+                                      opacity: isDueTomorrow ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {isDueTomorrow ? 'Setting…' : 'Due tomorrow'}
+                                  </button>
+                                </>
+                              )}
+
+                              {draft.status !== 'archived' && (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'add_note')}
+                                  disabled={isAddingNote}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(255,255,255,0.06)",
+                                    border: "1px solid rgba(255,255,255,0.08)",
+                                    color: "var(--heading)",
+                                    opacity: isAddingNote ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isAddingNote ? 'Saving…' : 'Add note'}
+                                </button>
+                              )}
+
+                              {draft.status === 'ready_for_ops' || draft.status === 'session_draft' ? (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'reject')}
+                                  disabled={isRejecting}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(239,68,68,0.10)",
+                                    border: "1px solid rgba(239,68,68,0.18)",
+                                    color: "#EF4444",
+                                    opacity: isRejecting ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isRejecting ? 'Rejecting…' : 'Reject'}
+                                </button>
+                              ) : null}
+
+                              {draft.status === 'session_draft' ? (
+                                <>
+                                <button
+                                  onClick={() => handlePrepareOpsSessionDraftPublish(draft)}
+                                  disabled={isPreparingPublish}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(16,185,129,0.10)",
+                                    border: "1px solid rgba(16,185,129,0.18)",
+                                    color: "#10B981",
+                                    opacity: isPreparingPublish ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isPreparingPublish ? 'Preparing…' : (publishMeta?.targetDate ? 'Update publish plan' : 'Prepare publish')}
+                                </button>
+                                {!publishMeta?.publishedPlaySessionId && publishMeta?.targetDate && publishReview?.status !== 'blocked' ? (
+                                  <button
+                                    onClick={() => handlePublishOpsSessionDraft(draft)}
+                                    disabled={isPublishing}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                    style={{
+                                      background: "rgba(34,197,94,0.12)",
+                                      border: "1px solid rgba(34,197,94,0.2)",
+                                      color: "#22C55E",
+                                      opacity: isPublishing ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {isPublishing ? 'Publishing…' : 'Publish to schedule'}
+                                  </button>
+                                ) : null}
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'archive')}
+                                  disabled={isArchiving}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(148,163,184,0.12)",
+                                    border: "1px solid rgba(148,163,184,0.18)",
+                                    color: "#94A3B8",
+                                    opacity: isArchiving ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isArchiving ? 'Archiving…' : 'Archive'}
+                                </button>
+                                </>
+                              ) : null}
+
+                              {(draft.status === 'rejected' || draft.status === 'archived') ? (
+                                <button
+                                  onClick={() => handleUpdateOpsSessionDraftWorkflow(draft.id, 'reopen_ready')}
+                                  disabled={isReopening}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-opacity"
+                                  style={{
+                                    background: "rgba(16,185,129,0.10)",
+                                    border: "1px solid rgba(16,185,129,0.18)",
+                                    color: "#10B981",
+                                    opacity: isReopening ? 0.7 : 1,
+                                  }}
+                                >
+                                  {isReopening ? 'Reopening…' : 'Re-open'}
+                                </button>
+                              ) : null}
 
                               <Link
                                 href={advisorHref}

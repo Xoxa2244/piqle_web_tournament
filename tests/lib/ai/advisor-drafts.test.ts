@@ -7,10 +7,14 @@ import {
   getAdvisorDraftFromMetadata,
   getAdvisorDraftProgrammingOpsSessionDrafts,
   getAdvisorDraftProgrammingPreview,
+  getAdvisorDraftSlotFillerPreview,
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 
-function buildCampaignAction(channel: 'email' | 'sms'): AdvisorAction {
+function buildCampaignAction(
+  channel: 'email' | 'sms',
+  guestTrialContext?: Extract<AdvisorAction, { kind: 'create_campaign' }>['campaign']['guestTrialContext'],
+): AdvisorAction {
   return {
     kind: 'create_campaign',
     title: 'Launch reactivation campaign',
@@ -29,6 +33,7 @@ function buildCampaignAction(channel: 'email' | 'sms'): AdvisorAction {
       execution: {
         mode: 'save_draft',
       },
+      guestTrialContext,
       guardrails: {
         requestedChannel: channel,
         eligibleCount: 12,
@@ -65,6 +70,14 @@ function buildProgrammingAction(): Extract<AdvisorAction, { kind: 'program_sched
         confidence: 87,
         source: 'expand_peak',
         rationale: ['Strong repeat demand in this window.'],
+        conflict: {
+          overlapRisk: 'low',
+          cannibalizationRisk: 'low',
+          courtPressureRisk: 'low',
+          overallRisk: 'low',
+          riskSummary: 'This window looks comparatively clean from a scheduling-conflict standpoint.',
+          warnings: [],
+        },
       },
       alternatives: [
         {
@@ -82,9 +95,61 @@ function buildProgrammingAction(): Extract<AdvisorAction, { kind: 'program_sched
           confidence: 82,
           source: 'fill_gap',
           rationale: ['Secondary demand signal.'],
+          conflict: {
+            overlapRisk: 'medium',
+            cannibalizationRisk: 'low',
+            courtPressureRisk: 'low',
+            overallRisk: 'medium',
+            riskSummary: 'Good opportunity, but this slot should be compared against one safer alternative before moving into ops.',
+            warnings: ['Thursday evening already carries enough supply that this should stay draft-first for now.'],
+          },
         },
       ],
       insights: ['Wednesday evening is the clearest programming opportunity right now.'],
+    },
+  }
+}
+
+function buildFillSessionAction(): Extract<AdvisorAction, { kind: 'fill_session' }> {
+  return {
+    kind: 'fill_session',
+    title: 'Fill session: Wednesday Evening Intermediate Open Play',
+    summary: 'EMAIL invites for 4 matched players',
+    requiresApproval: true,
+    session: {
+      id: 'session-123',
+      title: 'Wednesday Evening Intermediate Open Play',
+      date: '2026-04-15',
+      startTime: '18:00',
+      endTime: '19:30',
+      format: 'OPEN_PLAY',
+      skillLevel: 'INTERMEDIATE',
+      court: 'Court 2',
+      registered: 4,
+      maxPlayers: 8,
+      occupancy: 50,
+      spotsRemaining: 4,
+    },
+    outreach: {
+      channel: 'email',
+      candidateCount: 4,
+      message: 'We saved you a spot for Wednesday evening.',
+      candidates: [
+        {
+          memberId: 'member-1',
+          name: 'Alex Rider',
+          score: 91,
+          channel: 'email',
+        },
+      ],
+      guardrails: {
+        requestedChannel: 'email',
+        eligibleCount: 4,
+        excludedCount: 1,
+        deliveryBreakdown: { email: 4, sms: 0, both: 0 },
+        reasons: [],
+        warnings: [],
+      },
     },
   }
 }
@@ -163,6 +228,32 @@ describe('advisor drafts', () => {
     })
   })
 
+  it('persists guest/trial execution context into draft workspace metadata', () => {
+    const action = buildCampaignAction('email', {
+      source: 'guest_trial_booking',
+      stage: 'book_first_visit',
+      offerKey: 'guest_pass',
+      offerName: 'Guest Pass',
+      offerKind: 'guest_pass',
+      destinationType: 'schedule',
+      destinationDescriptor: 'beginner booking page',
+      routeKey: 'schedule:beginner booking page',
+    })
+
+    const payload = buildAdvisorDraftPersistencePayload({
+      action,
+      originalIntent: 'Help guests book their first visit',
+    })
+
+    expect(payload.metadata).toMatchObject({
+      guestTrialContext: {
+        stage: 'book_first_visit',
+        offerName: 'Guest Pass',
+        destinationDescriptor: 'beginner booking page',
+      },
+    })
+  })
+
   it('persists a compact programming preview in draft metadata', () => {
     const payload = buildAdvisorDraftPersistencePayload({
       action: buildProgrammingAction(),
@@ -178,9 +269,28 @@ describe('advisor drafts', () => {
         title: 'Wednesday Evening Intermediate Open Play',
         projectedOccupancy: 84,
         estimatedInterestedMembers: 9,
+        conflict: {
+          overallRisk: 'low',
+        },
       },
     })
     expect(preview?.alternatives).toHaveLength(1)
+  })
+
+  it('persists a compact slot-filler preview in draft metadata', () => {
+    const payload = buildAdvisorDraftPersistencePayload({
+      action: buildFillSessionAction(),
+      originalIntent: 'Fill the Wednesday evening session.',
+    })
+
+    expect(getAdvisorDraftSlotFillerPreview(payload.metadata)).toMatchObject({
+      sessionId: 'session-123',
+      title: 'Wednesday Evening Intermediate Open Play',
+      occupancy: 50,
+      spotsRemaining: 4,
+      candidateCount: 4,
+      channel: 'email',
+    })
   })
 
   it('builds internal ops session drafts for programming plans', () => {
@@ -195,11 +305,18 @@ describe('advisor drafts', () => {
       state: 'ready_for_ops',
       title: 'Wednesday Evening Intermediate Open Play',
       maxPlayers: 8,
+      handoff: {
+        summary: 'Wednesday Evening Intermediate Open Play is the lead programming recommendation for "Add a stronger weekday evening intermediate option".',
+        whyNow: 'Strong repeat demand in this window.',
+      },
     })
     expect(opsDrafts[1]).toMatchObject({
       id: 'ops-thu-evening-open-play',
       origin: 'alternative',
       state: 'ready_for_ops',
+      handoff: {
+        nextStep: 'Assign an ops owner, sanity-check nearby sessions, then move it into the internal session draft queue.',
+      },
     })
   })
 
@@ -211,5 +328,18 @@ describe('advisor drafts', () => {
     })
 
     expect(getAdvisorDraftProgrammingOpsSessionDrafts(payload.metadata)).toEqual(opsDrafts)
+  })
+
+  it('keeps structured handoff details in programming ops draft metadata', () => {
+    const opsDrafts = buildAdvisorProgrammingOpsSessionDrafts(buildProgrammingAction())
+
+    expect(opsDrafts[0].handoff).toMatchObject({
+      summary: 'Wednesday Evening Intermediate Open Play is the lead programming recommendation for "Add a stronger weekday evening intermediate option".',
+      whyNow: 'Strong repeat demand in this window.',
+      nextStep: 'Assign an ops owner and move it into the internal session draft queue when the team is ready.',
+    })
+    expect(opsDrafts[1].handoff?.watchouts).toContain(
+      'Thursday evening already carries enough supply that this should stay draft-first for now.',
+    )
   })
 })

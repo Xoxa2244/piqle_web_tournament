@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { normalizeMembership } from './membership-intelligence'
+import { normalizeMembership, resolveMembershipMappings } from './membership-intelligence'
 
 export type AdvisorMembershipLifecycleKind = 'trial_follow_up' | 'renewal_reactivation'
 
@@ -103,14 +103,17 @@ export async function getAdvisorMembershipLifecycleCandidates(opts: {
   kind: AdvisorMembershipLifecycleKind
   limit: number
   now?: Date
+  automationSettings?: unknown
 }): Promise<AdvisorMembershipLifecycleCandidate[]> {
   const rows = await loadMembershipLifecycleRows(opts.prisma, opts.clubId)
   const now = opts.now || new Date()
+  const membershipMappings = resolveMembershipMappings(opts.automationSettings)
 
   const candidates = rows.flatMap((row) => {
     const normalizedMembership = normalizeMembership({
       membershipType: row.membershipType,
       membershipStatus: row.membershipStatus,
+      membershipMappings,
     })
     const followedAt = row.followedAt ? new Date(row.followedAt) : null
     const userCreatedAt = row.userCreatedAt ? new Date(row.userCreatedAt) : null

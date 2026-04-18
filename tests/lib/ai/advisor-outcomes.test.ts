@@ -102,6 +102,40 @@ const programmingAction: AdvisorAction = {
   },
 }
 
+const guestTrialCampaignAction: AdvisorAction = {
+  ...createCampaignAction,
+  campaign: {
+    ...createCampaignAction.campaign,
+    guestTrialContext: {
+      source: 'guest_trial_booking',
+      stage: 'convert_to_paid',
+      offerKey: 'starter_membership',
+      offerName: 'Starter Membership',
+      offerKind: 'membership_offer',
+      destinationType: 'landing_page',
+      destinationDescriptor: 'starter membership checkout',
+      routeKey: 'landing_page:starter membership checkout',
+    },
+  },
+}
+
+const guestTrialFollowUpAction: AdvisorAction = {
+  ...trialFollowUpAction,
+  lifecycle: {
+    ...trialFollowUpAction.lifecycle,
+    guestTrialContext: {
+      source: 'guest_trial_booking',
+      stage: 'book_first_visit',
+      offerKey: 'guest_pass',
+      offerName: 'Guest Pass',
+      offerKind: 'guest_pass',
+      destinationType: 'schedule',
+      destinationDescriptor: 'beginner booking page',
+      routeKey: 'schedule:beginner booking page',
+    },
+  },
+}
+
 describe('advisor outcomes', () => {
   it('reads the resolved advisor action from metadata', () => {
     expect(
@@ -189,6 +223,39 @@ describe('advisor outcomes', () => {
 
     expect(outcome.summary).toContain('Campaign sandbox preview prepared')
     expect(outcome.summary).toContain('7 eligible members')
+  })
+
+  it('includes exact guest/trial context in campaign outcomes', () => {
+    const outcome = buildAdvisorOutcomeMemory(
+      guestTrialCampaignAction,
+      {
+        kind: 'create_campaign',
+        savedAsDraft: true,
+        memberCount: 5,
+      },
+      '2026-04-13T18:26:00.000Z',
+    )
+
+    expect(outcome.summary).toContain('Campaign draft saved')
+    expect(outcome.summary).toContain('Starter Membership')
+    expect(outcome.summary).toContain('starter membership checkout')
+  })
+
+  it('includes exact guest/trial context in trial follow-up outcomes', () => {
+    const outcome = buildAdvisorOutcomeMemory(
+      guestTrialFollowUpAction,
+      {
+        kind: 'trial_follow_up',
+        deliveryMode: 'send_later',
+        scheduledLabel: 'Tue, Apr 14, 9:00 AM PDT',
+        memberCount: 4,
+      },
+      '2026-04-13T18:27:00.000Z',
+    )
+
+    expect(outcome.summary).toContain('Trial follow-up scheduled')
+    expect(outcome.summary).toContain('Guest Pass')
+    expect(outcome.summary).toContain('beginner booking page')
   })
 
   it('summarizes created ops drafts for programming actions', () => {
