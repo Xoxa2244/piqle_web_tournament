@@ -105,10 +105,19 @@ const SUGGESTION_DECISION_STYLES: Record<string, { bg: string; color: string; la
   declined: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444', label: 'Declined' },
 }
 
-type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in'
+type FilterOp = 'eq' | 'ne' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in'
+
+// Must stay in sync with cohortFilterSchema in server/routers/intelligence.ts
+// — if you add a new field on the server, mirror it here so TS accepts it at
+// the tRPC call site.
+type CohortFilterField =
+  | 'age' | 'gender' | 'membershipType' | 'membershipStatus' | 'skillLevel'
+  | 'zipCode' | 'city' | 'sessionFormat' | 'dayOfWeek' | 'frequency'
+  | 'recency' | 'userId' | 'duprRating'
+  | 'normalizedMembershipType' | 'normalizedMembershipStatus'
 
 interface CohortFilter {
-  field: string
+  field: CohortFilterField
   op: FilterOp
   value: string | number | string[]
 }
@@ -1309,7 +1318,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
               {/* Field */}
               <select
                 value={f.field}
-                onChange={e => updateFilter(i, { field: e.target.value })}
+                onChange={e => updateFilter(i, { field: e.target.value as CohortFilterField })}
                 className="px-2 py-1.5 rounded-lg text-xs outline-none"
                 style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
               >

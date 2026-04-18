@@ -437,15 +437,64 @@ export interface CohortFilter {
   value: string | number | string[]
 }
 
+// Allowlist of fields/ops that buildCohortWhereClause understands. Any value
+// outside this list returns TRUE (no-op filter) — defense-in-depth on top of
+// the Zod schema at the tRPC procedure boundary. Stored cohort filters come
+// from the DB, which is also populated by LLM output (parseCohortFromText),
+// so treating filter fields as untrusted is the safe default.
+// `normalizedMembership*` are UI-only filter keys (computed at read time in
+// lib/ai/member-health). They're not handled by buildCohortWhereClause →
+// fall through to default → TRUE. Listed here so existing stored cohorts
+// using them don't fail Zod validation.
+const COHORT_ALLOWED_FIELDS = new Set([
+  'age', 'gender', 'membershipType', 'membershipStatus', 'skillLevel',
+  'zipCode', 'city', 'sessionFormat', 'dayOfWeek', 'frequency',
+  'recency', 'userId', 'duprRating',
+  'normalizedMembershipType', 'normalizedMembershipStatus',
+])
+const COHORT_ALLOWED_OPS = new Set(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in'])
+
+// Shared Zod schema for cohort filter input — tightens field to an enum and
+// keeps op in sync with COHORT_ALLOWED_OPS. Every cohort procedure uses this
+// so a new field can't land in one place and bypass validation in another.
+export const cohortFilterSchema = z.object({
+  field: z.enum([
+    'age', 'gender', 'membershipType', 'membershipStatus', 'skillLevel',
+    'zipCode', 'city', 'sessionFormat', 'dayOfWeek', 'frequency',
+    'recency', 'userId', 'duprRating',
+    'normalizedMembershipType', 'normalizedMembershipStatus',
+  ]),
+  op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
+  value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(200)]),
+})
+
 export function buildCohortWhereClause(filters: CohortFilter[]): string {
   if (filters.length === 0) return 'TRUE'
-  return filters.map(f => {
+  const clauses: string[] = []
+  for (const f of filters) {
+    // Defense-in-depth: ignore anything that didn't come through the Zod
+    // schema above. Returning TRUE here is safer than throwing — a single
+    // bad filter entry shouldn't take down the entire cohort operation.
+    if (!COHORT_ALLOWED_FIELDS.has(f.field)) continue
+    if (!COHORT_ALLOWED_OPS.has(f.op)) continue
+    const clause = buildCohortFilterClause(f)
+    if (clause && clause !== 'TRUE') clauses.push(clause)
+  }
+  return clauses.length === 0 ? 'TRUE' : clauses.join(' AND ')
+}
+
+function buildCohortFilterClause(f: CohortFilter): string {
     const val = typeof f.value === 'string' ? `'${f.value.replace(/'/g, "''")}'` : f.value
     switch (f.field) {
-      case 'age':
-        // age = years since date_of_birth
+      case 'age': {
+        // age = years since date_of_birth. f.value MUST be coerced to a
+        // finite number before interpolation — otherwise a string like
+        // "1' OR '1'='1" would break out of the INTERVAL literal.
         const ageOp = f.op === 'gte' ? '<=' : f.op === 'lte' ? '>=' : f.op === 'gt' ? '<' : f.op === 'lt' ? '>' : '='
-        return `u.date_of_birth IS NOT NULL AND u.date_of_birth ${ageOp} (CURRENT_DATE - INTERVAL '${f.value} years')`
+        const ageVal = Number(f.value)
+        if (!Number.isFinite(ageVal) || ageVal < 0 || ageVal > 150) return 'TRUE'
+        return `u.date_of_birth IS NOT NULL AND u.date_of_birth ${ageOp} (CURRENT_DATE - INTERVAL '${ageVal} years')`
+      }
       case 'gender':
         return f.op === 'eq' ? `u.gender = ${val}` : `u.gender != ${val}`
       case 'membershipType':
@@ -477,12 +526,14 @@ export function buildCohortWhereClause(filters: CohortFilter[]): string {
       case 'frequency': {
         // Sessions per month — players who play at least N times/month
         const freqVal = Number(f.value)
+        if (!Number.isFinite(freqVal) || freqVal < 0 || freqVal > 10000) return 'TRUE'
         const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
         return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
       }
       case 'recency': {
         // Days since last visit — players who visited within/after N days
         const recVal = Number(f.value)
+        if (!Number.isFinite(recVal) || recVal < 0 || recVal > 36500) return 'TRUE'
         const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
         return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
@@ -497,6 +548,7 @@ export function buildCohortWhereClause(filters: CohortFilter[]): string {
         // Fallback: match against skill_level text when numeric DUPR is empty
         // skill_level values: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)"
         const numVal = Number(f.value)
+        if (!Number.isFinite(numVal) || numVal < 0 || numVal > 10) return 'TRUE'
         const op = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
         const numericCheck = `COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0) ${op} ${numVal}`
         // Build skill level text matches for the same range
@@ -521,7 +573,6 @@ export function buildCohortWhereClause(filters: CohortFilter[]): string {
       default:
         return 'TRUE'
     }
-  }).join(' AND ')
 }
 
 // Active members = those with at least 1 confirmed booking
@@ -6071,11 +6122,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       clubId: z.string().uuid(),
       name: z.string().min(1).max(100),
       description: z.string().max(500).optional(),
-      filters: z.array(z.object({
-        field: z.string(),
-        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
-        value: z.union([z.string(), z.number(), z.array(z.string())]),
-      })),
+      filters: z.array(cohortFilterSchema),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -6101,11 +6148,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       cohortId: z.string().uuid(),
       name: z.string().min(1).max(100).optional(),
       description: z.string().max(500).optional(),
-      filters: z.array(z.object({
-        field: z.string(),
-        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
-        value: z.union([z.string(), z.number(), z.array(z.string())]),
-      })).optional(),
+      filters: z.array(cohortFilterSchema).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -6283,11 +6326,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
   previewCohort: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
-      filters: z.array(z.object({
-        field: z.string(),
-        op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
-        value: z.union([z.string(), z.number(), z.array(z.string())]),
-      })),
+      filters: z.array(cohortFilterSchema),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
