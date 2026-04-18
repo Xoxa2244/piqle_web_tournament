@@ -7049,8 +7049,87 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         where: { id: input.clubId },
         select: { automationSettings: true },
       })
+
+      // Live row-fetching. Aggregates per-follower booking patterns + co-player
+      // graph over the windowDays period. Only members with ≥4 confirmed
+      // bookings and ≥2 co-players make it into the engine's candidate pool
+      // (see referral-engine.ts:buildReferralSnapshot for filter thresholds),
+      // so we return a wider superset here and let the lib do the lane sorting.
+      const rows = await ctx.prisma.$queryRawUnsafe<any[]>(
+        `
+        WITH follower_bookings AS (
+          SELECT
+            cf."userId" AS user_id,
+            cf."createdAt" AS followed_at,
+            u.name, u.email, u."createdAt" AS user_created_at,
+            de.metadata->>'membership' AS membership_type,
+            de.metadata->>'membershipStatus' AS membership_status,
+            MIN(b."bookedAt") FILTER (WHERE b.status::text = 'CONFIRMED') AS first_confirmed_at,
+            MAX(b."bookedAt") FILTER (WHERE b.status::text = 'CONFIRMED') AS last_confirmed_at,
+            COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED')::int AS confirmed_bookings,
+            COUNT(*) FILTER (
+              WHERE b.status::text = 'CONFIRMED'
+                AND b."bookedAt" >= NOW() - ($2::text || ' days')::interval
+            )::int AS recent_confirmed_bookings
+          FROM club_followers cf
+          JOIN users u ON u.id = cf."userId"
+          LEFT JOIN play_session_bookings b ON b."userId" = cf."userId"
+          LEFT JOIN document_embeddings de
+            ON de.source_id = cf."userId"
+            AND de.content_type = 'member'
+            AND de.source_table = 'csv_import'
+            AND de.club_id = $1
+          WHERE cf."clubId" = $1
+          GROUP BY cf."userId", cf."createdAt", u.name, u.email, u."createdAt", de.metadata
+        ),
+        co_player_counts AS (
+          -- For each follower, count distinct co-players they've booked alongside.
+          -- "Active" co-players = those with ≥1 booking in the window.
+          SELECT
+            me."userId" AS user_id,
+            COUNT(DISTINCT other."userId") AS total_co_players,
+            COUNT(DISTINCT other."userId") FILTER (
+              WHERE other."bookedAt" >= NOW() - ($2::text || ' days')::interval
+            ) AS active_co_players
+          FROM play_session_bookings me
+          JOIN play_session_bookings other
+            ON other."sessionId" = me."sessionId"
+            AND other."userId" != me."userId"
+            AND other.status::text = 'CONFIRMED'
+          JOIN play_sessions ps ON ps.id = me."sessionId"
+          WHERE ps."clubId" = $1
+            AND me.status::text = 'CONFIRMED'
+          GROUP BY me."userId"
+        )
+        SELECT
+          fb.user_id                AS "userId",
+          fb.followed_at            AS "followedAt",
+          fb.user_created_at        AS "userCreatedAt",
+          fb.name,
+          fb.email,
+          fb.membership_type        AS "membershipType",
+          fb.membership_status      AS "membershipStatus",
+          fb.first_confirmed_at     AS "firstConfirmedBookingAt",
+          fb.last_confirmed_at      AS "lastConfirmedBookingAt",
+          fb.confirmed_bookings     AS "confirmedBookings",
+          fb.recent_confirmed_bookings AS "recentConfirmedBookings",
+          COALESCE(cp.active_co_players, 0) AS "activeCoPlayers",
+          COALESCE(cp.total_co_players, 0)  AS "totalCoPlayers"
+        FROM follower_bookings fb
+        LEFT JOIN co_player_counts cp ON cp.user_id = fb.user_id
+        WHERE fb.confirmed_bookings >= 3  -- cheap pre-filter; engine refines to ≥4
+        ORDER BY fb.confirmed_bookings DESC
+        LIMIT 500
+        `,
+        input.clubId,
+        String(input.windowDays),
+      ).catch((err: any) => {
+        log.warn('[ReferralSnapshot] row fetch failed, returning empty:', err?.message?.slice(0, 200))
+        return [] as any[]
+      })
+
       return buildReferralSnapshot({
-        rows: [],
+        rows: rows as any,
         automationSettings: club?.automationSettings,
         windowDays: input.windowDays,
         limit: input.limit,
