@@ -911,19 +911,37 @@ export const intelligenceRouter = createTRPCRouter({
         bookings.forEach((b: any) => alreadyBooked.add(b.userId))
       } catch { /* non-critical */ }
 
-      // Fast SQL-based recommendations from booking history
-      const players = await getFrequentPlayersFallback(
-        ctx.prisma, session.clubId,
-        { format: session.format, startTime: session.startTime, courtId: session.courtId, skillLevel: session.skillLevel, date: session.date },
-        alreadyBooked, input.limit,
-      )
-
-      return {
-        session: { id: input.sessionId, ...session },
-        recommendations: players,
-        totalCandidatesScored: players.length,
-        aiEnhancements: [],
-        source: 'frequent_players',
+      // Hybrid pipeline: SQL pre-filter (top 100 by booking pattern) → rich JS
+      // re-rank via 6-factor scorer with persona + DUPR + social proof.
+      // Single source of truth across UI / cron / advisor — identical scoring.
+      // See lib/ai/slot-filler-hybrid.ts for pipeline details.
+      try {
+        const { getHybridSlotFillerRecommendations } = await import('@/lib/ai/slot-filler-hybrid')
+        const hybridResult = await getHybridSlotFillerRecommendations(ctx.prisma, {
+          sessionId: input.sessionId,
+          limit: input.limit,
+        })
+        return {
+          ...hybridResult,
+          aiEnhancements: [],
+          source: 'hybrid_scorer' as const,
+        }
+      } catch (err: any) {
+        // Safety net: on any hybrid failure, fall back to SQL-only fast path.
+        // Lets us deploy the refactor gradually without risking an outage.
+        log.warn('[SlotFiller] Hybrid failed, falling back to SQL:', err?.message?.slice(0, 160))
+        const players = await getFrequentPlayersFallback(
+          ctx.prisma, session.clubId,
+          { format: session.format, startTime: session.startTime, courtId: session.courtId, skillLevel: session.skillLevel, date: session.date },
+          alreadyBooked, input.limit,
+        )
+        return {
+          session: { id: input.sessionId, ...session },
+          recommendations: players,
+          totalCandidatesScored: players.length,
+          aiEnhancements: [],
+          source: 'frequent_players' as const,
+        }
       }
     }),
 
