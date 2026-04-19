@@ -4672,6 +4672,8 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           prompt: userPrompt,
           tier: 'fast',
           maxTokens: 500,
+          clubId: input.clubId,
+          operation: 'generateCampaignMessage',
         })
 
         // Parse JSON from response
@@ -6312,6 +6314,8 @@ REAL BEHAVIORAL DATA (last 90 days):
 Generate 3 campaign strategies with different goals and timings based on the data above.`,
         tier: 'fast',
         maxTokens: 1500,
+        clubId: input.clubId,
+        operation: 'generateCohortCampaign',
       })
 
       try {
