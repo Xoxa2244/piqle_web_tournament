@@ -1240,3 +1240,188 @@ export const mockWeeklySummary = {
   generatedAt: new Date().toISOString(),
   weekLabel: 'Mar 2 – Mar 8, 2026',
 }
+
+// ── Growth engines (shipped 2026-04: Smart First Session / Guest Trial /
+// Win-Back / Referral). These tiles render in MembersIQ + CampaignsIQ.
+// Mocks are intentionally lightweight — shape covers what the UI reads,
+// not the full engine output, so the demo stays snappy. ──
+
+export const mockSmartFirstSession = {
+  summary: {
+    totalCandidates: 14,
+    firstBookingCount: 8,
+    secondSessionCount: 4,
+    conversionReadyCount: 2,
+    averageScore: 71,
+    summary: '14 newcomers in-window. 8 still need their first booking, 4 have played once and need a habit-building second session, 2 are ready for a paid next step.',
+    funnel: {
+      newcomerCount: 22,
+      firstBookedCount: 14,
+      secondBookedCount: 6,
+      paidMemberCount: 2,
+      firstBookingRate: 64,
+      secondSessionRate: 43,
+      paidConversionRate: 14,
+      summary: 'Habit-forming second session is the tightest gate — 43% of first-timers never come back.',
+    },
+  },
+  candidates: [
+    {
+      memberId: 'demo-sfs-1', name: 'Emily Carter', email: 'emily@example.com',
+      score: 82, stage: 'book_first_session' as const, urgency: 'high' as const,
+      daysSinceJoined: 6, daysSinceFirstBooking: null, confirmedBookings: 0,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'trial',
+      topReason: 'Joined 6 days ago, followed the club, has not booked yet.',
+      nextBestMove: 'Send a one-tap booking link to a beginner-friendly Open Play this Thursday.',
+    },
+    {
+      memberId: 'demo-sfs-2', name: 'Ryan Patel', email: 'ryan@example.com',
+      score: 74, stage: 'book_second_session' as const, urgency: 'medium' as const,
+      daysSinceJoined: 11, daysSinceFirstBooking: 4, confirmedBookings: 1,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'active',
+      topReason: 'Played once 4 days ago, positive signal — build the habit.',
+      nextBestMove: 'Invite to next week\'s Intermediate Drill with a free court-mate add-on.',
+    },
+    {
+      memberId: 'demo-sfs-3', name: 'Sofia Nguyen', email: 'sofia@example.com',
+      score: 65, stage: 'convert_after_first_session' as const, urgency: 'medium' as const,
+      daysSinceJoined: 14, daysSinceFirstBooking: 8, confirmedBookings: 2,
+      normalizedMembershipType: 'guest', normalizedMembershipStatus: 'active',
+      topReason: 'Played twice, both confirmed — ready for a trial or starter bundle.',
+      nextBestMove: 'Offer 3-session starter pack at 20% off (safe, reviewable).',
+    },
+  ],
+  suggestedCohorts: [],
+}
+
+export const mockGuestTrialBooking = {
+  summary: {
+    totalCandidates: 9,
+    firstBookingCount: 5,
+    showUpProtectionCount: 3,
+    paidConversionCount: 1,
+    averageScore: 68,
+    summary: '9 guests/trials in motion. 5 still haven\'t booked their first visit, 3 have a booking but need a show-up reminder, 1 is ready for the paid step.',
+    offers: {
+      firstVisit: { name: 'Free first visit', descriptor: 'Zero-friction trial', destinationDescriptor: 'Beginner Open Play' },
+      showUpProtection: { name: 'Show-up concierge', descriptor: 'Reminder + court partner', destinationDescriptor: 'Booked session' },
+      paidConversion: { name: 'Starter bundle', descriptor: '3-session pack, 20% off', destinationDescriptor: 'Paid conversion' },
+    },
+    offerLoop: [],
+    routeLoop: [],
+    funnel: {
+      entrantCount: 12,
+      bookedCount: 9,
+      showedUpCount: 6,
+      paidCount: 1,
+      bookingRate: 75,
+      showUpRate: 67,
+      paidConversionRate: 11,
+      summary: '3 of 9 booked guests haven\'t shown yet — show-up protection is the bottleneck.',
+    },
+  },
+  candidates: [
+    {
+      memberId: 'demo-gtb-1', name: 'Priya Desai', email: 'priya@example.com',
+      score: 78, stage: 'book_first_visit' as const, urgency: 'high' as const,
+      daysSinceJoined: 4, daysUntilNextBooking: null, daysSinceFirstPlayed: null,
+      confirmedBookings: 0, playedConfirmedBookings: 0,
+      normalizedMembershipType: 'guest', normalizedMembershipStatus: 'guest',
+      recommendedOffer: { key: 'first_visit', name: 'Free first visit', kind: 'free_trial', descriptor: 'Zero-friction trial', destinationDescriptor: 'Beginner Open Play' },
+      topReason: 'New guest, no booking yet — hottest acquisition moment.',
+      nextBestMove: 'Invite to Saturday beginner Open Play with a one-tap book link.',
+    },
+    {
+      memberId: 'demo-gtb-2', name: 'Marcus Hale', email: 'marcus@example.com',
+      score: 72, stage: 'protect_first_show_up' as const, urgency: 'high' as const,
+      daysSinceJoined: 7, daysUntilNextBooking: 2, daysSinceFirstPlayed: null,
+      confirmedBookings: 1, playedConfirmedBookings: 0,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'trial',
+      recommendedOffer: { key: 'show_up', name: 'Show-up concierge', kind: 'reminder', descriptor: 'Reminder + court partner', destinationDescriptor: 'Booked session' },
+      topReason: 'Booked for Tuesday, 2 days out — first-timers no-show at 33%.',
+      nextBestMove: 'Send match-me-with-a-partner message 24h before session.',
+    },
+  ],
+}
+
+export const mockWinBackSnapshot = {
+  summary: {
+    totalCandidates: 11,
+    expiredCount: 4,
+    cancelledCount: 2,
+    lapsedCount: 5,
+    averageScore: 64,
+    summary: '11 former regulars are ripe for a win-back nudge. 4 expired memberships, 2 cancelled, 5 high-value lapsed (still members, just quiet for 30+ days).',
+    laneLoop: [],
+  },
+  candidates: [
+    {
+      memberId: 'demo-wb-1', name: 'Daniel Rivera', email: 'daniel@example.com',
+      score: 79, stage: 'high_value_lapsed' as const, urgency: 'high' as const,
+      daysSinceLastBooking: 34, confirmedBookings: 24,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      topReason: '24 confirmed sessions then silent for 34 days — top-quartile value at risk.',
+      nextBestMove: 'Personal check-in from club owner with a guest pass for a playing partner.',
+    },
+    {
+      memberId: 'demo-wb-2', name: 'Hannah Lee', email: 'hannah@example.com',
+      score: 71, stage: 'expired_membership' as const, urgency: 'medium' as const,
+      daysSinceLastBooking: 52, confirmedBookings: 18,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'expired',
+      topReason: 'Membership lapsed 3 weeks ago, strong historical engagement.',
+      nextBestMove: 'Offer 14-day reactivation at membership rate before renewing full-price.',
+    },
+  ],
+}
+
+export const mockReferralSnapshot = {
+  summary: {
+    totalCandidates: 7,
+    vipAdvocateCount: 2,
+    socialRegularCount: 4,
+    dormantAdvocateCount: 1,
+    averageScore: 73,
+    summary: '7 members meet the referral gate (≥4 bookings, ≥2 co-players). 2 VIPs, 4 social regulars, 1 dormant advocate still connected to active co-players.',
+    offers: {
+      vipAdvocate: { key: 'vip_share', name: 'VIP friend pass', descriptor: 'Gift a month of unlimited', destinationDescriptor: 'Friend joins as member' },
+      socialRegular: { key: 'social_pair', name: 'Bring-a-friend credit', descriptor: '$25 credit per booked friend', destinationDescriptor: 'Friend books first session' },
+      dormantAdvocate: { key: 'reconnect', name: 'Reconnect rally', descriptor: 'Invite their co-players to a social session', destinationDescriptor: 'Rally attendance' },
+    },
+    laneLoop: [],
+    offerLoop: [],
+    routeLoop: [],
+    outcomeFunnel: {
+      askCount: 0, engagedCount: 0, intentCount: 0, strongSignalCount: 0,
+      engagementRate: 0, intentRate: 0, strongSignalRate: 0,
+      summary: 'No asks sent yet in the current window — mock demo state.',
+    },
+    outcomeLoop: [],
+    rewardSummary: '0 rewards issued in demo window.',
+    rewardLoop: [],
+  },
+  candidates: [
+    {
+      memberId: 'demo-ref-1', name: 'Alex Thompson', email: 'alex@example.com',
+      score: 86, lane: 'vip_advocate' as const, urgency: 'high' as const,
+      daysSinceLastBooking: 3, confirmedBookings: 42, recentConfirmedBookings: 12,
+      activeCoPlayers: 8, totalCoPlayers: 14,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      recommendedOffer: { key: 'vip_share', name: 'VIP friend pass', descriptor: 'Gift a month of unlimited', destinationDescriptor: 'Friend joins as member' },
+      topReason: '42 lifetime sessions, 12 recent, 8 active co-players — textbook VIP advocate.',
+      nextBestMove: 'Ask directly: "Who of your regular partners would you bring on us?"',
+    },
+    {
+      memberId: 'demo-ref-2', name: 'Jamie Ortiz', email: 'jamie@example.com',
+      score: 68, lane: 'social_regular' as const, urgency: 'medium' as const,
+      daysSinceLastBooking: 5, confirmedBookings: 11, recentConfirmedBookings: 5,
+      activeCoPlayers: 4, totalCoPlayers: 6,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      recommendedOffer: { key: 'social_pair', name: 'Bring-a-friend credit', descriptor: '$25 credit per booked friend', destinationDescriptor: 'Friend books first session' },
+      topReason: 'Consistent social player — bring-a-friend credit has highest lift for this segment.',
+      nextBestMove: 'Email $25 credit offer with a link they can forward.',
+    },
+  ],
+  referredGuests: [],
+  rewardIssuances: [],
+  rewardLedger: [],
+}

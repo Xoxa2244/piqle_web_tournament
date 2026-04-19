@@ -16,6 +16,10 @@ import {
   mockVariantAnalytics,
   mockSequenceAnalytics,
   mockWeeklySummary,
+  mockSmartFirstSession,
+  mockGuestTrialBooking,
+  mockWinBackSnapshot,
+  mockReferralSnapshot,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -694,7 +698,7 @@ export function useSmartFirstSession(clubId: string, windowDays: number = 21, li
 
   if (isDemo) {
     return {
-      data: null,
+      data: mockSmartFirstSession as any,
       isLoading: false,
       error: null,
     }
@@ -712,7 +716,7 @@ export function useGuestTrialBooking(clubId: string, windowDays: number = 21, li
 
   if (isDemo) {
     return {
-      data: null,
+      data: mockGuestTrialBooking as any,
       isLoading: false,
       error: null,
     }
@@ -730,7 +734,7 @@ export function useWinBackSnapshot(clubId: string, windowDays: number = 60, limi
 
   if (isDemo) {
     return {
-      data: null,
+      data: mockWinBackSnapshot as any,
       isLoading: false,
       error: null,
     }
@@ -748,7 +752,7 @@ export function useReferralSnapshot(clubId: string, windowDays: number = 60, lim
 
   if (isDemo) {
     return {
-      data: null,
+      data: mockReferralSnapshot as any,
       isLoading: false,
       error: null,
     }
