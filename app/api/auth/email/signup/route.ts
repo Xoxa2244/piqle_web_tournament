@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { buildRateLimitHeaders, checkRateLimit, getIpFromRequest } from '@/lib/rate-limit'
 import { hashOtp, normalizeEmail } from '@/lib/emailOtp'
 
 async function linkPlayersToUserByEmail(userId: string, email: string) {
@@ -30,6 +31,21 @@ const signupSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // IP rate limit — blocks OTP brute-force. The per-email attemptsLeft
+    // counter caps guesses against one address, but an attacker could
+    // iterate addresses without this gate.
+    const ip = getIpFromRequest(req)
+    const rl = await checkRateLimit('emailOtp', ip)
+    if (!rl.success) {
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMITED',
+          message: 'Too many attempts. Please try again later.',
+        },
+        { status: 429, headers: buildRateLimitHeaders(rl) }
+      )
+    }
+
     const payload = signupSchema.parse(await req.json())
     const email = normalizeEmail(payload.email)
     const code = payload.code.trim()

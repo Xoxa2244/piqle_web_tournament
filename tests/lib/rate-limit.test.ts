@@ -86,12 +86,26 @@ describe('checkRateLimit', () => {
 
   it('different limiters use different Redis prefixes (isolated buckets)', async () => {
     const { checkRateLimit } = await import('@/lib/rate-limit')
-    // Just smoke — both should work without throwing
+    // Just smoke — all should work without throwing
     await checkRateLimit('agentAction', 'id1')
     await checkRateLimit('publicApi', 'id1')
     await checkRateLimit('aiChat', 'id1')
     await checkRateLimit('webhook', 'id1')
-    expect(mockLimit).toHaveBeenCalledTimes(4)
+    await checkRateLimit('emailOtp', 'id1')
+    expect(mockLimit).toHaveBeenCalledTimes(5)
+  })
+
+  it('emailOtp limiter is wired (blocks OTP brute-force / enumeration)', async () => {
+    mockLimit.mockResolvedValueOnce({
+      success: false,
+      remaining: 0,
+      limit: 10,
+      reset: Date.now() + 600_000,
+    })
+    const { checkRateLimit } = await import('@/lib/rate-limit')
+    const result = await checkRateLimit('emailOtp', '203.0.113.5')
+    expect(result.success).toBe(false)
+    expect(result.skipped).toBe(false)
   })
 })
 

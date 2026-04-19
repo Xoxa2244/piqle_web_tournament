@@ -29,7 +29,7 @@ function getRedis(): Redis | null {
 }
 
 // Each limiter is instantiated once with a specific window + prefix.
-type LimiterKey = 'agentAction' | 'publicApi' | 'webhook' | 'aiChat'
+type LimiterKey = 'agentAction' | 'publicApi' | 'webhook' | 'aiChat' | 'emailOtp'
 
 interface LimiterConfig {
   /** Number of requests allowed within the window */
@@ -56,6 +56,13 @@ const LIMITER_CONFIGS: Record<LimiterKey, LimiterConfig> = {
   // AI advisor chat — per-user, expensive operations
   // 20/min = prevents runaway chat loops + bot abuse of paid LLM calls
   aiChat: { requests: 20, window: '1 m', prefix: 'rl:ai-chat' },
+
+  // Email OTP — per-IP, covers both /request-code and /signup.
+  // 10 / 10 min is tight enough to block enumeration + sender-domain abuse,
+  // loose enough for legit users (typo email, re-enter OTP a few times).
+  // The DB-level per-email cooldown (EMAIL_OTP_COOLDOWN_MS) is complementary
+  // but doesn't help when the attacker rotates email addresses.
+  emailOtp: { requests: 10, window: '10 m', prefix: 'rl:email-otp' },
 }
 
 const limiters = new Map<LimiterKey, Ratelimit>()

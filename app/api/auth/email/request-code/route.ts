@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendOtpEmail } from '@/lib/email'
+import { buildRateLimitHeaders, checkRateLimit, getIpFromRequest } from '@/lib/rate-limit'
 import {
   EMAIL_OTP_COOLDOWN_MS,
   EMAIL_OTP_MAX_ATTEMPTS,
@@ -17,6 +18,21 @@ const requestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // IP rate limit — blocks OTP-spam / email-enumeration attacks before we
+    // touch the DB or the email provider. Complements the per-email cooldown
+    // in the emailOtp table (which is bypassable by rotating addresses).
+    const ip = getIpFromRequest(req)
+    const rl = await checkRateLimit('emailOtp', ip)
+    if (!rl.success) {
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMITED',
+          message: 'Too many code requests. Please try again later.',
+        },
+        { status: 429, headers: buildRateLimitHeaders(rl) }
+      )
+    }
+
     const payload = requestSchema.parse(await req.json())
     const email = normalizeEmail(payload.email)
 
