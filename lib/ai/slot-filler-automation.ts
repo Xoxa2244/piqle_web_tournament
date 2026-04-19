@@ -187,7 +187,19 @@ async function processClub(
   }
 
   for (const session of sessions) {
-    const maxPlayers = session.maxPlayers || 8
+    // Schema default is 8, but a club may set maxPlayers=0 to mean
+    // "closed / no invites". Previously `session.maxPlayers || 8`
+    // silently fell back to 8 for both null and 0, so the automation
+    // would invite players to a closed session. Treat non-positive
+    // capacity as a hard skip with a breadcrumb for ops.
+    const rawMax = session.maxPlayers
+    if (rawMax === null || rawMax === undefined || rawMax <= 0) {
+      console.warn(
+        `[SlotFillerAutomation] session ${session.id} has invalid maxPlayers (${rawMax}) — skipping`,
+      )
+      continue
+    }
+    const maxPlayers = rawMax
     const spotsLeft = maxPlayers - session.bookings.length
     if (spotsLeft <= 0) continue
 

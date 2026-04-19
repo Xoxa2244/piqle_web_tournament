@@ -283,6 +283,23 @@ export async function getHybridSlotFillerRecommendations(
     session.bookings.map((b: any) => b.userId),
   )
 
+  // Short-circuit if the session has no valid capacity or is already full —
+  // no point running the SQL pre-filter or rich scorer to recommend players
+  // into a closed / full session.
+  const validMaxPlayers =
+    typeof session.maxPlayers === 'number' && session.maxPlayers > 0
+      ? session.maxPlayers
+      : 0
+  const confirmedCount = session._count?.bookings ?? 0
+  if (validMaxPlayers <= 0 || confirmedCount >= validMaxPlayers) {
+    return {
+      session: sessionSummary(session),
+      recommendations: [],
+      totalCandidatesScored: 0,
+      prefilterSize,
+    }
+  }
+
   const prefiltered = await runPrefilter(prisma, {
     clubId: session.clubId,
     format: session.format as string | null,
@@ -354,6 +371,13 @@ export async function getHybridSlotFillerRecommendations(
 }
 
 function sessionSummary(session: any) {
+  // Guard against null / zero / negative maxPlayers — schema default is 8,
+  // but a corrupt or closed session may have 0. Clamp to 0 so spotsRemaining
+  // never goes negative and callers can short-circuit safely.
+  const maxPlayers = typeof session.maxPlayers === 'number' && session.maxPlayers > 0
+    ? session.maxPlayers
+    : 0
+  const confirmedCount = session._count?.bookings ?? 0
   return {
     id: session.id,
     title: session.title,
@@ -362,8 +386,8 @@ function sessionSummary(session: any) {
     endTime: session.endTime,
     format: session.format,
     skillLevel: session.skillLevel,
-    maxPlayers: session.maxPlayers,
-    confirmedCount: session._count.bookings,
-    spotsRemaining: session.maxPlayers - session._count.bookings,
+    maxPlayers,
+    confirmedCount,
+    spotsRemaining: Math.max(0, maxPlayers - confirmedCount),
   }
 }
