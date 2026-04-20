@@ -132,7 +132,7 @@ export function EmailDomainIQ({ clubId }: Props) {
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>Email Domain</h1>
             <p style={{ fontSize: 13, color: 'var(--t3)' }}>
-              Send AI outreach from <em>your</em> club's domain instead of noreply@iqsport.ai
+              Send AI outreach from <em>your</em> club&apos;s domain instead of noreply@iqsport.ai
             </p>
           </div>
         </div>
@@ -149,12 +149,12 @@ export function EmailDomainIQ({ clubId }: Props) {
             Why connect your domain?
           </p>
           <p className="mb-1">
-            Members trust emails from your club's own domain more than a third-party address.
+            Members trust emails from your club&apos;s own domain more than a third-party address.
             Expect <strong>+10–20% open rate</strong>, lower spam-folder rate, and your branding in the inbox.
           </p>
           <p className="text-xs" style={{ color: 'var(--t3)' }}>
             Recommended: use a <strong>subdomain</strong> like <code>mail.yourclub.com</code> —
-            it won't conflict with your regular email (Google Workspace, Office 365).
+            it won&apos;t conflict with your regular email (Google Workspace, Office 365).
           </p>
         </div>
       </div>
@@ -380,7 +380,7 @@ export function EmailDomainIQ({ clubId }: Props) {
               </h2>
               <p className="text-xs mb-4" style={{ color: 'var(--t3)' }}>
                 Go to your domain registrar (GoDaddy, Namecheap, Cloudflare, etc) and add each record below.
-                After you've added them, click <strong>Verify DNS</strong> above.
+                After you&apos;ve added them, click <strong>Verify DNS</strong> above.
               </p>
 
               <div className="space-y-4">
@@ -437,8 +437,8 @@ export function EmailDomainIQ({ clubId }: Props) {
 
               <p className="text-xs mt-4 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
                 <ExternalLink className="w-3 h-3" />
-                Need help? The DNS interface varies by provider — if you're stuck, email support@iqsport.ai
-                and we'll do it together on a 10-min call.
+                Need help? The DNS interface varies by provider — if you&apos;re stuck, email support@iqsport.ai
+                and we&apos;ll do it together on a 10-min call.
               </p>
             </div>
           )}
