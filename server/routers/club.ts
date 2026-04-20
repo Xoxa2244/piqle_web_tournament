@@ -2420,4 +2420,457 @@ export const clubRouter = createTRPCRouter({
       })
       return { updated: true }
     }),
+
+  // ── Voice / Tone Profile ───────────────────────────────────────────
+  //
+  // Admin sets the club's writing style once; every AI outreach generator
+  // picks it up via the voice-profile helper. Combined with the preview
+  // + regenerate endpoints below, admins can iterate on tone interactively
+  // before turning live mode on.
+
+  getVoiceSettings: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view voice settings' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { voiceSettings: true },
+      })
+      const { parseVoiceSettings, DEFAULT_VOICE_SETTINGS } = await import('@/lib/ai/voice-profile')
+      const stored = parseVoiceSettings(club?.voiceSettings)
+
+      return {
+        // Explicit merge so the UI always has concrete values, even for
+        // a club that never touched settings (shows the defaults in place).
+        tone: stored.tone ?? DEFAULT_VOICE_SETTINGS.tone,
+        length: stored.length ?? DEFAULT_VOICE_SETTINGS.length,
+        useEmoji: stored.useEmoji ?? DEFAULT_VOICE_SETTINGS.useEmoji,
+        formality: stored.formality ?? DEFAULT_VOICE_SETTINGS.formality,
+        customInstructions: stored.customInstructions ?? '',
+        hasStoredSettings: club?.voiceSettings != null,
+      }
+    }),
+
+  updateVoiceSettings: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      tone: z.enum(['friendly', 'professional', 'energetic', 'warm']).optional(),
+      length: z.enum(['short', 'medium', 'long']).optional(),
+      useEmoji: z.boolean().optional(),
+      formality: z.enum(['casual', 'neutral', 'formal']).optional(),
+      customInstructions: z.string().max(1500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can update voice settings' })
+      }
+
+      // Merge over existing so partial updates are non-destructive.
+      const existing = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { voiceSettings: true },
+      })
+      const { parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+      const prev = parseVoiceSettings(existing?.voiceSettings)
+
+      const next = {
+        tone: input.tone ?? prev.tone,
+        length: input.length ?? prev.length,
+        useEmoji: input.useEmoji ?? prev.useEmoji,
+        formality: input.formality ?? prev.formality,
+        customInstructions: input.customInstructions ?? prev.customInstructions,
+        updatedAt: new Date().toISOString(),
+        updatedBy: ctx.session.user.id,
+      }
+
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: { voiceSettings: next as any },
+      })
+      return { updated: true, settings: next }
+    }),
+
+  // ── Preview a generated message (no send) ──────────────────────────
+  //
+  // LLM call with the real club's voice + context, so admins can read
+  // exactly what a real send would look like before turning on live mode.
+  // Separate from the actual send path so we never accidentally surface
+  // a preview to a member — this mutation stays strictly local.
+
+  previewAiMessage: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      type: z.enum(['slot_filler', 'reactivation', 'check_in', 'event_invite']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can preview messages' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true, voiceSettings: true },
+      })
+      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+
+      const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+      const { composeSystem, parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+      const voice = parseVoiceSettings(club.voiceSettings)
+
+      const typeConfig: Record<string, { description: string; contextHint: string }> = {
+        slot_filler: {
+          description: 'Fill empty spots in an upcoming session. Create gentle urgency around limited availability without being pushy.',
+          contextHint: 'Typical context: "Evening Open Play tomorrow at 6pm, 2 spots left. Member has played 8 sessions in the last month with a similar group."',
+        },
+        reactivation: {
+          description: 'Win-back message for a member who has not played in 30+ days. Warm check-in, acknowledge their history, soft invite back.',
+          contextHint: 'Typical context: "Member joined 6 months ago, played 12 sessions, last visit 42 days ago. Used to come on Tuesday evenings."',
+        },
+        check_in: {
+          description: 'Light check-in for a member whose weekly frequency dropped. Friendly, not alarmist.',
+          contextHint: 'Typical context: "Member plays 2x/week usually, last 2 weeks only 1x. No obvious life event."',
+        },
+        event_invite: {
+          description: 'Invite to a specific special event (clinic, league, tournament). Exciting but informative.',
+          contextHint: 'Typical context: "Saturday 3.5+ mixer clinic, 30 spots, member is 3.5 rated and has attended 2 clinics before."',
+        },
+      }
+
+      const cfg = typeConfig[input.type]
+      const baseSystem = `You are a messaging specialist for a racquet sports club (pickleball/tennis/padel). Generate an outreach email for the club's AI system to send to a real member. Use {{name}} for the member's first name.
+
+PURPOSE: ${cfg.description}
+
+RULES:
+- Output ONLY valid JSON, no markdown
+- subject: max 60 chars
+- body: max 600 chars, warm conversational email
+- Never ALL CAPS
+- Sign off naturally (e.g. "See you on the court," then the club name)
+
+OUTPUT FORMAT:
+{"subject": "...", "body": "..."}`
+
+      const userPrompt = `Club: "${club.name}"
+Message type: ${input.type}
+
+${cfg.contextHint}
+
+Generate a realistic preview that a club admin can read to decide if the tone feels right for their club. Use the VOICE & TONE guidance above.`
+
+      const result = await generateWithFallback({
+        system: composeSystem(baseSystem, voice),
+        prompt: userPrompt,
+        tier: 'fast',
+        maxTokens: 400,
+        clubId: input.clubId,
+        operation: `previewAiMessage:${input.type}`,
+      })
+
+      // Parse JSON robustly — sometimes models wrap in fences.
+      let text = result.text.trim()
+      const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (match) text = match[1].trim()
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start !== -1 && end !== -1) text = text.slice(start, end + 1)
+
+      let parsed: { subject?: string; body?: string } = {}
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        // If parsing fails, return the raw text as body so the admin
+        // still sees *something* to judge tone on — better than an error.
+        parsed = { subject: `[Preview: ${input.type}]`, body: result.text.slice(0, 600) }
+      }
+
+      return {
+        type: input.type,
+        subject: (parsed.subject || '').slice(0, 120),
+        body: (parsed.body || '').slice(0, 2000),
+        model: result.model,
+        voice,
+      }
+    }),
+
+  // Regenerate a preview with user feedback ("too formal", "shorter", or
+  // a free-form note). The prior attempt is passed back so the LLM can
+  // see what to change — not just a blank re-roll.
+  regenerateAiPreview: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      type: z.enum(['slot_filler', 'reactivation', 'check_in', 'event_invite']),
+      previousSubject: z.string().max(200).optional(),
+      previousBody: z.string().max(3000),
+      feedback: z.union([
+        z.enum(['too_formal', 'too_casual', 'too_long', 'too_short', 'too_generic', 'too_pushy']),
+        z.object({ custom: z.string().min(1).max(500) }),
+      ]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can regenerate previews' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true, voiceSettings: true },
+      })
+      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+
+      const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+      const { composeSystem, parseVoiceSettings, buildFeedbackInstruction } =
+        await import('@/lib/ai/voice-profile')
+      const voice = parseVoiceSettings(club.voiceSettings)
+
+      const baseSystem = `You are a messaging specialist for a racquet sports club. Regenerate an outreach message addressing specific feedback from the club admin while preserving the original intent. Use {{name}} for member's first name.
+
+RULES:
+- Output ONLY valid JSON, no markdown
+- subject: max 60 chars
+- body: max 600 chars
+- Never ALL CAPS
+
+OUTPUT: {"subject": "...", "body": "..."}`
+
+      const nudge = buildFeedbackInstruction(input.feedback)
+      const userPrompt = `Club: "${club.name}"
+Message type: ${input.type}
+
+PREVIOUS ATTEMPT:
+Subject: ${input.previousSubject || '(none)'}
+Body: ${input.previousBody}
+
+REVISION INSTRUCTION:
+${nudge}
+
+Generate a fresh version that addresses the revision instruction while fulfilling the same purpose.`
+
+      const result = await generateWithFallback({
+        system: composeSystem(baseSystem, voice),
+        prompt: userPrompt,
+        tier: 'fast',
+        maxTokens: 400,
+        clubId: input.clubId,
+        operation: `regenerateAiPreview:${input.type}`,
+      })
+
+      let text = result.text.trim()
+      const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (match) text = match[1].trim()
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start !== -1 && end !== -1) text = text.slice(start, end + 1)
+
+      let parsed: { subject?: string; body?: string } = {}
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = { subject: input.previousSubject || `[Preview: ${input.type}]`, body: result.text.slice(0, 600) }
+      }
+
+      return {
+        type: input.type,
+        subject: (parsed.subject || '').slice(0, 120),
+        body: (parsed.body || '').slice(0, 2000),
+        model: result.model,
+      }
+    }),
+
+  // ── Live-mode Launch Runbook ───────────────────────────────────────
+  //
+  // Preflight is the gate: it runs ~10 deterministic checks against the
+  // club's real data + platform config, returns pass/warn/error for each.
+  // goLive requires zero errors + all manual confirmations. killSwitch
+  // is always available (no gates), and logs a required reason so we
+  // can review why live mode was turned off.
+
+  getLaunchPreflight: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view the launch checklist' })
+      }
+
+      const { runLaunchPreflight } = await import('@/lib/ai/launch-preflight')
+      return runLaunchPreflight(ctx.prisma, input.clubId)
+    }),
+
+  goLive: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      manualConfirmations: z.object({
+        previewSlotFiller: z.boolean(),
+        previewReactivation: z.boolean(),
+        fromNameConfirmed: z.boolean(),
+        killSwitchKnown: z.boolean(),
+        teamNotified: z.boolean(),
+        willMonitor48h: z.boolean(),
+      }),
+      reason: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can go live' })
+      }
+
+      const allConfirmed = Object.values(input.manualConfirmations).every(Boolean)
+      if (!allConfirmed) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'All manual confirmations are required before going live',
+        })
+      }
+
+      const { runLaunchPreflight } = await import('@/lib/ai/launch-preflight')
+      const preflight = await runLaunchPreflight(ctx.prisma, input.clubId)
+      const hasErrors = preflight.checks.some((c) => c.status === 'error')
+
+      if (hasErrors) {
+        // Audit the failed attempt too — that's valuable for ops.
+        await ctx.prisma.clubLaunchAudit.create({
+          data: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'preflight_failed',
+            preflightSnapshot: preflight as any,
+            manualConfirmations: input.manualConfirmations as any,
+            reason: input.reason || null,
+          },
+        }).catch(() => { /* audit is advisory — don't fail the UX over it */ })
+
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: `Preflight has ${preflight.checks.filter((c) => c.status === 'error').length} blocker(s). Fix them first.`,
+        })
+      }
+
+      // Flip the flag — merge into existing automationSettings so we
+      // don't wipe other keys (notificationEmail, autonomy policies, etc).
+      const existing = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const current = (existing?.automationSettings as any) || {}
+      const nextSettings = {
+        ...current,
+        intelligence: { ...(current.intelligence || {}), agentLive: true },
+      }
+
+      await ctx.prisma.$transaction([
+        ctx.prisma.club.update({
+          where: { id: input.clubId },
+          data: { automationSettings: nextSettings as any },
+        }),
+        ctx.prisma.clubLaunchAudit.create({
+          data: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'go_live',
+            preflightSnapshot: preflight as any,
+            manualConfirmations: input.manualConfirmations as any,
+            reason: input.reason || null,
+          },
+        }),
+      ])
+
+      return { live: true, wentLiveAt: new Date().toISOString() }
+    }),
+
+  killSwitch: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      reason: z.string().min(3).max(500), // required — we want to know why
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can use the kill switch' })
+      }
+
+      const existing = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const current = (existing?.automationSettings as any) || {}
+      const nextSettings = {
+        ...current,
+        intelligence: { ...(current.intelligence || {}), agentLive: false },
+      }
+
+      await ctx.prisma.$transaction([
+        ctx.prisma.club.update({
+          where: { id: input.clubId },
+          data: { automationSettings: nextSettings as any },
+        }),
+        ctx.prisma.clubLaunchAudit.create({
+          data: {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'kill_switch',
+            reason: input.reason,
+          },
+        }),
+      ])
+      return { live: false, killedAt: new Date().toISOString() }
+    }),
+
+  getLaunchAuditLog: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      limit: z.number().int().min(1).max(50).default(10),
+    }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view the audit log' })
+      }
+
+      const audits = await ctx.prisma.clubLaunchAudit.findMany({
+        where: { clubId: input.clubId },
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+        include: { user: { select: { name: true, email: true } } },
+      })
+      return audits.map((a) => ({
+        id: a.id,
+        action: a.action,
+        reason: a.reason,
+        actor: a.user?.name || a.user?.email || 'Unknown',
+        createdAt: a.createdAt,
+      }))
+    }),
 })

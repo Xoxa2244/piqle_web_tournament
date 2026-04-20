@@ -82,6 +82,7 @@ model User {
   playSessionWaitlist      PlaySessionWaitlist[]      @relation("PlaySessionWaitlist")
   playPreferences          UserPlayPreference[]       @relation("PlayPreferences")
   aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
+  clubLaunchAudits         ClubLaunchAudit[]          @relation("ClubLaunchAuditsByUser")
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
   memberHealthSnapshots    MemberHealthSnapshot[]     @relation("MemberHealthSnapshots")
   memberAiProfiles         MemberAiProfile[]          @relation("MemberAiProfiles")
@@ -250,6 +251,14 @@ model Club {
   sendingDomainEnabled    Boolean   @default(false) @map("sending_domain_enabled")
   sendingDomainFromName   String?   @map("sending_domain_from_name")
   sendingDomainLocalPart  String    @default("campaigns") @map("sending_domain_local_part")
+
+  // ── Voice / Tone Profile ──
+  // Injected into every LLM system prompt for this club's outreach.
+  // Shape: { tone, length, useEmoji, formality, customInstructions, ... }
+  voiceSettings Json? @map("voice_settings")
+
+  // ── Launch Audits ──
+  launchAudits ClubLaunchAudit[] @relation("ClubLaunchAudits")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -1725,6 +1734,28 @@ model AIRecommendationLog {
   @@index([clubId, type, status])
   @@index([parentLogId])
   @@map("ai_recommendation_logs")
+}
+
+// ── Club Launch Audits ──
+// Every Go-Live and Kill-Switch transition gets a row here so we have a
+// post-hoc trail of "who flipped live mode on this club, when, and what
+// did the preflight checklist look like". Powers the Launch Runbook UI
+// history section and any post-incident review.
+model ClubLaunchAudit {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  clubId                String   @map("club_id") @db.Uuid
+  club                  Club     @relation("ClubLaunchAudits", fields: [clubId], references: [id], onDelete: Cascade)
+  userId                String?  @map("user_id")
+  user                  User?    @relation("ClubLaunchAuditsByUser", fields: [userId], references: [id], onDelete: SetNull)
+  action                String   // 'go_live' | 'kill_switch' | 'preflight_failed'
+  preflightSnapshot     Json?    @map("preflight_snapshot")
+  manualConfirmations   Json?    @map("manual_confirmations")
+  reason                String?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("club_launch_audits")
 }
 
 // ── AI Usage Tracking (cost visibility + per-club budgets) ──

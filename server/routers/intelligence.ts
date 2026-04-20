@@ -4783,7 +4783,10 @@ export const intelligenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true, voiceSettings: true },
+      })
       const clubName = club?.name || 'Your Club'
 
       // Build prompt
@@ -4802,7 +4805,12 @@ export const intelligenceRouter = createTRPCRouter({
       if (input.context?.inactivityDays) contextLines.push(`Average inactivity: ${input.context.inactivityDays} days`)
       contextLines.push(`Audience size: ${input.audienceCount} members`)
 
-      const systemPrompt = `You are a messaging specialist for racquet sports clubs (pickleball, padel, tennis).
+      // Voice injection — pulls the club's tone profile into the system prompt
+      // so slot-filler / reactivation / etc. all speak in the same voice.
+      const { composeSystem, parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+      const voice = parseVoiceSettings(club?.voiceSettings)
+
+      const baseSystemPrompt = `You are a messaging specialist for racquet sports clubs (pickleball, padel, tennis).
 You generate outreach messages for club campaigns.
 
 RULES:
@@ -4815,6 +4823,8 @@ RULES:
 
 OUTPUT FORMAT:
 {"subject": "...", "body": "...", "smsBody": "..."}`
+
+      const systemPrompt = composeSystem(baseSystemPrompt, voice)
 
       const userPrompt = `Generate a ${input.campaignType} campaign message.
 Club: "${clubName}". Channel: ${input.channel}.
@@ -6371,7 +6381,10 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const cohort = await ctx.prisma.clubCohort.findUnique({ where: { id: input.cohortId } })
       if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
 
-      const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true, voiceSettings: true },
+      })
       const filters = (cohort.filters as any[]) || []
       const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
       const where = buildCohortWhereClause(filters)
@@ -6419,8 +6432,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const avgPerMember = cohort.memberCount > 0 ? (totalBookings / cohort.memberCount).toFixed(1) : '0'
 
       const { generateWithFallback } = await import('@/lib/ai/llm/provider')
-      const result = await generateWithFallback({
-        system: `You are a marketing expert for sports/pickleball clubs. Generate 3 DIFFERENT campaign strategies for a member cohort. Each strategy has a different goal and timing. You have REAL behavioral data — use it.
+      const { composeSystem, parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+      const voice = parseVoiceSettings(club?.voiceSettings)
+      const cohortSystemBase = `You are a marketing expert for sports/pickleball clubs. Generate 3 DIFFERENT campaign strategies for a member cohort. Each strategy has a different goal and timing. You have REAL behavioral data — use it.
 
 Return ONLY valid JSON — an array of 3 objects:
 [
@@ -6454,7 +6468,9 @@ Return ONLY valid JSON — an array of 3 objects:
     "tone": "urgent/fomo",
     "reasoning": "..."
   }
-]`,
+]`
+      const result = await generateWithFallback({
+        system: composeSystem(cohortSystemBase, voice),
         prompt: `Club: ${club?.name || 'Sports Club'}
 Cohort: "${cohort.name}" — ${cohort.description || 'No description'}
 Filters: ${filterDesc}
