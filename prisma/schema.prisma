@@ -239,6 +239,17 @@ model Club {
   aiMonthlyBudgetUsd Decimal?             @map("ai_monthly_budget_usd") @db.Decimal(10, 2)
   aiSpendCurrentMonth Decimal             @default(0) @map("ai_spend_current_month") @db.Decimal(10, 6)
   aiSpendMonthStart  DateTime             @default(now()) @map("ai_spend_month_start")
+
+  // ── White-label Sending Domain ──
+  // Custom domain for AI outreach emails. Flow: setup → get DNS records
+  // → admin adds to their DNS → verify → enable. sendMail() only uses
+  // this when both verified_at IS NOT NULL AND enabled = true.
+  sendingDomain           String?   @unique @map("sending_domain")
+  sendingDomainDnsRecords Json?     @map("sending_domain_dns_records")
+  sendingDomainVerifiedAt DateTime? @map("sending_domain_verified_at") @db.Timestamptz()
+  sendingDomainEnabled    Boolean   @default(false) @map("sending_domain_enabled")
+  sendingDomainFromName   String?   @map("sending_domain_from_name")
+  sendingDomainLocalPart  String    @default("campaigns") @map("sending_domain_local_part")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { TRPCError } from '@trpc/server'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { getTeamSlotCount } from '../utils/teamSlots'
@@ -2133,5 +2134,290 @@ export const clubRouter = createTRPCRouter({
         clubName: invite.club.name,
         role: invite.role,
       }
+    }),
+
+  // ── White-label Sending Domain ──────────────────────────────────────
+  //
+  // Per-club custom From: domain for AI outreach. Admin flow:
+  //   1. getSendingDomainStatus — hydrate the settings page
+  //   2. setupSendingDomain — register with Mandrill, store DNS records
+  //   3. admin adds the DNS records in their provider
+  //   4. verifySendingDomain — Mandrill re-probes DNS, we flip verifiedAt
+  //   5. enableSendingDomain — turn on; sendMail() picks up the custom From
+  //
+  // Lifecycle: disable (temporary turn-off) and remove (full reset)
+  // are both supported so admins can iterate without manual cleanup.
+
+  getSendingDomainStatus: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can view email domain settings' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: {
+          name: true,
+          sendingDomain: true,
+          sendingDomainDnsRecords: true,
+          sendingDomainVerifiedAt: true,
+          sendingDomainEnabled: true,
+          sendingDomainFromName: true,
+          sendingDomainLocalPart: true,
+        },
+      })
+      if (!club) throw new TRPCError({ code: 'NOT_FOUND', message: 'Club not found' })
+
+      return {
+        domain: club.sendingDomain,
+        dnsRecords: club.sendingDomainDnsRecords,
+        verifiedAt: club.sendingDomainVerifiedAt,
+        enabled: club.sendingDomainEnabled,
+        fromName: club.sendingDomainFromName || club.name,
+        localPart: club.sendingDomainLocalPart,
+        previewFromAddress: club.sendingDomain
+          ? `${club.sendingDomainLocalPart || 'campaigns'}@${club.sendingDomain}`
+          : null,
+      }
+    }),
+
+  setupSendingDomain: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      domain: z.string().min(3).max(253),
+      fromName: z.string().min(1).max(100).optional(),
+      localPart: z.string().regex(/^[a-z0-9._-]+$/i).min(1).max(64).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can edit email domain settings' })
+      }
+
+      const { validateSendingDomain, isLikelyRootDomain, addSendingDomain, buildAdminDnsRecords } =
+        await import('@/lib/email-sending-domain')
+
+      const validation = validateSendingDomain(input.domain)
+      if (!validation.ok || !validation.normalized) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: validation.reason || 'Invalid domain' })
+      }
+      const normalized = validation.normalized
+
+      // Soft warning (not error) — surfaced to UI so admins can confirm.
+      const rootWarning = isLikelyRootDomain(normalized)
+        ? `Heads up: "${normalized}" looks like a root domain. We recommend using a subdomain like "mail.${normalized}" to avoid conflicts with your regular email (Google Workspace, Office 365, etc). You can proceed anyway, but existing SPF records on the root may need manual merging.`
+        : null
+
+      // Register with Mandrill — idempotent, safe to call multiple times.
+      // Any API/network failure surfaces as a 503 so the UI can retry.
+      try {
+        await addSendingDomain(normalized)
+      } catch (err) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to register domain with email provider: ${(err as Error).message}`,
+        })
+      }
+
+      const dnsRecords = buildAdminDnsRecords(normalized)
+
+      // Store — resets verifiedAt because the domain changed.
+      const updated = await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: {
+          sendingDomain: normalized,
+          sendingDomainDnsRecords: dnsRecords as any,
+          sendingDomainVerifiedAt: null,
+          sendingDomainEnabled: false,
+          ...(input.fromName ? { sendingDomainFromName: input.fromName } : {}),
+          ...(input.localPart ? { sendingDomainLocalPart: input.localPart.toLowerCase() } : {}),
+        },
+        select: {
+          sendingDomain: true,
+          sendingDomainDnsRecords: true,
+          sendingDomainFromName: true,
+          sendingDomainLocalPart: true,
+        },
+      })
+
+      return {
+        domain: updated.sendingDomain,
+        dnsRecords: updated.sendingDomainDnsRecords,
+        fromName: updated.sendingDomainFromName,
+        localPart: updated.sendingDomainLocalPart,
+        rootWarning,
+      }
+    }),
+
+  verifySendingDomain: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can verify email domains' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { sendingDomain: true },
+      })
+      if (!club?.sendingDomain) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No domain configured yet — run setup first' })
+      }
+
+      const { checkSendingDomain } = await import('@/lib/email-sending-domain')
+      let status
+      try {
+        status = await checkSendingDomain(club.sendingDomain)
+      } catch (err) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Email provider check failed: ${(err as Error).message}`,
+        })
+      }
+
+      // valid_signing = SPF + DKIM both resolve correctly. That's the
+      // gate we care about — email ownership verification (sending to
+      // admin@domain) is a separate, optional step we don't require.
+      const ready = !!status.valid_signing
+
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: {
+          sendingDomainVerifiedAt: ready ? new Date() : null,
+        },
+      })
+
+      return {
+        domain: status.domain,
+        ready,
+        spfValid: !!status.spf?.valid,
+        spfError: status.spf?.error || null,
+        dkimValid: !!status.dkim?.valid,
+        dkimError: status.dkim?.error || null,
+        lastTestedAt: status.last_tested_at,
+      }
+    }),
+
+  enableSendingDomain: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can enable email domains' })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { sendingDomain: true, sendingDomainVerifiedAt: true },
+      })
+      if (!club?.sendingDomain) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No domain configured' })
+      }
+      if (!club.sendingDomainVerifiedAt) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Domain not verified yet — verify DNS first',
+        })
+      }
+
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: { sendingDomainEnabled: true },
+      })
+      return { enabled: true }
+    }),
+
+  disableSendingDomain: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can disable email domains' })
+      }
+
+      // Always allowed — temporarily reverts to platform default (noreply@iqsport.ai)
+      // without wiping the domain configuration.
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: { sendingDomainEnabled: false },
+      })
+      return { enabled: false }
+    }),
+
+  removeSendingDomain: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can remove email domains' })
+      }
+
+      // Full reset — admin can start fresh with a different domain.
+      // We don't tell Mandrill to delete the domain from their side
+      // because another club (or the admin themselves, later) might
+      // want to reuse it. Mandrill deduplicates by domain name anyway.
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data: {
+          sendingDomain: null,
+          sendingDomainDnsRecords: Prisma.JsonNull as any,
+          sendingDomainVerifiedAt: null,
+          sendingDomainEnabled: false,
+          sendingDomainFromName: null,
+          // Keep localPart at whatever it was (default "campaigns") —
+          // it's a preference, not tied to any specific domain.
+        },
+      })
+      return { removed: true }
+    }),
+
+  updateSendingDomainMeta: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      fromName: z.string().min(1).max(100).optional(),
+      localPart: z.string().regex(/^[a-z0-9._-]+$/i).min(1).max(64).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = await ctx.prisma.clubAdmin.findUnique({
+        where: { clubId_userId: { clubId: input.clubId, userId: ctx.session.user.id } },
+        select: { id: true },
+      })
+      if (!isAdmin) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only club admins can update email settings' })
+      }
+
+      const data: Record<string, unknown> = {}
+      if (input.fromName !== undefined) data.sendingDomainFromName = input.fromName
+      if (input.localPart !== undefined) data.sendingDomainLocalPart = input.localPart.toLowerCase()
+      if (Object.keys(data).length === 0) {
+        return { updated: false }
+      }
+
+      await ctx.prisma.club.update({
+        where: { id: input.clubId },
+        data,
+      })
+      return { updated: true }
     }),
 })

@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer'
 import { emailLogger as log } from '@/lib/logger'
+import { prisma } from '@/lib/prisma'
+import { buildClubFromAddress } from '@/lib/email-sending-domain'
 
 const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
 const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || 587)
@@ -64,6 +66,49 @@ export interface SafeSendMailOptions {
   tags?: string[]
 }
 
+/**
+ * Resolves the effective From: address for a send.
+ *
+ * Precedence:
+ *   1. If opts.metadata.clubId is present AND the club has a verified
+ *      + enabled custom sending domain → use campaigns@mail.theirclub.com.
+ *   2. Otherwise → fall back to the platform default (noreply@iqsport.ai).
+ *
+ * Silent-fail by design: a DB lookup error here must not block the send.
+ * The fallback is already a valid From address.
+ */
+async function resolveFromAddress(
+  opts: SafeSendMailOptions,
+): Promise<{ email: string; name: string }> {
+  const defaultFrom = {
+    email: fromEmail || 'noreply@iqsport.ai',
+    name: fromName || 'IQSport',
+  }
+  const clubId = opts.metadata?.clubId
+  if (!clubId) return defaultFrom
+
+  try {
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: {
+        name: true,
+        sendingDomain: true,
+        sendingDomainEnabled: true,
+        sendingDomainVerifiedAt: true,
+        sendingDomainFromName: true,
+        sendingDomainLocalPart: true,
+      },
+    })
+    if (!club) return defaultFrom
+    const custom = buildClubFromAddress(club)
+    if (custom) return { email: custom.fromEmail, name: custom.fromName }
+  } catch (err) {
+    // Don't fail the send over a From-resolution glitch — just log.
+    log.warn?.(`[Email] From-address resolve failed for club ${clubId}: ${(err as Error).message?.slice(0, 120)}`)
+  }
+  return defaultFrom
+}
+
 /** Wraps email sending with blocked email guard + Mandrill fallback */
 async function safeSendMail(opts: SafeSendMailOptions) {
   const to = opts.to
@@ -71,6 +116,9 @@ async function safeSendMail(opts: SafeSendMailOptions) {
     log.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
     return { messageId: `blocked-${Date.now()}` }
   }
+
+  // Resolve per-send From: — may be club-custom, may be platform default.
+  const effectiveFrom = await resolveFromAddress(opts)
 
   // Primary: Mandrill API (if configured)
   const mandrillKey = process.env.MAILCHIMP_TRANSACTIONAL_API_KEY
@@ -92,8 +140,8 @@ async function safeSendMail(opts: SafeSendMailOptions) {
         body: JSON.stringify({
           key: mandrillKey,
           message: {
-            from_email: fromEmail || 'noreply@iqsport.ai',
-            from_name: fromName || 'IQSport',
+            from_email: effectiveFrom.email,
+            from_name: effectiveFrom.name,
             to: [{ email: to, type: 'to' }],
             subject: opts.subject,
             html: opts.html,
@@ -123,9 +171,15 @@ async function safeSendMail(opts: SafeSendMailOptions) {
 
   // Fallback: SMTP (nodemailer) — no metadata support, but at least email gets delivered
   if (smtpHost && smtpPass) {
+    // Honor the club-custom From: even on the SMTP path. Needs a
+    // properly-formatted "Name" <email> header so nodemailer doesn't
+    // append the SMTP auth user by default.
+    const smtpFrom = opts.from
+      || (effectiveFrom.name ? `"${effectiveFrom.name}" <${effectiveFrom.email}>` : effectiveFrom.email)
+      || fromHeader
     const info = await transporter.sendMail({
       to: opts.to,
-      from: opts.from || fromHeader,
+      from: smtpFrom,
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
