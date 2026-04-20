@@ -1101,7 +1101,16 @@ export const intelligenceRouter = createTRPCRouter({
       if (input.enhance && result.plan && result.plan.recommendedSessions.length > 0) {
         try {
           const { enhanceWeeklyPlanWithLLM } = await import('@/lib/ai/llm/enhancer')
-          const enhancement = await enhanceWeeklyPlanWithLLM(result.plan)
+          const { parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+          const club = await ctx.prisma.club.findUnique({
+            where: { id: input.clubId },
+            select: { voiceSettings: true },
+          })
+          const voice = parseVoiceSettings(club?.voiceSettings)
+          const enhancement = await enhanceWeeklyPlanWithLLM(result.plan, {
+            clubId: input.clubId,
+            voice,
+          })
           return { ...result, aiEnhancement: enhancement }
         } catch (err) {
           log.error('[Intelligence] Weekly plan LLM enhancement failed:', err)
@@ -1128,7 +1137,16 @@ export const intelligenceRouter = createTRPCRouter({
       if (input.enhance && result.candidates.length > 0) {
         try {
           const { enhanceReactivationWithLLM } = await import('@/lib/ai/llm/enhancer')
-          const enhancements = await enhanceReactivationWithLLM(result.candidates)
+          const { parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+          const club = await ctx.prisma.club.findUnique({
+            where: { id: input.clubId },
+            select: { voiceSettings: true },
+          })
+          const voice = parseVoiceSettings(club?.voiceSettings)
+          const enhancements = await enhanceReactivationWithLLM(result.candidates, {
+            clubId: input.clubId,
+            voice,
+          })
           return { ...result, aiEnhancements: enhancements }
         } catch (err) {
           log.error('[Intelligence] Reactivation LLM enhancement failed:', err)

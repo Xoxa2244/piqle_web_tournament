@@ -205,10 +205,27 @@ export async function generateSequenceMessageVariants(
     console.warn(`[SeqMessages] Performance feedback failed:`, (err as Error).message?.slice(0, 80))
   }
 
+  // Pull the club's voice profile so sequence steps inherit the same
+  // tone as the initial outreach. Same safe-load pattern as outreach-
+  // messages.ts — missing / corrupt settings → platform defaults.
+  let voice: import('./voice-profile').VoiceSettings | null = null
+  try {
+    const { parseVoiceSettings } = await import('./voice-profile')
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { voiceSettings: true },
+    })
+    voice = parseVoiceSettings(club?.voiceSettings)
+  } catch (err) {
+    console.warn(`[SeqMessages] Voice lookup failed:`, (err as Error).message?.slice(0, 80))
+  }
+
   const rawVariants = await generateLLMMessageVariants({
     messageType,
     context: fullContext,
     channel: messageType === 'sms_nudge' ? 'sms' : 'both',
+    clubId,
+    voice,
   })
 
   return rawVariants.map(v => ({

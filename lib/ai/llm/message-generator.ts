@@ -16,6 +16,7 @@
  */
 
 import { generateWithFallback } from './provider'
+import { composeSystem, type VoiceSettings } from '@/lib/ai/voice-profile'
 
 // ── Types ──
 
@@ -50,6 +51,15 @@ export interface GenerateVariantsParams {
   context: MessageGenerationContext
   /** Which channel(s) to generate for */
   channel: 'email' | 'sms' | 'both'
+  /** Club ID — enables per-club cost tracking in generateWithFallback. Optional for legacy callers and tests. */
+  clubId?: string
+  /**
+   * Per-club voice/tone profile. When provided, the club's custom tone is
+   * injected into the system prompt so generated variants match the club's
+   * style (casual Texan vs formal corporate, emoji vs no-emoji, etc).
+   * Omit for platform defaults.
+   */
+  voice?: VoiceSettings | null
 }
 
 // ── Strategy Definitions ──
@@ -213,10 +223,17 @@ export async function generateLLMMessageVariants(
 
   try {
     const result = await generateWithFallback({
-      system: MESSAGE_GENERATION_SYSTEM_PROMPT,
+      // Voice is composed into the system prompt so the LLM's tone matches
+      // the club's stored profile. Falls back to defaults when voice is
+      // null/undefined (legacy callers + tests).
+      system: composeSystem(MESSAGE_GENERATION_SYSTEM_PROMPT, params.voice),
       prompt: userPrompt,
       tier: 'fast',      // gpt-4o-mini → haiku — cheap and fast
       maxTokens: 1000,
+      // Cost tracking on the biggest bulk-send operation — messages get
+      // generated once per type per club per day, but variant-optimizer
+      // iteration can accumulate noticeable spend over a month.
+      ...(params.clubId ? { clubId: params.clubId, operation: `generateVariants:${messageType}` } : {}),
     })
 
     const variants = parseAndValidate(result.text, config)
