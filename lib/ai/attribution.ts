@@ -40,6 +40,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { aiLogger as log } from '@/lib/logger'
+import { BLOCKED_EMAIL_DOMAINS } from '@/lib/email'
 
 // ── Attribution windows (how far back to look for a relevant outreach) ──
 // Tuned per type: urgent/specific types have tighter windows, broader
@@ -60,6 +61,13 @@ const ATTRIBUTION_WINDOW_MS: Record<string, number> = {
   // Default for anything not listed: 7 days.
 }
 const DEFAULT_WINDOW_MS = 7 * DAY_MS
+
+/** Returns true for placeholder/demo/test email addresses we own. */
+function isTestEmail(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase()
+  if (!domain) return false
+  return BLOCKED_EMAIL_DOMAINS.some((d) => domain === d || domain.endsWith('.' + d))
+}
 
 // ── Types we consider for time-window attribution. Excludes advisor chat,
 // autopilot, churn prediction, etc — those don't produce per-user
@@ -308,6 +316,7 @@ export async function attributeBooking(
       sessionId: true,
       status: true,
       bookedAt: true,
+      user: { select: { email: true } },
       playSession: {
         select: { id: true, clubId: true, pricePerSlot: true },
       },
@@ -316,6 +325,11 @@ export async function attributeBooking(
 
   if (!booking) return null
   if (booking.status !== 'CONFIRMED') return null
+
+  // Exclude synthetic/placeholder users — attribution on demo.iqsport.ai
+  // etc. would be meaningless (these are Piqle-owned test addresses, not
+  // real members). Keeps the ROI dashboard honest in mixed environments.
+  if (booking.user?.email && isTestEmail(booking.user.email)) return null
 
   // Idempotency — if any recommendation already points at this booking, we're done.
   const existing = await prisma.aIRecommendationLog.findFirst({

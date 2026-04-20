@@ -29,9 +29,9 @@ const transporter = nodemailer.createTransport({
 const fromHeader = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail
 
 /** Block emails to placeholder/demo/test addresses — prevents Mandrill reputation damage */
-const BLOCKED_EMAIL_DOMAINS = ['placeholder.iqsport.ai', 'demo.iqsport.ai', 'test.iqsport.ai', 'example.com']
+export const BLOCKED_EMAIL_DOMAINS = ['placeholder.iqsport.ai', 'demo.iqsport.ai', 'test.iqsport.ai', 'example.com']
 
-function isBlockedEmail(to: string): boolean {
+export function isBlockedEmail(to: string): boolean {
   const domain = to.split('@')[1]?.toLowerCase()
   return BLOCKED_EMAIL_DOMAINS.some(d => domain === d || domain?.endsWith('.' + d))
 }

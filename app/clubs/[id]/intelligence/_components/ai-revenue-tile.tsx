@@ -13,7 +13,7 @@
  * attribution backfill cron runs (every 15 min).
  */
 
-import { DollarSign, TrendingUp, Info } from 'lucide-react'
+import { DollarSign, TrendingUp, Info, Power } from 'lucide-react'
 import { useAIRevenueAttribution } from '../_hooks/use-intelligence'
 
 interface Props {
@@ -52,6 +52,11 @@ export function AIRevenueTile({ clubId }: Props) {
 
   const revenueLabel = formatUsd(data.attributedRevenueUsd || 0)
   const hasData = (data.attributedBookingsCount || 0) > 0
+  // `liveMode=false` means the agent is still sending to test addresses —
+  // numbers would be 0 anyway because the attribution service now filters
+  // synthetic users, but we show an explicit off-state so admins know why.
+  // Undefined = demo-mode mock (no liveMode field in mock); treat as live.
+  const isLive = data.liveMode !== false
 
   return (
     <div className="relative rounded-2xl border border-border/60 bg-card p-6 overflow-hidden">
@@ -83,8 +88,31 @@ export function AIRevenueTile({ clubId }: Props) {
           </div>
         </div>
 
-        {/* Hero numbers */}
-        {hasData ? (
+        {/* Live-mode off state — shown before any numbers so it's the
+            first thing an admin sees. Attribution on test sends would
+            produce noise, so we hard-gate the UI here. */}
+        {!isLive ? (
+          <div className="py-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Power className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                Live mode is off
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-2">
+              AI recommendations currently fire to test addresses only
+              (<code className="text-xs px-1 py-0.5 rounded bg-muted/60">demo.iqsport.ai</code>,{' '}
+              <code className="text-xs px-1 py-0.5 rounded bg-muted/60">placeholder.iqsport.ai</code>).
+              Switch on Live Mode in Settings → Intelligence to start sending
+              to real members — attributed revenue will appear here within 15
+              minutes of the first conversion.
+            </p>
+            <p className="text-xs text-muted-foreground/80">
+              Attribution pipeline is already live and ready: deep-link via
+              click webhook, direct session match, or per-type time windows.
+            </p>
+          </div>
+        ) : hasData ? (
           <>
             <div className="flex items-baseline gap-4 mb-1">
               <span className="text-4xl font-bold tracking-tight">

@@ -1431,6 +1431,7 @@ export const mockReferralSnapshot = {
 // plus a conservative 20% incremental lift estimate. Mock numbers match
 // a club with healthy but not unrealistic AI-driven bookings (~180/mo).
 export const mockAIRevenueAttribution = {
+  liveMode: true,
   periodStart: fmt(-30),
   periodEnd: fmt(0),
   days: 30,

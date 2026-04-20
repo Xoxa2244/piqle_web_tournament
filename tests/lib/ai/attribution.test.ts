@@ -67,6 +67,7 @@ function makeBooking(overrides: Partial<any> = {}) {
     sessionId: 'session-1',
     status: 'CONFIRMED',
     bookedAt: new Date('2026-04-18T12:00:00Z'),
+    user: { email: 'real-user@gmail.com' },
     playSession: {
       id: 'session-1',
       clubId: 'club-1',
@@ -120,6 +121,33 @@ describe('attributeBooking', () => {
   it('returns null when booking does not exist', async () => {
     const prisma = makePrisma({ booking: null })
     const result = await attributeBooking(prisma, { bookingId: 'ghost' })
+    expect(result).toBeNull()
+  })
+
+  it('skips synthetic test-domain users (demo.iqsport.ai / placeholder.*)', async () => {
+    // Attribution must not count recs to our own test addresses —
+    // otherwise test campaigns pollute the ROI dashboard.
+    const prisma = makePrisma({
+      booking: makeBooking({ user: { email: 'nobody@demo.iqsport.ai' } }),
+    })
+    const result = await attributeBooking(prisma, { bookingId: 'booking-1' })
+    expect(result).toBeNull()
+    expect(prisma.__updateMock).not.toHaveBeenCalled()
+  })
+
+  it('skips placeholder.iqsport.ai (another synthetic domain)', async () => {
+    const prisma = makePrisma({
+      booking: makeBooking({ user: { email: 'pending@placeholder.iqsport.ai' } }),
+    })
+    const result = await attributeBooking(prisma, { bookingId: 'booking-1' })
+    expect(result).toBeNull()
+  })
+
+  it('skips subdomains of blocked domains (defence-in-depth)', async () => {
+    const prisma = makePrisma({
+      booking: makeBooking({ user: { email: 'a@sub.demo.iqsport.ai' } }),
+    })
+    const result = await attributeBooking(prisma, { bookingId: 'booking-1' })
     expect(result).toBeNull()
   })
 

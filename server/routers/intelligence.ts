@@ -1408,6 +1408,15 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // Live-mode gate — attribution numbers are meaningful only when the
+      // agent is actually sending to real members. While in test mode
+      // (automationSettings.intelligence.agentLive !== true), recs fly
+      // to synthetic test addresses (demo.iqsport.ai / placeholder.*)
+      // and would pollute ROI. The UI uses `liveMode=false` to render
+      // a "switch on live mode" empty state.
+      const { isAgentLive } = await import('@/lib/ai/agent-utils')
+      const liveMode = await isAgentLive(ctx.prisma, input.clubId)
+
       const now = new Date()
       const periodStart = new Date(now.getTime() - input.days * 24 * 60 * 60 * 1000)
 
@@ -1497,6 +1506,7 @@ export const intelligenceRouter = createTRPCRouter({
         .map(([date, agg]) => ({ date, ...agg }))
 
       return {
+        liveMode,
         periodStart: periodStart.toISOString(),
         periodEnd: now.toISOString(),
         days: input.days,
