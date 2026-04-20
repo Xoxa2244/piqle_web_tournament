@@ -345,7 +345,11 @@ async function processClub(
             sessionDate: session.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
             sessionTime: `${session.startTime} - ${session.endTime}`,
             spotsLeft,
-            bookingUrl: `https://app.iqsport.ai/clubs/${club.id}/intelligence/sessions`,
+            // ?rec= tag so downstream analytics / partner bookings can
+            // attribute back to this recommendation. Mandrill click webhook
+            // will also fire on tracked clicks and set clickedAt — the
+            // attribution service then treats this as a deep_link.
+            bookingUrl: `https://app.iqsport.ai/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`,
             customSubject: subject,
             customMessage: body,
             // CRITICAL: metadata flows through Mandrill to webhooks for engagement tracking

@@ -21,6 +21,7 @@ import { MonthCalendar } from "../MonthCalendar";
 import { X, Check, ChevronRight, Trash2, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
+import { AIRevenueTile } from "../ai-revenue-tile";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -954,6 +955,17 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           );
         })}
       </div>
+
+      {/* AI-Attributed Revenue — the "money metric" tile.
+          Placed right after KPIs so club owners (and demo viewers) see
+          the ROI story before the deeper player-health analytics. */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+      >
+        <AIRevenueTile clubId={clubId} />
+      </motion.div>
 
       {/* Player Health Overview */}
       <div className="space-y-4">

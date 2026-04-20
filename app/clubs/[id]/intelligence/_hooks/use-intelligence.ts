@@ -20,6 +20,7 @@ import {
   mockGuestTrialBooking,
   mockWinBackSnapshot,
   mockReferralSnapshot,
+  mockAIRevenueAttribution,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -735,6 +736,28 @@ export function useWinBackSnapshot(clubId: string, windowDays: number = 60, limi
   if (isDemo) {
     return {
       data: mockWinBackSnapshot as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+// ── AI Revenue Attribution (for ROI dashboard tile) ──
+// Returns linked revenue, ROI multiple, and method/type breakdown over a
+// rolling window. Default 30d — matches the "last month" framing we use
+// in VC-ready decks.
+export function useAIRevenueAttribution(clubId: string, days: number = 30) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getAIRevenueAttribution.useQuery(
+    { clubId, days },
+    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockAIRevenueAttribution as any,
       isLoading: false,
       error: null,
     }

@@ -74,6 +74,10 @@
     {
       "path": "/api/cron/ai-budget-check",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/attribution-backfill",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

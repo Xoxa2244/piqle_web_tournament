@@ -1425,3 +1425,35 @@ export const mockReferralSnapshot = {
   rewardIssuances: [],
   rewardLedger: [],
 }
+
+// ── AI Revenue Attribution — the YC-pitch "money metric" ──
+// Honest framing: what we can link from AI touches to subsequent bookings,
+// plus a conservative 20% incremental lift estimate. Mock numbers match
+// a club with healthy but not unrealistic AI-driven bookings (~180/mo).
+export const mockAIRevenueAttribution = {
+  periodStart: fmt(-30),
+  periodEnd: fmt(0),
+  days: 30,
+  attributedRevenueUsd: 4320,
+  attributedBookingsCount: 182,
+  conservativeIncrementalUsd: 864,
+  aiSpendUsd: 47.2,
+  roiMultiple: 91.5,
+  byType: [
+    { type: 'SLOT_FILLER', bookings: 84, revenueUsd: 1890 },
+    { type: 'REACTIVATION', bookings: 52, revenueUsd: 1170 },
+    { type: 'CHECK_IN', bookings: 28, revenueUsd: 630 },
+    { type: 'EVENT_INVITE', bookings: 12, revenueUsd: 405 },
+    { type: 'RETENTION_BOOST', bookings: 6, revenueUsd: 225 },
+  ],
+  byMethod: {
+    deep_link: { bookings: 64, revenueUsd: 1512 },
+    direct_session_match: { bookings: 72, revenueUsd: 1620 },
+    time_window: { bookings: 46, revenueUsd: 1188 },
+  },
+  dailyTrend: Array.from({ length: 30 }, (_, i) => ({
+    date: fmt(-30 + i).slice(0, 10),
+    bookings: 4 + Math.round(Math.sin(i / 3) * 2 + Math.random() * 3),
+    revenueUsd: 90 + Math.round(Math.sin(i / 3) * 40 + Math.random() * 60),
+  })),
+}

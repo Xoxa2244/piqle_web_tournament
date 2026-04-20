@@ -1625,6 +1625,9 @@ model PlaySessionBooking {
   cancelledAt DateTime?
   checkedInAt DateTime?
 
+  // Back-relation for AI attribution — at most one recommendation links here.
+  aiAttribution AIRecommendationLog? @relation("AIAttribution")
+
   @@unique([sessionId, userId])
   @@map("play_session_bookings")
 }
@@ -1693,6 +1696,16 @@ model AIRecommendationLog {
   parentLogId        String?                 @map("parent_log_id")   // FK to Step 0 record of this sequence
   parentLog          AIRecommendationLog?    @relation("SequenceChain", fields: [parentLogId], references: [id], onDelete: SetNull)
   childLogs          AIRecommendationLog[]   @relation("SequenceChain")
+
+  // ── Attribution Tracking (AI-revenue dashboard) ──
+  // Populated by the attribution service when a booking is linked to this
+  // recommendation. Value is snapshotted at link time so historical ROI
+  // stays stable even if the club changes prices later.
+  bookingId          String?                 @unique @map("booking_id")
+  linkedBooking      PlaySessionBooking?     @relation("AIAttribution", fields: [bookingId], references: [id], onDelete: SetNull)
+  linkedBookingValue Decimal?                @map("linked_booking_value") @db.Decimal(10, 2)
+  linkedAt           DateTime?               @map("linked_at")            @db.Timestamptz()
+  attributionMethod  String?                 @map("attribution_method")   // deep_link | direct_session_match | time_window
 
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])

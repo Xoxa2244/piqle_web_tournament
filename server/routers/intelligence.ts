@@ -1380,6 +1380,152 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // ── AI Revenue Attribution ──
+  //
+  // Returns per-club "AI-attributed revenue" over a rolling window, with
+  // breakdowns defensible enough to answer a VC's "how do you measure
+  // that?". Three layers in the response:
+  //
+  //   1. attributedRevenueUsd — the raw sum. Linked (attribution window
+  //      or explicit click) means the booking appeared in a temporal
+  //      window after an AI touch. This is NOT causal; it's the upper
+  //      bound we can say with certainty happened "after" AI activity.
+  //   2. conservativeIncrementalUsd — 20% of the raw sum. Industry-
+  //      standard email-marketing incremental lift. Gives an honest
+  //      floor on the causal story when pressed.
+  //   3. Method/type breakdown — shows what kinds of attribution we
+  //      have. deep_link is the strongest (user clicked our link, then
+  //      booked); time_window the weakest.
+  //
+  // The underlying AIRecommendationLog rows are populated by the
+  // attribution service (lib/ai/attribution.ts) running from the
+  // /api/cron/attribution-backfill cron every 15 minutes.
+  getAIRevenueAttribution: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      days: z.number().int().min(1).max(365).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const now = new Date()
+      const periodStart = new Date(now.getTime() - input.days * 24 * 60 * 60 * 1000)
+
+      // Pull all linked recommendations in the window. One query — small
+      // set (we expect hundreds at most per club per month) so fetching
+      // full rows and aggregating in JS is cheaper than multiple GROUP BYs.
+      const linked = await ctx.prisma.aIRecommendationLog.findMany({
+        where: {
+          clubId: input.clubId,
+          linkedAt: { gte: periodStart, lte: now },
+        },
+        select: {
+          id: true,
+          type: true,
+          attributionMethod: true,
+          linkedBookingValue: true,
+          linkedAt: true,
+        },
+      })
+
+      // AI spend for the same window. We use the current-month spend when
+      // the window is 30d; for shorter/longer windows we sum from the
+      // ai_usage_logs table directly to stay accurate.
+      type SpendRow = { total: number | null }
+      const spendRows = await ctx.prisma.$queryRawUnsafe<SpendRow[]>(
+        `SELECT COALESCE(SUM(cost_usd), 0)::float AS total
+         FROM ai_usage_logs
+         WHERE club_id = $1::uuid AND created_at >= $2`,
+        input.clubId,
+        periodStart,
+      )
+      const aiSpendUsd = Number(spendRows[0]?.total || 0)
+
+      // Aggregations
+      const byType = new Map<string, { bookings: number; revenueUsd: number }>()
+      const byMethod: Record<string, { bookings: number; revenueUsd: number }> = {
+        deep_link: { bookings: 0, revenueUsd: 0 },
+        direct_session_match: { bookings: 0, revenueUsd: 0 },
+        time_window: { bookings: 0, revenueUsd: 0 },
+      }
+      const dailyAgg = new Map<string, { bookings: number; revenueUsd: number }>()
+
+      let attributedRevenueUsd = 0
+      let attributedBookingsCount = 0
+
+      for (const row of linked) {
+        const value = row.linkedBookingValue ? Number(row.linkedBookingValue) : 0
+        attributedRevenueUsd += value
+        attributedBookingsCount += 1
+
+        // By type
+        const typeAgg = byType.get(row.type) || { bookings: 0, revenueUsd: 0 }
+        typeAgg.bookings += 1
+        typeAgg.revenueUsd += value
+        byType.set(row.type, typeAgg)
+
+        // By method
+        const method = row.attributionMethod || 'time_window'
+        if (byMethod[method]) {
+          byMethod[method].bookings += 1
+          byMethod[method].revenueUsd += value
+        }
+
+        // Daily trend
+        if (row.linkedAt) {
+          const dateKey = row.linkedAt.toISOString().slice(0, 10)
+          const dayAgg = dailyAgg.get(dateKey) || { bookings: 0, revenueUsd: 0 }
+          dayAgg.bookings += 1
+          dayAgg.revenueUsd += value
+          dailyAgg.set(dateKey, dayAgg)
+        }
+      }
+
+      // Conservative incremental — 20% of attributed (industry benchmark
+      // for email-marketing incremental lift). A floor for the causal
+      // story when VCs push back on "correlation vs causation".
+      const conservativeIncrementalUsd = Math.round(attributedRevenueUsd * 0.2 * 100) / 100
+
+      // ROI — attributed / spend. Null if spend is zero (division guard).
+      const roiMultiple = aiSpendUsd > 0
+        ? Math.round((attributedRevenueUsd / aiSpendUsd) * 10) / 10
+        : null
+
+      // Sort daily trend chronologically
+      const dailyTrend = Array.from(dailyAgg.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, agg]) => ({ date, ...agg }))
+
+      return {
+        periodStart: periodStart.toISOString(),
+        periodEnd: now.toISOString(),
+        days: input.days,
+        attributedRevenueUsd: Math.round(attributedRevenueUsd * 100) / 100,
+        attributedBookingsCount,
+        conservativeIncrementalUsd,
+        aiSpendUsd: Math.round(aiSpendUsd * 100) / 100,
+        roiMultiple,
+        byType: Array.from(byType.entries())
+          .map(([type, agg]) => ({ type, ...agg, revenueUsd: Math.round(agg.revenueUsd * 100) / 100 }))
+          .sort((a, b) => b.revenueUsd - a.revenueUsd),
+        byMethod: {
+          deep_link: {
+            bookings: byMethod.deep_link.bookings,
+            revenueUsd: Math.round(byMethod.deep_link.revenueUsd * 100) / 100,
+          },
+          direct_session_match: {
+            bookings: byMethod.direct_session_match.bookings,
+            revenueUsd: Math.round(byMethod.direct_session_match.revenueUsd * 100) / 100,
+          },
+          time_window: {
+            bookings: byMethod.time_window.bookings,
+            revenueUsd: Math.round(byMethod.time_window.revenueUsd * 100) / 100,
+          },
+        },
+        dailyTrend,
+      }
+    }),
+
   // ── Dashboard V2: Full analytics overview ──
   getDashboardV2: protectedProcedure
     .input(z.object({
