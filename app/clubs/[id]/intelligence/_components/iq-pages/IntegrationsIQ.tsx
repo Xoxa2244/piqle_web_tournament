@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
+import ConfirmModal from '@/components/ConfirmModal'
 import { useTheme } from '../IQThemeProvider'
 import { CourtReserveConnector, StatCard } from './shared/CourtReserveConnector'
 import {
@@ -947,12 +948,188 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
             <PodPlayImportSection clubId={clubId} />
           </div>
         </div>
+
+        <DeleteImportedDataCard clubId={clubId} />
       </motion.div>
     </div>
   )
 }
 
 /* CourtReserveConnector + helpers moved to ./shared/CourtReserveConnector.tsx */
+
+const RESET_SUMMARY_LABELS: Record<string, string> = {
+  followers: 'members',
+  sessions: 'sessions',
+  bookings: 'bookings',
+  waitlist: 'waitlist entries',
+  courts: 'courts',
+  preferences: 'play preferences',
+  cohorts: 'cohorts',
+  weeklySummaries: 'weekly summaries',
+  aiProfiles: 'AI profiles',
+  healthSnapshots: 'health snapshots',
+  recommendationLogs: 'AI recommendation logs',
+  agentDrafts: 'agent drafts',
+  aiConversations: 'AI conversations',
+  embeddings: 'embeddings',
+  externalMappings: 'external mappings',
+  partnerBindings: 'connector bindings',
+  partnerApps: 'connector apps',
+  partners: 'connector records',
+}
+
+function DeleteImportedDataCard({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const utils = trpc.useUtils()
+  const deleteMutation = trpc.intelligence.deleteAllClubData.useMutation()
+  const [open, setOpen] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [deletedSummary, setDeletedSummary] = useState<Record<string, number> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const deletedItems = deletedSummary
+    ? Object.entries(deletedSummary)
+      .filter(([, value]) => value > 0)
+      .map(([key, value]) => `${value} ${RESET_SUMMARY_LABELS[key] || key}`)
+    : []
+
+  const handleDeleteAll = async () => {
+    try {
+      setError(null)
+      const res = await deleteMutation.mutateAsync({ clubId })
+      setDeletedSummary(res.deleted)
+      setOpen(false)
+      setConfirmText('')
+
+      await Promise.allSettled([
+        utils.intelligence.getDataCoverageChecklist.invalidate({ clubId }),
+        utils.intelligence.getIntegrationHealthSnapshot.invalidate({ clubId }),
+        utils.intelligence.getUploadHistory.invalidate({ clubId }),
+        utils.intelligence.getDashboardV2.invalidate({ clubId }),
+        utils.intelligence.getMemberHealth.invalidate({ clubId }),
+        utils.intelligence.getMemberGrowth.invalidate({ clubId }),
+        utils.intelligence.getReactivationCandidates.invalidate({ clubId }),
+      ])
+
+      router.refresh()
+    } catch (err: any) {
+      setError(err?.message || 'Delete failed')
+    }
+  }
+
+  return (
+    <>
+      <Card className="mt-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(239,68,68,0.12)' }}
+              >
+                <Unplug className="w-4 h-4" style={{ color: '#EF4444' }} />
+              </div>
+              <div>
+                <h3 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                  Delete All Imported Data
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>
+                  Reset imported members, schedule, bookings, cohorts, and AI artifacts for this club.
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-3 text-xs"
+              style={{
+                background: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.18)',
+                color: 'var(--t2)',
+              }}
+            >
+              This will remove imported members from the club, imported sessions and reservations,
+              courts created by imports, upload history, AI health/profile data, and saved cohorts.
+            </div>
+
+            {deletedItems.length > 0 && (
+              <div
+                className="mt-3 rounded-xl p-3 text-xs"
+                style={{
+                  background: 'rgba(16,185,129,0.08)',
+                  border: '1px solid rgba(16,185,129,0.18)',
+                  color: '#10B981',
+                }}
+              >
+                Deleted: {deletedItems.join(', ')}.
+              </div>
+            )}
+
+            {error && (
+              <div
+                className="mt-3 rounded-xl p-3 text-xs"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.18)',
+                  color: '#EF4444',
+                }}
+              >
+                {error}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => {
+              setError(null)
+              setConfirmText('')
+              setOpen(true)
+            }}
+            className="px-4 py-2 rounded-xl text-sm text-white flex items-center gap-2"
+            style={{ background: '#EF4444', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+          >
+            <Unplug className="w-4 h-4" />
+            Delete All Import Data
+          </button>
+        </div>
+      </Card>
+
+      <ConfirmModal
+        open={open}
+        onClose={() => {
+          if (deleteMutation.isPending) return
+          setConfirmText('')
+          setOpen(false)
+        }}
+        onConfirm={handleDeleteAll}
+        isPending={deleteMutation.isPending}
+        confirmDisabled={confirmText !== 'DELETE'}
+        destructive
+        size="lg"
+        title="Delete all imported data?"
+        description={
+          'This will permanently delete imported club data for this workspace.\n\n' +
+          'It will remove:\n' +
+          '• Imported members in this club\n' +
+          '• Imported schedule, sessions, reservations and waitlist\n' +
+          '• Courts created by imports\n' +
+          '• Cohorts and weekly summaries\n' +
+          '• Member health snapshots and AI profiles\n' +
+          '• Upload history, embeddings and connector mappings\n\n' +
+          'Type DELETE to confirm.'
+        }
+        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete imported data'}
+        cancelText="Cancel"
+      >
+        <input
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder="DELETE"
+          className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+        />
+      </ConfirmModal>
+    </>
+  )
+}
 
 // ── Data Coverage Checklist ──
 
@@ -1059,13 +1236,9 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
   const [files, setFiles] = useState<ExcelFile[]>([])
   const [importing, setImporting] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const deleteMutation = trpc.intelligence.deleteAllClubData.useMutation()
 
   const fileSlots: { type: ExcelFile['type']; label: string; icon: any; description: string }[] = [
     { type: 'members', label: 'Members', icon: Users, description: 'MembersReport.xlsx' },
@@ -1074,23 +1247,6 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
   ]
 
   const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
-
-  const handleDeleteAll = async () => {
-    setDeleting(true)
-    setError(null)
-    try {
-      const res = await deleteMutation.mutateAsync({ clubId })
-      setConfirmDelete(false)
-      setResult(null)
-      setFiles([])
-      setProgress({ current: '', done: [], errors: [] })
-      alert(`All data deleted. Removed: ${Object.entries(res.deleted).filter(([,v]) => (v as number) > 0).map(([k,v]) => `${v} ${k}`).join(', ')}`)
-    } catch (err: any) {
-      setError(err.message || 'Delete failed')
-    } finally {
-      setDeleting(false)
-    }
-  }
 
   // Import files ONE BY ONE — parse XLSX client-side, send JSON rows to avoid timeout
   const handleImport = async () => {
@@ -1211,23 +1367,8 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
   return (
     <Card>
-      {/* Delete button */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4">
         <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload .xlsx exports from CourtReserve Reports</p>
-        {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px]" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-            <Unplug className="w-3 h-3" /> Delete All
-          </button>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={handleDeleteAll} disabled={deleting} className="px-3 py-1.5 rounded-lg text-[10px] text-white" style={{ background: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-              {deleting ? 'Deleting...' : 'Yes, Delete'}
-            </button>
-            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-[10px]" style={{ border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--t4)', cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Drop zone */}

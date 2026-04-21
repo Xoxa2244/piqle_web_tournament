@@ -3017,57 +3017,63 @@ export const intelligenceRouter = createTRPCRouter({
 
       const clubId = input.clubId
       const deleted: Record<string, number> = {}
+      const partnerIds = (
+        await ctx.prisma.partner.findMany({
+          where: {
+            code: { contains: clubId },
+          },
+          select: { id: true },
+        })
+      ).map((partner) => partner.id)
 
-      // 1. Bookings (depends on sessions)
-      const d1 = await ctx.prisma.playSessionBooking.deleteMany({ where: { playSession: { clubId } } })
-      deleted.bookings = d1.count
+      // Imported schedule layer
+      deleted.bookings = (await ctx.prisma.playSessionBooking.deleteMany({ where: { playSession: { clubId } } })).count
+      deleted.waitlist = (await ctx.prisma.playSessionWaitlist.deleteMany({ where: { playSession: { clubId } } })).count
+      deleted.sessions = (await ctx.prisma.playSession.deleteMany({ where: { clubId } })).count
+      deleted.courts = (await ctx.prisma.clubCourt.deleteMany({ where: { clubId } })).count
 
-      // 2. Play sessions
-      const d2 = await ctx.prisma.playSession.deleteMany({ where: { clubId } })
-      deleted.sessions = d2.count
+      // Imported member layer
+      deleted.preferences = (await ctx.prisma.userPlayPreference.deleteMany({ where: { clubId } })).count
+      deleted.followers = (await ctx.prisma.clubFollower.deleteMany({ where: { clubId } })).count
 
-      // 3. Document embeddings (sessions, members, patterns, etc.)
-      deleted.embeddings = Number(await ctx.prisma.$executeRaw`DELETE FROM document_embeddings WHERE club_id = ${clubId}`)
+      // Derived AI / analytics artifacts built from imports
+      deleted.embeddings = (await ctx.prisma.documentEmbedding.deleteMany({ where: { clubId } })).count
+      deleted.aiProfiles = (await ctx.prisma.memberAiProfile.deleteMany({ where: { clubId } })).count
+      deleted.healthSnapshots = (await ctx.prisma.memberHealthSnapshot.deleteMany({ where: { clubId } })).count
+      deleted.recommendationLogs = (await ctx.prisma.aIRecommendationLog.deleteMany({ where: { clubId } })).count
+      deleted.agentDrafts = (await ctx.prisma.agentDraft.deleteMany({ where: { clubId } })).count
+      deleted.aiConversations = (await ctx.prisma.aIConversation.deleteMany({ where: { clubId } })).count
+      deleted.weeklySummaries = (await ctx.prisma.weeklySummary.deleteMany({ where: { clubId } })).count
+      deleted.cohorts = (await ctx.prisma.clubCohort.deleteMany({ where: { clubId } })).count
 
-      // 4. AI profiles
-      const d4 = await ctx.prisma.memberAiProfile.deleteMany({ where: { clubId } })
-      deleted.aiProfiles = d4.count
-
-      // 5. Health snapshots
-      const d5 = await ctx.prisma.memberHealthSnapshot.deleteMany({ where: { clubId } })
-      deleted.healthSnapshots = d5.count
-
-      // 6. Recommendation logs
-      const d6 = await ctx.prisma.aIRecommendationLog.deleteMany({ where: { clubId } })
-      deleted.recommendationLogs = d6.count
-
-      // 7. External ID mappings (all providers: crx_, pp_, cr_)
-      deleted.externalMappings = Number(await ctx.prisma.$executeRaw`
-        DELETE FROM external_id_mappings WHERE partner_id IN (
-          SELECT id FROM partners WHERE code LIKE ${'%' + clubId + '%'}
-        )
-      `)
-      // Also clean up partner records
-      await ctx.prisma.$executeRaw`
-        DELETE FROM partner_apps WHERE partner_id IN (
-          SELECT id FROM partners WHERE code LIKE ${'%' + clubId + '%'}
-        )
-      `
-      await ctx.prisma.$executeRaw`
-        DELETE FROM partners WHERE code LIKE ${'%' + clubId + '%'}
-      `
-
-      // 8. Club followers (member associations)
-      const d8 = await ctx.prisma.clubFollower.deleteMany({ where: { clubId } })
-      deleted.followers = d8.count
-
-      // 9. Weekly summaries
-      const d9 = await ctx.prisma.weeklySummary.deleteMany({ where: { clubId } })
-      deleted.weeklySummaries = d9.count
-
-      // 10. Cohorts
-      const d10 = await ctx.prisma.clubCohort.deleteMany({ where: { clubId } })
-      deleted.cohorts = d10.count
+      // Connector state created for imports (CourtReserve / PodPlay)
+      if (partnerIds.length > 0) {
+        deleted.externalMappings = (
+          await ctx.prisma.externalIdMapping.deleteMany({
+            where: { partnerId: { in: partnerIds } },
+          })
+        ).count
+        deleted.partnerBindings = (
+          await ctx.prisma.partnerClubBinding.deleteMany({
+            where: { partnerId: { in: partnerIds } },
+          })
+        ).count
+        deleted.partnerApps = (
+          await ctx.prisma.partnerApp.deleteMany({
+            where: { partnerId: { in: partnerIds } },
+          })
+        ).count
+        deleted.partners = (
+          await ctx.prisma.partner.deleteMany({
+            where: { id: { in: partnerIds } },
+          })
+        ).count
+      } else {
+        deleted.externalMappings = 0
+        deleted.partnerBindings = 0
+        deleted.partnerApps = 0
+        deleted.partners = 0
+      }
 
       // Clear in-memory caches
       calendarCache.delete(`calendar:${clubId}`)
