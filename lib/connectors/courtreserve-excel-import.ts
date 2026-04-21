@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { ExternalEntityType } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
+import { randomUUID } from 'crypto'
 
 // ── Types ──
 
@@ -169,6 +170,100 @@ function safeNum(val: any): number | undefined {
   if (val === null || val === undefined || val === '') return undefined
   const n = Number(val)
   return isNaN(n) ? undefined : n
+}
+
+type ImportedUserPayload = {
+  email: string
+  name?: string
+  phone?: string
+  gender?: 'M' | 'F'
+  city?: string
+  duprSingles?: number
+  duprDoubles?: number
+  dateOfBirth?: Date
+  membershipType?: string
+  membershipStatus?: string
+  zipCode?: string
+  skillLevel?: string
+}
+
+async function upsertImportedUser(existingUserId: string | null, payload: ImportedUserPayload): Promise<{ id: string; mode: 'created' | 'updated' }> {
+  const normalized = {
+    email: payload.email.toLowerCase().trim(),
+    name: payload.name || null,
+    phone: payload.phone || null,
+    gender: payload.gender || null,
+    city: payload.city || null,
+    duprSingles: payload.duprSingles ?? null,
+    duprDoubles: payload.duprDoubles ?? null,
+    dateOfBirth: payload.dateOfBirth ?? null,
+    membershipType: payload.membershipType || null,
+    membershipStatus: payload.membershipStatus || null,
+    zipCode: payload.zipCode || null,
+    skillLevel: payload.skillLevel || null,
+  }
+
+  if (existingUserId) {
+    const updated = await prisma.$queryRaw<{ id: string }[]>`
+      UPDATE users
+      SET
+        email = ${normalized.email},
+        name = COALESCE(${normalized.name}, name),
+        phone = COALESCE(${normalized.phone}, phone),
+        gender = COALESCE(${normalized.gender}::"Gender", gender),
+        city = COALESCE(${normalized.city}, city),
+        dupr_rating_singles = COALESCE(${normalized.duprSingles}::numeric, dupr_rating_singles),
+        dupr_rating_doubles = COALESCE(${normalized.duprDoubles}::numeric, dupr_rating_doubles),
+        date_of_birth = COALESCE(${normalized.dateOfBirth}::date, date_of_birth),
+        membership_type = COALESCE(${normalized.membershipType}, membership_type),
+        membership_status = COALESCE(${normalized.membershipStatus}, membership_status),
+        zip_code = COALESCE(${normalized.zipCode}, zip_code),
+        skill_level = COALESCE(${normalized.skillLevel}, skill_level)
+      WHERE id = ${existingUserId}
+      RETURNING id
+    `
+
+    if (updated[0]?.id) {
+      return { id: updated[0].id, mode: 'updated' }
+    }
+  }
+
+  const createdId = randomUUID()
+  const inserted = await prisma.$queryRaw<{ id: string }[]>`
+    INSERT INTO users (
+      id,
+      email,
+      name,
+      phone,
+      gender,
+      city,
+      dupr_rating_singles,
+      dupr_rating_doubles,
+      date_of_birth,
+      membership_type,
+      membership_status,
+      zip_code,
+      skill_level
+    )
+    VALUES (
+      ${createdId},
+      ${normalized.email},
+      ${normalized.name},
+      ${normalized.phone},
+      ${normalized.gender}::"Gender",
+      ${normalized.city},
+      ${normalized.duprSingles}::numeric,
+      ${normalized.duprDoubles}::numeric,
+      ${normalized.dateOfBirth}::date,
+      ${normalized.membershipType},
+      ${normalized.membershipStatus},
+      ${normalized.zipCode},
+      ${normalized.skillLevel}
+    )
+    RETURNING id
+  `
+
+  return { id: inserted[0]!.id, mode: 'created' }
 }
 
 // ── Excel Parsers ──
@@ -466,15 +561,15 @@ export async function _runImportPipeline(
           } catch { /* ignore */ }
         }
 
-        const userData: any = {
+        const userData: ImportedUserPayload = {
           email,
           name: member.name || undefined,
           phone: member.phone || undefined,
           gender: member.gender || undefined,
           city: member.city || undefined,
         }
-        if (member.duprSingles !== undefined) userData.duprRatingSingles = member.duprSingles
-        if (member.duprDoubles !== undefined) userData.duprRatingDoubles = member.duprDoubles
+        if (member.duprSingles !== undefined) userData.duprSingles = member.duprSingles
+        if (member.duprDoubles !== undefined) userData.duprDoubles = member.duprDoubles
         if (dateOfBirth) userData.dateOfBirth = dateOfBirth
         if (member.membership) userData.membershipType = member.membership
         if (member.membershipStatus) userData.membershipStatus = member.membershipStatus
@@ -482,11 +577,12 @@ export async function _runImportPipeline(
         if (member.skillLevel) userData.skillLevel = member.skillLevel
 
         if (userId) {
-          await prisma.user.update({ where: { id: userId }, data: userData })
+          const persisted = await upsertImportedUser(userId, userData)
+          userId = persisted.id
           result.members.updated++
         } else {
-          const newUser = await prisma.user.create({ data: userData })
-          userId = newUser.id
+          const persisted = await upsertImportedUser(null, userData)
+          userId = persisted.id
           result.members.created++
         }
 
@@ -529,7 +625,7 @@ export async function _runImportPipeline(
           }),
           prisma.$executeRaw`
             INSERT INTO document_embeddings (id, club_id, content_type, source_table, source_id, content, metadata, created_at)
-            VALUES (${memberEmbeddingId}, ${clubId}, 'member', 'csv_import', ${userId}, ${memberContent}, ${JSON.stringify(memberMeta)}::jsonb, NOW())
+            VALUES (${memberEmbeddingId}, ${clubId}::uuid, 'member', 'csv_import', ${userId}, ${memberContent}, ${JSON.stringify(memberMeta)}::jsonb, NOW())
             ON CONFLICT (id) DO UPDATE SET content = EXCLUDED.content, metadata = EXCLUDED.metadata
           `,
         ])
@@ -640,7 +736,7 @@ export async function _runImportPipeline(
         INSERT INTO document_embeddings (id, club_id, content, content_type, metadata, embedding, source_id, source_table, chunk_index)
         VALUES (
           gen_random_uuid(),
-          ${clubId},
+          ${clubId}::uuid,
           ${content},
           'import_marker',
           ${meta}::jsonb,
