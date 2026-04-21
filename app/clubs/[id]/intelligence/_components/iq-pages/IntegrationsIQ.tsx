@@ -3,9 +3,8 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { trpc } from '@/lib/trpc'
-import ConfirmModal from '@/components/ConfirmModal'
 import { useTheme } from '../IQThemeProvider'
 import { CourtReserveConnector, StatCard } from './shared/CourtReserveConnector'
 import {
@@ -1093,40 +1092,180 @@ function DeleteImportedDataCard({ clubId }: { clubId: string }) {
         </div>
       </Card>
 
-      <ConfirmModal
-        open={open}
-        onClose={() => {
-          if (deleteMutation.isPending) return
-          setConfirmText('')
-          setOpen(false)
-        }}
-        onConfirm={handleDeleteAll}
-        isPending={deleteMutation.isPending}
-        confirmDisabled={confirmText !== 'DELETE'}
-        destructive
-        size="lg"
-        title="Delete all imported data?"
-        description={
-          'This will permanently delete imported club data for this workspace.\n\n' +
-          'It will remove:\n' +
-          '• Imported members in this club\n' +
-          '• Imported schedule, sessions, reservations and waitlist\n' +
-          '• Courts created by imports\n' +
-          '• Cohorts and weekly summaries\n' +
-          '• Member health snapshots and AI profiles\n' +
-          '• Upload history, embeddings and connector mappings\n\n' +
-          'Type DELETE to confirm.'
-        }
-        confirmText={deleteMutation.isPending ? 'Deleting…' : 'Delete imported data'}
-        cancelText="Cancel"
-      >
-        <input
-          value={confirmText}
-          onChange={(e) => setConfirmText(e.target.value)}
-          placeholder="DELETE"
-          className="w-full rounded-lg border px-3 py-2 text-sm font-mono"
-        />
-      </ConfirmModal>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(4,7,17,0.72)', backdropFilter: 'blur(8px)' }}
+            onClick={() => {
+              if (deleteMutation.isPending) return
+              setConfirmText('')
+              setOpen(false)
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-xl rounded-[28px] p-6 md:p-7"
+              style={{
+                background: 'linear-gradient(180deg, rgba(16,22,42,0.96), rgba(11,14,28,0.98))',
+                border: '1px solid rgba(239,68,68,0.22)',
+                boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
+                backdropFilter: 'var(--glass-blur)',
+              }}
+            >
+              <div className="flex items-start gap-4 mb-5">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,158,11,0.18))',
+                    border: '1px solid rgba(239,68,68,0.18)',
+                  }}
+                >
+                  <Unplug className="w-5 h-5" style={{ color: '#F87171' }} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg md:text-xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+                    Delete all imported data?
+                  </h3>
+                  <p className="text-sm mt-1" style={{ color: 'var(--t4)', lineHeight: 1.6 }}>
+                    This will permanently reset the imported data layer for this club. The action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-4 md:p-5 mb-5"
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertCircle className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                  <span className="text-xs uppercase tracking-[0.18em]" style={{ color: '#F59E0B', fontWeight: 800 }}>
+                    What will be removed
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {[
+                    'Imported members linked to this club',
+                    'Sessions, reservations, and waitlist',
+                    'Courts created by imports',
+                    'Cohorts and weekly summaries',
+                    'Member health snapshots and AI profiles',
+                    'Upload history, embeddings, and connector mappings',
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-xl px-3 py-2.5 text-sm"
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        color: 'var(--t2)',
+                      }}
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-4 mb-6"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.16)',
+                }}
+              >
+                <label
+                  htmlFor="delete-imported-data-confirm"
+                  className="block text-xs uppercase tracking-[0.18em] mb-2"
+                  style={{ color: '#FCA5A5', fontWeight: 800 }}
+                >
+                  Type DELETE to confirm
+                </label>
+                <input
+                  id="delete-imported-data-confirm"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full rounded-2xl px-4 py-3 text-sm font-mono outline-none"
+                  style={{
+                    background: 'rgba(7,10,20,0.85)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--heading)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    if (deleteMutation.isPending) return
+                    setConfirmText('')
+                    setOpen(false)
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="px-4 py-2.5 rounded-2xl text-sm"
+                  style={{
+                    color: 'var(--t3)',
+                    fontWeight: 700,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    cursor: deleteMutation.isPending ? 'not-allowed' : 'pointer',
+                    opacity: deleteMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={deleteMutation.isPending || confirmText !== 'DELETE'}
+                  className="px-5 py-2.5 rounded-2xl text-sm text-white flex items-center gap-2"
+                  style={{
+                    background:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'linear-gradient(135deg, rgba(239,68,68,0.45), rgba(244,63,94,0.42))'
+                        : 'linear-gradient(135deg, #EF4444, #F97316)',
+                    fontWeight: 800,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    cursor:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'not-allowed'
+                        : 'pointer',
+                    boxShadow:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'none'
+                        : '0 16px 30px rgba(239,68,68,0.28)',
+                    opacity: deleteMutation.isPending ? 0.8 : 1,
+                  }}
+                >
+                  {deleteMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Deleting…
+                    </>
+                  ) : (
+                    <>
+                      <Unplug className="w-4 h-4" />
+                      Delete imported data
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
