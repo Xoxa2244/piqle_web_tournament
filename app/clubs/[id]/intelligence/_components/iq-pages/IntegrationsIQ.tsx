@@ -1473,12 +1473,10 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.xlsx,.xls,.csv'
-    input.multiple = true
     input.onchange = async (e) => {
       const selected = Array.from((e.target as HTMLInputElement).files || [])
-      for (const file of selected) {
-        handleFileSelect(type, file)
-      }
+      const file = selected[0]
+      if (file) handleFileSelect(type, file)
     }
     input.click()
   }
