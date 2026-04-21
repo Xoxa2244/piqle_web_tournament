@@ -534,6 +534,7 @@ export async function _runImportPipeline(
           `,
         ])
       } catch (err: any) {
+        console.error(`[Excel Import] Member ${member.externalId || member.email || 'unknown'} error:`, err?.message || err)
         result.members.errors++
       }
     }))
@@ -680,6 +681,12 @@ export async function runCourtReserveRowImport(
       case 'members':
         parsedMembers = mapMemberRows(file.rows)
         console.log(`[Excel Import] Mapped ${parsedMembers.length} members from rows`)
+        if (parsedMembers.length === 0 && file.rows.length > 0) {
+          console.warn('[Excel Import] Members file produced 0 mapped rows', {
+            rowCount: file.rows.length,
+            sampleKeys: Object.keys(file.rows[0] || {}),
+          })
+        }
         break
       case 'reservations':
         parsedSessions.push(...mapReservationRows(file.rows))

@@ -1368,7 +1368,7 @@ function DataCoverageChecklist({ clubId }: { clubId: string }) {
 interface ExcelFile {
   type: 'members' | 'reservations' | 'events'
   name: string
-  data: string
+  rows: Record<string, any>[]
 }
 
 function ExcelImportSection({ clubId }: { clubId: string }) {
@@ -1387,6 +1387,36 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
   const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
 
+  const parseCourtReserveFile = async (file: File): Promise<Record<string, any>[]> => {
+    const lowerName = file.name.toLowerCase()
+
+    if (lowerName.endsWith('.csv')) {
+      const Papa = (await import('papaparse')).default
+      const text = await file.text()
+      const parsed = Papa.parse<Record<string, any>>(text, {
+        header: true,
+        skipEmptyLines: 'greedy',
+        transformHeader: (header) => header.replace(/^\uFEFF/, '').trim(),
+      })
+
+      if (parsed.errors.length > 0) {
+        const fatal = parsed.errors.find((entry) => entry.code !== 'UndetectableDelimiter')
+        if (fatal) {
+          throw new Error(`CSV parse failed: ${fatal.message}`)
+        }
+      }
+
+      return parsed.data
+    }
+
+    const XLSX = await import('xlsx')
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const workbook = XLSX.read(bytes, { type: 'array', cellDates: true })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    if (!firstSheet) return []
+    return XLSX.utils.sheet_to_json(firstSheet, { defval: '' })
+  }
+
   // Import files ONE BY ONE — parse XLSX client-side, send JSON rows to avoid timeout
   const handleImport = async () => {
     if (files.length === 0) return
@@ -1395,7 +1425,6 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     setResult(null)
     setProgress({ current: '', done: [], errors: [] })
 
-    const XLSX = await import('xlsx')
     const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
     let hadErrors = false
 
@@ -1408,12 +1437,10 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
       setProgress(prev => ({ ...prev, current: file.name }))
 
       try {
-        // Parse XLSX client-side
-        const binary = atob(file.data)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const wb = XLSX.read(bytes, { type: 'array' })
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+        const rows = file.rows
+        if (rows.length === 0) {
+          throw new Error('No rows were parsed from this file')
+        }
 
         // Send rows as JSON (no base64 bloat)
         const res = await fetch('/api/connectors/courtreserve/import-rows', {
@@ -1465,7 +1492,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
       const type: ExcelFile['type'] = name.includes('member') ? 'members'
         : name.includes('reservation') ? 'reservations'
         : 'events'
-      handleFileSelect(type, file)
+      await handleFileSelect(type, file)
     }
   }
 
@@ -1476,20 +1503,20 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     input.onchange = async (e) => {
       const selected = Array.from((e.target as HTMLInputElement).files || [])
       const file = selected[0]
-      if (file) handleFileSelect(type, file)
+      if (file) await handleFileSelect(type, file)
     }
     input.click()
   }
 
-  const handleFileSelect = (type: ExcelFile['type'], file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1]
-      setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, data: base64 }])
+  const handleFileSelect = async (type: ExcelFile['type'], file: File) => {
+    try {
+      const rows = await parseCourtReserveFile(file)
+      setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, rows }])
       setResult(null)
       setError(null)
+    } catch (err: any) {
+      setError(err?.message || `Failed to parse ${file.name}`)
     }
-    reader.readAsDataURL(file)
   }
 
   const hasImportSuccess =
@@ -1505,7 +1532,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
   return (
     <Card>
       <div className="mb-4">
-        <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload .xlsx exports from CourtReserve Reports</p>
+        <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload CourtReserve report exports (.xlsx or .csv)</p>
       </div>
 
       {/* Drop zone */}
@@ -1520,7 +1547,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
         }}
       >
         <Upload className="w-5 h-5" style={{ color: dragOver ? '#3b82f6' : 'var(--t4)' }} />
-        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop CourtReserve .xlsx files here</p>
+        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop CourtReserve spreadsheet files here</p>
         <p className="text-[10px]" style={{ color: 'var(--t4)' }}>Members, Reservations, Events — auto-detected by filename</p>
       </div>
 
@@ -1539,11 +1566,16 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
                 {file ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
                 {slot.label}
               </button>
-              <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
-                {file ? file.name : slot.description}
-              </span>
-              {file && !importing && (
-                <button onClick={() => removeFile(slot.type)} className="p-1" style={{ color: 'var(--t4)' }}>
+                <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
+                  {file ? file.name : slot.description}
+                </span>
+                {file && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(59,130,246,0.12)', color: '#60A5FA' }}>
+                    {file.rows.length} rows
+                  </span>
+                )}
+                {file && !importing && (
+                  <button onClick={() => removeFile(slot.type)} className="p-1" style={{ color: 'var(--t4)' }}>
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
