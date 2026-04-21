@@ -243,7 +243,7 @@ async function upsertImportedUser(existingUserId: string | null, payload: Import
       gender,
       city,
       organizer_tier,
-      "smsOptIn",
+      sms_opt_in,
       dupr_rating_singles,
       dupr_rating_doubles,
       date_of_birth,
