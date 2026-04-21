@@ -603,6 +603,7 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
   const outreachRolloutSummary = buildAgentOutreachRolloutSummary({
     envAllowlistConfigured: !!intelligenceData?.outreachRolloutStatus?.envAllowlistConfigured,
     clubAllowlisted: !!intelligenceData?.outreachRolloutStatus?.clubAllowlisted,
+    clubBypassEnabled: !!intelligenceData?.outreachRolloutStatus?.clubBypassEnabled,
     allowlistedClubIds: intelligenceData?.outreachRolloutStatus?.allowlistedClubIds || [],
     enabledActionKinds: Object.entries(resolvedOutreachRollout.actions)
       .filter(([, action]) => action.enabled)
