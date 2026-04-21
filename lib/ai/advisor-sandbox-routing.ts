@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getOutreachBypassReason, isOutreachBypassClub } from './outreach-club-bypass'
 
 export const advisorSandboxRoutingModeEnum = z.enum(['preview_only', 'test_recipients'])
 
@@ -64,7 +65,26 @@ export function resolveAdvisorSandboxRouting(input: unknown): AdvisorSandboxRout
 export function buildAdvisorSandboxRoutingSummary(opts: {
   settings?: unknown
   channel: AdvisorSandboxChannel
+  clubName?: string | null
+  clubSlug?: string | null
 }): AdvisorSandboxRoutingSummary {
+  if (isOutreachBypassClub({
+    clubName: opts.clubName,
+    clubSlug: opts.clubSlug,
+  })) {
+    return {
+      mode: 'test_recipients',
+      configuredMode: 'test_recipients',
+      emailRecipients: [],
+      smsRecipients: [],
+      label: 'Live delivery unlocked',
+      note: getOutreachBypassReason({
+        clubName: opts.clubName,
+        clubSlug: opts.clubSlug,
+      }) || 'QA outreach bypass is enabled for this club.',
+    }
+  }
+
   const routing = resolveAdvisorSandboxRouting(opts.settings)
   const emailRecipients = opts.channel === 'sms' ? [] : routing.emailRecipients
   const smsRecipients = opts.channel === 'email' ? [] : routing.smsRecipients

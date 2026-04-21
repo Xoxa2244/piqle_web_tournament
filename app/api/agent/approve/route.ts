@@ -96,11 +96,13 @@ export async function GET(request: Request) {
     const controlPlane = evaluateAgentControlPlaneAction({
       automationSettings: action.club.automationSettings,
       action: 'outreachSend',
+      clubName: action.club.name,
     })
     const rollout = evaluateAgentOutreachRollout({
       clubId: action.clubId,
       automationSettings: action.club.automationSettings,
       actionKind: action.type === 'SLOT_FILLER' ? 'fill_session' : 'create_campaign',
+      clubName: action.club.name,
     })
 
     if (!controlPlane.allowed || controlPlane.shadow || !rollout.allowed) {

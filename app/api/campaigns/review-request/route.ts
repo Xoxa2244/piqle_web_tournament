@@ -54,11 +54,13 @@ async function sendReviewRequests() {
     const controlPlane = evaluateAgentControlPlaneAction({
       automationSettings: club.automationSettings,
       action: 'outreachSend',
+      clubName: club.name,
     })
     const rollout = evaluateAgentOutreachRollout({
       clubId: club.id,
       automationSettings: club.automationSettings,
       actionKind: 'create_campaign',
+      clubName: club.name,
     })
 
     if (!controlPlane.allowed || controlPlane.shadow || !rollout.allowed) {

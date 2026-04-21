@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getOutreachBypassReason, isOutreachBypassClub } from './outreach-club-bypass'
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -285,7 +286,30 @@ export function resolveAgentControlPlane(automationSettings?: unknown): AgentCon
 export function evaluateAgentControlPlaneAction(input: {
   automationSettings?: unknown
   action: AgentControlPlaneAction
+  clubName?: string | null
+  clubSlug?: string | null
 }): AgentControlPlaneEvaluation {
+  const bypassReason = isOutreachBypassClub({
+    clubName: input.clubName,
+    clubSlug: input.clubSlug,
+  })
+    ? getOutreachBypassReason({
+        clubName: input.clubName,
+        clubSlug: input.clubSlug,
+      })
+    : null
+
+  if (input.action === 'outreachSend' && bypassReason) {
+    return {
+      action: input.action,
+      mode: 'live',
+      allowed: true,
+      shadow: false,
+      label: AGENT_CONTROL_PLANE_LABELS.outreachSend.label,
+      reason: bypassReason,
+    }
+  }
+
   const resolved = resolveAgentControlPlane(input.automationSettings)
   const rule = resolved.actions[input.action]
 

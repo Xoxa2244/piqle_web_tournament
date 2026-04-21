@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getOutreachBypassReason, isOutreachBypassClub } from './outreach-club-bypass'
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -37,6 +38,7 @@ export interface AgentOutreachRolloutResolved {
 export interface AgentOutreachRolloutStatus {
   envAllowlistConfigured: boolean
   clubAllowlisted: boolean
+  clubBypassEnabled: boolean
   allowlistedClubIds: string[]
   enabledActionKinds: AgentOutreachRolloutActionKind[]
   summary: string
@@ -47,6 +49,7 @@ export interface AgentOutreachRolloutEvaluation {
   actionKind: AgentOutreachRolloutActionKind
   allowed: boolean
   clubAllowlisted: boolean
+  clubBypassEnabled: boolean
   envAllowlistConfigured: boolean
   actionEnabled: boolean
   label: string
@@ -112,7 +115,9 @@ export function formatAgentOutreachRolloutActionKind(actionKind: AgentOutreachRo
 }
 
 export function buildAgentOutreachRolloutSummary(status: AgentOutreachRolloutStatus) {
-  const clubSummary = status.clubAllowlisted
+  const clubSummary = status.clubBypassEnabled
+    ? 'Club bypassed for QA outreach'
+    : status.clubAllowlisted
     ? 'Club allowlisted'
     : status.envAllowlistConfigured
       ? 'Club not allowlisted'
@@ -126,27 +131,46 @@ export function buildAgentOutreachRolloutSummary(status: AgentOutreachRolloutSta
 export function getAgentOutreachRolloutStatus(input: {
   clubId: string
   automationSettings?: unknown
+  clubName?: string | null
+  clubSlug?: string | null
 }): AgentOutreachRolloutStatus {
   const resolved = resolveAgentOutreachRollout(input.automationSettings)
   const allowlistedClubIds = parseAllowlistedClubIds(process.env.AGENT_OUTREACH_ROLLOUT_CLUB_IDS)
   const envAllowlistConfigured = allowlistedClubIds.length > 0
-  const clubAllowlisted = allowlistedClubIds.includes(input.clubId)
-  const enabledActionKinds = agentOutreachRolloutActionKindSchema.options.filter(
-    (actionKind) => resolved.actions[actionKind].enabled,
+  const clubBypassEnabled = isOutreachBypassClub({
+    clubName: input.clubName,
+    clubSlug: input.clubSlug,
+  })
+  const clubAllowlisted = clubBypassEnabled || allowlistedClubIds.includes(input.clubId)
+  const enabledActionKinds = agentOutreachRolloutActionKindSchema.options.filter((actionKind) =>
+    clubBypassEnabled || resolved.actions[actionKind].enabled,
   )
+  const actions = Object.fromEntries(
+    agentOutreachRolloutActionKindSchema.options.map((actionKind) => [
+      actionKind,
+      clubBypassEnabled
+        ? {
+            ...resolved.actions[actionKind],
+            enabled: true,
+          }
+        : resolved.actions[actionKind],
+    ]),
+  ) as Record<AgentOutreachRolloutActionKind, AgentOutreachRolloutResolvedAction>
 
   return {
     envAllowlistConfigured,
     clubAllowlisted,
+    clubBypassEnabled,
     allowlistedClubIds,
     enabledActionKinds,
-    actions: resolved.actions,
+    actions,
     summary: buildAgentOutreachRolloutSummary({
       envAllowlistConfigured,
       clubAllowlisted,
+      clubBypassEnabled,
       allowlistedClubIds,
       enabledActionKinds,
-      actions: resolved.actions,
+      actions,
       summary: '',
     }),
   }
@@ -162,18 +186,39 @@ export function evaluateAgentOutreachRollout(input: {
   clubId: string
   automationSettings?: unknown
   actionKind: AgentOutreachRolloutActionKind
+  clubName?: string | null
+  clubSlug?: string | null
 }): AgentOutreachRolloutEvaluation {
   const status = getAgentOutreachRolloutStatus({
     clubId: input.clubId,
     automationSettings: input.automationSettings,
+    clubName: input.clubName,
+    clubSlug: input.clubSlug,
   })
   const action = status.actions[input.actionKind]
+
+  if (status.clubBypassEnabled) {
+    return {
+      actionKind: input.actionKind,
+      allowed: true,
+      clubAllowlisted: true,
+      clubBypassEnabled: true,
+      envAllowlistConfigured: status.envAllowlistConfigured,
+      actionEnabled: true,
+      label: action.label,
+      reason: getOutreachBypassReason({
+        clubName: input.clubName,
+        clubSlug: input.clubSlug,
+      }) || `${action.label} are live-enabled for this QA club.`,
+    }
+  }
 
   if (!status.envAllowlistConfigured) {
     return {
       actionKind: input.actionKind,
       allowed: false,
       clubAllowlisted: false,
+      clubBypassEnabled: false,
       envAllowlistConfigured: false,
       actionEnabled: action.enabled,
       label: action.label,
@@ -186,6 +231,7 @@ export function evaluateAgentOutreachRollout(input: {
       actionKind: input.actionKind,
       allowed: false,
       clubAllowlisted: false,
+      clubBypassEnabled: false,
       envAllowlistConfigured: true,
       actionEnabled: action.enabled,
       label: action.label,
@@ -198,6 +244,7 @@ export function evaluateAgentOutreachRollout(input: {
       actionKind: input.actionKind,
       allowed: false,
       clubAllowlisted: true,
+      clubBypassEnabled: false,
       envAllowlistConfigured: true,
       actionEnabled: false,
       label: action.label,
@@ -209,6 +256,7 @@ export function evaluateAgentOutreachRollout(input: {
     actionKind: input.actionKind,
     allowed: true,
     clubAllowlisted: true,
+    clubBypassEnabled: false,
     envAllowlistConfigured: true,
     actionEnabled: true,
     label: action.label,
