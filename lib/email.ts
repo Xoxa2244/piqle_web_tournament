@@ -114,7 +114,7 @@ async function safeSendMail(opts: SafeSendMailOptions) {
   const to = opts.to
   if (isBlockedEmail(to)) {
     log.warn(`[Email] Blocked send to ${to} (placeholder/demo address)`)
-    return { messageId: `blocked-${Date.now()}` }
+    throw new Error(`Email blocked for protected test domain: ${to}`)
   }
 
   // Resolve per-send From: — may be club-custom, may be platform default.
@@ -161,6 +161,7 @@ async function safeSendMail(opts: SafeSendMailOptions) {
       const data = await res.json()
       if (data[0]?.status === 'rejected') {
         log.error(`[Email] Mandrill rejected: ${to} — ${data[0].reject_reason}`)
+        throw new Error(`Mandrill rejected email${data[0].reject_reason ? `: ${data[0].reject_reason}` : ''}`)
       }
       return { messageId: data[0]?._id || `mandrill-${Date.now()}` }
     } catch (err) {
@@ -188,7 +189,7 @@ async function safeSendMail(opts: SafeSendMailOptions) {
   }
 
   log.error(`[Email] No email provider configured — cannot send to ${to}`)
-  return { messageId: `no-provider-${Date.now()}` }
+  throw new Error('No email provider configured')
 }
 
 const getAppBaseUrl = () => {
