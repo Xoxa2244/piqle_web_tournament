@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from "react";
+import { useState, useRef, type SyntheticEvent } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   UserPlus, Users, AlertTriangle, TrendingUp, Clock, Send,
@@ -192,6 +192,10 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const allMembers = realCandidates.length > 0 ? realCandidates : [];
 
   const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
+    toast({
+      title: "Starting send…",
+      description: `Trying ${channel.toUpperCase()} for this member.`,
+    });
     if (sendReactivation && clubId) {
       sendReactivation.mutate({
         clubId,
@@ -244,6 +248,12 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
       setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
       setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "sent" } }));
     }
+  };
+
+  const triggerSend = (e: SyntheticEvent, memberId: string, channel: "email" | "sms") => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleSendReactivation(memberId, channel);
   };
 
   // Churn trend from real data
@@ -780,7 +790,11 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               {!sentOutreach[member.id] && (
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                  onPointerUp={(e) => triggerSend(e, member.id, "email")}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "email");
+                                  }}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
                                   style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                                 >
@@ -823,7 +837,11 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                    onPointerUp={(e) => triggerSend(e, member.id, "email")}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "email");
+                                    }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                                   >
