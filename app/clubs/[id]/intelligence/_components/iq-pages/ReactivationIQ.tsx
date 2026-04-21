@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
+import { useToast } from "@/components/ui/use-toast";
 
 
 type RiskLevel = "high" | "medium" | "low";
@@ -170,10 +171,12 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
 
 export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles, onGenerationStarted, generateNotifyMeLink }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
+  const { toast } = useToast();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
+  const [sendStatus, setSendStatus] = useState<Record<string, { channel: string; state: "sent" | "failed" | "skipped"; reason?: string }>>({});
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -194,10 +197,52 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         clubId,
         candidates: [{ memberId, channel }],
       }, {
-        onSuccess: () => setSentOutreach(prev => ({ ...prev, [memberId]: channel })),
+        onSuccess: (result: any) => {
+          const item = Array.isArray(result?.results)
+            ? result.results.find((r: any) => r.memberId === memberId && r.channel === channel)
+            : null;
+
+          if (item?.status === "sent") {
+            setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
+            setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "sent" } }));
+            toast({
+              title: channel === "email" ? "Email sent" : "Message sent",
+              description: "The outreach was delivered successfully.",
+            });
+            return;
+          }
+
+          if (item?.status === "skipped") {
+            setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "skipped", reason: item.error || "Blocked by contact guardrails" } }));
+            toast({
+              title: "Send skipped",
+              description: item.error || "This member was skipped by the anti-spam/contact policy.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const errorMessage = item?.error || "The message was not accepted by the delivery pipeline.";
+          setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "failed", reason: errorMessage } }));
+          toast({
+            title: "Send failed",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        },
+        onError: (err: any) => {
+          const message = err?.message || "Unable to send outreach right now.";
+          setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "failed", reason: message } }));
+          toast({
+            title: "Send failed",
+            description: message,
+            variant: "destructive",
+          });
+        },
       });
     } else {
       setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
+      setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "sent" } }));
     }
   };
 
@@ -738,10 +783,22 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                   Send via Email
                                 </button>
                               )}
-                              {sentOutreach[member.id] && (
+                              {sendStatus[member.id]?.state === "sent" && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
                                   <Check className="w-3 h-3" />
-                                  Sent via {sentOutreach[member.id]}
+                                  Sent via {sendStatus[member.id]?.channel || sentOutreach[member.id]}
+                                </span>
+                              )}
+                              {sendStatus[member.id]?.state === "skipped" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", fontWeight: 600 }}>
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Skipped
+                                </span>
+                              )}
+                              {sendStatus[member.id]?.state === "failed" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(239,68,68,0.15)", color: "#F87171", fontWeight: 600 }}>
+                                  <XCircle className="w-3 h-3" />
+                                  Failed
                                 </span>
                               )}
                             </div>
@@ -752,6 +809,11 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                   <span>Email: <strong style={{ color: "var(--t1)" }}>{member.email}</strong></span>
                                 </div>
                               </div>
+                              {sendStatus[member.id]?.reason && sendStatus[member.id]?.state !== "sent" && (
+                                <div className="text-[10px] mt-2" style={{ color: sendStatus[member.id]?.state === "skipped" ? "#F59E0B" : "#F87171" }}>
+                                  {sendStatus[member.id]?.reason}
+                                </div>
+                              )}
                               {!sentOutreach[member.id] && (
                                 <div className="flex items-center gap-1.5">
                                   <button

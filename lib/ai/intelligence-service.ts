@@ -1273,6 +1273,7 @@ export async function sendReactivationMessages(
   input: z.infer<typeof sendReactivationInput>
 ) {
   const { clubId, candidates: candidateInputs, customMessage } = input
+  log.info(`[Reactivation] sendReactivationMessages start clubId=${clubId} candidates=${candidateInputs.length}`)
 
   // Load club info
   const club = await prisma.club.findUniqueOrThrow({
@@ -1354,6 +1355,7 @@ export async function sendReactivationMessages(
   for (const candidateInput of candidateInputs) {
     const user = usersById.get(candidateInput.memberId)
     if (!user) {
+      log.warn(`[Reactivation] member missing user record clubId=${clubId} memberId=${candidateInput.memberId}`)
       results.push({ memberId: candidateInput.memberId, channel: candidateInput.channel, status: 'failed', error: 'User not found' })
       continue
     }
@@ -1363,6 +1365,7 @@ export async function sendReactivationMessages(
       prisma, userId: user.id, clubId, type: 'REACTIVATION',
     })
     if (!spamCheck.allowed) {
+      log.info(`[Reactivation] skipped clubId=${clubId} userId=${user.id} channel=${candidateInput.channel} reason="${spamCheck.reason || 'unknown'}"`)
       results.push({ memberId: user.id, channel: candidateInput.channel, status: 'skipped', error: spamCheck.reason })
       continue
     }
@@ -1400,6 +1403,7 @@ export async function sendReactivationMessages(
     if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
       try {
         if (!user.email) throw new Error('No email address')
+        log.info(`[Reactivation] email send attempt clubId=${clubId} userId=${user.id} to=${user.email}`)
         const emailResult = await sendReactivationEmail({
           to: user.email,
           memberName: user.name || 'there',
@@ -1411,8 +1415,10 @@ export async function sendReactivationMessages(
           notifyMeUrl,
         })
         externalMessageId = (emailResult as any)?.messageId || null
+        log.info(`[Reactivation] email sent clubId=${clubId} userId=${user.id} messageId=${externalMessageId || 'none'}`)
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {
+        log.error(`[Reactivation] email failed clubId=${clubId} userId=${user.id}: ${err?.message || 'unknown error'}`)
         results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
       }
     }
@@ -1456,6 +1462,7 @@ export async function sendReactivationMessages(
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
   const skipped = results.filter(r => r.status === 'skipped').length
+  log.info(`[Reactivation] sendReactivationMessages result clubId=${clubId} sent=${sent} failed=${failed} skipped=${skipped}`)
 
   // Report usage to Stripe for metered billing (non-blocking)
   if (sent > 0) {
