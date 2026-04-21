@@ -1199,6 +1199,7 @@ function PiqleSettingsPage() {
     return buildAgentOutreachRolloutSummary({
       envAllowlistConfigured: !!(intelligenceData as any)?.outreachRolloutStatus?.envAllowlistConfigured,
       clubAllowlisted: !!(intelligenceData as any)?.outreachRolloutStatus?.clubAllowlisted,
+      clubBypassEnabled: !!(intelligenceData as any)?.outreachRolloutStatus?.clubBypassEnabled,
       allowlistedClubIds: (intelligenceData as any)?.outreachRolloutStatus?.allowlistedClubIds || [],
       enabledActionKinds: Object.entries(resolvedOutreachRollout.actions)
         .filter(([, action]) => action.enabled)
