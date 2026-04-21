@@ -3,7 +3,7 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
-import type { Adapter, AdapterUser } from "next-auth/adapters"
+import type { Adapter, AdapterAccount, AdapterUser } from "next-auth/adapters"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
 import bcrypt from 'bcryptjs'
@@ -66,7 +66,7 @@ const adapter: Adapter = {
     const user = await getAuthUserByEmail(email)
     return user as AdapterUser | null
   },
-  async getUserByAccount({ provider, providerAccountId }) {
+  async getUserByAccount({ provider, providerAccountId }: Pick<AdapterAccount, "provider" | "providerAccountId">) {
     const account = await prisma.account.findUnique({
       where: {
         provider_providerAccountId: {
@@ -82,7 +82,7 @@ const adapter: Adapter = {
     const user = await getAuthUserById(account.userId)
     return user as AdapterUser | null
   },
-  async createUser(data) {
+  async createUser(data: Omit<AdapterUser, "id">) {
     const user = await prisma.user.create({
       data: {
         email: normalizeEmail(data.email),
@@ -95,7 +95,7 @@ const adapter: Adapter = {
 
     return user as AdapterUser
   },
-  async updateUser(data) {
+  async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
     const user = await prisma.user.update({
       where: { id: String(data.id) },
       data: {
