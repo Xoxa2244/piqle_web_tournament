@@ -301,7 +301,7 @@ async function executeSequenceStep(
     memberSkillLevel,
     preference: resolvedPrefMap.get(userId) || null,
     sessions: upcomingSessions,
-    clubSlug: club.slug || club.id,
+    clubSlug: club.id,
     appBaseUrl: appUrl,
   })
 
@@ -806,7 +806,7 @@ export async function runHealthCampaign(
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
   const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // ── Pre-generate LLM message variants per club (shared across members) ──
   const llmVariantCache = new Map<OutreachType, OutreachMessageVariant[]>()
@@ -983,7 +983,7 @@ export async function runHealthCampaign(
       memberSkillLevel,
       preference: resolvedPrefMap.get(member.memberId) || null,
       sessions: upcomingSessions,
-      clubSlug: club.slug || club.id,
+      clubSlug: club.id,
       appBaseUrl: appUrl,
     })
 

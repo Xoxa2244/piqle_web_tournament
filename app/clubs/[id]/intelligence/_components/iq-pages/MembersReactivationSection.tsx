@@ -13,7 +13,7 @@ interface MembersReactivationSectionProps {
   aiProfiles?: Record<string, any>;
   isLoading?: boolean;
   onRegenerate?: () => void;
-  sendOutreach?: any;
+  sendReactivation?: any;
   clubId?: string;
   isDark: boolean;
 }
@@ -92,7 +92,7 @@ export function MembersReactivationSection({
   aiProfiles,
   isLoading,
   onRegenerate,
-  sendOutreach,
+  sendReactivation,
   clubId,
   isDark,
 }: MembersReactivationSectionProps) {
@@ -108,8 +108,8 @@ export function MembersReactivationSection({
   const hasAiProfiles = aiProfiles && Object.keys(aiProfiles).length > 0;
 
   const handleSend = (memberId: string, channel: "email" | "sms") => {
-    if (sendOutreach && clubId) {
-      sendOutreach.mutate(
+    if (sendReactivation && clubId) {
+      sendReactivation.mutate(
         { clubId, candidates: [{ memberId, channel }] },
         { onSuccess: () => setSentOutreach((p) => ({ ...p, [memberId]: channel })) },
       );

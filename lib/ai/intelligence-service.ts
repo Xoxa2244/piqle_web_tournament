@@ -1075,12 +1075,12 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
   const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load session data (handle CSV vs real)
   let sessionData: { title: string; date: string; time: string; spotsLeft: number }
@@ -1278,7 +1278,7 @@ export async function sendReactivationMessages(
   // Load club info
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
@@ -1348,7 +1348,7 @@ export async function sendReactivationMessages(
   })
 
   const candidateDataById = new Map(reactivationData.map(c => [c.member.id, c]))
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
 
@@ -1382,7 +1382,7 @@ export async function sendReactivationMessages(
         format: s.format || 'OPEN_PLAY',
         spotsLeft,
         confirmedCount,
-        deepLinkUrl: `${appUrl}/clubs/${club.slug || club.id}/play?session=${s.id}`,
+        deepLinkUrl: `${appUrl}/clubs/${club.id}/play?session=${s.id}`,
       }
     })
     const daysSince = reactivation?.daysSinceLastActivity || 0
@@ -1486,12 +1486,12 @@ export async function sendEventInviteMessages(
 
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
   const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Filter out csv- members (no real user in DB)
   const realCandidates = candidateInputs.filter(c => !c.memberId.startsWith('csv-'))
@@ -1895,7 +1895,7 @@ export async function sendOutreachMessage(
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
   // Load user
@@ -1914,7 +1914,7 @@ export async function sendOutreachMessage(
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
   const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const genericBookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const genericBookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load upcoming sessions + find best match for this member
   const { findBestSessionForMember, formatSessionDate, formatSessionTime } = await import('./session-matcher')
@@ -1952,7 +1952,7 @@ export async function sendOutreachMessage(
     memberSkillLevel,
     preference: resolvedPref,
     sessions: upcomingSessions,
-    clubSlug: club.slug || club.id,
+          clubSlug: club.id,
     appBaseUrl: appUrl,
   })
 

@@ -1757,7 +1757,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           aiProfiles={aiProfiles}
           isLoading={externalLoading}
           onRegenerate={onRegenerateProfiles}
-          sendOutreach={sendReactivation}
+          sendReactivation={sendReactivation}
           clubId={clubId}
           isDark={isDark}
         />
