@@ -218,7 +218,8 @@ async function upsertImportedUser(existingUserId: string | null, payload: Import
         membership_type = COALESCE(${normalized.membershipType}, membership_type),
         membership_status = COALESCE(${normalized.membershipStatus}, membership_status),
         zip_code = COALESCE(${normalized.zipCode}, zip_code),
-        skill_level = COALESCE(${normalized.skillLevel}, skill_level)
+        skill_level = COALESCE(${normalized.skillLevel}, skill_level),
+        "updatedAt" = NOW()
       WHERE id = ${existingUserId}
       RETURNING id
     `
@@ -234,9 +235,15 @@ async function upsertImportedUser(existingUserId: string | null, payload: Import
       id,
       email,
       name,
+      role,
+      "isActive",
+      "createdAt",
+      "updatedAt",
       phone,
       gender,
       city,
+      organizer_tier,
+      "smsOptIn",
       dupr_rating_singles,
       dupr_rating_doubles,
       date_of_birth,
@@ -249,9 +256,15 @@ async function upsertImportedUser(existingUserId: string | null, payload: Import
       ${createdId},
       ${normalized.email},
       ${normalized.name},
+      'TD'::"UserRole",
+      true,
+      NOW(),
+      NOW(),
       ${normalized.phone},
       ${normalized.gender}::"Gender",
       ${normalized.city},
+      'BASIC'::"OrganizerTier",
+      false,
       ${normalized.duprSingles}::numeric,
       ${normalized.duprDoubles}::numeric,
       ${normalized.dateOfBirth}::date,
