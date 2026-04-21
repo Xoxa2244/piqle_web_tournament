@@ -46,7 +46,7 @@ import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
 import { resolveAdvisorSandboxRoutingDraft } from '@/lib/ai/advisor-sandbox-policy'
 import { buildAdvisorSandboxRoutingSummary } from '@/lib/ai/advisor-sandbox-routing'
-import { isOutreachBypassClub } from '@/lib/ai/outreach-club-bypass'
+import { isOutreachBypassClubId } from '@/lib/ai/outreach-club-bypass'
 import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
@@ -5002,21 +5002,18 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const advisorDraft = advisorMessage
         ? getAdvisorDraftFromMetadata(advisorMessage.metadata)
         : null
+      const isSandboxExecution = isOutreachBypassClubId(input.clubId)
+        ? false
+        : (advisorDraft?.sandboxMode ?? true)
       const clubAutomationContext = await ctx.prisma.club.findUnique({
         where: { id: input.clubId },
-        select: { automationSettings: true, name: true, slug: true },
+        select: { automationSettings: true },
       })
-      const outreachBypassEnabled = isOutreachBypassClub({
-        clubName: clubAutomationContext?.name,
-        clubSlug: clubAutomationContext?.slug,
-      })
-      const isSandboxExecution = outreachBypassEnabled ? false : (advisorDraft?.sandboxMode ?? true)
       const buildSandboxRouting = (channel: 'email' | 'sms' | 'both') =>
         buildAdvisorSandboxRoutingSummary({
           settings: clubAutomationContext?.automationSettings,
           channel,
-          clubName: clubAutomationContext?.name,
-          clubSlug: clubAutomationContext?.slug,
+          clubId: input.clubId,
         })
 
       const persistAdvisorOutcome = async <T extends Record<string, any>>(result: T): Promise<T> => {

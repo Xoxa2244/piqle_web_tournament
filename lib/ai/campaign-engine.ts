@@ -1276,22 +1276,19 @@ export async function runHealthCampaignForAllClubs(
     where: {
       followers: { some: {} },
     },
-    select: { id: true, name: true, slug: true, automationSettings: true },
+    select: { id: true, automationSettings: true },
     take: 100, // safety limit
   })
   const clubs = allClubs.map((c: any) => {
     const controlPlane = evaluateAgentControlPlaneAction({
       automationSettings: c.automationSettings,
       action: 'outreachSend',
-      clubName: c.name,
-      clubSlug: c.slug,
+      clubId: c.id,
     })
     const rollout = evaluateAgentOutreachRollout({
       clubId: c.id,
       automationSettings: c.automationSettings,
       actionKind: 'create_campaign',
-      clubName: c.name,
-      clubSlug: c.slug,
     })
     return {
       id: c.id,

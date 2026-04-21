@@ -115,7 +115,6 @@ export const superadminRouter = createTRPCRouter({
         const outreachRollout = getAgentOutreachRolloutStatus({
           clubId: club.id,
           automationSettings: { intelligence },
-          clubName: club.name,
         })
         const armedActions = outreachRollout.enabledActionKinds.length
         const clubDecisionRecords = decisionsByClub.get(club.id) || []
@@ -544,7 +543,6 @@ export const superadminRouter = createTRPCRouter({
       const previousOutreachRollout = getAgentOutreachRolloutStatus({
         clubId: input.clubId,
         automationSettings: { intelligence: existingIntelligence },
-        clubName: club.name,
       })
 
       const nextIntelligence = {
@@ -569,7 +567,6 @@ export const superadminRouter = createTRPCRouter({
       const nextOutreachRollout = getAgentOutreachRolloutStatus({
         clubId: input.clubId,
         automationSettings: { intelligence: nextIntelligence },
-        clubName: club.name,
       })
 
       if (previousOutreachRollout.summary !== nextOutreachRollout.summary) {

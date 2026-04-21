@@ -451,13 +451,12 @@ export async function processScheduledAdvisorCampaigns(prisma: any, opts?: { lim
       const controlPlane = evaluateAgentControlPlaneAction({
         automationSettings: log.club.automationSettings,
         action: 'outreachSend',
-        clubName: log.club.name,
+        clubId: log.clubId,
       })
       const rollout = evaluateAgentOutreachRollout({
         clubId: log.clubId,
         automationSettings: log.club.automationSettings,
         actionKind: rolloutActionKind,
-        clubName: log.club.name,
       })
 
       if (!controlPlane.allowed) {

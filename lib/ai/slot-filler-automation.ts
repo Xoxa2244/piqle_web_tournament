@@ -80,13 +80,12 @@ export async function runSlotFillerAutomation(
     const controlPlane = evaluateAgentControlPlaneAction({
       automationSettings: club.automationSettings,
       action: 'outreachSend',
-      clubName: club.name,
+      clubId: club.id,
     })
     const rollout = evaluateAgentOutreachRollout({
       clubId: club.id,
       automationSettings: club.automationSettings,
       actionKind: 'fill_session',
-      clubName: club.name,
     })
     const liveModeAllowed = requestedLiveMode
       && controlPlane.allowed

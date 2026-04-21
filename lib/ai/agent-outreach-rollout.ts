@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getOutreachBypassReason, isOutreachBypassClub } from './outreach-club-bypass'
+import { getOutreachBypassReason, isOutreachBypassClubId } from './outreach-club-bypass'
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -131,16 +131,11 @@ export function buildAgentOutreachRolloutSummary(status: AgentOutreachRolloutSta
 export function getAgentOutreachRolloutStatus(input: {
   clubId: string
   automationSettings?: unknown
-  clubName?: string | null
-  clubSlug?: string | null
 }): AgentOutreachRolloutStatus {
   const resolved = resolveAgentOutreachRollout(input.automationSettings)
   const allowlistedClubIds = parseAllowlistedClubIds(process.env.AGENT_OUTREACH_ROLLOUT_CLUB_IDS)
   const envAllowlistConfigured = allowlistedClubIds.length > 0
-  const clubBypassEnabled = isOutreachBypassClub({
-    clubName: input.clubName,
-    clubSlug: input.clubSlug,
-  })
+  const clubBypassEnabled = isOutreachBypassClubId(input.clubId)
   const clubAllowlisted = clubBypassEnabled || allowlistedClubIds.includes(input.clubId)
   const enabledActionKinds = agentOutreachRolloutActionKindSchema.options.filter((actionKind) =>
     clubBypassEnabled || resolved.actions[actionKind].enabled,
@@ -186,14 +181,10 @@ export function evaluateAgentOutreachRollout(input: {
   clubId: string
   automationSettings?: unknown
   actionKind: AgentOutreachRolloutActionKind
-  clubName?: string | null
-  clubSlug?: string | null
 }): AgentOutreachRolloutEvaluation {
   const status = getAgentOutreachRolloutStatus({
     clubId: input.clubId,
     automationSettings: input.automationSettings,
-    clubName: input.clubName,
-    clubSlug: input.clubSlug,
   })
   const action = status.actions[input.actionKind]
 
@@ -206,10 +197,7 @@ export function evaluateAgentOutreachRollout(input: {
       envAllowlistConfigured: status.envAllowlistConfigured,
       actionEnabled: true,
       label: action.label,
-      reason: getOutreachBypassReason({
-        clubName: input.clubName,
-        clubSlug: input.clubSlug,
-      }) || `${action.label} are live-enabled for this QA club.`,
+      reason: getOutreachBypassReason(input.clubId) || `${action.label} are live-enabled for this QA club.`,
     }
   }
 
