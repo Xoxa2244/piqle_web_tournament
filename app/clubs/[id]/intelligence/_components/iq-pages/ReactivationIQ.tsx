@@ -420,6 +420,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
               if (allDone) return null;
               return (
                 <button
+                  type="button"
                   onClick={async () => {
                     if (aiGenerating) return;
                     setAiGenerating(true);
@@ -509,6 +510,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
               {(["all", "high", "medium", "low"] as const).map((f) => (
                 <button
+                  type="button"
                   key={f}
                   onClick={() => { setRiskFilter(f); setPage(1); }}
                   className="px-3 py-2 text-[11px] capitalize transition-all"
@@ -712,6 +714,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                     onClick={(e) => (e.target as HTMLInputElement).select()}
                                   />
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       navigator.clipboard.writeText(notifyMeLinks[member.id]);
@@ -734,6 +737,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                 </div>
                               ) : (
                                 <button
+                                  type="button"
                                   disabled={notifyMePending[member.id]}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -775,7 +779,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               </div>
                               {!sentOutreach[member.id] && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
                                   style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                                 >
@@ -817,7 +822,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               {!sentOutreach[member.id] && (
                                 <div className="flex items-center gap-1.5">
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                    type="button"
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                                   >
@@ -850,6 +856,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             </span>
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
@@ -861,6 +868,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 const p = totalPages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= totalPages - 3 ? totalPages - 6 + i : page - 3 + i;
                 return (
                   <button
+                    type="button"
                     key={p}
                     onClick={() => setPage(p)}
                     className="w-8 h-8 rounded-lg text-xs transition-all"
@@ -876,6 +884,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 );
               })}
               <button
+                type="button"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
