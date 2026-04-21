@@ -159,9 +159,25 @@ async function safeSendMail(opts: SafeSendMailOptions) {
         }),
       })
       const data = await res.json()
+      if (!res.ok) {
+        const message = typeof data?.message === 'string'
+          ? data.message
+          : `HTTP ${res.status}`
+        throw new Error(`Mandrill API error: ${message}`)
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        const message = typeof data?.message === 'string'
+          ? data.message
+          : 'unexpected response payload'
+        throw new Error(`Mandrill API error: ${message}`)
+      }
       if (data[0]?.status === 'rejected') {
         log.error(`[Email] Mandrill rejected: ${to} — ${data[0].reject_reason}`)
         throw new Error(`Mandrill rejected email${data[0].reject_reason ? `: ${data[0].reject_reason}` : ''}`)
+      }
+      if (!data[0]?._id) {
+        const status = typeof data[0]?.status === 'string' ? data[0].status : 'unknown'
+        throw new Error(`Mandrill did not accept email (status: ${status})`)
       }
       return { messageId: data[0]?._id || `mandrill-${Date.now()}` }
     } catch (err) {
