@@ -3,6 +3,7 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
+import type { Adapter, AdapterAccount, AdapterUser } from "next-auth/adapters"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
 import bcrypt from 'bcryptjs'
@@ -31,9 +32,88 @@ if (!process.env.NEXTAUTH_SECRET) {
 
 const isDev = process.env.NODE_ENV !== 'production'
 
+const authUserSelect = {
+  id: true,
+  email: true,
+  name: true,
+  image: true,
+  emailVerified: true,
+} as const
+
+async function getAuthUserById(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: authUserSelect,
+  })
+}
+
+async function getAuthUserByEmail(email: string) {
+  return prisma.user.findUnique({
+    where: { email: normalizeEmail(email) },
+    select: authUserSelect,
+  })
+}
+
+const baseAdapter = PrismaAdapter(prisma) as Adapter
+
+const adapter: Adapter = {
+  ...baseAdapter,
+  async getUser(id) {
+    const user = await getAuthUserById(String(id))
+    return user as AdapterUser | null
+  },
+  async getUserByEmail(email) {
+    const user = await getAuthUserByEmail(email)
+    return user as AdapterUser | null
+  },
+  async getUserByAccount({ provider, providerAccountId }: Pick<AdapterAccount, "provider" | "providerAccountId">) {
+    const account = await prisma.account.findUnique({
+      where: {
+        provider_providerAccountId: {
+          provider,
+          providerAccountId,
+        },
+      },
+      select: { userId: true },
+    })
+
+    if (!account?.userId) return null
+
+    const user = await getAuthUserById(account.userId)
+    return user as AdapterUser | null
+  },
+  async createUser(data: Omit<AdapterUser, "id">) {
+    const user = await prisma.user.create({
+      data: {
+        email: normalizeEmail(data.email),
+        name: data.name ?? null,
+        image: data.image ?? null,
+        emailVerified: data.emailVerified ?? null,
+      },
+      select: authUserSelect,
+    })
+
+    return user as AdapterUser
+  },
+  async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
+    const user = await prisma.user.update({
+      where: { id: String(data.id) },
+      data: {
+        email: data.email ? normalizeEmail(data.email) : undefined,
+        name: typeof data.name !== 'undefined' ? data.name : undefined,
+        image: typeof data.image !== 'undefined' ? data.image : undefined,
+        emailVerified: typeof data.emailVerified !== 'undefined' ? data.emailVerified : undefined,
+      },
+      select: authUserSelect,
+    })
+
+    return user as AdapterUser
+  },
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  adapter: PrismaAdapter(prisma),
+  adapter,
   session: { strategy: 'jwt' },
   // Only enable debug mode in development — prevents leaking OAuth tokens/PII in prod logs
   debug: isDev,
@@ -117,7 +197,12 @@ export const authOptions: NextAuthOptions = {
 
         const existingUser = await prisma.user.findUnique({
           where: { email },
-          include: { accounts: true },
+          select: {
+            ...authUserSelect,
+            accounts: {
+              select: { provider: true },
+            },
+          },
         })
 
         if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
@@ -160,7 +245,13 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email },
-          include: { accounts: true },
+          select: {
+            ...authUserSelect,
+            passwordHash: true,
+            accounts: {
+              select: { provider: true },
+            },
+          },
         })
 
         if (!user) {
