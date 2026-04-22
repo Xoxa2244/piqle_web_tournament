@@ -230,6 +230,16 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
 export async function planAdvisorActionIntent(message: string): Promise<AdvisorIntentPlan> {
   const fallback = heuristicPlan(message)
 
+  // Fast-path: when the regex/keyword heuristic already matched a concrete
+  // action ("reactivate inactive members", "fill the Thursday slot",
+  // "change quiet hours"), skip the LLM round-trip entirely — it saves
+  // 2-5s on the critical path for the ~70% of prompts where our keyword
+  // lexicon is unambiguous. The LLM is still consulted for genuinely
+  // ambiguous or analytical phrasing where `action === 'none'`.
+  if (fallback.action !== 'none') {
+    return fallback
+  }
+
   try {
     const result = await generateWithFallback({
       system: PLANNER_SYSTEM,
