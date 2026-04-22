@@ -371,70 +371,12 @@ export default function SignInClient() {
         <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.14) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen max-w-7xl items-center px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid w-full gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
-          <section className="hidden min-h-[720px] flex-col justify-between rounded-[32px] border border-white/8 bg-white/[0.03] p-8 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl lg:flex">
-            <div className="space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
-                <Sparkles className="h-3.5 w-3.5" />
-                IQSport Access
-              </div>
-
-              <div className="max-w-xl space-y-5">
-                <h1 className="text-5xl font-semibold leading-tight tracking-tight text-white">
-                  Enter the club operating system built for modern racket venues.
-                </h1>
-                <p className="max-w-lg text-base leading-7 text-white/65">
-                  Sign in to manage members, campaigns, schedule intelligence, and AI workflows in the same visual language as the rest of the IQSport platform.
-                </p>
-              </div>
-
-              <div className="grid gap-4">
-                {[
-                  {
-                    icon: Shield,
-                    title: "Secure access",
-                    body: "Google sign-in, email verification, and password recovery stay in one clean flow.",
-                  },
-                  {
-                    icon: MessageSquare,
-                    title: "Member messaging ready",
-                    body: "Registration keeps your SMS disclosure intact so the compliance step stays visible.",
-                  },
-                  {
-                    icon: CheckCircle2,
-                    title: "Built for operations",
-                    body: "Same dark glass aesthetic, same high-signal interface, no separate-feeling auth page.",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.title}
-                    className="flex items-start gap-4 rounded-3xl border border-white/8 bg-[#12162A]/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                  >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/30 to-cyan-400/20 text-cyan-200">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold text-white">{item.title}</div>
-                      <p className="text-sm leading-6 text-white/60">{item.body}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/8 bg-gradient-to-r from-violet-500/12 to-cyan-400/10 p-6">
-              <div className="mb-3 text-xs uppercase tracking-[0.24em] text-white/45">Platform</div>
-              <div className="text-2xl font-semibold text-white">{brand.name}</div>
-              <p className="mt-2 max-w-md text-sm leading-6 text-white/60">{brand.tagline}</p>
-            </div>
-          </section>
-
-          <section className="flex items-center justify-center">
-            <div className="w-full max-w-xl rounded-[32px] border border-white/10 bg-[rgba(15,18,35,0.82)] p-5 shadow-[0_32px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-8">
+      <div className="relative mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
+        <section className="flex w-full items-center justify-center">
+          <div className="w-full max-w-xl rounded-[32px] border border-white/10 bg-[rgba(15,18,35,0.82)] p-5 shadow-[0_32px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-8">
               <div className="space-y-6">
                 <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/60 lg:hidden">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
                     <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
                     IQSport Access
                   </div>
@@ -850,9 +792,8 @@ export default function SignInClient() {
                   Your sign-in, verification, and recovery flows stay inside the IQSport environment.
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   )
