@@ -132,7 +132,7 @@ async function fetchFollowerBookingRows(
   } = {},
 ): Promise<any[]> {
   const recentFilter = opts.recentFollowersOnly
-    ? `AND cf."createdAt" >= NOW() - ($2::text || ' days')::interval`
+    ? `AND cf.created_at >= NOW() - ($2::text || ' days')::interval`
     : ''
   const havingBookings = opts.minBookings
     ? `HAVING COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED') >= ${Math.floor(opts.minBookings)}`
@@ -159,8 +159,8 @@ async function fetchFollowerBookingRows(
     const rows = await prisma.$queryRawUnsafe(
       `
       SELECT
-        cf."userId" AS "userId",
-        cf."createdAt" AS "followedAt",
+        cf.user_id AS "userId",
+        cf.created_at AS "followedAt",
         u."createdAt" AS "userCreatedAt",
         u.name,
         u.email,
@@ -171,19 +171,19 @@ async function fetchFollowerBookingRows(
         COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED')::int AS "confirmedBookings"
         ${extraSelect}
       FROM club_followers cf
-      JOIN users u ON u.id = cf."userId"
-      LEFT JOIN play_session_bookings b ON b."userId" = cf."userId"
+      JOIN users u ON u.id = cf.user_id
+      LEFT JOIN play_session_bookings b ON b."userId" = cf.user_id
       LEFT JOIN play_sessions ps ON ps.id = b."sessionId" AND ps."clubId" = $1
       LEFT JOIN document_embeddings de
-        ON de.source_id = cf."userId"
+        ON de.source_id::uuid = cf.user_id
         AND de.content_type = 'member'
         AND de.source_table = 'csv_import'
         AND de.club_id = $1
-      WHERE cf."clubId" = $1
+      WHERE cf.club_id = $1
       ${recentFilter}
-      GROUP BY cf."userId", cf."createdAt", u.name, u.email, u."createdAt", de.metadata
+      GROUP BY cf.user_id, cf.created_at, u.name, u.email, u."createdAt", de.metadata
       ${havingClause}
-      ORDER BY cf."createdAt" DESC
+      ORDER BY cf.created_at DESC
       LIMIT 500
       `,
       clubId,
@@ -7421,8 +7421,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         `
         WITH follower_bookings AS (
           SELECT
-            cf."userId" AS user_id,
-            cf."createdAt" AS followed_at,
+            cf.user_id AS user_id,
+            cf.created_at AS followed_at,
             u.name, u.email, u."createdAt" AS user_created_at,
             de.metadata->>'membership' AS membership_type,
             de.metadata->>'membershipStatus' AS membership_status,
@@ -7434,15 +7434,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
                 AND b."bookedAt" >= NOW() - ($2::text || ' days')::interval
             )::int AS recent_confirmed_bookings
           FROM club_followers cf
-          JOIN users u ON u.id = cf."userId"
-          LEFT JOIN play_session_bookings b ON b."userId" = cf."userId"
+          JOIN users u ON u.id = cf.user_id
+          LEFT JOIN play_session_bookings b ON b."userId" = cf.user_id
           LEFT JOIN document_embeddings de
-            ON de.source_id = cf."userId"
+            ON de.source_id::uuid = cf.user_id
             AND de.content_type = 'member'
             AND de.source_table = 'csv_import'
             AND de.club_id = $1
-          WHERE cf."clubId" = $1
-          GROUP BY cf."userId", cf."createdAt", u.name, u.email, u."createdAt", de.metadata
+          WHERE cf.club_id = $1
+          GROUP BY cf.user_id, cf.created_at, u.name, u.email, u."createdAt", de.metadata
         ),
         co_player_counts AS (
           -- For each follower, count distinct co-players they've booked alongside.
