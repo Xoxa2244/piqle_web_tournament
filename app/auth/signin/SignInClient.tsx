@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 import { useBrand } from "@/components/BrandProvider"
-import { ArrowRight, CheckCircle2, Lock, Mail, MessageSquare, Shield, Sparkles } from "lucide-react"
+import { ArrowRight, Lock, Mail } from "lucide-react"
 
 const inputClass =
   "mt-2 block w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder:text-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] outline-none transition focus:border-cyan-400/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-cyan-400/20"
@@ -99,6 +99,42 @@ export default function SignInClient() {
     signIn('google', { callbackUrl })
   }
 
+  const getPasswordSignInError = (errorCode?: string | null) => {
+    switch (errorCode) {
+      case 'EMAIL_PASSWORD_INVALID':
+      case 'CredentialsSignin':
+        return 'Incorrect email or password.'
+      case 'EMAIL_PASSWORD_NOT_SET':
+        return 'This account does not have a password yet. Use Google sign-in or reset your password.'
+      case 'EMAIL_GOOGLE_ACCOUNT':
+        return 'This email is linked to a Google account. Please sign in with Google.'
+      default:
+        return 'Failed to sign in. Please try again.'
+    }
+  }
+
+  const signInWithPassword = async (signInEmail: string, signInPassword: string) => {
+    const result = await signIn('email-password', {
+      email: signInEmail,
+      password: signInPassword,
+      callbackUrl,
+      redirect: false,
+    })
+
+    if (result?.error) {
+      setError(getPasswordSignInError(result.error))
+      return false
+    }
+
+    if (result?.ok) {
+      router.replace(result.url || callbackUrl)
+      return true
+    }
+
+    setError('Failed to sign in. Please try again.')
+    return false
+  }
+
   const handleRequestCode = async (e: React.SyntheticEvent) => {
     e.preventDefault()
     setError(null)
@@ -147,12 +183,7 @@ export default function SignInClient() {
     setIsVerifying(true)
 
     try {
-      await signIn('email-password', {
-        email,
-        password,
-        callbackUrl,
-      })
-      return
+      await signInWithPassword(email, password)
     } catch (err) {
       console.error(err)
       setError('Failed to sign in. Please try again.')
@@ -213,12 +244,7 @@ export default function SignInClient() {
         return
       }
 
-      await signIn('email-password', {
-        email,
-        password,
-        callbackUrl,
-      })
-      return
+      await signInWithPassword(email, password)
     } catch (err) {
       console.error(err)
       setError('Failed to sign up. Please try again.')
@@ -318,11 +344,7 @@ export default function SignInClient() {
         return
       }
 
-      await signIn('email-password', {
-        email,
-        password: resetPassword,
-        callbackUrl,
-      })
+      await signInWithPassword(email, resetPassword)
     } catch (err) {
       console.error(err)
       setError('Failed to reset password. Please try again.')
