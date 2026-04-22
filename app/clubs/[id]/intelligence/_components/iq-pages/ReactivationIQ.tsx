@@ -17,6 +17,7 @@ import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 import { OutreachConfirmIQModal } from "./shared/OutreachConfirmIQModal";
 import { useReactivationSendFlow } from "./shared/useReactivationSendFlow";
+import { buildReactivationDraft } from "./shared/reactivationDraft";
 
 
 type RiskLevel = "high" | "medium" | "low";
@@ -176,6 +177,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingModal, setPendingModal] = useState<{ memberId: string; channel: "email" | "sms" } | null>(null);
+  const [draftMessage, setDraftMessage] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -189,12 +191,21 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
 
   const realCandidates = mapRealCandidates(reactivationData, aiProfiles);
   const allMembers = realCandidates.length > 0 ? realCandidates : [];
+  const clubName = reactivationData?.clubName || "your club";
   const { sentOutreach, sendStatus, send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
   const activeModalMember = pendingModal ? allMembers.find((member) => member.id === pendingModal.memberId) || null : null
 
   const triggerSend = (e: SyntheticEvent, memberId: string, channel: "email" | "sms") => {
     e.preventDefault();
     e.stopPropagation();
+    const member = allMembers.find((entry) => entry.id === memberId);
+    if (member) {
+      setDraftMessage(buildReactivationDraft({
+        memberName: member.name,
+        clubName,
+        daysSinceLastActivity: member.daysSincePlay,
+      }));
+    }
     setPendingModal({ memberId, channel });
   };
 
@@ -895,10 +906,15 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         description="Review the reactivation context before sending outreach from the current IQSport environment."
         memberName={activeModalMember?.name}
         memberEmail={activeModalMember?.email}
-        messagePreview={activeModalMember?.reactivationMessage || activeModalMember?.suggestedAction || activeModalMember?.churnReason || null}
+        editableMessage={draftMessage}
+        onEditableMessageChange={setDraftMessage}
+        messageLabel="Email Draft"
         confirmText="Send Email"
         isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
-        onClose={() => setPendingModal(null)}
+        onClose={() => {
+          setPendingModal(null)
+          setDraftMessage("")
+        }}
         onConfirm={() => {
           if (!activeModalMember || !pendingModal) return
           send(
@@ -906,9 +922,13 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
               memberId: activeModalMember.id,
               channel: pendingModal.channel,
               memberName: activeModalMember.name,
+              customMessage: draftMessage.trim() || undefined,
             },
             {
-              onSettled: () => setPendingModal(null),
+              onSettled: () => {
+                setPendingModal(null)
+                setDraftMessage("")
+              },
             },
           )
         }}

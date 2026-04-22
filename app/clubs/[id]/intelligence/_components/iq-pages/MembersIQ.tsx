@@ -1759,6 +1759,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           onRegenerate={onRegenerateProfiles}
           sendReactivation={sendReactivation}
           clubId={clubId}
+          clubName={memberHealthData?.clubName}
           isDark={isDark}
         />
       ) : (<>

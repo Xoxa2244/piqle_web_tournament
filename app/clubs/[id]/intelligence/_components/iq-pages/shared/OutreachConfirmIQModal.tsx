@@ -10,6 +10,9 @@ type OutreachConfirmIQModalProps = {
   memberName?: string | null
   memberEmail?: string | null
   messagePreview?: string | null
+  editableMessage?: string
+  onEditableMessageChange?: (value: string) => void
+  messageLabel?: string
   confirmText?: string
   cancelText?: string
   isPending?: boolean
@@ -27,6 +30,9 @@ export function OutreachConfirmIQModal({
   memberName,
   memberEmail,
   messagePreview,
+  editableMessage,
+  onEditableMessageChange,
+  messageLabel,
   confirmText,
   cancelText = 'Cancel',
   isPending = false,
@@ -130,6 +136,25 @@ export function OutreachConfirmIQModal({
                   Message Preview
                 </div>
                 <div className="text-sm leading-6 text-slate-200">{messagePreview}</div>
+              </div>
+            ) : null}
+
+            {typeof editableMessage === 'string' && onEditableMessageChange ? (
+              <div
+                className="rounded-2xl border border-cyan-400/12 bg-[linear-gradient(135deg,rgba(15,23,42,0.78),rgba(8,47,73,0.22))] p-4"
+                style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+              >
+                <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-cyan-200/90">
+                  <Send className="h-3.5 w-3.5" />
+                  {messageLabel || 'Message Draft'}
+                </div>
+                <textarea
+                  value={editableMessage}
+                  onChange={(event) => onEditableMessageChange(event.target.value)}
+                  rows={isEmail ? 8 : 5}
+                  className="w-full resize-y rounded-2xl border border-white/10 bg-[rgba(7,12,27,0.78)] px-4 py-3 text-sm leading-6 text-slate-100 outline-none transition focus:border-cyan-300/45 focus:ring-2 focus:ring-cyan-300/15"
+                  placeholder={isEmail ? 'Write the email body...' : 'Write the SMS copy...'}
+                />
               </div>
             ) : null}
 

@@ -52,6 +52,7 @@ export default function ReactivationPage() {
   const [selectedChannel, setSelectedChannel] = useState<'email' | 'sms' | 'both'>('email')
   const [showEmailConfirm, setShowEmailConfirm] = useState(false)
   const [selectedMessageId, setSelectedMessageId] = useState<string>('')
+  const [draftMessage, setDraftMessage] = useState('')
 
   const { data, isLoading: candidatesLoading, error } = useReactivationCandidates(clubId, inactivityDays)
   const { data: churnTrendData, isLoading: churnLoading } = useChurnTrend(clubId)
@@ -131,6 +132,11 @@ export default function ReactivationPage() {
   const selectedMessage = useMemo(() => {
     return messageVariants.find(v => v.id === selectedMessageId) || messageVariants[0] || null
   }, [messageVariants, selectedMessageId])
+
+  useEffect(() => {
+    if (!showEmailConfirm || !selectedMessage) return
+    setDraftMessage(selectedChannel === 'sms' ? selectedMessage.smsBody : selectedMessage.emailBody)
+  }, [showEmailConfirm, selectedMessage, selectedChannel])
 
   // Filter by search
   const filteredCandidates = useMemo(() => {
@@ -459,16 +465,19 @@ export default function ReactivationPage() {
         isPending={!!selectedMemberId && isPendingFor(selectedMemberId, selectedChannel === 'sms' ? 'sms' : 'email')}
         memberName={selectedCandidate?.member?.name || selectedCandidate?.member?.email}
         memberEmail={selectedCandidate?.member?.email}
-        messagePreview={selectedChannel === 'sms' ? selectedMessage?.smsBody : selectedMessage?.emailBody}
+        editableMessage={draftMessage}
+        onEditableMessageChange={setDraftMessage}
+        messageLabel={selectedChannel === 'sms' ? 'SMS Draft' : 'Email Draft'}
         onClose={() => {
           setShowEmailConfirm(false)
           setSelectedMemberId(null)
+          setDraftMessage('')
         }}
         onConfirm={() => {
           if (!selectedMemberId || !selectedMessage) return
-          const customMessage = selectedChannel === 'sms'
+          const customMessage = draftMessage.trim() || (selectedChannel === 'sms'
             ? selectedMessage.smsBody
-            : selectedMessage.emailBody
+            : selectedMessage.emailBody)
           send(
             {
               memberId: selectedMemberId,
@@ -480,6 +489,7 @@ export default function ReactivationPage() {
               onSettled: () => {
                 setShowEmailConfirm(false)
                 setSelectedMemberId(null)
+                setDraftMessage('')
               },
             },
           )

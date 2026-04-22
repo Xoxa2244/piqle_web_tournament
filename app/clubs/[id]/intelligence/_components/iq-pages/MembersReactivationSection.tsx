@@ -8,6 +8,7 @@ import {
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
 import { OutreachConfirmIQModal } from './shared/OutreachConfirmIQModal'
 import { useReactivationSendFlow } from './shared/useReactivationSendFlow'
+import { buildReactivationDraft } from './shared/reactivationDraft'
 
 /* ── Types ── */
 interface MembersReactivationSectionProps {
@@ -17,6 +18,7 @@ interface MembersReactivationSectionProps {
   onRegenerate?: () => void;
   sendReactivation?: any;
   clubId?: string;
+  clubName?: string;
   isDark: boolean;
 }
 
@@ -96,11 +98,13 @@ export function MembersReactivationSection({
   onRegenerate,
   sendReactivation,
   clubId,
+  clubName,
   isDark,
 }: MembersReactivationSectionProps) {
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingModal, setPendingModal] = useState<{ memberId: string; channel: "email" | "sms" } | null>(null);
+  const [draftMessage, setDraftMessage] = useState("");
   const { sentOutreach, sendStatus, send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
 
   const mapped = (candidates || []).map((c) => mapCandidate(c, aiProfiles));
@@ -253,6 +257,11 @@ export function MembersReactivationSection({
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
+                                  setDraftMessage(buildReactivationDraft({
+                                    memberName: member.name,
+                                    clubName,
+                                    daysSinceLastActivity: member.daysSincePlay,
+                                  }));
                                   setPendingModal({ memberId: member.id, channel: "email" });
                                 }}
                                 className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
@@ -286,10 +295,15 @@ export function MembersReactivationSection({
         description="Review the member context, then send the reactivation outreach in the same IQSport flow used across the platform."
         memberName={activeModalMember?.name}
         memberEmail={activeModalMember?.email}
-        messagePreview={activeModalMember?.reactivationMessage || activeModalMember?.churnReason || null}
+        editableMessage={draftMessage}
+        onEditableMessageChange={setDraftMessage}
+        messageLabel="Email Draft"
         confirmText="Send Email"
         isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
-        onClose={() => setPendingModal(null)}
+        onClose={() => {
+          setPendingModal(null)
+          setDraftMessage("")
+        }}
         onConfirm={() => {
           if (!activeModalMember || !pendingModal) return
           send(
@@ -297,9 +311,13 @@ export function MembersReactivationSection({
               memberId: activeModalMember.id,
               channel: pendingModal.channel,
               memberName: activeModalMember.name,
+              customMessage: draftMessage.trim() || undefined,
             },
             {
-              onSettled: () => setPendingModal(null),
+              onSettled: () => {
+                setPendingModal(null)
+                setDraftMessage("")
+              },
             },
           )
         }}
