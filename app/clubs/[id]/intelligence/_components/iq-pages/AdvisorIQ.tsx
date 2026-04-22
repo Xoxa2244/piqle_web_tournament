@@ -13,7 +13,9 @@ import {
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
+import { PendingQueueCards } from "./PendingQueueCards";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
+import { extractPendingQueue, stripPendingQueueTag } from "@/lib/ai/advisor-pending-queue";
 import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
 import { getAdvisorLatestOutcome } from "@/lib/ai/advisor-outcomes";
 import {
@@ -1482,13 +1484,20 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               const pendingClarification = msg.role === 'assistant'
                 ? getPendingClarification((msg as any).metadata)
                 : null;
-              const textWithoutAction = msg.role === 'assistant' ? stripAdvisorAction(text) : text;
+              // Extract the pending-queue payload (if the ops_show_pending
+              // intent fired) so we can render inline Approve/Skip/Snooze
+              // cards. Tag is stripped from the visible body below so the
+              // chat bubble only shows the human-readable headline.
+              const pendingQueue = msg.role === 'assistant' ? extractPendingQueue(text) : null;
+              const textWithoutAction = msg.role === 'assistant'
+                ? stripPendingQueueTag(stripAdvisorAction(text))
+                : text;
               // Debug: log message structure
               if (typeof window !== 'undefined') {
                 console.log(`[AdvisorIQ msg ${msgIdx}]`, msg.role, 'text:', text.slice(0, 100), 'parts:', JSON.stringify((msg as any).parts?.map((p: any) => ({ type: p.type, hasText: !!p.text })) || 'none'));
               }
-              // Skip assistant messages with no text/action
-              if (msg.role === 'assistant' && !textWithoutAction.trim() && !action) return null;
+              // Skip assistant messages with no text/action/queue
+              if (msg.role === 'assistant' && !textWithoutAction.trim() && !action && !pendingQueue) return null;
               const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
               const { cleanText, suggestions } = msg.role === 'assistant'
                 ? extractSuggestions(textWithoutAction)
@@ -1548,6 +1557,14 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                         actionState={actionState}
                         persistedOutcome={persistedOutcome}
                         onDraftPrompt={draftIntoComposer}
+                      />
+                    )}
+
+                    {msg.role === "assistant" && pendingQueue && pendingQueue.items.length > 0 && (
+                      <PendingQueueCards
+                        clubId={clubId}
+                        items={pendingQueue.items}
+                        totalCount={pendingQueue.totalCount}
                       />
                     )}
 

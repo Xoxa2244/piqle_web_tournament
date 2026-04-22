@@ -2611,7 +2611,9 @@ export async function POST(req: Request) {
       return Response.json({ handled: false })
     } else if (plan.action === 'ops_show_pending') {
       // Read-only: counts pending actions + suggests next step.
-      // No side effect, no draft, no LLM call — plain DB query + text.
+      // No side effect, no draft, no LLM call — plain DB query + a
+      // <pending-queue> payload tag embedded in the response so the
+      // chat UI can render inline Approve/Skip/Snooze action cards.
       const pending = await profiler.span('opsShowPending', () =>
         caller.intelligence.getPendingActions({ clubId }).catch(() => []),
       )
@@ -2622,14 +2624,42 @@ export async function POST(req: Request) {
           ['Show me recent activity', 'Stop all AI sending', 'Draft a win-back campaign'],
         )
       } else {
-        const lines = items.slice(0, 10).map((item: any, i: number) => {
-          const title = item?.title || item?.summary || item?.kind || 'Untitled'
-          const age = item?.createdAt ? formatAdvisorAgoFromNow(new Date(item.createdAt as string)) : ''
-          return `${i + 1}. ${title}${age ? ` · ${age}` : ''}`
-        }).join('\n')
-        const overflow = items.length > 10 ? `\n…and ${items.length - 10} more.` : ''
+        // Normalize to the shared PendingQueuePayload shape. Cap at 5 for
+        // inline cards (longer is visually noisy in chat); admins with
+        // bigger queues still see the full list via the deep-link below.
+        const INLINE_CARD_LIMIT = 5
+        const tagItems = items.slice(0, INLINE_CARD_LIMIT).map((item: any) => ({
+          id: String(item?.id || ''),
+          type: typeof item?.type === 'string' ? item.type : undefined,
+          title: typeof item?.title === 'string' ? item.title : undefined,
+          summary: typeof item?.summary === 'string' ? item.summary : undefined,
+          channel: (item?.channel === 'email' || item?.channel === 'sms' || item?.channel === 'both')
+            ? item.channel
+            : undefined,
+          createdAt: item?.createdAt ? new Date(item.createdAt).toISOString() : undefined,
+          memberName: typeof item?.memberName === 'string' ? item.memberName
+            : typeof item?.user?.name === 'string' ? item.user.name
+            : undefined,
+          memberEmail: typeof item?.memberEmail === 'string' ? item.memberEmail
+            : typeof item?.user?.email === 'string' ? item.user.email
+            : undefined,
+        })).filter((t) => !!t.id)
+
+        const payload = {
+          items: tagItems,
+          totalCount: items.length,
+        }
+
+        const { buildPendingQueueTag } = await import('@/lib/ai/advisor-pending-queue')
+        const headline = items.length === 1
+          ? `You have 1 action waiting for approval:`
+          : `You have ${items.length} action${items.length === 1 ? '' : 's'} waiting for approval${items.length > INLINE_CARD_LIMIT ? ` — showing the top ${INLINE_CARD_LIMIT} below` : ''}:`
+        const overflow = items.length > INLINE_CARD_LIMIT
+          ? `\n\n[View all ${items.length} in Agent page](/clubs/${clubId}/intelligence/agent)`
+          : ''
+
         assistantMessage = withSuggested(
-          `You have ${items.length} action${items.length === 1 ? '' : 's'} waiting for approval:\n\n${lines}${overflow}\n\nOpen the Agent page to approve, skip, or snooze them: /clubs/${clubId}/intelligence/agent`,
+          `${headline}${buildPendingQueueTag(payload)}${overflow}`,
           ['Stop all AI sending', 'What did the agent do today?', 'Open the agent page'],
         )
       }
