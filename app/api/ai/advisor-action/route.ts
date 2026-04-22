@@ -104,6 +104,38 @@ import {
 } from '@/lib/ai/advisor-programming'
 import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
 
+/**
+ * Lightweight profiler used to attribute the advisor-action latency (we've
+ * seen 30–70s cold-path calls). Each `span()` wraps an awaited chunk; at
+ * the end of the request we emit one structured log with the per-span
+ * breakdown so we can grep Vercel logs without reading a stack trace.
+ */
+function createAdvisorProfiler() {
+  const spans: Array<{ name: string; ms: number }> = []
+  const t0 = performance.now()
+  async function span<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    const start = performance.now()
+    try {
+      return await fn()
+    } finally {
+      spans.push({ name, ms: Math.round(performance.now() - start) })
+    }
+  }
+  function mark(name: string) {
+    spans.push({ name, ms: Math.round(performance.now() - t0) })
+  }
+  function report(extra?: Record<string, unknown>) {
+    const total = Math.round(performance.now() - t0)
+    const breakdown = spans
+      .map((s) => `${s.name}=${s.ms}ms`)
+      .join(' ')
+    // Single structured line — searchable via Vercel "query" filter.
+    console.log(`[advisor-timing] total=${total}ms ${breakdown}${extra ? ' ' + JSON.stringify(extra) : ''}`)
+    return { total, spans }
+  }
+  return { span, mark, report }
+}
+
 async function getSessionFromRequest(req: Request) {
   try {
     const nextAuthSession = await getServerSession(authOptions)
@@ -1953,8 +1985,9 @@ async function applyAdvisorAdaptiveDefaults(opts: {
 }
 
 export async function POST(req: Request) {
+  const profiler = createAdvisorProfiler()
   try {
-    const session = await getSessionFromRequest(req)
+    const session = await profiler.span('auth', () => getSessionFromRequest(req))
     if (!session) {
       return new Response('Unauthorized', { status: 401 })
     }
@@ -1980,20 +2013,35 @@ export async function POST(req: Request) {
       return Response.json({ error: 'clubId and message are required' }, { status: 400 })
     }
 
-    const access = await verifyClubMembership(clubId, session.userId)
+    // Three independent lookups — verify access, fetch club context,
+    // and resolve/create conversation. Pre-fix these were sequential;
+    // they don't depend on each other so we run them in parallel.
+    const [access, clubContext, convId] = await profiler.span('access+club+conv (parallel)', () =>
+      Promise.all([
+        verifyClubMembership(clubId, session.userId),
+        prisma.club.findUnique({
+          where: { id: clubId },
+          select: {
+            automationSettings: true,
+            address: true,
+            state: true,
+            country: true,
+          },
+        }),
+        getOrCreateConversation({
+          clubId,
+          userId: session.userId,
+          conversationId,
+          titleSource: message,
+          language: detectLanguage(message),
+        }),
+      ]),
+    )
+
     if (!access.hasAccess) {
       return new Response('Forbidden', { status: 403 })
     }
 
-    const clubContext = await prisma.club.findUnique({
-      where: { id: clubId },
-      select: {
-        automationSettings: true,
-        address: true,
-        state: true,
-        country: true,
-      },
-    })
     const clubTimeZone = resolveAdvisorClubTimeZone({
       automationSettings: clubContext?.automationSettings,
       address: clubContext?.address,
@@ -2003,24 +2051,19 @@ export async function POST(req: Request) {
 
     const language = detectLanguage(message)
 
-    const convId = await getOrCreateConversation({
-      clubId,
-      userId: session.userId,
-      conversationId,
-      titleSource: message,
-      language,
-    })
-
     const caller = appRouter.createCaller({
       prisma,
       session: buildSessionForCaller(session),
     } as any)
 
-    const memory = await getAdvisorConversationMemory(convId)
+    // Memory (prior convo state) is needed to decide whether to even run
+    // the intent planner. Plan runs in parallel when no pending
+    // clarification exists — saves 1-3s on a common path.
+    const memory = await profiler.span('loadMemory', () => getAdvisorConversationMemory(convId))
     let effectiveMessage = message
     let plan = memory.state?.pendingClarification
       ? null
-      : await planAdvisorActionIntent(message)
+      : await profiler.span('planIntent', () => planAdvisorActionIntent(message))
     let assistantMessage = ''
     const copy = getAdvisorActionCopy(language)
     let assistantState: AdvisorConversationState | null = null
@@ -2076,17 +2119,21 @@ export async function POST(req: Request) {
     }
 
     if (!plan) {
-      plan = await planAdvisorActionIntent(effectiveMessage)
+      plan = await profiler.span('planIntent:afterClarif', () => planAdvisorActionIntent(effectiveMessage))
     }
+    // Narrow plan to non-null for TS (profiler.span wraps lose inference).
+    const resolvedPlan: AdvisorIntentPlan = plan
 
     if (access.isAdmin) {
-      const adaptiveDefaults = await applyAdvisorAdaptiveDefaults({
-        prisma,
-        clubId,
-        plan,
-        message: effectiveMessage,
-        timeZone: clubTimeZone,
-      })
+      const adaptiveDefaults = await profiler.span('adaptiveDefaults', () =>
+        applyAdvisorAdaptiveDefaults({
+          prisma,
+          clubId,
+          plan: resolvedPlan,
+          message: effectiveMessage,
+          timeZone: clubTimeZone,
+        }),
+      )
       plan = adaptiveDefaults.plan
       defaultsApplied = adaptiveDefaults.defaultsApplied
     }
@@ -2506,6 +2553,7 @@ export async function POST(req: Request) {
         existingDraftId: draftIdToReuse,
       })
 
+      profiler.report({ planAction: plan?.action, handled: true, path: 'early' })
       return Response.json({
         handled: true,
         conversationId: convId,
@@ -2516,6 +2564,7 @@ export async function POST(req: Request) {
     }
 
     if (plan.action === 'none') {
+      profiler.report({ planAction: 'none', handled: false })
       return Response.json({ handled: false })
     } else if (plan.action === 'create_cohort') {
       const parsed = await caller.intelligence.parseCohortFromText({
@@ -2560,20 +2609,22 @@ export async function POST(req: Request) {
       assistantState = fillSessionResponse.assistantState
       assistantMessage = fillSessionResponse.assistantMessage
     } else if (plan.action === 'reactivate_members') {
-      const reactivationResponse = await buildReactivationAssistantResponse({
-        caller,
-        prisma,
-        clubId,
-        language,
-        state: memory.state,
-        message: effectiveMessage,
-        inactivityDays: plan.inactivityDays,
-        channel: plan.channel,
-        candidateLimit: plan.candidateLimit,
-        defaultsApplied,
-        timeZone: clubTimeZone,
-        automationSettings: clubContext?.automationSettings,
-      })
+      const reactivationResponse = await profiler.span('buildReactivation', () =>
+        buildReactivationAssistantResponse({
+          caller,
+          prisma,
+          clubId,
+          language,
+          state: memory.state,
+          message: effectiveMessage,
+          inactivityDays: plan.inactivityDays,
+          channel: plan.channel,
+          candidateLimit: plan.candidateLimit,
+          defaultsApplied,
+          timeZone: clubTimeZone,
+          automationSettings: clubContext?.automationSettings,
+        }),
+      )
 
       assistantState = reactivationResponse.assistantState
       assistantMessage = reactivationResponse.assistantMessage
@@ -2933,6 +2984,7 @@ export async function POST(req: Request) {
       existingDraftId: draftIdToReuse,
     })
 
+    profiler.report({ planAction: plan?.action, handled: true })
     return Response.json({
       handled: true,
       conversationId: convId,
@@ -2941,6 +2993,7 @@ export async function POST(req: Request) {
       assistantMetadata: assistantRecord.metadata,
     })
   } catch (error) {
+    profiler.report({ error: 'true' })
     console.error('[Advisor Action] POST error:', error instanceof Error ? error.message : error)
     return Response.json({ handled: false, error: 'Internal server error' }, { status: 500 })
   }
