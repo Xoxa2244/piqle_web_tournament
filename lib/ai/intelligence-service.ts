@@ -1070,7 +1070,11 @@ export async function getReactivationCandidates(
 /**
  * intelligence.sendInvites - Send invites to recommended users for a session
  */
-export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteInput>) {
+export async function sendInvites(
+  prisma: any,
+  input: z.infer<typeof sendInviteInput>,
+  options?: { baseUrl?: string | null },
+) {
   const { sessionId, clubId, candidates: candidateInputs } = input
 
   // Load club
@@ -1079,7 +1083,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
     select: { id: true, name: true },
   })
 
-  const appUrl = getPlatformBaseUrl()
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load session data (handle CSV vs real)
@@ -1270,7 +1274,8 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
  */
 export async function sendReactivationMessages(
   prisma: any,
-  input: z.infer<typeof sendReactivationInput>
+  input: z.infer<typeof sendReactivationInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const { clubId, candidates: candidateInputs, customMessage } = input
   log.info(`[Reactivation] sendReactivationMessages start clubId=${clubId} candidates=${candidateInputs.length}`)
@@ -1281,7 +1286,7 @@ export async function sendReactivationMessages(
     select: { id: true, name: true },
   })
 
-  const appUrl = getPlatformBaseUrl()
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
 
   // Load users
   const memberIds = candidateInputs.map(c => c.memberId)
@@ -1479,7 +1484,8 @@ export async function sendReactivationMessages(
  */
 export async function sendEventInviteMessages(
   prisma: any,
-  input: z.infer<typeof sendEventInviteInput>
+  input: z.infer<typeof sendEventInviteInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const { clubId, eventTitle, eventDate, eventTime, eventPrice, candidates: candidateInputs } = input
 
@@ -1488,7 +1494,7 @@ export async function sendEventInviteMessages(
     select: { id: true, name: true },
   })
 
-  const appUrl = getPlatformBaseUrl()
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Filter out csv- members (no real user in DB)
@@ -1882,7 +1888,8 @@ const sendOutreachInput = z.object({
 
 export async function sendOutreachMessage(
   prisma: any,
-  input: z.infer<typeof sendOutreachInput>
+  input: z.infer<typeof sendOutreachInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const {
     clubId, memberId, type, channel, variantId,
@@ -1910,7 +1917,7 @@ export async function sendOutreachMessage(
     return { sent: 0, failed: 0, skipped: 1, reason: spamCheck.reason }
   }
 
-  const appUrl = getPlatformBaseUrl()
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
   const genericBookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load upcoming sessions + find best match for this member

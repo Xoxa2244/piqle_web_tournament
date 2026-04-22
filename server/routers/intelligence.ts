@@ -50,6 +50,7 @@ import { isOutreachBypassClubId } from '@/lib/ai/outreach-club-bypass'
 import { buildAdvisorOutcomeMemory, withAdvisorOutcomeMetadata } from '@/lib/ai/advisor-outcomes'
 import { formatAdvisorScheduledLabel } from '@/lib/ai/advisor-scheduling'
 import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guardrails'
+import { buildPlatformUrl, getPlatformBaseUrl, getPlatformBaseUrlFromRequest } from '@/lib/platform-base-url'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -204,15 +205,16 @@ function buildApprovedAgentMessage(opts: {
   clubId: string
   memberName?: string | null
   reasoning?: any
+  baseUrl?: string | null
 }) {
   const firstName = opts.memberName?.split(' ')[0] || 'there'
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl(opts.baseUrl)
 
   if (opts.type === 'NEW_MEMBER_WELCOME') {
     return {
       subject: `Welcome to ${opts.clubName}!`,
       body: `Hey ${firstName}!\n\nWelcome to ${opts.clubName}. We're excited to have you in the club and we'd love to see you on court soon.`,
-      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+      bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/play`, baseUrl),
     }
   }
 
@@ -221,7 +223,7 @@ function buildApprovedAgentMessage(opts: {
     return {
       subject: `${opts.clubName} — spot open in ${sessionTitle}`,
       body: `Hey ${firstName}!\n\nA spot just opened in ${sessionTitle}. If you want in, now is a great time to jump on it.`,
-      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/intelligence/sessions`,
+      bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/intelligence/sessions`, baseUrl),
     }
   }
 
@@ -229,7 +231,7 @@ function buildApprovedAgentMessage(opts: {
     return {
       subject: opts.reasoning?.originalSubject || `${opts.clubName} — checking in`,
       body: `Hey ${firstName}!\n\nJust checking in from ${opts.clubName}. We'd love to help you get back into a good rhythm on court.`,
-      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+      bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/play`, baseUrl),
     }
   }
 
@@ -237,7 +239,7 @@ function buildApprovedAgentMessage(opts: {
     return {
       subject: `${opts.clubName} — ready for your first game?`,
       body: `Hey ${firstName}!\n\nYour trial is active at ${opts.clubName}, and we'd love to help you get that first booking on the calendar.`,
-      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+      bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/play`, baseUrl),
     }
   }
 
@@ -245,14 +247,14 @@ function buildApprovedAgentMessage(opts: {
     return {
       subject: `${opts.clubName} — let's get you back on court`,
       body: `Hey ${firstName}!\n\nYou've been active with ${opts.clubName} recently, and this is a great time to jump back in with a renewal or a fresh booking.`,
-      bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+      bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/play`, baseUrl),
     }
   }
 
   return {
     subject: opts.reasoning?.originalSubject || `${opts.clubName} — we'd love to see you back!`,
     body: `Hey ${firstName}!\n\nWe noticed it's been a while, and we'd love to have you back at ${opts.clubName}.`,
-    bookingUrl: `${baseUrl}/clubs/${opts.clubId}/play`,
+    bookingUrl: buildPlatformUrl(`/clubs/${opts.clubId}/play`, baseUrl),
   }
 }
 
@@ -1183,7 +1185,9 @@ export const intelligenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       await checkFeatureAccess(input.clubId, 'slot-filler')
-      return sendInvites(ctx.prisma, input)
+      return sendInvites(ctx.prisma, input, {
+        baseUrl: getPlatformBaseUrlFromRequest(ctx.req),
+      })
     }),
 
   // ── Reactivation: Send re-engagement email/SMS to inactive members ──
@@ -1221,7 +1225,9 @@ export const intelligenceRouter = createTRPCRouter({
         }
       }
 
-      return sendReactivationMessages(ctx.prisma, input)
+      return sendReactivationMessages(ctx.prisma, input, {
+        baseUrl: getPlatformBaseUrlFromRequest(ctx.req),
+      })
     }),
 
   // ── Event Invites: Send personalized invites to matched players ──
@@ -1241,7 +1247,9 @@ export const intelligenceRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       await checkFeatureAccess(input.clubId, 'slot-filler')
-      return sendEventInviteMessages(ctx.prisma, input)
+      return sendEventInviteMessages(ctx.prisma, input, {
+        baseUrl: getPlatformBaseUrlFromRequest(ctx.req),
+      })
     }),
 
   // ── Preferences: Get/Set user play preferences ──
@@ -3006,7 +3014,9 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      return sendOutreachMessage(ctx.prisma, input)
+      return sendOutreachMessage(ctx.prisma, input, {
+        baseUrl: getPlatformBaseUrlFromRequest(ctx.req),
+      })
     }),
 
   // ── Delete ALL imported data for a club (clean slate) ──
@@ -6158,12 +6168,14 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       // Send email
       if (action.user?.email) {
         const { sendOutreachEmail } = await import('@/lib/email')
+        const requestBaseUrl = getPlatformBaseUrlFromRequest(ctx.req)
         const emailPayload = buildApprovedAgentMessage({
           type: action.type,
           clubName: action.club.name,
           clubId: action.clubId,
           memberName: action.user.name,
           reasoning: action.reasoning as any,
+          baseUrl: requestBaseUrl,
         })
         await sendOutreachEmail({
           to: action.user.email,
@@ -6981,7 +6993,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const subject = `${formatLabel} ${sessionDate} — ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left`
       const body = `Join us for ${formatLabel} at ${club?.name || 'the club'} on ${sessionDate}, ${sessionTime}. ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} remaining!`
-      const bookingUrl = `https://app.iqsport.ai/clubs/${input.clubId}/intelligence/sessions`
+      const bookingUrl = buildPlatformUrl(
+        `/clubs/${input.clubId}/intelligence/sessions`,
+        getPlatformBaseUrlFromRequest(ctx.req),
+      )
 
       return {
         session: {
@@ -7027,6 +7042,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const { sendSlotFillerInviteEmail } = await import('@/lib/email')
       const { checkAntiSpam } = await import('@/lib/ai/anti-spam')
+      const requestBaseUrl = getPlatformBaseUrlFromRequest(ctx.req)
 
       let sent = 0, skipped = 0, errors = 0
       const spotsLeft = (session.maxPlayers || 8) - await ctx.prisma.playSessionBooking.count({ where: { sessionId: input.sessionId, status: 'CONFIRMED' } })
@@ -7052,7 +7068,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               sessionDate,
               sessionTime: `${session.startTime} - ${session.endTime}`,
               spotsLeft,
-              bookingUrl: `https://app.iqsport.ai/clubs/${input.clubId}/intelligence/sessions`,
+              bookingUrl: buildPlatformUrl(`/clubs/${input.clubId}/intelligence/sessions`, requestBaseUrl),
               customSubject: input.subject,
               customMessage: input.body,
             })

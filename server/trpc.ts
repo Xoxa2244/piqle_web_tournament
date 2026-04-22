@@ -9,12 +9,14 @@ import { assertSuperadminAccess } from './utils/superadminAccess'
 
 interface CreateContextOptions {
   session: Session | null
+  req?: Request
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     session: opts.session,
     prisma,
+    req: opts.req,
   }
 }
 
@@ -74,6 +76,7 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
 
   return createInnerTRPCContext({
     session,
+    req: opts.req,
   })
 }
 

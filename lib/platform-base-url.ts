@@ -11,6 +11,19 @@ export function getPlatformOriginFromUrl(value?: string | null): string | null {
   }
 }
 
+export function getPlatformBaseUrlFromRequest(request?: Request | null): string | null {
+  if (!request) return null
+
+  const urlOrigin = getPlatformOriginFromUrl(request.url)
+  if (urlOrigin) return urlOrigin
+
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  if (!forwardedHost) return null
+
+  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+  return normalizeBaseUrl(`${forwardedProto}://${forwardedHost}`)
+}
+
 export function getPlatformBaseUrl(explicitBaseUrl?: string | null): string {
   const candidate =
     explicitBaseUrl?.trim()
