@@ -376,11 +376,6 @@ export default function SignInClient() {
           <div className="w-full max-w-xl rounded-[32px] border border-white/10 bg-[rgba(15,18,35,0.82)] p-5 shadow-[0_32px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:p-8">
               <div className="space-y-6">
                 <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
-                    <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
-                    IQSport Access
-                  </div>
-
                   <div className="space-y-2">
                     <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                       {mode === 'signup' ? `Create your ${brand.name} account` : `Welcome to ${brand.name}`}
@@ -783,14 +778,6 @@ export default function SignInClient() {
                     </div>
                   </form>
                 )}
-
-                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-white/55">
-                  <div className="mb-1 flex items-center gap-2 font-medium text-white/75">
-                    <Shield className="h-4 w-4 text-cyan-300" />
-                    Secure access
-                  </div>
-                  Your sign-in, verification, and recovery flows stay inside the IQSport environment.
-                </div>
               </div>
           </div>
         </section>
