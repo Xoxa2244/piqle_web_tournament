@@ -8,7 +8,6 @@ import {
   Filter, Search, Sparkles, DollarSign, BarChart3,
   Smartphone, Bell, Check,
 } from "lucide-react";
-import { SmsComingSoon } from './shared/SmsBadge'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -798,9 +797,20 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                                   >
-                                    <Mail className="w-3 h-3" /> Email
-                                  </button>
-                                  <SmsComingSoon />
+                                  <Mail className="w-3 h-3" /> Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onPointerUp={(e) => triggerSend(e, member.id, "sms")}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "sms");
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                  style={{ background: "rgba(249,115,22,0.14)", color: "#FB923C", fontWeight: 600, border: "1px solid rgba(249,115,22,0.22)" }}
+                                >
+                                  <Smartphone className="w-3 h-3" /> SMS
+                                </button>
                                   <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]" style={{ color: "var(--t4)", fontWeight: 500 }}>
                                     <Bell className="w-3 h-3" /> Push
                                     <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>
@@ -902,14 +912,18 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
       <OutreachConfirmIQModal
         open={!!pendingModal && !!activeModalMember}
         channel={pendingModal?.channel || "email"}
-        title="Send Re-engagement Email"
-        description="Review the reactivation context before sending outreach from the current IQSport environment."
+        title={pendingModal?.channel === "sms" ? "Send Re-engagement SMS" : "Send Re-engagement Email"}
+        description={
+          pendingModal?.channel === "sms"
+            ? "Review the reactivation context before sending SMS from the current IQSport environment."
+            : "Review the reactivation context before sending outreach from the current IQSport environment."
+        }
         memberName={activeModalMember?.name}
         memberEmail={activeModalMember?.email}
         editableMessage={draftMessage}
         onEditableMessageChange={setDraftMessage}
-        messageLabel="Email Draft"
-        confirmText="Send Email"
+        messageLabel={pendingModal?.channel === "sms" ? "SMS Draft" : "Email Draft"}
+        confirmText={pendingModal?.channel === "sms" ? "Send SMS" : "Send Email"}
         isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
         onClose={() => {
           setPendingModal(null)

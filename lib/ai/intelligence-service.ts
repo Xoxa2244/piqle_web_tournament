@@ -1429,13 +1429,36 @@ export async function sendReactivationMessages(
 
     // ── Send SMS ──
     if (candidateInput.channel === 'sms' || candidateInput.channel === 'both') {
-      // Note: User model doesn't have a phone field yet — SMS will fail gracefully
-      results.push({
-        memberId: user.id,
-        channel: 'sms',
-        status: 'failed',
-        error: 'Phone number not available (field not yet in User model)',
-      })
+      try {
+        const phone = user.phone
+        if (!phone) throw new Error('Phone number not available')
+        const smsOptIn = user.smsOptIn
+        if (!smsOptIn) throw new Error('User has not opted in to SMS')
+
+        const body = buildReactivationSms({
+          memberName: user.name || 'there',
+          clubName: club.name,
+          daysSinceLastActivity: daysSince,
+          sessionCount: suggestedSessions.length,
+          bookingUrl: firstSessionDeepLink,
+          customMessage,
+        })
+
+        const smsResult = await sendSms({ to: phone, body })
+        if (!externalMessageId && smsResult?.sid) {
+          externalMessageId = smsResult.sid
+        }
+        log.info(`[Reactivation] sms sent clubId=${clubId} userId=${user.id} sid=${smsResult?.sid || 'none'} status=${smsResult?.status || 'unknown'}`)
+        results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
+      } catch (err: any) {
+        log.error(`[Reactivation] sms failed clubId=${clubId} userId=${user.id}: ${err?.message || 'unknown error'}`)
+        results.push({
+          memberId: user.id,
+          channel: 'sms',
+          status: 'failed',
+          error: err?.message || 'Unable to send SMS',
+        })
+      }
     }
 
     // Log to ai_recommendation_logs for campaign tracking
@@ -1469,9 +1492,12 @@ export async function sendReactivationMessages(
   log.info(`[Reactivation] sendReactivationMessages result clubId=${clubId} sent=${sent} failed=${failed} skipped=${skipped}`)
 
   // Report usage to Stripe for metered billing (non-blocking)
-  if (sent > 0) {
+  const emailSent = results.filter(r => r.channel === 'email' && r.status === 'sent').length
+  const smsSent = results.filter(r => r.channel === 'sms' && r.status === 'sent').length
+  if (emailSent > 0 || smsSent > 0) {
     import('@/lib/stripe-usage').then(({ reportUsage }) => {
-      reportUsage(clubId, 'email', sent)
+      if (emailSent > 0) void reportUsage(clubId, 'email', emailSent)
+      if (smsSent > 0) void reportUsage(clubId, 'sms', smsSent)
     }).catch(() => {})
   }
 
@@ -1906,7 +1932,7 @@ export async function sendOutreachMessage(
   // Load user
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: memberId },
-    select: { id: true, email: true, name: true, duprRatingDoubles: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true, duprRatingDoubles: true },
   })
 
   // Anti-spam check
@@ -2030,11 +2056,19 @@ export async function sendOutreachMessage(
 
   // Send SMS
   if (channel === 'sms' || channel === 'both') {
-    results.push({
-      channel: 'sms',
-      status: 'failed',
-      error: 'Phone number not available (field not yet in User model)',
-    })
+    try {
+      const phone = (user as any).phone
+      if (!phone) throw new Error('Phone number not available')
+      const smsOptIn = (user as any).smsOptIn
+      if (!smsOptIn) throw new Error('User has not opted in to SMS')
+      await sendSms({
+        to: phone,
+        body: variant.smsBody || `${variant.emailBody} ${bookingUrl}`.slice(0, 320),
+      })
+      results.push({ channel: 'sms', status: 'sent' })
+    } catch (err: any) {
+      results.push({ channel: 'sms', status: 'failed', error: err.message })
+    }
   }
 
   // Log to DB
