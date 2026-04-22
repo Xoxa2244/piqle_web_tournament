@@ -769,6 +769,12 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
+  // /api/ai/advisor-action goes OUTSIDE useChat's streaming flow (plain
+  // POST → JSON), so `status` from useChat doesn't flip to 'submitted'
+  // while we're waiting. Without this local flag the typing indicator
+  // never shows and the composer stays enabled — suggested prompt chips
+  // feel unresponsive (the call can take 30-70s on a cold planner).
+  const [advisorActionPending, setAdvisorActionPending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const {
@@ -818,7 +824,10 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     setMessages,
   } = useChat({ transport });
 
-  const isBusy = status === 'submitted' || status === 'streaming';
+  // Combines useChat streaming status with the out-of-band advisor-action
+  // POST so every place that cares about "AI is working" (send button
+  // disabled, typing indicator, suggestions hidden) stays truthful.
+  const isBusy = status === 'submitted' || status === 'streaming' || advisorActionPending;
 
   const refreshConversations = useCallback(() => {
     fetch(`/api/ai/conversations?clubId=${clubId}`)
@@ -911,6 +920,23 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     if (!msg || isBusy) return;
     setInputValue("");
 
+    // Optimistic UI: push the user's message immediately so the typing
+    // indicator + bubble show up the moment the chip/Send is clicked.
+    // /api/ai/advisor-action can take tens of seconds on a cold planner —
+    // without this, the whole page looks frozen and users click the chip
+    // a second time assuming nothing happened.
+    const optimisticUserMsgId = crypto.randomUUID();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: optimisticUserMsgId,
+        role: 'user',
+        parts: [{ type: 'text' as const, text: msg }],
+        createdAt: new Date(),
+      },
+    ]);
+    setAdvisorActionPending(true);
+
     try {
       const response = await fetch('/api/ai/advisor-action', {
         method: 'POST',
@@ -935,14 +961,10 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             setActiveConvId(nextConvId);
           }
 
+          // User message already optimistically added — only append the
+          // assistant reply so we don't duplicate.
           setMessages((prev) => [
             ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: 'user',
-              parts: [{ type: 'text' as const, text: msg }],
-              createdAt: new Date(),
-            },
             {
               id: payload.assistantMessageId || crypto.randomUUID(),
               role: 'assistant',
@@ -953,13 +975,22 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           ]);
           void refetchAdvisorDrafts();
           refreshConversations();
+          setAdvisorActionPending(false);
           return;
         }
       }
     } catch {
       // Fall through to normal chat flow
+    } finally {
+      // Always clear the local pending flag — useChat.sendMessage below
+      // will own the busy state from that point forward.
+      setAdvisorActionPending(false);
     }
 
+    // Fallback to the useChat stream path. Drop the optimistic user
+    // message first — useChat appends its own, and duplicates would
+    // leak into the DB conversation history on save.
+    setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsgId));
     pendingGuestTrialContextRef.current = null;
     sendMessage({ text: msg });
   }, [clubId, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
