@@ -113,24 +113,30 @@ import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/inte
 function createAdvisorProfiler() {
   const spans: Array<{ name: string; ms: number }> = []
   const t0 = performance.now()
+  // Request-scoped id so we can correlate per-span log lines with the
+  // final "total=" summary in Vercel's log UI (the table only shows the
+  // first ~40 chars of each message, so one-log-per-span is the only
+  // way to actually read the breakdown).
+  const rid = Math.random().toString(36).slice(2, 8)
+
   async function span<T>(name: string, fn: () => Promise<T>): Promise<T> {
     const start = performance.now()
     try {
       return await fn()
     } finally {
-      spans.push({ name, ms: Math.round(performance.now() - start) })
+      const ms = Math.round(performance.now() - start)
+      spans.push({ name, ms })
+      console.log(`[advisor-timing] ${rid} ${name}=${ms}ms`)
     }
   }
   function mark(name: string) {
-    spans.push({ name, ms: Math.round(performance.now() - t0) })
+    const ms = Math.round(performance.now() - t0)
+    spans.push({ name, ms })
+    console.log(`[advisor-timing] ${rid} mark:${name}=${ms}ms`)
   }
   function report(extra?: Record<string, unknown>) {
     const total = Math.round(performance.now() - t0)
-    const breakdown = spans
-      .map((s) => `${s.name}=${s.ms}ms`)
-      .join(' ')
-    // Single structured line — searchable via Vercel "query" filter.
-    console.log(`[advisor-timing] total=${total}ms ${breakdown}${extra ? ' ' + JSON.stringify(extra) : ''}`)
+    console.log(`[advisor-timing] ${rid} TOTAL=${total}ms${extra ? ' ' + JSON.stringify(extra) : ''}`)
     return { total, spans }
   }
   return { span, mark, report }
