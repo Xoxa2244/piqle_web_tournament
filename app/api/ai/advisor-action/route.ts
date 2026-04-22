@@ -1502,15 +1502,49 @@ async function buildReactivationAssistantResponse(opts: {
     }))
     .filter((candidate: any) => !!candidate.memberId)
 
-  const guardrails = await evaluateAdvisorContactGuardrails({
-    prisma,
-    clubId,
-    type: 'REACTIVATION',
-    requestedChannel: channel,
-    candidates: rawCandidates.map((candidate: any) => ({ memberId: candidate.memberId })),
-    timeZone: opts.timeZone,
-    automationSettings: opts.automationSettings,
-  })
+  // Three independent downstream calls — guardrails (DB), LLM message
+  // generation, and performance-signal aggregation (DB). Pre-fix they
+  // ran sequentially, which is where most of the 30-70s cold-path latency
+  // lives (LLM alone is 5-15s on a cold gpt-4o-mini). They're logically
+  // independent — guardrails filter candidates AFTER we pick them, and
+  // generateCampaignMessage already receives audienceCount as a hint
+  // rather than a hard gate; rawCandidates.length is close enough for
+  // the LLM's framing ("for ~10 inactive members").
+  //
+  // Edge case: if guardrails collapse everything to 0, the generated
+  // message is wasted. Cheap trade for ~5-15s saved on the common path.
+  const [guardrails, generatedOrNull, signals] = await Promise.all([
+    evaluateAdvisorContactGuardrails({
+      prisma,
+      clubId,
+      type: 'REACTIVATION',
+      requestedChannel: channel,
+      candidates: rawCandidates.map((candidate: any) => ({ memberId: candidate.memberId })),
+      timeZone: opts.timeZone,
+      automationSettings: opts.automationSettings,
+    }),
+    rawCandidates.length > 0
+      ? caller.intelligence.generateCampaignMessage({
+          clubId,
+          campaignType: 'REACTIVATION',
+          channel,
+          audienceCount: rawCandidates.length,
+          context: {
+            riskSegment: segmentLabel,
+            inactivityDays,
+          },
+        }).catch(() => null)
+      : Promise.resolve(null),
+    buildAdvisorPerformanceSignalForAction({
+      prisma,
+      clubId,
+      type: 'REACTIVATION',
+      requestedChannel: channel,
+      advisorOutcomeKind: 'reactivate_members',
+      days: 30,
+    }).catch(() => null),
+  ])
+
   const candidates = rawCandidates
     .map((candidate: any) => {
       const eligible = guardrails.eligibleCandidates.find((entry) => entry.memberId === candidate.memberId)
@@ -1542,24 +1576,13 @@ async function buildReactivationAssistantResponse(opts: {
     }
   }
 
-  const generated = await caller.intelligence.generateCampaignMessage({
-    clubId,
-    campaignType: 'REACTIVATION',
-    channel,
-    audienceCount: candidates.length,
-    context: {
-      riskSegment: segmentLabel,
-      inactivityDays,
-    },
-  })
-  const signals = await buildAdvisorPerformanceSignalForAction({
-    prisma,
-    clubId,
-    type: 'REACTIVATION',
-    requestedChannel: channel,
-    advisorOutcomeKind: 'reactivate_members',
-    days: 30,
-  }).catch(() => null)
+  // Fallback template if the parallel LLM call failed — keeps the
+  // surface working end-to-end even when gpt-4o-mini hiccups.
+  const generated = generatedOrNull ?? {
+    subject: `We miss you at ${segmentLabel}`,
+    body: `Hi {{name}},\n\nWe noticed you haven't joined us in a little while. Come back for a session — we'd love to see you on the court again.\n\n— ${segmentLabel} team`,
+    smsBody: `Hi {{name}} — we miss you on the court! Book a session this week at ${segmentLabel}.`,
+  }
 
   const messagePreview = channel === 'email'
     ? truncateAdvisorText(generated.body, 500)
