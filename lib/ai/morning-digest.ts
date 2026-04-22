@@ -8,6 +8,7 @@
  */
 
 import { cronLogger as log } from '@/lib/logger'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 // ── Types ──
 
@@ -66,8 +67,7 @@ export async function generateDigestData(
   })
   if (!club) return null
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
 
   const now = new Date()
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)

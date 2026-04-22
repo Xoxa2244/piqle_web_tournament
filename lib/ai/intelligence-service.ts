@@ -16,6 +16,7 @@ import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail 
 import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
 import { checkAntiSpam } from './anti-spam';
 import { resolvePreferences } from './inferred-preferences';
+import { getPlatformBaseUrl } from '@/lib/platform-base-url';
 import type { BookingHistory, UserPlayPreferenceData, MemberData, BookingWithSession } from '../../types/intelligence';
 
 // ── Persona Detection & Persistence ──
@@ -1078,8 +1079,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
     select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load session data (handle CSV vs real)
@@ -1281,8 +1281,7 @@ export async function sendReactivationMessages(
     select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
 
   // Load users
   const memberIds = candidateInputs.map(c => c.memberId)
@@ -1489,8 +1488,7 @@ export async function sendEventInviteMessages(
     select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Filter out csv- members (no real user in DB)
@@ -1912,8 +1910,7 @@ export async function sendOutreachMessage(
     return { sent: 0, failed: 0, skipped: 1, reason: spamCheck.reason }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
   const genericBookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load upcoming sessions + find best match for this member

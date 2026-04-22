@@ -4,14 +4,11 @@
  */
 import { sendHtmlEmail } from './sendTransactionEmail'
 import { prisma } from './prisma'
+import { getPlatformBaseUrl } from './platform-base-url'
 
 // ── Helpers ──
 
-const getAppBaseUrl = () => {
-  const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-  if (!env) return 'http://localhost:3000'
-  return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
-}
+const getAppBaseUrl = () => getPlatformBaseUrl()
 
 /** Get admin emails for a club */
 export async function getClubAdminEmails(clubId: string): Promise<{ email: string; name: string }[]> {

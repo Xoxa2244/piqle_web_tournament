@@ -16,6 +16,7 @@ import { evaluateAgentControlPlaneAction } from '@/lib/ai/agent-control-plane'
 import { evaluateAgentOutreachRollout } from '@/lib/ai/agent-outreach-rollout'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
+import { buildPlatformUrl, getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -146,8 +147,7 @@ export async function GET(request: Request) {
 
     // Send the outreach email
     if (action.user?.email) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-      const bookingUrl = `${baseUrl}/clubs/${action.clubId}/play`
+      const bookingUrl = buildPlatformUrl(`/clubs/${action.clubId}/play`)
 
       const sendResult = await sendOutreachEmail({
         to: action.user.email,
@@ -200,7 +200,7 @@ export async function GET(request: Request) {
 }
 
 function redirectWithMessage(message: string, type: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   // Simple HTML response with auto-close
   return new Response(`
     <!DOCTYPE html>

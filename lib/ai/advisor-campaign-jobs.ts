@@ -8,6 +8,7 @@ import {
   type AgentOutreachRolloutActionKind,
 } from './agent-outreach-rollout'
 import { persistAgentDecisionRecord } from './agent-decision-records'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 import {
   buildGuestTrialOfferAttributionFromContext,
   inferGuestTrialOfferAttribution,
@@ -78,9 +79,7 @@ type DeliveryResult = {
 }
 
 function getBookingUrl(clubId: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  return `${appUrl}/clubs/${clubId}/play`
+  return buildPlatformUrl(`/clubs/${clubId}/play`)
 }
 
 function interpolateCampaignText(text: string, memberName: string, clubName: string) {

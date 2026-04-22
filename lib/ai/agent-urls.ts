@@ -2,6 +2,7 @@
  * Generate HMAC-signed URLs for agent digest email actions
  */
 import { createHmac } from 'crypto'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 function generateToken(actionId: string, clubId: string): string {
   const secret = process.env.CRON_SECRET
@@ -13,19 +14,19 @@ function generateToken(actionId: string, clubId: string): string {
 }
 
 export function makeApproveUrl(actionId: string, clubId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   const token = generateToken(actionId, clubId)
   return `${baseUrl}/api/agent/approve?id=${actionId}&token=${token}`
 }
 
 export function makeSkipUrl(actionId: string, clubId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   const token = generateToken(actionId, clubId)
   return `${baseUrl}/api/agent/skip?id=${actionId}&token=${token}`
 }
 
 export function makeSnoozeUrl(actionId: string, clubId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   const token = generateToken(actionId, clubId)
   return `${baseUrl}/api/agent/snooze?id=${actionId}&token=${token}`
 }

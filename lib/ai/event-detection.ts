@@ -14,6 +14,7 @@
 
 import { cronLogger as log } from '@/lib/logger'
 import { isAgentLive } from '@/lib/ai/agent-utils'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 import {
   buildAgentTriggerReasoning,
   evaluateAgentTriggerRuntime,
@@ -260,7 +261,6 @@ export async function detectEventsForClub(
 
       try {
         const { sendOutreachEmail } = await import('@/lib/email')
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
         const firstName = member.name?.split(' ')[0] || 'there'
 
         await sendOutreachEmail({
@@ -268,7 +268,7 @@ export async function detectEventsForClub(
           subject: `Welcome to ${clubName}! 🏓`,
           body: `Hey ${firstName}!\n\nWelcome to ${clubName}! We're excited to have you join our community.\n\nCheck out our upcoming sessions and find the perfect game for your level. We have Open Play, Clinics, and Leagues — there's something for everyone.\n\nSee you on the courts!`,
           clubName,
-          bookingUrl: `${baseUrl}/clubs/${clubId}/play`,
+          bookingUrl: buildPlatformUrl(`/clubs/${clubId}/play`),
         })
 
         await prisma.aIRecommendationLog.create({

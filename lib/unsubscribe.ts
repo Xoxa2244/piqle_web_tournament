@@ -65,12 +65,11 @@ export function verifyUnsubscribeToken(token: string): { userId: string; clubId:
 }
 
 function getAppBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return 'https://stest.piqle.io'
+  return getPlatformBaseUrl()
 }
 
 export function generateUnsubscribeUrl(userId: string, clubId: string): string {
   const token = generateUnsubscribeToken(userId, clubId)
   return `${getAppBaseUrl()}/api/unsubscribe?token=${token}`
 }
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'

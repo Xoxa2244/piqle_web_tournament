@@ -10,6 +10,7 @@ import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { createHmac } from 'crypto'
 import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
 }
 
 function respondHtml(message: string, type: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   return new Response(`
     <!DOCTYPE html>
     <html>

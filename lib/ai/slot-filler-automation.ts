@@ -11,6 +11,7 @@
  */
 
 import { PrismaClient } from '@prisma/client'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 import { generateSlotFillerRecommendations } from './slot-filler'
 import { checkAntiSpam } from './anti-spam'
 import { getFrequentPartnerIds } from './partners'
@@ -350,7 +351,7 @@ async function processClub(
             // attribute back to this recommendation. Mandrill click webhook
             // will also fire on tracked clicks and set clickedAt — the
             // attribution service then treats this as a deep_link.
-            bookingUrl: `https://app.iqsport.ai/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`,
+            bookingUrl: buildPlatformUrl(`/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`),
             customSubject: subject,
             customMessage: body,
             // CRITICAL: metadata flows through Mandrill to webhooks for engagement tracking

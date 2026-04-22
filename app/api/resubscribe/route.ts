@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 import { verifyUnsubscribeToken } from '@/lib/unsubscribe'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function getAppBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return 'https://stest.piqle.io'
+  return getPlatformBaseUrl()
 }
 
 export async function GET(request: Request) {

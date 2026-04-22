@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { emailLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { buildClubFromAddress } from '@/lib/email-sending-domain'
+import { getPlatformBaseUrl, getPlatformOriginFromUrl } from '@/lib/platform-base-url'
 
 const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST
 const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || 587)
@@ -208,14 +209,11 @@ async function safeSendMail(opts: SafeSendMailOptions) {
   throw new Error('No email provider configured')
 }
 
-const getAppBaseUrl = () => {
-  const env = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-  if (!env) return 'http://localhost:3000'
-  return env.startsWith('http') ? env.replace(/\/$/, '') : `https://${env}`
-}
+const getAppBaseUrl = (preferredUrl?: string | null) =>
+  getPlatformOriginFromUrl(preferredUrl) || getPlatformBaseUrl()
 
 const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(bookingUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
 
   return `
@@ -305,7 +303,7 @@ function buildReactivationEmailHtml({
   customMessage?: string
   notifyMeUrl?: string
 }) {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(bookingUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const firstName = memberName.split(' ')[0] || 'there'
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -497,7 +495,7 @@ function buildEventInviteEmailHtml({
   bookingUrl: string
   customMessage: string
 }) {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(bookingUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
 
   return `
@@ -635,7 +633,7 @@ function buildSlotFillerInviteEmailHtml({
   bookingUrl: string
   customMessage?: string
 }) {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(bookingUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const firstName = memberName.split(' ')[0] || 'there'
 
@@ -891,7 +889,7 @@ export async function sendOutreachEmail({
           <tr>
             <td align="center" style="padding-top: 20px;">
               <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-                Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
+                Sent by ${clubName} via <a href="${baseUrl}" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
               </p>
             </td>
           </tr>

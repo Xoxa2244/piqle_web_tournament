@@ -1,5 +1,6 @@
 import type { WeeklySummaryContent } from './weekly-summary'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 
 // ── HTML Email Template for Weekly AI Summary ──
 
@@ -140,8 +141,7 @@ export async function sendWeeklySummaryEmail(
   clubName: string,
   clubId: string,
 ): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'https://stest.piqle.io'
-  const dashboardUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/clubs/${clubId}/intelligence`
+  const dashboardUrl = buildPlatformUrl(`/clubs/${clubId}/intelligence`)
 
   const subject = `Weekly AI Summary — ${clubName} (${content.weekLabel})`
   const html = buildWeeklySummaryHtml(content, clubName, dashboardUrl)

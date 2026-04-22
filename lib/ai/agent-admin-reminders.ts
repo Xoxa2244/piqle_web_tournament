@@ -1,3 +1,5 @@
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
+
 export type AdminReminderChannel = 'email' | 'sms'
 export type AdminReminderDeliveryMode = 'in_app' | 'email' | 'sms' | 'both'
 export type AdminProactivePingKind =
@@ -229,8 +231,7 @@ export function resolveAdminReminderTarget(input: {
 }
 
 export function toAbsoluteAppUrl(href: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const normalizedBase = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const normalizedBase = getPlatformBaseUrl()
   if (href.startsWith('http://') || href.startsWith('https://')) return href
   return `${normalizedBase}${href.startsWith('/') ? href : `/${href}`}`
 }

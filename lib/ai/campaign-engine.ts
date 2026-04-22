@@ -31,6 +31,7 @@ import {
 import { evaluateAgentControlPlaneAction } from './agent-control-plane'
 import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
 import { normalizeMembership, resolveMembershipMappings } from './membership-intelligence'
+import { getPlatformBaseUrl, getPlatformOriginFromUrl } from '@/lib/platform-base-url'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -198,6 +199,7 @@ function buildOutreachHtml({
   sessionCard?: OutreachSessionCard
   unsubscribeUrl?: string
 }): string {
+  const platformUrl = getPlatformOriginFromUrl(bookingUrl) || getPlatformBaseUrl()
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   let sessionCardHtml = ''
@@ -247,7 +249,7 @@ function buildOutreachHtml({
           <tr>
             <td align="center" style="padding-top: 20px;">
               <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-                Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
+                Sent by ${clubName} via <a href="${platformUrl}" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
                 ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color: #9ca3af; text-decoration: underline; font-size: 11px;">Unsubscribe</a>` : ''}
               </p>
             </td>
@@ -804,8 +806,7 @@ export async function runHealthCampaign(
   let messagesSent = 0
   let messagesSkipped = 0
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl()
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // ── Pre-generate LLM message variants per club (shared across members) ──

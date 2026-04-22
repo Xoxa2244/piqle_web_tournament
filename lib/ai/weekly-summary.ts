@@ -2,6 +2,7 @@ import { generateWithFallback } from '@/lib/ai/llm/provider'
 import { getVariantAnalytics } from '@/lib/ai/variant-optimizer'
 import { sendWeeklySummaryEmail } from '@/lib/ai/weekly-summary-email'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 import { evaluateAgentControlPlaneAction } from './agent-control-plane'
 import { persistAgentDecisionRecord } from './agent-decision-records'
 
@@ -670,9 +671,7 @@ export async function sendWeeklySummaryEmails(
 // ── Nudge email: no data uploaded yet ──
 
 async function sendNudgeEmail(to: string, clubName: string, clubId: string): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'https://stest.piqle.io'
-  const base = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
-  const advisorUrl = `${base}/clubs/${clubId}/intelligence/advisor`
+  const advisorUrl = buildPlatformUrl(`/clubs/${clubId}/intelligence/advisor`)
 
   const subject = `${clubName} — Your AI insights are waiting for data`
   const html = `<!DOCTYPE html>
