@@ -15,7 +15,8 @@ import {
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
-import { useToast } from "@/components/ui/use-toast";
+import { OutreachConfirmIQModal } from "./shared/OutreachConfirmIQModal";
+import { useReactivationSendFlow } from "./shared/useReactivationSendFlow";
 
 
 type RiskLevel = "high" | "medium" | "low";
@@ -171,12 +172,10 @@ function mapRealCandidates(data: any, aiProfiles?: Record<string, any>): AtRiskM
 
 export function ReactivationIQ({ reactivationData, churnTrendData, campaignListData, isLoading: externalLoading, error: queryError, sendReactivation, clubId, aiProfiles, regenerateProfiles, onGenerationStarted, generateNotifyMeLink }: ReactivationIQProps = {}) {
   const { isDark } = useTheme();
-  const { toast } = useToast();
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
-  const [sendStatus, setSendStatus] = useState<Record<string, { channel: string; state: "sent" | "failed" | "skipped"; reason?: string }>>({});
+  const [pendingModal, setPendingModal] = useState<{ memberId: string; channel: "email" | "sms" } | null>(null);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -190,70 +189,13 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
 
   const realCandidates = mapRealCandidates(reactivationData, aiProfiles);
   const allMembers = realCandidates.length > 0 ? realCandidates : [];
-
-  const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
-    toast({
-      title: "Starting send…",
-      description: `Trying ${channel.toUpperCase()} for this member.`,
-    });
-    if (sendReactivation && clubId) {
-      sendReactivation.mutate({
-        clubId,
-        candidates: [{ memberId, channel }],
-      }, {
-        onSuccess: (result: any) => {
-          const item = Array.isArray(result?.results)
-            ? result.results.find((r: any) => r.memberId === memberId && r.channel === channel)
-            : null;
-
-          if (item?.status === "sent") {
-            setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
-            setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "sent" } }));
-            toast({
-              title: channel === "email" ? "Email sent" : "Message sent",
-              description: "The outreach was delivered successfully.",
-            });
-            return;
-          }
-
-          if (item?.status === "skipped") {
-            setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "skipped", reason: item.error || "Blocked by contact guardrails" } }));
-            toast({
-              title: "Send skipped",
-              description: item.error || "This member was skipped by the anti-spam/contact policy.",
-              variant: "destructive",
-            });
-            return;
-          }
-
-          const errorMessage = item?.error || "The message was not accepted by the delivery pipeline.";
-          setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "failed", reason: errorMessage } }));
-          toast({
-            title: "Send failed",
-            description: errorMessage,
-            variant: "destructive",
-          });
-        },
-        onError: (err: any) => {
-          const message = err?.message || "Unable to send outreach right now.";
-          setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "failed", reason: message } }));
-          toast({
-            title: "Send failed",
-            description: message,
-            variant: "destructive",
-          });
-        },
-      });
-    } else {
-      setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
-      setSendStatus(prev => ({ ...prev, [memberId]: { channel, state: "sent" } }));
-    }
-  };
+  const { sentOutreach, sendStatus, send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
+  const activeModalMember = pendingModal ? allMembers.find((member) => member.id === pendingModal.memberId) || null : null
 
   const triggerSend = (e: SyntheticEvent, memberId: string, channel: "email" | "sms") => {
     e.preventDefault();
     e.stopPropagation();
-    handleSendReactivation(memberId, channel);
+    setPendingModal({ memberId, channel });
   };
 
   // Churn trend from real data
@@ -945,6 +887,32 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         </div>
       </Card>
       )}
+
+      <OutreachConfirmIQModal
+        open={!!pendingModal && !!activeModalMember}
+        channel={pendingModal?.channel || "email"}
+        title="Send Re-engagement Email"
+        description="Review the reactivation context before sending outreach from the current IQSport environment."
+        memberName={activeModalMember?.name}
+        memberEmail={activeModalMember?.email}
+        messagePreview={activeModalMember?.reactivationMessage || activeModalMember?.suggestedAction || activeModalMember?.churnReason || null}
+        confirmText="Send Email"
+        isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
+        onClose={() => setPendingModal(null)}
+        onConfirm={() => {
+          if (!activeModalMember || !pendingModal) return
+          send(
+            {
+              memberId: activeModalMember.id,
+              channel: pendingModal.channel,
+              memberName: activeModalMember.name,
+            },
+            {
+              onSettled: () => setPendingModal(null),
+            },
+          )
+        }}
+      />
     </motion.div>
   );
 }

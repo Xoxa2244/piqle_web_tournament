@@ -15,8 +15,6 @@ import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
 import { isCsvPlayer, CsvPlayerBadge } from '../_components/csv-player-badge'
-import ConfirmModal from '@/components/ConfirmModal'
-import { useToast } from '@/components/ui/use-toast'
 import { useReactivationCandidates, useSendReactivation, useChurnTrend, useCampaignList, useMemberAiProfiles, useRegenerateMemberProfiles, useGenerateNotifyMeLink } from '../_hooks/use-intelligence'
 import { generateReactivationMessages, archetypeLabels } from '@/lib/ai/reactivation-messages'
 import type { PlayerArchetype } from '@/types/intelligence'
@@ -24,6 +22,8 @@ import { MessageSelector } from '../_components/message-selector'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { ReactivationIQ } from '../_components/iq-pages/ReactivationIQ'
+import { OutreachConfirmIQModal } from '../_components/iq-pages/shared/OutreachConfirmIQModal'
+import { useReactivationSendFlow } from '../_components/iq-pages/shared/useReactivationSendFlow'
 
 function formatRelativeDate(isoDate: string): string {
   const diff = Math.floor((Date.now() - new Date(isoDate).getTime()) / 86400000)
@@ -76,7 +76,6 @@ export default function ReactivationPage() {
     const done = aiProfilesRaw?.length ?? 0
     if (total > 0 && done >= total) setIsPolling(false)
   }, [aiProfilesRaw, data, isPolling])
-  const { toast } = useToast()
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -151,6 +150,7 @@ export default function ReactivationPage() {
       : 0
 
   const brand = useBrand()
+  const { send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
   if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} onGenerationStarted={() => setIsPolling(true)} generateNotifyMeLink={generateNotifyMeLink} />
 
   return (
@@ -446,9 +446,9 @@ export default function ReactivationPage() {
       )}
 
       {/* Send confirm modal */}
-      <ConfirmModal
+      <OutreachConfirmIQModal
         open={showEmailConfirm}
-        size="lg"
+        channel={selectedChannel === 'sms' ? 'sms' : 'email'}
         title={selectedChannel === 'sms' ? 'Send Re-engagement SMS' : 'Send Re-engagement Email'}
         description={
           selectedChannel === 'sms'
@@ -456,7 +456,10 @@ export default function ReactivationPage() {
             : 'Choose a message style for the re-engagement email.'
         }
         confirmText={selectedChannel === 'sms' ? 'Send SMS' : 'Send Email'}
-        isPending={sendReactivation.isPending}
+        isPending={!!selectedMemberId && isPendingFor(selectedMemberId, selectedChannel === 'sms' ? 'sms' : 'email')}
+        memberName={selectedCandidate?.member?.name || selectedCandidate?.member?.email}
+        memberEmail={selectedCandidate?.member?.email}
+        messagePreview={selectedChannel === 'sms' ? selectedMessage?.smsBody : selectedMessage?.emailBody}
         onClose={() => {
           setShowEmailConfirm(false)
           setSelectedMemberId(null)
@@ -466,32 +469,19 @@ export default function ReactivationPage() {
           const customMessage = selectedChannel === 'sms'
             ? selectedMessage.smsBody
             : selectedMessage.emailBody
-          sendReactivation.mutate(
+          send(
             {
-              clubId,
-              candidates: [{ memberId: selectedMemberId, channel: selectedChannel }],
+              memberId: selectedMemberId,
+              channel: selectedChannel === 'sms' ? 'sms' : 'email',
+              memberName: selectedCandidate?.member?.name || selectedCandidate?.member?.email,
               customMessage,
             },
             {
-              onSuccess: (data: any) => {
-                toast({
-                  title: data.sent > 0 ? 'Message sent!' : 'Failed to send',
-                  description: data.sent > 0
-                    ? `Successfully sent ${selectedChannel === 'sms' ? 'SMS' : 'email'} to member.`
-                    : data.results?.[0]?.error || 'Unknown error',
-                  variant: data.sent > 0 ? 'default' : 'destructive',
-                })
+              onSettled: () => {
                 setShowEmailConfirm(false)
                 setSelectedMemberId(null)
               },
-              onError: (err: any) => {
-                toast({
-                  title: 'Failed to send',
-                  description: err.message,
-                  variant: 'destructive',
-                })
-              },
-            }
+            },
           )
         }}
       >
@@ -503,7 +493,7 @@ export default function ReactivationPage() {
             onSelect={setSelectedMessageId}
           />
         )}
-      </ConfirmModal>
+      </OutreachConfirmIQModal>
     </div>
   )
 }

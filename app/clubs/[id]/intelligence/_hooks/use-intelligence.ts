@@ -244,8 +244,12 @@ export function useSendReactivation() {
 
   if (isDemo) {
     return {
-      mutate: (_input: any, opts?: any) => {
-        setTimeout(() => opts?.onSuccess?.({ sent: 1, failed: 0, results: [{ memberId: 'demo', channel: 'email', status: 'sent' }] }), 500)
+      mutate: (input: any, opts?: any) => {
+        setTimeout(() => {
+          const result = { sent: 1, failed: 0, results: [{ memberId: 'demo', channel: 'email', status: 'sent' }] }
+          opts?.onSuccess?.(result)
+          opts?.onSettled?.(result, null, input, undefined)
+        }, 500)
       },
       isPending: false,
     } as any
