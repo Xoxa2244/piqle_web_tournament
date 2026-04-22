@@ -214,7 +214,10 @@ describe('integration: fetchFollowerBookingRows SQL differences', () => {
       limit: 8,
     })
     const sqlArg = (prisma.$queryRawUnsafe as any).mock.calls[0][0]
-    expect(sqlArg).toContain('cf."createdAt" >=')
+    // club_followers.createdAt was renamed to created_at (snake_case) during
+    // the recent-followers filter refactor — `cf.created_at >= NOW() -
+    // ($2::text || ' days')::interval` is the shape we want to pin here.
+    expect(sqlArg).toContain('cf.created_at >=')
   })
 
   it('referral snapshot uses co-player CTE (NOT shared helper)', async () => {
