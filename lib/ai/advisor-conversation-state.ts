@@ -47,8 +47,11 @@ export const advisorConversationStateSchema = z.object({
     'trial_follow_up', 'renewal_reactivation', 'program_schedule',
     'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing',
     'update_admin_reminder_routing',
-    // Ops intents — read-only summaries + kill switch (see advisor-action-planner).
+    // Ops intents — read-only summaries + kill switch + batch actions
+    // on the pending queue (see advisor-action-planner).
     'ops_show_pending', 'ops_show_activity', 'ops_kill_switch',
+    'ops_approve_pending', 'ops_skip_pending', 'ops_snooze_pending',
+    'ops_show_decisions',
   ]).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),

@@ -142,6 +142,18 @@ function createAdvisorProfiler() {
   return { span, mark, report }
 }
 
+/** "SLOT_FILLER" → "Slot Filler" — shared between the batch-action and
+ *  decision-record summaries so the phrasing stays consistent. */
+function humanizePendingType(type?: string | null): string | null {
+  if (!type) return null
+  return String(type)
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w[0]?.toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
 /** Short "3m ago / 5h ago / yesterday" labels for the ops-intent summaries. */
 function formatAdvisorAgoFromNow(when: Date): string {
   const diffMs = Date.now() - when.getTime()
@@ -2731,6 +2743,152 @@ export async function POST(req: Request) {
           `Could not activate the kill switch: ${msg}\n\nYou can stop the agent directly on the Launch Runbook: /clubs/${clubId}/intelligence/launch`,
           ['Open Launch Runbook', 'Try again'],
         )
+      }
+    } else if (
+      plan.action === 'ops_approve_pending'
+      || plan.action === 'ops_skip_pending'
+      || plan.action === 'ops_snooze_pending'
+    ) {
+      // Natural-language batch action on the pending queue:
+      //   "approve the reactivation one"  → single matching item
+      //   "approve all"                    → every pending item
+      //   "skip all SMS"                   → filter-by-channel bulk
+      //   "approve #2" / "approve first"   → ordinal pick
+      // Parsing lives in lib/ai/advisor-ops-targets.ts so the same
+      // resolver can feed a future /api/ai/agent-command endpoint.
+      const verb: 'approve' | 'skip' | 'snooze' = plan.action === 'ops_approve_pending'
+        ? 'approve'
+        : plan.action === 'ops_skip_pending'
+          ? 'skip'
+          : 'snooze'
+
+      const pendingList = await profiler.span('opsActionFetchPending', () =>
+        caller.intelligence.getPendingActions({ clubId }).catch(() => []),
+      )
+      const items = (Array.isArray(pendingList) ? (pendingList as any[]) : []).map((item: any) => ({
+        id: String(item?.id || ''),
+        type: item?.type ?? null,
+        title: item?.title ?? null,
+        summary: item?.summary ?? null,
+        channel: (item?.channel === 'email' || item?.channel === 'sms' || item?.channel === 'both')
+          ? item.channel
+          : null,
+      })).filter((i) => !!i.id)
+
+      const { parseTargetFromMessage, resolvePendingTarget } = await import('@/lib/ai/advisor-ops-targets')
+      const parsed = parseTargetFromMessage(plan.audienceText || message)
+      if (!parsed) {
+        assistantMessage = withSuggested(
+          `I can ${verb} pending items, but I need to know which ones. Try "${verb} all", "${verb} all reactivation", or "${verb} #1".`,
+          ['What needs my approval?', 'Approve all', 'Approve the first one'],
+        )
+      } else {
+        const outcome = resolvePendingTarget(items, parsed)
+        if (outcome.kind === 'empty') {
+          assistantMessage = withSuggested(
+            'The pending queue is empty — nothing to ' + verb + '.',
+            ['Stop all AI sending', 'What did the agent do today?', 'Draft a win-back campaign'],
+          )
+        } else if (outcome.kind === 'none_match') {
+          assistantMessage = withSuggested(
+            `${outcome.hint}`,
+            ['What needs my approval?', 'Show me recent activity'],
+          )
+        } else if (outcome.kind === 'ambiguous') {
+          const picks = outcome.matches.map((m, i) => `${i + 1}. ${m.title || m.summary || m.type || 'Untitled'}`).join('\n')
+          assistantMessage = withSuggested(
+            `${outcome.hint}\n\nCandidates:\n${picks}`,
+            ['Approve all', `${verb === 'approve' ? 'Approve' : verb === 'skip' ? 'Skip' : 'Snooze'} #1`, 'What needs my approval?'],
+          )
+        } else {
+          // Resolved — execute the batch. Cap to 25 to prevent a runaway
+          // "approve all" on a huge queue; edge case admins can repeat.
+          const BATCH_LIMIT = 25
+          const toRun = outcome.items.slice(0, BATCH_LIMIT)
+          const results = await profiler.span('opsBatchMutate', () =>
+            Promise.allSettled(
+              toRun.map((it) => {
+                const call = verb === 'approve'
+                  ? caller.intelligence.approveAction({ clubId, actionId: it.id })
+                  : verb === 'skip'
+                    ? caller.intelligence.skipAction({ clubId, actionId: it.id })
+                    : caller.intelligence.snoozeAction({ clubId, actionId: it.id })
+                return call
+              }),
+            ),
+          )
+          const successes = results.filter((r) => r.status === 'fulfilled').length
+          const failures = results.length - successes
+          const verbPast = verb === 'approve' ? 'Approved' : verb === 'skip' ? 'Skipped' : 'Snoozed'
+          const countSuffix = toRun.length === 1
+            ? toRun[0].title || toRun[0].summary || humanizePendingType(toRun[0].type) || 'pending item'
+            : `${successes} of ${toRun.length} pending action${toRun.length === 1 ? '' : 's'}`
+          const failNote = failures > 0
+            ? `\n\n⚠️ ${failures} could not be updated — the Agent page will show them unchanged.`
+            : ''
+          const overflowNote = outcome.items.length > BATCH_LIMIT
+            ? `\n\n(${outcome.items.length - BATCH_LIMIT} more matched but weren't processed in this batch — run the same command again to continue.)`
+            : ''
+          assistantMessage = withSuggested(
+            `✓ ${verbPast} ${countSuffix}.${failNote}${overflowNote}`,
+            verb === 'approve'
+              ? ['What else is pending?', 'What did the agent do today?', 'Stop all AI sending']
+              : ['What else is pending?', 'Approve what\'s left', 'Show me recent activity'],
+          )
+        }
+      }
+      assistantState = {
+        ...(memory.state || {}),
+        recentOutcomes: memory.state?.recentOutcomes || [],
+        lastActionKind: plan.action,
+        lastActionTitle: `${verb.charAt(0).toUpperCase() + verb.slice(1)} pending`,
+        updatedAt: new Date().toISOString(),
+      }
+    } else if (plan.action === 'ops_show_decisions') {
+      // Audit-log explainer: pulls last N AgentDecisionRecord rows and
+      // summarizes them. Read-only, no LLM, plain text.
+      let decisions: Array<{ action: string; result: string; summary: string; createdAt: Date }> = []
+      try {
+        const rows = await profiler.span('opsShowDecisions', () =>
+          prisma.agentDecisionRecord.findMany({
+            where: { clubId },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { action: true, result: true, summary: true, createdAt: true },
+          }),
+        )
+        decisions = (rows as any[]).map((r) => ({
+          action: String(r.action ?? 'unknown'),
+          result: String(r.result ?? 'unknown'),
+          summary: String(r.summary ?? ''),
+          createdAt: r.createdAt as Date,
+        }))
+      } catch (err) {
+        console.warn('[advisor] show_decisions fetch failed:', (err as Error).message?.slice(0, 120))
+      }
+
+      if (decisions.length === 0) {
+        assistantMessage = withSuggested(
+          'No recent agent decisions recorded. Decision records start filling in once the agent runs any live actions.',
+          ['What needs my approval?', 'What did the agent do today?', 'Stop all AI sending'],
+        )
+      } else {
+        const lines = decisions.map((d, i) => {
+          const age = formatAdvisorAgoFromNow(d.createdAt)
+          const reasonBlurb = d.summary ? ` — ${d.summary.slice(0, 140)}` : ''
+          return `${i + 1}. **${d.result}** on ${humanizePendingType(d.action) || d.action} (${age})${reasonBlurb}`
+        }).join('\n')
+        assistantMessage = withSuggested(
+          `Recent agent decisions:\n\n${lines}\n\nFor the full audit trail: /clubs/${clubId}/intelligence/agent`,
+          ['What needs my approval?', 'Show me recent activity', 'Open the agent page'],
+        )
+      }
+      assistantState = {
+        ...(memory.state || {}),
+        recentOutcomes: memory.state?.recentOutcomes || [],
+        lastActionKind: 'ops_show_decisions',
+        lastActionTitle: `Recent decisions (${decisions.length})`,
+        updatedAt: new Date().toISOString(),
       }
     } else if (plan.action === 'create_cohort') {
       const parsed = await caller.intelligence.parseCohortFromText({

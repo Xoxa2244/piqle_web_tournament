@@ -22,9 +22,13 @@ const advisorIntentSchema = z.object({
     // Advisor is the single AI surface; these bring "Agent Dashboard"
     // interactions ("what's pending?", "stop the agent") inside the chat
     // so admins don't need to learn two paradigms.
-    'ops_show_pending',      // "What needs approval?"
-    'ops_show_activity',     // "What did the agent do today?"
-    'ops_kill_switch',       // "Stop all AI sending"
+    'ops_show_pending',       // "What needs approval?"
+    'ops_show_activity',      // "What did the agent do today?"
+    'ops_kill_switch',        // "Stop all AI sending"
+    'ops_approve_pending',    // "Approve the reactivation one" / "approve all"
+    'ops_skip_pending',       // "Skip all SMS" / "skip #2"
+    'ops_snooze_pending',     // "Snooze all"
+    'ops_show_decisions',     // "Why did you skip X?" / "show recent decisions"
   ]),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
@@ -138,6 +142,32 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     /\b(stop|kill|halt|disable|pause|turn off|shut down|shutoff)\b/.test(lower) &&
     /\b(ai|agent|sending|sends|everything|all|outreach)\b/.test(lower)
 
+  // Actionable pending-queue commands — "approve/skip/snooze" + at least
+  // one selector keyword so we don't misread "approve later" as an
+  // immediate action. Selectors: bulk ("all"/"every"), ordinal
+  // ("first"/"#1"/"second"), type ("reactivation"/"slot filler"), or
+  // channel ("sms"/"email").
+  const hasPendingSelector =
+    /\b(all|every|everything|first|second|third|fourth|last|1st|2nd|3rd|4th|5th|the\s+\w+\s+one)\b/.test(lower) ||
+    /\b(sms|text|texts|emails?)\b/.test(lower) ||
+    /\b(reactivat|slot[- ]?filler?|check[- ]?in|retention|invite|referral|trial|win[- ]?back)\b/.test(lower) ||
+    /(?:#|item|number)\s*\d{1,2}\b/.test(lower)
+  const wantsApprovePending =
+    /\b(approve|go ahead with|send(?: it)?|launch|ok to send|approve\s+and\s+send)\b/.test(lower) &&
+    hasPendingSelector
+  const wantsSkipPending =
+    /\b(skip|reject|decline|ignore|dismiss|cancel)\b/.test(lower) &&
+    hasPendingSelector
+  const wantsSnoozePending =
+    /\b(snooze|later|postpone|hold|delay|remind me)\b/.test(lower) &&
+    hasPendingSelector
+
+  // "Why did you skip X?" / "show recent decisions" / "why was this
+  // blocked?" — pulls from AgentDecisionRecord for audit clarity.
+  const wantsShowDecisions =
+    /\b(why|reasoning|decision|decisions|explain|because|skipped|blocked|reject(?:ed)?)\b/.test(lower) &&
+    /\b(agent|ai|last|recent|previously|earlier|you|it)\b/.test(lower)
+
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
   if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
   else if (/\b(fill|slot|underfilled|open spots?|empty slots?)\b/.test(lower)) campaignType = 'SLOT_FILLER'
@@ -173,11 +203,25 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   if (wantsKillSwitch) {
     return { action: 'ops_kill_switch', usePreviousCohort: false }
   }
+  // Action commands before read-only to catch "approve all SMS" rather
+  // than letting it fall through to "sms campaign".
+  if (wantsApprovePending) {
+    return { action: 'ops_approve_pending', audienceText: message, usePreviousCohort: false }
+  }
+  if (wantsSkipPending) {
+    return { action: 'ops_skip_pending', audienceText: message, usePreviousCohort: false }
+  }
+  if (wantsSnoozePending) {
+    return { action: 'ops_snooze_pending', audienceText: message, usePreviousCohort: false }
+  }
   if (wantsShowPending) {
     return { action: 'ops_show_pending', usePreviousCohort: false }
   }
   if (wantsShowActivity) {
     return { action: 'ops_show_activity', usePreviousCohort: false }
+  }
+  if (wantsShowDecisions) {
+    return { action: 'ops_show_decisions', audienceText: message, usePreviousCohort: false }
   }
 
   if (wantsCohort) {
