@@ -3416,6 +3416,17 @@ export function AgentIQ({
   updateOpsSessionDraftWorkflow,
   shadowBackOutreachRolloutAction,
 }: AgentIQProps) {
+  // ── Feature flag: the Ops workflow (Ops Draft Calendar + Internal
+  // Session Draft Queue Kanban) was built for a hypothetical multi-role
+  // club ops team. Current seed-stage reality: one owner-operator per
+  // club, no hand-off between planner and scheduler. The workflow
+  // duplicates what's already in Daily Admin Todos ("Recommended" bucket),
+  // so we hide it behind this flag until an enterprise-tier client
+  // actually needs the Kanban. Flip to `true` or move to env to re-enable.
+  // Backend models, tRPC procedures, and the handlers below stay wired so
+  // the revert is a one-line change. See conversation 2026-04-22 for context.
+  const OPS_WORKFLOW_ENABLED = false
+
   const { isDark } = useTheme()
   const { data: session } = useSession()
   const router = useRouter()
@@ -6986,7 +6997,7 @@ export function AgentIQ({
         </motion.div>
       )}
 
-      {programmingCockpit.cards.length > 0 && (
+      {OPS_WORKFLOW_ENABLED && programmingCockpit.cards.length > 0 && (
         <motion.div
           ref={opsBoardRef}
           initial={{ opacity: 0, y: 20 }}
@@ -7159,7 +7170,7 @@ export function AgentIQ({
         </motion.div>
       )}
 
-      {opsSessionDraftQueue.some((stage) => stage.drafts.length > 0) && (
+      {OPS_WORKFLOW_ENABLED && opsSessionDraftQueue.some((stage) => stage.drafts.length > 0) && (
         <motion.div
           ref={opsQueueRef}
           initial={{ opacity: 0, y: 20 }}
