@@ -42,7 +42,14 @@ export const advisorConversationStateSchema = z.object({
   currentAdminReminderRouting: advisorAdminReminderRoutingDraftSchema.optional(),
   latestOutcome: advisorOutcomeMemorySchema.optional(),
   recentOutcomes: z.array(advisorOutcomeMemorySchema).max(5).default([]),
-  lastActionKind: z.enum(['create_cohort', 'create_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing', 'update_admin_reminder_routing']).optional(),
+  lastActionKind: z.enum([
+    'create_cohort', 'create_campaign', 'fill_session', 'reactivate_members',
+    'trial_follow_up', 'renewal_reactivation', 'program_schedule',
+    'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing',
+    'update_admin_reminder_routing',
+    // Ops intents — read-only summaries + kill switch (see advisor-action-planner).
+    'ops_show_pending', 'ops_show_activity', 'ops_kill_switch',
+  ]).optional(),
   lastActionTitle: z.string().max(120).optional(),
   pendingClarification: advisorPendingClarificationSchema.optional(),
   updatedAt: z.string().optional(),

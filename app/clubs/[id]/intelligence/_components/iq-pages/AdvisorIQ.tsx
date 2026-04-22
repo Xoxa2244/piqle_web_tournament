@@ -9,6 +9,7 @@ import {
     DollarSign, Target, Lightbulb, BarChart3, Clock, Zap,
     MessageSquare, ChevronRight, Mic, Paperclip, RotateCcw,
     ThumbsUp, ThumbsDown, Copy, BookOpen, Plus, Trash2, CheckCircle2, Mail,
+    CheckSquare, Activity, PowerOff,
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { AdvisorActionCard } from "./AdvisorActionCard";
@@ -29,16 +30,23 @@ import {
   formatReferralWorkspaceSummary,
 } from "./shared/growth-context";
 
-/* --- Suggested Prompts --- */
+/* --- Suggested Prompts ---
+ * Mix of "planning" prompts (draft, analyze, recommend) and "ops"
+ * prompts (pending approvals, kill switch, recent activity). Advisor
+ * is the single AI surface — there is no separate Agent page for
+ * agentic actions. We just surface the full capability here.
+ */
 const suggestedPrompts = [
+  // ── Ops / agent-style (top so they're visible first) ──
+  { icon: CheckSquare, text: "What needs my approval right now?", category: "Agent Queue" },
+  { icon: Activity, text: "What did the agent do today?", category: "Agent Activity" },
+  { icon: PowerOff, text: "Stop all AI sending", category: "Kill Switch" },
+  // ── Planning / analysis ──
   { icon: Sparkles, text: "Draft a first-booking outreach plan for trial and guest members who still have no confirmed session", category: "Smart First Session" },
   { icon: CalendarDays, text: "Draft a second-session follow-up for newcomers who only booked once", category: "Smart First Session" },
-  { icon: Mail, text: "Draft a guest-to-paid conversion campaign for recent first-time players", category: "Smart First Session" },
+  { icon: Users, text: "Which members are at risk of churning?", category: "Members" },
   { icon: TrendingUp, text: "Why is Tuesday morning occupancy so low?", category: "Occupancy" },
   { icon: DollarSign, text: "How can I increase revenue by 20% this quarter?", category: "Revenue" },
-  { icon: Users, text: "Which members are at risk of churning?", category: "Members" },
-  { icon: CalendarDays, text: "What's the best time to schedule a beginner clinic?", category: "Sessions" },
-  { icon: Target, text: "Compare this month's performance to last month", category: "Analytics" },
   { icon: Lightbulb, text: "Give me 3 quick wins to improve this week", category: "Strategy" },
 ];
 

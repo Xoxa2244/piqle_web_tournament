@@ -142,6 +142,20 @@ function createAdvisorProfiler() {
   return { span, mark, report }
 }
 
+/** Short "3m ago / 5h ago / yesterday" labels for the ops-intent summaries. */
+function formatAdvisorAgoFromNow(when: Date): string {
+  const diffMs = Date.now() - when.getTime()
+  if (!Number.isFinite(diffMs) || diffMs < 0) return 'just now'
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'yesterday'
+  return `${days}d ago`
+}
+
 async function getSessionFromRequest(req: Request) {
   try {
     const nextAuthSession = await getServerSession(authOptions)
@@ -2595,6 +2609,99 @@ export async function POST(req: Request) {
     if (plan.action === 'none') {
       profiler.report({ planAction: 'none', handled: false })
       return Response.json({ handled: false })
+    } else if (plan.action === 'ops_show_pending') {
+      // Read-only: counts pending actions + suggests next step.
+      // No side effect, no draft, no LLM call — plain DB query + text.
+      const pending = await profiler.span('opsShowPending', () =>
+        caller.intelligence.getPendingActions({ clubId }).catch(() => []),
+      )
+      const items = Array.isArray(pending) ? (pending as any[]) : []
+      if (items.length === 0) {
+        assistantMessage = withSuggested(
+          'Nothing is waiting for your approval right now. The agent is idle.',
+          ['Show me recent activity', 'Stop all AI sending', 'Draft a win-back campaign'],
+        )
+      } else {
+        const lines = items.slice(0, 10).map((item: any, i: number) => {
+          const title = item?.title || item?.summary || item?.kind || 'Untitled'
+          const age = item?.createdAt ? formatAdvisorAgoFromNow(new Date(item.createdAt as string)) : ''
+          return `${i + 1}. ${title}${age ? ` · ${age}` : ''}`
+        }).join('\n')
+        const overflow = items.length > 10 ? `\n…and ${items.length - 10} more.` : ''
+        assistantMessage = withSuggested(
+          `You have ${items.length} action${items.length === 1 ? '' : 's'} waiting for approval:\n\n${lines}${overflow}\n\nOpen the Agent page to approve, skip, or snooze them: /clubs/${clubId}/intelligence/agent`,
+          ['Stop all AI sending', 'What did the agent do today?', 'Open the agent page'],
+        )
+      }
+      assistantState = {
+        ...(memory.state || {}),
+        recentOutcomes: memory.state?.recentOutcomes || [],
+        lastActionKind: 'ops_show_pending',
+        lastActionTitle: `Show pending (${items.length})`,
+        updatedAt: new Date().toISOString(),
+      }
+    } else if (plan.action === 'ops_show_activity') {
+      // Text summary of today's agent actions. No LLM — just a count
+      // per type + a short timeline. Deep link to /agent for full view.
+      const activity = await profiler.span('opsShowActivity', () =>
+        caller.intelligence.getAgentActivity({ clubId, days: 1 }).catch(() => null as any),
+      )
+      const logs = ((activity as any)?.logs || []) as Array<{ type: string; status?: string; createdAt: string }>
+      if (logs.length === 0) {
+        assistantMessage = withSuggested(
+          'The agent did not record any activity in the last 24 hours.',
+          ['What needs my approval right now?', 'Stop all AI sending', 'Show pending drafts'],
+        )
+      } else {
+        const byType = new Map<string, number>()
+        for (const l of logs) {
+          byType.set(l.type || 'other', (byType.get(l.type || 'other') || 0) + 1)
+        }
+        const summary = Array.from(byType.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([type, count]) => `• ${type}: ${count}`)
+          .join('\n')
+        assistantMessage = withSuggested(
+          `In the last 24 hours the agent logged ${logs.length} action${logs.length === 1 ? '' : 's'}:\n\n${summary}\n\nOpen the agent page for the full timeline: /clubs/${clubId}/intelligence/agent`,
+          ['What needs my approval?', 'Stop all AI sending', 'Open the agent page'],
+        )
+      }
+      assistantState = {
+        ...(memory.state || {}),
+        recentOutcomes: memory.state?.recentOutcomes || [],
+        lastActionKind: 'ops_show_activity',
+        lastActionTitle: `Activity summary (${logs.length})`,
+        updatedAt: new Date().toISOString(),
+      }
+    } else if (plan.action === 'ops_kill_switch') {
+      // Hard stop. Flips agentLive=false + writes audit row.
+      // Reason is the original message so we have context in the audit
+      // log ("Stop all AI sending" is enough of a reason by itself).
+      try {
+        await profiler.span('opsKillSwitch', () =>
+          caller.club.killSwitch({
+            clubId,
+            reason: message.length >= 3 ? message.slice(0, 500) : 'Stopped via Advisor chat',
+          }),
+        )
+        assistantMessage = withSuggested(
+          '🛑 All AI sending is now stopped. The agent will not send any messages until you re-enable live mode.\n\nTo re-enable, go to Launch Runbook: /clubs/' + clubId + '/intelligence/launch',
+          ['Open Launch Runbook', 'What did the agent do today?'],
+        )
+        assistantState = {
+          ...(memory.state || {}),
+          recentOutcomes: memory.state?.recentOutcomes || [],
+          lastActionKind: 'ops_kill_switch',
+          lastActionTitle: 'Kill switch activated',
+          updatedAt: new Date().toISOString(),
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error'
+        assistantMessage = withSuggested(
+          `Could not activate the kill switch: ${msg}\n\nYou can stop the agent directly on the Launch Runbook: /clubs/${clubId}/intelligence/launch`,
+          ['Open Launch Runbook', 'Try again'],
+        )
+      }
     } else if (plan.action === 'create_cohort') {
       const parsed = await caller.intelligence.parseCohortFromText({
         clubId,

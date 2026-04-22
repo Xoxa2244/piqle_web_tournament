@@ -12,7 +12,20 @@ import { containsAdvisorSchedulingIntent } from './advisor-scheduling'
 import { parseAdvisorInactivityDays } from './advisor-reactivation'
 
 const advisorIntentSchema = z.object({
-  action: z.enum(['none', 'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members', 'trial_follow_up', 'renewal_reactivation', 'program_schedule', 'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing', 'update_admin_reminder_routing']),
+  action: z.enum([
+    'none',
+    'create_cohort', 'draft_campaign', 'fill_session', 'reactivate_members',
+    'trial_follow_up', 'renewal_reactivation', 'program_schedule',
+    'update_contact_policy', 'update_autonomy_policy', 'update_sandbox_routing',
+    'update_admin_reminder_routing',
+    // ── Ops-oriented intents (read-only queries + kill switch) ──
+    // Advisor is the single AI surface; these bring "Agent Dashboard"
+    // interactions ("what's pending?", "stop the agent") inside the chat
+    // so admins don't need to learn two paradigms.
+    'ops_show_pending',      // "What needs approval?"
+    'ops_show_activity',     // "What did the agent do today?"
+    'ops_kill_switch',       // "Stop all AI sending"
+  ]),
   usePreviousCohort: z.boolean().default(false),
   audienceText: z.string().optional(),
   campaignType: advisorCampaignTypeEnum.optional(),
@@ -112,6 +125,19 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   const wantsAdminReminderRouting = isAdvisorAdminReminderRoutingRequest(message)
   const inactivityDays = parseAdvisorInactivityDays(message) || undefined
 
+  // ── Ops intents (read-only queries + kill switch) ──
+  // Checked before campaign-draft fallbacks so "stop all sending" doesn't
+  // get mis-classified as a draft request.
+  const wantsShowPending =
+    /\b(pending|awaiting|waiting|approval|approvals?|queue|review)\b/.test(lower) &&
+    /\b(show|what|list|display|see|view|any)\b/.test(lower)
+  const wantsShowActivity =
+    /\b(activity|what did|what'?s.* done|recent actions?|history|today|today'?s)\b/.test(lower) &&
+    /\b(agent|ai|assistant|it|you|system)\b/.test(lower)
+  const wantsKillSwitch =
+    /\b(stop|kill|halt|disable|pause|turn off|shut down|shutoff)\b/.test(lower) &&
+    /\b(ai|agent|sending|sends|everything|all|outreach)\b/.test(lower)
+
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
   if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
   else if (/\b(fill|slot|underfilled|open spots?|empty slots?)\b/.test(lower)) campaignType = 'SLOT_FILLER'
@@ -141,6 +167,18 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
     lower.match(/\binvite\s+(\d{1,2})\s+(players?|members?|people)\b/) ||
     lower.match(/\b(\d{1,2})\s+(players?|members?|people)\b/)
   const candidateLimit = limitMatch ? Number(limitMatch[1]) : undefined
+
+  // ── Ops intents first — "stop the agent" is unambiguous and should
+  // never fall through to campaign drafting.
+  if (wantsKillSwitch) {
+    return { action: 'ops_kill_switch', usePreviousCohort: false }
+  }
+  if (wantsShowPending) {
+    return { action: 'ops_show_pending', usePreviousCohort: false }
+  }
+  if (wantsShowActivity) {
+    return { action: 'ops_show_activity', usePreviousCohort: false }
+  }
 
   if (wantsCohort) {
     return { action: 'create_cohort', audienceText: message, usePreviousCohort }
