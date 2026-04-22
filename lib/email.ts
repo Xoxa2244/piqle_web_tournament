@@ -213,7 +213,7 @@ const getAppBaseUrl = (preferredUrl?: string | null) =>
   getPlatformOriginFromUrl(preferredUrl) || getPlatformBaseUrl()
 
 const buildOtpEmailHtml = (code: string, ttlMinutes: number) => {
-  const baseUrl = getAppBaseUrl(bookingUrl)
+  const baseUrl = getAppBaseUrl()
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
 
   return `
@@ -826,7 +826,7 @@ export async function sendOutreachEmail({
   /** Mandrill tags for dashboard filtering */
   tags?: string[]
 }): Promise<{ messageId: string }> {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = getAppBaseUrl(bookingUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png`
   const text = `${body}\n\nBook now: ${bookingUrl}`
 
