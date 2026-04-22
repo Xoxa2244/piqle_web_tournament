@@ -221,6 +221,10 @@ export const authOptions: NextAuthOptions = {
             emailVerified: new Date(),
           }))
 
+        if (!user) {
+          throw new Error('EMAIL_USER_CREATE_FAILED')
+        }
+
         if (!user.emailVerified) {
           await updateCompatUserAuthFields(user.id, { emailVerified: new Date() })
         }
