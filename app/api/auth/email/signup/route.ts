@@ -4,6 +4,12 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { buildRateLimitHeaders, checkRateLimit, getIpFromRequest } from '@/lib/rate-limit'
 import { hashOtp, normalizeEmail } from '@/lib/emailOtp'
+import {
+  createCompatUser,
+  getCompatUserAccountProviders,
+  getCompatUserByEmail,
+  updateCompatUserAuthFields,
+} from '@/lib/auth-user-compat'
 
 async function linkPlayersToUserByEmail(userId: string, email: string) {
   const players = await prisma.player.findMany({
@@ -50,12 +56,12 @@ export async function POST(req: NextRequest) {
     const email = normalizeEmail(payload.email)
     const code = payload.code.trim()
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      include: { accounts: true },
-    })
+    const existingUser = await getCompatUserByEmail(email)
+    const providers = existingUser
+      ? await getCompatUserAccountProviders(existingUser.id)
+      : []
 
-    if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
+    if (providers.includes('google')) {
       return NextResponse.json(
         {
           error: 'GOOGLE_ACCOUNT_EXISTS',
@@ -113,26 +119,21 @@ export async function POST(req: NextRequest) {
 
     let userId = existingUser?.id
     if (existingUser) {
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          name,
-          passwordHash,
-          emailVerified: new Date(),
-          ...(payload.smsConsent ? { smsOptIn: true } : {}),
-        },
+      await updateCompatUserAuthFields(existingUser.id, {
+        name,
+        passwordHash,
+        emailVerified: new Date(),
+        smsOptIn: payload.smsConsent,
       })
     } else {
-      const createdUser = await prisma.user.create({
-        data: {
-          email,
-          name,
-          passwordHash,
-          emailVerified: new Date(),
-          smsOptIn: payload.smsConsent,
-        },
+      const createdUser = await createCompatUser({
+        email,
+        name,
+        passwordHash,
+        emailVerified: new Date(),
+        smsOptIn: payload.smsConsent,
       })
-      userId = createdUser.id
+      userId = createdUser?.id
     }
 
     await prisma.emailOtp.delete({ where: { email } })

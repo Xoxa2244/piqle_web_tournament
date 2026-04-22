@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendOtpEmail } from '@/lib/email'
 import { buildRateLimitHeaders, checkRateLimit, getIpFromRequest } from '@/lib/rate-limit'
+import { getCompatUserAccountProviders, getCompatUserByEmail } from '@/lib/auth-user-compat'
 import {
   EMAIL_OTP_COOLDOWN_MS,
   EMAIL_OTP_MAX_ATTEMPTS,
@@ -36,12 +37,12 @@ export async function POST(req: NextRequest) {
     const payload = requestSchema.parse(await req.json())
     const email = normalizeEmail(payload.email)
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      include: { accounts: true },
-    })
+    const existingUser = await getCompatUserByEmail(email)
+    const providers = existingUser
+      ? await getCompatUserAccountProviders(existingUser.id)
+      : []
 
-    if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
+    if (providers.includes('google')) {
       return NextResponse.json(
         {
           error: 'GOOGLE_ACCOUNT_EXISTS',

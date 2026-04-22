@@ -7,6 +7,13 @@ import type { Adapter, AdapterAccount, AdapterUser } from "next-auth/adapters"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
 import bcrypt from 'bcryptjs'
+import {
+  createCompatUser,
+  getCompatUserAccountProviders,
+  getCompatUserByEmail,
+  getCompatUserById,
+  updateCompatUserAuthFields,
+} from './auth-user-compat'
 
 async function linkPlayersToUserByEmail(userId: string, email?: string | null) {
   if (!email) return
@@ -41,17 +48,27 @@ const authUserSelect = {
 } as const
 
 async function getAuthUserById(userId: string) {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    select: authUserSelect,
-  })
+  const user = await getCompatUserById(userId)
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    emailVerified: user.emailVerified,
+  }
 }
 
 async function getAuthUserByEmail(email: string) {
-  return prisma.user.findUnique({
-    where: { email: normalizeEmail(email) },
-    select: authUserSelect,
-  })
+  const user = await getCompatUserByEmail(email)
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    emailVerified: user.emailVerified,
+  }
 }
 
 const baseAdapter = PrismaAdapter(prisma) as Adapter
@@ -83,28 +100,21 @@ const adapter: Adapter = {
     return user as AdapterUser | null
   },
   async createUser(data: Omit<AdapterUser, "id">) {
-    const user = await prisma.user.create({
-      data: {
-        email: normalizeEmail(data.email),
-        name: data.name ?? null,
-        image: data.image ?? null,
-        emailVerified: data.emailVerified ?? null,
-      },
-      select: authUserSelect,
+    const user = await createCompatUser({
+      email: data.email,
+      name: data.name ?? null,
+      image: data.image ?? null,
+      emailVerified: data.emailVerified ?? null,
     })
 
     return user as AdapterUser
   },
   async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
-    const user = await prisma.user.update({
-      where: { id: String(data.id) },
-      data: {
-        email: data.email ? normalizeEmail(data.email) : undefined,
-        name: typeof data.name !== 'undefined' ? data.name : undefined,
-        image: typeof data.image !== 'undefined' ? data.image : undefined,
-        emailVerified: typeof data.emailVerified !== 'undefined' ? data.emailVerified : undefined,
-      },
-      select: authUserSelect,
+    const user = await updateCompatUserAuthFields(String(data.id), {
+      email: data.email,
+      name: typeof data.name !== 'undefined' ? data.name : undefined,
+      image: typeof data.image !== 'undefined' ? data.image : undefined,
+      emailVerified: typeof data.emailVerified !== 'undefined' ? data.emailVerified : undefined,
     })
 
     return user as AdapterUser
@@ -195,34 +205,24 @@ export const authOptions: NextAuthOptions = {
 
         await prisma.emailOtp.delete({ where: { email } })
 
-        const existingUser = await prisma.user.findUnique({
-          where: { email },
-          select: {
-            ...authUserSelect,
-            accounts: {
-              select: { provider: true },
-            },
-          },
-        })
+        const existingUser = await getCompatUserByEmail(email)
+        const providers = existingUser
+          ? await getCompatUserAccountProviders(existingUser.id)
+          : []
 
-        if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
+        if (providers.includes('google')) {
           throw new Error('EMAIL_GOOGLE_ACCOUNT')
         }
 
         const user =
           existingUser ??
-          (await prisma.user.create({
-            data: {
-              email,
-              emailVerified: new Date(),
-            },
+          (await createCompatUser({
+            email,
+            emailVerified: new Date(),
           }))
 
         if (!user.emailVerified) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { emailVerified: new Date() },
-          })
+          await updateCompatUserAuthFields(user.id, { emailVerified: new Date() })
         }
 
         return user
