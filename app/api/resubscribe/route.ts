@@ -23,19 +23,30 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${getAppBaseUrl()}/unsubscribe?status=invalid`)
   }
 
-  await prisma.userPlayPreference.upsert({
-    where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
-    update: { notificationsOptOut: false },
-    create: {
-      userId: payload.userId,
-      clubId: payload.clubId,
-      notificationsOptOut: false,
-      preferredDays: [],
-      preferredFormats: [],
-      targetSessionsPerWeek: 2,
-      skillLevel: 'ALL_LEVELS',
-    },
-  })
+  await prisma.$transaction([
+    prisma.userPlayPreference.upsert({
+      where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
+      update: { notificationsOptOut: false },
+      create: {
+        userId: payload.userId,
+        clubId: payload.clubId,
+        notificationsOptOut: false,
+        preferredDays: [],
+        preferredFormats: [],
+        targetSessionsPerWeek: 2,
+        skillLevel: 'ALL_LEVELS',
+      },
+    }),
+    prisma.$executeRaw`
+      UPDATE users
+      SET
+        sms_opt_in = true,
+        "updatedAt" = NOW()
+      WHERE id = ${payload.userId}
+    `,
+  ])
+
+  console.log(`[Resubscribe] User ${payload.userId} re-subscribed to club ${payload.clubId}; sms_opt_in=true`)
 
   return NextResponse.redirect(
     `${getAppBaseUrl()}/unsubscribe?status=resubscribed&token=${encodeURIComponent(token)}`
