@@ -111,14 +111,20 @@ function ReactivationAudience({ clubId, inactivityDays, onDaysChange, onAudience
   const list = Array.isArray(candidates) ? candidates : []
 
   useEffect(() => {
-    if (list.length > 0) {
-      onAudienceChange({
-        memberIds: list.map((c: any) => c.userId ?? c.id),
-        count: list.length,
-        label: `${list.length} inactive ${inactivityDays}+ days`,
-      })
-    }
-  }, [list.length, inactivityDays]) // eslint-disable-line react-hooks/exhaustive-deps
+    onAudienceChange({
+      memberIds: list.map((c: any) => c.member?.id ?? c.memberId ?? c.userId ?? c.id).filter(Boolean),
+      count: list.length,
+      label: `${list.length} inactive ${inactivityDays}+ days`,
+    })
+  }, [inactivityDays, list, onAudienceChange])
+
+  const orderedPreview = useMemo(() => {
+    return [...list].sort((a: any, b: any) => {
+      const aDays = a.daysSinceLastActivity ?? 0
+      const bDays = b.daysSinceLastActivity ?? 0
+      return bDays - aDays
+    })
+  }, [list])
 
   return (
     <div>
@@ -133,6 +139,7 @@ function ReactivationAudience({ clubId, inactivityDays, onDaysChange, onAudience
       ) : (
         <div className="text-xs" style={{ color: '#8B5CF6', fontWeight: 600 }}>{list.length} inactive members found</div>
       )}
+      {!isLoading && <AudiencePreviewList members={orderedPreview} />}
     </div>
   )
 }
@@ -249,6 +256,33 @@ function SessionAudience({ clubId, sessionId, onSessionIdChange, onAudienceChang
           })}
         </div>
       )}
+      {!isLoading && list.length > 0 && (
+        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+          <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+            Available sessions
+          </div>
+          <div className="space-y-2">
+            {list.slice(0, 3).map((s: any) => {
+              const booked = s.booked ?? s.currentPlayers ?? s.registered ?? 0
+              const capacity = s.capacity ?? s.maxPlayers ?? 1
+              return (
+                <div
+                  key={s.id ?? s.sessionId}
+                  className="rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}
+                >
+                  <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 600 }}>
+                    {s.title ?? s.name ?? s.format ?? 'Session'}
+                  </div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                    {booked}/{capacity} booked
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -262,14 +296,12 @@ function NewMemberAudience({ clubId, onAudienceChange }: {
   const list = Array.isArray(members) ? members : []
 
   useEffect(() => {
-    if (list.length > 0) {
-      onAudienceChange({
-        memberIds: list.map((m: any) => m.userId ?? m.id),
-        count: list.length,
-        label: `${list.length} new members (${days}d)`,
-      })
-    }
-  }, [list.length, days]) // eslint-disable-line react-hooks/exhaustive-deps
+    onAudienceChange({
+      memberIds: list.map((m: any) => m.userId ?? m.id).filter(Boolean),
+      count: list.length,
+      label: `${list.length} new members (${days}d)`,
+    })
+  }, [days, list, onAudienceChange])
 
   return (
     <div>
@@ -284,6 +316,7 @@ function NewMemberAudience({ clubId, onAudienceChange }: {
       ) : (
         <div className="text-xs" style={{ color: '#8B5CF6', fontWeight: 600 }}>{list.length} new members</div>
       )}
+      {!isLoading && <AudiencePreviewList members={list} />}
     </div>
   )
 }
