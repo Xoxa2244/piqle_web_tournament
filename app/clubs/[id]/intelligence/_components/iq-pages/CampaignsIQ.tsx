@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
@@ -305,19 +305,24 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const [activityReferralLaneFilter, setActivityReferralLaneFilter] = useState<string>('all')
   const [activityReferralRouteFilter, setActivityReferralRouteFilter] = useState<string>('all')
   const [activeReferralRewardIssuanceKey, setActiveReferralRewardIssuanceKey] = useState<string | null>(null)
-  const { data: advisorDrafts = [] } = useAdvisorDrafts(clubId, 24)
-  const { data: settingsData } = useIntelligenceSettings(clubId)
-  const { data: pilotHealth } = useOutreachPilotHealth(clubId, 14)
-  const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8)
-  const { data: guestTrialBookingData } = useGuestTrialBooking(clubId, 21, 8)
-  const { data: winBackSnapshot } = useWinBackSnapshot(clubId, 60, 8)
-  const { data: referralSnapshot } = useReferralSnapshot(clubId, 60, 8)
+  const [loadSecondaryInsights, setLoadSecondaryInsights] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoadSecondaryInsights(true), 250)
+    return () => window.clearTimeout(timer)
+  }, [])
+  const { data: advisorDrafts = [] } = useAdvisorDrafts(clubId, 24, { enabled: loadSecondaryInsights })
+  const { data: settingsData } = useIntelligenceSettings(clubId, { enabled: loadSecondaryInsights })
+  const { data: pilotHealth } = useOutreachPilotHealth(clubId, 14, { enabled: loadSecondaryInsights })
+  const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8, { enabled: loadSecondaryInsights })
+  const { data: guestTrialBookingData } = useGuestTrialBooking(clubId, 21, 8, { enabled: loadSecondaryInsights })
+  const { data: winBackSnapshot } = useWinBackSnapshot(clubId, 60, 8, { enabled: loadSecondaryInsights })
+  const { data: referralSnapshot } = useReferralSnapshot(clubId, 60, 8, { enabled: loadSecondaryInsights })
   const { data: campaignDrilldown, isLoading: isCampaignDrilldownLoading } = useCampaignDrilldown(
     clubId,
     selectedCampaign?.type || null,
     selectedCampaign?.date || null,
   )
-  const { data: decisionRecords = [] } = useAgentDecisionRecords(clubId, 12)
+  const { data: decisionRecords = [] } = useAgentDecisionRecords(clubId, 12, { enabled: loadSecondaryInsights })
   const shadowBackOutreachRolloutAction = useShadowBackOutreachRolloutAction()
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
 

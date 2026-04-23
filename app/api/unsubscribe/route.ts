@@ -14,31 +14,38 @@ async function processUnsubscribe(token: string): Promise<{ userId: string; club
   const payload = verifyUnsubscribeToken(token)
   if (!payload) return null
 
-  await prisma.userPlayPreference.upsert({
-    where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
-    update: { notificationsOptOut: true },
-    create: {
-      userId: payload.userId,
-      clubId: payload.clubId,
-      notificationsOptOut: true,
-      preferredDays: [],
-      preferredFormats: [],
-      targetSessionsPerWeek: 2,
-      skillLevel: 'ALL_LEVELS',
-    },
-  })
+  await prisma.$transaction([
+    prisma.userPlayPreference.upsert({
+      where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
+      update: { notificationsOptOut: true },
+      create: {
+        userId: payload.userId,
+        clubId: payload.clubId,
+        notificationsOptOut: true,
+        preferredDays: [],
+        preferredFormats: [],
+        targetSessionsPerWeek: 2,
+        skillLevel: 'ALL_LEVELS',
+      },
+    }),
+    prisma.$executeRaw`
+      UPDATE users
+      SET
+        sms_opt_in = false,
+        "updatedAt" = NOW()
+      WHERE id = ${payload.userId}
+    `,
+    prisma.aIRecommendationLog.updateMany({
+      where: {
+        userId: payload.userId,
+        clubId: payload.clubId,
+        status: { in: ['PENDING', 'SENT'] },
+      },
+      data: { status: 'UNSUBSCRIBED' },
+    }),
+  ])
 
-  // Mark any pending/sent recommendations as unsubscribed
-  await prisma.aIRecommendationLog.updateMany({
-    where: {
-      userId: payload.userId,
-      clubId: payload.clubId,
-      status: { in: ['PENDING', 'SENT'] },
-    },
-    data: { status: 'UNSUBSCRIBED' },
-  })
-
-  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}`)
+  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}; sms_opt_in=false`)
 
   return payload
 }

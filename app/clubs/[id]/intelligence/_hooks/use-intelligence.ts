@@ -279,11 +279,15 @@ export function useSendOutreach() {
   return mutation
 }
 
+type IntelligenceQueryOptions = {
+  enabled?: boolean
+}
+
 // ── Intelligence Settings ──
-export function useIntelligenceSettings(clubId: string) {
+export function useIntelligenceSettings(clubId: string, options?: IntelligenceQueryOptions) {
   return trpc.intelligence.getIntelligenceSettings.useQuery(
     { clubId },
-    { enabled: !!clubId }
+    { enabled: !!clubId && (options?.enabled ?? true) }
   )
 }
 
@@ -572,11 +576,15 @@ export function useUnderfilledSessions(clubId: string) {
   )
 }
 
-export function useAdvisorDrafts(clubId: string, limit = 24) {
+export function useAdvisorDrafts(clubId: string, limit = 24, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.listAdvisorDrafts.useQuery(
     { clubId, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 15000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 15000,
+    }
   )
 
   if (isDemo) {
@@ -629,11 +637,15 @@ export function useOpsTeammates(clubId: string) {
   return query
 }
 
-export function useAgentDecisionRecords(clubId: string, limit = 12) {
+export function useAgentDecisionRecords(clubId: string, limit = 12, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.listAgentDecisionRecords.useQuery(
     { clubId, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 30 * 1000, refetchInterval: 15000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 30 * 1000,
+      refetchInterval: options?.enabled === false ? false : 15000,
+    }
   )
 
   if (isDemo) {
@@ -648,11 +660,15 @@ export function useAgentDecisionRecords(clubId: string, limit = 12) {
   return query
 }
 
-export function useOutreachPilotHealth(clubId: string, days = 14) {
+export function useOutreachPilotHealth(clubId: string, days = 14, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getOutreachPilotHealth.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo, staleTime: 60 * 1000, refetchInterval: 30000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 30000,
+    }
   )
 
   if (isDemo) {
@@ -694,11 +710,15 @@ export function useNewMembers(clubId: string, days: number = 14) {
   )
 }
 
-export function useSmartFirstSession(clubId: string, windowDays: number = 21, limit: number = 8) {
+export function useSmartFirstSession(clubId: string, windowDays: number = 21, limit: number = 8, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getSmartFirstSession.useQuery(
     { clubId, windowDays, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 2 * 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 30000,
+    }
   )
 
   if (isDemo) {
@@ -712,11 +732,15 @@ export function useSmartFirstSession(clubId: string, windowDays: number = 21, li
   return query
 }
 
-export function useGuestTrialBooking(clubId: string, windowDays: number = 21, limit: number = 8) {
+export function useGuestTrialBooking(clubId: string, windowDays: number = 21, limit: number = 8, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getGuestTrialBooking.useQuery(
     { clubId, windowDays, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 2 * 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 30000,
+    }
   )
 
   if (isDemo) {
@@ -730,11 +754,15 @@ export function useGuestTrialBooking(clubId: string, windowDays: number = 21, li
   return query
 }
 
-export function useWinBackSnapshot(clubId: string, windowDays: number = 60, limit: number = 8) {
+export function useWinBackSnapshot(clubId: string, windowDays: number = 60, limit: number = 8, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getWinBackSnapshot.useQuery(
     { clubId, windowDays, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 2 * 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 30000,
+    }
   )
 
   if (isDemo) {
@@ -770,11 +798,15 @@ export function useAIRevenueAttribution(clubId: string, days: number = 30) {
   return query
 }
 
-export function useReferralSnapshot(clubId: string, windowDays: number = 60, limit: number = 8) {
+export function useReferralSnapshot(clubId: string, windowDays: number = 60, limit: number = 8, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getReferralSnapshot.useQuery(
     { clubId, windowDays, limit },
-    { enabled: !!clubId && !isDemo, staleTime: 2 * 60 * 1000, refetchInterval: 30000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 2 * 60 * 1000,
+      refetchInterval: options?.enabled === false ? false : 30000,
+    }
   )
 
   if (isDemo) {
