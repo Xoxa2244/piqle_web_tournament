@@ -1,9 +1,10 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import {
   UserMinus, Shield, CalendarDays, UserPlus, Heart,
-  Sparkles, ArrowRight, Megaphone,
+  Sparkles, ArrowRight, Megaphone, Loader2,
 } from 'lucide-react'
 import { useMemberHealth, useReactivationCandidates, useUnderfilledSessions, useNewMembers } from '../../../_hooks/use-intelligence'
 
@@ -23,6 +24,7 @@ interface CampaignSuggestionsProps {
 }
 
 export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestionsProps) {
+  const [loadingStep, setLoadingStep] = useState(0)
   const { data: healthData, isLoading: healthLoading } = useMemberHealth(clubId)
   const { data: reactivationData, isLoading: reactivationLoading } = useReactivationCandidates(clubId, 21)
   const { data: underfilledData, isLoading: underfilledLoading } = useUnderfilledSessions(clubId)
@@ -30,17 +32,112 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
 
   const isLoading = healthLoading || reactivationLoading || underfilledLoading || newMembersLoading
 
+  useEffect(() => {
+    if (!isLoading) return
+    const interval = window.setInterval(() => {
+      setLoadingStep((current) => (current + 1) % 3)
+    }, 1400)
+    return () => window.clearInterval(interval)
+  }, [isLoading])
+
   if (isLoading) {
+    const loadingMessages = [
+      'Collecting member activity and booking signals',
+      'Reviewing reactivation, retention, and welcome opportunities',
+      'Preparing AI campaign recommendations for this club',
+    ]
+    const loadingSteps = [
+      {
+        title: 'Collecting club activity',
+        detail: 'Reviewing bookings, inactive members, and recent engagement signals.',
+      },
+      {
+        title: 'Analyzing campaign opportunities',
+        detail: 'Checking win-back, retention, open-session, and new-member patterns.',
+      },
+      {
+        title: 'Creating AI recommendations',
+        detail: 'Ranking the highest-impact campaigns to show on this page.',
+      },
+    ]
+
     return (
       <div className="space-y-6 max-w-[1400px] mx-auto">
-        <div className="text-center pt-4">
-          <div className="w-12 h-12 rounded-2xl mx-auto mb-3 animate-pulse" style={{ background: 'var(--subtle)' }} />
-          <div className="w-48 h-5 mx-auto rounded animate-pulse" style={{ background: 'var(--subtle)' }} />
-          <div className="w-72 h-4 mx-auto mt-2 rounded animate-pulse" style={{ background: 'var(--subtle)' }} />
+        <div
+          className="rounded-3xl px-6 py-7"
+          style={{
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.14), rgba(6,182,212,0.08))',
+            border: '1px solid rgba(139,92,246,0.18)',
+          }}
+        >
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ background: 'rgba(139,92,246,0.14)', color: '#A78BFA' }}>
+              <Loader2 className="w-7 h-7 animate-spin" />
+            </div>
+            <div className="text-xs font-semibold tracking-[0.24em] uppercase" style={{ color: '#A78BFA' }}>
+              AI Campaign Intelligence
+            </div>
+            <div className="text-xl font-bold" style={{ color: 'var(--heading)' }}>
+              Building AI campaign recommendations
+            </div>
+            <div className="text-sm max-w-2xl" style={{ color: 'var(--t2)' }}>
+              {loadingMessages[loadingStep]}
+            </div>
+            <div className="text-xs max-w-2xl" style={{ color: 'var(--t4)' }}>
+              We are gathering the member signals behind this section now. On larger clubs this step can take longer,
+              so the recommendations load separately from the rest of the page.
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-3 mt-6">
+            {loadingSteps.map((step, index) => {
+              const isActive = index === loadingStep
+              const isComplete = index < loadingStep
+
+              return (
+                <div
+                  key={step.title}
+                  className="rounded-2xl p-4 text-left transition-all"
+                  style={{
+                    background: isActive
+                      ? 'rgba(139,92,246,0.12)'
+                      : 'rgba(255,255,255,0.03)',
+                    border: isComplete || isActive
+                      ? '1px solid rgba(139,92,246,0.25)'
+                      : '1px solid var(--card-border)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
+                      style={{
+                        background: isComplete || isActive ? 'rgba(139,92,246,0.18)' : 'rgba(255,255,255,0.06)',
+                        color: isComplete || isActive ? '#A78BFA' : 'var(--t4)',
+                      }}
+                    >
+                      {index + 1}
+                    </div>
+                    <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                      {step.title}
+                    </div>
+                  </div>
+                  <div className="text-xs leading-5" style={{ color: 'var(--t3)' }}>
+                    {step.detail}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
+
         <div className="grid md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="animate-pulse rounded-2xl h-36" style={{ background: 'var(--subtle)' }} />
+            <div
+              key={i}
+              className="animate-pulse rounded-2xl h-36"
+              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+            />
           ))}
         </div>
       </div>
