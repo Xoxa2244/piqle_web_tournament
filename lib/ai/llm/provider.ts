@@ -85,11 +85,22 @@ export async function generateWithFallback(params: {
   maxTokens?: number;
   /** Per-call timeout in ms. Defaults to 30s. */
   timeoutMs?: number;
+  /** Override primary retry count for latency-sensitive flows. */
+  maxPrimaryRetries?: number;
   /** Club ID + operation name — when provided, usage is tracked for cost visibility. */
   clubId?: string;
   operation?: string;
 }): Promise<{ text: string; model: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }> {
-  const { system, prompt, tier = 'standard', maxTokens = 1000, timeoutMs = DEFAULT_TIMEOUT_MS, clubId, operation } = params;
+  const {
+    system,
+    prompt,
+    tier = 'standard',
+    maxTokens = 1000,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxPrimaryRetries = 2,
+    clubId,
+    operation,
+  } = params;
 
   const recordUsage = (modelName: string, inputTokens: number | undefined, outputTokens: number | undefined) => {
     if (!clubId || !operation) return; // tracking is opt-in
@@ -117,7 +128,7 @@ export async function generateWithFallback(params: {
           timeoutMs,
           `generateText(${MODEL_MAP[tier].primary})`,
         ),
-      { maxRetries: 2, label: MODEL_MAP[tier].primary },
+      { maxRetries: maxPrimaryRetries, label: MODEL_MAP[tier].primary },
     );
     recordUsage(MODEL_MAP[tier].primary, result.usage.inputTokens, result.usage.outputTokens);
     return {

@@ -4892,9 +4892,60 @@ OUTPUT FORMAT:
 
       const systemPrompt = composeSystem(baseSystemPrompt, voice)
 
+      const contextSeed = [
+        input.campaignType,
+        input.channel,
+        input.audienceCount,
+        input.context?.riskSegment || '',
+        input.context?.sessionTitle || '',
+        input.context?.inactivityDays || '',
+      ].join('|')
+
+      const requestSeed = `${contextSeed}|${Date.now()}|${Math.random().toString(36).slice(2, 8)}`
+
+      const selectVariant = <T,>(items: T[], seed = requestSeed): T => {
+        const hash = Array.from(seed).reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+        return items[hash % items.length]
+      }
+
+      const creativeAngles: Record<string, string[]> = {
+        CHECK_IN: [
+          'Sound warm and casual, like a thoughtful nudge from the club.',
+          'Frame this as a low-pressure invitation to get back on court this week.',
+          'Make it feel personal and timely, without sounding salesy.',
+        ],
+        RETENTION_BOOST: [
+          'Lead with belonging and momentum, making the member feel valued.',
+          'Acknowledge that routines slip, then make returning feel easy and welcome.',
+          'Use an encouraging, community-first tone that rebuilds motivation.',
+        ],
+        REACTIVATION: [
+          'Make the comeback feel exciting, with fresh energy around the club.',
+          'Write like the club genuinely misses this member and wants them back.',
+          'Focus on how easy it is to return and rejoin the mix now.',
+        ],
+        SLOT_FILLER: [
+          'Create light urgency around a limited opening without sounding pushy.',
+          'Make the session feel like a particularly good fit for this member.',
+          'Keep it nimble and timely, as if a spot just opened up.',
+        ],
+        EVENT_INVITE: [
+          'Make the invite feel special and personal, not mass-sent.',
+          'Position the event as fun, social, and worth making time for.',
+          'Use a slightly elevated invitation tone with clear next action.',
+        ],
+        NEW_MEMBER_WELCOME: [
+          'Make it feel warm, reassuring, and easy for a new member to get started.',
+          'Sound like a personal welcome from the club team.',
+          'Guide the member toward a clear, simple first step.',
+        ],
+      }
+      const selectedAngle = selectVariant(creativeAngles[input.campaignType] || creativeAngles.CHECK_IN)
+
       const userPrompt = `Generate a ${input.campaignType} campaign message.
 Club: "${clubName}". Channel: ${input.channel}.
 Purpose: ${campaignDescriptions[input.campaignType] || input.campaignType}
+Creative direction: ${selectedAngle}
 ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
 
       try {
@@ -4903,7 +4954,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           system: systemPrompt,
           prompt: userPrompt,
           tier: 'fast',
-          maxTokens: 500,
+          maxTokens: 280,
+          timeoutMs: 3500,
+          maxPrimaryRetries: 0,
           clubId: input.clubId,
           operation: 'generateCampaignMessage',
         })
@@ -4924,40 +4977,81 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         }
       } catch (err) {
         log.warn('[generateCampaignMessage] LLM failed, using fallback templates:', (err as Error).message?.slice(0, 100))
-        // Hardcoded fallback templates
-        const fallbacks: Record<string, { subject: string; body: string; smsBody: string }> = {
-          CHECK_IN: {
-            subject: `{{name}}, we miss you at {{club}}!`,
-            body: `Hi {{name}},\n\nWe noticed you haven't been around lately and wanted to check in. There are some great sessions coming up that we think you'd enjoy.\n\nHope to see you soon!\n\n— {{club}} Team`,
-            smsBody: `Hey {{name}}! We miss you at {{club}}. Check out our upcoming sessions!`,
-          },
-          RETENTION_BOOST: {
-            subject: `{{name}}, your spot is waiting at {{club}}`,
-            body: `Hi {{name}},\n\nWe value you as part of our community and wanted to reach out. There are exciting sessions and events happening — we'd love to see you back on the court.\n\n— {{club}} Team`,
-            smsBody: `{{name}}, your {{club}} community misses you! Come back and play — great sessions this week.`,
-          },
-          REACTIVATION: {
-            subject: `It's been a while, {{name}} — come back to {{club}}!`,
-            body: `Hi {{name}},\n\nIt's been a while since your last visit, and we'd love to have you back. A lot has been happening at {{club}} — new sessions, new players, and plenty of fun.\n\n— {{club}} Team`,
-            smsBody: `{{name}}, it's been too long! Come back to {{club}} — lots of new sessions waiting for you.`,
-          },
-          SLOT_FILLER: {
-            subject: `Spots open this week at {{club}}, {{name}}!`,
-            body: `Hi {{name}},\n\nWe have some open spots in upcoming sessions and thought you might be interested. Don't miss out — they tend to fill up fast!\n\n— {{club}} Team`,
-            smsBody: `{{name}}, spots available at {{club}} this week! Book now before they fill up.`,
-          },
-          EVENT_INVITE: {
-            subject: `You're invited, {{name}}!`,
-            body: `Hi {{name}},\n\nWe have an exciting event coming up at {{club}} and we'd love for you to join. Save your spot now!\n\n— {{club}} Team`,
-            smsBody: `{{name}}, you're invited to a special event at {{club}}! RSVP now.`,
-          },
-          NEW_MEMBER_WELCOME: {
-            subject: `Welcome to {{club}}, {{name}}! 🎉`,
-            body: `Hi {{name}},\n\nWelcome to {{club}}! We're thrilled to have you as part of our community. Check out our upcoming sessions and find the perfect one for your schedule and skill level.\n\nSee you on the court!\n\n— {{club}} Team`,
-            smsBody: `Welcome to {{club}}, {{name}}! Check out our upcoming sessions and book your first game.`,
-          },
+        const fallbacks: Record<string, Array<{ subject: string; body: string; smsBody: string }>> = {
+          CHECK_IN: [
+            {
+              subject: `{{name}}, we've got a good session for you at {{club}}`,
+              body: `Hi {{name}},\n\nJust checking in — we'd love to see you back at {{club}}. There are some upcoming sessions that feel like a great fit if you want to jump back in.\n\n— {{club}} Team`,
+              smsBody: `Hey {{name}}! We’d love to see you back at {{club}}. There are a few good sessions coming up.`,
+            },
+            {
+              subject: `Quick check-in from {{club}}, {{name}}`,
+              body: `Hi {{name}},\n\nYou crossed our mind, so we wanted to reach out. If you're thinking about getting back on court, this is a great week to do it.\n\n— {{club}} Team`,
+              smsBody: `Quick check-in from {{club}}: if you're up for playing again, this week looks like a good one.`,
+            },
+          ],
+          RETENTION_BOOST: [
+            {
+              subject: `{{name}}, your place at {{club}} is still here`,
+              body: `Hi {{name}},\n\nYou’re an important part of the {{club}} community, and we’d love to help you get back into a regular rhythm. There are good opportunities to play again this week.\n\n— {{club}} Team`,
+              smsBody: `{{name}}, your {{club}} community would love to see you back. Want to play again this week?`,
+            },
+            {
+              subject: `We’d love to have you back on court, {{name}}`,
+              body: `Hi {{name}},\n\nYou’ve been missed at {{club}}. If the last few weeks got busy, no worries — this is a good moment to come back and ease into it again.\n\n— {{club}} Team`,
+              smsBody: `You’ve been missed at {{club}}, {{name}}. Come back and get a game in this week.`,
+            },
+          ],
+          REACTIVATION: [
+            {
+              subject: `{{name}}, it’s a good time to come back to {{club}}`,
+              body: `Hi {{name}},\n\nIt’s been a while since your last visit, and we’d love to have you back. There’s fresh energy around {{club}} right now, with good sessions and plenty of players back on court.\n\n— {{club}} Team`,
+              smsBody: `{{name}}, it’s been a while — come back to {{club}} and jump into a session this week.`,
+            },
+            {
+              subject: `We miss seeing you at {{club}}, {{name}}`,
+              body: `Hi {{name}},\n\nWe noticed it’s been a little while since you last played at {{club}}. If you’ve been meaning to come back, now’s a great time to pick a session and get back into the mix.\n\n— {{club}} Team`,
+              smsBody: `We miss seeing you at {{club}}, {{name}}. If you’ve been meaning to come back, now’s a good time.`,
+            },
+          ],
+          SLOT_FILLER: [
+            {
+              subject: `{{name}}, open spots just came up at {{club}}`,
+              body: `Hi {{name}},\n\nA few spots are still open in an upcoming session at {{club}}, and we thought of you right away. If you want in, this is a great chance to grab a place.\n\n— {{club}} Team`,
+              smsBody: `{{name}}, a few open spots just came up at {{club}}. Book now before they go.`,
+            },
+            {
+              subject: `There’s room for you this week, {{name}}`,
+              body: `Hi {{name}},\n\nWe have a session with space left and thought it could be a good fit for you. If you’re free, grab a spot before the list fills up.\n\n— {{club}} Team`,
+              smsBody: `There’s still room for you at {{club}} this week, {{name}}. Want me to save you a spot?`,
+            },
+          ],
+          EVENT_INVITE: [
+            {
+              subject: `{{name}}, you’re invited to something special at {{club}}`,
+              body: `Hi {{name}},\n\nWe’ve got an upcoming event at {{club}} and would love for you to be part of it. It should be a fun one, and we think you’d really enjoy it.\n\n— {{club}} Team`,
+              smsBody: `{{name}}, you’re invited to a special event at {{club}}. Take a look and join us.`,
+            },
+            {
+              subject: `A quick invitation for you, {{name}}`,
+              body: `Hi {{name}},\n\nThere’s a session coming up at {{club}} that we think is worth your attention. If it fits your schedule, we’d love to see you there.\n\n— {{club}} Team`,
+              smsBody: `A quick invitation for you, {{name}} — there’s a good event coming up at {{club}}.`,
+            },
+          ],
+          NEW_MEMBER_WELCOME: [
+            {
+              subject: `Welcome to {{club}}, {{name}}`,
+              body: `Hi {{name}},\n\nWelcome to {{club}} — we’re excited to have you here. A great first step is to browse the upcoming sessions and pick one that feels right for your level and schedule.\n\n— {{club}} Team`,
+              smsBody: `Welcome to {{club}}, {{name}}! Take a look at the upcoming sessions and book your first one.`,
+            },
+            {
+              subject: `Great to have you with us, {{name}}`,
+              body: `Hi {{name}},\n\nWe’re really glad you joined {{club}}. If you’re ready to get started, the best next move is to explore the upcoming sessions and choose one that works for you.\n\n— {{club}} Team`,
+              smsBody: `Great to have you with us, {{name}}. Check out upcoming sessions at {{club}} and get started.`,
+            },
+          ],
         }
-        return fallbacks[input.campaignType] || fallbacks.CHECK_IN
+        return selectVariant(fallbacks[input.campaignType] || fallbacks.CHECK_IN)
       }
     }),
 
