@@ -519,31 +519,31 @@ function buildCohortFilterClause(f: CohortFilter): string {
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
       case 'sessionFormat':
         // Players who have played in a specific session format
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
       case 'dayOfWeek': {
         // Players who play on a specific day of week (Monday=1, Sunday=0)
         const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
         const dayNum = dayMap[String(f.value)] ?? 0
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
       }
       case 'frequency': {
         // Sessions per month — players who play at least N times/month
         const freqVal = Number(f.value)
         if (!Number.isFinite(freqVal) || freqVal < 0 || freqVal > 10000) return 'TRUE'
         const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
       }
       case 'recency': {
         // Days since last visit — players who visited within/after N days
         const recVal = Number(f.value)
         if (!Number.isFinite(recVal) || recVal < 0 || recVal > 36500) return 'TRUE'
         const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
       case 'userId':
         // Direct user ID filter (used for "cohort from session")
         if (f.op === 'in' && Array.isArray(f.value)) {
-          const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'`).join(',')
+          const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'::uuid`).join(',')
           return `u.id IN (${ids})`
         }
         return 'TRUE'
@@ -584,7 +584,7 @@ const ACTIVE_MEMBER_JOIN = `
     SELECT DISTINCT psb."userId"
     FROM play_session_bookings psb
     JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+    WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED'
   ) active ON active."userId" = u.id
 `
 
@@ -595,7 +595,7 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
     ${ACTIVE_MEMBER_JOIN}
-    WHERE cf.club_id = $1 AND ${where}
+    WHERE cf.club_id = $1::uuid AND ${where}
   `, clubId)
   return Number(result[0]?.count ?? 0)
 }
@@ -618,7 +618,7 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
     ${ACTIVE_MEMBER_JOIN}
-    WHERE cf.club_id = $1 AND ${where}
+    WHERE cf.club_id = $1::uuid AND ${where}
     ORDER BY u.name ASC
     LIMIT 500
   `, clubId)
@@ -6228,7 +6228,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+          WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED'
         )
         SELECT
           COUNT(*)::bigint as total,
@@ -6435,7 +6435,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
           SELECT DISTINCT cf.user_id
           FROM club_followers cf
           JOIN users u ON u.id = cf.user_id
-          WHERE cf.club_id = $1 AND ${where}
+          WHERE cf.club_id = $1::uuid AND ${where}
         )
         SELECT
           to_char(ps.date, 'Day') as day_name,
@@ -6446,7 +6446,7 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
         FROM play_session_bookings b
         JOIN play_sessions ps ON ps.id = b."sessionId"
         WHERE b."userId" IN (SELECT user_id FROM cohort_users)
-          AND ps."clubId" = $1          AND b.status = 'CONFIRMED'
+          AND ps."clubId" = $1::uuid          AND b.status = 'CONFIRMED'
           AND ps.date >= NOW() - INTERVAL '90 days'
           AND ps.date <= NOW()
         GROUP BY 1, 2, 3, 4
@@ -6815,7 +6815,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN u.dupr_rating_doubles IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dupr
           FROM club_followers cf
           JOIN users u ON u.id = cf.user_id
-          WHERE cf.club_id = $1
+          WHERE cf.club_id = $1::uuid
         `, clubId),
 
         ctx.prisma.$queryRawUnsafe<[{
@@ -6831,7 +6831,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN "pricePerSlot" IS NOT NULL AND "pricePerSlot" > 0 THEN 1 ELSE 0 END)::bigint as has_price,
             SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END)::bigint as has_description
           FROM play_sessions
-          WHERE "clubId" = $1
+          WHERE "clubId" = $1::uuid
         `, clubId),
 
         ctx.prisma.$queryRawUnsafe<[{
@@ -6847,7 +6847,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN psb.status = 'NO_SHOW' THEN 1 ELSE 0 END)::bigint as no_show
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1
+          WHERE ps."clubId" = $1::uuid
         `, clubId),
 
         ctx.prisma.clubCourt.count({ where: { clubId, isActive: true } }),
