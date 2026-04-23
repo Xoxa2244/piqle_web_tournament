@@ -38,13 +38,13 @@ interface SpamCheckResult {
 // ── Persona-Aware Limits ──
 // COMPETITIVE/IMPROVER: more engaged, tolerate more contact
 // CASUAL: less engaged, contact less frequently
-const DEFAULT_LIMITS = { max24h: 2, max7d: 5, cooldownHours: 4 }
+const DEFAULT_LIMITS = { max24h: 5, max7d: 10, cooldownHours: 2 }
 const PERSONA_LIMITS: Record<PlayerPersona, { max24h: number; max7d: number; cooldownHours: number }> = {
-  COMPETITIVE: { max24h: 3, max7d: 7, cooldownHours: 3 },
-  IMPROVER:    { max24h: 3, max7d: 7, cooldownHours: 3 },
-  SOCIAL:      { max24h: 2, max7d: 5, cooldownHours: 4 },
-  TEAM_PLAYER: { max24h: 2, max7d: 6, cooldownHours: 3 },
-  CASUAL:      { max24h: 1, max7d: 3, cooldownHours: 6 },
+  COMPETITIVE: { max24h: 6, max7d: 12, cooldownHours: 2 },
+  IMPROVER:    { max24h: 6, max7d: 12, cooldownHours: 2 },
+  SOCIAL:      { max24h: 5, max7d: 10, cooldownHours: 2 },
+  TEAM_PLAYER: { max24h: 5, max7d: 10, cooldownHours: 2 },
+  CASUAL:      { max24h: 3, max7d: 6, cooldownHours: 4 },
 }
 
 /**
