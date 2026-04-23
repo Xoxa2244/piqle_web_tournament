@@ -94,12 +94,12 @@ export function useSlotFillerRecommendations(sessionId: string | null, limit: nu
 }
 
 // ── Reactivation ──
-export function useReactivationCandidates(clubId: string, inactivityDays: number) {
+export function useReactivationCandidates(clubId: string, inactivityDays: number, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
 
   const query = trpc.intelligence.getReactivationCandidates.useQuery(
     { clubId, inactivityDays, limit: 5000 },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -218,12 +218,12 @@ export function useSessionsCalendar(clubId: string) {
 }
 
 // ── Member Health ──
-export function useMemberHealth(clubId: string) {
+export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
 
   const query = trpc.intelligence.getMemberHealth.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
 
   if (isDemo) {
@@ -569,10 +569,10 @@ export function useCreateCampaign() {
 }
 
 // ── Underfilled Sessions ──
-export function useUnderfilledSessions(clubId: string) {
+export function useUnderfilledSessions(clubId: string, options?: IntelligenceQueryOptions) {
   return trpc.intelligence.getUnderfilledSessions.useQuery(
     { clubId },
-    { enabled: !!clubId, staleTime: 2 * 60 * 1000 }
+    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 2 * 60 * 1000 }
   )
 }
 
@@ -703,10 +703,10 @@ export function useAdminTodoDecisions(clubId: string, dateKey: string) {
 }
 
 // ── New Members ──
-export function useNewMembers(clubId: string, days: number = 14) {
+export function useNewMembers(clubId: string, days: number = 14, options?: IntelligenceQueryOptions) {
   return trpc.intelligence.getNewMembers.useQuery(
     { clubId, joinedWithinDays: days },
-    { enabled: !!clubId, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
 }
 
