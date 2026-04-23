@@ -279,13 +279,6 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         </div>
       )}
 
-      {showPartialLoading && (
-        <div className="flex items-center justify-center gap-2 text-xs" style={{ color: 'var(--t4)' }}>
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          <span>Adding more recommendations as the remaining club signals finish loading.</span>
-        </div>
-      )}
-
       {showEmptyState && (
         <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--t3)' }}>
           <Megaphone className="w-12 h-12 opacity-30" />
