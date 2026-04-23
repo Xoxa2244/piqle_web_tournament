@@ -1,5 +1,5 @@
 import { sendOutreachEmail } from '@/lib/email'
-import { sendSms } from '@/lib/sms'
+import { appendSmsOptOut, sendSms } from '@/lib/sms'
 import { reportUsage } from '@/lib/stripe-usage'
 import { evaluateAdvisorContactGuardrails } from './advisor-contact-guardrails'
 import { evaluateAgentControlPlaneAction } from './agent-control-plane'
@@ -19,6 +19,7 @@ import {
   inferReferralOfferAttribution,
   type ReferralExecutionContext,
 } from './referral-offers'
+import { generateUnsubscribeUrl } from '@/lib/unsubscribe'
 
 type CampaignChannel = 'email' | 'sms' | 'both'
 type CampaignType =
@@ -140,9 +141,10 @@ async function deliverCampaignToUser(opts: {
   if (shouldSendSms) {
     if (smsText && user.phone && user.smsOptIn) {
       try {
+        const optOutUrl = generateUnsubscribeUrl(user.id, club.id)
         const result = await sendSms({
           to: user.phone,
-          body: smsText,
+          body: appendSmsOptOut(smsText, optOutUrl),
           logId,
         })
         smsDelivered = true

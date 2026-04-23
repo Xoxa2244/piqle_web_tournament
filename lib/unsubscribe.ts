@@ -9,6 +9,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'crypto'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 function getHmacKey(): string {
   const key = process.env.CRON_SECRET
@@ -64,12 +65,11 @@ export function verifyUnsubscribeToken(token: string): { userId: string; clubId:
   }
 }
 
-function getAppBaseUrl(): string {
-  return getPlatformBaseUrl()
+function getAppBaseUrl(explicitBaseUrl?: string | null): string {
+  return getPlatformBaseUrl(explicitBaseUrl)
 }
 
-export function generateUnsubscribeUrl(userId: string, clubId: string): string {
+export function generateUnsubscribeUrl(userId: string, clubId: string, explicitBaseUrl?: string | null): string {
   const token = generateUnsubscribeToken(userId, clubId)
-  return `${getAppBaseUrl()}/api/unsubscribe?token=${token}`
+  return `${getAppBaseUrl(explicitBaseUrl)}/api/unsubscribe?token=${token}`
 }
-import { getPlatformBaseUrl } from '@/lib/platform-base-url'
