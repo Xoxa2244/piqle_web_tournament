@@ -327,16 +327,6 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const shadowBackOutreachRolloutAction = useShadowBackOutreachRolloutAction()
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
 
-  if (isLoading) {
-    return (
-      <div className="space-y-5">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="animate-pulse rounded-2xl h-32" style={{ background: 'var(--subtle)' }} />
-        ))}
-      </div>
-    )
-  }
-
   const summary = campaignData?.summary
   const byDay = campaignData?.byDay
   const recentActivityLogs = campaignData?.recentLogs ?? []
@@ -1708,13 +1698,35 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       </div>
 
       {!summary ? (
-        <CampaignSuggestions
-          clubId={clubId}
-          onSelectType={(type) => {
-            setInitialType(type)
-            setShowCreator(true)
-          }}
-        />
+        isLoading ? (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-2xl h-28 animate-pulse"
+                  style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+                />
+              ))}
+            </div>
+            <div
+              className="rounded-2xl h-64 animate-pulse"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+            />
+            <div
+              className="rounded-2xl h-80 animate-pulse"
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+            />
+          </div>
+        ) : (
+          <CampaignSuggestions
+            clubId={clubId}
+            onSelectType={(type) => {
+              setInitialType(type)
+              setShowCreator(true)
+            }}
+          />
+        )
       ) : (
         <>
           {/* KPI cards */}
