@@ -122,6 +122,37 @@ interface CohortFilter {
   value: string | number | string[]
 }
 
+function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
+  return filters.flatMap((filter) => {
+    const fieldDef = FILTER_FIELDS.find((entry) => entry.key === filter.field)
+
+    if (Array.isArray(filter.value)) {
+      const cleaned = filter.value
+        .map((value) => value.trim())
+        .filter(Boolean)
+
+      if (cleaned.length === 0) return []
+      return [{ ...filter, value: cleaned }]
+    }
+
+    if (typeof filter.value === 'number') {
+      if (!Number.isFinite(filter.value)) return []
+      return [filter]
+    }
+
+    const raw = String(filter.value ?? '').trim()
+    if (!raw) return []
+
+    if (fieldDef?.type === 'number' || ['age', 'frequency', 'recency', 'duprRating'].includes(filter.field)) {
+      const numericValue = Number(raw)
+      if (!Number.isFinite(numericValue)) return []
+      return [{ ...filter, value: numericValue }]
+    }
+
+    return [{ ...filter, value: raw }]
+  })
+}
+
 export default function CohortsIQ() {
   const params = useParams()
   const router = useRouter()
@@ -1194,9 +1225,12 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
     parseMutation.mutate({ clubId, text: aiPrompt.trim() })
   }
 
+  const previewFilters = useMemo(() => sanitizeCohortFilters(filters), [filters])
+  const hasIncompleteFilters = filters.length > 0 && previewFilters.length !== filters.length
+
   const previewQuery = trpc.intelligence.previewCohort.useQuery(
-    { clubId, filters },
-    { enabled: filters.length > 0 }
+    { clubId, filters: previewFilters },
+    { enabled: previewFilters.length > 0 }
   )
 
   const createMutation = trpc.intelligence.createCohort.useMutation({
@@ -1222,18 +1256,14 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   const removeFilter = (i: number) => setFilters(filters.filter((_, idx) => idx !== i))
 
   const handleSave = async () => {
-    if (!name.trim() || filters.length === 0) return
+    if (!name.trim() || previewFilters.length === 0) return
     setSaving(true)
     try {
       await createMutation.mutateAsync({
         clubId,
         name: name.trim(),
         description: description.trim() || undefined,
-        filters: filters.map(f => ({
-          ...f,
-          value: typeof f.value === 'string' && !isNaN(Number(f.value)) && ['age', 'duprRating'].includes(f.field)
-            ? Number(f.value) : f.value,
-        })),
+        filters: previewFilters,
       })
     } finally {
       setSaving(false)
@@ -1373,11 +1403,31 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
 
       {/* Preview count */}
       {filters.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'rgba(139,92,246,0.08)' }}>
-          <Eye className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-          <span className="text-sm" style={{ color: '#A78BFA', fontWeight: 600 }}>
-            {previewQuery.isLoading ? 'Counting...' : `${previewQuery.data?.count ?? 0} members match`}
-          </span>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'rgba(139,92,246,0.08)' }}>
+            <Eye className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+            <span className="text-sm" style={{ color: '#A78BFA', fontWeight: 600 }}>
+              {previewQuery.isLoading
+                ? 'Counting...'
+                : previewQuery.error
+                  ? 'Could not preview this cohort'
+                  : hasIncompleteFilters
+                    ? `${previewFilters.length} valid filter${previewFilters.length === 1 ? '' : 's'} ready — complete the remaining fields`
+                    : `${previewQuery.data?.count ?? 0} members match`}
+            </span>
+          </div>
+
+          {hasIncompleteFilters ? (
+            <p className="text-xs" style={{ color: '#F59E0B' }}>
+              Some filters are still incomplete, so they are currently ignored in the preview.
+            </p>
+          ) : null}
+
+          {previewQuery.error ? (
+            <p className="text-xs" style={{ color: '#EF4444' }}>
+              {previewQuery.error.message}
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -1388,12 +1438,12 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           onClick={handleSave}
-          disabled={!name.trim() || filters.length === 0 || saving}
+          disabled={!name.trim() || previewFilters.length === 0 || saving}
           className="px-5 py-2.5 rounded-xl text-sm text-white"
           style={{
             background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
             fontWeight: 600,
-            opacity: (!name.trim() || filters.length === 0 || saving) ? 0.5 : 1,
+            opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
           {saving ? 'Creating...' : 'Create Cohort'}
