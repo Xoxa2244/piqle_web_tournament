@@ -1,9 +1,8 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { Mail, MessageSquare, Layers, Loader2 } from 'lucide-react'
-import { useTheme } from '../../IQThemeProvider'
 import {
   useReactivationCandidates,
   useMemberHealth,
@@ -48,6 +47,59 @@ function SegmentButton({ label, active, count, onClick }: { label: string; activ
       {label}
       {count != null && <span className="ml-1.5 text-[10px]" style={{ opacity: 0.7 }}>({count})</span>}
     </button>
+  )
+}
+
+function AudiencePreviewList({ members }: { members: any[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? members : members.slice(0, 3)
+
+  if (members.length === 0) return null
+
+  return (
+    <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+      <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+        Matching members
+      </div>
+      <div className="space-y-2">
+        {visible.map((member: any) => {
+          const memberId = member.memberId ?? member.userId ?? member.id
+          const name = member.member?.name || member.name || member.member?.email || member.email || 'Unknown member'
+          const subtitle = member.riskLevel
+            ? `${String(member.riskLevel).replace('_', ' ')} • ${member.daysSinceLastBooking ?? 'N/A'}d since last play`
+            : member.joinedAt
+              ? `Joined ${new Date(member.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+              : member.daysSinceLastActivity != null
+                ? `${member.daysSinceLastActivity}d since last play`
+                : member.email || ''
+
+          return (
+            <div
+              key={memberId}
+              className="rounded-lg px-3 py-2"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 600 }}>
+                {name}
+              </div>
+              <div className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                {subtitle}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {members.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="mt-3 text-[11px] transition-colors"
+          style={{ color: '#8B5CF6', fontWeight: 700 }}
+        >
+          {expanded ? 'Show less' : `Show all ${members.length}`}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -114,6 +166,14 @@ function HealthAudience({ clubId, riskSegment, onSegmentChange, onAudienceChange
     })
   }, [filtered, onAudienceChange, riskSegment])
 
+  const orderedPreview = useMemo(() => {
+    return [...filtered].sort((a: any, b: any) => {
+      const aDays = a.daysSinceLastBooking ?? 0
+      const bDays = b.daysSinceLastBooking ?? 0
+      return bDays - aDays
+    })
+  }, [filtered])
+
   return (
     <div>
       <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>Risk segment</div>
@@ -127,6 +187,7 @@ function HealthAudience({ clubId, riskSegment, onSegmentChange, onAudienceChange
         </div>
       )}
       {!isLoading && <div className="text-xs" style={{ color: '#8B5CF6', fontWeight: 600 }}>{filtered.length} members in segment</div>}
+      {!isLoading && <AudiencePreviewList members={orderedPreview} />}
     </div>
   )
 }
@@ -228,7 +289,6 @@ function NewMemberAudience({ clubId, onAudienceChange }: {
 }
 
 export function CampaignCreatorStep2Audience(props: Step2Props) {
-  const { isDark } = useTheme()
   const { type, channel, onChannelChange, audience, onAudienceChange, onContinue } = props
 
   return (

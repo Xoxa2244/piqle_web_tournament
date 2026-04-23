@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import {
   ArrowRight,
   CalendarDays,
@@ -12,8 +12,6 @@ import {
   Sparkles,
   UserMinus,
   UserPlus,
-  Users,
-  X,
 } from 'lucide-react'
 import {
   useMemberHealth,
@@ -21,13 +19,6 @@ import {
   useReactivationCandidates,
   useUnderfilledSessions,
 } from '../../../_hooks/use-intelligence'
-
-interface SuggestionPreviewItem {
-  id: string
-  name: string
-  subtitle: string
-  kind: 'member' | 'session'
-}
 
 interface Suggestion {
   type: 'REACTIVATION' | 'RETENTION_BOOST' | 'SLOT_FILLER' | 'NEW_MEMBER_WELCOME' | 'CHECK_IN'
@@ -37,8 +28,6 @@ interface Suggestion {
   title: string
   description: string
   count: number
-  previewItems: SuggestionPreviewItem[]
-  previewTitle: string
 }
 
 interface CampaignSuggestionsProps {
@@ -75,15 +64,7 @@ function SuggestionCardSkeleton({ tone }: { tone: 'red' | 'orange' | 'violet' })
   )
 }
 
-function normalizeDateLabel(value?: string | null) {
-  if (!value) return 'Upcoming session'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestionsProps) {
-  const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null)
   const [loadingStep, setLoadingStep] = useState(0)
   const [loadPhase, setLoadPhase] = useState(0)
 
@@ -125,110 +106,72 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
     const built: Suggestion[] = []
     const healthMembers = Array.isArray(healthData?.members) ? healthData.members : []
     const reactivationMembers = Array.isArray((reactivationData as any)?.candidates) ? (reactivationData as any).candidates : []
+    const underfilledSessions = Array.isArray((underfilledData as any)?.sessions ?? underfilledData)
+      ? ((underfilledData as any)?.sessions ?? underfilledData)
+      : []
+    const newMembers = Array.isArray((newMembersData as any)?.members ?? newMembersData)
+      ? ((newMembersData as any)?.members ?? newMembersData)
+      : []
 
-    const inactiveCount = reactivationMembers.length
-    if (inactiveCount > 0) {
+    if (reactivationMembers.length > 0) {
       built.push({
         type: 'REACTIVATION',
         icon: UserMinus,
         gradient: 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(249,115,22,0.08))',
         accentColor: '#EF4444',
         title: 'Win Back Inactive Members',
-        description: `${inactiveCount} member${inactiveCount !== 1 ? 's' : ''} haven't played in 21+ days. A personalized reactivation campaign can bring them back.`,
-        count: inactiveCount,
-        previewTitle: 'Inactive members in this recommendation',
-        previewItems: reactivationMembers.map((candidate: any) => ({
-          id: candidate.member?.id || candidate.id || `reactivation-${candidate.member?.email || Math.random()}`,
-          name: candidate.member?.name || candidate.member?.email || 'Unknown member',
-          subtitle: `${candidate.daysSinceLastActivity || 0}d since last play • ${candidate.totalHistoricalBookings || 0} sessions`,
-          kind: 'member',
-        })),
+        description: `${reactivationMembers.length} member${reactivationMembers.length !== 1 ? 's' : ''} haven't played in 21+ days. A personalized reactivation campaign can bring them back.`,
+        count: reactivationMembers.length,
       })
     }
 
-    const atRiskCount = (healthData?.summary?.atRisk ?? 0) + (healthData?.summary?.critical ?? 0)
-    if (atRiskCount > 0) {
-      const atRiskMembers = healthMembers.filter((member: any) => ['at_risk', 'critical'].includes(member.riskLevel))
+    const atRiskMembers = healthMembers.filter((member: any) => ['at_risk', 'critical'].includes(member.riskLevel))
+    if (atRiskMembers.length > 0) {
       built.push({
         type: 'RETENTION_BOOST',
         icon: Shield,
         gradient: 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(245,158,11,0.08))',
         accentColor: '#F97316',
         title: 'Boost Retention',
-        description: `${atRiskCount} member${atRiskCount !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
-        count: atRiskCount,
-        previewTitle: 'Members currently showing retention risk',
-        previewItems: atRiskMembers.map((member: any) => ({
-          id: member.memberId,
-          name: member.member?.name || member.member?.email || 'Unknown member',
-          subtitle: `${member.riskLevel === 'critical' ? 'Critical' : 'At-risk'} • ${member.daysSinceLastBooking ?? 'N/A'}d since last play`,
-          kind: 'member',
-        })),
+        description: `${atRiskMembers.length} member${atRiskMembers.length !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
+        count: atRiskMembers.length,
       })
     }
 
-    const sessions = (underfilledData as any)?.sessions ?? underfilledData ?? []
-    const underfilledCount = Array.isArray(sessions) ? sessions.length : 0
-    if (underfilledCount > 0) {
+    if (underfilledSessions.length > 0) {
       built.push({
         type: 'SLOT_FILLER',
         icon: CalendarDays,
         gradient: 'linear-gradient(135deg, rgba(6,182,212,0.12), rgba(59,130,246,0.08))',
         accentColor: '#06B6D4',
         title: 'Fill Open Sessions',
-        description: `${underfilledCount} session${underfilledCount !== 1 ? 's' : ''} under capacity this week. Invite matching players to fill spots.`,
-        count: underfilledCount,
-        previewTitle: 'Sessions currently below target occupancy',
-        previewItems: sessions.map((session: any) => ({
-          id: session.id,
-          name: session.title || 'Open session',
-          subtitle: `${normalizeDateLabel(session.date)} ${session.startTime || ''} • ${session.registered || 0}/${session.maxPlayers || 0} booked`,
-          kind: 'session',
-        })),
+        description: `${underfilledSessions.length} session${underfilledSessions.length !== 1 ? 's' : ''} under capacity this week. Invite matching players to fill spots.`,
+        count: underfilledSessions.length,
       })
     }
 
-    const newMembers = (newMembersData as any)?.members ?? newMembersData ?? []
-    const newCount = Array.isArray(newMembers) ? newMembers.length : 0
-    if (newCount > 0) {
+    if (newMembers.length > 0) {
       built.push({
         type: 'NEW_MEMBER_WELCOME',
         icon: UserPlus,
         gradient: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(52,211,153,0.08))',
         accentColor: '#10B981',
         title: 'Welcome New Members',
-        description: `${newCount} new member${newCount !== 1 ? 's' : ''} joined recently. A welcome message drives early engagement.`,
-        count: newCount,
-        previewTitle: 'Recently joined members in this segment',
-        previewItems: newMembers.map((member: any) => ({
-          id: member.id,
-          name: member.name || member.email || 'Unknown member',
-          subtitle: member.joinedAt
-            ? `Joined ${new Date(member.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-            : 'Recently joined',
-          kind: 'member',
-        })),
+        description: `${newMembers.length} new member${newMembers.length !== 1 ? 's' : ''} joined recently. A welcome message drives early engagement.`,
+        count: newMembers.length,
       })
     }
 
-    const watchCount = healthData?.summary?.watch ?? 0
-    if (watchCount > 0 && built.length < 4) {
-      const watchMembers = healthMembers.filter((member: any) => member.riskLevel === 'watch')
+    const watchMembers = healthMembers.filter((member: any) => member.riskLevel === 'watch')
+    if (watchMembers.length > 0 && built.length < 4) {
       built.push({
         type: 'CHECK_IN',
         icon: Heart,
         gradient: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(168,85,247,0.08))',
         accentColor: '#8B5CF6',
         title: 'Check In',
-        description: `${watchCount} member${watchCount !== 1 ? 's' : ''} showing reduced activity. A quick check-in keeps them engaged.`,
-        count: watchCount,
-        previewTitle: 'Members who should get a softer check-in',
-        previewItems: watchMembers.map((member: any) => ({
-          id: member.memberId,
-          name: member.member?.name || member.member?.email || 'Unknown member',
-          subtitle: `Watch segment • ${member.daysSinceLastBooking ?? 'N/A'}d since last play`,
-          kind: 'member',
-        })),
+        description: `${watchMembers.length} member${watchMembers.length !== 1 ? 's' : ''} showing reduced activity. A quick check-in keeps them engaged.`,
+        count: watchMembers.length,
       })
     }
 
@@ -263,22 +206,17 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
           Based on your club data, here are the highest-impact campaigns to launch
         </p>
         {anyLoading && (
-          <>
-            <div
-              className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2"
-              style={{
-                background: 'rgba(139,92,246,0.08)',
-                border: '1px solid rgba(139,92,246,0.16)',
-                color: '#C4B5FD',
-              }}
-            >
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-xs font-medium">{loadingMessages[loadingStep]}</span>
-            </div>
-            <div className="text-xs mt-2" style={{ color: 'var(--t4)' }}>
-              This block loads progressively so the page appears immediately while recommendation data catches up.
-            </div>
-          </>
+          <div
+            className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2"
+            style={{
+              background: 'rgba(139,92,246,0.08)',
+              border: '1px solid rgba(139,92,246,0.16)',
+              color: '#C4B5FD',
+            }}
+          >
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs font-medium">{loadingMessages[loadingStep]}</span>
+          </div>
         )}
       </div>
 
@@ -300,7 +238,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.06 }}
-                onClick={() => setSelectedSuggestion(suggestion)}
+                onClick={() => onSelectType(suggestion.type)}
                 className="text-left rounded-2xl p-5 transition-all hover:scale-[1.01] group"
                 style={{
                   background: suggestion.gradient,
@@ -359,134 +297,6 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
           </p>
         </div>
       )}
-
-      <AnimatePresence>
-        {selectedSuggestion && (
-          <SuggestionAudienceModal
-            suggestion={selectedSuggestion}
-            onClose={() => setSelectedSuggestion(null)}
-            onContinue={() => {
-              const nextType = selectedSuggestion.type
-              setSelectedSuggestion(null)
-              onSelectType(nextType)
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </motion.div>
-  )
-}
-
-function SuggestionAudienceModal({
-  suggestion,
-  onClose,
-  onContinue,
-}: {
-  suggestion: Suggestion
-  onClose: () => void
-  onContinue: () => void
-}) {
-  const SelectedIcon = suggestion.icon
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-      style={{ background: 'rgba(5, 8, 20, 0.72)', backdropFilter: 'blur(8px)' }}
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 20, scale: 0.98 }}
-        transition={{ duration: 0.2 }}
-        className="w-full max-w-2xl rounded-[28px] p-6"
-        style={{
-          background: 'var(--card-bg)',
-          border: '1px solid var(--card-border)',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div className="flex items-start gap-4 min-w-0">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-              style={{ background: `${suggestion.accentColor}18` }}
-            >
-              <SelectedIcon className="w-6 h-6" style={{ color: suggestion.accentColor }} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.22em]" style={{ color: suggestion.accentColor, fontWeight: 700 }}>
-                Campaign Audience
-              </div>
-              <h3 className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                {suggestion.title}
-              </h3>
-              <p className="text-sm mt-2" style={{ color: 'var(--t3)' }}>
-                {suggestion.previewTitle}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-10 h-10 rounded-2xl flex items-center justify-center transition-colors"
-            style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t3)' }}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 mb-4 text-sm" style={{ color: 'var(--t3)' }}>
-          <Users className="w-4 h-4" />
-          <span>
-            {suggestion.count} {suggestion.count === 1 ? 'record' : 'records'} in this recommendation
-          </span>
-        </div>
-
-        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-          {suggestion.previewItems.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-2xl px-4 py-3"
-              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
-            >
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                {item.name}
-              </div>
-              <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-                {item.subtitle}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-end gap-3 mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm transition-colors"
-            style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 600 }}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={onContinue}
-            className="px-4 py-2 rounded-xl text-sm transition-all"
-            style={{
-              background: `linear-gradient(135deg, ${suggestion.accentColor}, rgba(59,130,246,0.95))`,
-              color: '#fff',
-              fontWeight: 700,
-            }}
-          >
-            Continue to Campaign
-          </button>
-        </div>
-      </motion.div>
     </motion.div>
   )
 }
