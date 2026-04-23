@@ -22,14 +22,6 @@ export default async function UnsubscribePage({
             <p className="text-gray-500 mb-6">
               You will no longer receive automated emails from this club.
             </p>
-            {token && (
-              <a
-                href={`/api/resubscribe?token=${encodeURIComponent(token)}`}
-                className="text-sm text-violet-600 hover:text-violet-700 underline"
-              >
-                Changed your mind? Re-subscribe
-              </a>
-            )}
           </>
         )}
 
