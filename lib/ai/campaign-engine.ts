@@ -32,6 +32,7 @@ import { evaluateAgentControlPlaneAction } from './agent-control-plane'
 import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
 import { normalizeMembership, resolveMembershipMappings } from './membership-intelligence'
 import { getPlatformBaseUrl, getPlatformOriginFromUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildEmailPanel, buildIqSportEmail, renderTextParagraphs } from '@/lib/email-brand'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -210,56 +211,36 @@ function buildOutreachHtml({
         ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.confirmedCount} player${sessionCard.confirmedCount === 1 ? '' : 's'} signed up</span>`
         : ''
 
-    sessionCardHtml = `
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-        <tr>
-          <td style="padding: 14px 16px; background: #f8fafc;">
-            <strong style="font-size: 16px; color: #111827;">${sessionCard.title}</strong><br/>
-            <span style="color: #6b7280; font-size: 14px;">
-              ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
-            </span><br/>
-            <span style="color: ${sessionCard.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-size: 14px; font-weight: 600;">
-              ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
-            </span>
-            ${socialProofLine ? `<br/>${socialProofLine}` : ''}
-          </td>
-        </tr>
-      </table>`
+    sessionCardHtml = buildEmailPanel(`
+      <strong style="font-size:16px;color:#F8FAFC;">${sessionCard.title}</strong><br/>
+      <span style="color:#CBD5E1;font-size:14px;">
+        ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
+      </span><br/>
+      <span style="color:${sessionCard.spotsLeft <= 2 ? '#F87171' : '#34D399'};font-size:14px;font-weight:700;">
+        ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
+      </span>
+      ${socialProofLine ? `<br/>${socialProofLine}` : ''}
+    `)
   }
 
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
-    <tr>
-      <td align="center" style="padding: 32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
-          <tr>
-            <td style="background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-              ${body.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 12px 0; font-size: 15px;">${line}</p>` : '').join('\n')}
-              ${sessionCardHtml}
-              <div style="text-align: center; margin-top: 24px;">
-                <a href="${bookingUrl}" style="display: inline-block; background: linear-gradient(135deg, #84cc16, #22c55e); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none;">
-                  Book a Session
-                </a>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding-top: 20px;">
-              <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-                Sent by ${clubName} via <a href="${platformUrl}" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
-                ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color: #9ca3af; text-decoration: underline; font-size: 11px;">Unsubscribe</a>` : ''}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  return buildIqSportEmail({
+    title: `${clubName} outreach`,
+    heading: clubName,
+    eyebrow: 'Campaign Outreach',
+    subheading: 'A personalized message from your club',
+    baseUrl: bookingUrl,
+    bodyHtml: `
+      ${renderTextParagraphs(body)}
+      ${sessionCardHtml}
+      ${buildEmailButton('Book a Session', bookingUrl)}
+    `,
+    footerHtml: `
+      <p style="font-size:12px;color:#94A3B8;margin:0;">
+        Sent by ${clubName} via <a href="${platformUrl}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>
+        ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color:#94A3B8;text-decoration:underline;font-size:11px;">Unsubscribe</a>` : ''}
+      </p>
+    `,
+  })
 }
 
 // ── Execute Sequence Follow-Up Step ──

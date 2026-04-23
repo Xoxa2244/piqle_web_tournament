@@ -5,6 +5,7 @@
 import { sendHtmlEmail } from './sendTransactionEmail'
 import { prisma } from './prisma'
 import { getPlatformBaseUrl } from './platform-base-url'
+import { buildEmailButton, buildIqSportEmail } from './email-brand'
 
 // ── Helpers ──
 
@@ -24,42 +25,23 @@ export async function getClubAdminEmails(clubId: string): Promise<{ email: strin
 /** Shared email shell — IQSport branded wrapper */
 function emailShell(title: string, content: string): string {
   const baseUrl = getAppBaseUrl()
-  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-</head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#f9fafb;line-height:1.6;color:#111827;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f9fafb;">
-    <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;">
-          <tr><td align="center" style="padding-bottom:24px;">
-            <img src="${logoUrl}" alt="IQSport" width="160" height="40" style="display:block;" />
-          </td></tr>
-          <tr><td style="background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);overflow:hidden;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-              ${content}
-            </table>
-          </td></tr>
-          <tr><td style="padding:16px 0;text-align:center;">
-            <p style="margin:0;font-size:12px;color:#9ca3af;">IQSport.ai — AI Intelligence for Racquet Sports Clubs</p>
-          </td></tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  return buildIqSportEmail({
+    title,
+    heading: title,
+    eyebrow: 'Platform Update',
+    baseUrl,
+    bodyHtml: `
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#FFFFFF;border-radius:18px;overflow:hidden;">
+        ${content}
+      </table>
+    `,
+    footerHtml: `<p style="margin:0;font-size:12px;color:#94A3B8;">IQSport.ai — AI Intelligence for Racquet Sports Clubs</p>`,
+  })
 }
 
 function ctaButton(text: string, href: string, color = '#111827'): string {
-  return `<tr><td style="padding:8px 24px 24px;text-align:center;">
-    <a href="${href}" style="display:inline-block;padding:12px 32px;background-color:${color};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;">${text}</a>
-  </td></tr>`
+  const tone = color === '#DC2626' ? 'danger' : color === '#4F46E5' ? 'primary' : 'secondary'
+  return `<tr><td style="padding:8px 24px 24px;text-align:center;">${buildEmailButton(text, href, tone)}</td></tr>`
 }
 
 // ── 1. Welcome Email ──

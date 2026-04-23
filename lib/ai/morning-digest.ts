@@ -9,6 +9,7 @@
 
 import { cronLogger as log } from '@/lib/logger'
 import { getPlatformBaseUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildEmailPanel, buildIqSportEmail } from '@/lib/email-brand'
 
 // ── Types ──
 
@@ -226,67 +227,32 @@ export function renderDigestEmail(data: DigestData): { subject: string; html: st
   const healthBar = (label: string, count: number, color: string) =>
     `<span style="display:inline-block;padding:4px 12px;border-radius:8px;background:${color}15;color:${color};font-weight:600;font-size:13px;margin-right:8px;">${label}: ${count}</span>`
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;color:#111827;">
-  <table width="100%" cellspacing="0" cellpadding="0" style="background:#f9fafb;">
-    <tr><td align="center" style="padding:32px 16px;">
-      <table width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;">
-
-        <!-- Header -->
-        <tr><td style="padding:24px;background:#0B0D17;border-radius:16px 16px 0 0;">
-          <h1 style="margin:0;color:white;font-size:20px;">🤖 AI Agent Report</h1>
-          <p style="margin:4px 0 0;color:#94a3b8;font-size:14px;">${data.clubName} — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-        </td></tr>
-
-        <!-- Actions Taken -->
-        <tr><td style="padding:20px 24px;background:white;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
-          <h2 style="margin:0 0 12px;font-size:15px;color:#111827;">✅ Actions Taken (auto-approved)</h2>
-          <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;">${actionsList}</ul>
-        </td></tr>
-
-        ${data.pendingActions.length > 0 ? `
-        <!-- Pending Actions -->
-        <tr><td style="padding:20px 24px;background:#FFFBEB;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
-          <h2 style="margin:0 0 12px;font-size:15px;color:#92400E;">⚠️ Needs Your Approval</h2>
-          <ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6;">${pendingList}</ul>
-        </td></tr>
-        ` : ''}
-
-        <!-- Health Summary -->
-        <tr><td style="padding:20px 24px;background:white;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
-          <h2 style="margin:0 0 12px;font-size:15px;color:#111827;">📊 Member Health</h2>
-          <div style="margin-bottom:8px;">
-            ${healthBar('Healthy', data.healthy, '#10B981')}
-            ${healthBar('Watch', data.watch, '#F59E0B')}
-            ${healthBar('At-Risk', data.atRisk, '#EF4444')}
-          </div>
-          <p style="margin:8px 0 0;font-size:13px;color:#6b7280;">
-            Avg score: ${data.avgHealthScore}/100
-            ${data.healthChanges.improved > 0 ? ` · ↑ ${data.healthChanges.improved} improved` : ''}
-            ${data.healthChanges.declined > 0 ? ` · ↓ ${data.healthChanges.declined} declined` : ''}
-          </p>
-        </td></tr>
-
-        <!-- CTA -->
-        <tr><td style="padding:20px 24px;background:white;border-radius:0 0 16px 16px;border:1px solid #e5e7eb;border-top:none;text-align:center;">
-          <a href="${data.dashboardUrl}" style="display:inline-block;padding:12px 32px;background:linear-gradient(135deg,#8B5CF6,#06B6D4);color:white;text-decoration:none;border-radius:12px;font-weight:600;font-size:14px;">View Dashboard</a>
-        </td></tr>
-
-        <!-- Footer -->
-        <tr><td style="padding:16px;text-align:center;">
-          <p style="font-size:11px;color:#9ca3af;margin:0;">
-            Sent by IQSport AI Agent · <a href="${data.dashboardUrl}/settings" style="color:#9ca3af;">Manage preferences</a>
-          </p>
-        </td></tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`
+  const html = buildIqSportEmail({
+    title: `${data.clubName} — AI Agent Report`,
+    heading: 'AI Agent Report',
+    eyebrow: 'Morning Digest',
+    subheading: `${data.clubName} — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`,
+    baseUrl: data.dashboardUrl,
+    bodyHtml: `
+      ${buildEmailPanel(`<h2 style="margin:0 0 12px;font-size:15px;color:#F8FAFC;">Actions Taken</h2><ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:#CBD5E1;">${actionsList}</ul>`)}
+      ${data.pendingActions.length > 0 ? buildEmailPanel(`<h2 style="margin:0 0 12px;font-size:15px;color:#FBBF24;">Needs Your Approval</h2><ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:#CBD5E1;">${pendingList}</ul>`) : ''}
+      ${buildEmailPanel(`
+        <h2 style="margin:0 0 12px;font-size:15px;color:#F8FAFC;">Member Health</h2>
+        <div style="margin-bottom:8px;">
+          ${healthBar('Healthy', data.healthy, '#10B981')}
+          ${healthBar('Watch', data.watch, '#F59E0B')}
+          ${healthBar('At-Risk', data.atRisk, '#EF4444')}
+        </div>
+        <p style="margin:8px 0 0;font-size:13px;color:#CBD5E1;">
+          Avg score: ${data.avgHealthScore}/100
+          ${data.healthChanges.improved > 0 ? ` · ↑ ${data.healthChanges.improved} improved` : ''}
+          ${data.healthChanges.declined > 0 ? ` · ↓ ${data.healthChanges.declined} declined` : ''}
+        </p>
+      `)}
+      ${buildEmailButton('View Dashboard', data.dashboardUrl)}
+    `,
+    footerHtml: `<p style="font-size:11px;color:#94A3B8;margin:0;">Sent by IQSport AI Agent · <a href="${data.dashboardUrl}/settings" style="color:#94A3B8;">Manage preferences</a></p>`,
+  })
 
   const text = `${data.clubName} — AI Agent Report
 

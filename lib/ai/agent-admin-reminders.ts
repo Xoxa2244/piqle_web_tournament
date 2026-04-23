@@ -1,4 +1,5 @@
 import { getPlatformBaseUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildIqSportEmail } from '@/lib/email-brand'
 
 export type AdminReminderChannel = 'email' | 'sms'
 export type AdminReminderDeliveryMode = 'in_app' | 'email' | 'sms' | 'both'
@@ -243,41 +244,19 @@ export function buildAdminReminderEmail(input: {
   targetUrl: string
 }) {
   const subject = `Reminder from ${input.clubName}: ${input.title}`
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-</head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0f172a;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;">
-    <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;">
-          <tr>
-            <td style="background:#ffffff;border-radius:16px;padding:28px 24px;box-shadow:0 1px 3px rgba(15,23,42,0.12);">
-              <p style="margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8b5cf6;font-weight:700;">
-                IQSport Agent Reminder
-              </p>
-              <h1 style="margin:0 0 14px;font-size:22px;line-height:1.25;color:#0f172a;">${input.title}</h1>
-              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">
-                ${input.description || `A snoozed admin task for ${input.clubName} is ready again.`}
-              </p>
-              <div style="margin-top:20px;">
-                <a href="${input.targetUrl}" style="display:inline-block;background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-size:14px;font-weight:700;">
-                  Open in IQSport
-                </a>
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  const html = buildIqSportEmail({
+    title: subject,
+    heading: input.title,
+    eyebrow: 'Agent Reminder',
+    subheading: input.clubName,
+    baseUrl: input.targetUrl,
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#CBD5E1;">
+        ${input.description || `A snoozed admin task for ${input.clubName} is ready again.`}
+      </p>
+      ${buildEmailButton('Open in IQSport', input.targetUrl)}
+    `,
+  })
 
   return { subject, html }
 }
