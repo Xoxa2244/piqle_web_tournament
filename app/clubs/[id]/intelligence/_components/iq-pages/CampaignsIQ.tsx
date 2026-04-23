@@ -35,6 +35,7 @@ interface CampaignsIQProps {
   campaignListData: any
   variantData?: any
   isLoading: boolean
+  campaignListLoading?: boolean
   clubId: string
 }
 
@@ -295,7 +296,7 @@ function matchesDraftText(draft: any, patterns: string[]) {
   return patterns.some((pattern) => text.includes(pattern))
 }
 
-export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, clubId }: CampaignsIQProps) {
+export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
   const [showCreator, setShowCreator] = useState(false)
   const [initialType, setInitialType] = useState<string | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
@@ -1725,6 +1726,7 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           {/* Campaign list */}
           <CampaignList
             campaigns={campaigns}
+            isLoading={campaignListLoading}
             clubId={clubId}
             advisorDrafts={campaignDrafts}
             outreachMode={outreachMode}

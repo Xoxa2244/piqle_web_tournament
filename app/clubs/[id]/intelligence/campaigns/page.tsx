@@ -16,7 +16,7 @@ import { useSetPageContext } from '../_hooks/usePageContext'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useCampaignAnalytics, useVariantAnalytics, useSequenceAnalytics, useIsDemo, useCampaignList } from '../_hooks/use-intelligence'
+import { useCampaignAnalytics, useVariantAnalytics, useIsDemo, useCampaignList } from '../_hooks/use-intelligence'
 import { useBrand } from '@/components/BrandProvider'
 import { CampaignsIQ } from '../_components/iq-pages/CampaignsIQ'
 
@@ -195,11 +195,15 @@ const EXIT_ICONS: Record<string, any> = {
 
 function IQSportCampaignsPage({ clubId }: { clubId: string }) {
   const days = 30
+  const [loadSecondaryCampaignAnalytics, setLoadSecondaryCampaignAnalytics] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoadSecondaryCampaignAnalytics(true), 200)
+    return () => window.clearTimeout(timer)
+  }, [])
   const { data, isLoading: analyticsLoading } = useCampaignAnalytics(clubId, days)
-  const { data: variantData, isLoading: variantLoading } = useVariantAnalytics(clubId, days)
-  const { data: sequenceData, isLoading: sequenceLoading } = useSequenceAnalytics(clubId)
+  const { data: variantData } = useVariantAnalytics(clubId, days, { enabled: loadSecondaryCampaignAnalytics })
   const { data: campaignListData, isLoading: campaignListLoading } = useCampaignList(clubId)
-  const isLoading = analyticsLoading || variantLoading || sequenceLoading || campaignListLoading
+  const isLoading = analyticsLoading && !data
   const setPageContext = useSetPageContext()
 
   useEffect(() => {
@@ -217,11 +221,8 @@ function IQSportCampaignsPage({ clubId }: { clubId: string }) {
     if (variantData) {
       parts.push(`Overall open rate: ${(variantData.overallOpenRate * 100).toFixed(0)}%, click rate: ${(variantData.overallClickRate * 100).toFixed(0)}%`)
     }
-    if (sequenceData) {
-      parts.push(`Sequences: ${sequenceData.summary.activeSequences} active, ${sequenceData.summary.completedSequences} completed`)
-    }
     setPageContext(parts.join('\n'))
-  }, [data, days, variantData, sequenceData, setPageContext])
+  }, [data, days, variantData, setPageContext])
 
   return (
     <CampaignsIQ
@@ -229,6 +230,7 @@ function IQSportCampaignsPage({ clubId }: { clubId: string }) {
       campaignListData={campaignListData}
       variantData={variantData}
       isLoading={isLoading}
+      campaignListLoading={campaignListLoading && !campaignListData}
       clubId={clubId}
     />
   )

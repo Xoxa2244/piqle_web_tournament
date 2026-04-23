@@ -112,6 +112,7 @@ function mapCampaignTypeToActionKind(type?: string | null) {
 
 interface CampaignListProps {
   campaigns: any[]
+  isLoading?: boolean
   clubId: string
   advisorDrafts?: any[]
   outreachMode?: string
@@ -122,6 +123,7 @@ interface CampaignListProps {
 
 export function CampaignList({
   campaigns,
+  isLoading = false,
   clubId,
   advisorDrafts = [],
   outreachMode = 'shadow',
@@ -174,7 +176,17 @@ export function CampaignList({
           </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((row) => (
+              <div
+                key={row}
+                className="rounded-xl h-16 animate-pulse"
+                style={{ background: 'var(--subtle)' }}
+              />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <Megaphone className="w-10 h-10" style={{ color: 'var(--t4)' }} />
             <span className="text-sm" style={{ color: 'var(--t4)', fontWeight: 500 }}>

@@ -331,11 +331,11 @@ export function useSaveAutomationSettings() {
 }
 
 // ── Campaign Analytics ──
-export function useCampaignAnalytics(clubId: string, days: number = 30) {
+export function useCampaignAnalytics(clubId: string, days: number = 30, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getCampaignAnalytics.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return { data: mockCampaignAnalytics, isLoading: false, error: null } as any
@@ -357,11 +357,11 @@ export function useMemberOutreachHistory(clubId: string, userId: string | null) 
 }
 
 // ── Variant Performance Analytics ──
-export function useVariantAnalytics(clubId: string, days: number = 30) {
+export function useVariantAnalytics(clubId: string, days: number = 30, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getVariantAnalytics.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) {
     return { data: mockVariantAnalytics, isLoading: false, error: null } as any
@@ -431,11 +431,11 @@ export function useRevenueAnalytics(clubId: string, days = 30) {
   return query
 }
 
-export function useCampaignList(clubId: string, days = 90) {
+export function useCampaignList(clubId: string, days = 90, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.getCampaignList.useQuery(
     { clubId, days },
-    { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
   if (isDemo) return { data: null, isLoading: false, error: null }
   return query
