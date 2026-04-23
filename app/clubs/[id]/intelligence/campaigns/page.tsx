@@ -16,7 +16,7 @@ import { useSetPageContext } from '../_hooks/usePageContext'
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useCampaignAnalytics, useVariantAnalytics, useIsDemo, useCampaignList } from '../_hooks/use-intelligence'
+import { useCampaignAnalytics, useVariantAnalytics, useSequenceAnalytics, useIsDemo, useCampaignList } from '../_hooks/use-intelligence'
 import { useBrand } from '@/components/BrandProvider'
 import { CampaignsIQ } from '../_components/iq-pages/CampaignsIQ'
 
