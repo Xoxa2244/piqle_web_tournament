@@ -1,12 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   UserMinus, Shield, CalendarDays, UserPlus, Heart,
-  Sparkles, ArrowRight, Megaphone, Loader2,
+  Sparkles, ArrowRight, Megaphone, Loader2, X, Users,
 } from 'lucide-react'
 import { useMemberHealth, useReactivationCandidates, useUnderfilledSessions, useNewMembers } from '../../../_hooks/use-intelligence'
+
+interface SuggestionPreviewItem {
+  id: string
+  name: string
+  subtitle: string
+  kind: 'member' | 'session'
+}
 
 interface Suggestion {
   type: 'REACTIVATION' | 'RETENTION_BOOST' | 'SLOT_FILLER' | 'NEW_MEMBER_WELCOME' | 'CHECK_IN'
@@ -16,6 +23,8 @@ interface Suggestion {
   title: string
   description: string
   count: number
+  previewItems: SuggestionPreviewItem[]
+  previewTitle: string
 }
 
 interface CampaignSuggestionsProps {
@@ -25,6 +34,7 @@ interface CampaignSuggestionsProps {
 
 export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestionsProps) {
   const [loadingStep, setLoadingStep] = useState(0)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null)
   const { data: healthData, isLoading: healthLoading } = useMemberHealth(clubId)
   const { data: reactivationData, isLoading: reactivationLoading } = useReactivationCandidates(clubId, 21)
   const { data: underfilledData, isLoading: underfilledLoading } = useUnderfilledSessions(clubId)
@@ -105,6 +115,8 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
 
   // Build suggestions from real data
   const suggestions: Suggestion[] = []
+  const healthMembers = Array.isArray(healthData?.members) ? healthData.members : []
+  const reactivationMembers = Array.isArray((reactivationData as any)?.candidates) ? (reactivationData as any).candidates : []
 
   const inactiveCount = (reactivationData as any)?.candidates?.length ?? 0
   if (inactiveCount > 0) {
@@ -116,6 +128,13 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       title: 'Win Back Inactive Members',
       description: `${inactiveCount} member${inactiveCount !== 1 ? 's' : ''} haven't played in 21+ days. A personalized reactivation campaign can bring them back.`,
       count: inactiveCount,
+      previewTitle: 'Inactive members in this recommendation',
+      previewItems: reactivationMembers.map((candidate: any) => ({
+        id: candidate.member?.id || candidate.id || `reactivation-${Math.random()}`,
+        name: candidate.member?.name || candidate.member?.email || 'Unknown member',
+        subtitle: `${candidate.daysSinceLastActivity || 0}d since last play • ${candidate.totalHistoricalBookings || 0} sessions`,
+        kind: 'member',
+      })),
     })
   }
 
@@ -124,6 +143,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
   const criticalCount = healthData?.summary?.critical ?? 0
   const totalAtRisk = atRiskCount + criticalCount
   if (totalAtRisk > 0) {
+    const atRiskMembers = healthMembers.filter((member: any) => ['at_risk', 'critical'].includes(member.riskLevel))
     suggestions.push({
       type: 'RETENTION_BOOST',
       icon: Shield,
@@ -132,6 +152,13 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       title: 'Boost Retention',
       description: `${totalAtRisk} member${totalAtRisk !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
       count: totalAtRisk,
+      previewTitle: 'Members currently showing retention risk',
+      previewItems: atRiskMembers.map((member: any) => ({
+        id: member.memberId,
+        name: member.member?.name || member.member?.email || 'Unknown member',
+        subtitle: `${member.riskLevel === 'critical' ? 'Critical' : 'At-risk'} • ${member.daysSinceLastBooking ?? 'N/A'}d since last play`,
+        kind: 'member',
+      })),
     })
   }
 
@@ -146,6 +173,13 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       title: 'Fill Open Sessions',
       description: `${underfilledCount} session${underfilledCount !== 1 ? 's' : ''} under capacity this week. Invite matching players to fill spots.`,
       count: underfilledCount,
+      previewTitle: 'Sessions currently below target occupancy',
+      previewItems: sessions.map((session: any) => ({
+        id: session.id,
+        name: session.title || 'Open session',
+        subtitle: `${session.date || ''} ${session.startTime || ''} • ${session.registered || 0}/${session.maxPlayers || 0} booked`,
+        kind: 'session',
+      })),
     })
   }
 
@@ -160,11 +194,19 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       title: 'Welcome New Members',
       description: `${newCount} new member${newCount !== 1 ? 's' : ''} joined recently. A welcome message drives early engagement.`,
       count: newCount,
+      previewTitle: 'Recently joined members in this segment',
+      previewItems: newMembers.map((member: any) => ({
+        id: member.id,
+        name: member.name || member.email || 'Unknown member',
+        subtitle: member.joinedAt ? `Joined ${new Date(member.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'Recently joined',
+        kind: 'member',
+      })),
     })
   }
 
   const watchCount = healthData?.summary?.watch ?? 0
   if (watchCount > 0 && suggestions.length < 4) {
+    const watchMembers = healthMembers.filter((member: any) => member.riskLevel === 'watch')
     suggestions.push({
       type: 'CHECK_IN',
       icon: Heart,
@@ -173,6 +215,13 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       title: 'Check In',
       description: `${watchCount} member${watchCount !== 1 ? 's' : ''} showing reduced activity. A quick check-in keeps them engaged.`,
       count: watchCount,
+      previewTitle: 'Members who should get a softer check-in',
+      previewItems: watchMembers.map((member: any) => ({
+        id: member.memberId,
+        name: member.member?.name || member.member?.email || 'Unknown member',
+        subtitle: `Watch segment • ${member.daysSinceLastBooking ?? 'N/A'}d since last play`,
+        kind: 'member',
+      })),
     })
   }
 
@@ -214,7 +263,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
-              onClick={() => onSelectType(s.type)}
+              onClick={() => setSelectedSuggestion(s)}
               className="text-left rounded-2xl p-5 transition-all hover:scale-[1.01] group"
               style={{
                 background: s.gradient,
@@ -241,6 +290,119 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
           )
         })}
       </div>
+
+      <AnimatePresence>
+        {selectedSuggestion && (
+          (() => {
+            const SelectedIcon = selectedSuggestion.icon
+            return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+            style={{ background: 'rgba(5, 8, 20, 0.72)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setSelectedSuggestion(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-2xl rounded-[28px] p-6"
+              style={{
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div className="flex items-start gap-4 min-w-0">
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{ background: `${selectedSuggestion.accentColor}18` }}
+                  >
+                    <SelectedIcon className="w-6 h-6" style={{ color: selectedSuggestion.accentColor }} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-[0.22em]" style={{ color: selectedSuggestion.accentColor, fontWeight: 700 }}>
+                      Campaign Audience
+                    </div>
+                    <h3 className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>
+                      {selectedSuggestion.title}
+                    </h3>
+                    <p className="text-sm mt-2" style={{ color: 'var(--t3)' }}>
+                      {selectedSuggestion.previewTitle}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSuggestion(null)}
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center transition-colors"
+                  style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t3)' }}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 mb-4 text-sm" style={{ color: 'var(--t3)' }}>
+                <Users className="w-4 h-4" />
+                <span>
+                  {selectedSuggestion.count} {selectedSuggestion.count === 1 ? 'record' : 'records'} in this recommendation
+                </span>
+              </div>
+
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                {selectedSuggestion.previewItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl px-4 py-3"
+                    style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+                  >
+                    <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                      {item.name}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                      {item.subtitle}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSuggestion(null)}
+                  className="px-4 py-2 rounded-xl text-sm transition-colors"
+                  style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 600 }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextType = selectedSuggestion.type
+                    setSelectedSuggestion(null)
+                    onSelectType(nextType)
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm transition-all"
+                  style={{
+                    background: `linear-gradient(135deg, ${selectedSuggestion.accentColor}, rgba(59,130,246,0.95))`,
+                    color: '#fff',
+                    fontWeight: 700,
+                  }}
+                >
+                  Continue to Campaign
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+            )
+          })()
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
