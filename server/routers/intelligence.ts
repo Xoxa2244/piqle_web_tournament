@@ -690,6 +690,37 @@ async function parseCohortPrompt(prompt: string): Promise<{ name: string; descri
   }
 }
 
+function parseCohortCampaignStrategies(text: string): any[] | null {
+  const trimmed = text.trim()
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const source = fenceMatch?.[1]?.trim() || trimmed
+
+  const arrayStart = source.indexOf('[')
+  const arrayEnd = source.lastIndexOf(']')
+  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+    try {
+      const parsed = JSON.parse(source.slice(arrayStart, arrayEnd + 1))
+      if (Array.isArray(parsed)) return parsed
+    } catch {}
+  }
+
+  const objectStart = source.indexOf('{')
+  const objectEnd = source.lastIndexOf('}')
+  if (objectStart !== -1 && objectEnd !== -1 && objectEnd > objectStart) {
+    try {
+      const parsed = JSON.parse(source.slice(objectStart, objectEnd + 1))
+      return Array.isArray(parsed) ? parsed : [parsed]
+    } catch {}
+  }
+
+  try {
+    const parsed = JSON.parse(source)
+    return Array.isArray(parsed) ? parsed : [parsed]
+  } catch {
+    return null
+  }
+}
+
 type ManualCampaignInput = {
   clubId: string
   type: 'CHECK_IN' | 'RETENTION_BOOST' | 'REACTIVATION' | 'SLOT_FILLER' | 'EVENT_INVITE' | 'NEW_MEMBER_WELCOME'
@@ -6466,6 +6497,9 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       const topDays = Object.entries(dayAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d, c]) => `${d} (${c} bookings)`)
       const topHours = Object.entries(hourAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([h, c]) => `${h}:00 (${c} bookings)`)
       const topFormats = Object.entries(formatAgg).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f, c]) => `${f} (${c} bookings)`)
+      const primaryDay = topDays[0]?.split(' (')[0] || 'Saturday'
+      const primaryHour = topHours[0]?.split(' ')[0] || '18:00'
+      const primaryFormat = topFormats[0]?.split(' (')[0] || 'OPEN_PLAY'
 
       // Avg sessions per member
       const totalBookings = Object.values(dayAgg).reduce((a, b) => a + b, 0)
@@ -6530,12 +6564,48 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         operation: 'generateCohortCampaign',
       })
 
-      try {
-        const text = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        const campaigns = JSON.parse(text)
-        return { campaigns: Array.isArray(campaigns) ? campaigns : [campaigns] }
-      } catch {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to parse AI response' })
+      const parsedCampaigns = parseCohortCampaignStrategies(result.text)
+      if (parsedCampaigns && parsedCampaigns.length > 0) {
+        return { campaigns: parsedCampaigns }
+      }
+
+      log.warn(
+        `[Cohorts] generateCohortCampaign returned non-JSON content; model=${result.model}; preview=${result.text.slice(0, 180).replace(/\s+/g, ' ')}`
+      )
+
+      return {
+        campaigns: [
+          {
+            strategy: 'before_peak',
+            strategyLabel: 'Peak Day Boost',
+            subjectLine: `${cohort.name}: book your next ${primaryFormat.toLowerCase().replace(/_/g, ' ')}`,
+            body: `Hi {{name}},\n\nMembers in this cohort usually play around ${primaryDay} at ${primaryHour}. We have upcoming ${primaryFormat.toLowerCase().replace(/_/g, ' ')} sessions that fit that pattern, and we'd love to get you booked back in.\n\nReserve your next spot and keep the momentum going.`,
+            channel: 'email',
+            bestTimeToSend: `${primaryDay} morning`,
+            tone: 'friendly',
+            reasoning: `Fallback strategy based on the cohort's strongest recent day/time signal (${primaryDay}, ${primaryHour}).`,
+          },
+          {
+            strategy: 're_engage',
+            strategyLabel: 'Re-engage Inactive',
+            subjectLine: `We'd love to see you back, {{name}}`,
+            body: `Hi {{name}},\n\nThis cohort has averaged about ${avgPerMember} sessions per member over the last 90 days. If you've been meaning to get back on court, this is a great time to jump in again.\n\nCheck the upcoming schedule and grab a session that fits your week.`,
+            channel: 'email',
+            bestTimeToSend: 'Monday 9:00 AM',
+            tone: 'warm',
+            reasoning: `Fallback win-back message anchored on the cohort's recent engagement average (${avgPerMember} sessions/member).`,
+          },
+          {
+            strategy: 'slot_filler',
+            strategyLabel: 'Last-Minute Fill',
+            subjectLine: `Last spots for upcoming ${primaryFormat.toLowerCase().replace(/_/g, ' ')}`,
+            body: `A few spots just opened up for an upcoming ${primaryFormat.toLowerCase().replace(/_/g, ' ')} session. If you want to get on court this week, now is the best time to grab one before it fills.`,
+            channel: 'sms',
+            bestTimeToSend: `${primaryDay} evening`,
+            tone: 'urgent',
+            reasoning: `Fallback urgency play based on the cohort's highest-demand format (${primaryFormat}).`,
+          },
+        ],
       }
     }),
 
