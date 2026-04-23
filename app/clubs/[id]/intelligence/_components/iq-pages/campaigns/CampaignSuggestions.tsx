@@ -46,98 +46,57 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
       'Reviewing reactivation, retention, and welcome opportunities',
       'Preparing AI campaign recommendations for this club',
     ]
-    const loadingSteps = [
-      {
-        title: 'Collecting club activity',
-        detail: 'Reviewing bookings, inactive members, and recent engagement signals.',
-      },
-      {
-        title: 'Analyzing campaign opportunities',
-        detail: 'Checking win-back, retention, open-session, and new-member patterns.',
-      },
-      {
-        title: 'Creating AI recommendations',
-        detail: 'Ranking the highest-impact campaigns to show on this page.',
-      },
-    ]
 
     return (
       <div className="space-y-6 max-w-[1400px] mx-auto">
-        <div
-          className="rounded-3xl px-6 py-7"
-          style={{
-            background: 'linear-gradient(135deg, rgba(139,92,246,0.14), rgba(6,182,212,0.08))',
-            border: '1px solid rgba(139,92,246,0.18)',
-          }}
-        >
-          <div className="flex flex-col items-center text-center gap-3">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(139,92,246,0.14)', color: '#A78BFA' }}>
-              <Loader2 className="w-7 h-7 animate-spin" />
-            </div>
-            <div className="text-xs font-semibold tracking-[0.24em] uppercase" style={{ color: '#A78BFA' }}>
-              AI Campaign Intelligence
-            </div>
-            <div className="text-xl font-bold" style={{ color: 'var(--heading)' }}>
-              Building AI campaign recommendations
-            </div>
-            <div className="text-sm max-w-2xl" style={{ color: 'var(--t2)' }}>
-              {loadingMessages[loadingStep]}
-            </div>
-            <div className="text-xs max-w-2xl" style={{ color: 'var(--t4)' }}>
-              We are gathering the member signals behind this section now. On larger clubs this step can take longer,
-              so the recommendations load separately from the rest of the page.
-            </div>
+        <div className="text-center pt-2">
+          <div className="w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.15))', border: '1px solid rgba(139,92,246,0.2)' }}>
+            <Sparkles className="w-6 h-6" style={{ color: '#A78BFA' }} />
           </div>
-
-          <div className="grid md:grid-cols-3 gap-3 mt-6">
-            {loadingSteps.map((step, index) => {
-              const isActive = index === loadingStep
-              const isComplete = index < loadingStep
-
-              return (
-                <div
-                  key={step.title}
-                  className="rounded-2xl p-4 text-left transition-all"
-                  style={{
-                    background: isActive
-                      ? 'rgba(139,92,246,0.12)'
-                      : 'rgba(255,255,255,0.03)',
-                    border: isComplete || isActive
-                      ? '1px solid rgba(139,92,246,0.25)'
-                      : '1px solid var(--card-border)',
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
-                      style={{
-                        background: isComplete || isActive ? 'rgba(139,92,246,0.18)' : 'rgba(255,255,255,0.06)',
-                        color: isComplete || isActive ? '#A78BFA' : 'var(--t4)',
-                      }}
-                    >
-                      {index + 1}
-                    </div>
-                    <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                      {step.title}
-                    </div>
-                  </div>
-                  <div className="text-xs leading-5" style={{ color: 'var(--t3)' }}>
-                    {step.detail}
-                  </div>
-                </div>
-              )
-            })}
+          <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>AI-Recommended Campaigns</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
+            Based on your club data, here are the highest-impact campaigns to launch
+          </p>
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2"
+            style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.16)', color: '#C4B5FD' }}>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-xs font-medium">{loadingMessages[loadingStep]}</span>
+          </div>
+          <div className="text-xs mt-2" style={{ color: 'var(--t4)' }}>
+            Gathering member signals and generating AI campaign ideas.
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map(i => (
+          {[1, 2, 3].map(i => (
             <div
               key={i}
-              className="animate-pulse rounded-2xl h-36"
-              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
-            />
+              className="rounded-2xl p-5 animate-pulse"
+              style={{
+                background: i === 1
+                  ? 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(249,115,22,0.08))'
+                  : i === 2
+                    ? 'linear-gradient(135deg, rgba(249,115,22,0.12), rgba(245,158,11,0.08))'
+                    : 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(168,85,247,0.08))',
+                border: '1px solid var(--card-border)',
+                minHeight: 120,
+              }}
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl shrink-0" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="h-6 rounded-full w-48" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-6 rounded-full w-9" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 rounded w-[85%]" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                    <div className="h-4 rounded w-[65%]" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                  </div>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
