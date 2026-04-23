@@ -94,21 +94,25 @@ function HealthAudience({ clubId, riskSegment, onSegmentChange, onAudienceChange
   const segments = ['watch', 'at_risk', 'critical'] as const
   const counts: Record<string, number> = { watch: 0, at_risk: 0, critical: 0 }
   for (const m of members) {
-    const seg = (m as any).segment ?? (m as any).riskSegment ?? ''
+    const seg = (m as any).riskLevel ?? (m as any).segment ?? (m as any).riskSegment ?? ''
     if (seg in counts) counts[seg]++
   }
 
-  const filtered = members.filter((m: any) => (m.segment ?? m.riskSegment) === riskSegment)
+  const filtered = members.filter((m: any) => ((m.riskLevel ?? m.segment ?? m.riskSegment) === riskSegment))
 
   useEffect(() => {
-    if (filtered.length > 0) {
-      onAudienceChange({
-        memberIds: filtered.map((m: any) => m.userId ?? m.id),
-        count: filtered.length,
-        label: `${filtered.length} ${riskSegment.replace('_', ' ')} members`,
-      })
+    if (!riskSegment || !(riskSegment in counts)) {
+      onSegmentChange(defaultSegment)
     }
-  }, [filtered.length, riskSegment]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [defaultSegment, onSegmentChange, riskSegment])
+
+  useEffect(() => {
+    onAudienceChange({
+      memberIds: filtered.map((m: any) => m.memberId ?? m.userId ?? m.id).filter(Boolean),
+      count: filtered.length,
+      label: `${filtered.length} ${riskSegment.replace('_', ' ')} members`,
+    })
+  }, [filtered, onAudienceChange, riskSegment])
 
   return (
     <div>
