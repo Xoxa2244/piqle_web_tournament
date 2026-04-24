@@ -12,6 +12,7 @@ import { SessionDetailIQ } from "./SessionDetailIQ"
 const HOUR_START = 6
 const HOUR_END = 23
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
+const SCHEDULE_ROW_HEIGHT = 40
 
 function formatHour(h: number): string {
   if (h === 0) return '12 AM'
@@ -222,6 +223,19 @@ export function ScheduleIQ({
     })
   }, [selectedDate])
 
+  const visibleHours = useMemo(() => {
+    if (daySessions.length === 0) return HOURS
+    const starts = daySessions.map((s) => parseInt(s.startTime.split(':')[0], 10))
+    const ends = daySessions.map((s) => {
+      const endH = parseInt(s.endTime.split(':')[0], 10)
+      const endM = parseInt(s.endTime.split(':')[1] || '0', 10)
+      return endH + (endM > 0 ? 1 : 0)
+    })
+    const start = Math.max(HOUR_START, Math.min(...starts))
+    const end = Math.min(HOUR_END, Math.max(start + 1, Math.max(...ends)))
+    return Array.from({ length: end - start }, (_, i) => start + i)
+  }, [daySessions])
+
   const todayStr = toDateStr(new Date())
   const formattedDate = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
@@ -330,26 +344,26 @@ export function ScheduleIQ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Day navigation */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl px-1 py-1" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
-            <button onClick={handlePrev} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-3 py-1 text-sm font-medium" style={{ color: 'var(--heading)' }}>{formattedDate}</span>
-            <button onClick={handleNext} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronRight className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1 rounded-xl px-1 py-0.5" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+            <button onClick={handlePrev} className="p-1 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronLeft className="w-4 h-4" /></button>
+            <span className="px-2 py-1 text-xs font-medium" style={{ color: 'var(--heading)' }}>{formattedDate}</span>
+            <button onClick={handleNext} className="p-1 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronRight className="w-4 h-4" /></button>
           </div>
           <button
             onClick={handleToday}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+            className="px-2.5 py-1 rounded-xl text-xs font-semibold transition-all"
             style={{ background: selectedDate === todayStr ? 'rgba(139,92,246,0.15)' : 'var(--subtle)', color: selectedDate === todayStr ? '#8B5CF6' : 'var(--t3)', border: '1px solid var(--card-border)' }}
           >Today</button>
         </div>
       </div>
 
       {/* Week overview bar */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
         {weekPills.map((p) => {
           const isSelected = p.dateStr === selectedDate
           const isToday = p.dateStr === todayStr
@@ -358,7 +372,7 @@ export function ScheduleIQ({
             <button
               key={p.dateStr}
               onClick={() => setSelectedDate(p.dateStr)}
-              className="flex flex-col items-center px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
+              className="flex min-w-[44px] flex-col items-center px-2 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: isSelected ? 'rgba(139,92,246,0.15)' : 'transparent',
                 border: `1px solid ${isSelected ? 'rgba(139,92,246,0.3)' : isToday ? 'rgba(139,92,246,0.2)' : 'transparent'}`,
@@ -367,7 +381,7 @@ export function ScheduleIQ({
               }}
             >
               <span className="text-[10px] uppercase">{p.label}</span>
-              <span className="text-sm font-semibold">{p.day}</span>
+              <span className="text-xs font-semibold">{p.day}</span>
             </button>
           )
         })}
@@ -384,17 +398,17 @@ export function ScheduleIQ({
         ) : (
           <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
             <div className="overflow-x-auto">
-              <div style={{ minWidth: Math.max(600, courts.length * 140 + 70) }}>
+              <div style={{ minWidth: Math.max(520, courts.length * 112 + 54) }}>
                 {/* Court header */}
                 <div className="flex sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)' }}>
-                  <div className="w-[70px] shrink-0 p-2" />
+                  <div className="w-[54px] shrink-0 p-1.5" />
                   {courts.map((c) => (
-                    <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
+                    <div key={c} className="flex-1 min-w-[104px] p-1.5 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
+                      <div className="text-[11px] font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
                         {c === '__unassigned__' ? 'Unassigned' : shortenCourt(c)}
                       </div>
                       {c !== '__unassigned__' && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
+                        <span className="text-[8px] px-1.5 py-0.5 rounded-full inline-block leading-none" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
                       )}
                     </div>
                   ))}
@@ -404,17 +418,17 @@ export function ScheduleIQ({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: `70px repeat(${courts.length}, minmax(120px, 1fr))`,
-                    gridTemplateRows: `repeat(${HOURS.length}, minmax(56px, auto))`,
+                    gridTemplateColumns: `54px repeat(${courts.length}, minmax(104px, 1fr))`,
+                    gridTemplateRows: `repeat(${visibleHours.length}, minmax(${SCHEDULE_ROW_HEIGHT}px, auto))`,
                   }}
                 >
-                  {HOURS.map((hour, rowIdx) => {
+                  {visibleHours.map((hour, rowIdx) => {
                     const isNow = hour === currentHour && selectedDate === todayStr
                     return (
                       <React.Fragment key={hour}>
                         {/* Time label */}
                         <div
-                          className="p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]"
+                          className="p-1 text-right pr-2 flex items-start justify-end sticky left-0 z-[5]"
                           style={{
                             gridColumn: 1,
                             gridRow: rowIdx + 1,
@@ -440,19 +454,19 @@ export function ScheduleIQ({
                           return (
                             <div
                               key={key}
-                              className="relative p-0.5"
+                              className="relative p-[2px]"
                               style={{
                                 gridColumn: colIdx + 2,
                                 gridRow: span > 1 ? `${rowIdx + 1} / span ${span}` : rowIdx + 1,
                                 // For fractional spans (e.g. 1.5h session in 2-row span), clip the content
-                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * 56}px` } : {}),
+                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * SCHEDULE_ROW_HEIGHT}px` } : {}),
                                 borderTop: '1px solid var(--card-border)',
                                 borderLeft: '1px solid var(--card-border)',
                                 background: isNow ? 'rgba(139,92,246,0.03)' : 'transparent',
                               }}
                             >
                               {!cellSessions ? (
-                                <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.15 }} />
+                                <div className="w-full h-full min-h-[34px] rounded-md border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.12 }} />
                               ) : (
                                 cellSessions.map((s) => {
                                   const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
@@ -463,17 +477,16 @@ export function ScheduleIQ({
                                     <button
                                       key={s.id}
                                       onClick={() => setSelectedSession(s)}
-                                      className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
+                                      className="w-full text-left rounded-md px-1.5 py-1 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
                                       style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
                                     >
                                       <div>
-                                        <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
-                                        {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
-                                        {span > 1 && <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
+                                        <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{sk.label}</div>
+                                        {span > 1 && <div className="text-[8px] leading-tight" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
                                       </div>
-                                      <div>
-                                        <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
-                                        <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                      <div className="mt-0.5 flex items-center justify-between gap-1">
+                                        <div className="text-[9px] font-medium leading-none" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
+                                        <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                                           <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
                                         </div>
                                       </div>
