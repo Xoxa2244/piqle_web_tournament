@@ -13,6 +13,7 @@ const HOUR_START = 6
 const HOUR_END = 23
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
 const SCHEDULE_ROW_HEIGHT = 40
+const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 function formatHour(h: number): string {
   if (h === 0) return '12 AM'
@@ -21,8 +22,25 @@ function formatHour(h: number): string {
   return `${h - 12} PM`
 }
 
-function toDateStr(d: Date): string { return d.toISOString().slice(0, 10) }
+function toDateStr(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r }
+function monthLabel(d: Date): string { return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) }
+function buildMonthCells(monthDate: Date): Array<{ dateStr: string; day: number; inMonth: boolean }> {
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const first = new Date(year, month, 1)
+  const firstWeekday = (first.getDay() + 6) % 7
+  const start = addDays(first, -firstWeekday)
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = addDays(start, i)
+    return { dateStr: toDateStr(d), day: d.getDate(), inMonth: d.getMonth() === month }
+  })
+}
 
 // ── Skill-level color map ──
 
@@ -168,6 +186,8 @@ export function ScheduleIQ({
   const { isDark } = useTheme()
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()))
   const [selectedSession, setSelectedSession] = useState<SessionCalendarItem | null>(null)
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(selectedDate + 'T12:00:00'))
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
@@ -241,6 +261,7 @@ export function ScheduleIQ({
     const d = new Date(selectedDate + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }, [selectedDate])
+  const calendarCells = useMemo(() => buildMonthCells(calendarMonth), [calendarMonth])
   const selectedDayName = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long' })
@@ -314,7 +335,18 @@ export function ScheduleIQ({
       return next <= maxDate ? next : d
     })
   }, [allDates])
-  const handleToday = useCallback(() => setSelectedDate(toDateStr(new Date())), [])
+  const handleToday = useCallback(() => {
+    setSelectedDate(toDateStr(new Date()))
+    setIsDatePickerOpen(false)
+  }, [])
+  const handleDateButtonClick = useCallback(() => {
+    setCalendarMonth(new Date(selectedDate + 'T12:00:00'))
+    setIsDatePickerOpen((open) => !open)
+  }, [selectedDate])
+  const handleCalendarPick = useCallback((dateStr: string) => {
+    setSelectedDate(dateStr)
+    setIsDatePickerOpen(false)
+  }, [])
 
   if (isLoading) {
     return (
@@ -349,10 +381,93 @@ export function ScheduleIQ({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl px-1 py-0.5" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
-            <button onClick={handlePrev} className="p-1 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-2 py-1 text-xs font-medium" style={{ color: 'var(--heading)' }}>{formattedDate}</span>
-            <button onClick={handleNext} className="p-1 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronRight className="w-4 h-4" /></button>
+          <div className="relative">
+            <div
+              className="flex w-[260px] items-center justify-between gap-1 rounded-xl px-1 py-0.5"
+              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+            >
+              <button
+                onClick={handlePrev}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDateButtonClick}
+                className="h-8 flex-1 truncate rounded-lg px-2 text-center text-sm font-semibold transition-all hover:bg-white/5"
+                style={{ color: 'var(--heading)' }}
+                aria-expanded={isDatePickerOpen}
+                aria-haspopup="dialog"
+              >
+                {formattedDate}
+              </button>
+              <button
+                onClick={handleNext}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Next day"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            {isDatePickerOpen && (
+              <div
+                className="absolute right-0 top-11 z-30 w-[300px] rounded-2xl p-3 shadow-2xl"
+                style={{
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--card-border)',
+                  boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.45)' : '0 24px 60px rgba(15,23,42,0.18)',
+                }}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                    {monthLabel(calendarMonth)}
+                  </div>
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Next month"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase" style={{ color: 'var(--t4)' }}>
+                  {WEEKDAY_LABELS.map((label, index) => <div key={`${label}-${index}`}>{label}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarCells.map((cell) => {
+                    const isSelected = cell.dateStr === selectedDate
+                    const hasSessions = allSessions.some((s) => s.date === cell.dateStr)
+                    return (
+                      <button
+                        key={cell.dateStr}
+                        onClick={() => handleCalendarPick(cell.dateStr)}
+                        className="h-8 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                          background: isSelected ? 'rgba(139,92,246,0.22)' : hasSessions ? 'rgba(16,185,129,0.1)' : 'transparent',
+                          border: isSelected ? '1px solid rgba(139,92,246,0.55)' : '1px solid transparent',
+                          color: isSelected ? '#A78BFA' : cell.inMonth ? 'var(--t2)' : 'var(--t4)',
+                          opacity: cell.inMonth ? 1 : 0.35,
+                        }}
+                      >
+                        {cell.day}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={handleToday}
