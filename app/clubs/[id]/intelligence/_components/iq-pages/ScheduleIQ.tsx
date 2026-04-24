@@ -416,7 +416,7 @@ export function ScheduleIQ({
               <div
                 className="absolute right-0 top-11 z-30 w-[300px] rounded-2xl p-3 shadow-2xl"
                 style={{
-                  background: 'var(--card-bg)',
+                  background: isDark ? '#111225' : '#FFFFFF',
                   border: '1px solid var(--card-border)',
                   boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.45)' : '0 24px 60px rgba(15,23,42,0.18)',
                 }}

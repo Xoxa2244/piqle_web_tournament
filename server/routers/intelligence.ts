@@ -4823,25 +4823,64 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
-  // ── New Members (first booking within N days) ──
-  // "New" = first confirmed booking at this club happened recently,
-  // NOT when club_followers record was created (which is import date for CSV members)
+  // ── New Members (joined within N days) ──
+  // Prefer imported membership start dates so welcome campaigns can include
+  // brand-new members who have not booked their first session yet.
   getNewMembers: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), joinedWithinDays: z.number().default(14) }))
     .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
-        SELECT u.id, u.name, u.email, u.image, first_booking."firstPlayedAt" as "joinedAt"
-        FROM club_followers cf
-        JOIN users u ON u.id = cf.user_id
-        JOIN LATERAL (
-          SELECT MIN(b."bookedAt") as "firstPlayedAt"
+        WITH member_dates AS (
+          SELECT
+            cf.user_id,
+            CASE
+              WHEN de.metadata IS NOT NULL THEN
+                CASE
+                  WHEN de.metadata->>'firstMembershipStartDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                    THEN LEFT(de.metadata->>'firstMembershipStartDate', 10)::date
+                  ELSE NULL
+                END
+              ELSE cf.created_at::date
+            END AS "joinedAt",
+            de.metadata->>'membershipStatus' AS "membershipStatus"
+          FROM club_followers cf
+          LEFT JOIN LATERAL (
+            SELECT metadata
+            FROM document_embeddings
+            WHERE club_id = $1::uuid
+              AND content_type = 'member'
+              AND source_table = 'csv_import'
+              AND source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+              AND source_id::uuid = cf.user_id
+            ORDER BY created_at DESC
+            LIMIT 1
+          ) de ON true
+          WHERE cf.club_id = $1::uuid
+        ),
+        booking_counts AS (
+          SELECT
+            b."userId",
+            COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED')::int AS "confirmedBookings"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = cf.user_id
-            AND ps."clubId" = $1            AND b.status = 'CONFIRMED'
-        ) first_booking ON true
-        WHERE cf.club_id = $1          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
-        ORDER BY first_booking."firstPlayedAt" DESC
+          WHERE ps."clubId" = $1::uuid
+          GROUP BY b."userId"
+        )
+        SELECT
+          u.id,
+          u.name,
+          u.email,
+          u.image,
+          md."joinedAt",
+          COALESCE(bc."confirmedBookings", 0)::int AS "confirmedBookings"
+        FROM member_dates md
+        JOIN users u ON u.id = md.user_id
+        LEFT JOIN booking_counts bc ON bc."userId" = md.user_id
+        WHERE md."joinedAt" IS NOT NULL
+          AND md."joinedAt" >= CURRENT_DATE - ($2 || ' days')::interval
+          AND COALESCE(md."membershipStatus", 'Currently Active') NOT IN ('Suspended', 'Expired', 'Cancelled', 'Inactive')
+        ORDER BY md."joinedAt" DESC, u.name ASC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }
     }),

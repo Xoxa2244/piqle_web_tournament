@@ -101,6 +101,9 @@ export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: Cam
                   message={state.message}
                   onMessageChange={creator.setMessage}
                   context={{
+                    sessionTitle: state.sessionId
+                      ? state.audience.label.replace(/^(Slot filler|Event invite):\s*/, '')
+                      : undefined,
                     riskSegment: state.riskSegment,
                     inactivityDays: state.inactivityDays,
                   }}

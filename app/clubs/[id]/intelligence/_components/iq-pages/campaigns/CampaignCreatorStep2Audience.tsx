@@ -7,6 +7,7 @@ import {
   useReactivationCandidates,
   useMemberHealth,
   useUnderfilledSessions,
+  useSlotFillerRecommendations,
   useNewMembers,
 } from '../../../_hooks/use-intelligence'
 
@@ -199,25 +200,39 @@ function HealthAudience({ clubId, riskSegment, onSegmentChange, onAudienceChange
   )
 }
 
-function SessionAudience({ clubId, sessionId, onSessionIdChange, onAudienceChange }: {
-  clubId: string; sessionId: string | null; onSessionIdChange: (id: string | null) => void; onAudienceChange: Step2Props['onAudienceChange']
+function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienceChange }: {
+  clubId: string; type: string; sessionId: string | null; onSessionIdChange: (id: string | null) => void; onAudienceChange: Step2Props['onAudienceChange']
 }) {
   const { data, isLoading } = useUnderfilledSessions(clubId)
   const sessions = (data as any)?.sessions ?? data ?? []
   const list = Array.isArray(sessions) ? sessions : []
+  const selectedSession = useMemo(
+    () => list.find((sess: any) => (sess.id ?? sess.sessionId) === sessionId),
+    [list, sessionId],
+  )
+  const { data: recommendationsData, isLoading: isLoadingRecommendations } = useSlotFillerRecommendations(sessionId, 20, clubId)
+  const recommendedMembers = useMemo(() => {
+    const recommendations = (recommendationsData as any)?.recommendations ?? []
+    return Array.isArray(recommendations) ? recommendations : []
+  }, [recommendationsData])
+  const campaignLabel = type === 'EVENT_INVITE' ? 'Event invite' : 'Slot filler'
 
   useEffect(() => {
-    if (sessionId) {
-      const s = list.find((sess: any) => (sess.id ?? sess.sessionId) === sessionId)
-      if (s) {
-        onAudienceChange({
-          memberIds: [],
-          count: (s as any).recommendedCount ?? (((s as any).capacity - (s as any).booked) || 5),
-          label: `Session: ${(s as any).title ?? (s as any).name ?? sessionId}`,
-        })
-      }
+    if (!sessionId || !selectedSession) {
+      onAudienceChange({ memberIds: [], count: 0, label: '' })
+      return
     }
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    const memberIds = recommendedMembers
+      .map((candidate: any) => candidate.member?.id ?? candidate.memberId ?? candidate.userId ?? candidate.id)
+      .filter(Boolean)
+
+    onAudienceChange({
+      memberIds,
+      count: memberIds.length,
+      label: `${campaignLabel}: ${(selectedSession as any).title ?? (selectedSession as any).name ?? sessionId}`,
+    })
+  }, [campaignLabel, onAudienceChange, recommendedMembers, selectedSession, sessionId])
 
   return (
     <div>
@@ -230,7 +245,7 @@ function SessionAudience({ clubId, sessionId, onSessionIdChange, onAudienceChang
         <div className="space-y-2 max-h-48 overflow-y-auto">
           {list.map((s: any) => {
             const id = s.id ?? s.sessionId
-            const booked = s.booked ?? s.currentPlayers ?? 0
+            const booked = s.booked ?? s.currentPlayers ?? s.registered ?? 0
             const capacity = s.capacity ?? s.maxPlayers ?? 1
             const pct = Math.round((booked / capacity) * 100)
             const selected = sessionId === id
@@ -254,6 +269,22 @@ function SessionAudience({ clubId, sessionId, onSessionIdChange, onAudienceChang
               </button>
             )
           })}
+        </div>
+      )}
+      {sessionId && (
+        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+          <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+            Recommended recipients
+          </div>
+          {isLoadingRecommendations ? (
+            <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t4)' }}>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Scoring members...
+            </div>
+          ) : recommendedMembers.length === 0 ? (
+            <div className="text-xs" style={{ color: 'var(--t4)' }}>No matching members found for this session</div>
+          ) : (
+            <AudiencePreviewList members={recommendedMembers} />
+          )}
         </div>
       )}
       {!isLoading && list.length > 0 && (
@@ -335,7 +366,7 @@ export function CampaignCreatorStep2Audience(props: Step2Props) {
           <ReactivationAudience clubId={props.clubId} inactivityDays={props.inactivityDays} onDaysChange={props.onInactivityDaysChange} onAudienceChange={onAudienceChange} />
         )}
         {(type === 'SLOT_FILLER' || type === 'EVENT_INVITE') && (
-          <SessionAudience clubId={props.clubId} sessionId={props.sessionId} onSessionIdChange={props.onSessionIdChange} onAudienceChange={onAudienceChange} />
+          <SessionAudience clubId={props.clubId} type={type} sessionId={props.sessionId} onSessionIdChange={props.onSessionIdChange} onAudienceChange={onAudienceChange} />
         )}
         {(type === 'CHECK_IN' || type === 'RETENTION_BOOST') && (
           <HealthAudience clubId={props.clubId} riskSegment={props.riskSegment} onSegmentChange={props.onRiskSegmentChange} onAudienceChange={onAudienceChange} defaultSegment={type === 'CHECK_IN' ? 'watch' : 'at_risk'} />

@@ -565,7 +565,18 @@ export function useGenerateCampaignMessage() {
 
 // ── Create Campaign (send to members) ──
 export function useCreateCampaign() {
-  return trpc.intelligence.createCampaign.useMutation()
+  const utils = trpc.useUtils()
+
+  return trpc.intelligence.createCampaign.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.intelligence.getCampaignAnalytics.invalidate().catch(() => undefined),
+        utils.intelligence.getCampaignList.invalidate().catch(() => undefined),
+        utils.intelligence.getCampaignDrilldown.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
 }
 
 // ── Underfilled Sessions ──
