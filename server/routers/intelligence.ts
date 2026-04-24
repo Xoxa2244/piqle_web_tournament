@@ -4831,41 +4831,55 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
-        WITH member_dates AS (
+        WITH imported_member_dates AS (
           SELECT
-            cf.user_id,
+            source_id AS "userId",
             CASE
-              WHEN de.metadata IS NOT NULL THEN
-                CASE
-                  WHEN de.metadata->>'firstMembershipStartDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
-                    THEN LEFT(de.metadata->>'firstMembershipStartDate', 10)::date
-                  ELSE NULL
-                END
-              ELSE cf.created_at::date
+              WHEN metadata->>'firstMembershipStartDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                THEN LEFT(metadata->>'firstMembershipStartDate', 10)::date
+              WHEN metadata->>'firstMembershipStartDate' ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}$'
+                THEN to_date(metadata->>'firstMembershipStartDate', 'MM/DD/YYYY')
+              ELSE NULL
             END AS "joinedAt",
-            de.metadata->>'membershipStatus' AS "membershipStatus"
+            metadata->>'membershipStatus' AS "membershipStatus",
+            0 AS "sourceRank"
+          FROM document_embeddings
+          WHERE club_id::text = $1
+            AND content_type = 'member'
+            AND source_table = 'csv_import'
+            AND source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        ),
+        follower_dates AS (
+          SELECT
+            cf.user_id::text AS "userId",
+            COALESCE(u."createdAt"::date, cf.created_at::date) AS "joinedAt",
+            u.membership_status AS "membershipStatus",
+            1 AS "sourceRank"
           FROM club_followers cf
-          LEFT JOIN LATERAL (
-            SELECT metadata
-            FROM document_embeddings
-            WHERE club_id = $1::uuid
-              AND content_type = 'member'
-              AND source_table = 'csv_import'
-              AND source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-              AND source_id::uuid = cf.user_id
-            ORDER BY created_at DESC
-            LIMIT 1
-          ) de ON true
-          WHERE cf.club_id = $1::uuid
+          JOIN users u ON u.id::text = cf.user_id::text
+          WHERE cf.club_id::text = $1
+        ),
+        member_dates AS (
+          SELECT DISTINCT ON ("userId")
+            "userId",
+            "joinedAt",
+            "membershipStatus"
+          FROM (
+            SELECT * FROM imported_member_dates
+            UNION ALL
+            SELECT * FROM follower_dates
+          ) combined
+          WHERE "joinedAt" IS NOT NULL
+          ORDER BY "userId", "sourceRank" ASC, "joinedAt" DESC
         ),
         booking_counts AS (
           SELECT
-            b."userId",
+            b."userId"::text AS "userId",
             COUNT(*) FILTER (WHERE b.status::text = 'CONFIRMED')::int AS "confirmedBookings"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE ps."clubId" = $1::uuid
-          GROUP BY b."userId"
+          WHERE ps."clubId"::text = $1
+          GROUP BY b."userId"::text
         )
         SELECT
           u.id,
@@ -4875,11 +4889,11 @@ export const intelligenceRouter = createTRPCRouter({
           md."joinedAt",
           COALESCE(bc."confirmedBookings", 0)::int AS "confirmedBookings"
         FROM member_dates md
-        JOIN users u ON u.id = md.user_id
-        LEFT JOIN booking_counts bc ON bc."userId" = md.user_id
+        JOIN users u ON u.id::text = md."userId"
+        LEFT JOIN booking_counts bc ON bc."userId" = md."userId"
         WHERE md."joinedAt" IS NOT NULL
           AND md."joinedAt" >= CURRENT_DATE - ($2 || ' days')::interval
-          AND COALESCE(md."membershipStatus", 'Currently Active') NOT IN ('Suspended', 'Expired', 'Cancelled', 'Inactive')
+          AND LOWER(COALESCE(NULLIF(md."membershipStatus", ''), 'active')) NOT IN ('suspended', 'expired', 'cancelled', 'inactive')
         ORDER BY md."joinedAt" DESC, u.name ASC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }

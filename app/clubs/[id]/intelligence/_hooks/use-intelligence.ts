@@ -717,7 +717,7 @@ export function useAdminTodoDecisions(clubId: string, dateKey: string) {
 export function useNewMembers(clubId: string, days: number = 14, options?: IntelligenceQueryOptions) {
   return trpc.intelligence.getNewMembers.useQuery(
     { clubId, joinedWithinDays: days },
-    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 30 * 1000, refetchOnMount: 'always' }
   )
 }
 

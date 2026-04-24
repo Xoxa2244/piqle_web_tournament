@@ -322,7 +322,7 @@ function NewMemberAudience({ clubId, onAudienceChange }: {
   clubId: string; onAudienceChange: Step2Props['onAudienceChange']
 }) {
   const [days, setDays] = React.useState(30)
-  const { data, isLoading } = useNewMembers(clubId, days)
+  const { data, isLoading, error } = useNewMembers(clubId, days)
   const members = (data as any)?.members ?? data ?? []
   const list = Array.isArray(members) ? members : []
 
@@ -344,6 +344,10 @@ function NewMemberAudience({ clubId, onAudienceChange }: {
       </div>
       {isLoading ? (
         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t4)' }}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</div>
+      ) : error ? (
+        <div className="text-xs" style={{ color: '#EF4444', fontWeight: 600 }}>
+          Could not load new members: {error.message}
+        </div>
       ) : (
         <div className="text-xs" style={{ color: '#8B5CF6', fontWeight: 600 }}>{list.length} new members</div>
       )}
