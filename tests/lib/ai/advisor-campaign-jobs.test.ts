@@ -1,9 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { sendOutreachEmail, sendSms, reportUsage } = vi.hoisted(() => ({
+// SMS path runs `generateUnsubscribeUrl`, which reads CRON_SECRET at call
+// time. Without this the SMS branch throws before sendSms is invoked and
+// the test sees 0 calls instead of the expected 1 (see lib/unsubscribe.ts).
+process.env.CRON_SECRET = process.env.CRON_SECRET || 'test-cron-secret'
+
+const { sendOutreachEmail, sendSms, reportUsage, appendSmsOptOut } = vi.hoisted(() => ({
   sendOutreachEmail: vi.fn(),
   sendSms: vi.fn(),
   reportUsage: vi.fn(),
+  // advisor-campaign-jobs wraps every SMS body via appendSmsOptOut from
+  // the same module — mock both or the SMS branch throws before sendSms
+  // is reached.
+  appendSmsOptOut: vi.fn((body: string, url: string) => `${body} Reply STOP to opt out: ${url}`),
 }))
 
 vi.mock('@/lib/email', () => ({
@@ -12,6 +21,7 @@ vi.mock('@/lib/email', () => ({
 
 vi.mock('@/lib/sms', () => ({
   sendSms,
+  appendSmsOptOut,
 }))
 
 vi.mock('@/lib/stripe-usage', () => ({

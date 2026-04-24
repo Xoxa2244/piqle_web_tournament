@@ -80,40 +80,43 @@ describe('Антиспам > Правило 2: Дедупликация', () => 
 })
 
 // ── Rule 3: 24-hour frequency cap ──
+// Default limit raised to max24h=5 on 2026-04-23 (lib/ai/anti-spam.ts L41).
+// Tests assert at the threshold so that bumping the constant breaks loudly.
 
 describe('Антиспам > Правило 3: Лимит 24 часа', () => {
-  it('2+ сообщения за 24ч → блокировка', async () => {
+  it('5+ сообщений за 24ч → блокировка', async () => {
     // First count call = 24h check
-    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(2)
+    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(5)
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('24 hours')
   })
 
-  it('< 2 сообщений за 24ч → разрешено', async () => {
-    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(1) // 24h
-    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(1) // 7d
+  it('< 5 сообщений за 24ч → разрешено', async () => {
+    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(4) // 24h
+    mockPrisma.aIRecommendationLog.count.mockResolvedValueOnce(4) // 7d
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(true)
   })
 })
 
 // ── Rule 4: 7-day frequency cap ──
+// Default limit raised to max7d=10 on 2026-04-23. See note above.
 
 describe('Антиспам > Правило 4: Лимит 7 дней', () => {
-  it('5+ сообщений за 7 дней → блокировка', async () => {
+  it('10+ сообщений за 7 дней → блокировка', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h — ok
-      .mockResolvedValueOnce(5) // 7d — limit reached (increased to 5 for sequences)
+      .mockResolvedValueOnce(10) // 7d — limit reached
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(false)
     expect(result.reason).toContain('7 days')
   })
 
-  it('< 5 сообщений за 7 дней → разрешено', async () => {
+  it('< 10 сообщений за 7 дней → разрешено', async () => {
     mockPrisma.aIRecommendationLog.count
       .mockResolvedValueOnce(1) // 24h
-      .mockResolvedValueOnce(4) // 7d — under limit
+      .mockResolvedValueOnce(9) // 7d — under limit
     const result = await checkAntiSpam({ prisma: mockPrisma, ...baseInput, sessionId: null })
     expect(result.allowed).toBe(true)
   })
