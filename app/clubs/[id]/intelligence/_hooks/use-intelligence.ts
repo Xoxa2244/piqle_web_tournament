@@ -580,10 +580,10 @@ export function useCreateCampaign() {
 }
 
 // ── Underfilled Sessions ──
-export function useUnderfilledSessions(clubId: string, options?: IntelligenceQueryOptions) {
+export function useUnderfilledSessions(clubId: string, options?: IntelligenceQueryOptions & { days?: number }) {
   return trpc.intelligence.getUnderfilledSessions.useQuery(
-    { clubId },
-    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 2 * 60 * 1000 }
+    { clubId, days: options?.days ?? 60 },
+    { enabled: !!clubId && (options?.enabled ?? true), staleTime: 15 * 1000, refetchOnMount: 'always' }
   )
 }
 

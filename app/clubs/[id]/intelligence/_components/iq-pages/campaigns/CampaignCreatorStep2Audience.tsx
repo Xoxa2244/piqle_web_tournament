@@ -203,7 +203,7 @@ function HealthAudience({ clubId, riskSegment, onSegmentChange, onAudienceChange
 function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienceChange }: {
   clubId: string; type: string; sessionId: string | null; onSessionIdChange: (id: string | null) => void; onAudienceChange: Step2Props['onAudienceChange']
 }) {
-  const { data, isLoading } = useUnderfilledSessions(clubId)
+  const { data, isLoading, error } = useUnderfilledSessions(clubId, { days: 60 })
   const sessions = (data as any)?.sessions ?? data ?? []
   const list = Array.isArray(sessions) ? sessions : []
   const selectedSession = useMemo(
@@ -239,8 +239,14 @@ function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienc
       <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>Select session</div>
       {isLoading ? (
         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--t4)' }}><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading sessions...</div>
+      ) : error ? (
+        <div className="text-xs leading-relaxed" style={{ color: '#EF4444', fontWeight: 600 }}>
+          Could not load sessions: {error.message}
+        </div>
       ) : list.length === 0 ? (
-        <div className="text-xs" style={{ color: 'var(--t4)' }}>No underfilled sessions found</div>
+        <div className="text-xs leading-relaxed" style={{ color: 'var(--t4)' }}>
+          No underfilled sessions found. Import upcoming sessions with fewer booked players than capacity.
+        </div>
       ) : (
         <div className="space-y-2 max-h-48 overflow-y-auto">
           {list.map((s: any) => {

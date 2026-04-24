@@ -4802,24 +4802,44 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({ clubId: z.string().uuid(), days: z.number().default(14) }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const sessions = await ctx.prisma.$queryRawUnsafe<any[]>(`
-        SELECT ps.id, ps.title, ps.date::text, ps."startTime", ps."endTime",
-          ps."maxPlayers", ps.format::text as format,
-          COALESCE(ps."skillLevel"::text, 'ALL_LEVELS') as "skillLevel",
-          COALESCE(cc.name, '') as court,
-          GREATEST(
-            COALESCE(ps."registeredCount", 0),
+      let sessions: any[] = []
+      try {
+        sessions = await ctx.prisma.$queryRawUnsafe<any[]>(`
+          SELECT ps.id, ps.title, ps.date::text, ps."startTime", ps."endTime",
+            ps."maxPlayers", ps.format::text as format,
+            COALESCE(ps."skillLevel"::text, 'ALL_LEVELS') as "skillLevel",
+            COALESCE(cc.name, '') as court,
+            GREATEST(
+              COALESCE(ps."registeredCount", 0),
+              (SELECT COUNT(*)::int FROM play_session_bookings b
+                WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED')
+            ) as registered
+          FROM play_sessions ps
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE ps."clubId"::text = $1
+            AND ps.date >= CURRENT_DATE
+            AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
+            AND ps.status::text <> 'CANCELLED'
+          ORDER BY ps.date, ps."startTime"
+        `, input.clubId, String(input.days))
+      } catch (err: any) {
+        log.warn('[getUnderfilledSessions] registeredCount query failed, using booking-count fallback:', err?.message?.slice(0, 120))
+        sessions = await ctx.prisma.$queryRawUnsafe<any[]>(`
+          SELECT ps.id, ps.title, ps.date::text, ps."startTime", ps."endTime",
+            ps."maxPlayers", ps.format::text as format,
+            COALESCE(ps."skillLevel"::text, 'ALL_LEVELS') as "skillLevel",
+            COALESCE(cc.name, '') as court,
             (SELECT COUNT(*)::int FROM play_session_bookings b
-              WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED')
-          ) as registered
-        FROM play_sessions ps
-        LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-        WHERE ps."clubId"::text = $1
-          AND ps.date >= CURRENT_DATE
-          AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
-          AND ps.status::text <> 'CANCELLED'
-        ORDER BY ps.date, ps."startTime"
-      `, input.clubId, String(input.days))
+              WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
+          FROM play_sessions ps
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE ps."clubId"::text = $1
+            AND ps.date >= CURRENT_DATE
+            AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
+            AND ps.status::text <> 'CANCELLED'
+          ORDER BY ps.date, ps."startTime"
+        `, input.clubId, String(input.days))
+      }
       let csvSessions: any[] = []
       try {
         const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
