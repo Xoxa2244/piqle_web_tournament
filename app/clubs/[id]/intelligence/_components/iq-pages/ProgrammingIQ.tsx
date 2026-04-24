@@ -118,14 +118,21 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   // check. 3 invites/wk/member is the slot-filler default; the real
   // policy per club lives in automationSettings. MVP: show the ratio
   // informationally, hard-gate later.
+  //
+  // memberCount comes back on getProgrammingScheduleGrid — it's the
+  // count of UserPlayPreference rows on the club that are NOT opted
+  // out, which is the right denominator for "per-member invites this
+  // week". Falls back to 1 when a club has no prefs yet so we don't
+  // divide by zero.
+  const memberPool = (gridData as any)?.memberCount ?? 0
   const contactPolicyBadge = useMemo(() => {
-    const MEMBER_POOL = 127 // surfaced from dashboard if available; placeholder here
-    const perMemberInvites = stats.totalInvites / Math.max(1, MEMBER_POOL)
+    const perMemberInvites = stats.totalInvites / Math.max(1, memberPool)
     return {
       ratio: perMemberInvites,
       safe: perMemberInvites <= 3,
+      poolKnown: memberPool > 0,
     }
-  }, [stats.totalInvites])
+  }, [stats.totalInvites, memberPool])
 
   // ── Actions ──
 
@@ -337,7 +344,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       </div>
 
       {/* Contact-policy preview badge */}
-      {stats.suggested > 0 && (
+      {stats.suggested > 0 && contactPolicyBadge.poolKnown && (
         <div
           className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
           style={{
@@ -348,7 +355,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         >
           {contactPolicyBadge.safe ? <ShieldAlert className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
           <span>
-            At current invite caps, each eligible member would see ~
+            At current invite caps, each of <b>{memberPool}</b> eligible member{memberPool === 1 ? '' : 's'} would see ~
             <b>{contactPolicyBadge.ratio.toFixed(1)}</b> invites this week
             {contactPolicyBadge.safe ? ' (safe)' : ' — review before publishing'}.
           </span>

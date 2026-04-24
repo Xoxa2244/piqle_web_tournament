@@ -8156,6 +8156,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       since60d.setDate(since60d.getDate() - 60)
 
       // Parallel load of the 7 signals + physical constraints.
+      // `userId` is pulled onto the preferences select so we can identify
+      // the set of members who've filled their profile — anyone outside
+      // that set goes through inferPreferencesFromBookings below.
       const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests] =
         await Promise.all([
           ctx.prisma.clubCourt.findMany({
@@ -8194,6 +8197,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           ctx.prisma.userPlayPreference.findMany({
             where: { clubId: input.clubId },
             select: {
+              userId: true,
               preferredDays: true,
               preferredTimeMorning: true,
               preferredTimeAfternoon: true,
@@ -8219,6 +8223,81 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           }).catch(() => []),
         ])
 
+      // Signal #3 — inferred preferences.
+      //
+      // For members without an explicit UserPlayPreference row, pull their
+      // last 60 days of CONFIRMED bookings, run them through
+      // `inferPreferencesFromBookings` (needs ≥5 bookings, 30%-frequency
+      // threshold), and synthesise a SchedulerPreferenceRow so the signal
+      // actually influences `slotDemandScore`. Previously we dropped this
+      // signal entirely even though the plan promised it.
+      const explicitUserIds = new Set(
+        (preferences as any[]).map((p) => p.userId).filter(Boolean),
+      )
+      // PlaySessionBooking doesn't carry clubId directly — we scope via
+      // the joined `playSession.clubId`. The relation name is `playSession`
+      // (not `session`), and `inferPreferencesFromBookings` expects the
+      // joined row under `.session` so we remap below.
+      const bookingsForInference = await ctx.prisma.playSessionBooking.findMany({
+        where: {
+          status: 'CONFIRMED',
+          bookedAt: { gte: since60d },
+          playSession: { clubId: input.clubId },
+          ...(explicitUserIds.size > 0
+            ? { userId: { notIn: Array.from(explicitUserIds) } }
+            : {}),
+        },
+        select: {
+          status: true,
+          userId: true,
+          playSession: {
+            select: {
+              date: true,
+              startTime: true,
+              format: true,
+              category: true,
+            },
+          },
+        },
+        take: 5000,
+      }).catch(() => [])
+
+      const { inferPreferencesFromBookings } = await import('@/lib/ai/inferred-preferences')
+      const bookingsByUser = new Map<string, any[]>()
+      for (const booking of bookingsForInference) {
+        if (!booking.userId) continue
+        const list = bookingsByUser.get(booking.userId) || []
+        // Remap `playSession` → `session` so the shape matches
+        // BookingWithSession expected by inferPreferencesFromBookings.
+        list.push({
+          status: booking.status,
+          userId: booking.userId,
+          session: booking.playSession,
+        })
+        bookingsByUser.set(booking.userId, list)
+      }
+
+      const inferredRows: any[] = []
+      for (const userBookings of Array.from(bookingsByUser.values())) {
+        const inferred = inferPreferencesFromBookings(userBookings as any)
+        if (!inferred) continue
+        // Map InferredPreferences → SchedulerPreferenceRow. We fill
+        // skillLevel with ALL_LEVELS (we can't derive it from bookings)
+        // and drop targetSessionsPerWeek to a conservative 3 — neither
+        // affects the slot-demand score directly.
+        inferredRows.push({
+          preferredDays: inferred.preferredDays,
+          preferredTimeMorning: inferred.preferredTimeSlots.morning,
+          preferredTimeAfternoon: inferred.preferredTimeSlots.afternoon,
+          preferredTimeEvening: inferred.preferredTimeSlots.evening,
+          skillLevel: 'ALL_LEVELS',
+          preferredFormats: inferred.preferredFormats,
+          targetSessionsPerWeek: 3,
+          notificationsOptOut: false,
+        })
+      }
+      const enrichedPreferences = [...(preferences as any[]), ...inferredRows]
+
       const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
       // Contact policy: read from club automationSettings if set, else use
       // platform default (3 invites/week/member — matches the slot-filler
@@ -8232,18 +8311,49 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         policySettings?.inviteCapPerMemberPerWeek ?? policySettings?.weeklyCap ?? 3,
       )
 
+      // If the admin gave a freeform "regenerate with:" prompt, ask the
+      // LLM to turn it into a structured re-weighting hint. On any
+      // failure (timeout, missing API key, parse error) we fall back to
+      // an empty hint so the heuristic output still ships.
+      let regenerateHint: any = null
+      if (input.regeneratePrompt?.trim()) {
+        try {
+          const { interpretRegeneratePrompt } = await import('@/lib/ai/programming-iq-regenerate')
+          regenerateHint = await interpretRegeneratePrompt({
+            prompt: input.regeneratePrompt,
+            clubId: input.clubId,
+          })
+        } catch (err: any) {
+          console.warn(
+            '[programming-iq] regenerate LLM threw:',
+            err?.message?.slice(0, 160),
+          )
+        }
+      }
+
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
         courts,
         historicalSessions: historicalSessions as any,
         existingWeekSessions: weekSessions as any,
         lastNDaysSessions: lastNDaysSessions as any,
-        preferences: preferences as any,
+        preferences: enrichedPreferences as any,
         interestRequests: interestRequests as any,
         contactPolicy: { inviteCapPerMemberPerWeek },
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,
+        regenerateHint,
       })
+
+      // If the LLM returned a non-empty reasoning line, prepend it to
+      // insights so the admin sees "AI understood: ..." at the top of
+      // the transparency row.
+      if (regenerateHint?.reasoning) {
+        grid.insights = [
+          `AI understood your prompt: ${regenerateHint.reasoning}`,
+          ...grid.insights,
+        ]
+      }
 
       // Discard prior unpublished drafts for this club+week before
       // writing the new generation, so re-run doesn't stack old cells.
@@ -8344,7 +8454,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
 
-      const [courts, liveSessions, drafts] = await Promise.all([
+      // memberCount is the size of the eligible contactable pool for the
+      // contact-policy preview badge in the UI (previously hard-coded to
+      // 127). We pull it from UserPlayPreference (everyone who's filled
+      // their profile + not opted out) rather than ClubFollower because
+      // the badge specifically predicts "how many of THESE would see
+      // invites at current caps" — opt-outs don't.
+      const [courts, liveSessions, drafts, memberCount] = await Promise.all([
         ctx.prisma.clubCourt.findMany({
           where: { clubId: input.clubId },
           select: { id: true, name: true, isIndoor: true, isActive: true },
@@ -8373,12 +8489,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           orderBy: { createdAt: 'desc' },
           take: 200,
         }).catch(() => []),
+        ctx.prisma.userPlayPreference.count({
+          where: {
+            clubId: input.clubId,
+            notificationsOptOut: false,
+          },
+        }).catch(() => 0),
       ])
 
       return {
         courts,
         liveSessions,
         drafts,
+        memberCount,
       }
     }),
 

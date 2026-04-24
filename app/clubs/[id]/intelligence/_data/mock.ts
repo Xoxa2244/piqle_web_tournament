@@ -1633,6 +1633,9 @@ export function mockProgrammingGrid(weekStartDate: string) {
     courts: DEMO_COURTS,
     liveSessions,
     drafts,
+    // Matches the UserPlayPreference-based count the live query returns —
+    // opt-outs excluded. Keeps the contact-policy badge honest in demo mode.
+    memberCount: 127,
   }
 }
 

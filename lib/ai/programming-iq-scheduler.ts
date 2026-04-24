@@ -141,8 +141,14 @@ export interface BuildWeeklyGridInput {
   contactPolicy: SchedulerContactPolicy
   /** Target total number of suggested cells (bounded by available capacity). */
   targetSuggestionCount?: number
-  /** LLM-derived rewrite hint from the admin ("fewer open play, more drills"). */
+  /** LLM-derived rewrite hint from the admin ("fewer open play, more drills").
+   *  Kept in the input for future rendering; the actual LLM call happens at
+   *  the tRPC layer (see `interpretRegeneratePrompt`) and the result is
+   *  passed via `regenerateHint` below. Both fields are optional. */
   regeneratePrompt?: string | null
+  /** Result of running `interpretRegeneratePrompt` on `regeneratePrompt`.
+   *  Applied to the proposal set after scoring and before bin-packing. */
+  regenerateHint?: import('./programming-iq-regenerate').RegenerateHint | null
 }
 
 export interface BuildWeeklyGridResult {
@@ -594,12 +600,25 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     courtCount: activeCourts.length,
   })
 
+  // 1a. Optional LLM re-weighting pass. The heuristic planner above has
+  //     no knowledge of admin intent ("less open play, more weekday
+  //     drills") — we apply that by scaling each proposal's confidence
+  //     up/down based on the hint, then re-sorting. Hint may be null or
+  //     effectively empty, in which case this is a no-op.
+  let rankedProposals = plan.proposals
+  if (input.regenerateHint) {
+    // Late import so the scheduler can still be consumed in tests
+    // without pulling the LLM module into their dependency graph.
+    const { applyRegenerateHint } = require('./programming-iq-regenerate')
+    rankedProposals = applyRegenerateHint(plan.proposals, input.regenerateHint)
+  }
+
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
   //    justifiably run on two courts). We treat projectedOccupancy as a
   //    proxy for "how much headroom is there to duplicate this slot".
   const expanded: AdvisorProgrammingProposalDraft[] = []
-  for (const proposal of plan.proposals) {
+  for (const proposal of rankedProposals) {
     expanded.push(proposal)
     // Duplicate the top-scoring ~20% onto a second court when the pool
     // clearly supports it. Gentle multiplier — we still filter by threshold.
