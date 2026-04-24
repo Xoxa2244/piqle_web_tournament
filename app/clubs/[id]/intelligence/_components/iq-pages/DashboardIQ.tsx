@@ -220,10 +220,9 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 
 /* --- Heatmap Cell Color --- */
 function heatColor(val: number, isDark: boolean): string {
-  if (val >= 90) return isDark ? "rgba(239, 68, 68, 0.6)" : "rgba(239, 68, 68, 0.5)";
-  if (val >= 75) return isDark ? "rgba(249, 115, 22, 0.5)" : "rgba(249, 115, 22, 0.4)";
-  if (val >= 50) return isDark ? "rgba(139, 92, 246, 0.4)" : "rgba(139, 92, 246, 0.3)";
-  if (val >= 25) return isDark ? "rgba(6, 182, 212, 0.3)" : "rgba(6, 182, 212, 0.25)";
+  if (val >= 90) return isDark ? "rgba(16, 185, 129, 0.6)" : "rgba(16, 185, 129, 0.5)";
+  if (val >= 75) return isDark ? "rgba(234, 179, 8, 0.55)" : "rgba(234, 179, 8, 0.45)";
+  if (val >= 50) return isDark ? "rgba(249, 115, 22, 0.5)" : "rgba(249, 115, 22, 0.4)";
   return isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)";
 }
 
@@ -1146,9 +1145,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <div className="flex items-center justify-center gap-3 mt-4 text-[9px]" style={{ color: "var(--t4)" }}>
                 {[
                   { label: "Low", bg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)" },
-                  { label: "Med", bg: isDark ? "rgba(6,182,212,0.3)" : "rgba(6,182,212,0.25)" },
-                  { label: "High", bg: isDark ? "rgba(139,92,246,0.4)" : "rgba(139,92,246,0.3)" },
-                  { label: "Peak", bg: isDark ? "rgba(239,68,68,0.6)" : "rgba(239,68,68,0.5)" },
+                  { label: "Med", bg: isDark ? "rgba(249,115,22,0.5)" : "rgba(249,115,22,0.4)" },
+                  { label: "High", bg: isDark ? "rgba(234,179,8,0.55)" : "rgba(234,179,8,0.45)" },
+                  { label: "Peak", bg: isDark ? "rgba(16,185,129,0.6)" : "rgba(16,185,129,0.5)" },
                 ].map((l) => (
                   <div key={l.label} className="flex items-center gap-1">
                     <div className="w-3 h-3 rounded" style={{ background: l.bg }} />
