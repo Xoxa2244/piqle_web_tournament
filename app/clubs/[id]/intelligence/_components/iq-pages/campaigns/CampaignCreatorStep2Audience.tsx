@@ -321,7 +321,7 @@ function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienc
 function NewMemberAudience({ clubId, onAudienceChange }: {
   clubId: string; onAudienceChange: Step2Props['onAudienceChange']
 }) {
-  const [days, setDays] = React.useState(14)
+  const [days, setDays] = React.useState(30)
   const { data, isLoading } = useNewMembers(clubId, days)
   const members = (data as any)?.members ?? data ?? []
   const list = Array.isArray(members) ? members : []
