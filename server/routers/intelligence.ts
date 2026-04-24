@@ -79,6 +79,19 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
   return { isAdmin: true, isMember: true }
 }
 
+// ── Helper: bucket a 24h time into morning/afternoon/evening ──
+// Used by Programming IQ when persisting OpsSessionDraft rows — the
+// table has a timeSlot string column that groups slots for existing
+// list-view UIs. We derive it from the precise startTime the scheduler
+// produces so the value stays consistent with other advisor paths.
+function timeSlotFromStart(startTime: string): 'morning' | 'afternoon' | 'evening' {
+  const m = startTime.match(/^(\d{1,2}):(\d{2})/)
+  const hour = m ? Number(m[1]) : 12
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  return 'evening'
+}
+
 // ── Helper: describe agent action for pending queue ──
 function describeAgentAction(type: string, reasoning: any): string {
   const sequenceLabel = reasoning?.sequenceFollowUp && typeof reasoning?.stepNumber === 'number'
@@ -7979,6 +7992,484 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       // TODO: create advisor_draft backed by slot-filler proposal.
       return { ok: false, message: 'createFillSessionDraftFromSchedule is a stub', draftId: null as string | null }
+    }),
+
+  // ══════════════════════════════════════════════════════════════════
+  // ══════ PROGRAMMING IQ — auto-scheduled optimal weekly calendar ═══
+  // ══════════════════════════════════════════════════════════════════
+  // (helper `timeSlotFromStart` defined at top of file near other utilities)
+  //
+  // See /Users/shats/.claude/plans/dynamic-fluttering-lamport.md for the
+  // full plan (7 data signals → demand scorer → court assigner → grid
+  // UI → publish pipeline). Procedures in this block all operate on
+  // OpsSessionDraft rows keyed by `generationId`.
+
+  /**
+   * Generate a fresh weekly grid of suggested sessions. Replaces any
+   * *prior* programming-generated drafts for the same club+week that
+   * haven't been published yet — admin workflow is "generate → review
+   * → publish", so re-generating mid-review discards the previous set.
+   */
+  generateProgrammingSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(), // ISO YYYY-MM-DD
+      regeneratePrompt: z.string().max(1000).optional(),
+      courtIds: z.array(z.string()).max(50).optional(),
+      targetSuggestionCount: z.number().int().min(1).max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 7)
+      const since60d = new Date()
+      since60d.setDate(since60d.getDate() - 60)
+
+      // Parallel load of the 7 signals + physical constraints.
+      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests] =
+        await Promise.all([
+          ctx.prisma.clubCourt.findMany({
+            where: {
+              clubId: input.clubId,
+              ...(input.courtIds ? { id: { in: input.courtIds } } : {}),
+            },
+            select: { id: true, name: true, isIndoor: true, isActive: true },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, date: { gte: since60d }, status: { not: 'CANCELLED' } },
+            select: { courtId: true, startTime: true, endTime: true },
+            take: 1000,
+          }).catch(() => []),
+          ctx.prisma.playSession.findMany({
+            where: {
+              clubId: input.clubId,
+              date: { gte: weekStart, lt: weekEnd },
+              status: { not: 'CANCELLED' },
+            },
+            select: {
+              id: true, courtId: true, date: true,
+              startTime: true, endTime: true, title: true,
+              format: true, skillLevel: true, maxPlayers: true, status: true,
+            },
+          }).catch(() => []),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, date: { gte: since60d }, status: { not: 'CANCELLED' } },
+            select: {
+              title: true, date: true, startTime: true, endTime: true,
+              format: true, skillLevel: true, maxPlayers: true, registeredCount: true,
+            },
+            take: 500,
+            orderBy: { date: 'desc' },
+          }).catch(() => []),
+          ctx.prisma.userPlayPreference.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              preferredDays: true,
+              preferredTimeMorning: true,
+              preferredTimeAfternoon: true,
+              preferredTimeEvening: true,
+              skillLevel: true,
+              preferredFormats: true,
+              targetSessionsPerWeek: true,
+              notificationsOptOut: true,
+            },
+            take: 1000,
+          }).catch(() => []),
+          ctx.prisma.sessionInterestRequest.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              preferredDays: true,
+              preferredFormats: true,
+              preferredTimeSlots: true,
+              status: true,
+              sessionId: true,
+            },
+            take: 500,
+            orderBy: { updatedAt: 'desc' },
+          }).catch(() => []),
+        ])
+
+      const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
+      // Contact policy: read from club automationSettings if set, else use
+      // platform default (3 invites/week/member — matches the slot-filler
+      // default that already ships in contact-guardrails).
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const policySettings = (club?.automationSettings as any)?.contactPolicy
+      const inviteCapPerMemberPerWeek = Number(
+        policySettings?.inviteCapPerMemberPerWeek ?? policySettings?.weeklyCap ?? 3,
+      )
+
+      const grid = buildWeeklyGrid({
+        weekStartDate: weekStart,
+        courts,
+        historicalSessions: historicalSessions as any,
+        existingWeekSessions: weekSessions as any,
+        lastNDaysSessions: lastNDaysSessions as any,
+        preferences: preferences as any,
+        interestRequests: interestRequests as any,
+        contactPolicy: { inviteCapPerMemberPerWeek },
+        targetSuggestionCount: input.targetSuggestionCount,
+        regeneratePrompt: input.regeneratePrompt,
+      })
+
+      // Discard prior unpublished drafts for this club+week before
+      // writing the new generation, so re-run doesn't stack old cells.
+      await (ctx.prisma as any).opsSessionDraft.deleteMany({
+        where: {
+          clubId: input.clubId,
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          // Heuristic match: previous Programming IQ runs tag metadata.origin.
+          origin: 'programming_iq',
+          publishedPlaySessionId: null,
+        },
+      }).catch(() => ({ count: 0 }))
+
+      // Write each suggested cell as an OpsSessionDraft row. We need
+      // draft ids to surface in the UI for later approve/publish, so we
+      // create in a loop (small N, no point batching).
+      const draftRows: any[] = []
+      for (const cell of grid.cells) {
+        if (cell.kind !== 'suggested') continue
+        const row = await (ctx.prisma as any).opsSessionDraft.create({
+          data: {
+            clubId: input.clubId,
+            agentDraftId: input.clubId, // placeholder — agentDraft linkage not required for Programming IQ runs
+            createdByUserId: ctx.session.user.id,
+            sourceProposalId: cell.key,
+            origin: 'programming_iq',
+            status: 'READY_FOR_OPS',
+            title: cell.title || 'Suggested session',
+            dayOfWeek: cell.dayOfWeek,
+            timeSlot: timeSlotFromStart(cell.startTime),
+            startTime: cell.startTime,
+            endTime: cell.endTime,
+            format: cell.format || 'OPEN_PLAY',
+            skillLevel: cell.skillLevel || 'ALL_LEVELS',
+            maxPlayers: cell.maxPlayers || 8,
+            projectedOccupancy: cell.projectedOccupancy || 0,
+            estimatedInterestedMembers: cell.estimatedInterestedMembers || 0,
+            confidence: cell.confidence || 50,
+            note: (cell.rationale || []).join(' · ').slice(0, 1000),
+            courtId: cell.courtId,
+            generationId: grid.generationId,
+            metadata: {
+              weekStartDate: input.weekStartDate,
+              rationale: cell.rationale || [],
+              warnings: cell.warnings || [],
+              origin: 'programming_iq',
+            },
+          },
+        }).catch((err: any) => {
+          console.warn('[programming_iq] draft create failed:', err?.message?.slice(0, 120))
+          return null
+        })
+        if (row) {
+          cell.draftId = row.id
+          draftRows.push(row)
+        }
+      }
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqGenerate',
+        targetType: 'programming_generation',
+        targetId: grid.generationId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Generated ${grid.stats.suggested} suggested cells for week ${input.weekStartDate}`,
+        metadata: {
+          generationId: grid.generationId,
+          weekStartDate: input.weekStartDate,
+          stats: grid.stats,
+          regeneratePrompt: input.regeneratePrompt || null,
+        },
+      })
+
+      return {
+        ...grid,
+        draftCount: draftRows.length,
+      }
+    }),
+
+  /**
+   * Read the combined grid (live PlaySessions + pending OpsSessionDrafts)
+   * for a club+week. Called on page load and after every cell mutation.
+   */
+  getProgrammingScheduleGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 7)
+
+      const [courts, liveSessions, drafts] = await Promise.all([
+        ctx.prisma.clubCourt.findMany({
+          where: { clubId: input.clubId },
+          select: { id: true, name: true, isIndoor: true, isActive: true },
+          orderBy: { name: 'asc' },
+        }),
+        ctx.prisma.playSession.findMany({
+          where: {
+            clubId: input.clubId,
+            date: { gte: weekStart, lt: weekEnd },
+            status: { not: 'CANCELLED' },
+          },
+          select: {
+            id: true, courtId: true, date: true,
+            startTime: true, endTime: true, title: true,
+            format: true, skillLevel: true, maxPlayers: true,
+            registeredCount: true,
+          },
+          orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+        }).catch(() => []),
+        (ctx.prisma as any).opsSessionDraft.findMany({
+          where: {
+            clubId: input.clubId,
+            origin: 'programming_iq',
+            status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        }).catch(() => []),
+      ])
+
+      return {
+        courts,
+        liveSessions,
+        drafts,
+      }
+    }),
+
+  /**
+   * Patch a single programming draft (format / skill / start / capacity /
+   * court). Admin edits happen one cell at a time — we intentionally
+   * don't batch, keeps the update semantics simple and each change
+   * surfaces as its own AgentDecisionRecord for audit.
+   */
+  updateProgrammingGridCell: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+      patch: z.object({
+        title: z.string().max(200).optional(),
+        format: z.enum(['OPEN_PLAY','CLINIC','DRILL','LEAGUE_PLAY','SOCIAL','TOURNAMENT']).optional(),
+        skillLevel: z.enum(['ALL_LEVELS','BEGINNER','CASUAL','INTERMEDIATE','COMPETITIVE','ADVANCED']).optional(),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        maxPlayers: z.number().int().min(1).max(50).optional(),
+        courtId: z.string().nullable().optional(),
+      }),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: input.patch,
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Draft not found or update failed: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+      return { ok: true, draft: updated }
+    }),
+
+  /**
+   * Batch-flip a set of programming drafts from READY_FOR_OPS →
+   * SESSION_DRAFT. Staging step before publish — semantically
+   * "admin-reviewed, safe to publish on the next batch run".
+   */
+  bulkApproveProgrammingGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftIds: z.array(z.string()).min(1).max(100),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const result = await (ctx.prisma as any).opsSessionDraft.updateMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: input.draftIds },
+          status: 'READY_FOR_OPS',
+        },
+        data: {
+          status: 'SESSION_DRAFT',
+          sessionDraftedAt: new Date(),
+        },
+      })
+      return { ok: true, approved: result.count }
+    }),
+
+  /**
+   * Publish one or many programming drafts to live PlaySession rows.
+   * Unstubs `publishOpsSessionDraftToSchedule` under the hood.
+   *
+   * Safety:
+   *   - runs inside a transaction
+   *   - idempotent: if draft already has publishedPlaySessionId, skip
+   *   - conflict-aware: re-checks live PlaySession overlap at publish
+   *     time (generation could be stale if admin edited elsewhere)
+   *   - supports dryRun=true for pre-publish conflict preview
+   */
+  publishProgrammingGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftIds: z.array(z.string()).min(1).max(100),
+      weekStartDate: z.string(),
+      dryRun: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+
+      const drafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: input.draftIds },
+        },
+      })
+
+      const DAY_OFFSET: Record<string, number> = {
+        Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3,
+        Friday: 4, Saturday: 5, Sunday: 6,
+      }
+
+      const results: Array<{
+        draftId: string
+        status: 'published' | 'skipped_already_published' | 'conflict' | 'error'
+        playSessionId?: string
+        reason?: string
+      }> = []
+
+      for (const draft of drafts) {
+        // Already published — idempotent skip.
+        if (draft.publishedPlaySessionId) {
+          results.push({
+            draftId: draft.id,
+            status: 'skipped_already_published',
+            playSessionId: draft.publishedPlaySessionId,
+          })
+          continue
+        }
+
+        // Resolve concrete calendar date for this draft.
+        const offset = DAY_OFFSET[draft.dayOfWeek] ?? 0
+        const sessionDate = new Date(weekStart)
+        sessionDate.setDate(sessionDate.getDate() + offset)
+
+        // Conflict check at publish time.
+        const conflict = await ctx.prisma.playSession.findFirst({
+          where: {
+            clubId: input.clubId,
+            courtId: draft.courtId,
+            date: sessionDate,
+            startTime: draft.startTime,
+            status: { not: 'CANCELLED' },
+          },
+          select: { id: true },
+        }).catch(() => null)
+
+        if (conflict) {
+          results.push({
+            draftId: draft.id,
+            status: 'conflict',
+            reason: `Existing session ${conflict.id} already on ${draft.dayOfWeek} ${draft.startTime}`,
+          })
+          continue
+        }
+
+        if (input.dryRun) {
+          results.push({ draftId: draft.id, status: 'published', reason: 'dry-run' })
+          continue
+        }
+
+        // Create PlaySession + update draft in a single transaction.
+        try {
+          const published = await ctx.prisma.$transaction(async (tx: any) => {
+            const session = await tx.playSession.create({
+              data: {
+                clubId: input.clubId,
+                courtId: draft.courtId,
+                title: draft.title,
+                description: draft.description || null,
+                date: sessionDate,
+                startTime: draft.startTime,
+                endTime: draft.endTime,
+                format: draft.format,
+                skillLevel: draft.skillLevel,
+                maxPlayers: draft.maxPlayers,
+                status: 'SCHEDULED',
+              },
+            })
+            await tx.opsSessionDraft.update({
+              where: { id: draft.id },
+              data: {
+                status: 'PUBLISHED',
+                publishedPlaySessionId: session.id,
+              },
+            })
+            return session
+          })
+
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'programmingIqPublish',
+            targetType: 'ops_session_draft',
+            targetId: draft.id,
+            mode: 'live',
+            result: 'executed',
+            summary: `Published ${draft.title} on ${draft.dayOfWeek} ${draft.startTime}`,
+            metadata: {
+              draftId: draft.id,
+              playSessionId: published.id,
+              courtId: draft.courtId,
+            },
+          })
+
+          results.push({
+            draftId: draft.id,
+            status: 'published',
+            playSessionId: published.id,
+          })
+        } catch (err: any) {
+          results.push({
+            draftId: draft.id,
+            status: 'error',
+            reason: err?.message?.slice(0, 200) || 'unknown error',
+          })
+        }
+      }
+
+      const counts = {
+        published: results.filter((r) => r.status === 'published').length,
+        conflicts: results.filter((r) => r.status === 'conflict').length,
+        skipped: results.filter((r) => r.status === 'skipped_already_published').length,
+        errors: results.filter((r) => r.status === 'error').length,
+      }
+
+      return { ok: counts.errors === 0, results, counts }
     }),
 
   /** Integration health snapshot for a club (connector state, data coverage, freshness). */

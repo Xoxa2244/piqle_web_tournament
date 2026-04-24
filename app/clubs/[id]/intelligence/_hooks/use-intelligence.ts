@@ -1091,3 +1091,154 @@ export function useClearAdminTodoDecisions() {
     },
   })
 }
+
+// ── Programming IQ ─────────────────────────────────────────────────────
+//
+// Admin-facing weekly schedule designer. Load live + draft grid, generate
+// a fresh week of suggestions, edit individual cells, bulk-approve,
+// publish. Demo mode returns `mockProgrammingGrid` so a fresh `?demo=true`
+// URL shows a realistic schedule without any DB or LLM calls.
+
+import {
+  mockProgrammingGrid,
+  mockProgrammingGenerationResult,
+} from '../_data/mock'
+
+export function useProgrammingScheduleGrid(clubId: string, weekStartDate: string) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getProgrammingScheduleGrid.useQuery(
+    { clubId, weekStartDate },
+    {
+      enabled: !!clubId && !!weekStartDate && !isDemo,
+      staleTime: 2 * 60 * 1000,
+      keepPreviousData: true,
+    }
+  )
+
+  if (isDemo) {
+    return {
+      data: mockProgrammingGrid(weekStartDate),
+      isLoading: false,
+      error: null,
+      refetch: async () => ({ data: mockProgrammingGrid(weekStartDate) }),
+    } as any
+  }
+
+  return query
+}
+
+export function useGenerateProgrammingSchedule() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.generateProgrammingSchedule.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+          weekStartDate: variables.weekStartDate,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.(mockProgrammingGenerationResult()), 600)
+      },
+      mutateAsync: async (_input: any) => {
+        await new Promise((r) => setTimeout(r, 600))
+        return mockProgrammingGenerationResult()
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useUpdateProgrammingGridCell() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.updateProgrammingGridCell.useMutation({
+    onSuccess: async (_result, variables) => {
+      await utils.intelligence.getProgrammingScheduleGrid.invalidate({
+        clubId: variables.clubId,
+      }).catch(() => undefined)
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true, draft: _input.patch }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true, draft: _input.patch }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useBulkApproveProgrammingGrid() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.bulkApproveProgrammingGrid.useMutation({
+    onSuccess: async (_result, variables) => {
+      await utils.intelligence.getProgrammingScheduleGrid.invalidate({
+        clubId: variables.clubId,
+      }).catch(() => undefined)
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true, approved: input.draftIds.length }), 250)
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function usePublishProgrammingGrid() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.publishProgrammingGrid.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+        }).catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.getSessionsCalendar.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({
+          ok: true,
+          results: input.draftIds.map((id: string) => ({ draftId: id, status: 'published', playSessionId: `demo-${id}` })),
+          counts: { published: input.draftIds.length, conflicts: 0, skipped: 0, errors: 0 },
+        }), 400)
+      },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}

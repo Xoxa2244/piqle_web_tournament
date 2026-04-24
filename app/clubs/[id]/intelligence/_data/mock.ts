@@ -1458,3 +1458,207 @@ export const mockAIRevenueAttribution = {
     revenueUsd: 90 + Math.round(Math.sin(i / 3) * 40 + Math.random() * 60),
   })),
 }
+
+// ── Programming IQ — weekly schedule grid ──
+// Used when ?demo=true. Shows a realistic mix of kept live sessions,
+// suggested AI cells (with scoring rationale), and a couple of
+// saturation warnings so admin can see the full UX. Matches the 7-signal
+// output produced by `buildWeeklyGrid()` — each suggested cell gets a
+// rationale array that the CellEditPopover displays verbatim.
+
+const MOCK_DEMO_CLUB_ID = 'demo-club'
+
+const DEMO_COURTS = [
+  { id: 'demo-court-1', name: 'Court 1', isIndoor: false, isActive: true },
+  { id: 'demo-court-2', name: 'Court 2', isIndoor: true, isActive: true },
+  { id: 'demo-court-3', name: 'Court 3', isIndoor: false, isActive: true },
+]
+
+// Resolve the Monday-based date for a given day offset inside the target
+// week (Monday=0, Tuesday=1, ...). weekStart is the Monday ISO string.
+function dateFromWeek(weekStart: string, dayOffset: number): Date {
+  const d = new Date(weekStart)
+  d.setDate(d.getDate() + dayOffset)
+  d.setHours(12, 0, 0, 0)
+  return d
+}
+
+export function mockProgrammingGrid(weekStartDate: string) {
+  // A handful of "already on the calendar" sessions — Programming IQ shows
+  // these as read-only live cells so admins see what exists before
+  // layering new suggestions on top.
+  const liveSessions = [
+    {
+      id: 'demo-live-tues-clinic', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      date: dateFromWeek(weekStartDate, 1), // Tuesday
+      startTime: '18:00', endTime: '19:30',
+      title: 'Intermediate Clinic',
+      format: 'CLINIC', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 6, registeredCount: 6,
+    },
+    {
+      id: 'demo-live-sat-league', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      date: dateFromWeek(weekStartDate, 5), // Saturday
+      startTime: '09:00', endTime: '10:30',
+      title: '4.0 League',
+      format: 'LEAGUE_PLAY', skillLevel: 'ADVANCED',
+      maxPlayers: 8, registeredCount: 8,
+    },
+  ]
+
+  // Suggestions — ordered by demand score so the top cell is the
+  // strongest recommendation. Rationale mirrors
+  // `buildAdvisorProgrammingPlan` output against real club data.
+  const drafts = [
+    {
+      id: 'demo-d1', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      dayOfWeek: 'Saturday', startTime: '10:30', endTime: '12:00',
+      title: '4.0 League (overflow)',
+      format: 'LEAGUE_PLAY', skillLevel: 'ADVANCED',
+      maxPlayers: 8, confidence: 87, projectedOccupancy: 92,
+      estimatedInterestedMembers: 22,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '9 unmet interest requests for Saturday 4.0 league',
+          '95% historical fill at this slot (8 past sessions)',
+          '22 members match Advanced + weekend preference',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d2', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      dayOfWeek: 'Tuesday', startTime: '19:30', endTime: '21:00',
+      title: 'Intermediate Open Play',
+      format: 'OPEN_PLAY', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 8, confidence: 78, projectedOccupancy: 85,
+      estimatedInterestedMembers: 31,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '85% historical fill at Tuesday 7pm Intermediate',
+          '31 members match Intermediate + evening preference',
+          'Indoor court preferred — 92% match rate',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d3', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-3',
+      dayOfWeek: 'Thursday', startTime: '19:00', endTime: '20:30',
+      title: 'Intermediate Drill',
+      format: 'DRILL', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 6, confidence: 71, projectedOccupancy: 72,
+      estimatedInterestedMembers: 14,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '60% historical fill (8 past sessions)',
+          '14 improver-persona members match',
+          'Spreads Intermediate load across the week',
+        ],
+        warnings: [
+          'Saturated: Intermediate pool of 47 would see ~2.8 invites/week.',
+        ],
+      },
+    },
+    {
+      id: 'demo-d4', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-3',
+      dayOfWeek: 'Wednesday', startTime: '18:30', endTime: '20:00',
+      title: 'Beginner Clinic',
+      format: 'CLINIC', skillLevel: 'BEGINNER',
+      maxPlayers: 6, confidence: 64, projectedOccupancy: 58,
+      estimatedInterestedMembers: 8,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '3 unmet interest requests for "beginner clinic weekday"',
+          'Improver persona — 31% of club',
+          '12 Beginner members available in pool',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d5', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      dayOfWeek: 'Friday', startTime: '19:00', endTime: '20:30',
+      title: 'Social Open Play',
+      format: 'SOCIAL', skillLevel: 'ALL_LEVELS',
+      maxPlayers: 8, confidence: 58, projectedOccupancy: 62,
+      estimatedInterestedMembers: 18,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          'Social persona 42% — favours Friday evening mixers',
+          '68% of members prefer evening',
+          'Indoor court — evening slot',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d6', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      dayOfWeek: 'Monday', startTime: '19:00', endTime: '20:30',
+      title: 'Intermediate Open Play',
+      format: 'OPEN_PLAY', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 8, confidence: 62, projectedOccupancy: 68,
+      estimatedInterestedMembers: 25,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '25 members match Intermediate + evening',
+          'Kicks the week off with a high-demand slot',
+        ],
+        warnings: [],
+      },
+    },
+  ]
+
+  return {
+    courts: DEMO_COURTS,
+    liveSessions,
+    drafts,
+  }
+}
+
+export function mockProgrammingGenerationResult() {
+  return {
+    generationId: 'demo-gen-' + Date.now(),
+    cells: [],
+    stats: {
+      liveKept: 2,
+      suggested: 6,
+      empty: 0,
+      conflicts: 0,
+      saturations: 1,
+      avgProjectedOccupancy: 72,
+    },
+    insights: [
+      'Saturday 4.0 league is your strongest signal — 9 unmet requests + 95% historical fill.',
+      'Intermediate evening sessions risk pool saturation at current caps.',
+      'Consider replacing Wed 6am Advanced slots — 0 historical demand.',
+    ],
+    signalSummary: {
+      monthsOfBookingData: 2,
+      preferencesCount: 89,
+      unmetInterestRequests: 14,
+      activeCourts: 3,
+    },
+    draftCount: 6,
+  }
+}

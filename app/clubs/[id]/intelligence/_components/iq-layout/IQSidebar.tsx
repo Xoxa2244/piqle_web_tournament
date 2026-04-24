@@ -39,6 +39,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: BarChart3,
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
+      { icon: Brain, label: "Programming IQ", path: "/programming", isAI: true },
       { icon: CalendarDays, label: "Schedule", path: "/sessions" },
     ],
   },

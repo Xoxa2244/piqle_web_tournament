@@ -1601,6 +1601,7 @@ model ClubCourt {
   updatedAt DateTime @updatedAt
 
   playSessions PlaySession[]
+  opsSessionDrafts OpsSessionDraft[] @relation("OpsSessionDraftCourt")
 
   @@map("club_courts")
 }
@@ -1630,6 +1631,7 @@ model PlaySession {
 
   bookings  PlaySessionBooking[]
   waitlist  PlaySessionWaitlist[]
+  opsSessionDraftsPublished OpsSessionDraft[] @relation("OpsSessionDraftPublished")
 
   @@map("play_sessions")
 }
@@ -1906,14 +1908,24 @@ model OpsSessionDraft {
   archivedAt               DateTime?             @map("archived_at")
   createdAt                DateTime              @default(now()) @map("created_at")
   updatedAt                DateTime              @updatedAt @map("updated_at")
+  // ── Programming IQ fields (see migrations/add_programming_iq_fields.sql) ──
+  // courtId: concrete court chosen by Programming IQ's court assigner
+  // generationId: groups drafts produced by one Generate click
+  // publishedPlaySessionId: set when draft materialised to a live PlaySession
+  courtId                  String?               @map("court_id")
+  generationId             String?               @map("generation_id") @db.Uuid
+  publishedPlaySessionId   String?               @map("published_play_session_id")
 
   club                     Club                  @relation("ClubOpsSessionDrafts", fields: [clubId], references: [id], onDelete: Cascade)
   agentDraft               AgentDraft            @relation("AgentDraftOpsSessionDrafts", fields: [agentDraftId], references: [id], onDelete: Cascade)
   createdByUser            User                  @relation("UserOpsSessionDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  court                    ClubCourt?            @relation("OpsSessionDraftCourt", fields: [courtId], references: [id], onDelete: SetNull)
+  publishedPlaySession     PlaySession?          @relation("OpsSessionDraftPublished", fields: [publishedPlaySessionId], references: [id], onDelete: SetNull)
 
   @@unique([agentDraftId, sourceProposalId])
   @@index([clubId, status, updatedAt(sort: Desc)])
   @@index([agentDraftId, updatedAt(sort: Desc)])
+  @@index([generationId])
   @@map("ops_session_drafts")
 }
 
