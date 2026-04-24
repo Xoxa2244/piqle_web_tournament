@@ -4807,19 +4807,71 @@ export const intelligenceRouter = createTRPCRouter({
           ps."maxPlayers", ps.format::text as format,
           COALESCE(ps."skillLevel"::text, 'ALL_LEVELS') as "skillLevel",
           COALESCE(cc.name, '') as court,
-          (SELECT COUNT(*)::int FROM play_session_bookings b
-            WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
+          GREATEST(
+            COALESCE(ps."registeredCount", 0),
+            (SELECT COUNT(*)::int FROM play_session_bookings b
+              WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED')
+          ) as registered
         FROM play_sessions ps
         LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-        WHERE ps."clubId" = $1          AND ps.date >= CURRENT_DATE
+        WHERE ps."clubId"::text = $1
+          AND ps.date >= CURRENT_DATE
           AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
-          AND ps.status::text = 'SCHEDULED'
+          AND ps.status::text <> 'CANCELLED'
         ORDER BY ps.date, ps."startTime"
       `, input.clubId, String(input.days))
+      let csvSessions: any[] = []
+      try {
+        const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
+          SELECT metadata
+          FROM document_embeddings
+          WHERE club_id::text = $1
+            AND content_type = 'session'
+            AND source_table = 'csv_import'
+        `, input.clubId)
+
+        const sortedCsv = rows
+          .map((row: any) => typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata)
+          .filter((meta: any) => meta && meta.date)
+          .sort((a: any, b: any) => {
+            const aOcc = Number(a.occupancy ?? a.occupancy_percent ?? 100)
+            const bOcc = Number(b.occupancy ?? b.occupancy_percent ?? 100)
+            if (aOcc !== bOcc) return aOcc - bOcc
+            return String(a.date).localeCompare(String(b.date))
+          })
+
+        csvSessions = sortedCsv
+          .map((meta: any, index: number) => {
+            const registered = Number(meta.registered ?? meta.confirmed_count ?? meta.registeredCount ?? 0)
+            const maxPlayers = Number(meta.capacity ?? meta.max_players ?? meta.maxPlayers ?? Math.max(registered, 4))
+            const date = String(meta.date || '').slice(0, 10)
+            return {
+              id: `csv-${index}`,
+              title: meta.title || `${String(meta.format || 'Session').replace(/_/g, ' ')}${meta.court ? ` — ${meta.court}` : ''}`,
+              date,
+              startTime: meta.startTime || meta.start_time || '',
+              endTime: meta.endTime || meta.end_time || '',
+              maxPlayers,
+              format: meta.format || 'OPEN_PLAY',
+              skillLevel: meta.skillLevel || meta.skill_level || 'ALL_LEVELS',
+              court: meta.court || '',
+              registered,
+              source: 'csv_import',
+            }
+          })
+          .filter((session: any) => (
+            session.date >= new Date().toISOString().slice(0, 10)
+            && session.date <= new Date(Date.now() + Number(input.days) * 86400000).toISOString().slice(0, 10)
+          ))
+      } catch (err: any) {
+        log.warn('[getUnderfilledSessions] CSV fallback failed:', err?.message?.slice(0, 120))
+      }
+
       return {
-        sessions: sessions
+        sessions: [...sessions, ...csvSessions]
           .map((s: any) => ({ ...s, occupancy: Math.round((s.registered / (s.maxPlayers || 1)) * 100) }))
           .filter((s: any) => s.occupancy < 80)
+          .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)) || String(a.startTime).localeCompare(String(b.startTime)))
       }
     }),
 

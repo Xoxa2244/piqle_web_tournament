@@ -661,6 +661,11 @@ export async function _runImportPipeline(
           ? `court_${session.courtName.replace(/\s+/g, '_').toLowerCase()}` : null
         const courtId = courtExtId ? (courtIdMap.get(courtExtId) ?? undefined) : undefined
 
+        const sessionDay = new Date(session.date)
+        sessionDay.setHours(0, 0, 0, 0)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+
         const sessionData: any = {
           clubId,
           courtId: courtId || undefined,
@@ -673,7 +678,7 @@ export async function _runImportPipeline(
           maxPlayers: Math.max(session.memberCount, 4),
           registeredCount: session.isCancelled ? 0 : session.memberCount,
           pricePerSlot: session.price ?? undefined,
-          status: session.isCancelled ? 'CANCELLED' : 'COMPLETED',
+          status: session.isCancelled ? 'CANCELLED' : (sessionDay >= today ? 'SCHEDULED' : 'COMPLETED'),
           category: session.category ?? null,
         }
 
