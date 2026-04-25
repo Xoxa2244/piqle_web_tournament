@@ -560,19 +560,37 @@ function buildExpandPeakProposals(opts: {
       slotSupply: opts.slotSupply,
       courtCount: opts.courtCount,
     })
+    // Score weights — tuned 2026-04-25 from a real-data walkthrough on
+    // IPC clubs:
+    //   - preferences (slotDemandScore) had 3.2× and was dominating
+    //     scoring; moved to 2.4 so historical fill + interest backlog
+    //     also matter
+    //   - interestBacklog raised to 3.5 (members explicitly opting in
+    //     for "notify me" is the cleanest demand signal we have)
+    //   - avgOccupancy raised to 0.8 (history is the most reliable
+    //     predictor; was being out-shouted by preferences)
+    //   - membershipFit raised to 0.4 so format/persona-mix matters more
+    //     than 0.18 noise; persona-aware programming was a stated goal
+    //     in the plan but was effectively muted
+    //   - sessionCount bonus reduced from min(×2, 10) to min(×1, 6) —
+    //     all IPC slots had 100+ historical sessions, so the +10 cap
+    //     was constant noise that didn't differentiate slots
+    //   - clamp lowered to [30, 95] from [45, 98] so low-signal slots
+    //     can rank visibly below high-signal ones (everything used to
+    //     pile up at 98)
     const score = clamp(
       Math.round(
-        avgOccupancy * 0.5
-        + slotDemandScore * 3.2
-        + interestBacklog * 2.6
-        + membershipFit * 0.18
+        avgOccupancy * 0.8
+        + slotDemandScore * 2.4
+        + interestBacklog * 3.5
+        + membershipFit * 0.4
         + weekdayStrength * 0.12
         + momentum * 0.1
         + courtHeadroom * 0.08
-        + Math.min(stat.sessionCount * 2, 10),
+        + Math.min(stat.sessionCount * 1, 6),
       ),
-      45,
-      98,
+      30,
+      95,
       )
     const projectedOccupancy = clamp(Math.round(avgOccupancy + Math.min(slotDemandScore * 1.2 + interestBacklog * 1.5, 10)), 55, 95)
     const estimatedInterestedMembers = Math.max(4, Math.round(slotDemandScore * 1.4 + interestBacklog * 1.6))
