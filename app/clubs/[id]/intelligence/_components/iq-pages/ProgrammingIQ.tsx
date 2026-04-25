@@ -237,7 +237,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   }, [weekStart])
 
   return (
-    <div className="space-y-5 pb-24">
+    <div className="space-y-5 pb-32 md:pb-24">
       {/* [1] Header ─────────────────────────────────────────────────── */}
       <header className="space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
@@ -409,8 +409,16 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       {/* [6] Sticky footer ─────────────────────────────────────────── */}
       {drafts.length > 0 && (
         <div
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:rounded-2xl md:max-w-xl mx-auto px-4 py-3 shadow-lg z-40"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+          // Wider footer (max-w-2xl) so the long "0 of 30 selected" label
+          // + Publish button fit without truncating "Publish" → "Pu...lish".
+          // Solid fallback bg so footer doesn't go transparent on the
+          // iqsport theme (same fix as CellEditPopover).
+          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:rounded-2xl md:max-w-2xl mx-auto px-4 py-3 shadow-lg z-40"
+          style={{
+            background: 'var(--popover-bg, #0F172A)',
+            backgroundColor: 'var(--popover-bg, #0F172A)',
+            border: '1px solid var(--card-border)',
+          }}
         >
           <div className="flex items-center gap-3 flex-wrap">
             <button

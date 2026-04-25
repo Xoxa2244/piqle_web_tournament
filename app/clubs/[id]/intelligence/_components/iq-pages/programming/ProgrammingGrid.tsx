@@ -7,11 +7,22 @@
  * admins can scan density at a glance. Click → onSelectCell fires so the
  * parent can open the reasoning + edit popover.
  *
+ * Multi-hour rendering — uses CSS Grid `gridRow: span N` so a 09:30–11:30
+ * session is one tall cell that visually spans both 9a and 10a rows
+ * instead of duplicating into separate per-hour blocks (the original
+ * naive per-row render produced visible duplicates that admins read as
+ * "two sessions").
+ *
+ * Skill tier classification — looks at title + format + skillLevel
+ * because most CR-synced sessions ship `skillLevel = ALL_LEVELS` even
+ * when the title clearly says "Advanced 4.0+" or "Intermediate 3.0".
+ * Same heuristic as ScheduleIQ's `classifySkill`.
+ *
  * Kept intentionally layout-only: no data fetching, no mutations. All
  * state lives in the parent `ProgrammingIQ`.
  */
 import React, { useMemo, useState } from 'react'
-import { Calendar, MapPin, Building2, AlertTriangle, Sparkles } from 'lucide-react'
+import { MapPin, Building2, AlertTriangle, Sparkles } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -75,7 +86,9 @@ interface ProgrammingGridProps {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const HOUR_START = 6
-const HOUR_END = 22 // 22:00 inclusive → last row is 22:00 - 23:00
+const HOUR_END = 22 // 22:00 inclusive → last row spans 22:00 – 23:00
+const ROW_HEIGHT = 60 // px per hour row
+const ROWS = HOUR_END - HOUR_START + 1
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -89,23 +102,39 @@ function dayNameFromDate(date: Date | string): string {
   return DAYS[((d.getDay() + 6) % 7)] // Monday=0
 }
 
-function skillTier(skill: string | null | undefined): 'beginner' | 'casual' | 'intermediate' | 'competitive' | 'advanced' | 'all' {
-  const s = (skill || '').toUpperCase()
-  if (s.includes('ADVANCED')) return 'advanced'
-  if (s.includes('COMPETITIVE')) return 'competitive'
-  if (s.includes('INTERMEDIATE')) return 'intermediate'
-  if (s.includes('CASUAL')) return 'casual'
-  if (s.includes('BEGINNER')) return 'beginner'
+/**
+ * Skill classifier that mirrors `ScheduleIQ.classifySkill` — many CR
+ * sessions arrive with `skillLevel = ALL_LEVELS` but their `title` says
+ * "Advanced 4.0+" or "(3.5 - 3.99)". Reading title + format + skill
+ * recovers the right colour tier in those cases instead of falling back
+ * to grey.
+ */
+type SkillTier = 'beginner' | 'casual' | 'intermediate' | 'competitive' | 'advanced' | 'all'
+
+function classifyTier(opts: {
+  skillLevel?: string | null
+  format?: string | null
+  title?: string | null
+}): SkillTier {
+  const sl = (opts.skillLevel || '').toUpperCase()
+  const fmt = (opts.format || '').toUpperCase()
+  const t = (opts.title || '').toUpperCase()
+  const combined = `${sl} ${fmt} ${t}`
+  if (combined.includes('ADVANCED') || combined.includes('4.0') || combined.includes('4.5') || combined.includes('5.0')) return 'advanced'
+  if (combined.includes('COMPETITIVE') || combined.includes('3.5')) return 'competitive'
+  if (combined.includes('INTERMEDIATE') || combined.includes('3.0')) return 'intermediate'
+  if (combined.includes('CASUAL') || combined.includes('2.5')) return 'casual'
+  if (combined.includes('BEGINNER') || combined.includes('2.0')) return 'beginner'
   return 'all'
 }
 
-const SKILL_COLORS: Record<string, string> = {
-  advanced: 'rgba(239,68,68,',
-  competitive: 'rgba(139,92,246,',
-  intermediate: 'rgba(59,130,246,',
-  casual: 'rgba(6,182,212,',
-  beginner: 'rgba(16,185,129,',
-  all: 'rgba(148,163,184,',
+const SKILL_COLORS: Record<SkillTier, string> = {
+  advanced: 'rgba(239,68,68,',     // red
+  competitive: 'rgba(139,92,246,', // violet
+  intermediate: 'rgba(59,130,246,', // blue
+  casual: 'rgba(6,182,212,',       // cyan
+  beginner: 'rgba(16,185,129,',    // green
+  all: 'rgba(148,163,184,',        // slate (fallback)
 }
 
 function formatHour(h: number): string {
@@ -113,6 +142,28 @@ function formatHour(h: number): string {
   if (h < 12) return `${h}a`
   if (h === 12) return '12p'
   return `${h - 12}p`
+}
+
+/**
+ * Compute grid row span for a session that spans `[startMinutes, endMinutes)`.
+ * Returns `null` if the session falls entirely outside the visible window
+ * (HOUR_START..HOUR_END+1) so the caller can skip rendering.
+ *
+ * `rowStart` is 1-based (CSS grid convention). End is exclusive.
+ */
+function computeRowSpan(startMin: number, endMin: number): { rowStart: number; rowSpan: number } | null {
+  const startHour = HOUR_START * 60
+  const endHour = (HOUR_END + 1) * 60
+  if (endMin <= startHour || startMin >= endHour) return null
+  // Clip to visible window so a 06:00–08:00 session in a 6a-22p grid
+  // still anchors at row 1, not row -1.
+  const clippedStart = Math.max(startMin, startHour)
+  const clippedEnd = Math.min(endMin, endHour)
+  // Row index = floor((startMin - HOUR_START * 60) / 60) + 1 (1-based)
+  const rowStart = Math.floor((clippedStart - startHour) / 60) + 1
+  // Span = ceil(durationMin / 60) so a 30-min session still shows as 1 row
+  const span = Math.max(1, Math.ceil((clippedEnd - clippedStart) / 60))
+  return { rowStart, rowSpan: span }
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -147,7 +198,7 @@ export function ProgrammingGrid({
   }, [activeCourts, liveSessions, drafts])
 
   const current = byCourt.get(activeCourtId) || { live: [], draft: [] }
-  const rows = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i)
+  const hours = Array.from({ length: ROWS }, (_, i) => HOUR_START + i)
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{
@@ -159,26 +210,31 @@ export function ProgrammingGrid({
         background: 'rgba(0,0,0,0.03)',
         borderBottom: '1px solid var(--card-border)',
       }}>
-        {activeCourts.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setActiveCourtId(c.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              activeCourtId === c.id ? 'shadow-sm' : 'hover:bg-white/40'
-            }`}
-            style={{
-              background: activeCourtId === c.id ? 'var(--card-bg)' : 'transparent',
-              color: activeCourtId === c.id ? 'var(--heading)' : 'var(--t4)',
-              border: activeCourtId === c.id ? '1px solid var(--card-border)' : '1px solid transparent',
-            }}
-          >
-            {c.isIndoor ? <Building2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
-            {c.name}
-            <span className="text-[10px] opacity-60">
-              ({byCourt.get(c.id)?.live.length || 0}L · {byCourt.get(c.id)?.draft.length || 0}AI)
-            </span>
-          </button>
-        ))}
+        {activeCourts.map((c) => {
+          const isActive = activeCourtId === c.id
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActiveCourtId(c.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all"
+              style={{
+                // Active tab gets a noticeably darker fill so it stands
+                // out from the row of inactive tabs (the previous theme-
+                // var background read identical against that bg).
+                background: isActive ? 'rgba(139,92,246,0.18)' : 'transparent',
+                color: isActive ? 'var(--heading)' : 'var(--t4)',
+                border: isActive ? '1px solid rgba(139,92,246,0.45)' : '1px solid transparent',
+                boxShadow: isActive ? '0 0 0 1px rgba(139,92,246,0.25) inset' : 'none',
+              }}
+            >
+              {c.isIndoor ? <Building2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
+              {c.name}
+              <span className="text-[10px] opacity-70">
+                ({byCourt.get(c.id)?.live.length || 0}L · {byCourt.get(c.id)?.draft.length || 0}AI)
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Header row: days */}
@@ -191,62 +247,104 @@ export function ProgrammingGrid({
         ))}
       </div>
 
-      {/* Grid body */}
+      {/* Body: one big CSS grid so multi-hour sessions can rowSpan
+        naturally. 8 columns: hour-label + 7 days. ROWS rows. */}
       <div className="max-h-[640px] overflow-y-auto">
-        {rows.map((h) => (
-          <div key={h} className="grid grid-cols-[52px_repeat(7,1fr)] border-b" style={{ borderColor: 'var(--card-border)' }}>
-            {/* Hour label */}
-            <div className="text-xs px-2 py-3 font-medium text-right" style={{ color: 'var(--t4)' }}>
-              {formatHour(h)}
-            </div>
-            {DAYS.map((day) => {
-              const slotStart = h * 60
-              const slotEnd = (h + 1) * 60
-              const liveHits = current.live.filter((s) => {
-                if (dayNameFromDate(s.date) !== day) return false
-                const sStart = hhmmToMinutes(s.startTime)
-                const sEnd = hhmmToMinutes(s.endTime)
-                return sStart < slotEnd && sEnd > slotStart
-              })
-              const draftHits = current.draft.filter((d) => {
-                if (d.dayOfWeek !== day) return false
-                const sStart = hhmmToMinutes(d.startTime)
-                const sEnd = hhmmToMinutes(d.endTime)
-                return sStart < slotEnd && sEnd > slotStart
-              })
-              return (
+        <div
+          className="relative"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '52px repeat(7, minmax(0, 1fr))',
+            gridTemplateRows: `repeat(${ROWS}, ${ROW_HEIGHT}px)`,
+          }}
+        >
+          {/* Background slot guides — one per (hour × day) so we can show
+              alternating-band striping + the hour label. Sessions overlap
+              these via gridColumn/gridRow on their own. */}
+          {hours.map((h, hi) => (
+            <React.Fragment key={`bg-${h}`}>
+              <div
+                className="text-xs px-2 font-medium text-right"
+                style={{
+                  gridColumn: '1 / 2',
+                  gridRow: `${hi + 1} / span 1`,
+                  color: 'var(--t4)',
+                  borderTop: hi > 0 ? '1px solid var(--card-border)' : 'none',
+                  paddingTop: 4,
+                }}
+              >
+                {formatHour(h)}
+              </div>
+              {DAYS.map((_, di) => (
                 <div
-                  key={day}
-                  className="min-h-[58px] p-1 relative"
+                  key={`bg-${h}-${di}`}
                   style={{
+                    gridColumn: `${di + 2} / span 1`,
+                    gridRow: `${hi + 1} / span 1`,
+                    borderTop: hi > 0 ? '1px solid var(--card-border)' : 'none',
                     borderLeft: '1px solid var(--card-border)',
-                    background: h % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
+                    background: hi % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)',
                   }}
-                >
-                  {liveHits.map((s) => (
-                    <LiveCell key={s.id} session={s} onClick={() => onSelectCell({ kind: 'live', session: s })} />
-                  ))}
-                  {draftHits.map((d) => (
-                    <DraftCell
-                      key={d.id}
-                      draft={d}
-                      selected={selectedDraftIds.has(d.id)}
-                      onToggleSelect={() => onToggleSelect(d.id)}
-                      onClick={() => onSelectCell({ kind: 'draft', draft: d })}
-                    />
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        ))}
+                />
+              ))}
+            </React.Fragment>
+          ))}
+
+          {/* Live sessions — rendered once each, spanning the right rows */}
+          {current.live.map((s) => {
+            const day = dayNameFromDate(s.date)
+            const dayIdx = DAYS.indexOf(day as typeof DAYS[number])
+            if (dayIdx < 0) return null
+            const span = computeRowSpan(hhmmToMinutes(s.startTime), hhmmToMinutes(s.endTime))
+            if (!span) return null
+            return (
+              <div
+                key={s.id}
+                style={{
+                  gridColumn: `${dayIdx + 2} / span 1`,
+                  gridRow: `${span.rowStart} / span ${span.rowSpan}`,
+                  padding: 2,
+                  zIndex: 1,
+                }}
+              >
+                <LiveCell session={s} onClick={() => onSelectCell({ kind: 'live', session: s })} />
+              </div>
+            )
+          })}
+
+          {/* AI suggestions — same span logic, painted on top of live cells */}
+          {current.draft.map((d) => {
+            const dayIdx = DAYS.indexOf(d.dayOfWeek as typeof DAYS[number])
+            if (dayIdx < 0) return null
+            const span = computeRowSpan(hhmmToMinutes(d.startTime), hhmmToMinutes(d.endTime))
+            if (!span) return null
+            return (
+              <div
+                key={d.id}
+                style={{
+                  gridColumn: `${dayIdx + 2} / span 1`,
+                  gridRow: `${span.rowStart} / span ${span.rowSpan}`,
+                  padding: 2,
+                  zIndex: 2, // sit above live cells when both fall in the same slot
+                }}
+              >
+                <DraftCell
+                  draft={d}
+                  selected={selectedDraftIds.has(d.id)}
+                  onToggleSelect={() => onToggleSelect(d.id)}
+                  onClick={() => onSelectCell({ kind: 'draft', draft: d })}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Footer legend */}
       <div className="px-4 py-2 flex items-center gap-4 text-xs" style={{ background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--card-border)', color: 'var(--t4)' }}>
         <LegendPill color="rgba(148,163,184,0.25)" label="Live session" />
-        <LegendPill color="rgba(139,92,246,0.18)" label="AI suggestion" icon={<Sparkles className="w-3 h-3" />} />
-        <LegendPill color="rgba(245,158,11,0.22)" label="Saturation warning" icon={<AlertTriangle className="w-3 h-3" />} />
+        <LegendPill color="rgba(139,92,246,0.28)" label="AI suggestion" icon={<Sparkles className="w-3 h-3" style={{ color: '#A78BFA' }} />} />
+        <LegendPill color="rgba(245,158,11,0.28)" label="Saturation warning" icon={<AlertTriangle className="w-3 h-3" style={{ color: '#F59E0B' }} />} />
         <span className="ml-auto">Week of {weekStartDate}</span>
       </div>
     </div>
@@ -254,20 +352,27 @@ export function ProgrammingGrid({
 }
 
 function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () => void }) {
-  const tier = skillTier(session.skillLevel)
+  const tier = classifyTier({
+    skillLevel: session.skillLevel,
+    format: session.format,
+    title: session.title,
+  })
   const rgba = SKILL_COLORS[tier]
   return (
     <button
       onClick={onClick}
-      className="w-full text-left rounded-md px-1.5 py-1 mb-0.5 transition-all hover:shadow-sm"
+      className="w-full h-full text-left rounded-md px-2 py-1.5 transition-all hover:shadow-md flex flex-col justify-between"
       style={{
-        background: `${rgba}0.12)`,
-        border: `1px solid ${rgba}0.3)`,
+        background: `${rgba}0.14)`,
+        border: `1px solid ${rgba}0.35)`,
         color: 'var(--heading)',
       }}
     >
-      <div className="text-[10px] font-semibold truncate">{session.title || 'Session'}</div>
-      <div className="text-[9px] opacity-70">{session.startTime}–{session.endTime}</div>
+      <div className="text-[11px] font-semibold leading-tight line-clamp-2">{session.title || 'Session'}</div>
+      <div className="text-[10px] opacity-70 leading-tight">
+        {session.startTime}–{session.endTime}
+        {session.maxPlayers ? ` · ${session.registeredCount ?? 0}/${session.maxPlayers}` : ''}
+      </div>
     </button>
   )
 }
@@ -283,17 +388,23 @@ function DraftCell({
   onToggleSelect: () => void
   onClick: () => void
 }) {
-  const tier = skillTier(draft.skillLevel)
-  const rgba = SKILL_COLORS[tier]
   const hasWarning = (draft.metadata?.warnings?.length || 0) > 0
+  // AI suggestions get a strong violet identity regardless of the
+  // underlying skill tier, so admins always read them as "AI proposed
+  // this" and never confuse them with live data. Saturation flag turns
+  // the whole tile amber as a louder warning channel.
+  const fill = hasWarning ? 'rgba(245,158,11,0.20)' : 'rgba(139,92,246,0.22)'
+  const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.6)'
+  const accent = hasWarning ? '#F59E0B' : '#A78BFA'
   return (
     <div
-      className="w-full rounded-md px-1.5 py-1 mb-0.5 cursor-pointer transition-all hover:shadow-sm flex items-start gap-1"
+      className="w-full h-full rounded-md px-2 py-1.5 cursor-pointer transition-all hover:shadow-lg flex items-start gap-1"
       style={{
-        background: hasWarning ? 'rgba(245,158,11,0.18)' : `${rgba}0.18)`,
-        border: `1px dashed ${hasWarning ? 'rgba(245,158,11,0.45)' : rgba + '0.45)'}`,
-        outline: selected ? '2px solid rgba(139,92,246,0.55)' : 'none',
+        background: fill,
+        border: `1.5px dashed ${border}`,
+        outline: selected ? '2px solid rgba(139,92,246,0.85)' : 'none',
         outlineOffset: '-1px',
+        boxShadow: selected ? '0 0 12px rgba(139,92,246,0.45)' : '0 0 0 transparent',
       }}
       onClick={onClick}
     >
@@ -305,21 +416,21 @@ function DraftCell({
           onToggleSelect()
         }}
         onClick={(e) => e.stopPropagation()}
-        className="mt-0.5 accent-violet-500"
-        style={{ transform: 'scale(0.85)' }}
+        className="mt-0.5 accent-violet-500 flex-shrink-0"
+        style={{ transform: 'scale(0.95)' }}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          <Sparkles className="w-2.5 h-2.5 flex-shrink-0" style={{ color: '#8B5CF6' }} />
-          <span className="text-[10px] font-semibold truncate" style={{ color: 'var(--heading)' }}>
+          <Sparkles className="w-3 h-3 flex-shrink-0" style={{ color: accent }} />
+          <span className="text-[11px] font-semibold leading-tight line-clamp-1" style={{ color: 'var(--heading)' }}>
             {draft.title}
           </span>
         </div>
-        <div className="text-[9px] opacity-70">
+        <div className="text-[10px] opacity-70 leading-tight">
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
         {hasWarning && (
-          <div className="flex items-center gap-0.5 text-[9px] mt-0.5" style={{ color: '#B45309' }}>
+          <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#B45309' }}>
             <AlertTriangle className="w-2.5 h-2.5" />
             saturated
           </div>
