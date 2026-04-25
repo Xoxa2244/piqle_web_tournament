@@ -132,6 +132,27 @@ export function buildClubContextPrompt(settings: {
   peakHours?: { start: string; end: string }
   pricingModel?: string
   avgSessionPriceCents?: number | null
+  guestTrialOffers?: {
+    offers?: Array<{
+      name?: string | null
+      stage?: string | null
+      priceLabel?: string | null
+      durationLabel?: string | null
+      destinationLabel?: string | null
+      destinationType?: string | null
+      active?: boolean
+    }>
+  }
+  referralOffers?: {
+    offers?: Array<{
+      name?: string | null
+      lane?: string | null
+      rewardLabel?: string | null
+      destinationLabel?: string | null
+      destinationType?: string | null
+      active?: boolean
+    }>
+  }
   goals?: string[]
   communicationPreferences?: { tone?: string }
 } | null): string {
@@ -147,6 +168,28 @@ export function buildClubContextPrompt(settings: {
   if (settings.operatingHours) parts.push(`- Hours: ${settings.operatingHours.open} – ${settings.operatingHours.close}`)
   if (settings.peakHours) parts.push(`- Peak hours: ${settings.peakHours.start} – ${settings.peakHours.end}`)
   if (settings.pricingModel) parts.push(`- Pricing: ${settings.pricingModel}${settings.avgSessionPriceCents ? ` ($${(settings.avgSessionPriceCents / 100).toFixed(2)}/session)` : ''}`)
+  const activeOffers = settings.guestTrialOffers?.offers?.filter((offer) => offer?.active !== false) || []
+  if (activeOffers.length) {
+    parts.push(`- Guest/trial offers: ${activeOffers
+      .slice(0, 4)
+      .map((offer) => {
+        const suffix = [offer.priceLabel, offer.durationLabel].filter(Boolean).join(', ')
+        const destination = offer.destinationLabel || offer.destinationType
+        const details = [suffix, destination].filter(Boolean).join(', ')
+        return details ? `${offer.name} [${offer.stage || 'any'}; ${details}]` : `${offer.name} [${offer.stage || 'any'}]`
+      })
+      .join('; ')}`)
+  }
+  const activeReferralOffers = settings.referralOffers?.offers?.filter((offer) => offer?.active !== false) || []
+  if (activeReferralOffers.length) {
+    parts.push(`- Referral offers: ${activeReferralOffers
+      .slice(0, 4)
+      .map((offer) => {
+        const details = [offer.rewardLabel, offer.destinationLabel || offer.destinationType].filter(Boolean).join(', ')
+        return details ? `${offer.name} [${offer.lane || 'any'}; ${details}]` : `${offer.name} [${offer.lane || 'any'}]`
+      })
+      .join('; ')}`)
+  }
   if (settings.goals?.length) parts.push(`- Club goals: ${settings.goals.join(', ')}`)
   if (settings.communicationPreferences?.tone) parts.push(`- Communication tone: ${settings.communicationPreferences.tone}`)
 

@@ -3,6 +3,7 @@
 import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { useTheme } from '../IQThemeProvider'
+import { useSearchParams } from 'next/navigation'
 import {
   Users, Clock, XCircle, TrendingUp, AlertTriangle, BarChart3, Loader2,
 } from 'lucide-react'
@@ -39,13 +40,15 @@ function InsightCard({ title, icon: Icon, color, loading, children }: {
 
 export function AnalyticsIQ({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
+  const searchParams = useSearchParams()
+  const isDemo = searchParams.get('demo') === 'true'
 
-  const socialClusters = trpc.intelligence.getInsightsSocialClusters.useQuery({ clubId })
-  const bookingLeadTime = trpc.intelligence.getInsightsBookingLeadTime.useQuery({ clubId })
-  const cancellations = trpc.intelligence.getInsightsCancellationPatterns.useQuery({ clubId })
-  const skillMigration = trpc.intelligence.getInsightsSkillMigration.useQuery({ clubId })
-  const churnRisk = trpc.intelligence.getInsightsChurnRiskBySocialGraph.useQuery({ clubId })
-  const fillRate = trpc.intelligence.getInsightsFillRate.useQuery({ clubId })
+  const socialClusters = trpc.intelligence.getInsightsSocialClusters.useQuery({ clubId }, { enabled: !isDemo })
+  const bookingLeadTime = trpc.intelligence.getInsightsBookingLeadTime.useQuery({ clubId }, { enabled: !isDemo })
+  const cancellations = trpc.intelligence.getInsightsCancellationPatterns.useQuery({ clubId }, { enabled: !isDemo })
+  const skillMigration = trpc.intelligence.getInsightsSkillMigration.useQuery({ clubId }, { enabled: !isDemo })
+  const churnRisk = trpc.intelligence.getInsightsChurnRiskBySocialGraph.useQuery({ clubId }, { enabled: !isDemo })
+  const fillRate = trpc.intelligence.getInsightsFillRate.useQuery({ clubId }, { enabled: !isDemo })
 
   const formatLabel = (f: string) => f?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || f
 

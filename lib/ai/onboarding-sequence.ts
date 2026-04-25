@@ -10,6 +10,7 @@
  */
 
 import { cronLogger as log } from '@/lib/logger'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 
 export interface OnboardingStep {
   step: number
@@ -107,8 +108,7 @@ export async function processOnboardingFollowUps(
 
     try {
       const firstName = log_entry.user?.name?.split(' ')[0] || 'there'
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-      const bookingUrl = `${baseUrl}/clubs/${clubId}/play`
+      const bookingUrl = buildPlatformUrl(`/clubs/${clubId}/play`)
 
       const { sendOutreachEmail } = await import('@/lib/email')
       await sendOutreachEmail({

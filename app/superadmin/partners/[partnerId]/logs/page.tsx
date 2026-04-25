@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
@@ -10,26 +10,13 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 
-const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
-
 export default function PartnerLogsPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const partnerId = params.partnerId as string
   const appId = searchParams.get('appId')
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [offset, setOffset] = useState(0)
   const limit = 50
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
-      setIsAuthenticated(authStatus === 'true')
-      if (authStatus !== 'true') {
-        window.location.href = '/superadmin'
-      }
-    }
-  }, [])
 
   const { data, isLoading, refetch } = trpc.partner.getRequestLogs.useQuery(
     {
@@ -38,19 +25,15 @@ export default function PartnerLogsPage() {
       limit,
       offset,
     },
-    { enabled: isAuthenticated === true }
+    { enabled: true }
   )
 
-  if (isAuthenticated === null || isLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-center">
         <div className="text-lg">Loading...</div>
       </div>
     )
-  }
-
-  if (isAuthenticated === false) {
-    return null
   }
 
   const getStatusColor = (status: number) => {
@@ -198,4 +181,3 @@ export default function PartnerLogsPage() {
     </div>
   )
 }
-

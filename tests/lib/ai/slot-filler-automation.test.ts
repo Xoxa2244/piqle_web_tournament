@@ -93,6 +93,58 @@ describe('Slot Filler Automation', () => {
       expect(prisma.playSession.findMany).toHaveBeenCalled()
     })
 
+    // Regression: earlier version used `session.maxPlayers || 8`, which
+    // silently treated 0 as falsy and defaulted to 8, invite-bombing
+    // closed sessions. Now we skip with a warning.
+    it('skips sessions with maxPlayers=0 (closed) instead of defaulting to 8', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const prisma = createMockPrisma({
+        sessions: [{
+          id: 'closed-session',
+          title: 'Closed Session',
+          format: 'OPEN_PLAY',
+          skillLevel: 'ALL_LEVELS',
+          date: new Date(Date.now() + 86400000),
+          startTime: '18:00',
+          endTime: '20:00',
+          maxPlayers: 0,
+          clubId: 'club-1',
+          clubCourt: null,
+          bookings: [],
+        }],
+      })
+
+      const result = await runSlotFillerAutomation(prisma as any, { mode: 'tomorrow', dryRun: true })
+      expect(result.clubs[0].sessionsProcessed).toBe(0)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('invalid maxPlayers'),
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('skips sessions with null maxPlayers instead of defaulting to 8', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const prisma = createMockPrisma({
+        sessions: [{
+          id: 'weird-session',
+          title: 'Weird Session',
+          format: 'OPEN_PLAY',
+          skillLevel: 'ALL_LEVELS',
+          date: new Date(Date.now() + 86400000),
+          startTime: '18:00',
+          endTime: '20:00',
+          maxPlayers: null as any, // DB hand-edit or legacy row
+          clubId: 'club-1',
+          clubCourt: null,
+          bookings: [],
+        }],
+      })
+
+      const result = await runSlotFillerAutomation(prisma as any, { mode: 'tomorrow', dryRun: true })
+      expect(result.clubs[0].sessionsProcessed).toBe(0)
+      warnSpy.mockRestore()
+    })
+
     it('skips full sessions (spotsLeft <= 0)', async () => {
       const prisma = createMockPrisma({
         sessions: [{
@@ -171,13 +223,14 @@ describe('Slot Filler Automation', () => {
       vi.mocked(generateSlotFillerRecommendations).mockReturnValue([
         { member: { id: 'member-1', name: 'Bob', email: 'bob@test.com' } as any, score: 80, estimatedLikelihood: 'high' as const, preference: null, reasoning: {} as any },
       ])
+      vi.mocked(checkAntiSpam).mockResolvedValue({ allowed: true })
 
       const result = await runSlotFillerAutomation(prisma as any, { mode: 'tomorrow', dryRun: true })
-      // If candidates found and passed anti-spam, log should be created
-      if (result.clubs[0]?.messagesSent > 0) {
-        expect(prisma.aIRecommendationLog.create).toHaveBeenCalled()
-      }
-      // At minimum, pipeline ran without errors
+      expect(prisma.aIRecommendationLog.create).toHaveBeenCalled()
+      const firstCall = vi.mocked(prisma.aIRecommendationLog.create).mock.calls[0]?.[0]
+      expect(firstCall?.data?.reasoning?.triggerRuntime?.source).toBe('slot_filler_automation')
+      expect(firstCall?.data?.reasoning?.triggerRuntime?.outcome).toBe('pending')
+
       expect(result.clubs).toHaveLength(1)
     })
   })

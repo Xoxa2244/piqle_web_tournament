@@ -6,7 +6,7 @@
  * 1. Manual trigger for debugging: curl /api/agent/events
  * 2. Safety net cron (every 6h) — catches anything sync might have missed
  *
- * Respects agentLive flag — if false, logs but doesn't send.
+ * Respects live mode and autonomy policy — low-trust actions can stay pending.
  */
 
 import { NextResponse } from 'next/server'

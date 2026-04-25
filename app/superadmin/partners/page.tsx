@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
@@ -24,10 +24,7 @@ import {
 import Link from 'next/link'
 import ConfirmModal from '@/components/ConfirmModal'
 
-const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
-
 export default function PartnersPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [showCreatePartner, setShowCreatePartner] = useState(false)
   const [showEditPartner, setShowEditPartner] = useState(false)
   const [editingPartner, setEditingPartner] = useState<{
@@ -64,19 +61,9 @@ export default function PartnersPage() {
     scopes: ['indyleague:write', 'indyleague:read'],
   })
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
-      setIsAuthenticated(authStatus === 'true')
-      if (authStatus !== 'true') {
-        window.location.href = '/superadmin'
-      }
-    }
-  }, [])
-
   const { data: partners, isLoading, refetch } = trpc.partner.list.useQuery(
     undefined,
-    { enabled: isAuthenticated === true }
+    { enabled: true }
   )
 
   const createPartner = trpc.partner.create.useMutation({
@@ -129,16 +116,12 @@ export default function PartnersPage() {
     navigator.clipboard.writeText(text)
   }
 
-  if (isAuthenticated === null || isLoading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-center">
         <div className="text-lg">Loading...</div>
       </div>
     )
-  }
-
-  if (isAuthenticated === false) {
-    return null
   }
 
   return (
@@ -726,4 +709,3 @@ export default function PartnersPage() {
     </div>
   )
 }
-

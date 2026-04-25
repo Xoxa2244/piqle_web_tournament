@@ -193,11 +193,52 @@ const EXIT_ICONS: Record<string, any> = {
   bounced: XCircle,
 }
 
+function IQSportCampaignsPage({ clubId }: { clubId: string }) {
+  const days = 30
+  const [loadSecondaryCampaignAnalytics, setLoadSecondaryCampaignAnalytics] = useState(false)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoadSecondaryCampaignAnalytics(true), 200)
+    return () => window.clearTimeout(timer)
+  }, [])
+  const { data, isLoading: analyticsLoading } = useCampaignAnalytics(clubId, days)
+  const { data: variantData } = useVariantAnalytics(clubId, days, { enabled: loadSecondaryCampaignAnalytics })
+  const { data: campaignListData, isLoading: campaignListLoading } = useCampaignList(clubId)
+  const isLoading = analyticsLoading && !data
+  const setPageContext = useSetPageContext()
+
+  useEffect(() => {
+    if (!data) return
+    const { summary, byType } = data
+    const parts = [
+      'Page: Campaign Analytics',
+      `Period: last ${days} days`,
+      `Total sent: ${summary.totalSent}, This week: ${summary.thisWeek}, Failed: ${summary.totalFailed}`,
+      `Active triggers: ${summary.activeTriggers}/4`,
+    ]
+    if (byType.length > 0) {
+      parts.push(`By type: ${byType.map((t: any) => t.type + ': ' + t.count).join(', ')}`)
+    }
+    if (variantData) {
+      parts.push(`Overall open rate: ${(variantData.overallOpenRate * 100).toFixed(0)}%, click rate: ${(variantData.overallClickRate * 100).toFixed(0)}%`)
+    }
+    setPageContext(parts.join('\n'))
+  }, [data, days, variantData, setPageContext])
+
+  return (
+    <CampaignsIQ
+      campaignData={data}
+      campaignListData={campaignListData}
+      variantData={variantData}
+      isLoading={isLoading}
+      campaignListLoading={campaignListLoading && !campaignListData}
+      clubId={clubId}
+    />
+  )
+}
+
 // ══════════ MAIN PAGE ══════════
 
-export default function CampaignsPage() {
-  const params = useParams()
-  const clubId = params.id as string
+function LegacyCampaignsPage({ clubId }: { clubId: string }) {
   const isDemo = useIsDemo()
   const [days, setDays] = useState(30)
   const [variantFilter, setVariantFilter] = useState<'all' | 'CHECK_IN' | 'RETENTION_BOOST'>('all')
@@ -231,9 +272,6 @@ export default function CampaignsPage() {
     }
     setPageContext(parts.join('\n'))
   }, [data, days, variantData, sequenceData, setPageContext])
-
-  const brand = useBrand()
-  if (brand.key === 'iqsport') return <CampaignsIQ campaignData={data} campaignListData={campaignListData} variantData={variantData} isLoading={isLoading} clubId={clubId} />
 
   if (isLoading) return <ListSkeleton />
 
@@ -894,4 +932,16 @@ export default function CampaignsPage() {
       </Card>
     </div>
   )
+}
+
+export default function CampaignsPage() {
+  const params = useParams()
+  const clubId = params.id as string
+  const brand = useBrand()
+
+  if (brand.key === 'iqsport') {
+    return <IQSportCampaignsPage clubId={clubId} />
+  }
+
+  return <LegacyCampaignsPage clubId={clubId} />
 }

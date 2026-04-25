@@ -134,8 +134,12 @@ export async function verifyMandrillWebhook(
 ): Promise<boolean> {
   const webhookKey = process.env.MAILCHIMP_WEBHOOK_KEY
   if (!webhookKey) {
-    console.warn('[Mailchimp] MAILCHIMP_WEBHOOK_KEY not set — skipping signature verification')
-    return true // Allow in development
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[Mailchimp] MAILCHIMP_WEBHOOK_KEY not set in production — rejecting webhook')
+      return false
+    }
+    console.warn('[Mailchimp] MAILCHIMP_WEBHOOK_KEY not set — skipping signature verification (dev only)')
+    return true
   }
 
   // Build signed data: url + sorted keys and values
@@ -156,7 +160,12 @@ export async function verifyMandrillWebhook(
   const sig = await crypto.subtle.sign('HMAC', cryptoKey, msgData)
   const expectedSignature = Buffer.from(sig).toString('base64')
 
-  return signature === expectedSignature
+  // Timing-safe comparison to prevent timing attacks
+  const { timingSafeEqual } = await import('crypto')
+  const sigBuf = Buffer.from(signature)
+  const expBuf = Buffer.from(expectedSignature)
+  if (sigBuf.length !== expBuf.length) return false
+  return timingSafeEqual(sigBuf, expBuf)
 }
 
 // ── Helpers ──

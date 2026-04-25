@@ -5,7 +5,10 @@ import {
   AlertTriangle, Clock, Mail, Smartphone, ChevronRight,
   Heart, Sparkles, Search,
 } from "lucide-react";
-import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
+import { DuprBadge } from './shared/SmsBadge'
+import { OutreachConfirmIQModal } from './shared/OutreachConfirmIQModal'
+import { useReactivationSendFlow } from './shared/useReactivationSendFlow'
+import { buildReactivationDraft } from './shared/reactivationDraft'
 
 /* ── Types ── */
 interface MembersReactivationSectionProps {
@@ -13,8 +16,9 @@ interface MembersReactivationSectionProps {
   aiProfiles?: Record<string, any>;
   isLoading?: boolean;
   onRegenerate?: () => void;
-  sendOutreach?: any;
+  sendReactivation?: any;
   clubId?: string;
+  clubName?: string;
   isDark: boolean;
 }
 
@@ -92,13 +96,16 @@ export function MembersReactivationSection({
   aiProfiles,
   isLoading,
   onRegenerate,
-  sendOutreach,
+  sendReactivation,
   clubId,
+  clubName,
   isDark,
 }: MembersReactivationSectionProps) {
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
+  const [pendingModal, setPendingModal] = useState<{ memberId: string; channel: "email" | "sms" } | null>(null);
+  const [draftMessage, setDraftMessage] = useState("");
+  const { sentOutreach, sendStatus, send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
 
   const mapped = (candidates || []).map((c) => mapCandidate(c, aiProfiles));
   const filtered = mapped.filter((m) =>
@@ -106,17 +113,7 @@ export function MembersReactivationSection({
   );
 
   const hasAiProfiles = aiProfiles && Object.keys(aiProfiles).length > 0;
-
-  const handleSend = (memberId: string, channel: "email" | "sms") => {
-    if (sendOutreach && clubId) {
-      sendOutreach.mutate(
-        { clubId, candidates: [{ memberId, channel }] },
-        { onSuccess: () => setSentOutreach((p) => ({ ...p, [memberId]: channel })) },
-      );
-    } else {
-      setSentOutreach((p) => ({ ...p, [memberId]: channel }));
-    }
-  };
+  const activeModalMember = pendingModal ? mapped.find((member) => member.id === pendingModal.memberId) || null : null
 
   /* Loading */
   if (isLoading) {
@@ -256,16 +253,47 @@ export function MembersReactivationSection({
                           ) : (
                             <>
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleSend(member.id, "email"); }}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDraftMessage(buildReactivationDraft({
+                                    memberName: member.name,
+                                    clubName,
+                                    daysSinceLastActivity: member.daysSincePlay,
+                                  }));
+                                  setPendingModal({ memberId: member.id, channel: "email" });
+                                }}
                                 className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
                                 style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}
                               >
-                                <Mail className="w-3 h-3" /> Email
-                              </button>
-                              <SmsComingSoon />
+                                  <Mail className="w-3 h-3" /> Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setDraftMessage(buildReactivationDraft({
+                                      memberName: member.name,
+                                      clubName,
+                                      daysSinceLastActivity: member.daysSincePlay,
+                                    }));
+                                    setPendingModal({ memberId: member.id, channel: "sms" });
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
+                                  style={{ background: "rgba(249,115,22,0.14)", color: "#FB923C", fontWeight: 600 }}
+                                >
+                                  <Smartphone className="w-3 h-3" /> SMS
+                                </button>
                             </>
                           )}
                         </div>
+                        {sendStatus[member.id]?.reason && sendStatus[member.id]?.state !== "sent" && (
+                          <div className="text-[10px]" style={{ color: sendStatus[member.id]?.state === "skipped" ? "#F59E0B" : "#F87171" }}>
+                            {sendStatus[member.id]?.reason}
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
@@ -275,6 +303,45 @@ export function MembersReactivationSection({
           );
         })}
       </div>
+
+      <OutreachConfirmIQModal
+        open={!!pendingModal && !!activeModalMember}
+        channel={pendingModal?.channel || "email"}
+        title={pendingModal?.channel === "sms" ? "Send Re-engagement SMS" : "Send Re-engagement Email"}
+        description={
+          pendingModal?.channel === "sms"
+            ? "Review the member context, then send the reactivation SMS in the same IQSport flow used across the platform."
+            : "Review the member context, then send the reactivation outreach in the same IQSport flow used across the platform."
+        }
+        memberName={activeModalMember?.name}
+        memberEmail={activeModalMember?.email}
+        editableMessage={draftMessage}
+        onEditableMessageChange={setDraftMessage}
+        messageLabel={pendingModal?.channel === "sms" ? "SMS Draft" : "Email Draft"}
+        confirmText={pendingModal?.channel === "sms" ? "Send SMS" : "Send Email"}
+        isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
+        onClose={() => {
+          setPendingModal(null)
+          setDraftMessage("")
+        }}
+        onConfirm={() => {
+          if (!activeModalMember || !pendingModal) return
+          send(
+            {
+              memberId: activeModalMember.id,
+              channel: pendingModal.channel,
+              memberName: activeModalMember.name,
+              customMessage: draftMessage.trim() || undefined,
+            },
+            {
+              onSettled: () => {
+                setPendingModal(null)
+                setDraftMessage("")
+              },
+            },
+          )
+        }}
+      />
     </div>
   );
 }

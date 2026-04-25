@@ -242,6 +242,10 @@ describe('RFM+ Health Score > Overall', () => {
 // ================================================================
 
 describe('Churn Reason Detection', () => {
+  function isoDaysAgo(daysAgo: number) {
+    return new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0]
+  }
+
   /**
    * Helper to run churn analysis via generateReactivationCandidates.
    * Returns the churnReasons array for a single member.
@@ -378,9 +382,9 @@ describe('Churn Reason Detection', () => {
       }
     }
     // Add cancellations in the recent chunk
-    bookings.push(makeBooking('2026-03-01', '10:00', 'OPEN_PLAY', 'CANCELLED'))
-    bookings.push(makeBooking('2026-03-05', '10:00', 'OPEN_PLAY', 'CANCELLED'))
-    bookings.push(makeBooking('2026-03-10', '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(6), '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(4), '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(2), '10:00', 'OPEN_PLAY', 'CANCELLED'))
 
     const reasons = getChurnReasons(bookings, { totalBookings: bookings.length })
     expect(reasons.length).toBeLessThanOrEqual(2)
@@ -399,10 +403,10 @@ describe('Churn Reason Detection', () => {
     }
 
     // Recent: many cancellations
-    bookings.push(makeBooking('2026-03-01', '10:00', 'OPEN_PLAY', 'CANCELLED'))
-    bookings.push(makeBooking('2026-03-05', '10:00', 'OPEN_PLAY', 'CANCELLED'))
-    bookings.push(makeBooking('2026-03-10', '10:00', 'OPEN_PLAY', 'CANCELLED'))
-    bookings.push(makeBooking('2026-03-15', '10:00', 'OPEN_PLAY', 'CONFIRMED'))
+    bookings.push(makeBooking(isoDaysAgo(6), '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(4), '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(2), '10:00', 'OPEN_PLAY', 'CANCELLED'))
+    bookings.push(makeBooking(isoDaysAgo(1), '10:00', 'OPEN_PLAY', 'CONFIRMED'))
 
     const reasons = getChurnReasons(bookings, { totalBookings: bookings.length })
     if (reasons.length > 0) {

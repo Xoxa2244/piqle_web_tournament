@@ -81,14 +81,19 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
   })
 
   describe('UserId filter (NEW — cohort from session)', () => {
+    // ship-blocker #1 (2026-04-18) hardens this path against SQL injection
+    // by casting each id to `::uuid` — PostgreSQL rejects the row with a
+    // type error if a non-UUID string ever sneaks in. Tests assert the
+    // cast is present so a future refactor can't silently drop it.
     it('in operator with array of IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ['user-1', 'user-2', 'user-3'] }])
-      expect(result).toContain("u.id IN ('user-1','user-2','user-3')")
+      expect(result).toContain("u.id IN ('user-1'::uuid,'user-2'::uuid,'user-3'::uuid)")
     })
 
     it('escapes single quotes in user IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ["user-O'Brien"] }])
-      expect(result).toContain("u.id IN ('user-O''Brien')")
+      // Escape + cast still applied even with embedded quote.
+      expect(result).toContain("u.id IN ('user-O''Brien'::uuid)")
     })
 
     it('non-in operator returns TRUE (safety)', () => {
@@ -131,6 +136,61 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
       const result = buildCohortWhereClause([{ field: 'city', op: 'eq', value: "O'Fallon" }])
       expect(result).toContain("O''Fallon")
       expect(result).not.toContain("O'Fallon'")
+    })
+
+    // ── Regression: age case used to interpolate f.value directly into
+    // INTERVAL '${f.value} years' with no Number() coercion. A malicious
+    // string could break out of the interval literal. Now coerced and
+    // range-checked; hostile strings collapse to TRUE.
+    it('age case rejects non-numeric value (cannot escape INTERVAL literal)', () => {
+      const result = buildCohortWhereClause([
+        { field: 'age', op: 'gte', value: "1' OR '1'='1" as any },
+      ])
+      expect(result).toBe('TRUE')
+      expect(result).not.toContain("OR '1'='1")
+    })
+
+    it('age case clamps out-of-range values to TRUE', () => {
+      const negative = buildCohortWhereClause([{ field: 'age', op: 'gte', value: -5 }])
+      const huge = buildCohortWhereClause([{ field: 'age', op: 'gte', value: 10000 }])
+      expect(negative).toBe('TRUE')
+      expect(huge).toBe('TRUE')
+    })
+
+    it('age case accepts a numeric string and coerces to number', () => {
+      const result = buildCohortWhereClause([{ field: 'age', op: 'gte', value: '55' }])
+      expect(result).toContain("INTERVAL '55 years'")
+    })
+
+    it('frequency rejects NaN / non-finite input', () => {
+      const result = buildCohortWhereClause([
+        { field: 'frequency', op: 'gte', value: 'abc' as any },
+      ])
+      expect(result).toBe('TRUE')
+    })
+
+    it('recency rejects NaN / non-finite input', () => {
+      const result = buildCohortWhereClause([
+        { field: 'recency', op: 'lte', value: "x'; DROP TABLE users; --" as any },
+      ])
+      expect(result).toBe('TRUE')
+      expect(result).not.toContain('DROP TABLE')
+    })
+
+    it('duprRating rejects NaN / out-of-range input', () => {
+      const result = buildCohortWhereClause([
+        { field: 'duprRating', op: 'gte', value: "'; DELETE FROM users; --" as any },
+      ])
+      expect(result).toBe('TRUE')
+      expect(result).not.toContain('DELETE FROM')
+    })
+
+    it('unknown ops are dropped by the allowlist (not interpolated)', () => {
+      const result = buildCohortWhereClause([
+        { field: 'age', op: 'DROP TABLE users' as any, value: 55 },
+      ])
+      // op fails COHORT_ALLOWED_OPS check → filter skipped → no filters → TRUE
+      expect(result).toBe('TRUE')
     })
   })
 

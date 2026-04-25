@@ -9,16 +9,30 @@ import { NextResponse } from 'next/server'
 import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { createHmac } from 'crypto'
+import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function generateToken(actionId: string, clubId: string): string {
-  const secret = process.env.CRON_SECRET || 'fallback-dev-secret'
-  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex').slice(0, 32)
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    throw new Error('CRON_SECRET environment variable is required')
+  }
+  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex')
 }
 
 export async function GET(request: Request) {
+  const ip = getIpFromRequest(request)
+  const rateLimit = await checkRateLimit('agentAction', ip)
+  if (!rateLimit.success) {
+    return new NextResponse('Too many requests', {
+      status: 429,
+      headers: buildRateLimitHeaders(rateLimit),
+    })
+  }
+
   const url = new URL(request.url)
   const actionId = url.searchParams.get('id')
   const token = url.searchParams.get('token')
@@ -63,7 +77,7 @@ export async function GET(request: Request) {
 }
 
 function respondHtml(message: string, type: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   return new Response(`
     <!DOCTYPE html>
     <html>

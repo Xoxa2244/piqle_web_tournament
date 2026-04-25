@@ -10,10 +10,19 @@ import { createHmac } from 'crypto'
 
 // ── Hoisted mocks ──
 
-const { mockFindUnique, mockUpdate, mockSendOutreachEmail } = vi.hoisted(() => ({
+const {
+  mockFindUnique,
+  mockUpdate,
+  mockUpdateMany,
+  mockSendOutreachEmail,
+  mockAgentDecisionRecordCreate,
+} = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
-  mockSendOutreachEmail: vi.fn().mockResolvedValue({ success: true }),
+  // Atomic status transition: updateMany where status='pending' serializes concurrent clicks
+  mockUpdateMany: vi.fn().mockResolvedValue({ count: 1 }),
+  mockSendOutreachEmail: vi.fn().mockResolvedValue({ success: true, messageId: 'mandrill-abc' }),
+  mockAgentDecisionRecordCreate: vi.fn().mockResolvedValue({ id: 'decision-1' }),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -21,6 +30,11 @@ vi.mock('@/lib/prisma', () => ({
     aIRecommendationLog: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+      updateMany: mockUpdateMany,
+    },
+    agentDecisionRecord: {
+      create: mockAgentDecisionRecordCreate,
+      findMany: vi.fn().mockResolvedValue([]),
     },
   },
 }))
@@ -47,13 +61,20 @@ const CLUB_ID = 'club-xyz-456'
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.CRON_SECRET = CRON_SECRET
+  // Allowlist test club for rollout (required by evaluateAgentOutreachRollout)
+  process.env.AGENT_OUTREACH_ROLLOUT_CLUB_IDS = CLUB_ID
+  // Re-set default success mocks (vi.clearAllMocks resets implementation)
+  mockSendOutreachEmail.mockResolvedValue({ success: true, messageId: 'mandrill-abc' })
+  mockAgentDecisionRecordCreate.mockResolvedValue({ id: 'decision-1' })
+  // Atomic claim returns {count:1} by default (action was still pending, we won the race)
+  mockUpdateMany.mockResolvedValue({ count: 1 })
 })
 
 function generateToken(actionId: string, clubId: string): string {
+  // Full SHA256 hash (64 hex chars) — matches production code after security hardening
   return createHmac('sha256', CRON_SECRET)
     .update(`${actionId}:${clubId}`)
     .digest('hex')
-    .slice(0, 32)
 }
 
 function makeUrl(path: string, actionId: string, token: string): string {
@@ -67,9 +88,33 @@ function makePendingAction(overrides?: any) {
     status: 'pending',
     createdAt: new Date(),
     userId: 'user-1',
+    type: 'SLOT_FILLER',
     reasoning: { transition: 'healthy to watch' },
     user: { id: 'user-1', email: 'member@club.com', name: 'John Doe' },
-    club: { id: CLUB_ID, name: 'Test Club' },
+    club: {
+      id: CLUB_ID,
+      name: 'Test Club',
+      // agentLive=true + rollout allowlist covers both control plane and rollout gates
+      automationSettings: {
+        intelligence: {
+          agentLive: true,
+          controlPlane: {
+            killSwitch: false,
+            outreachSend: 'live',
+            // Per-action rollout flags (nested inside controlPlane)
+            outreachRollout: {
+              actions: {
+                fill_session: { enabled: true },
+                create_campaign: { enabled: true },
+                reactivate_members: { enabled: true },
+                trial_follow_up: { enabled: true },
+                renewal_reactivation: { enabled: true },
+              },
+            },
+          },
+        },
+      },
+    },
     ...overrides,
   }
 }
@@ -128,6 +173,22 @@ describe('Agent Actions > Approve', () => {
 
     const html = await res.text()
     expect(html).toContain('expired')
+    expect(mockSendOutreachEmail).not.toHaveBeenCalled()
+  })
+
+  it('race condition: второй клик проигрывает atomic claim → не отправляет email', async () => {
+    // Simulate: first request won the claim, second request finds status already pending
+    // in findUnique (race window) but updateMany returns count=0 because status was changed
+    const token = generateToken(ACTION_ID, CLUB_ID)
+    mockFindUnique.mockResolvedValue(makePendingAction())
+    // First updateMany call (atomic claim) returns 0 — someone else already won
+    mockUpdateMany.mockResolvedValueOnce({ count: 0 })
+
+    const req = new Request(makeUrl('/api/agent/approve', ACTION_ID, token))
+    const res = await approveGET(req)
+
+    const html = await res.text()
+    expect(html).toContain('already being processed')
     expect(mockSendOutreachEmail).not.toHaveBeenCalled()
   })
 })

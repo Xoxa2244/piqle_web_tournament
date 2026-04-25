@@ -1,8 +1,7 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
-import { motion } from "motion/react"
 import {
-  ChevronLeft, ChevronRight, CalendarDays,
+  ChevronLeft, ChevronRight, CalendarDays, Sparkles,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import type { SessionCalendarItem } from "@/types/intelligence"
@@ -13,6 +12,8 @@ import { SessionDetailIQ } from "./SessionDetailIQ"
 const HOUR_START = 6
 const HOUR_END = 23
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
+const SCHEDULE_ROW_HEIGHT = 40
+const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 function formatHour(h: number): string {
   if (h === 0) return '12 AM'
@@ -21,8 +22,25 @@ function formatHour(h: number): string {
   return `${h - 12} PM`
 }
 
-function toDateStr(d: Date): string { return d.toISOString().slice(0, 10) }
+function toDateStr(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r }
+function monthLabel(d: Date): string { return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) }
+function buildMonthCells(monthDate: Date): Array<{ dateStr: string; day: number; inMonth: boolean }> {
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const first = new Date(year, month, 1)
+  const firstWeekday = (first.getDay() + 6) % 7
+  const start = addDays(first, -firstWeekday)
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = addDays(start, i)
+    return { dateStr: toDateStr(d), day: d.getDate(), inMonth: d.getMonth() === month }
+  })
+}
 
 // ── Skill-level color map ──
 
@@ -77,14 +95,99 @@ interface ScheduleIQProps {
   dashboardData: any
   isLoading: boolean
   clubId: string
+  // `createOpsSessionDraftFromAdvisorDraft` / `createFillSessionDraftFromSchedule`
+  // / `opsSessionDrafts` used to drive the Agent Schedule Layer card below
+  // the day header. That card moved out to /intelligence/programming on
+  // 2026-04-24 — props removed to keep the contract tight.
+  advisorDrafts?: Array<{
+    id: string
+    kind: string
+    title: string
+    summary?: string | null
+    originalIntent?: string | null
+    conversationId?: string | null
+    metadata?: {
+      programmingPreview?: {
+        goal: string
+        primary: {
+          id: string
+          title: string
+          dayOfWeek: string
+          timeSlot: 'morning' | 'afternoon' | 'evening'
+          startTime: string
+          endTime: string
+          format: string
+          skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
+      }
+      alternatives?: Array<{
+          id: string
+          title: string
+          dayOfWeek: string
+          timeSlot: 'morning' | 'afternoon' | 'evening'
+          startTime: string
+          endTime: string
+          format: string
+          skillLevel: string
+        projectedOccupancy: number
+        estimatedInterestedMembers: number
+        confidence: number
+        conflict?: {
+          overlapRisk: 'low' | 'medium' | 'high'
+          cannibalizationRisk: 'low' | 'medium' | 'high'
+          courtPressureRisk: 'low' | 'medium' | 'high'
+          overallRisk: 'low' | 'medium' | 'high'
+          riskSummary: string
+          warnings: string[]
+          saferAlternativeId?: string
+          saferAlternativeReason?: string
+        } | null
+      }>
+        insights?: string[]
+        slotFillerPreview?: {
+          sessionId: string
+          title: string
+          date: string
+          startTime: string
+          endTime?: string | null
+          format?: string | null
+          skillLevel?: string | null
+          occupancy: number
+          spotsRemaining: number
+          candidateCount: number
+          channel: 'email' | 'sms' | 'both'
+        } | null
+      } | null
+    } | null
+  }>
 }
 
 // ── Main Component ──
 
-export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: ScheduleIQProps) {
+export function ScheduleIQ({
+  calendarData,
+  dashboardData,
+  isLoading,
+  clubId,
+  advisorDrafts,
+}: ScheduleIQProps) {
   const { isDark } = useTheme()
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()))
   const [selectedSession, setSelectedSession] = useState<SessionCalendarItem | null>(null)
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(selectedDate + 'T12:00:00'))
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
@@ -140,11 +243,87 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
     })
   }, [selectedDate])
 
+  const visibleHours = useMemo(() => {
+    if (daySessions.length === 0) return HOURS
+    const starts = daySessions.map((s) => parseInt(s.startTime.split(':')[0], 10))
+    const ends = daySessions.map((s) => {
+      const endH = parseInt(s.endTime.split(':')[0], 10)
+      const endM = parseInt(s.endTime.split(':')[1] || '0', 10)
+      return endH + (endM > 0 ? 1 : 0)
+    })
+    const start = Math.max(HOUR_START, Math.min(...starts))
+    const end = Math.min(HOUR_END, Math.max(start + 1, Math.max(...ends)))
+    return Array.from({ length: end - start }, (_, i) => start + i)
+  }, [daySessions])
+
   const todayStr = toDateStr(new Date())
   const formattedDate = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }, [selectedDate])
+  const calendarCells = useMemo(() => buildMonthCells(calendarMonth), [calendarMonth])
+  const selectedDayName = useMemo(() => {
+    const d = new Date(selectedDate + 'T12:00:00')
+    return d.toLocaleDateString('en-US', { weekday: 'long' })
+  }, [selectedDate])
+
+  // Programming ideas / ops-session signals were surfaced in the
+  // "Agent Schedule Layer" block on this page until 2026-04-24. The
+  // dedicated Programming IQ tab (/intelligence/programming) now owns
+  // that story end-to-end with a court × day × hour grid, so the
+  // computations below were dead code and are removed.
+
+  const fillSessionDraftBySessionId = useMemo(() => {
+    const drafts = new Map<string, {
+      id: string
+      conversationId?: string | null
+      originalIntent?: string | null
+      preview: {
+        sessionId: string
+        title: string
+        date: string
+        startTime: string
+        endTime?: string | null
+        format?: string | null
+        skillLevel?: string | null
+        occupancy: number
+        spotsRemaining: number
+        candidateCount: number
+        channel: 'email' | 'sms' | 'both'
+      }
+    }>()
+
+    for (const draft of advisorDrafts || []) {
+      const slotFillerPreview = (draft.metadata as {
+        slotFillerPreview?: {
+          sessionId: string
+          title: string
+          date: string
+          startTime: string
+          endTime?: string | null
+          format?: string | null
+          skillLevel?: string | null
+          occupancy: number
+          spotsRemaining: number
+          candidateCount: number
+          channel: 'email' | 'sms' | 'both'
+        } | null
+      } | null | undefined)?.slotFillerPreview
+
+      if (draft.kind !== 'fill_session' || !slotFillerPreview?.sessionId) continue
+      drafts.set(slotFillerPreview.sessionId, {
+        id: draft.id,
+        conversationId: draft.conversationId || null,
+        originalIntent: draft.originalIntent || null,
+        preview: slotFillerPreview,
+      })
+    }
+
+    return drafts
+  }, [advisorDrafts])
+
+  // selectedDayOpsDrafts / selectedDayUnderfilled / selectedAgentHref
+  // also died with the Agent Schedule Layer block above.
 
   const handlePrev = useCallback(() => {
     setSelectedDate((d) => toDateStr(addDays(new Date(d + 'T12:00:00'), -1)))
@@ -156,7 +335,18 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
       return next <= maxDate ? next : d
     })
   }, [allDates])
-  const handleToday = useCallback(() => setSelectedDate(toDateStr(new Date())), [])
+  const handleToday = useCallback(() => {
+    setSelectedDate(toDateStr(new Date()))
+    setIsDatePickerOpen(false)
+  }, [])
+  const handleDateButtonClick = useCallback(() => {
+    setCalendarMonth(new Date(selectedDate + 'T12:00:00'))
+    setIsDatePickerOpen((open) => !open)
+  }, [selectedDate])
+  const handleCalendarPick = useCallback((dateStr: string) => {
+    setSelectedDate(dateStr)
+    setIsDatePickerOpen(false)
+  }, [])
 
   if (isLoading) {
     return (
@@ -186,26 +376,109 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Day navigation */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl px-1 py-1" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
-            <button onClick={handlePrev} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-3 py-1 text-sm font-medium" style={{ color: 'var(--heading)' }}>{formattedDate}</span>
-            <button onClick={handleNext} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronRight className="w-4 h-4" /></button>
+          <div className="relative">
+            <div
+              className="flex w-[260px] items-center justify-between gap-1 rounded-xl px-1 py-0.5"
+              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+            >
+              <button
+                onClick={handlePrev}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDateButtonClick}
+                className="h-8 flex-1 truncate rounded-lg px-2 text-center text-sm font-semibold transition-all hover:bg-white/5"
+                style={{ color: 'var(--heading)' }}
+                aria-expanded={isDatePickerOpen}
+                aria-haspopup="dialog"
+              >
+                {formattedDate}
+              </button>
+              <button
+                onClick={handleNext}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Next day"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            {isDatePickerOpen && (
+              <div
+                className="absolute right-0 top-11 z-30 w-[300px] rounded-2xl p-3 shadow-2xl"
+                style={{
+                  background: isDark ? '#111225' : '#FFFFFF',
+                  border: '1px solid var(--card-border)',
+                  boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.45)' : '0 24px 60px rgba(15,23,42,0.18)',
+                }}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                    {monthLabel(calendarMonth)}
+                  </div>
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Next month"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase" style={{ color: 'var(--t4)' }}>
+                  {WEEKDAY_LABELS.map((label, index) => <div key={`${label}-${index}`}>{label}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarCells.map((cell) => {
+                    const isSelected = cell.dateStr === selectedDate
+                    const hasSessions = allSessions.some((s) => s.date === cell.dateStr)
+                    return (
+                      <button
+                        key={cell.dateStr}
+                        onClick={() => handleCalendarPick(cell.dateStr)}
+                        className="h-8 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                          background: isSelected ? 'rgba(139,92,246,0.22)' : hasSessions ? 'rgba(16,185,129,0.1)' : 'transparent',
+                          border: isSelected ? '1px solid rgba(139,92,246,0.55)' : '1px solid transparent',
+                          color: isSelected ? '#A78BFA' : cell.inMonth ? 'var(--t2)' : 'var(--t4)',
+                          opacity: cell.inMonth ? 1 : 0.35,
+                        }}
+                      >
+                        {cell.day}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={handleToday}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+            className="px-2.5 py-1 rounded-xl text-xs font-semibold transition-all"
             style={{ background: selectedDate === todayStr ? 'rgba(139,92,246,0.15)' : 'var(--subtle)', color: selectedDate === todayStr ? '#8B5CF6' : 'var(--t3)', border: '1px solid var(--card-border)' }}
           >Today</button>
         </div>
       </div>
 
       {/* Week overview bar */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
         {weekPills.map((p) => {
           const isSelected = p.dateStr === selectedDate
           const isToday = p.dateStr === todayStr
@@ -214,7 +487,7 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
             <button
               key={p.dateStr}
               onClick={() => setSelectedDate(p.dateStr)}
-              className="flex flex-col items-center px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
+              className="flex min-w-[44px] flex-col items-center px-2 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: isSelected ? 'rgba(139,92,246,0.15)' : 'transparent',
                 border: `1px solid ${isSelected ? 'rgba(139,92,246,0.3)' : isToday ? 'rgba(139,92,246,0.2)' : 'transparent'}`,
@@ -223,11 +496,12 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
               }}
             >
               <span className="text-[10px] uppercase">{p.label}</span>
-              <span className="text-sm font-semibold">{p.day}</span>
+              <span className="text-xs font-semibold">{p.day}</span>
             </button>
           )
         })}
       </div>
+
 
       {/* Court Grid */}
       <div>
@@ -239,17 +513,17 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
         ) : (
           <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
             <div className="overflow-x-auto">
-              <div style={{ minWidth: Math.max(600, courts.length * 140 + 70) }}>
+              <div style={{ minWidth: Math.max(520, courts.length * 112 + 54) }}>
                 {/* Court header */}
                 <div className="flex sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)' }}>
-                  <div className="w-[70px] shrink-0 p-2" />
+                  <div className="w-[54px] shrink-0 p-1.5" />
                   {courts.map((c) => (
-                    <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
+                    <div key={c} className="flex-1 min-w-[104px] p-1.5 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
+                      <div className="text-[11px] font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
                         {c === '__unassigned__' ? 'Unassigned' : shortenCourt(c)}
                       </div>
                       {c !== '__unassigned__' && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
+                        <span className="text-[8px] px-1.5 py-0.5 rounded-full inline-block leading-none" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
                       )}
                     </div>
                   ))}
@@ -259,17 +533,17 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: `70px repeat(${courts.length}, minmax(120px, 1fr))`,
-                    gridTemplateRows: `repeat(${HOURS.length}, minmax(56px, auto))`,
+                    gridTemplateColumns: `54px repeat(${courts.length}, minmax(104px, 1fr))`,
+                    gridTemplateRows: `repeat(${visibleHours.length}, minmax(${SCHEDULE_ROW_HEIGHT}px, auto))`,
                   }}
                 >
-                  {HOURS.map((hour, rowIdx) => {
+                  {visibleHours.map((hour, rowIdx) => {
                     const isNow = hour === currentHour && selectedDate === todayStr
                     return (
                       <React.Fragment key={hour}>
                         {/* Time label */}
                         <div
-                          className="p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]"
+                          className="p-1 text-right pr-2 flex items-start justify-end sticky left-0 z-[5]"
                           style={{
                             gridColumn: 1,
                             gridRow: rowIdx + 1,
@@ -295,19 +569,19 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                           return (
                             <div
                               key={key}
-                              className="relative p-0.5"
+                              className="relative p-[2px]"
                               style={{
                                 gridColumn: colIdx + 2,
                                 gridRow: span > 1 ? `${rowIdx + 1} / span ${span}` : rowIdx + 1,
                                 // For fractional spans (e.g. 1.5h session in 2-row span), clip the content
-                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * 56}px` } : {}),
+                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * SCHEDULE_ROW_HEIGHT}px` } : {}),
                                 borderTop: '1px solid var(--card-border)',
                                 borderLeft: '1px solid var(--card-border)',
                                 background: isNow ? 'rgba(139,92,246,0.03)' : 'transparent',
                               }}
                             >
                               {!cellSessions ? (
-                                <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.15 }} />
+                                <div className="w-full h-full min-h-[34px] rounded-md border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.12 }} />
                               ) : (
                                 cellSessions.map((s) => {
                                   const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
@@ -318,17 +592,16 @@ export function ScheduleIQ({ calendarData, dashboardData, isLoading, clubId }: S
                                     <button
                                       key={s.id}
                                       onClick={() => setSelectedSession(s)}
-                                      className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
+                                      className="w-full text-left rounded-md px-1.5 py-1 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
                                       style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
                                     >
                                       <div>
-                                        <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
-                                        {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
-                                        {span > 1 && <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
+                                        <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{sk.label}</div>
+                                        {span > 1 && <div className="text-[8px] leading-tight" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
                                       </div>
-                                      <div>
-                                        <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
-                                        <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                      <div className="mt-0.5 flex items-center justify-between gap-1">
+                                        <div className="text-[9px] font-medium leading-none" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
+                                        <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                                           <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
                                         </div>
                                       </div>

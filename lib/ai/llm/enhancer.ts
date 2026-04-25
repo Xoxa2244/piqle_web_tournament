@@ -5,10 +5,22 @@ import {
   WEEKLY_PLAN_NARRATIVE_PROMPT,
   PERSONA_INVITE_PROMPT,
 } from './prompts';
+import { composeSystem, type VoiceSettings } from '../voice-profile';
 import type {
   SlotFillerRecommendation, PlaySessionData,
   ReactivationCandidate, WeeklyPlanResult,
 } from '../../../types/intelligence';
+
+/**
+ * Options shared by all enhancer functions. Non-breaking: everything is
+ * optional. When `voice` is provided the club's tone is baked into the
+ * LLM system prompt; when `clubId` is provided the token spend is
+ * attributed per-club via the provider's cost tracker.
+ */
+export interface EnhanceOpts {
+  clubId?: string
+  voice?: VoiceSettings | null
+}
 
 // ── Types for enhanced outputs ──
 export interface SlotFillerEnhancement {
@@ -32,7 +44,8 @@ export interface WeeklyPlanEnhancement {
 // ── Slot Filler LLM Enhancement ──
 export async function enhanceSlotFillerWithLLM(
   recommendations: SlotFillerRecommendation[],
-  session: PlaySessionData
+  session: PlaySessionData,
+  opts: EnhanceOpts = {},
 ): Promise<SlotFillerEnhancement[]> {
   if (recommendations.length === 0) return [];
 
@@ -49,10 +62,12 @@ ${recommendations.map((r, i) => `${i + 1}. ${r.member.name || r.member.email} (S
 
   try {
     const result = await generateWithFallback({
-      system: SLOT_FILLER_ANALYSIS_PROMPT,
+      // suggestedMessage goes straight to members — voice matters.
+      system: composeSystem(SLOT_FILLER_ANALYSIS_PROMPT, opts.voice),
       prompt,
       tier: 'fast',
       maxTokens: 800,
+      ...(opts.clubId ? { clubId: opts.clubId, operation: 'enhanceSlotFiller' } : {}),
     });
 
     return parseJSON<SlotFillerEnhancement[]>(result.text, []);
@@ -64,7 +79,8 @@ ${recommendations.map((r, i) => `${i + 1}. ${r.member.name || r.member.email} (S
 
 // ── Reactivation LLM Enhancement ──
 export async function enhanceReactivationWithLLM(
-  candidates: ReactivationCandidate[]
+  candidates: ReactivationCandidate[],
+  opts: EnhanceOpts = {},
 ): Promise<ReactivationEnhancement[]> {
   if (candidates.length === 0) return [];
 
@@ -78,10 +94,12 @@ ${candidates.map((c, i) => `${i + 1}. ${c.member.name || c.member.email} (Score:
 
   try {
     const result = await generateWithFallback({
-      system: REACTIVATION_OUTREACH_PROMPT,
+      // outreachDraft is the actual win-back message — voice critical.
+      system: composeSystem(REACTIVATION_OUTREACH_PROMPT, opts.voice),
       prompt,
       tier: 'fast',
       maxTokens: 800,
+      ...(opts.clubId ? { clubId: opts.clubId, operation: 'enhanceReactivation' } : {}),
     });
 
     return parseJSON<ReactivationEnhancement[]>(result.text, []);
@@ -93,7 +111,8 @@ ${candidates.map((c, i) => `${i + 1}. ${c.member.name || c.member.email} (Score:
 
 // ── Weekly Plan LLM Enhancement ──
 export async function enhanceWeeklyPlanWithLLM(
-  plan: WeeklyPlanResult
+  plan: WeeklyPlanResult,
+  opts: EnhanceOpts = {},
 ): Promise<WeeklyPlanEnhancement | null> {
   if (plan.recommendedSessions.length === 0) return null;
 
@@ -106,10 +125,12 @@ ${plan.recommendedSessions.map((s, i) => `${i + 1}. "${s.session.title}" — ${n
 
   try {
     const result = await generateWithFallback({
-      system: WEEKLY_PLAN_NARRATIVE_PROMPT,
+      // Narrative is read by the player — voice matters here too.
+      system: composeSystem(WEEKLY_PLAN_NARRATIVE_PROMPT, opts.voice),
       prompt,
       tier: 'fast',
       maxTokens: 300,
+      ...(opts.clubId ? { clubId: opts.clubId, operation: 'enhanceWeeklyPlan' } : {}),
     });
 
     return parseJSON<WeeklyPlanEnhancement | null>(result.text, null);
@@ -128,6 +149,8 @@ export async function generateLLMInvite(params: {
   sessionTime: string;
   sessionFormat: string;
   skillLevel: string;
+  clubId?: string;
+  voice?: VoiceSettings | null;
 }): Promise<string> {
   const prompt = `Generate an invite for ${params.memberName} (persona: ${params.persona}).
 Session: "${params.sessionTitle}" on ${params.sessionDate} at ${params.sessionTime}.
@@ -135,10 +158,12 @@ Format: ${params.sessionFormat}. Skill: ${params.skillLevel}.`;
 
   try {
     const result = await generateWithFallback({
-      system: PERSONA_INVITE_PROMPT,
+      // Direct invite to a member — voice drives whether it feels warm or robotic.
+      system: composeSystem(PERSONA_INVITE_PROMPT, params.voice),
       prompt,
       tier: 'fast',
       maxTokens: 150,
+      ...(params.clubId ? { clubId: params.clubId, operation: 'generateLLMInvite' } : {}),
     });
 
     return result.text.trim();
