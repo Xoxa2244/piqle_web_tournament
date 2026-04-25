@@ -107,9 +107,20 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     const suggested = drafts.length
     const liveKept = liveSessions.length
     const saturations = drafts.filter((d) => (d.metadata?.warnings?.length || 0) > 0).length
-    const avgOccupancy = drafts.length === 0
+    // Blend live (registeredCount/maxPlayers) with drafts (projectedOccupancy).
+    // Skipping live made the metric read 0% on weeks with no AI drafts.
+    const liveOccs = liveSessions
+      .map((s: any) => {
+        const max = s.maxPlayers ?? 0
+        const reg = s.registeredCount ?? 0
+        return max > 0 ? (reg / max) * 100 : null
+      })
+      .filter((v): v is number => v !== null)
+    const draftOccs = drafts.map((d) => d.projectedOccupancy || 0)
+    const allOccs = [...liveOccs, ...draftOccs]
+    const avgOccupancy = allOccs.length === 0
       ? 0
-      : Math.round(drafts.reduce((s, d) => s + (d.projectedOccupancy || 0), 0) / drafts.length)
+      : Math.round(allOccs.reduce((s, v) => s + v, 0) / allOccs.length)
     const totalInvites = drafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
     return { suggested, liveKept, saturations, avgOccupancy, totalInvites }
   }, [drafts, liveSessions])
@@ -248,7 +259,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
             <div>
               <h1 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Programming IQ</h1>
               <p className="text-xs" style={{ color: 'var(--t4)' }}>
-                AI-generated weekly schedule, defended by 7 demand signals
+                {drafts.length > 0
+                  ? 'AI-generated weekly schedule, defended by 7 demand signals'
+                  : 'Live schedule from your booking system — click Generate for AI suggestions'}
               </p>
             </div>
           </div>
