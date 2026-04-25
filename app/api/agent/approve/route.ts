@@ -12,6 +12,11 @@ import { NextResponse } from 'next/server'
 import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { createHmac } from 'crypto'
+import { evaluateAgentControlPlaneAction } from '@/lib/ai/agent-control-plane'
+import { evaluateAgentOutreachRollout } from '@/lib/ai/agent-outreach-rollout'
+import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
+import { checkRateLimit, getIpFromRequest, buildRateLimitHeaders } from '@/lib/rate-limit'
+import { buildPlatformUrl, getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,11 +24,25 @@ export const dynamic = 'force-dynamic'
 const MAX_AGE_MS = 48 * 60 * 60 * 1000 // 48 hours
 
 function generateToken(actionId: string, clubId: string): string {
-  const secret = process.env.CRON_SECRET || 'fallback-dev-secret'
-  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex').slice(0, 32)
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    throw new Error('CRON_SECRET environment variable is required')
+  }
+  // Use full SHA256 hash (64 hex chars) for maximum entropy
+  return createHmac('sha256', secret).update(`${actionId}:${clubId}`).digest('hex')
 }
 
 export async function GET(request: Request) {
+  // Rate limit per IP — blocks brute-forcing HMAC tokens
+  const ip = getIpFromRequest(request)
+  const rateLimit = await checkRateLimit('agentAction', ip)
+  if (!rateLimit.success) {
+    return new NextResponse('Too many requests — slow down', {
+      status: 429,
+      headers: buildRateLimitHeaders(rateLimit),
+    })
+  }
+
   const url = new URL(request.url)
   const actionId = url.searchParams.get('id')
   const token = url.searchParams.get('token')
@@ -37,7 +56,7 @@ export async function GET(request: Request) {
     where: { id: actionId },
     include: {
       user: { select: { id: true, email: true, name: true } },
-      club: { select: { id: true, name: true } },
+      club: { select: { id: true, name: true, automationSettings: true } },
     },
   })
 
@@ -61,31 +80,98 @@ export async function GET(request: Request) {
     return redirectWithMessage(`Action already ${action.status}`, 'info')
   }
 
+  // ATOMIC STATUS TRANSITION: prevent double-processing on simultaneous clicks.
+  // updateMany with WHERE status='pending' either updates 1 row (we won the race)
+  // or 0 rows (someone else got there first). This is safer than the previous
+  // read-then-write pattern which allowed two requests to both pass the check.
+  const claimed = await prisma.aIRecommendationLog.updateMany({
+    where: { id: actionId, status: 'pending' },
+    data: { status: 'approving' },
+  })
+  if (claimed.count === 0) {
+    return redirectWithMessage('Action already being processed', 'info')
+  }
+
   // Execute the action
   try {
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: action.club.automationSettings,
+      action: 'outreachSend',
+      clubId: action.clubId,
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: action.clubId,
+      automationSettings: action.club.automationSettings,
+      actionKind: action.type === 'SLOT_FILLER' ? 'fill_session' : 'create_campaign',
+    })
+
+    if (!controlPlane.allowed || controlPlane.shadow || !rollout.allowed) {
+      const summary = controlPlane.allowed
+        ? controlPlane.shadow
+          ? `${controlPlane.reason} This email approval stayed in shadow mode.`
+          : rollout.reason
+        : controlPlane.reason
+
+      await persistAgentDecisionRecord(prisma, {
+        clubId: action.clubId,
+        action: 'outreachSend',
+        targetType: 'email_approval_link',
+        targetId: actionId,
+        mode: controlPlane.mode,
+        result: controlPlane.shadow ? 'shadowed' : 'blocked',
+        summary,
+        metadata: {
+          source: 'agent_approve_link',
+          reason: controlPlane.allowed
+            ? (controlPlane.shadow ? 'control_plane_shadow' : 'outreach_rollout_blocked')
+            : 'control_plane_disabled',
+          actionKind: action.type === 'SLOT_FILLER' ? 'fill_session' : 'create_campaign',
+          rolloutClubAllowlisted: rollout.clubAllowlisted,
+          rolloutActionEnabled: rollout.actionEnabled,
+        },
+      })
+
+      // Revert 'approving' → 'pending' so the user can retry once the gate is opened
+      await prisma.aIRecommendationLog.update({
+        where: { id: actionId },
+        data: { status: 'pending' },
+      }).catch(() => {})
+
+      return redirectWithMessage(summary, controlPlane.shadow ? 'info' : 'error')
+    }
+
     const { sendOutreachEmail } = await import('@/lib/email')
     const reasoning = action.reasoning as any
     const firstName = action.user?.name?.split(' ')[0] || 'there'
+    let sentMessageId: string | undefined
 
     // Send the outreach email
     if (action.user?.email) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-      const bookingUrl = `${baseUrl}/clubs/${action.clubId}/play`
+      const bookingUrl = buildPlatformUrl(`/clubs/${action.clubId}/play`)
 
-      await sendOutreachEmail({
+      const sendResult = await sendOutreachEmail({
         to: action.user.email,
         subject: `${action.club.name} — We'd love to see you back!`,
         body: `Hey ${firstName}!\n\nWe noticed it's been a while since your last session at ${action.club.name}. We'd love to have you back — there are some great sessions coming up that match your level.\n\nBook now and reconnect with the community!`,
         clubName: action.club.name,
         bookingUrl,
+        // CRITICAL: metadata flows through Mandrill to webhooks → AIRecommendationLog correlation
+        metadata: {
+          logId: actionId,
+          clubId: action.clubId,
+          userId: action.user.id,
+        },
+        tags: ['outreach', 'approve-link', String(action.type).toLowerCase()],
       })
+      sentMessageId = sendResult.messageId
     }
 
-    // Update status to sent
+    // Update status to sent + store externalMessageId for webhook tracking
     await prisma.aIRecommendationLog.update({
       where: { id: actionId },
       data: {
         status: 'sent',
+        ...(sentMessageId ? { externalMessageId: sentMessageId } : {}),
         reasoning: {
           ...reasoning,
           approvedAt: new Date().toISOString(),
@@ -103,13 +189,18 @@ export async function GET(request: Request) {
 
     return redirectWithMessage(`Approved! Message sent to ${action.user?.name || 'member'}`, 'success')
   } catch (err) {
+    // Revert 'approving' → 'pending' so the user can retry
+    await prisma.aIRecommendationLog.update({
+      where: { id: actionId },
+      data: { status: 'pending' },
+    }).catch(() => {})
     log.error(`Action ${actionId} approve failed:`, (err as Error).message)
     return redirectWithMessage('Failed to send message', 'error')
   }
 }
 
 function redirectWithMessage(message: string, type: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const baseUrl = getPlatformBaseUrl()
   // Simple HTML response with auto-close
   return new Response(`
     <!DOCTYPE html>

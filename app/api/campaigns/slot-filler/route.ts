@@ -5,7 +5,8 @@
  * - ?mode=tomorrow  — find tomorrow's sessions with empty slots, invite best candidates (daily 8 AM)
  * - ?mode=lastminute — find sessions starting in 2-6 hours, urgent invites (every 2 hours)
  *
- * Always dry run unless ?dryRun=false AND club has agentLive=true.
+ * Always dry run unless ?dryRun=false, club has agentLive=true,
+ * and autonomy policy allows slot filler to auto-run.
  * Auth: Bearer CRON_SECRET header
  */
 

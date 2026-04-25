@@ -1,5 +1,7 @@
 import type { WeeklySummaryContent } from './weekly-summary'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildEmailPanel, buildIqSportEmail } from '@/lib/email-brand'
 
 // ── HTML Email Template for Weekly AI Summary ──
 
@@ -59,77 +61,22 @@ function buildWeeklySummaryHtml(
       </table>`
     : ''
 
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
-  <table style="width:100%;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;margin-top:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    <!-- Header -->
-    <tr>
-      <td style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);padding:24px 32px;">
-        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">&#10024; Weekly AI Summary</h1>
-        <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">${clubName} &middot; ${content.weekLabel}</p>
-      </td>
-    </tr>
-
-    <!-- Executive Summary -->
-    <tr>
-      <td style="padding:24px 32px 16px;">
-        <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">${content.executiveSummary}</p>
-      </td>
-    </tr>
-
-    <!-- Wins -->
-    ${winsHtml ? `<tr>
-      <td style="padding:8px 32px 16px;">
-        <h3 style="margin:0 0 8px;font-size:14px;color:#059669;">&#127942; Wins</h3>
-        <ul style="margin:0;padding-left:20px;list-style:none;">${winsHtml}</ul>
-      </td>
-    </tr>` : ''}
-
-    <!-- Risks -->
-    ${risksHtml ? `<tr>
-      <td style="padding:8px 32px 16px;">
-        <h3 style="margin:0 0 8px;font-size:14px;color:#d97706;">&#9888;&#65039; Needs Attention</h3>
-        <ul style="margin:0;padding-left:20px;list-style:none;">${risksHtml}</ul>
-      </td>
-    </tr>` : ''}
-
-    <!-- Actions -->
-    ${actionsHtml ? `<tr>
-      <td style="padding:8px 32px 16px;">
-        <h3 style="margin:0 0 8px;font-size:14px;color:#2563eb;">&#128295; Actions Taken</h3>
-        <ul style="margin:0;padding-left:20px;list-style:none;">${actionsHtml}</ul>
-      </td>
-    </tr>` : ''}
-
-    <!-- Key Numbers -->
-    ${keyNumbersHtml ? `<tr>
-      <td style="padding:8px 32px 24px;">
-        <h3 style="margin:0 0 8px;font-size:14px;color:#7c3aed;">&#128202; Key Numbers</h3>
-        ${keyNumbersHtml}
-      </td>
-    </tr>` : ''}
-
-    <!-- CTA -->
-    <tr>
-      <td style="padding:8px 32px 32px;text-align:center;">
-        <a href="${dashboardUrl}" style="display:inline-block;background:#7c3aed;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">View Dashboard &rarr;</a>
-      </td>
-    </tr>
-
-    <!-- Footer -->
-    <tr>
-      <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-        <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
-          This report was generated automatically by IQSport.ai.
-          To stop receiving these emails, update your automation settings in the dashboard.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  return buildIqSportEmail({
+    title: `Weekly AI Summary — ${clubName}`,
+    heading: 'Weekly AI Summary',
+    eyebrow: 'Club Intelligence',
+    subheading: `${clubName} · ${content.weekLabel}`,
+    baseUrl: dashboardUrl,
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#CBD5E1;">${content.executiveSummary}</p>
+      ${winsHtml ? buildEmailPanel(`<h3 style="margin:0 0 10px;font-size:14px;color:#34D399;">Wins</h3><ul style="margin:0;padding-left:18px;list-style:none;">${winsHtml}</ul>`) : ''}
+      ${risksHtml ? buildEmailPanel(`<h3 style="margin:0 0 10px;font-size:14px;color:#F59E0B;">Needs Attention</h3><ul style="margin:0;padding-left:18px;list-style:none;">${risksHtml}</ul>`) : ''}
+      ${actionsHtml ? buildEmailPanel(`<h3 style="margin:0 0 10px;font-size:14px;color:#60A5FA;">Actions Taken</h3><ul style="margin:0;padding-left:18px;list-style:none;">${actionsHtml}</ul>`) : ''}
+      ${keyNumbersHtml ? buildEmailPanel(`<h3 style="margin:0 0 10px;font-size:14px;color:#A78BFA;">Key Numbers</h3>${keyNumbersHtml}`) : ''}
+      ${buildEmailButton('View Dashboard →', dashboardUrl)}
+    `,
+    footerHtml: `<p style="margin:0;font-size:11px;line-height:1.7;color:#94A3B8;">This report was generated automatically by IQSport.ai. To stop receiving these emails, update your automation settings in the dashboard.</p>`,
+  })
 }
 
 // ── Send weekly summary email ──
@@ -140,8 +87,7 @@ export async function sendWeeklySummaryEmail(
   clubName: string,
   clubId: string,
 ): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'https://stest.piqle.io'
-  const dashboardUrl = `${baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`}/clubs/${clubId}/intelligence`
+  const dashboardUrl = buildPlatformUrl(`/clubs/${clubId}/intelligence`)
 
   const subject = `Weekly AI Summary — ${clubName} (${content.weekLabel})`
   const html = buildWeeklySummaryHtml(content, clubName, dashboardUrl)

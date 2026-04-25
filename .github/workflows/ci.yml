@@ -12,6 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # Mock env vars for tests — Prisma requires DATABASE_URL at import time
+    # (the client instantiates eagerly in lib/prisma.ts). Vitest mocks prisma
+    # at test level, but the initial import still needs a valid URL string.
+    # These are fake values — no actual DB connection happens in tests.
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      NEXTAUTH_SECRET: test-secret-used-only-in-ci-not-production
+      CRON_SECRET: test-cron-secret-used-only-in-ci-not-production
+      CONNECTOR_ENCRYPTION_KEY: test0encryption0key0used0only0in0ci0not0prod
+      NODE_ENV: test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +39,7 @@ jobs:
         run: npx prisma generate
 
       - name: TypeScript check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run tests
         run: npx vitest run

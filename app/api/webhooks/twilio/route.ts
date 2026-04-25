@@ -31,8 +31,12 @@ function verifyTwilioSignature(
 ): boolean {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   if (!authToken) {
-    console.warn('[Twilio Webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification')
-    return true // Allow in development
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[Twilio Webhook] TWILIO_AUTH_TOKEN not set in production — rejecting request')
+      return false
+    }
+    console.warn('[Twilio Webhook] TWILIO_AUTH_TOKEN not set — skipping signature verification (dev only)')
+    return true
   }
 
   // Twilio signature: HMAC-SHA1 of URL + sorted POST params
@@ -47,7 +51,11 @@ function verifyTwilioSignature(
     .update(Buffer.from(data, 'utf-8'))
     .digest('base64')
 
-  return signature === expectedSignature
+  // Timing-safe comparison to prevent timing attacks
+  const sigBuf = Buffer.from(signature)
+  const expBuf = Buffer.from(expectedSignature)
+  if (sigBuf.length !== expBuf.length) return false
+  return crypto.timingSafeEqual(sigBuf, expBuf)
 }
 
 export async function POST(request: Request) {

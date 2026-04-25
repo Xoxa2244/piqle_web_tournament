@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useSearchParams } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useBrand } from '@/components/BrandProvider'
 import { SettingsIQ } from '../_components/iq-pages/SettingsIQ'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -11,12 +11,30 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import {
   Settings, Globe, Dumbbell, MapPin, Calendar, Clock, DollarSign,
-  Target, Mail, MessageSquare, Volume2, Zap, ArrowRight, Check,
-  Loader2, AlertTriangle, Shield, Eye, EyeOff,
+  Target, Mail, MessageSquare, Volume2, Zap, ArrowRight, Check, Users,
+  Loader2, AlertTriangle, Shield, Eye, EyeOff, Plus, Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import { generateOutreachMessages, type OutreachType } from '@/lib/ai/outreach-messages'
+import {
+  buildAgentControlPlaneSummary,
+  describeAgentControlPlaneMode,
+  getAgentControlPlaneAudit,
+  resolveAgentControlPlane,
+} from '@/lib/ai/agent-control-plane'
+import {
+  buildAgentOutreachRolloutSummary,
+  describeAgentOutreachRolloutAction,
+  resolveAgentOutreachRollout,
+} from '@/lib/ai/agent-outreach-rollout'
+import {
+  buildAgentPermissionSummary,
+  describeAgentPermissionMinimumRole,
+  evaluateAgentPermission,
+  formatClubAdminRole,
+  resolveAgentPermissions,
+} from '@/lib/ai/agent-permissions'
 import {
   useIntelligenceSettings,
   useSaveIntelligenceSettings,
@@ -87,6 +105,488 @@ const TONE_LABELS: Record<string, string> = {
   friendly: 'Friendly',
   professional: 'Professional',
   casual: 'Casual',
+}
+
+type ControlPlaneMode = 'disabled' | 'shadow' | 'live'
+type PermissionRole = 'ADMIN' | 'MODERATOR'
+type MembershipMappingSource = 'type' | 'status' | 'either'
+type MembershipMappingMatchMode = 'contains' | 'equals'
+type MembershipMappingRule = NonNullable<IntelligenceSettingsInput['membershipMappings']>['rules'][number]
+type GuestTrialOffer = NonNullable<IntelligenceSettingsInput['guestTrialOffers']>['offers'][number]
+type GuestTrialOfferKind = GuestTrialOffer['kind']
+type GuestTrialOfferAudience = GuestTrialOffer['audience']
+type GuestTrialOfferStage = GuestTrialOffer['stage']
+type GuestTrialOfferDestinationType = NonNullable<GuestTrialOffer['destinationType']>
+type ReferralOffer = NonNullable<IntelligenceSettingsInput['referralOffers']>['offers'][number]
+type ReferralOfferKind = ReferralOffer['kind']
+type ReferralOfferLane = ReferralOffer['lane']
+type ReferralOfferDestinationType = NonNullable<ReferralOffer['destinationType']>
+type PermissionActionKey =
+  | 'draftManage'
+  | 'approveActions'
+  | 'outreachSend'
+  | 'schedulePublish'
+  | 'scheduleLiveEdit'
+  | 'scheduleLiveRollback'
+  | 'controlPlaneManage'
+type ControlPlaneActionKey =
+  | 'outreachSend'
+  | 'schedulePublish'
+  | 'scheduleLiveEdit'
+  | 'scheduleLiveRollback'
+  | 'adminReminderExternal'
+type OutreachRolloutActionKey =
+  | 'create_campaign'
+  | 'fill_session'
+  | 'reactivate_members'
+  | 'trial_follow_up'
+  | 'renewal_reactivation'
+type PermissionSettings = {
+  actions: Record<PermissionActionKey, { minimumRole: PermissionRole }>
+}
+type ControlPlaneSettings = {
+  killSwitch: boolean
+  actions: Record<ControlPlaneActionKey, { mode: ControlPlaneMode }>
+  outreachRollout: {
+    actions: Record<OutreachRolloutActionKey, { enabled: boolean }>
+  }
+  audit?: {
+    lastChangedAt?: string
+    lastChangedByUserId?: string
+    lastChangedByLabel?: string
+    summary?: string
+    changes?: Array<{
+      key: 'killSwitch' | 'outreachRollout' | ControlPlaneActionKey
+      label: string
+      from: string
+      to: string
+    }>
+  }
+}
+
+const CONTROL_PLANE_ACTIONS = [
+  {
+    key: 'outreachSend',
+    label: 'Outreach send',
+    description: 'Real member-facing campaigns, slot fills, and lifecycle sends.',
+  },
+  {
+    key: 'schedulePublish',
+    label: 'Schedule publish',
+    description: 'Create live sessions from internal ops drafts.',
+  },
+  {
+    key: 'scheduleLiveEdit',
+    label: 'Live session edit',
+    description: 'Edit already published sessions in the live schedule.',
+  },
+  {
+    key: 'scheduleLiveRollback',
+    label: 'Live rollback',
+    description: 'Restore a published session back to its planned version.',
+  },
+  {
+    key: 'adminReminderExternal',
+    label: 'Admin reminders',
+    description: 'External admin pings by email or SMS.',
+  },
+] as const
+
+const MEMBERSHIP_MAPPING_SOURCE_OPTIONS: Array<{ value: MembershipMappingSource; label: string }> = [
+  { value: 'type', label: 'Type label' },
+  { value: 'status', label: 'Status label' },
+  { value: 'either', label: 'Type or status' },
+]
+
+const MEMBERSHIP_MAPPING_MATCH_MODE_OPTIONS: Array<{ value: MembershipMappingMatchMode; label: string }> = [
+  { value: 'contains', label: 'Contains' },
+  { value: 'equals', label: 'Exact match' },
+]
+
+const MEMBERSHIP_TYPE_OPTIONS = [
+  { value: 'unlimited', label: 'Unlimited / VIP' },
+  { value: 'monthly', label: 'Monthly member' },
+  { value: 'package', label: 'Package / class pack' },
+  { value: 'drop_in', label: 'Drop-in' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'guest', label: 'Guest' },
+  { value: 'discounted', label: 'Discounted' },
+  { value: 'insurance', label: 'Insurance / SilverSneakers' },
+  { value: 'staff', label: 'Staff / comped' },
+] as const
+
+const MEMBERSHIP_STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'suspended', label: 'Suspended / frozen' },
+  { value: 'expired', label: 'Expired' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'guest', label: 'Guest / no member' },
+  { value: 'none', label: 'No membership' },
+] as const
+
+const GUEST_TRIAL_OFFER_KIND_OPTIONS: Array<{ value: GuestTrialOfferKind; label: string }> = [
+  { value: 'guest_pass', label: 'Guest pass' },
+  { value: 'trial_pass', label: 'Trial pass' },
+  { value: 'starter_pack', label: 'Starter pack' },
+  { value: 'paid_intro', label: 'Paid intro' },
+  { value: 'membership_offer', label: 'Membership offer' },
+]
+
+const GUEST_TRIAL_OFFER_AUDIENCE_OPTIONS: Array<{ value: GuestTrialOfferAudience; label: string }> = [
+  { value: 'either', label: 'Guest or trial' },
+  { value: 'guest', label: 'Guests only' },
+  { value: 'trial', label: 'Trials only' },
+]
+
+const GUEST_TRIAL_OFFER_STAGE_OPTIONS: Array<{ value: GuestTrialOfferStage; label: string }> = [
+  { value: 'book_first_visit', label: 'Book first visit' },
+  { value: 'protect_first_show_up', label: 'Protect first show-up' },
+  { value: 'convert_to_paid', label: 'Convert to paid' },
+  { value: 'any', label: 'Any stage' },
+]
+
+const GUEST_TRIAL_OFFER_DESTINATION_OPTIONS: Array<{ value: GuestTrialOfferDestinationType; label: string }> = [
+  { value: 'schedule', label: 'Schedule page' },
+  { value: 'landing_page', label: 'Offer landing page' },
+  { value: 'external_url', label: 'External booking URL' },
+  { value: 'manual_follow_up', label: 'Manual follow-up path' },
+]
+
+const REFERRAL_OFFER_KIND_OPTIONS: Array<{ value: ReferralOfferKind; label: string }> = [
+  { value: 'bring_a_friend', label: 'Bring-a-friend' },
+  { value: 'vip_guest_pass', label: 'VIP guest pass' },
+  { value: 'trial_invite', label: 'Trial invite' },
+  { value: 'reward_credit', label: 'Reward credit' },
+  { value: 'guest_pass', label: 'Guest pass' },
+]
+
+const REFERRAL_OFFER_LANE_OPTIONS: Array<{ value: ReferralOfferLane; label: string }> = [
+  { value: 'vip_advocate', label: 'VIP advocates' },
+  { value: 'social_regular', label: 'Social regulars' },
+  { value: 'dormant_advocate', label: 'Dormant advocates' },
+  { value: 'any', label: 'Any lane' },
+]
+
+const REFERRAL_OFFER_DESTINATION_OPTIONS: Array<{ value: ReferralOfferDestinationType; label: string }> = [
+  { value: 'schedule', label: 'Schedule page' },
+  { value: 'landing_page', label: 'Referral landing page' },
+  { value: 'external_url', label: 'External invite URL' },
+  { value: 'manual_follow_up', label: 'Manual follow-up path' },
+]
+
+const CONTROL_PLANE_MODE_OPTIONS = [
+  { value: 'disabled', label: 'Disabled' },
+  { value: 'shadow', label: 'Shadow' },
+  { value: 'live', label: 'Live' },
+] as const
+
+const OUTREACH_ROLLOUT_ACTIONS = [
+  {
+    key: 'create_campaign',
+    label: 'Campaign sends',
+    description: 'Agent-drafted campaigns sent to a cohort or selected audience.',
+  },
+  {
+    key: 'fill_session',
+    label: 'Slot filler sends',
+    description: 'Live outreach to fill an underbooked session.',
+  },
+  {
+    key: 'reactivate_members',
+    label: 'Reactivation sends',
+    description: 'Live win-back outreach to inactive members.',
+  },
+  {
+    key: 'trial_follow_up',
+    label: 'Trial follow-up sends',
+    description: 'Live outreach to trial members after their first experience.',
+  },
+  {
+    key: 'renewal_reactivation',
+    label: 'Renewal outreach sends',
+    description: 'Live renewal recovery and expiration outreach.',
+  },
+] as const
+
+const DEFAULT_CONTROL_PLANE: ControlPlaneSettings = {
+  killSwitch: false,
+  actions: {
+    outreachSend: { mode: 'shadow' },
+    schedulePublish: { mode: 'live' },
+    scheduleLiveEdit: { mode: 'live' },
+    scheduleLiveRollback: { mode: 'live' },
+    adminReminderExternal: { mode: 'live' },
+  },
+  outreachRollout: {
+    actions: {
+      create_campaign: { enabled: false },
+      fill_session: { enabled: false },
+      reactivate_members: { enabled: false },
+      trial_follow_up: { enabled: false },
+      renewal_reactivation: { enabled: false },
+    },
+  },
+}
+
+const PERMISSION_ACTIONS = [
+  {
+    key: 'draftManage',
+    label: 'Draft work',
+    description: 'Create and move advisor drafts, ops drafts, and queue workflow.',
+  },
+  {
+    key: 'approveActions',
+    label: 'Approve actions',
+    description: 'Approve, snooze, decline, or execute review-only agent actions.',
+  },
+  {
+    key: 'outreachSend',
+    label: 'Send outreach',
+    description: 'Send or schedule real member-facing outreach.',
+  },
+  {
+    key: 'schedulePublish',
+    label: 'Publish schedule',
+    description: 'Publish internal ops drafts into the live schedule.',
+  },
+  {
+    key: 'scheduleLiveEdit',
+    label: 'Edit live sessions',
+    description: 'Change already published live sessions.',
+  },
+  {
+    key: 'scheduleLiveRollback',
+    label: 'Rollback live sessions',
+    description: 'Restore a live session back to its planned draft version.',
+  },
+  {
+    key: 'controlPlaneManage',
+    label: 'Manage rollout',
+    description: 'Change control-plane modes and this permission matrix.',
+  },
+] as const
+
+const PERMISSION_ROLE_OPTIONS = [
+  { value: 'MODERATOR', label: 'Moderator' },
+  { value: 'ADMIN', label: 'Admin' },
+] as const
+
+const DEFAULT_PERMISSIONS: PermissionSettings = {
+  actions: {
+    draftManage: { minimumRole: 'MODERATOR' },
+    approveActions: { minimumRole: 'ADMIN' },
+    outreachSend: { minimumRole: 'ADMIN' },
+    schedulePublish: { minimumRole: 'ADMIN' },
+    scheduleLiveEdit: { minimumRole: 'ADMIN' },
+    scheduleLiveRollback: { minimumRole: 'ADMIN' },
+    controlPlaneManage: { minimumRole: 'ADMIN' },
+  },
+}
+
+const DEFAULT_SANDBOX_ROUTING = {
+  mode: 'preview_only' as const,
+  emailRecipients: [] as string[],
+  smsRecipients: [] as string[],
+}
+
+const DEFAULT_MEMBERSHIP_MAPPINGS: NonNullable<IntelligenceSettingsInput['membershipMappings']> = {
+  rules: [],
+}
+
+const DEFAULT_GUEST_TRIAL_OFFERS: NonNullable<IntelligenceSettingsInput['guestTrialOffers']> = {
+  offers: [],
+}
+
+const DEFAULT_REFERRAL_OFFERS: NonNullable<IntelligenceSettingsInput['referralOffers']> = {
+  offers: [],
+}
+
+function normalizeMembershipMappings(
+  raw?: Partial<NonNullable<IntelligenceSettingsInput['membershipMappings']>> | null,
+): NonNullable<IntelligenceSettingsInput['membershipMappings']> {
+  return {
+    rules: Array.isArray(raw?.rules)
+      ? raw.rules
+        .map((rule) => ({
+          rawLabel: typeof rule?.rawLabel === 'string' ? rule.rawLabel : '',
+          source: rule?.source === 'status' || rule?.source === 'either' ? rule.source : 'type',
+          matchMode: rule?.matchMode === 'equals' ? 'equals' : 'contains',
+          normalizedType: rule?.normalizedType,
+          normalizedStatus: rule?.normalizedStatus,
+        }))
+      : [],
+  }
+}
+
+function normalizeGuestTrialOffers(
+  raw?: Partial<NonNullable<IntelligenceSettingsInput['guestTrialOffers']>> | null,
+): NonNullable<IntelligenceSettingsInput['guestTrialOffers']> {
+  return {
+    offers: Array.isArray(raw?.offers)
+      ? raw.offers.map((offer) => {
+        const stage = offer?.stage || 'any'
+        const defaultDestinationType: GuestTrialOfferDestinationType = stage === 'convert_to_paid'
+          ? 'landing_page'
+          : stage === 'protect_first_show_up'
+            ? 'manual_follow_up'
+            : 'schedule'
+
+        return {
+          key: typeof offer?.key === 'string' ? offer.key : '',
+          name: typeof offer?.name === 'string' ? offer.name : '',
+          kind: offer?.kind || 'paid_intro',
+          audience: offer?.audience || 'either',
+          stage,
+          priceLabel: typeof offer?.priceLabel === 'string' ? offer.priceLabel : '',
+          durationLabel: typeof offer?.durationLabel === 'string' ? offer.durationLabel : '',
+          summary: typeof offer?.summary === 'string' ? offer.summary : '',
+          ctaLabel: typeof offer?.ctaLabel === 'string' ? offer.ctaLabel : '',
+          destinationType: offer?.destinationType || defaultDestinationType,
+          destinationLabel: typeof offer?.destinationLabel === 'string' ? offer.destinationLabel : '',
+          destinationUrl: typeof offer?.destinationUrl === 'string' ? offer.destinationUrl : '',
+          destinationNotes: typeof offer?.destinationNotes === 'string' ? offer.destinationNotes : '',
+          active: offer?.active !== false,
+          highlight: offer?.highlight === true,
+        }
+      })
+      : [],
+  }
+}
+
+function normalizeReferralOffers(
+  raw?: Partial<NonNullable<IntelligenceSettingsInput['referralOffers']>> | null,
+): NonNullable<IntelligenceSettingsInput['referralOffers']> {
+  return {
+    offers: Array.isArray(raw?.offers)
+      ? raw.offers.map((offer) => {
+        const lane = offer?.lane || 'any'
+        const defaultDestinationType: ReferralOfferDestinationType = lane === 'dormant_advocate'
+          ? 'manual_follow_up'
+          : lane === 'vip_advocate'
+            ? 'landing_page'
+            : 'schedule'
+
+        return {
+          key: typeof offer?.key === 'string' ? offer.key : '',
+          name: typeof offer?.name === 'string' ? offer.name : '',
+          kind: offer?.kind || 'bring_a_friend',
+          lane,
+          rewardLabel: typeof offer?.rewardLabel === 'string' ? offer.rewardLabel : '',
+          summary: typeof offer?.summary === 'string' ? offer.summary : '',
+          ctaLabel: typeof offer?.ctaLabel === 'string' ? offer.ctaLabel : '',
+          destinationType: offer?.destinationType || defaultDestinationType,
+          destinationLabel: typeof offer?.destinationLabel === 'string' ? offer.destinationLabel : '',
+          destinationUrl: typeof offer?.destinationUrl === 'string' ? offer.destinationUrl : '',
+          destinationNotes: typeof offer?.destinationNotes === 'string' ? offer.destinationNotes : '',
+          active: offer?.active !== false,
+          highlight: offer?.highlight === true,
+        }
+      })
+      : [],
+  }
+}
+
+function mergeIntelligenceSettings(
+  raw: Partial<IntelligenceSettingsInput> | null | undefined,
+): IntelligenceSettingsInput {
+  const rawControlActions = raw?.controlPlane?.actions
+  const rawOutreachRolloutActions = raw?.controlPlane?.outreachRollout?.actions
+  const rawPermissionActions = raw?.permissions?.actions
+  const mergedControlPlane: ControlPlaneSettings = {
+    killSwitch: raw?.controlPlane?.killSwitch ?? DEFAULT_CONTROL_PLANE.killSwitch,
+    actions: {
+      outreachSend: {
+        mode: rawControlActions?.outreachSend?.mode ?? (raw?.agentLive === true ? 'live' : DEFAULT_CONTROL_PLANE.actions.outreachSend.mode),
+      },
+      schedulePublish: {
+        mode: rawControlActions?.schedulePublish?.mode ?? DEFAULT_CONTROL_PLANE.actions.schedulePublish.mode,
+      },
+      scheduleLiveEdit: {
+        mode: rawControlActions?.scheduleLiveEdit?.mode ?? DEFAULT_CONTROL_PLANE.actions.scheduleLiveEdit.mode,
+      },
+      scheduleLiveRollback: {
+        mode: rawControlActions?.scheduleLiveRollback?.mode ?? DEFAULT_CONTROL_PLANE.actions.scheduleLiveRollback.mode,
+      },
+      adminReminderExternal: {
+        mode: rawControlActions?.adminReminderExternal?.mode ?? DEFAULT_CONTROL_PLANE.actions.adminReminderExternal.mode,
+      },
+    },
+    outreachRollout: {
+      actions: {
+        create_campaign: {
+          enabled: rawOutreachRolloutActions?.create_campaign?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.create_campaign.enabled,
+        },
+        fill_session: {
+          enabled: rawOutreachRolloutActions?.fill_session?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.fill_session.enabled,
+        },
+        reactivate_members: {
+          enabled: rawOutreachRolloutActions?.reactivate_members?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.reactivate_members.enabled,
+        },
+        trial_follow_up: {
+          enabled: rawOutreachRolloutActions?.trial_follow_up?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.trial_follow_up.enabled,
+        },
+        renewal_reactivation: {
+          enabled: rawOutreachRolloutActions?.renewal_reactivation?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.renewal_reactivation.enabled,
+        },
+      },
+    },
+    audit: raw?.controlPlane?.audit,
+  }
+  const mergedPermissions: PermissionSettings = {
+    actions: {
+      draftManage: {
+        minimumRole: rawPermissionActions?.draftManage?.minimumRole ?? DEFAULT_PERMISSIONS.actions.draftManage.minimumRole,
+      },
+      approveActions: {
+        minimumRole: rawPermissionActions?.approveActions?.minimumRole ?? DEFAULT_PERMISSIONS.actions.approveActions.minimumRole,
+      },
+      outreachSend: {
+        minimumRole: rawPermissionActions?.outreachSend?.minimumRole ?? DEFAULT_PERMISSIONS.actions.outreachSend.minimumRole,
+      },
+      schedulePublish: {
+        minimumRole: rawPermissionActions?.schedulePublish?.minimumRole ?? DEFAULT_PERMISSIONS.actions.schedulePublish.minimumRole,
+      },
+      scheduleLiveEdit: {
+        minimumRole: rawPermissionActions?.scheduleLiveEdit?.minimumRole ?? DEFAULT_PERMISSIONS.actions.scheduleLiveEdit.minimumRole,
+      },
+      scheduleLiveRollback: {
+        minimumRole: rawPermissionActions?.scheduleLiveRollback?.minimumRole ?? DEFAULT_PERMISSIONS.actions.scheduleLiveRollback.minimumRole,
+      },
+      controlPlaneManage: {
+        minimumRole: rawPermissionActions?.controlPlaneManage?.minimumRole ?? DEFAULT_PERMISSIONS.actions.controlPlaneManage.minimumRole,
+      },
+    },
+  }
+
+  return {
+    ...DEFAULT_INTELLIGENCE_SETTINGS,
+    ...(raw || {}),
+    operatingHours: {
+      ...DEFAULT_INTELLIGENCE_SETTINGS.operatingHours,
+      ...(raw?.operatingHours || {}),
+    },
+    peakHours: {
+      ...DEFAULT_INTELLIGENCE_SETTINGS.peakHours,
+      ...(raw?.peakHours || {}),
+    },
+    communicationPreferences: {
+      ...DEFAULT_INTELLIGENCE_SETTINGS.communicationPreferences,
+      ...(raw?.communicationPreferences || {}),
+    },
+    sandboxRouting: {
+      ...DEFAULT_SANDBOX_ROUTING,
+      ...(raw?.sandboxRouting || {}),
+      mode: raw?.sandboxRouting?.mode ?? DEFAULT_SANDBOX_ROUTING.mode,
+      emailRecipients: raw?.sandboxRouting?.emailRecipients ?? DEFAULT_SANDBOX_ROUTING.emailRecipients,
+      smsRecipients: raw?.sandboxRouting?.smsRecipients ?? DEFAULT_SANDBOX_ROUTING.smsRecipients,
+    },
+    membershipMappings: normalizeMembershipMappings(raw?.membershipMappings),
+    guestTrialOffers: normalizeGuestTrialOffers(raw?.guestTrialOffers),
+    referralOffers: normalizeReferralOffers(raw?.referralOffers),
+    permissions: mergedPermissions,
+    controlPlane: mergedControlPlane,
+  }
 }
 
 const TRIGGER_CONFIG = [
@@ -228,7 +728,7 @@ function PiqleSettingsPage() {
   // Hydrate from server
   useEffect(() => {
     if (intelligenceData?.settings) {
-      setSettings(intelligenceData.settings as IntelligenceSettingsInput)
+      setSettings(mergeIntelligenceSettings(intelligenceData.settings as IntelligenceSettingsInput))
     }
   }, [intelligenceData])
 
@@ -260,6 +760,134 @@ function PiqleSettingsPage() {
     setSaved(false)
   }
 
+  const updateControlPlane = (
+    patch: Partial<ControlPlaneSettings>,
+  ) => {
+    setSettings((prev) => {
+      const nextActions: ControlPlaneSettings['actions'] = {
+        outreachSend: {
+          mode: patch.actions?.outreachSend?.mode
+            ?? prev.controlPlane?.actions?.outreachSend?.mode
+            ?? DEFAULT_CONTROL_PLANE.actions.outreachSend.mode,
+        },
+        schedulePublish: {
+          mode: patch.actions?.schedulePublish?.mode
+            ?? prev.controlPlane?.actions?.schedulePublish?.mode
+            ?? DEFAULT_CONTROL_PLANE.actions.schedulePublish.mode,
+        },
+        scheduleLiveEdit: {
+          mode: patch.actions?.scheduleLiveEdit?.mode
+            ?? prev.controlPlane?.actions?.scheduleLiveEdit?.mode
+            ?? DEFAULT_CONTROL_PLANE.actions.scheduleLiveEdit.mode,
+        },
+        scheduleLiveRollback: {
+          mode: patch.actions?.scheduleLiveRollback?.mode
+            ?? prev.controlPlane?.actions?.scheduleLiveRollback?.mode
+            ?? DEFAULT_CONTROL_PLANE.actions.scheduleLiveRollback.mode,
+        },
+        adminReminderExternal: {
+          mode: patch.actions?.adminReminderExternal?.mode
+            ?? prev.controlPlane?.actions?.adminReminderExternal?.mode
+            ?? DEFAULT_CONTROL_PLANE.actions.adminReminderExternal.mode,
+        },
+      }
+      const nextOutreachRolloutActions: ControlPlaneSettings['outreachRollout']['actions'] = {
+        create_campaign: {
+          enabled: patch.outreachRollout?.actions?.create_campaign?.enabled
+            ?? prev.controlPlane?.outreachRollout?.actions?.create_campaign?.enabled
+            ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.create_campaign.enabled,
+        },
+        fill_session: {
+          enabled: patch.outreachRollout?.actions?.fill_session?.enabled
+            ?? prev.controlPlane?.outreachRollout?.actions?.fill_session?.enabled
+            ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.fill_session.enabled,
+        },
+        reactivate_members: {
+          enabled: patch.outreachRollout?.actions?.reactivate_members?.enabled
+            ?? prev.controlPlane?.outreachRollout?.actions?.reactivate_members?.enabled
+            ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.reactivate_members.enabled,
+        },
+        trial_follow_up: {
+          enabled: patch.outreachRollout?.actions?.trial_follow_up?.enabled
+            ?? prev.controlPlane?.outreachRollout?.actions?.trial_follow_up?.enabled
+            ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.trial_follow_up.enabled,
+        },
+        renewal_reactivation: {
+          enabled: patch.outreachRollout?.actions?.renewal_reactivation?.enabled
+            ?? prev.controlPlane?.outreachRollout?.actions?.renewal_reactivation?.enabled
+            ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.renewal_reactivation.enabled,
+        },
+      }
+      const next = {
+        ...prev,
+        controlPlane: {
+          killSwitch: patch.killSwitch ?? prev.controlPlane?.killSwitch ?? DEFAULT_CONTROL_PLANE.killSwitch,
+          actions: nextActions,
+          outreachRollout: {
+            actions: nextOutreachRolloutActions,
+          },
+          audit: prev.controlPlane?.audit,
+        },
+      }
+      return {
+        ...next,
+        agentLive: next.controlPlane.actions.outreachSend.mode === 'live',
+      }
+    })
+    setHasChanges(true)
+    setSaved(false)
+  }
+
+  const updateControlPlaneActionMode = (
+    actionKey: ControlPlaneActionKey,
+    mode: ControlPlaneMode,
+  ) => {
+    updateControlPlane({
+      actions: {
+        ...DEFAULT_CONTROL_PLANE.actions,
+        ...(settings.controlPlane?.actions || {}),
+        [actionKey]: { mode },
+      } as ControlPlaneSettings['actions'],
+    })
+  }
+
+  const updateOutreachRolloutAction = (
+    actionKey: OutreachRolloutActionKey,
+    enabled: boolean,
+  ) => {
+    updateControlPlane({
+      outreachRollout: {
+        actions: {
+          create_campaign: {
+            enabled: actionKey === 'create_campaign'
+              ? enabled
+              : settings.controlPlane?.outreachRollout?.actions?.create_campaign?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.create_campaign.enabled,
+          },
+          fill_session: {
+            enabled: actionKey === 'fill_session'
+              ? enabled
+              : settings.controlPlane?.outreachRollout?.actions?.fill_session?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.fill_session.enabled,
+          },
+          reactivate_members: {
+            enabled: actionKey === 'reactivate_members'
+              ? enabled
+              : settings.controlPlane?.outreachRollout?.actions?.reactivate_members?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.reactivate_members.enabled,
+          },
+          trial_follow_up: {
+            enabled: actionKey === 'trial_follow_up'
+              ? enabled
+              : settings.controlPlane?.outreachRollout?.actions?.trial_follow_up?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.trial_follow_up.enabled,
+          },
+          renewal_reactivation: {
+            enabled: actionKey === 'renewal_reactivation'
+              ? enabled
+              : settings.controlPlane?.outreachRollout?.actions?.renewal_reactivation?.enabled ?? DEFAULT_CONTROL_PLANE.outreachRollout.actions.renewal_reactivation.enabled,
+          },
+        },
+      },
+    })
+  }
+
   const updateTrigger = (key: keyof AutomationTriggersInput['triggers'], value: boolean) => {
     setAutomation(prev => ({
       ...prev,
@@ -267,6 +895,173 @@ function PiqleSettingsPage() {
     }))
     setHasChanges(true)
     setSaved(false)
+  }
+
+  const updatePermissionMinimumRole = (
+    actionKey: PermissionActionKey,
+    minimumRole: PermissionRole,
+  ) => {
+    setSettings((prev) => ({
+      ...prev,
+      permissions: {
+        actions: {
+          ...DEFAULT_PERMISSIONS.actions,
+          ...(prev.permissions?.actions || {}),
+          [actionKey]: { minimumRole },
+        } as PermissionSettings['actions'],
+      },
+    }))
+    setHasChanges(true)
+    setSaved(false)
+  }
+
+  const updateMembershipMappings = (rules: MembershipMappingRule[]) => {
+    setSettings((prev) => ({
+      ...prev,
+      membershipMappings: {
+        rules,
+      },
+    }))
+    setHasChanges(true)
+    setSaved(false)
+  }
+
+  const updateGuestTrialOffers = (offers: GuestTrialOffer[]) => {
+    setSettings((prev) => ({
+      ...prev,
+      guestTrialOffers: {
+        offers,
+      },
+    }))
+    setHasChanges(true)
+    setSaved(false)
+  }
+
+  const updateReferralOffers = (offers: ReferralOffer[]) => {
+    setSettings((prev) => ({
+      ...prev,
+      referralOffers: {
+        offers,
+      },
+    }))
+    setHasChanges(true)
+    setSaved(false)
+  }
+
+  const addMembershipMappingRule = () => {
+    updateMembershipMappings([
+      ...(settings.membershipMappings?.rules || []),
+      {
+        rawLabel: '',
+        source: 'type',
+        matchMode: 'contains',
+        normalizedType: 'monthly',
+      },
+    ])
+  }
+
+  const updateMembershipMappingRule = (
+    index: number,
+    patch: Partial<MembershipMappingRule>,
+  ) => {
+    const nextRules = [...(settings.membershipMappings?.rules || [])]
+    const current = nextRules[index]
+    if (!current) return
+    nextRules[index] = {
+      ...current,
+      ...patch,
+    }
+    updateMembershipMappings(nextRules)
+  }
+
+  const removeMembershipMappingRule = (index: number) => {
+    updateMembershipMappings(
+      (settings.membershipMappings?.rules || []).filter((_, ruleIndex) => ruleIndex !== index),
+    )
+  }
+
+  const addGuestTrialOffer = () => {
+    updateGuestTrialOffers([
+      ...(settings.guestTrialOffers?.offers || []),
+      {
+        key: `offer_${(settings.guestTrialOffers?.offers || []).length + 1}`,
+        name: '',
+        kind: 'paid_intro',
+        audience: 'either',
+        stage: 'convert_to_paid',
+        priceLabel: '',
+        durationLabel: '',
+        summary: '',
+        ctaLabel: '',
+        destinationType: 'landing_page',
+        destinationLabel: '',
+        destinationUrl: '',
+        destinationNotes: '',
+        active: true,
+        highlight: false,
+      },
+    ])
+  }
+
+  const updateGuestTrialOffer = (
+    index: number,
+    patch: Partial<GuestTrialOffer>,
+  ) => {
+    const nextOffers = [...(settings.guestTrialOffers?.offers || [])]
+    const current = nextOffers[index]
+    if (!current) return
+    nextOffers[index] = {
+      ...current,
+      ...patch,
+    }
+    updateGuestTrialOffers(nextOffers)
+  }
+
+  const removeGuestTrialOffer = (index: number) => {
+    updateGuestTrialOffers(
+      (settings.guestTrialOffers?.offers || []).filter((_, offerIndex) => offerIndex !== index),
+    )
+  }
+
+  const addReferralOffer = () => {
+    updateReferralOffers([
+      ...(settings.referralOffers?.offers || []),
+      {
+        key: `referral_offer_${(settings.referralOffers?.offers || []).length + 1}`,
+        name: '',
+        kind: 'bring_a_friend',
+        lane: 'social_regular',
+        rewardLabel: '',
+        summary: '',
+        ctaLabel: '',
+        destinationType: 'schedule',
+        destinationLabel: '',
+        destinationUrl: '',
+        destinationNotes: '',
+        active: true,
+        highlight: false,
+      },
+    ])
+  }
+
+  const updateReferralOffer = (
+    index: number,
+    patch: Partial<ReferralOffer>,
+  ) => {
+    const nextOffers = [...(settings.referralOffers?.offers || [])]
+    const current = nextOffers[index]
+    if (!current) return
+    nextOffers[index] = {
+      ...current,
+      ...patch,
+    }
+    updateReferralOffers(nextOffers)
+  }
+
+  const removeReferralOffer = (index: number) => {
+    updateReferralOffers(
+      (settings.referralOffers?.offers || []).filter((_, offerIndex) => offerIndex !== index),
+    )
   }
 
   // Toggle day
@@ -301,10 +1096,73 @@ function PiqleSettingsPage() {
     if (isDemo) return
 
     try {
-      await Promise.all([
-        saveMutation.mutateAsync({ clubId, settings: settings as any }),
+      const sanitizedMembershipMappings = {
+        rules: (settings.membershipMappings?.rules || [])
+          .map((rule) => ({
+            rawLabel: rule.rawLabel.trim(),
+            source: rule.source,
+            matchMode: rule.matchMode,
+            normalizedType: rule.normalizedType,
+            normalizedStatus: rule.normalizedStatus,
+          }))
+          .filter((rule) => rule.rawLabel.length > 0 && (rule.normalizedType || rule.normalizedStatus)),
+      }
+      const sanitizedGuestTrialOffers = {
+        offers: (settings.guestTrialOffers?.offers || [])
+          .map((offer) => ({
+            key: offer.key.trim(),
+            name: offer.name.trim(),
+            kind: offer.kind,
+            audience: offer.audience,
+            stage: offer.stage,
+            priceLabel: offer.priceLabel?.trim() || undefined,
+            durationLabel: offer.durationLabel?.trim() || undefined,
+            summary: offer.summary?.trim() || undefined,
+            ctaLabel: offer.ctaLabel?.trim() || undefined,
+            destinationType: offer.destinationType || undefined,
+            destinationLabel: offer.destinationLabel?.trim() || undefined,
+            destinationUrl: offer.destinationUrl?.trim() || undefined,
+            destinationNotes: offer.destinationNotes?.trim() || undefined,
+            active: offer.active !== false,
+            highlight: offer.highlight === true,
+          }))
+          .filter((offer) => offer.key.length > 0 && offer.name.length > 0),
+      }
+      const sanitizedReferralOffers = {
+        offers: (settings.referralOffers?.offers || [])
+          .map((offer) => ({
+            key: offer.key.trim(),
+            name: offer.name.trim(),
+            kind: offer.kind,
+            lane: offer.lane,
+            rewardLabel: offer.rewardLabel?.trim() || undefined,
+            summary: offer.summary?.trim() || undefined,
+            ctaLabel: offer.ctaLabel?.trim() || undefined,
+            destinationType: offer.destinationType || undefined,
+            destinationLabel: offer.destinationLabel?.trim() || undefined,
+            destinationUrl: offer.destinationUrl?.trim() || undefined,
+            destinationNotes: offer.destinationNotes?.trim() || undefined,
+            active: offer.active !== false,
+            highlight: offer.highlight === true,
+          }))
+          .filter((offer) => offer.key.length > 0 && offer.name.length > 0),
+      }
+      const [saveResult] = await Promise.all([
+        saveMutation.mutateAsync({
+          clubId,
+          settings: {
+            ...settings,
+            membershipMappings: sanitizedMembershipMappings,
+            guestTrialOffers: sanitizedGuestTrialOffers,
+            referralOffers: sanitizedReferralOffers,
+            agentLive: settings.controlPlane?.actions?.outreachSend?.mode === 'live',
+          } as any,
+        }),
         saveAutoMutation.mutateAsync({ clubId, settings: automation }),
       ])
+      if (saveResult?.settings) {
+        setSettings(mergeIntelligenceSettings(saveResult.settings as IntelligenceSettingsInput))
+      }
       setHasChanges(false)
       setSaved(true)
       toast({ title: 'Settings saved', description: 'Your intelligence settings have been updated.' })
@@ -321,6 +1179,55 @@ function PiqleSettingsPage() {
 
   const isLoading = loadingIntelligence || loadingAutomation
   const isSaving = saveMutation.isPending || saveAutoMutation.isPending
+  const resolvedControlPlane = useMemo(
+    () => resolveAgentControlPlane({ intelligence: settings }),
+    [settings],
+  )
+  const controlPlaneSummary = useMemo(
+    () => buildAgentControlPlaneSummary(resolvedControlPlane),
+    [resolvedControlPlane],
+  )
+  const controlPlaneAudit = useMemo(
+    () => getAgentControlPlaneAudit({ intelligence: settings }),
+    [settings],
+  )
+  const resolvedOutreachRollout = useMemo(
+    () => resolveAgentOutreachRollout({ intelligence: settings }),
+    [settings],
+  )
+  const outreachRolloutSummary = useMemo(() => {
+    return buildAgentOutreachRolloutSummary({
+      envAllowlistConfigured: !!(intelligenceData as any)?.outreachRolloutStatus?.envAllowlistConfigured,
+      clubAllowlisted: !!(intelligenceData as any)?.outreachRolloutStatus?.clubAllowlisted,
+      clubBypassEnabled: !!(intelligenceData as any)?.outreachRolloutStatus?.clubBypassEnabled,
+      allowlistedClubIds: (intelligenceData as any)?.outreachRolloutStatus?.allowlistedClubIds || [],
+      enabledActionKinds: Object.entries(resolvedOutreachRollout.actions)
+        .filter(([, action]) => action.enabled)
+        .map(([actionKind]) => actionKind as OutreachRolloutActionKey),
+      actions: resolvedOutreachRollout.actions,
+      summary: '',
+    })
+  }, [intelligenceData, resolvedOutreachRollout])
+  const resolvedPermissions = useMemo(
+    () => resolveAgentPermissions({ intelligence: settings }),
+    [settings],
+  )
+  const permissionSummary = useMemo(
+    () => buildAgentPermissionSummary(resolvedPermissions),
+    [resolvedPermissions],
+  )
+  const currentClubRole = (intelligenceData as any)?.clubRole as PermissionRole | null | undefined
+  const controlPlaneManagePermission = useMemo(
+    () =>
+      currentClubRole
+        ? evaluateAgentPermission({
+            automationSettings: { intelligence: settings },
+            action: 'controlPlaneManage',
+            clubAdminRole: currentClubRole,
+          })
+        : null,
+    [currentClubRole, settings],
+  )
 
   if (isLoading) {
     return (
@@ -426,6 +1333,710 @@ function PiqleSettingsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Membership Mapping</CardTitle>
+          </div>
+          <CardDescription>
+            Keep each club&apos;s raw membership names, but teach the agent how to interpret them as guests, VIP/unlimited, packages, monthly plans, and lifecycle statuses.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+            Rules are case-insensitive. Use <strong>contains</strong> for labels like <code>Open Play Pass - $49.99/Month</code>, or <strong>exact match</strong> when the connector sends a clean fixed label.
+          </div>
+
+          <div className="space-y-3">
+            {(settings.membershipMappings?.rules || []).map((rule, index) => (
+              <div key={`${index}-${rule.rawLabel}`} className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Rule {index + 1}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Map a club-specific membership label into the agent&apos;s internal understanding.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeMembershipMappingRule(index)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Raw label</Label>
+                    <Input
+                      value={rule.rawLabel}
+                      placeholder="e.g. VIP Gold, Open Play Pass, No Membership"
+                      onChange={(event) => updateMembershipMappingRule(index, { rawLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Where to match</Label>
+                    <select
+                      value={rule.source}
+                      onChange={(event) => updateMembershipMappingRule(index, { source: event.target.value as MembershipMappingSource })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {MEMBERSHIP_MAPPING_SOURCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Match mode</Label>
+                    <select
+                      value={rule.matchMode}
+                      onChange={(event) => updateMembershipMappingRule(index, { matchMode: event.target.value as MembershipMappingMatchMode })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {MEMBERSHIP_MAPPING_MATCH_MODE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Canonical type</Label>
+                    <select
+                      value={rule.normalizedType || ''}
+                      onChange={(event) => updateMembershipMappingRule(index, {
+                        normalizedType: event.target.value ? event.target.value as MembershipMappingRule['normalizedType'] : undefined,
+                      })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">No type override</option>
+                      {MEMBERSHIP_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Canonical status</Label>
+                    <select
+                      value={rule.normalizedStatus || ''}
+                      onChange={(event) => updateMembershipMappingRule(index, {
+                        normalizedStatus: event.target.value ? event.target.value as MembershipMappingRule['normalizedStatus'] : undefined,
+                      })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">No status override</option>
+                      {MEMBERSHIP_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" onClick={addMembershipMappingRule}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add membership rule
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Guest / Trial Offers</CardTitle>
+          </div>
+          <CardDescription>
+            Give the agent concrete entry and conversion offers to use for guests and trials instead of generic “best next paid step” language.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+            These offers stay club-specific. The agent uses them in guest/trial booking, first-show protection, and paid conversion prompts.
+          </div>
+
+          <div className="space-y-3">
+            {(settings.guestTrialOffers?.offers || []).map((offer, index) => (
+              <div key={`${index}-${offer.key || offer.name}`} className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Offer {index + 1}</p>
+                    <p className="text-xs text-muted-foreground">
+                      A concrete guest, trial, or first-paid offer that the agent can reference directly.
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeGuestTrialOffer(index)}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Offer key</Label>
+                    <Input
+                      value={offer.key}
+                      placeholder="e.g. starter_pack"
+                      onChange={(event) => updateGuestTrialOffer(index, { key: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Offer name</Label>
+                    <Input
+                      value={offer.name}
+                      placeholder="e.g. Starter Pack, Guest Pass, Intro Membership"
+                      onChange={(event) => updateGuestTrialOffer(index, { name: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Offer kind</Label>
+                    <select
+                      value={offer.kind}
+                      onChange={(event) => updateGuestTrialOffer(index, { kind: event.target.value as GuestTrialOfferKind })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {GUEST_TRIAL_OFFER_KIND_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Audience</Label>
+                    <select
+                      value={offer.audience}
+                      onChange={(event) => updateGuestTrialOffer(index, { audience: event.target.value as GuestTrialOfferAudience })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {GUEST_TRIAL_OFFER_AUDIENCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Funnel stage</Label>
+                    <select
+                      value={offer.stage}
+                      onChange={(event) => updateGuestTrialOffer(index, { stage: event.target.value as GuestTrialOfferStage })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {GUEST_TRIAL_OFFER_STAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Price label</Label>
+                    <Input
+                      value={offer.priceLabel || ''}
+                      placeholder="e.g. $29 intro, $49/month"
+                      onChange={(event) => updateGuestTrialOffer(index, { priceLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Duration / credits</Label>
+                    <Input
+                      value={offer.durationLabel || ''}
+                      placeholder="e.g. 14 days, 3 visits"
+                      onChange={(event) => updateGuestTrialOffer(index, { durationLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CTA label</Label>
+                    <Input
+                      value={offer.ctaLabel || ''}
+                      placeholder="e.g. Start your trial"
+                      onChange={(event) => updateGuestTrialOffer(index, { ctaLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination type</Label>
+                    <select
+                      value={offer.destinationType || 'schedule'}
+                      onChange={(event) => updateGuestTrialOffer(index, {
+                        destinationType: event.target.value as GuestTrialOfferDestinationType,
+                      })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {GUEST_TRIAL_OFFER_DESTINATION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination label</Label>
+                    <Input
+                      value={offer.destinationLabel || ''}
+                      placeholder="e.g. Beginner booking page, Trial checkout"
+                      onChange={(event) => updateGuestTrialOffer(index, { destinationLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination URL</Label>
+                    <Input
+                      value={offer.destinationUrl || ''}
+                      placeholder="e.g. https://... or /trial-booking"
+                      onChange={(event) => updateGuestTrialOffer(index, { destinationUrl: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Destination notes</Label>
+                    <Input
+                      value={offer.destinationNotes || ''}
+                      placeholder="e.g. Use the beginner-friendly schedule first, then fall back to staff follow-up"
+                      onChange={(event) => updateGuestTrialOffer(index, { destinationNotes: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Offer summary</Label>
+                    <Input
+                      value={offer.summary || ''}
+                      placeholder="e.g. Best low-friction paid next step after the first visit"
+                      onChange={(event) => updateGuestTrialOffer(index, { summary: event.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-6 pt-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={offer.active !== false}
+                      onChange={(event) => updateGuestTrialOffer(index, { active: event.target.checked })}
+                    />
+                    Active
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={offer.highlight === true}
+                      onChange={(event) => updateGuestTrialOffer(index, { highlight: event.target.checked })}
+                    />
+                    Highlight as preferred
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" onClick={addGuestTrialOffer}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add guest / trial offer
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Referral Offers</CardTitle>
+          </div>
+          <CardDescription>
+            Give the agent concrete bring-a-friend and advocate offers, plus the exact destination path to route referred guests into.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+            These offers stay club-specific. The agent uses them across VIP advocates, social regulars, and dormant advocate restart flows.
+          </div>
+
+          <div className="space-y-3">
+            {(settings.referralOffers?.offers || []).map((offer, index) => (
+              <div key={`${index}-${offer.key || offer.name}`} className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Referral offer {index + 1}</p>
+                    <p className="text-xs text-muted-foreground">
+                      A concrete advocate offer and invite route the agent can reference directly.
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeReferralOffer(index)}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Offer key</Label>
+                    <Input
+                      value={offer.key}
+                      placeholder="e.g. bring_a_friend"
+                      onChange={(event) => updateReferralOffer(index, { key: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Offer name</Label>
+                    <Input
+                      value={offer.name}
+                      placeholder="e.g. Bring-a-Friend Pass, VIP Guest Invite"
+                      onChange={(event) => updateReferralOffer(index, { name: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Offer kind</Label>
+                    <select
+                      value={offer.kind}
+                      onChange={(event) => updateReferralOffer(index, { kind: event.target.value as ReferralOfferKind })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {REFERRAL_OFFER_KIND_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Referral lane</Label>
+                    <select
+                      value={offer.lane}
+                      onChange={(event) => updateReferralOffer(index, { lane: event.target.value as ReferralOfferLane })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {REFERRAL_OFFER_LANE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Reward / perk label</Label>
+                    <Input
+                      value={offer.rewardLabel || ''}
+                      placeholder="e.g. Bring one guest free, $20 credit"
+                      onChange={(event) => updateReferralOffer(index, { rewardLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CTA label</Label>
+                    <Input
+                      value={offer.ctaLabel || ''}
+                      placeholder="e.g. Invite a friend"
+                      onChange={(event) => updateReferralOffer(index, { ctaLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination type</Label>
+                    <select
+                      value={offer.destinationType || 'schedule'}
+                      onChange={(event) => updateReferralOffer(index, {
+                        destinationType: event.target.value as ReferralOfferDestinationType,
+                      })}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {REFERRAL_OFFER_DESTINATION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination label</Label>
+                    <Input
+                      value={offer.destinationLabel || ''}
+                      placeholder="e.g. Bring-a-friend booking page, VIP referral page"
+                      onChange={(event) => updateReferralOffer(index, { destinationLabel: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Destination URL</Label>
+                    <Input
+                      value={offer.destinationUrl || ''}
+                      placeholder="e.g. https://... or /bring-a-friend"
+                      onChange={(event) => updateReferralOffer(index, { destinationUrl: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Destination notes</Label>
+                    <Input
+                      value={offer.destinationNotes || ''}
+                      placeholder="e.g. Route referred guests into the easiest beginner-friendly invite path"
+                      onChange={(event) => updateReferralOffer(index, { destinationNotes: event.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Offer summary</Label>
+                    <Input
+                      value={offer.summary || ''}
+                      placeholder="e.g. Premium low-friction referral ask for members with strong social trust"
+                      onChange={(event) => updateReferralOffer(index, { summary: event.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-6 pt-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={offer.active !== false}
+                      onChange={(event) => updateReferralOffer(index, { active: event.target.checked })}
+                    />
+                    Active
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={offer.highlight === true}
+                      onChange={(event) => updateReferralOffer(index, { highlight: event.target.checked })}
+                    />
+                    Highlight
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" onClick={addReferralOffer}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add referral offer
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ══════ SECTION: CONTROL PLANE ══════ */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Agent Control Plane</CardTitle>
+          </div>
+          <CardDescription>
+            Roll out risky live actions gradually. Use shadow mode to let the agent review work without causing the real side effect.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Current posture</p>
+              <p className="text-sm font-medium mt-1">{controlPlaneSummary}</p>
+            </div>
+            {currentClubRole ? (
+              <p className="text-xs text-muted-foreground">
+                Your club role: <strong>{formatClubAdminRole(currentClubRole)}</strong>
+              </p>
+            ) : null}
+            {controlPlaneAudit ? (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>
+                  Last changed by <strong>{controlPlaneAudit.lastChangedByLabel || 'Club admin'}</strong>
+                  {controlPlaneAudit.lastChangedAt
+                    ? ` on ${new Date(controlPlaneAudit.lastChangedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                    : ''}
+                </p>
+                {controlPlaneAudit.summary ? (
+                  <p>{controlPlaneAudit.summary}</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No rollout changes recorded yet. Once someone arms, shadows, or disables an action, the latest change will show up here.
+              </p>
+            )}
+            {controlPlaneManagePermission && !controlPlaneManagePermission.allowed ? (
+              <p className="text-xs text-red-600">
+                {controlPlaneManagePermission.reason}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30">
+            <div className="flex items-start gap-3">
+              <div className={cn(
+                'h-8 w-8 rounded-lg flex items-center justify-center mt-0.5',
+                settings.controlPlane?.killSwitch ? 'bg-red-100' : 'bg-muted'
+              )}>
+                <AlertTriangle className={cn(
+                  'h-4 w-4',
+                  settings.controlPlane?.killSwitch ? 'text-red-600' : 'text-muted-foreground'
+                )} />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Kill switch</p>
+                <p className="text-xs text-muted-foreground">
+                  Instantly block every controlled live side effect for this club.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={settings.controlPlane?.killSwitch === true}
+              onCheckedChange={(checked: boolean) => updateControlPlane({ killSwitch: checked })}
+            />
+          </div>
+
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+            Outreach defaults to <strong>shadow</strong> until you explicitly arm it. Schedule publish, edit, rollback, and admin reminders can each be managed separately.
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Outreach live rollout</p>
+              <p className="text-xs text-muted-foreground">
+                Live outreach now requires both a server-side club allowlist and the specific outreach action type to be armed here.
+              </p>
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Current rollout posture</p>
+              <p className="text-sm font-medium">{outreachRolloutSummary}</p>
+              <p className="text-xs text-muted-foreground">
+                {(intelligenceData as any)?.outreachRolloutStatus?.envAllowlistConfigured
+                  ? ((intelligenceData as any)?.outreachRolloutStatus?.clubAllowlisted
+                    ? 'This club is allowlisted in the server rollout env.'
+                    : 'This club is still outside the server rollout allowlist, so outreach stays shadow-only even if you arm an action below.')
+                  : 'No rollout clubs are configured in the server env yet, so outreach stays shadow-only until that allowlist is set.'}
+              </p>
+            </div>
+            <div className="space-y-3">
+              {OUTREACH_ROLLOUT_ACTIONS.map((action) => {
+                const currentEnabled = settings.controlPlane?.outreachRollout?.actions?.[action.key]?.enabled ?? false
+                const resolvedAction = resolvedOutreachRollout.actions[action.key]
+                return (
+                  <div key={action.key} className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{action.label}</p>
+                        <p className="text-xs text-muted-foreground">{action.description}</p>
+                      </div>
+                      <span className={cn(
+                        'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                        currentEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700',
+                      )}>
+                        {currentEnabled ? 'armed' : 'shadow-only'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <RadioOption
+                        value="shadow_only"
+                        label="Shadow only"
+                        selected={!currentEnabled}
+                        onSelect={() => updateOutreachRolloutAction(action.key, false)}
+                      />
+                      <RadioOption
+                        value="armed"
+                        label="Armed"
+                        selected={currentEnabled}
+                        onSelect={() => updateOutreachRolloutAction(action.key, true)}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {describeAgentOutreachRolloutAction(resolvedAction)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {CONTROL_PLANE_ACTIONS.map((action) => {
+              const currentMode = settings.controlPlane?.actions?.[action.key]?.mode || 'shadow'
+              return (
+                <div key={action.key} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{action.label}</p>
+                      <p className="text-xs text-muted-foreground">{action.description}</p>
+                    </div>
+                    <span className={cn(
+                      'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                      currentMode === 'live'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : currentMode === 'shadow'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-100 text-slate-700'
+                    )}>
+                      {currentMode}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {CONTROL_PLANE_MODE_OPTIONS.map((option) => (
+                      <RadioOption
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                        selected={currentMode === option.value}
+                        onSelect={(value) => updateControlPlaneActionMode(
+                          action.key,
+                          value as 'disabled' | 'shadow' | 'live',
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {describeAgentControlPlaneMode(currentMode, action.label)}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Action Permissions</CardTitle>
+          </div>
+          <CardDescription>
+            Decide which club role can draft, approve, publish, roll back, and arm rollout settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Current permission posture</p>
+            <p className="text-sm font-medium">{permissionSummary}</p>
+            {currentClubRole ? (
+              <p className="text-xs text-muted-foreground">
+                You are signed in as <strong>{formatClubAdminRole(currentClubRole)}</strong>.
+              </p>
+            ) : null}
+            {controlPlaneManagePermission && !controlPlaneManagePermission.allowed ? (
+              <p className="text-xs text-red-600">
+                Only admins with rollout-management access can save permission changes.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Moderators can still be trusted with drafting while publish, rollback, and send access stay tighter.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {PERMISSION_ACTIONS.map((action) => {
+              const currentMinimumRole = settings.permissions?.actions?.[action.key]?.minimumRole || DEFAULT_PERMISSIONS.actions[action.key].minimumRole
+              return (
+                <div key={action.key} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{action.label}</p>
+                      <p className="text-xs text-muted-foreground">{action.description}</p>
+                    </div>
+                    <span className="rounded-full px-2.5 py-1 text-[11px] font-medium bg-slate-100 text-slate-700">
+                      {formatClubAdminRole(currentMinimumRole)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {PERMISSION_ROLE_OPTIONS.map((option) => (
+                      <RadioOption
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                        selected={currentMinimumRole === option.value}
+                        onSelect={(value) => updatePermissionMinimumRole(action.key, value as PermissionRole)}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {describeAgentPermissionMinimumRole(currentMinimumRole, action.label)}
+                  </p>
+                </div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>

@@ -3,9 +3,17 @@ import GoogleProvider from "next-auth/providers/google"
 import EmailProvider from "next-auth/providers/email"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
+import type { Adapter, AdapterAccount, AdapterUser } from "next-auth/adapters"
 import { prisma } from "./prisma"
 import { hashOtp, normalizeEmail } from "./emailOtp"
 import bcrypt from 'bcryptjs'
+import {
+  createCompatUser,
+  getCompatUserAccountProviders,
+  getCompatUserByEmail,
+  getCompatUserById,
+  updateCompatUserAuthFields,
+} from './auth-user-compat'
 
 async function linkPlayersToUserByEmail(userId: string, email?: string | null) {
   if (!email) return
@@ -29,20 +37,113 @@ if (!process.env.NEXTAUTH_SECRET) {
   console.error('ERROR: NEXTAUTH_SECRET is not set in environment variables!')
 }
 
+const isDev = process.env.NODE_ENV !== 'production'
+
+const authUserSelect = {
+  id: true,
+  email: true,
+  name: true,
+  image: true,
+  emailVerified: true,
+} as const
+
+async function getAuthUserById(userId: string) {
+  const user = await getCompatUserById(userId)
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    emailVerified: user.emailVerified,
+  }
+}
+
+async function getAuthUserByEmail(email: string) {
+  const user = await getCompatUserByEmail(email)
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    emailVerified: user.emailVerified,
+  }
+}
+
+const baseAdapter = PrismaAdapter(prisma) as Adapter
+
+const adapter: Adapter = {
+  ...baseAdapter,
+  async getUser(id) {
+    const user = await getAuthUserById(String(id))
+    return user as AdapterUser | null
+  },
+  async getUserByEmail(email) {
+    const user = await getAuthUserByEmail(email)
+    return user as AdapterUser | null
+  },
+  async getUserByAccount({ provider, providerAccountId }: Pick<AdapterAccount, "provider" | "providerAccountId">) {
+    const account = await prisma.account.findUnique({
+      where: {
+        provider_providerAccountId: {
+          provider,
+          providerAccountId,
+        },
+      },
+      select: { userId: true },
+    })
+
+    if (!account?.userId) return null
+
+    const user = await getAuthUserById(account.userId)
+    return user as AdapterUser | null
+  },
+  async createUser(data: Omit<AdapterUser, "id">) {
+    const user = await createCompatUser({
+      email: data.email,
+      name: data.name ?? null,
+      image: data.image ?? null,
+      emailVerified: data.emailVerified ?? null,
+    })
+
+    return user as AdapterUser
+  },
+  async updateUser(data: Partial<AdapterUser> & Pick<AdapterUser, "id">) {
+    const user = await updateCompatUserAuthFields(String(data.id), {
+      email: data.email,
+      name: typeof data.name !== 'undefined' ? data.name : undefined,
+      image: typeof data.image !== 'undefined' ? data.image : undefined,
+      emailVerified: typeof data.emailVerified !== 'undefined' ? data.emailVerified : undefined,
+    })
+
+    return user as AdapterUser
+  },
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  adapter: PrismaAdapter(prisma),
+  adapter,
   session: { strategy: 'jwt' },
-  debug: true,
+  // Only enable debug mode in development — prevents leaking OAuth tokens/PII in prod logs
+  debug: isDev,
   logger: {
     error(code, metadata) {
-      console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
+      // Always log errors, but redact metadata in production
+      if (isDev) {
+        console.error('[NextAuth Error]', code, JSON.stringify(metadata, null, 2))
+      } else {
+        console.error('[NextAuth Error]', code)
+      }
     },
     warn(code) {
       console.warn('[NextAuth Warn]', code)
     },
     debug(code, metadata) {
-      console.log('[NextAuth Debug]', code, metadata)
+      // Never log debug info in production
+      if (isDev) {
+        console.log('[NextAuth Debug]', code, metadata)
+      }
     },
   },
   providers: [
@@ -104,29 +205,28 @@ export const authOptions: NextAuthOptions = {
 
         await prisma.emailOtp.delete({ where: { email } })
 
-        const existingUser = await prisma.user.findUnique({
-          where: { email },
-          include: { accounts: true },
-        })
+        const existingUser = await getCompatUserByEmail(email)
+        const providers = existingUser
+          ? await getCompatUserAccountProviders(existingUser.id)
+          : []
 
-        if (existingUser?.accounts?.some((account) => account.provider === 'google')) {
+        if (providers.includes('google')) {
           throw new Error('EMAIL_GOOGLE_ACCOUNT')
         }
 
         const user =
           existingUser ??
-          (await prisma.user.create({
-            data: {
-              email,
-              emailVerified: new Date(),
-            },
+          (await createCompatUser({
+            email,
+            emailVerified: new Date(),
           }))
 
+        if (!user) {
+          throw new Error('EMAIL_USER_CREATE_FAILED')
+        }
+
         if (!user.emailVerified) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { emailVerified: new Date() },
-          })
+          await updateCompatUserAuthFields(user.id, { emailVerified: new Date() })
         }
 
         return user
@@ -149,7 +249,13 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email },
-          include: { accounts: true },
+          select: {
+            ...authUserSelect,
+            passwordHash: true,
+            accounts: {
+              select: { provider: true },
+            },
+          },
         })
 
         if (!user) {

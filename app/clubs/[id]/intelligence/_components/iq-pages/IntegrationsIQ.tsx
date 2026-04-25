@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { motion } from 'motion/react'
+import Link from 'next/link'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { useTheme } from '../IQThemeProvider'
 import { CourtReserveConnector, StatCard } from './shared/CourtReserveConnector'
@@ -9,6 +11,7 @@ import {
   Plug, AlertCircle, Loader2, CheckCircle2, Unplug, Zap,
   Upload, FileSpreadsheet,
   CalendarDays, X, FileText, Users, LayoutGrid, Database,
+  RefreshCw,
 } from 'lucide-react'
 
 // ── Shared Card (same as BillingIQ) ──
@@ -17,6 +20,853 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
     <div className={`rounded-2xl p-5 ${className}`} style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', backdropFilter: 'var(--glass-blur)', boxShadow: 'var(--card-shadow)' }}>
       {children}
     </div>
+  )
+}
+
+const INTEGRATION_TONE_STYLES: Record<string, { label: string; bg: string; color: string }> = {
+  healthy: { label: 'Healthy', bg: 'rgba(16,185,129,0.14)', color: '#10B981' },
+  watch: { label: 'Watch', bg: 'rgba(245,158,11,0.14)', color: '#F59E0B' },
+  at_risk: { label: 'At Risk', bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
+}
+
+const INTEGRATION_DECISION_STYLES: Record<'accepted' | 'declined' | 'not_now', { bg: string; color: string; label: string }> = {
+  accepted: { bg: 'rgba(16,185,129,0.14)', color: '#10B981', label: 'Accepted' },
+  not_now: { bg: 'rgba(245,158,11,0.14)', color: '#F59E0B', label: 'Not now' },
+  declined: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444', label: 'Declined' },
+}
+
+const INTEGRATION_RECURRENCE_STYLES: Record<'new' | 'recurring' | 'chronic', { bg: string; color: string }> = {
+  new: { bg: 'rgba(59,130,246,0.14)', color: '#3B82F6' },
+  recurring: { bg: 'rgba(245,158,11,0.14)', color: '#F59E0B' },
+  chronic: { bg: 'rgba(239,68,68,0.14)', color: '#EF4444' },
+}
+
+function buildIntegrationAdvisorHref(clubId: string, prompt?: string | null) {
+  if (!prompt) return `/clubs/${clubId}/intelligence/advisor`
+  return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(prompt)}`
+}
+
+function TonePill({ tone }: { tone?: string | null }) {
+  const style = INTEGRATION_TONE_STYLES[tone || 'watch'] || INTEGRATION_TONE_STYLES.watch
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        borderRadius: 999,
+        background: style.bg,
+        color: style.color,
+        fontSize: 12,
+        fontWeight: 700,
+      }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: style.color }} />
+      {style.label}
+    </span>
+  )
+}
+
+function IntegrationHealthCommandCenter({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const utils = trpc.useUtils()
+  const suggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const { data, isLoading } = trpc.intelligence.getIntegrationHealthSnapshot.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 60_000 },
+  )
+  const { data: connectorStatus } = trpc.connectors.getStatus.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 15_000 },
+  )
+  const { data: mappingFixDecisions = [] } = trpc.intelligence.listAdminTodoDecisions.useQuery(
+    { clubId, dateKey: suggestionDateKey },
+    { enabled: !!clubId, staleTime: 30_000 },
+  )
+
+  const syncMutation = trpc.connectors.syncNow.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.connectors.getStatus.invalidate({ clubId }),
+        utils.intelligence.getDataCoverageChecklist.invalidate({ clubId }),
+        utils.intelligence.getIntegrationHealthSnapshot.invalidate({ clubId }),
+      ])
+    },
+  })
+  const setAdminTodoDecision = trpc.intelligence.setAdminTodoDecision.useMutation({
+    onSuccess: async () => {
+      await utils.intelligence.listAdminTodoDecisions.invalidate({
+        clubId,
+        dateKey: suggestionDateKey,
+      }).catch(() => undefined)
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Loader2 size={18} className="animate-spin" style={{ color: '#6366F1' }} />
+            <div>
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Building integration health snapshot
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                Pulling connector freshness, coverage gaps and the safest next fixes.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+    )
+  }
+
+  if (!data) return null
+
+  const activeConnector = connectorStatus && 'status' in connectorStatus ? connectorStatus : null
+  const canRunSync = Boolean(activeConnector && activeConnector.status !== 'syncing')
+  const leadAction = data.suggestedActions[0]
+  // Cast to any[] to avoid TS "type instantiation excessively deep" error —
+  // the tRPC inferred type chain is too deep for .reduce() generics to resolve.
+  const decisionsArray = mappingFixDecisions as unknown as Array<{
+    bucket?: string
+    decision?: string
+    itemId: string
+  }>
+  const mappingDecisionMap: Record<string, 'accepted' | 'declined' | 'not_now'> = {}
+  const anomalyDecisionMap: Record<string, 'accepted' | 'declined' | 'not_now'> = {}
+  for (const record of decisionsArray) {
+    const decision = record.decision
+    if (decision !== 'accepted' && decision !== 'declined' && decision !== 'not_now') continue
+    if (record.bucket === 'integration_mapping_review') {
+      mappingDecisionMap[record.itemId] = decision
+    } else if (record.bucket === 'integration_anomalies') {
+      anomalyDecisionMap[record.itemId] = decision
+    }
+  }
+
+  const handleMappingFixDecision = async (options: {
+    itemId: string
+    title: string
+    href: string
+    decision: 'accepted' | 'declined' | 'not_now'
+    metadata?: Record<string, unknown>
+  }) => {
+    await setAdminTodoDecision.mutateAsync({
+      clubId,
+      dateKey: suggestionDateKey,
+      itemId: options.itemId,
+      decision: options.decision,
+      title: options.title,
+      bucket: 'integration_mapping_review',
+      href: options.href,
+      metadata: options.metadata,
+    })
+  }
+
+  const handleAcceptMappingFix = async (options: {
+    itemId: string
+    title: string
+    href: string
+    metadata?: Record<string, unknown>
+  }) => {
+    await handleMappingFixDecision({
+      ...options,
+      decision: 'accepted',
+    })
+    router.push(options.href)
+  }
+
+  const handleAnomalyDecision = async (options: {
+    itemId: string
+    title: string
+    href: string
+    decision: 'accepted' | 'declined' | 'not_now'
+    metadata?: Record<string, unknown>
+  }) => {
+    await setAdminTodoDecision.mutateAsync({
+      clubId,
+      dateKey: suggestionDateKey,
+      itemId: options.itemId,
+      decision: options.decision,
+      title: options.title,
+      bucket: 'integration_anomalies',
+      href: options.href,
+      metadata: options.metadata,
+    })
+  }
+
+  const handleAcceptAnomaly = async (options: {
+    itemId: string
+    title: string
+    href: string
+    metadata?: Record<string, unknown>
+  }) => {
+    await handleAnomalyDecision({
+      ...options,
+      decision: 'accepted',
+    })
+    router.push(options.href)
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 24 }}>
+      <Card>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: 'linear-gradient(135deg, #0EA5E9, #6366F1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Zap size={18} color="#fff" />
+              </div>
+              <div>
+                <p style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Integration command center</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                  Agent read on connector freshness, coverage posture and the next safe fixes.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <TonePill tone={data.summary.status} />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{data.summary.connectorLabel}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{data.summary.freshnessLabel}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {canRunSync ? (
+              <button
+                onClick={() => syncMutation.mutate({ clubId, isInitial: !activeConnector?.lastSyncAt })}
+                disabled={syncMutation.isPending}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(59,130,246,0.24)',
+                  background: 'rgba(59,130,246,0.08)',
+                  color: '#3B82F6',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: syncMutation.isPending ? 'not-allowed' : 'pointer',
+                  opacity: syncMutation.isPending ? 0.6 : 1,
+                }}
+              >
+                {syncMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Run sync now
+              </button>
+            ) : null}
+
+            <Link
+              href={buildIntegrationAdvisorHref(clubId, leadAction?.playbookPrompt)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: '1px solid rgba(99,102,241,0.24)',
+                background: 'rgba(99,102,241,0.08)',
+                color: '#6366F1',
+                fontSize: 13,
+                fontWeight: 700,
+                textDecoration: 'none',
+              }}
+            >
+              <FileText size={14} />
+              Open fix playbook
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ marginBottom: 18 }}>
+          {[
+            { key: 'connector', title: 'Connector posture', card: data.cards.connector },
+            { key: 'memberData', title: 'Member identity', card: data.cards.memberData },
+            { key: 'sessionData', title: 'Session structure', card: data.cards.sessionData },
+            { key: 'bookingData', title: 'Booking ops', card: data.cards.bookingData },
+          ].map(({ key, title, card }) => (
+            <div
+              key={key}
+              style={{
+                borderRadius: 16,
+                border: '1px solid var(--card-border)',
+                padding: 16,
+                background: 'var(--subtle)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{title}</p>
+                <TonePill tone={card.status} />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>
+                {card.label}
+                {'score' in card ? ` • ${card.score}%` : ''}
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                {card.description}
+                {'detail' in card && card.detail ? ` ${card.detail}` : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {data.issues.length === 0 ? (
+          <div style={{
+            borderRadius: 16,
+            border: '1px solid rgba(16,185,129,0.18)',
+            background: 'rgba(16,185,129,0.08)',
+            padding: 16,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <CheckCircle2 size={18} style={{ color: '#10B981' }} />
+              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Agent trust is in a good place
+              </p>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              Members, sessions, bookings and connector freshness all look stable enough for the agent to reason without a big data trust warning.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Priority issues</p>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                {data.summary.atRiskCount} at risk • {data.summary.watchCount} watch
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {data.issues.map((issue) => (
+                <div
+                  key={issue.key}
+                  style={{
+                    borderRadius: 16,
+                    border: '1px solid var(--card-border)',
+                    padding: 16,
+                    background: 'var(--subtle)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                        <TonePill tone={issue.severity} />
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{issue.category}</span>
+                      </div>
+                      <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{issue.title}</p>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{issue.metricLabel}</span>
+                  </div>
+
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 10px 0', lineHeight: 1.55 }}>
+                    {issue.summary}
+                  </p>
+
+                  <div style={{
+                    borderRadius: 12,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    padding: '10px 12px',
+                    marginBottom: 12,
+                  }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Next best move</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>{issue.nextBestMove}</p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <Link
+                      href={buildIntegrationAdvisorHref(clubId, issue.playbookPrompt)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '9px 12px',
+                        borderRadius: 10,
+                        background: 'rgba(99,102,241,0.08)',
+                        border: '1px solid rgba(99,102,241,0.22)',
+                        color: '#6366F1',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <FileText size={13} />
+                      {issue.actionLabel}
+                    </Link>
+
+                    {issue.category === 'connector' && canRunSync ? (
+                      <button
+                        onClick={() => syncMutation.mutate({ clubId, isInitial: !activeConnector?.lastSyncAt })}
+                        disabled={syncMutation.isPending}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '9px 12px',
+                          borderRadius: 10,
+                          background: 'rgba(59,130,246,0.08)',
+                          border: '1px solid rgba(59,130,246,0.22)',
+                          color: '#3B82F6',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: syncMutation.isPending ? 'not-allowed' : 'pointer',
+                          opacity: syncMutation.isPending ? 0.6 : 1,
+                        }}
+                      >
+                        {syncMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                        Run sync now
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 20 }}>
+	          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+	            <div>
+	              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Anomaly queue</p>
+	              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+	                {data.anomalyQueue.summary}
+	              </p>
+	            </div>
+	            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+	              {data.anomalyQueue.recurringCount > 0 ? (
+	                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+	                  {data.anomalyQueue.recurringCount} recurring
+	                  {data.anomalyQueue.chronicCount > 0 ? ` • ${data.anomalyQueue.chronicCount} chronic` : ''}
+	                </span>
+	              ) : null}
+	              <TonePill tone={data.anomalyQueue.status} />
+	            </div>
+	          </div>
+
+          {data.anomalyQueue.suggested.length === 0 ? (
+            <div style={{
+              borderRadius: 16,
+              border: '1px solid rgba(16,185,129,0.18)',
+              background: 'rgba(16,185,129,0.06)',
+              padding: 16,
+            }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                No systemic integration anomaly is active right now. This queue will light up when connector freshness, sync execution or core warehouse layers drift into risky territory.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {data.anomalyQueue.suggested.map((anomaly) => {
+                const href = buildIntegrationAdvisorHref(clubId, anomaly.playbookPrompt)
+                const decision = anomalyDecisionMap[anomaly.id]
+                const decisionStyle = decision ? INTEGRATION_DECISION_STYLES[decision] : null
+                const isAccepted = decision === 'accepted'
+                const isDeclined = decision === 'declined'
+                const isNotNow = decision === 'not_now'
+
+                return (
+                  <div
+                    key={anomaly.id}
+                    style={{
+                      borderRadius: 16,
+                      border: '1px solid var(--card-border)',
+                      padding: 16,
+                      background: 'var(--subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <div>
+	                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+	                          <TonePill tone={anomaly.severity} />
+	                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{anomaly.category}</span>
+	                          {anomaly.history ? (
+	                            <span
+	                              style={{
+	                                padding: '4px 8px',
+	                                borderRadius: 999,
+	                                background: INTEGRATION_RECURRENCE_STYLES[anomaly.history.status].bg,
+	                                color: INTEGRATION_RECURRENCE_STYLES[anomaly.history.status].color,
+	                                fontSize: 10,
+	                                fontWeight: 700,
+	                              }}
+	                            >
+	                              {anomaly.history.label}
+	                            </span>
+	                          ) : null}
+	                          {decisionStyle ? (
+	                            <span
+	                              style={{
+                                padding: '4px 8px',
+                                borderRadius: 999,
+                                background: decisionStyle.bg,
+                                color: decisionStyle.color,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {decisionStyle.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{anomaly.title}</p>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>{anomaly.evidenceLabel}</span>
+                    </div>
+
+	                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.55 }}>
+	                      {anomaly.summary}
+	                    </p>
+	                    {anomaly.history ? (
+	                      <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+	                        {anomaly.history.summary}
+	                      </p>
+	                    ) : null}
+	                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+	                      {anomaly.nextBestMove}
+	                    </p>
+
+                    {isDeclined ? (
+                      <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 12px 0' }}>
+                        Declined for today. It will stay out of the queue until the next review cycle.
+                      </p>
+                    ) : null}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {isAccepted ? (
+                        <Link
+                          href={href}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <FileText size={13} />
+                          Open playbook
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleAcceptAnomaly({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          <FileText size={13} />
+                          Accept anomaly
+                        </button>
+                      )}
+
+                      {!isDeclined ? (
+                        <button
+                          onClick={() => handleAnomalyDecision({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            decision: 'not_now',
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.22)',
+                            color: '#F59E0B',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          {isNotNow ? 'Snoozed' : 'Not now'}
+                        </button>
+                      ) : null}
+
+                      {!isAccepted ? (
+                        <button
+                          onClick={() => handleAnomalyDecision({
+                            itemId: anomaly.id,
+                            title: anomaly.title,
+                            href,
+                            decision: 'declined',
+                            metadata: {
+                              category: anomaly.category,
+                              evidenceLabel: anomaly.evidenceLabel,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.22)',
+                            color: '#EF4444',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          Decline
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Mapping review</p>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                {data.mappingReview.summary}
+              </p>
+            </div>
+            <TonePill tone={data.mappingReview.status} />
+          </div>
+
+          {data.mappingReview.suggestedFixes.length === 0 ? (
+            <div style={{
+              borderRadius: 16,
+              border: '1px solid rgba(16,185,129,0.18)',
+              background: 'rgba(16,185,129,0.06)',
+              padding: 16,
+            }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                No field-level mapping fix is urgent right now. The connector may still need monitoring, but the core field layer looks solid enough for the agent to trust.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {data.mappingReview.suggestedFixes.map((fix) => {
+                const href = buildIntegrationAdvisorHref(clubId, fix.playbookPrompt)
+                const decision = mappingDecisionMap[fix.key]
+                const decisionStyle = decision ? INTEGRATION_DECISION_STYLES[decision] : null
+                const isAccepted = decision === 'accepted'
+                const isDeclined = decision === 'declined'
+                const isNotNow = decision === 'not_now'
+
+                return (
+                  <div
+                    key={fix.key}
+                    style={{
+                      borderRadius: 16,
+                      border: '1px solid var(--card-border)',
+                      padding: 16,
+                      background: 'var(--subtle)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                          <TonePill tone={fix.severity} />
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{fix.domain}</span>
+                          {decisionStyle ? (
+                            <span
+                              style={{
+                                padding: '4px 8px',
+                                borderRadius: 999,
+                                background: decisionStyle.bg,
+                                color: decisionStyle.color,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {decisionStyle.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{fix.fieldLabel}</p>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        {fix.coveragePercent}% covered
+                      </span>
+                    </div>
+
+                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                      {fix.summary}
+                    </p>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                      {fix.suggestedFix}
+                    </p>
+
+                    {isDeclined ? (
+                      <p style={{ fontSize: 12, color: '#EF4444', margin: '0 0 12px 0' }}>
+                        Declined for today. This fix will stay out of the queue until the next cycle.
+                      </p>
+                    ) : null}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {isAccepted ? (
+                        <Link
+                          href={href}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <FileText size={13} />
+                          Open playbook
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => handleAcceptMappingFix({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                              fieldLabel: fix.fieldLabel,
+                              coveragePercent: fix.coveragePercent,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.22)',
+                            color: '#6366F1',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          <FileText size={13} />
+                          Accept fix
+                        </button>
+                      )}
+
+                      {!isDeclined ? (
+                        <button
+                          onClick={() => handleMappingFixDecision({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            decision: 'not_now',
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.22)',
+                            color: '#F59E0B',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          {isNotNow ? 'Snoozed' : 'Not now'}
+                        </button>
+                      ) : null}
+
+                      {!isAccepted ? (
+                        <button
+                          onClick={() => handleMappingFixDecision({
+                            itemId: fix.key,
+                            title: fix.fieldLabel,
+                            href,
+                            decision: 'declined',
+                            metadata: {
+                              domain: fix.domain,
+                              fieldKey: fix.fieldKey,
+                            },
+                          })}
+                          disabled={setAdminTodoDecision.isPending}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '9px 12px',
+                            borderRadius: 10,
+                            background: 'rgba(239,68,68,0.08)',
+                            border: '1px solid rgba(239,68,68,0.22)',
+                            color: '#EF4444',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: setAdminTodoDecision.isPending ? 'not-allowed' : 'pointer',
+                            opacity: setAdminTodoDecision.isPending ? 0.6 : 1,
+                          }}
+                        >
+                          Decline
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Card>
+    </motion.div>
   )
 }
 
@@ -39,6 +889,8 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
           </div>
         </div>
       </motion.div>
+
+      <IntegrationHealthCommandCenter clubId={clubId} />
 
       <CourtReserveConnector clubId={clubId} />
 
@@ -95,12 +947,328 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
             <PodPlayImportSection clubId={clubId} />
           </div>
         </div>
+
+        <DeleteImportedDataCard clubId={clubId} />
       </motion.div>
     </div>
   )
 }
 
 /* CourtReserveConnector + helpers moved to ./shared/CourtReserveConnector.tsx */
+
+const RESET_SUMMARY_LABELS: Record<string, string> = {
+  followers: 'members',
+  sessions: 'sessions',
+  bookings: 'bookings',
+  waitlist: 'waitlist entries',
+  courts: 'courts',
+  preferences: 'play preferences',
+  cohorts: 'cohorts',
+  weeklySummaries: 'weekly summaries',
+  aiProfiles: 'AI profiles',
+  healthSnapshots: 'health snapshots',
+  recommendationLogs: 'AI recommendation logs',
+  agentDrafts: 'agent drafts',
+  aiConversations: 'AI conversations',
+  embeddings: 'embeddings',
+  externalMappings: 'external mappings',
+  partnerBindings: 'connector bindings',
+  partnerApps: 'connector apps',
+  partners: 'connector records',
+}
+
+function DeleteImportedDataCard({ clubId }: { clubId: string }) {
+  const router = useRouter()
+  const utils = trpc.useUtils()
+  const deleteMutation = trpc.intelligence.deleteAllClubData.useMutation()
+  const [open, setOpen] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
+  const [deletedSummary, setDeletedSummary] = useState<Record<string, number> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const deletedItems = deletedSummary
+    ? Object.entries(deletedSummary)
+      .filter(([, value]) => value > 0)
+      .map(([key, value]) => `${value} ${RESET_SUMMARY_LABELS[key] || key}`)
+    : []
+
+  const handleDeleteAll = async () => {
+    try {
+      setError(null)
+      const res = await deleteMutation.mutateAsync({ clubId })
+      setDeletedSummary(res.deleted)
+      setOpen(false)
+      setConfirmText('')
+
+      await Promise.allSettled([
+        utils.intelligence.getDataCoverageChecklist.invalidate({ clubId }),
+        utils.intelligence.getIntegrationHealthSnapshot.invalidate({ clubId }),
+        utils.intelligence.getUploadHistory.invalidate({ clubId }),
+        utils.intelligence.getDashboardV2.invalidate({ clubId }),
+        utils.intelligence.getMemberHealth.invalidate({ clubId }),
+        utils.intelligence.getMemberGrowth.invalidate({ clubId }),
+        utils.intelligence.getReactivationCandidates.invalidate({ clubId }),
+      ])
+
+      router.refresh()
+    } catch (err: any) {
+      setError(err?.message || 'Delete failed')
+    }
+  }
+
+  return (
+    <>
+      <Card className="mt-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(239,68,68,0.12)' }}
+              >
+                <Unplug className="w-4 h-4" style={{ color: '#EF4444' }} />
+              </div>
+              <div>
+                <h3 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                  Delete All Imported Data
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>
+                  Reset imported members, schedule, bookings, cohorts, and AI artifacts for this club.
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="rounded-xl p-3 text-xs"
+              style={{
+                background: 'rgba(239,68,68,0.06)',
+                border: '1px solid rgba(239,68,68,0.18)',
+                color: 'var(--t2)',
+              }}
+            >
+              This will remove imported members from the club, imported sessions and reservations,
+              courts created by imports, upload history, AI health/profile data, and saved cohorts.
+            </div>
+
+            {deletedItems.length > 0 && (
+              <div
+                className="mt-3 rounded-xl p-3 text-xs"
+                style={{
+                  background: 'rgba(16,185,129,0.08)',
+                  border: '1px solid rgba(16,185,129,0.18)',
+                  color: '#10B981',
+                }}
+              >
+                Deleted: {deletedItems.join(', ')}.
+              </div>
+            )}
+
+            {error && (
+              <div
+                className="mt-3 rounded-xl p-3 text-xs"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.18)',
+                  color: '#EF4444',
+                }}
+              >
+                {error}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => {
+              setError(null)
+              setConfirmText('')
+              setOpen(true)
+            }}
+            className="px-4 py-2 rounded-xl text-sm text-white flex items-center gap-2"
+            style={{ background: '#EF4444', fontWeight: 700, border: 'none', cursor: 'pointer' }}
+          >
+            <Unplug className="w-4 h-4" />
+            Delete All Import Data
+          </button>
+        </div>
+      </Card>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(4,7,17,0.72)', backdropFilter: 'blur(8px)' }}
+            onClick={() => {
+              if (deleteMutation.isPending) return
+              setConfirmText('')
+              setOpen(false)
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-xl rounded-[28px] p-6 md:p-7"
+              style={{
+                background: 'linear-gradient(180deg, rgba(16,22,42,0.96), rgba(11,14,28,0.98))',
+                border: '1px solid rgba(239,68,68,0.22)',
+                boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
+                backdropFilter: 'var(--glass-blur)',
+              }}
+            >
+              <div className="flex items-start gap-4 mb-5">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,158,11,0.18))',
+                    border: '1px solid rgba(239,68,68,0.18)',
+                  }}
+                >
+                  <Unplug className="w-5 h-5" style={{ color: '#F87171' }} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg md:text-xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+                    Delete all imported data?
+                  </h3>
+                  <p className="text-sm mt-1" style={{ color: 'var(--t4)', lineHeight: 1.6 }}>
+                    This will permanently reset the imported data layer for this club. The action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-4 md:p-5 mb-5"
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertCircle className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                  <span className="text-xs uppercase tracking-[0.18em]" style={{ color: '#F59E0B', fontWeight: 800 }}>
+                    What will be removed
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {[
+                    'Imported members linked to this club',
+                    'Sessions, reservations, and waitlist',
+                    'Courts created by imports',
+                    'Cohorts and weekly summaries',
+                    'Member health snapshots and AI profiles',
+                    'Upload history, embeddings, and connector mappings',
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-xl px-3 py-2.5 text-sm"
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        color: 'var(--t2)',
+                      }}
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-4 mb-6"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.16)',
+                }}
+              >
+                <label
+                  htmlFor="delete-imported-data-confirm"
+                  className="block text-xs uppercase tracking-[0.18em] mb-2"
+                  style={{ color: '#FCA5A5', fontWeight: 800 }}
+                >
+                  Type DELETE to confirm
+                </label>
+                <input
+                  id="delete-imported-data-confirm"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  className="w-full rounded-2xl px-4 py-3 text-sm font-mono outline-none"
+                  style={{
+                    background: 'rgba(7,10,20,0.85)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--heading)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+                  }}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    if (deleteMutation.isPending) return
+                    setConfirmText('')
+                    setOpen(false)
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="px-4 py-2.5 rounded-2xl text-sm"
+                  style={{
+                    color: 'var(--t3)',
+                    fontWeight: 700,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    cursor: deleteMutation.isPending ? 'not-allowed' : 'pointer',
+                    opacity: deleteMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={deleteMutation.isPending || confirmText !== 'DELETE'}
+                  className="px-5 py-2.5 rounded-2xl text-sm text-white flex items-center gap-2"
+                  style={{
+                    background:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'linear-gradient(135deg, rgba(239,68,68,0.45), rgba(244,63,94,0.42))'
+                        : 'linear-gradient(135deg, #EF4444, #F97316)',
+                    fontWeight: 800,
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    cursor:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'not-allowed'
+                        : 'pointer',
+                    boxShadow:
+                      deleteMutation.isPending || confirmText !== 'DELETE'
+                        ? 'none'
+                        : '0 16px 30px rgba(239,68,68,0.28)',
+                    opacity: deleteMutation.isPending ? 0.8 : 1,
+                  }}
+                >
+                  {deleteMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Deleting…
+                    </>
+                  ) : (
+                    <>
+                      <Unplug className="w-4 h-4" />
+                      Delete imported data
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
 
 // ── Data Coverage Checklist ──
 
@@ -200,20 +1368,16 @@ function DataCoverageChecklist({ clubId }: { clubId: string }) {
 interface ExcelFile {
   type: 'members' | 'reservations' | 'events'
   name: string
-  data: string
+  rows: Record<string, any>[]
 }
 
 function ExcelImportSection({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
   const [files, setFiles] = useState<ExcelFile[]>([])
   const [importing, setImporting] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const deleteMutation = trpc.intelligence.deleteAllClubData.useMutation()
 
   const fileSlots: { type: ExcelFile['type']; label: string; icon: any; description: string }[] = [
     { type: 'members', label: 'Members', icon: Users, description: 'MembersReport.xlsx' },
@@ -223,21 +1387,34 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
   const removeFile = (type: ExcelFile['type']) => setFiles(prev => prev.filter(f => f.type !== type))
 
-  const handleDeleteAll = async () => {
-    setDeleting(true)
-    setError(null)
-    try {
-      const res = await deleteMutation.mutateAsync({ clubId })
-      setConfirmDelete(false)
-      setResult(null)
-      setFiles([])
-      setProgress({ current: '', done: [], errors: [] })
-      alert(`All data deleted. Removed: ${Object.entries(res.deleted).filter(([,v]) => (v as number) > 0).map(([k,v]) => `${v} ${k}`).join(', ')}`)
-    } catch (err: any) {
-      setError(err.message || 'Delete failed')
-    } finally {
-      setDeleting(false)
+  const parseCourtReserveFile = async (file: File): Promise<Record<string, any>[]> => {
+    const lowerName = file.name.toLowerCase()
+
+    if (lowerName.endsWith('.csv')) {
+      const Papa = (await import('papaparse')).default
+      const text = await file.text()
+      const parsed = Papa.parse<Record<string, any>>(text, {
+        header: true,
+        skipEmptyLines: 'greedy',
+        transformHeader: (header) => header.replace(/^\uFEFF/, '').trim(),
+      })
+
+      if (parsed.errors.length > 0) {
+        const fatal = parsed.errors.find((entry) => entry.code !== 'UndetectableDelimiter')
+        if (fatal) {
+          throw new Error(`CSV parse failed: ${fatal.message}`)
+        }
+      }
+
+      return parsed.data
     }
+
+    const XLSX = await import('xlsx')
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const workbook = XLSX.read(bytes, { type: 'array', cellDates: true })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+    if (!firstSheet) return []
+    return XLSX.utils.sheet_to_json(firstSheet, { defval: '' })
   }
 
   // Import files ONE BY ONE — parse XLSX client-side, send JSON rows to avoid timeout
@@ -248,7 +1425,6 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     setResult(null)
     setProgress({ current: '', done: [], errors: [] })
 
-    const XLSX = await import('xlsx')
     const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
     let hadErrors = false
 
@@ -261,12 +1437,10 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
       setProgress(prev => ({ ...prev, current: file.name }))
 
       try {
-        // Parse XLSX client-side
-        const binary = atob(file.data)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const wb = XLSX.read(bytes, { type: 'array' })
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+        const rows = file.rows
+        if (rows.length === 0) {
+          throw new Error('No rows were parsed from this file')
+        }
 
         // Send rows as JSON (no base64 bloat)
         const res = await fetch('/api/connectors/courtreserve/import-rows', {
@@ -318,7 +1492,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
       const type: ExcelFile['type'] = name.includes('member') ? 'members'
         : name.includes('reservation') ? 'reservations'
         : 'events'
-      handleFileSelect(type, file)
+      await handleFileSelect(type, file)
     }
   }
 
@@ -326,25 +1500,23 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.xlsx,.xls,.csv'
-    input.multiple = true
     input.onchange = async (e) => {
       const selected = Array.from((e.target as HTMLInputElement).files || [])
-      for (const file of selected) {
-        handleFileSelect(type, file)
-      }
+      const file = selected[0]
+      if (file) await handleFileSelect(type, file)
     }
     input.click()
   }
 
-  const handleFileSelect = (type: ExcelFile['type'], file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64 = (reader.result as string).split(',')[1]
-      setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, data: base64 }])
+  const handleFileSelect = async (type: ExcelFile['type'], file: File) => {
+    try {
+      const rows = await parseCourtReserveFile(file)
+      setFiles(prev => [...prev.filter(f => f.type !== type), { type, name: file.name, rows }])
       setResult(null)
       setError(null)
+    } catch (err: any) {
+      setError(err?.message || `Failed to parse ${file.name}`)
     }
-    reader.readAsDataURL(file)
   }
 
   const hasImportSuccess =
@@ -359,23 +1531,8 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
   return (
     <Card>
-      {/* Delete button */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload .xlsx exports from CourtReserve Reports</p>
-        {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px]" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-            <Unplug className="w-3 h-3" /> Delete All
-          </button>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={handleDeleteAll} disabled={deleting} className="px-3 py-1.5 rounded-lg text-[10px] text-white" style={{ background: '#ef4444', fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-              {deleting ? 'Deleting...' : 'Yes, Delete'}
-            </button>
-            <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 rounded-lg text-[10px]" style={{ border: '1px solid var(--card-border)', background: 'transparent', color: 'var(--t4)', cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        )}
+      <div className="mb-4">
+        <p className="text-xs" style={{ color: 'var(--t4)' }}>Upload CourtReserve report exports (.xlsx or .csv)</p>
       </div>
 
       {/* Drop zone */}
@@ -390,7 +1547,7 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
         }}
       >
         <Upload className="w-5 h-5" style={{ color: dragOver ? '#3b82f6' : 'var(--t4)' }} />
-        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop CourtReserve .xlsx files here</p>
+        <p className="text-xs" style={{ color: 'var(--t2)', fontWeight: 600 }}>Drop CourtReserve spreadsheet files here</p>
         <p className="text-[10px]" style={{ color: 'var(--t4)' }}>Members, Reservations, Events — auto-detected by filename</p>
       </div>
 
@@ -409,11 +1566,16 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
                 {file ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Upload className="w-3.5 h-3.5" />}
                 {slot.label}
               </button>
-              <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
-                {file ? file.name : slot.description}
-              </span>
-              {file && !importing && (
-                <button onClick={() => removeFile(slot.type)} className="p-1" style={{ color: 'var(--t4)' }}>
+                <span className="text-xs flex-1 truncate" style={{ color: 'var(--t4)' }}>
+                  {file ? file.name : slot.description}
+                </span>
+                {file && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(59,130,246,0.12)', color: '#60A5FA' }}>
+                    {file.rows.length} rows
+                  </span>
+                )}
+                {file && !importing && (
+                  <button onClick={() => removeFile(slot.type)} className="p-1" style={{ color: 'var(--t4)' }}>
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}

@@ -48,6 +48,14 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/agent/admin-reminders",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/campaigns/advisor-scheduled",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/ai/sync-embeddings",
       "schedule": "0 3 * * *"
     },
@@ -62,6 +70,14 @@
     {
       "path": "/api/campaigns/slot-filler?mode=lastminute",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/ai-budget-check",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/attribution-backfill",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef } from "react";
+import { useState, useRef, type SyntheticEvent } from "react";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import {
   UserPlus, Users, AlertTriangle, TrendingUp, Clock, Send,
@@ -8,13 +8,15 @@ import {
   Filter, Search, Sparkles, DollarSign, BarChart3,
   Smartphone, Bell, Check,
 } from "lucide-react";
-import { SmsComingSoon } from './shared/SmsBadge'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
+import { OutreachConfirmIQModal } from "./shared/OutreachConfirmIQModal";
+import { useReactivationSendFlow } from "./shared/useReactivationSendFlow";
+import { buildReactivationDraft } from "./shared/reactivationDraft";
 
 
 type RiskLevel = "high" | "medium" | "low";
@@ -173,7 +175,8 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
   const [riskFilter, setRiskFilter] = useState<"all" | RiskLevel>("all");
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sentOutreach, setSentOutreach] = useState<Record<string, string>>({});
+  const [pendingModal, setPendingModal] = useState<{ memberId: string; channel: "email" | "sms" } | null>(null);
+  const [draftMessage, setDraftMessage] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -187,18 +190,22 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
 
   const realCandidates = mapRealCandidates(reactivationData, aiProfiles);
   const allMembers = realCandidates.length > 0 ? realCandidates : [];
+  const clubName = reactivationData?.clubName || "your club";
+  const { sentOutreach, sendStatus, send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
+  const activeModalMember = pendingModal ? allMembers.find((member) => member.id === pendingModal.memberId) || null : null
 
-  const handleSendReactivation = (memberId: string, channel: "email" | "sms") => {
-    if (sendReactivation && clubId) {
-      sendReactivation.mutate({
-        clubId,
-        candidates: [{ memberId, channel }],
-      }, {
-        onSuccess: () => setSentOutreach(prev => ({ ...prev, [memberId]: channel })),
-      });
-    } else {
-      setSentOutreach(prev => ({ ...prev, [memberId]: channel }));
+  const triggerSend = (e: SyntheticEvent, memberId: string, channel: "email" | "sms") => {
+    e.preventDefault();
+    e.stopPropagation();
+    const member = allMembers.find((entry) => entry.id === memberId);
+    if (member) {
+      setDraftMessage(buildReactivationDraft({
+        memberName: member.name,
+        clubName,
+        daysSinceLastActivity: member.daysSincePlay,
+      }));
     }
+    setPendingModal({ memberId, channel });
   };
 
   // Churn trend from real data
@@ -375,6 +382,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
               if (allDone) return null;
               return (
                 <button
+                  type="button"
                   onClick={async () => {
                     if (aiGenerating) return;
                     setAiGenerating(true);
@@ -464,6 +472,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
               {(["all", "high", "medium", "low"] as const).map((f) => (
                 <button
+                  type="button"
                   key={f}
                   onClick={() => { setRiskFilter(f); setPage(1); }}
                   className="px-3 py-2 text-[11px] capitalize transition-all"
@@ -667,6 +676,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                     onClick={(e) => (e.target as HTMLInputElement).select()}
                                   />
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       navigator.clipboard.writeText(notifyMeLinks[member.id]);
@@ -689,6 +699,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                 </div>
                               ) : (
                                 <button
+                                  type="button"
                                   disabled={notifyMePending[member.id]}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -730,7 +741,12 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                               </div>
                               {!sentOutreach[member.id] && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                  type="button"
+                                  onPointerUp={(e) => triggerSend(e, member.id, "email")}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "email");
+                                  }}
                                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] transition-all"
                                   style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                                 >
@@ -738,10 +754,22 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                   Send via Email
                                 </button>
                               )}
-                              {sentOutreach[member.id] && (
+                              {sendStatus[member.id]?.state === "sent" && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
                                   <Check className="w-3 h-3" />
-                                  Sent via {sentOutreach[member.id]}
+                                  Sent via {sendStatus[member.id]?.channel || sentOutreach[member.id]}
+                                </span>
+                              )}
+                              {sendStatus[member.id]?.state === "skipped" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", fontWeight: 600 }}>
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Skipped
+                                </span>
+                              )}
+                              {sendStatus[member.id]?.state === "failed" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(239,68,68,0.15)", color: "#F87171", fontWeight: 600 }}>
+                                  <XCircle className="w-3 h-3" />
+                                  Failed
                                 </span>
                               )}
                             </div>
@@ -752,16 +780,37 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                                   <span>Email: <strong style={{ color: "var(--t1)" }}>{member.email}</strong></span>
                                 </div>
                               </div>
+                              {sendStatus[member.id]?.reason && sendStatus[member.id]?.state !== "sent" && (
+                                <div className="text-[10px] mt-2" style={{ color: sendStatus[member.id]?.state === "skipped" ? "#F59E0B" : "#F87171" }}>
+                                  {sendStatus[member.id]?.reason}
+                                </div>
+                              )}
                               {!sentOutreach[member.id] && (
                                 <div className="flex items-center gap-1.5">
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); handleSendReactivation(member.id, "email"); }}
+                                    type="button"
+                                    onPointerUp={(e) => triggerSend(e, member.id, "email")}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "email");
+                                    }}
                                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
                                     style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
                                   >
-                                    <Mail className="w-3 h-3" /> Email
-                                  </button>
-                                  <SmsComingSoon />
+                                  <Mail className="w-3 h-3" /> Email
+                                </button>
+                                <button
+                                  type="button"
+                                  onPointerUp={(e) => triggerSend(e, member.id, "sms")}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") triggerSend(e, member.id, "sms");
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                                  style={{ background: "rgba(249,115,22,0.14)", color: "#FB923C", fontWeight: 600, border: "1px solid rgba(249,115,22,0.22)" }}
+                                >
+                                  <Smartphone className="w-3 h-3" /> SMS
+                                </button>
                                   <span className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]" style={{ color: "var(--t4)", fontWeight: 500 }}>
                                     <Bell className="w-3 h-3" /> Push
                                     <span className="text-[9px] ml-0.5" style={{ color: "var(--t4)", opacity: 0.6 }}>soon</span>
@@ -788,6 +837,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
             </span>
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
@@ -799,6 +849,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 const p = totalPages <= 7 ? i + 1 : page <= 4 ? i + 1 : page >= totalPages - 3 ? totalPages - 6 + i : page - 3 + i;
                 return (
                   <button
+                    type="button"
                     key={p}
                     onClick={() => setPage(p)}
                     className="w-8 h-8 rounded-lg text-xs transition-all"
@@ -814,6 +865,7 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 );
               })}
               <button
+                type="button"
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
                 className="px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-30"
@@ -856,6 +908,45 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
         </div>
       </Card>
       )}
+
+      <OutreachConfirmIQModal
+        open={!!pendingModal && !!activeModalMember}
+        channel={pendingModal?.channel || "email"}
+        title={pendingModal?.channel === "sms" ? "Send Re-engagement SMS" : "Send Re-engagement Email"}
+        description={
+          pendingModal?.channel === "sms"
+            ? "Review the reactivation context before sending SMS from the current IQSport environment."
+            : "Review the reactivation context before sending outreach from the current IQSport environment."
+        }
+        memberName={activeModalMember?.name}
+        memberEmail={activeModalMember?.email}
+        editableMessage={draftMessage}
+        onEditableMessageChange={setDraftMessage}
+        messageLabel={pendingModal?.channel === "sms" ? "SMS Draft" : "Email Draft"}
+        confirmText={pendingModal?.channel === "sms" ? "Send SMS" : "Send Email"}
+        isPending={pendingModal ? isPendingFor(pendingModal.memberId, pendingModal.channel) : false}
+        onClose={() => {
+          setPendingModal(null)
+          setDraftMessage("")
+        }}
+        onConfirm={() => {
+          if (!activeModalMember || !pendingModal) return
+          send(
+            {
+              memberId: activeModalMember.id,
+              channel: pendingModal.channel,
+              memberName: activeModalMember.name,
+              customMessage: draftMessage.trim() || undefined,
+            },
+            {
+              onSettled: () => {
+                setPendingModal(null)
+                setDraftMessage("")
+              },
+            },
+          )
+        }}
+      />
     </motion.div>
   );
 }

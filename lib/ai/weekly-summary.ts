@@ -2,6 +2,10 @@ import { generateWithFallback } from '@/lib/ai/llm/provider'
 import { getVariantAnalytics } from '@/lib/ai/variant-optimizer'
 import { sendWeeklySummaryEmail } from '@/lib/ai/weekly-summary-email'
 import { sendHtmlEmail } from '@/lib/sendTransactionEmail'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildIqSportEmail } from '@/lib/email-brand'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { persistAgentDecisionRecord } from './agent-decision-records'
 
 // ══════════════════════════════════════════════
 //  Weekly AI Summary — Data Collection + LLM
@@ -580,6 +584,7 @@ export async function sendWeeklySummaryEmails(
         select: {
           id: true,
           name: true,
+          automationSettings: true,
           admins: {
             select: {
               user: { select: { email: true } },
@@ -597,6 +602,30 @@ export async function sendWeeklySummaryEmails(
     const content = summary.summary as WeeklySummaryContent
     const clubName = summary.club.name
     const clubId = summary.club.id
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: summary.club.automationSettings,
+      action: 'adminReminderExternal',
+    })
+
+    if (!controlPlane.allowed || controlPlane.shadow) {
+      await persistAgentDecisionRecord(prisma, {
+        clubId,
+        actorType: 'system',
+        action: 'adminReminderExternal',
+        targetType: 'weekly_summary',
+        targetId: summary.id,
+        mode: controlPlane.mode,
+        result: controlPlane.shadow ? 'shadowed' : 'blocked',
+        summary: controlPlane.shadow
+          ? `${controlPlane.reason} Weekly summary stayed in shadow mode.`
+          : controlPlane.reason,
+        metadata: {
+          source: 'weekly_summary_cron',
+          reason: controlPlane.shadow ? 'control_plane_shadow' : 'control_plane_disabled',
+        },
+      })
+      continue
+    }
 
     // Collect admin emails (deduplicate)
     const allEmails: string[] = summary.club.admins
@@ -643,50 +672,29 @@ export async function sendWeeklySummaryEmails(
 // ── Nudge email: no data uploaded yet ──
 
 async function sendNudgeEmail(to: string, clubName: string, clubId: string): Promise<void> {
-  const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'https://stest.piqle.io'
-  const base = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
-  const advisorUrl = `${base}/clubs/${clubId}/intelligence/advisor`
+  const advisorUrl = buildPlatformUrl(`/clubs/${clubId}/intelligence/advisor`)
 
   const subject = `${clubName} — Your AI insights are waiting for data`
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
-  <table style="width:100%;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;margin-top:20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    <tr>
-      <td style="background:linear-gradient(135deg,#6b7280,#4b5563);padding:24px 32px;">
-        <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">&#128202; Weekly AI Summary</h1>
-        <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">${clubName}</p>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:32px;">
-        <h2 style="margin:0 0 12px;font-size:18px;color:#111827;">We don't have your data yet</h2>
-        <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">
-          Your AI-powered weekly digest is ready to go, but we need your court schedule first.
-          Upload a CSV with your sessions, and we'll start generating personalized insights:
-        </p>
-        <ul style="margin:0 0 24px;padding-left:20px;color:#374151;font-size:14px;line-height:1.8;">
-          <li>Occupancy trends &amp; revenue opportunities</li>
-          <li>Member health scores &amp; churn predictions</li>
-          <li>AI-powered slot filling recommendations</li>
-          <li>Campaign performance analytics</li>
-        </ul>
-        <div style="text-align:center;">
-          <a href="${advisorUrl}" style="display:inline-block;background:#84cc16;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;">Upload Your Schedule &rarr;</a>
-        </div>
-      </td>
-    </tr>
-    <tr>
-      <td style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;">
-        <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;">
-          This is an automated reminder from IQSport.ai. Once you upload data, you'll receive weekly AI insights instead.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  const html = buildIqSportEmail({
+    title: subject,
+    heading: 'Your AI insights are waiting for data',
+    eyebrow: 'Weekly Summary',
+    subheading: clubName,
+    baseUrl: advisorUrl,
+    bodyHtml: `
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.75;color:#CBD5E1;">
+        Your AI-powered weekly digest is ready to go, but we need your court schedule first. Upload your sessions and we'll start generating personalized insights.
+      </p>
+      <ul style="margin:0 0 22px;padding-left:20px;color:#CBD5E1;font-size:14px;line-height:1.9;">
+        <li>Occupancy trends &amp; revenue opportunities</li>
+        <li>Member health scores &amp; churn predictions</li>
+        <li>AI-powered slot filling recommendations</li>
+        <li>Campaign performance analytics</li>
+      </ul>
+      ${buildEmailButton('Upload Your Schedule →', advisorUrl)}
+    `,
+    footerHtml: `<p style="margin:0;font-size:11px;line-height:1.7;color:#94A3B8;">This is an automated reminder from IQSport.ai. Once you upload data, you'll receive weekly AI insights instead.</p>`,
+  })
 
   await sendHtmlEmail(to, subject, html)
 }

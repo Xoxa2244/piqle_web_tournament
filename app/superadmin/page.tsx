@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { signOut } from 'next-auth/react'
 import { trpc } from '@/lib/trpc'
 import { formatDescription } from '@/lib/formatDescription'
 import { formatUsDateShort } from '@/lib/dateFormat'
@@ -12,46 +13,21 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/use-toast'
 import ConfirmModal from '@/components/ConfirmModal'
 
-const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
-
 export default function SuperAdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [login, setLogin] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
-  // Check authentication on mount
-  useEffect(() => {
-    const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
-    if (authStatus === 'true') {
-      setIsAuthenticated(true)
-    }
-  }, [])
-
-  const authenticate = trpc.superadmin.authenticate.useMutation({
-    onSuccess: () => {
-      setIsAuthenticated(true)
-      localStorage.setItem(SUPERADMIN_AUTH_KEY, 'true')
-      setError('')
-    },
-    onError: (err) => {
-      setError(err.message || 'Invalid credentials')
-    },
-  })
-
   // Get all tournament owners
   const { data: owners } = trpc.superadmin.getAllTournamentOwners.useQuery(
     undefined,
-    { enabled: isAuthenticated }
+    { enabled: true }
   )
 
   // Get tournaments with optional user filter
   const { data: tournaments, isLoading, refetch } = trpc.superadmin.getAllTournaments.useQuery(
     { userId: selectedUserId || undefined },
-    { enabled: isAuthenticated }
+    { enabled: true }
   )
 
   const deleteTournament = trpc.superadmin.deleteTournament.useMutation({
@@ -69,12 +45,6 @@ export default function SuperAdminPage() {
     },
   })
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    authenticate.mutate({ login, password })
-  }
-
   const handleDeleteClick = (tournamentId: string, tournamentTitle: string) => {
     setDeleteTarget({ id: tournamentId, title: tournamentTitle })
     setDeleteConfirmText('')
@@ -87,58 +57,6 @@ export default function SuperAdminPage() {
     setDeleteConfirmText('')
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl font-bold text-center">Super Admin Login</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label htmlFor="login" className="block text-sm font-medium text-gray-700 mb-1">
-                  Login
-                </label>
-                <Input
-                  id="login"
-                  type="text"
-                  value={login}
-                  onChange={(e) => setLogin(e.target.value)}
-                  required
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full"
-                />
-              </div>
-              {error && (
-                <div className="text-red-600 text-sm text-center">{error}</div>
-              )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={authenticate.isLoading}
-              >
-                {authenticate.isLoading ? 'Logging in...' : 'Login'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -148,6 +66,16 @@ export default function SuperAdminPage() {
             <p className="text-gray-600 mt-2">Full access to all tournaments</p>
           </div>
           <div className="flex gap-4">
+            <Link href="/superadmin/agent-rollout">
+              <Button variant="outline">
+                Agent Rollout
+              </Button>
+            </Link>
+            <Link href="/superadmin/integration-ops">
+              <Button variant="outline">
+                Integration Ops
+              </Button>
+            </Link>
             <Link href="/superadmin/players">
               <Button variant="outline">
                 Players
@@ -159,13 +87,10 @@ export default function SuperAdminPage() {
               </Button>
             </Link>
             <Button
-              onClick={() => {
-                setIsAuthenticated(false)
-                localStorage.removeItem(SUPERADMIN_AUTH_KEY)
-              }}
+              onClick={() => signOut({ callbackUrl: '/auth/signin?callbackUrl=/superadmin' })}
               variant="outline"
             >
-              Logout
+              Sign out
             </Button>
           </div>
         </div>
@@ -320,4 +245,3 @@ export default function SuperAdminPage() {
     </div>
   )
 }
-

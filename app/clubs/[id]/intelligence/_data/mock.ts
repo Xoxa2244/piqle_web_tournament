@@ -1240,3 +1240,428 @@ export const mockWeeklySummary = {
   generatedAt: new Date().toISOString(),
   weekLabel: 'Mar 2 – Mar 8, 2026',
 }
+
+// ── Growth engines (shipped 2026-04: Smart First Session / Guest Trial /
+// Win-Back / Referral). These tiles render in MembersIQ + CampaignsIQ.
+// Mocks are intentionally lightweight — shape covers what the UI reads,
+// not the full engine output, so the demo stays snappy. ──
+
+export const mockSmartFirstSession = {
+  summary: {
+    totalCandidates: 14,
+    firstBookingCount: 8,
+    secondSessionCount: 4,
+    conversionReadyCount: 2,
+    averageScore: 71,
+    summary: '14 newcomers in-window. 8 still need their first booking, 4 have played once and need a habit-building second session, 2 are ready for a paid next step.',
+    funnel: {
+      newcomerCount: 22,
+      firstBookedCount: 14,
+      secondBookedCount: 6,
+      paidMemberCount: 2,
+      firstBookingRate: 64,
+      secondSessionRate: 43,
+      paidConversionRate: 14,
+      summary: 'Habit-forming second session is the tightest gate — 43% of first-timers never come back.',
+    },
+  },
+  candidates: [
+    {
+      memberId: 'demo-sfs-1', name: 'Emily Carter', email: 'emily@example.com',
+      score: 82, stage: 'book_first_session' as const, urgency: 'high' as const,
+      daysSinceJoined: 6, daysSinceFirstBooking: null, confirmedBookings: 0,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'trial',
+      topReason: 'Joined 6 days ago, followed the club, has not booked yet.',
+      nextBestMove: 'Send a one-tap booking link to a beginner-friendly Open Play this Thursday.',
+    },
+    {
+      memberId: 'demo-sfs-2', name: 'Ryan Patel', email: 'ryan@example.com',
+      score: 74, stage: 'book_second_session' as const, urgency: 'medium' as const,
+      daysSinceJoined: 11, daysSinceFirstBooking: 4, confirmedBookings: 1,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'active',
+      topReason: 'Played once 4 days ago, positive signal — build the habit.',
+      nextBestMove: 'Invite to next week\'s Intermediate Drill with a free court-mate add-on.',
+    },
+    {
+      memberId: 'demo-sfs-3', name: 'Sofia Nguyen', email: 'sofia@example.com',
+      score: 65, stage: 'convert_after_first_session' as const, urgency: 'medium' as const,
+      daysSinceJoined: 14, daysSinceFirstBooking: 8, confirmedBookings: 2,
+      normalizedMembershipType: 'guest', normalizedMembershipStatus: 'active',
+      topReason: 'Played twice, both confirmed — ready for a trial or starter bundle.',
+      nextBestMove: 'Offer 3-session starter pack at 20% off (safe, reviewable).',
+    },
+  ],
+  suggestedCohorts: [],
+}
+
+export const mockGuestTrialBooking = {
+  summary: {
+    totalCandidates: 9,
+    firstBookingCount: 5,
+    showUpProtectionCount: 3,
+    paidConversionCount: 1,
+    averageScore: 68,
+    summary: '9 guests/trials in motion. 5 still haven\'t booked their first visit, 3 have a booking but need a show-up reminder, 1 is ready for the paid step.',
+    offers: {
+      firstVisit: { name: 'Free first visit', descriptor: 'Zero-friction trial', destinationDescriptor: 'Beginner Open Play' },
+      showUpProtection: { name: 'Show-up concierge', descriptor: 'Reminder + court partner', destinationDescriptor: 'Booked session' },
+      paidConversion: { name: 'Starter bundle', descriptor: '3-session pack, 20% off', destinationDescriptor: 'Paid conversion' },
+    },
+    offerLoop: [],
+    routeLoop: [],
+    funnel: {
+      entrantCount: 12,
+      bookedCount: 9,
+      showedUpCount: 6,
+      paidCount: 1,
+      bookingRate: 75,
+      showUpRate: 67,
+      paidConversionRate: 11,
+      summary: '3 of 9 booked guests haven\'t shown yet — show-up protection is the bottleneck.',
+    },
+  },
+  candidates: [
+    {
+      memberId: 'demo-gtb-1', name: 'Priya Desai', email: 'priya@example.com',
+      score: 78, stage: 'book_first_visit' as const, urgency: 'high' as const,
+      daysSinceJoined: 4, daysUntilNextBooking: null, daysSinceFirstPlayed: null,
+      confirmedBookings: 0, playedConfirmedBookings: 0,
+      normalizedMembershipType: 'guest', normalizedMembershipStatus: 'guest',
+      recommendedOffer: { key: 'first_visit', name: 'Free first visit', kind: 'free_trial', descriptor: 'Zero-friction trial', destinationDescriptor: 'Beginner Open Play' },
+      topReason: 'New guest, no booking yet — hottest acquisition moment.',
+      nextBestMove: 'Invite to Saturday beginner Open Play with a one-tap book link.',
+    },
+    {
+      memberId: 'demo-gtb-2', name: 'Marcus Hale', email: 'marcus@example.com',
+      score: 72, stage: 'protect_first_show_up' as const, urgency: 'high' as const,
+      daysSinceJoined: 7, daysUntilNextBooking: 2, daysSinceFirstPlayed: null,
+      confirmedBookings: 1, playedConfirmedBookings: 0,
+      normalizedMembershipType: 'trial', normalizedMembershipStatus: 'trial',
+      recommendedOffer: { key: 'show_up', name: 'Show-up concierge', kind: 'reminder', descriptor: 'Reminder + court partner', destinationDescriptor: 'Booked session' },
+      topReason: 'Booked for Tuesday, 2 days out — first-timers no-show at 33%.',
+      nextBestMove: 'Send match-me-with-a-partner message 24h before session.',
+    },
+  ],
+}
+
+export const mockWinBackSnapshot = {
+  summary: {
+    totalCandidates: 11,
+    expiredCount: 4,
+    cancelledCount: 2,
+    lapsedCount: 5,
+    averageScore: 64,
+    summary: '11 former regulars are ripe for a win-back nudge. 4 expired memberships, 2 cancelled, 5 high-value lapsed (still members, just quiet for 30+ days).',
+    laneLoop: [],
+  },
+  candidates: [
+    {
+      memberId: 'demo-wb-1', name: 'Daniel Rivera', email: 'daniel@example.com',
+      score: 79, stage: 'high_value_lapsed' as const, urgency: 'high' as const,
+      daysSinceLastBooking: 34, confirmedBookings: 24,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      topReason: '24 confirmed sessions then silent for 34 days — top-quartile value at risk.',
+      nextBestMove: 'Personal check-in from club owner with a guest pass for a playing partner.',
+    },
+    {
+      memberId: 'demo-wb-2', name: 'Hannah Lee', email: 'hannah@example.com',
+      score: 71, stage: 'expired_membership' as const, urgency: 'medium' as const,
+      daysSinceLastBooking: 52, confirmedBookings: 18,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'expired',
+      topReason: 'Membership lapsed 3 weeks ago, strong historical engagement.',
+      nextBestMove: 'Offer 14-day reactivation at membership rate before renewing full-price.',
+    },
+  ],
+}
+
+export const mockReferralSnapshot = {
+  summary: {
+    totalCandidates: 7,
+    vipAdvocateCount: 2,
+    socialRegularCount: 4,
+    dormantAdvocateCount: 1,
+    averageScore: 73,
+    summary: '7 members meet the referral gate (≥4 bookings, ≥2 co-players). 2 VIPs, 4 social regulars, 1 dormant advocate still connected to active co-players.',
+    offers: {
+      vipAdvocate: { key: 'vip_share', name: 'VIP friend pass', descriptor: 'Gift a month of unlimited', destinationDescriptor: 'Friend joins as member' },
+      socialRegular: { key: 'social_pair', name: 'Bring-a-friend credit', descriptor: '$25 credit per booked friend', destinationDescriptor: 'Friend books first session' },
+      dormantAdvocate: { key: 'reconnect', name: 'Reconnect rally', descriptor: 'Invite their co-players to a social session', destinationDescriptor: 'Rally attendance' },
+    },
+    laneLoop: [],
+    offerLoop: [],
+    routeLoop: [],
+    outcomeFunnel: {
+      askCount: 0, engagedCount: 0, intentCount: 0, strongSignalCount: 0,
+      engagementRate: 0, intentRate: 0, strongSignalRate: 0,
+      summary: 'No asks sent yet in the current window — mock demo state.',
+    },
+    outcomeLoop: [],
+    rewardSummary: '0 rewards issued in demo window.',
+    rewardLoop: [],
+  },
+  candidates: [
+    {
+      memberId: 'demo-ref-1', name: 'Alex Thompson', email: 'alex@example.com',
+      score: 86, lane: 'vip_advocate' as const, urgency: 'high' as const,
+      daysSinceLastBooking: 3, confirmedBookings: 42, recentConfirmedBookings: 12,
+      activeCoPlayers: 8, totalCoPlayers: 14,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      recommendedOffer: { key: 'vip_share', name: 'VIP friend pass', descriptor: 'Gift a month of unlimited', destinationDescriptor: 'Friend joins as member' },
+      topReason: '42 lifetime sessions, 12 recent, 8 active co-players — textbook VIP advocate.',
+      nextBestMove: 'Ask directly: "Who of your regular partners would you bring on us?"',
+    },
+    {
+      memberId: 'demo-ref-2', name: 'Jamie Ortiz', email: 'jamie@example.com',
+      score: 68, lane: 'social_regular' as const, urgency: 'medium' as const,
+      daysSinceLastBooking: 5, confirmedBookings: 11, recentConfirmedBookings: 5,
+      activeCoPlayers: 4, totalCoPlayers: 6,
+      normalizedMembershipType: 'full', normalizedMembershipStatus: 'active',
+      recommendedOffer: { key: 'social_pair', name: 'Bring-a-friend credit', descriptor: '$25 credit per booked friend', destinationDescriptor: 'Friend books first session' },
+      topReason: 'Consistent social player — bring-a-friend credit has highest lift for this segment.',
+      nextBestMove: 'Email $25 credit offer with a link they can forward.',
+    },
+  ],
+  referredGuests: [],
+  rewardIssuances: [],
+  rewardLedger: [],
+}
+
+// ── AI Revenue Attribution — the YC-pitch "money metric" ──
+// Honest framing: what we can link from AI touches to subsequent bookings,
+// plus a conservative 20% incremental lift estimate. Mock numbers match
+// a club with healthy but not unrealistic AI-driven bookings (~180/mo).
+export const mockAIRevenueAttribution = {
+  liveMode: true,
+  periodStart: fmt(-30),
+  periodEnd: fmt(0),
+  days: 30,
+  attributedRevenueUsd: 4320,
+  attributedBookingsCount: 182,
+  conservativeIncrementalUsd: 864,
+  aiSpendUsd: 47.2,
+  roiMultiple: 91.5,
+  byType: [
+    { type: 'SLOT_FILLER', bookings: 84, revenueUsd: 1890 },
+    { type: 'REACTIVATION', bookings: 52, revenueUsd: 1170 },
+    { type: 'CHECK_IN', bookings: 28, revenueUsd: 630 },
+    { type: 'EVENT_INVITE', bookings: 12, revenueUsd: 405 },
+    { type: 'RETENTION_BOOST', bookings: 6, revenueUsd: 225 },
+  ],
+  byMethod: {
+    deep_link: { bookings: 64, revenueUsd: 1512 },
+    direct_session_match: { bookings: 72, revenueUsd: 1620 },
+    time_window: { bookings: 46, revenueUsd: 1188 },
+  },
+  dailyTrend: Array.from({ length: 30 }, (_, i) => ({
+    date: fmt(-30 + i).slice(0, 10),
+    bookings: 4 + Math.round(Math.sin(i / 3) * 2 + Math.random() * 3),
+    revenueUsd: 90 + Math.round(Math.sin(i / 3) * 40 + Math.random() * 60),
+  })),
+}
+
+// ── Programming IQ — weekly schedule grid ──
+// Used when ?demo=true. Shows a realistic mix of kept live sessions,
+// suggested AI cells (with scoring rationale), and a couple of
+// saturation warnings so admin can see the full UX. Matches the 7-signal
+// output produced by `buildWeeklyGrid()` — each suggested cell gets a
+// rationale array that the CellEditPopover displays verbatim.
+
+const MOCK_DEMO_CLUB_ID = 'demo-club'
+
+const DEMO_COURTS = [
+  { id: 'demo-court-1', name: 'Court 1', isIndoor: false, isActive: true },
+  { id: 'demo-court-2', name: 'Court 2', isIndoor: true, isActive: true },
+  { id: 'demo-court-3', name: 'Court 3', isIndoor: false, isActive: true },
+]
+
+// Resolve the Monday-based date for a given day offset inside the target
+// week (Monday=0, Tuesday=1, ...). weekStart is the Monday ISO string.
+function dateFromWeek(weekStart: string, dayOffset: number): Date {
+  const d = new Date(weekStart)
+  d.setDate(d.getDate() + dayOffset)
+  d.setHours(12, 0, 0, 0)
+  return d
+}
+
+export function mockProgrammingGrid(weekStartDate: string) {
+  // A handful of "already on the calendar" sessions — Programming IQ shows
+  // these as read-only live cells so admins see what exists before
+  // layering new suggestions on top.
+  const liveSessions = [
+    {
+      id: 'demo-live-tues-clinic', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      date: dateFromWeek(weekStartDate, 1), // Tuesday
+      startTime: '18:00', endTime: '19:30',
+      title: 'Intermediate Clinic',
+      format: 'CLINIC', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 6, registeredCount: 6,
+    },
+    {
+      id: 'demo-live-sat-league', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      date: dateFromWeek(weekStartDate, 5), // Saturday
+      startTime: '09:00', endTime: '10:30',
+      title: '4.0 League',
+      format: 'LEAGUE_PLAY', skillLevel: 'ADVANCED',
+      maxPlayers: 8, registeredCount: 8,
+    },
+  ]
+
+  // Suggestions — ordered by demand score so the top cell is the
+  // strongest recommendation. Rationale mirrors
+  // `buildAdvisorProgrammingPlan` output against real club data.
+  const drafts = [
+    {
+      id: 'demo-d1', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      dayOfWeek: 'Saturday', startTime: '10:30', endTime: '12:00',
+      title: '4.0 League (overflow)',
+      format: 'LEAGUE_PLAY', skillLevel: 'ADVANCED',
+      maxPlayers: 8, confidence: 87, projectedOccupancy: 92,
+      estimatedInterestedMembers: 22,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '9 unmet interest requests for Saturday 4.0 league',
+          '95% historical fill at this slot (8 past sessions)',
+          '22 members match Advanced + weekend preference',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d2', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      dayOfWeek: 'Tuesday', startTime: '19:30', endTime: '21:00',
+      title: 'Intermediate Open Play',
+      format: 'OPEN_PLAY', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 8, confidence: 78, projectedOccupancy: 85,
+      estimatedInterestedMembers: 31,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '85% historical fill at Tuesday 7pm Intermediate',
+          '31 members match Intermediate + evening preference',
+          'Indoor court preferred — 92% match rate',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d3', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-3',
+      dayOfWeek: 'Thursday', startTime: '19:00', endTime: '20:30',
+      title: 'Intermediate Drill',
+      format: 'DRILL', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 6, confidence: 71, projectedOccupancy: 72,
+      estimatedInterestedMembers: 14,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '60% historical fill (8 past sessions)',
+          '14 improver-persona members match',
+          'Spreads Intermediate load across the week',
+        ],
+        warnings: [
+          'Saturated: Intermediate pool of 47 would see ~2.8 invites/week.',
+        ],
+      },
+    },
+    {
+      id: 'demo-d4', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-3',
+      dayOfWeek: 'Wednesday', startTime: '18:30', endTime: '20:00',
+      title: 'Beginner Clinic',
+      format: 'CLINIC', skillLevel: 'BEGINNER',
+      maxPlayers: 6, confidence: 64, projectedOccupancy: 58,
+      estimatedInterestedMembers: 8,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '3 unmet interest requests for "beginner clinic weekday"',
+          'Improver persona — 31% of club',
+          '12 Beginner members available in pool',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d5', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-2',
+      dayOfWeek: 'Friday', startTime: '19:00', endTime: '20:30',
+      title: 'Social Open Play',
+      format: 'SOCIAL', skillLevel: 'ALL_LEVELS',
+      maxPlayers: 8, confidence: 58, projectedOccupancy: 62,
+      estimatedInterestedMembers: 18,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          'Social persona 42% — favours Friday evening mixers',
+          '68% of members prefer evening',
+          'Indoor court — evening slot',
+        ],
+        warnings: [],
+      },
+    },
+    {
+      id: 'demo-d6', clubId: MOCK_DEMO_CLUB_ID,
+      courtId: 'demo-court-1',
+      dayOfWeek: 'Monday', startTime: '19:00', endTime: '20:30',
+      title: 'Intermediate Open Play',
+      format: 'OPEN_PLAY', skillLevel: 'INTERMEDIATE',
+      maxPlayers: 8, confidence: 62, projectedOccupancy: 68,
+      estimatedInterestedMembers: 25,
+      status: 'READY_FOR_OPS', origin: 'programming_iq',
+      metadata: {
+        weekStartDate,
+        rationale: [
+          '25 members match Intermediate + evening',
+          'Kicks the week off with a high-demand slot',
+        ],
+        warnings: [],
+      },
+    },
+  ]
+
+  return {
+    courts: DEMO_COURTS,
+    liveSessions,
+    drafts,
+    // Matches the UserPlayPreference-based count the live query returns —
+    // opt-outs excluded. Keeps the contact-policy badge honest in demo mode.
+    memberCount: 127,
+  }
+}
+
+export function mockProgrammingGenerationResult() {
+  return {
+    generationId: 'demo-gen-' + Date.now(),
+    cells: [],
+    stats: {
+      liveKept: 2,
+      suggested: 6,
+      empty: 0,
+      conflicts: 0,
+      saturations: 1,
+      avgProjectedOccupancy: 72,
+    },
+    insights: [
+      'Saturday 4.0 league is your strongest signal — 9 unmet requests + 95% historical fill.',
+      'Intermediate evening sessions risk pool saturation at current caps.',
+      'Consider replacing Wed 6am Advanced slots — 0 historical demand.',
+    ],
+    signalSummary: {
+      monthsOfBookingData: 2,
+      preferencesCount: 89,
+      unmetInterestRequests: 14,
+      activeCourts: 3,
+    },
+    draftCount: 6,
+  }
+}

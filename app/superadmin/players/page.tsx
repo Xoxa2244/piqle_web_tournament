@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,8 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Eye, Ban } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
-
-const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
 
 const genderLabel = (gender?: string | null) => {
   if (gender === 'M') return 'Male'
@@ -25,35 +23,7 @@ const organizerTierLabel = (tier?: string | null) => {
 }
 
 export default function SuperAdminPlayersPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [query, setQuery] = useState('')
-  const [login, setLogin] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    const authStatus = localStorage.getItem(SUPERADMIN_AUTH_KEY)
-    if (authStatus === 'true') {
-      setIsAuthenticated(true)
-    }
-  }, [])
-
-  const authenticate = trpc.superadmin.authenticate.useMutation({
-    onSuccess: () => {
-      setIsAuthenticated(true)
-      localStorage.setItem(SUPERADMIN_AUTH_KEY, 'true')
-      setError('')
-    },
-    onError: (err) => {
-      setError(err.message || 'Invalid credentials')
-    },
-  })
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    authenticate.mutate({ login, password })
-  }
 
   const listInput = useMemo(() => {
     const q = query.trim()
@@ -62,7 +32,7 @@ export default function SuperAdminPlayersPage() {
 
   const { data: players = [], isLoading, refetch } = trpc.superadmin.listPlayers.useQuery(
     listInput,
-    { enabled: isAuthenticated }
+    { enabled: true }
   )
 
   const setUserActive = trpc.superadmin.setUserActive.useMutation({
@@ -78,32 +48,6 @@ export default function SuperAdminPlayersPage() {
     onError: (err) =>
       toast({ title: 'Error', description: err.message || 'Failed to update organizer tier', variant: 'destructive' }),
   })
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Super Admin Login</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Login</label>
-                <Input value={login} onChange={(e) => setLogin(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              {error && <div className="text-sm text-red-600">{error}</div>}
-              <Button type="submit" className="w-full">Login</Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">

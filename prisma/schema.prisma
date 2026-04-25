@@ -21,6 +21,9 @@ model User {
   gender                   Gender?
   city                     String?
   phone                    String?
+  adminReminderEmail       String?                   @map("admin_reminder_email")
+  adminReminderPhone       String?                   @map("admin_reminder_phone")
+  adminReminderChannel     String                    @default("in_app") @map("admin_reminder_channel")
   duprLink                 String?
   duprId                   String?                   @map("dupr_id")
   duprNumericId            BigInt?                   @map("dupr_numeric_id")
@@ -79,12 +82,20 @@ model User {
   playSessionWaitlist      PlaySessionWaitlist[]      @relation("PlaySessionWaitlist")
   playPreferences          UserPlayPreference[]       @relation("PlayPreferences")
   aiRecommendationLogs     AIRecommendationLog[]      @relation("AIRecommendationLogs")
+  clubLaunchAudits         ClubLaunchAudit[]          @relation("ClubLaunchAuditsByUser")
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
   memberHealthSnapshots    MemberHealthSnapshot[]     @relation("MemberHealthSnapshots")
   memberAiProfiles         MemberAiProfile[]          @relation("MemberAiProfiles")
 
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
+  agentDrafts              AgentDraft[]              @relation("UserAgentDrafts")
+  opsSessionDraftsCreated  OpsSessionDraft[]         @relation("UserOpsSessionDrafts")
+  adminTodoDecisions       AgentAdminTodoDecision[]  @relation("UserAgentAdminTodoDecisions")
+  agentDecisionRecords     AgentDecisionRecord[]     @relation("UserAgentDecisionRecords")
+  referralRewardIssuancesAdvocate ReferralRewardIssuance[] @relation("UserReferralRewardIssuancesAdvocate")
+  referralRewardIssuancesGuest ReferralRewardIssuance[]    @relation("UserReferralRewardIssuancesGuest")
+  referralRewardIssuancesReviewed ReferralRewardIssuance[] @relation("UserReferralRewardIssuancesReviewed")
 
   // Session Interest
   sessionInterestRequests  SessionInterestRequest[]   @relation("SessionInterestRequests")
@@ -225,6 +236,29 @@ model Club {
   courtReserveUrl    String?              @map("court_reserve_url")
   bookingRequestEmail String?             @map("booking_request_email")
   automationSettings Json?                @default("{}") @map("automation_settings")
+  // AI Cost Tracking (null budget = unlimited)
+  aiMonthlyBudgetUsd Decimal?             @map("ai_monthly_budget_usd") @db.Decimal(10, 2)
+  aiSpendCurrentMonth Decimal             @default(0) @map("ai_spend_current_month") @db.Decimal(10, 6)
+  aiSpendMonthStart  DateTime             @default(now()) @map("ai_spend_month_start")
+
+  // ── White-label Sending Domain ──
+  // Custom domain for AI outreach emails. Flow: setup → get DNS records
+  // → admin adds to their DNS → verify → enable. sendMail() only uses
+  // this when both verified_at IS NOT NULL AND enabled = true.
+  sendingDomain           String?   @unique @map("sending_domain")
+  sendingDomainDnsRecords Json?     @map("sending_domain_dns_records")
+  sendingDomainVerifiedAt DateTime? @map("sending_domain_verified_at") @db.Timestamptz()
+  sendingDomainEnabled    Boolean   @default(false) @map("sending_domain_enabled")
+  sendingDomainFromName   String?   @map("sending_domain_from_name")
+  sendingDomainLocalPart  String    @default("campaigns") @map("sending_domain_local_part")
+
+  // ── Voice / Tone Profile ──
+  // Injected into every LLM system prompt for this club's outreach.
+  // Shape: { tone, length, useEmoji, formality, customInstructions, ... }
+  voiceSettings Json? @map("voice_settings")
+
+  // ── Launch Audits ──
+  launchAudits ClubLaunchAudit[] @relation("ClubLaunchAudits")
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @updatedAt @map("updated_at")
 
@@ -256,6 +290,12 @@ model Club {
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
   aiConversations         AIConversation[]           @relation("ClubAIConversations")
+  agentDrafts             AgentDraft[]               @relation("ClubAgentDrafts")
+  opsSessionDrafts        OpsSessionDraft[]          @relation("ClubOpsSessionDrafts")
+  adminTodoDecisions      AgentAdminTodoDecision[]   @relation("ClubAgentAdminTodoDecisions")
+  agentDecisionRecords    AgentDecisionRecord[]      @relation("ClubAgentDecisionRecords")
+  integrationAnomalyIncidents IntegrationAnomalyIncident[] @relation("ClubIntegrationAnomalyIncidents")
+  referralRewardIssuances ReferralRewardIssuance[]   @relation("ClubReferralRewardIssuances")
   weeklySummaries         WeeklySummary[]            @relation("ClubWeeklySummaries")
 
   // Billing
@@ -266,6 +306,9 @@ model Club {
 
   // Session Interest
   sessionInterestRequests SessionInterestRequest[]   @relation("SessionInterestRequests")
+
+  // AI usage tracking
+  aiUsageLogs             AIUsageLog[]               @relation("ClubAIUsageLogs")
 
   @@map("clubs")
 }
@@ -1558,6 +1601,7 @@ model ClubCourt {
   updatedAt DateTime @updatedAt
 
   playSessions PlaySession[]
+  opsSessionDrafts OpsSessionDraft[] @relation("OpsSessionDraftCourt")
 
   @@map("club_courts")
 }
@@ -1587,6 +1631,7 @@ model PlaySession {
 
   bookings  PlaySessionBooking[]
   waitlist  PlaySessionWaitlist[]
+  opsSessionDraftsPublished OpsSessionDraft[] @relation("OpsSessionDraftPublished")
 
   @@map("play_sessions")
 }
@@ -1601,6 +1646,9 @@ model PlaySessionBooking {
   bookedAt  DateTime      @default(now())
   cancelledAt DateTime?
   checkedInAt DateTime?
+
+  // Back-relation for AI attribution — at most one recommendation links here.
+  aiAttribution AIRecommendationLog? @relation("AIAttribution")
 
   @@unique([sessionId, userId])
   @@map("play_session_bookings")
@@ -1671,6 +1719,16 @@ model AIRecommendationLog {
   parentLog          AIRecommendationLog?    @relation("SequenceChain", fields: [parentLogId], references: [id], onDelete: SetNull)
   childLogs          AIRecommendationLog[]   @relation("SequenceChain")
 
+  // ── Attribution Tracking (AI-revenue dashboard) ──
+  // Populated by the attribution service when a booking is linked to this
+  // recommendation. Value is snapshotted at link time so historical ROI
+  // stays stable even if the club changes prices later.
+  bookingId          String?                 @unique @map("booking_id")
+  linkedBooking      PlaySessionBooking?     @relation("AIAttribution", fields: [bookingId], references: [id], onDelete: SetNull)
+  linkedBookingValue Decimal?                @map("linked_booking_value") @db.Decimal(10, 2)
+  linkedAt           DateTime?               @map("linked_at")            @db.Timestamptz()
+  attributionMethod  String?                 @map("attribution_method")   // deep_link | direct_session_match | time_window
+
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])
   @@index([externalMessageId])
@@ -1678,6 +1736,48 @@ model AIRecommendationLog {
   @@index([clubId, type, status])
   @@index([parentLogId])
   @@map("ai_recommendation_logs")
+}
+
+// ── Club Launch Audits ──
+// Every Go-Live and Kill-Switch transition gets a row here so we have a
+// post-hoc trail of "who flipped live mode on this club, when, and what
+// did the preflight checklist look like". Powers the Launch Runbook UI
+// history section and any post-incident review.
+model ClubLaunchAudit {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()::text"))
+  clubId                String   @map("club_id") @db.Uuid
+  club                  Club     @relation("ClubLaunchAudits", fields: [clubId], references: [id], onDelete: Cascade)
+  userId                String?  @map("user_id")
+  user                  User?    @relation("ClubLaunchAuditsByUser", fields: [userId], references: [id], onDelete: SetNull)
+  action                String   // 'go_live' | 'kill_switch' | 'preflight_failed'
+  preflightSnapshot     Json?    @map("preflight_snapshot")
+  manualConfirmations   Json?    @map("manual_confirmations")
+  reason                String?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("club_launch_audits")
+}
+
+// ── AI Usage Tracking (cost visibility + per-club budgets) ──
+model AIUsageLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  clubId            String   @map("club_id") @db.Uuid
+  club              Club     @relation("ClubAIUsageLogs", fields: [clubId], references: [id], onDelete: Cascade)
+  model             String   // e.g. 'gpt-4o-mini', 'claude-3-5-haiku-20241022'
+  operation         String   // e.g. 'advisor_chat', 'member_profile', 'campaign_gen', 'embedding'
+  promptTokens      Int      @default(0) @map("prompt_tokens")
+  completionTokens  Int      @default(0) @map("completion_tokens")
+  totalTokens       Int      @default(0) @map("total_tokens")
+  costUsd           Decimal  @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([operation, createdAt(sort: Desc)])
+  @@index([model, createdAt(sort: Desc)])
+  @@map("ai_usage_logs")
 }
 
 // ── AI Embeddings (RAG) ──
@@ -1716,6 +1816,7 @@ model AIConversation {
   club     Club         @relation("ClubAIConversations", fields: [clubId], references: [id], onDelete: Cascade)
   user     User         @relation("UserAIConversations", fields: [userId], references: [id], onDelete: Cascade)
   messages AIMessage[]  @relation("ConversationMessages")
+  agentDrafts AgentDraft[] @relation("ConversationAgentDrafts")
 
   @@index([clubId, userId])
   @@index([updatedAt(sort: Desc)])
@@ -1731,10 +1832,205 @@ model AIMessage {
   createdAt      DateTime @default(now()) @map("created_at")
 
   conversation AIConversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+  sourceAgentDraft AgentDraft? @relation("AgentDraftSourceMessage")
 
   @@index([conversationId])
   @@index([createdAt])
   @@map("ai_messages")
+}
+
+model AgentDraft {
+  id              String         @id @default(uuid())
+  clubId          String         @map("club_id")
+  conversationId  String?        @map("conversation_id")
+  sourceMessageId String?        @unique @map("source_message_id")
+  createdByUserId String         @map("created_by_user_id")
+  kind            String
+  status          String         @default("review_ready")
+  title           String
+  summary         String?
+  originalIntent  String?        @map("original_intent")
+  selectedPlan    String         @default("requested") @map("selected_plan")
+  requestedAction Json           @map("requested_action")
+  recommendedAction Json?        @map("recommended_action")
+  workingAction   Json           @map("working_action")
+  sandboxMode     Boolean        @default(false) @map("sandbox_mode")
+  scheduledFor    DateTime?      @map("scheduled_for")
+  timeZone        String?        @map("time_zone")
+  metadata        Json           @default("{}")
+  approvedAt      DateTime?      @map("approved_at")
+  executedAt      DateTime?      @map("executed_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  club            Club           @relation("ClubAgentDrafts", fields: [clubId], references: [id], onDelete: Cascade)
+  conversation    AIConversation? @relation("ConversationAgentDrafts", fields: [conversationId], references: [id], onDelete: SetNull)
+  sourceMessage   AIMessage?     @relation("AgentDraftSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  createdByUser   User           @relation("UserAgentDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  opsSessionDrafts OpsSessionDraft[] @relation("AgentDraftOpsSessionDrafts")
+
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([conversationId, updatedAt(sort: Desc)])
+  @@index([createdByUserId, updatedAt(sort: Desc)])
+  @@map("agent_drafts")
+}
+
+enum OpsSessionDraftStatus {
+  READY_FOR_OPS
+  SESSION_DRAFT
+  REJECTED
+  ARCHIVED
+}
+
+model OpsSessionDraft {
+  id                       String                @id @default(uuid())
+  clubId                   String                @map("club_id")
+  agentDraftId             String                @map("agent_draft_id")
+  createdByUserId          String                @map("created_by_user_id")
+  sourceProposalId         String                @map("source_proposal_id")
+  origin                   String
+  status                   OpsSessionDraftStatus @default(READY_FOR_OPS)
+  title                    String
+  description              String?
+  dayOfWeek                String                @map("day_of_week")
+  timeSlot                 String                @map("time_slot")
+  startTime                String                @map("start_time")
+  endTime                  String                @map("end_time")
+  format                   PlaySessionFormat
+  skillLevel               PlaySessionSkillLevel @default(ALL_LEVELS) @map("skill_level")
+  maxPlayers               Int                   @default(8) @map("max_players")
+  projectedOccupancy       Int                   @map("projected_occupancy")
+  estimatedInterestedMembers Int                 @map("estimated_interested_members")
+  confidence               Int
+  note                     String
+  metadata                 Json                  @default("{}")
+  sessionDraftedAt         DateTime?             @map("session_drafted_at")
+  archivedAt               DateTime?             @map("archived_at")
+  createdAt                DateTime              @default(now()) @map("created_at")
+  updatedAt                DateTime              @updatedAt @map("updated_at")
+  // ── Programming IQ fields (see migrations/add_programming_iq_fields.sql) ──
+  // courtId: concrete court chosen by Programming IQ's court assigner
+  // generationId: groups drafts produced by one Generate click
+  // publishedPlaySessionId: set when draft materialised to a live PlaySession
+  courtId                  String?               @map("court_id")
+  generationId             String?               @map("generation_id") @db.Uuid
+  publishedPlaySessionId   String?               @map("published_play_session_id")
+
+  club                     Club                  @relation("ClubOpsSessionDrafts", fields: [clubId], references: [id], onDelete: Cascade)
+  agentDraft               AgentDraft            @relation("AgentDraftOpsSessionDrafts", fields: [agentDraftId], references: [id], onDelete: Cascade)
+  createdByUser            User                  @relation("UserOpsSessionDrafts", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  court                    ClubCourt?            @relation("OpsSessionDraftCourt", fields: [courtId], references: [id], onDelete: SetNull)
+  publishedPlaySession     PlaySession?          @relation("OpsSessionDraftPublished", fields: [publishedPlaySessionId], references: [id], onDelete: SetNull)
+
+  @@unique([agentDraftId, sourceProposalId])
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([agentDraftId, updatedAt(sort: Desc)])
+  @@index([generationId])
+  @@map("ops_session_drafts")
+}
+
+model AgentAdminTodoDecision {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  userId    String   @map("user_id")
+  dateKey   String   @map("date_key")
+  itemId    String   @map("item_id")
+  decision  String
+  title     String
+  bucket    String
+  href      String
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  club Club @relation("ClubAgentAdminTodoDecisions", fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation("UserAgentAdminTodoDecisions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId, dateKey, itemId])
+  @@index([clubId, userId, dateKey, updatedAt(sort: Desc)])
+  @@map("agent_admin_todo_decisions")
+}
+
+model AgentDecisionRecord {
+  id         String   @id @default(uuid())
+  clubId     String   @map("club_id")
+  userId     String?  @map("user_id")
+  actorType  String   @default("user") @map("actor_type")
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  mode       String
+  result     String
+  summary    String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  club Club  @relation("ClubAgentDecisionRecords", fields: [clubId], references: [id], onDelete: Cascade)
+  user User? @relation("UserAgentDecisionRecords", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([clubId, action, createdAt(sort: Desc)])
+  @@index([clubId, result, createdAt(sort: Desc)])
+  @@map("agent_decision_records")
+}
+
+model IntegrationAnomalyIncident {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  anomalyKey      String   @map("anomaly_key")
+  severity        String
+  category        String
+  title           String
+  summary         String
+  evidenceLabel   String   @map("evidence_label")
+  firstSeenAt     DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  lastSeenDateKey String   @map("last_seen_date_key")
+  activeDays      Int      @default(1) @map("active_days")
+  resolvedAt      DateTime? @map("resolved_at")
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  club Club @relation("ClubIntegrationAnomalyIncidents", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, anomalyKey, updatedAt(sort: Desc)])
+  @@index([clubId, resolvedAt, updatedAt(sort: Desc)])
+  @@map("integration_anomaly_incidents")
+}
+
+enum ReferralRewardIssuanceStatus {
+  READY
+  ON_HOLD
+  ISSUED
+}
+
+model ReferralRewardIssuance {
+  id                 String                       @id @default(uuid())
+  clubId             String                       @map("club_id")
+  advocateUserId     String                       @map("advocate_user_id")
+  referredGuestUserId String                      @map("referred_guest_user_id")
+  offerKey           String                       @map("offer_key")
+  lane               String
+  offerName          String                       @map("offer_name")
+  rewardLabel        String                       @map("reward_label")
+  status             ReferralRewardIssuanceStatus @default(READY)
+  metadata           Json                         @default("{}")
+  issuedAt           DateTime?                    @map("issued_at")
+  reviewedAt         DateTime?                    @map("reviewed_at")
+  reviewedByUserId   String?                      @map("reviewed_by_user_id")
+  createdAt          DateTime                     @default(now()) @map("created_at")
+  updatedAt          DateTime                     @updatedAt @map("updated_at")
+
+  club               Club                         @relation("ClubReferralRewardIssuances", fields: [clubId], references: [id], onDelete: Cascade)
+  advocateUser       User                         @relation("UserReferralRewardIssuancesAdvocate", fields: [advocateUserId], references: [id], onDelete: Cascade)
+  referredGuestUser  User                         @relation("UserReferralRewardIssuancesGuest", fields: [referredGuestUserId], references: [id], onDelete: Cascade)
+  reviewedByUser     User?                        @relation("UserReferralRewardIssuancesReviewed", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clubId, advocateUserId, referredGuestUserId, offerKey])
+  @@index([clubId, status, updatedAt(sort: Desc)])
+  @@index([clubId, advocateUserId, updatedAt(sort: Desc)])
+  @@map("referral_reward_issuances")
 }
 
 // ── Member Health Snapshots (for ML training data) ──

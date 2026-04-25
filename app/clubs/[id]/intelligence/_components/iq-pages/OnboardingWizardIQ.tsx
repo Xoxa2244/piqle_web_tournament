@@ -38,7 +38,7 @@ const US_STATE_TZ: Record<string, string> = {
 
 const SOFTWARE_OPTIONS = [
   { id: 'courtreserve', label: 'CourtReserve', icon: '🎾', files: ['Members Report', 'Reservation Report', 'Event Registrants Report'] },
-  { id: 'other', label: 'Other / Custom', icon: '📄', files: [] },
+  { id: 'podplay', label: 'PodPlay', icon: '📊', files: ['Customers CSV', 'Settlements CSV / ZIP'] },
   { id: 'none', label: 'No software yet', icon: '🆕', files: [] },
 ]
 
@@ -50,8 +50,12 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   )
 }
 
-function FileUploadSlot({ label, description, file, onFile }: {
-  label: string; description: string; file: File | null; onFile: (f: File) => void
+function FileUploadSlot({ label, description, file, onFile, accept = '.csv,.tsv,.xlsx,.xls' }: {
+  label: string
+  description: string
+  file: File | null
+  onFile: (f: File) => void
+  accept?: string
 }) {
   const ref = useRef<HTMLInputElement>(null)
   const { isDark } = useTheme()
@@ -94,10 +98,148 @@ function FileUploadSlot({ label, description, file, onFile }: {
         </div>
         <Upload className="w-4 h-4 shrink-0 ml-auto" style={{ color: dragOver ? '#A78BFA' : 'var(--t4)' }} />
       </div>
-      <input ref={ref} type="file" accept=".csv,.tsv,.xlsx,.xls" className="hidden"
+      <input ref={ref} type="file" className="hidden"
+        accept={accept}
         onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }} />
     </div>
   )
+}
+
+function MultiFileUploadSlot({ label, description, files, onFiles, accept = '.csv,.tsv,.xlsx,.xls,.zip' }: {
+  label: string
+  description: string
+  files: File[]
+  onFiles: (files: File[]) => void
+  accept?: string
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const { isDark } = useTheme()
+  const [dragOver, setDragOver] = useState(false)
+
+  if (files.length > 0) {
+    const totalSizeKb = files.reduce((sum, file) => sum + file.size, 0) / 1024
+    const primaryLabel = files.length === 1 ? files[0].name : `${files.length} files selected`
+    return (
+      <div className="rounded-xl p-4 flex items-center gap-3" style={{
+        background: isDark ? 'rgba(16, 185, 129, 0.08)' : 'rgba(16, 185, 129, 0.06)',
+        border: '1px solid rgba(16, 185, 129, 0.2)',
+      }}>
+        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--heading)' }}>{primaryLabel}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{files.length} file{files.length !== 1 ? 's' : ''} • {totalSizeKb.toFixed(0)} KB</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => ref.current?.click()}
+          className="text-xs"
+          style={{ color: 'var(--t4)' }}
+        >
+          Replace
+        </button>
+        <input
+          ref={ref}
+          type="file"
+          accept={accept}
+          multiple
+          className="hidden"
+          onChange={e => {
+            const nextFiles = Array.from(e.target.files || [])
+            if (nextFiles.length > 0) onFiles(nextFiles)
+            e.target.value = ''
+          }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="rounded-xl p-4 cursor-pointer transition-all"
+      style={{
+        background: dragOver ? (isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)') : 'var(--subtle)',
+        border: dragOver ? '2px solid rgba(16,185,129,0.45)' : '1px dashed var(--card-border)',
+      }}
+      onClick={() => ref.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => {
+        e.preventDefault()
+        setDragOver(false)
+        const nextFiles = Array.from(e.dataTransfer.files || [])
+        if (nextFiles.length > 0) onFiles(nextFiles)
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(16,185,129,0.06)' }}>
+          <FileSpreadsheet className="w-5 h-5" style={{ color: '#10B981' }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium" style={{ color: 'var(--heading)' }}>{label}</p>
+          <p className="text-xs" style={{ color: 'var(--t4)' }}>{description}</p>
+        </div>
+        <Upload className="w-4 h-4 shrink-0 ml-auto" style={{ color: dragOver ? '#10B981' : 'var(--t4)' }} />
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept={accept}
+        multiple
+        className="hidden"
+        onChange={e => {
+          const nextFiles = Array.from(e.target.files || [])
+          if (nextFiles.length > 0) onFiles(nextFiles)
+          e.target.value = ''
+        }}
+      />
+    </div>
+  )
+}
+
+async function readSpreadsheetRows(file: File): Promise<Record<string, any>[]> {
+  const XLSX = await import('xlsx')
+  const arrayBuffer = await file.arrayBuffer()
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  return XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[]
+}
+
+async function extractPodPlayRowsFromZip(file: File): Promise<{ name: string; rows: Record<string, any>[] }[]> {
+  const XLSX = await import('xlsx')
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(await file.arrayBuffer())
+  const results: { name: string; rows: Record<string, any>[] }[] = []
+
+  const settlementFile = Object.keys(zip.files).find(
+    name => name.startsWith('Settlements ') && !name.includes('Line Items') && !name.includes('Summary') && name.endsWith('.csv')
+  )
+  const target = settlementFile || Object.keys(zip.files).find(name => name.includes('Line Items') && name.endsWith('.csv'))
+  if (!target) return results
+
+  const csv = await zip.files[target].async('uint8array')
+  const wb = XLSX.read(csv)
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }) as Record<string, any>[]
+  results.push({ name: target, rows })
+  return results
+}
+
+async function parsePodPlayFiles(files: File[], type: 'customers' | 'settlements'): Promise<Record<string, any>[]> {
+  let allRows: Record<string, any>[] = []
+
+  for (const file of files) {
+    if (type === 'settlements' && file.name.toLowerCase().endsWith('.zip')) {
+      const extracted = await extractPodPlayRowsFromZip(file)
+      for (const entry of extracted) {
+        allRows = allRows.concat(entry.rows)
+      }
+      continue
+    }
+
+    const rows = await readSpreadsheetRows(file)
+    allRows = allRows.concat(rows)
+  }
+
+  return allRows
 }
 
 export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClub, onCreateClub }: Props) {
@@ -130,7 +272,8 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const [membersFile, setMembersFile] = useState<File | null>(null)
   const [reservationsFile, setReservationsFile] = useState<File | null>(null)
   const [eventsFile, setEventsFile] = useState<File | null>(null)
-  const [genericFile, setGenericFile] = useState<File | null>(null)
+  const [podPlayCustomersFile, setPodPlayCustomersFile] = useState<File | null>(null)
+  const [podPlaySettlementsFiles, setPodPlaySettlementsFiles] = useState<File[]>([])
 
   // Google Maps autocomplete
   const addressInputRef = useRef<HTMLInputElement | null>(null)
@@ -193,7 +336,9 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
   const syncMutation = trpc.connectors.syncNow.useMutation()
 
   const handleComplete = async () => {
-    const hasAnyFile = !!(membersFile || reservationsFile || eventsFile || genericFile)
+    const hasCourtReserveFiles = !!(membersFile || reservationsFile || eventsFile)
+    const hasPodPlayFiles = !!(podPlayCustomersFile || podPlaySettlementsFiles.length > 0)
+    const hasAnyFile = hasCourtReserveFiles || hasPodPlayFiles
     hasFilesRef.current = hasAnyFile
     setProcessing(true)
 
@@ -331,46 +476,47 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       try {
         const filesToImport = software === 'courtreserve'
           ? [
-            membersFile && { type: 'members', file: membersFile },
-            reservationsFile && { type: 'reservations', file: reservationsFile },
-            eventsFile && { type: 'events', file: eventsFile },
-          ].filter(Boolean) as { type: string; file: File }[]
-          : genericFile ? [{ type: 'generic', file: genericFile }] : []
+            membersFile && { type: 'members' as const, files: [membersFile], endpoint: '/api/connectors/courtreserve/import-rows' },
+            reservationsFile && { type: 'reservations' as const, files: [reservationsFile], endpoint: '/api/connectors/courtreserve/import-rows' },
+            eventsFile && { type: 'events' as const, files: [eventsFile], endpoint: '/api/connectors/courtreserve/import-rows' },
+          ].filter(Boolean) as { type: 'members' | 'reservations' | 'events'; files: File[]; endpoint: string }[]
+          : [
+            podPlayCustomersFile && { type: 'customers' as const, files: [podPlayCustomersFile], endpoint: '/api/connectors/podplay/import' },
+            podPlaySettlementsFiles.length > 0 && { type: 'settlements' as const, files: podPlaySettlementsFiles, endpoint: '/api/connectors/podplay/import' },
+          ].filter(Boolean) as { type: 'customers' | 'settlements'; files: File[]; endpoint: string }[]
 
-        setImportStatus(`Importing ${filesToImport.length} file${filesToImport.length > 1 ? 's' : ''}...`)
+        setImportStatus(`Importing ${filesToImport.length} dataset${filesToImport.length > 1 ? 's' : ''}...`)
         setImportProgress(10)
 
         for (let i = 0; i < filesToImport.length; i++) {
-          const { type, file } = filesToImport[i]
-          setImportStatus(`Parsing ${file.name}...`)
+          const { type, files, endpoint } = filesToImport[i]
+          const label = files.length === 1 ? files[0].name : `${files.length} files`
+          setImportStatus(`Parsing ${label}...`)
           setImportProgress(10 + Math.round((i / filesToImport.length) * 70))
 
           try {
-            // Parse Excel in browser — avoids 413/504 server-side issues
-            const XLSX = await import('xlsx')
-            const arrayBuffer = await file.arrayBuffer()
-            const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true })
-            const ws = wb.Sheets[wb.SheetNames[0]]
-            const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, any>[]
+            const rows = software === 'podplay'
+              ? await parsePodPlayFiles(files, type as 'customers' | 'settlements')
+              : await readSpreadsheetRows(files[0])
 
-            setImportStatus(`Importing ${rows.length} rows from ${file.name}...`)
+            setImportStatus(`Importing ${rows.length} rows from ${label}...`)
 
-            const res = await fetch('/api/connectors/courtreserve/import-rows', {
+            const res = await fetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ clubId, fileType: type, rows }),
             })
             if (res.ok) {
               const result = await res.json()
-              setImportStatus(`${file.name}: Done`)
-              console.log(`[Import] ${file.name}:`, result)
+              setImportStatus(`${label}: Done`)
+              console.log(`[Import] ${label}:`, result)
             } else {
               const err = await res.text()
-              console.error(`[Import] ${file.name} failed:`, err)
-              setImportStatus(`${file.name}: Import failed`)
+              console.error(`[Import] ${label} failed:`, err)
+              setImportStatus(`${label}: Import failed`)
             }
           } catch (err) {
-            console.error(`[Import] ${file.name} error:`, err)
+            console.error(`[Import] ${label} error:`, err)
           }
         }
 
@@ -598,9 +744,29 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       )}
 
       {/* Other: generic upload */}
-      {software === 'other' && (
+      {software === 'podplay' && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <FileUploadSlot label="Upload your data file" description="CSV, XLSX — we'll auto-detect the format" file={genericFile} onFile={setGenericFile} />
+          <div className="space-y-3">
+            <div className="rounded-xl p-4" style={{ background: isDark ? 'rgba(16,185,129,0.06)' : 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.12)' }}>
+              <p className="text-xs" style={{ color: 'var(--t3)' }}>
+                <HelpCircle className="w-3.5 h-3.5 inline mr-1" />
+                Export <strong>Customers</strong> and <strong>Settlements</strong> from PodPlay. ZIP settlements exports are supported.
+              </p>
+            </div>
+            <FileUploadSlot
+              label="Customers CSV"
+              description="Customers_YYYY-MM-DD.csv"
+              file={podPlayCustomersFile}
+              onFile={setPodPlayCustomersFile}
+              accept=".csv,.xlsx"
+            />
+            <MultiFileUploadSlot
+              label="Settlements CSV / ZIP"
+              description="Drop one or more settlements exports"
+              files={podPlaySettlementsFiles}
+              onFiles={setPodPlaySettlementsFiles}
+            />
+          </div>
         </motion.div>
       )}
 
@@ -629,12 +795,14 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
 
   const isLast = step === steps.length - 1
   const hasApiCredentials = crPlan === 'advanced' && crApiUsername.trim() && crApiPassword.trim()
-  const hasFiles = !!(membersFile || reservationsFile || eventsFile || genericFile)
+  const hasCourtReserveFiles = !!(membersFile || reservationsFile || eventsFile)
+  const hasPodPlayFiles = !!(podPlayCustomersFile || podPlaySettlementsFiles.length > 0)
   const canProceed = step === 0
     ? clubName.trim().length >= 2
     : step === 1
     ? !!pricingModel
-    : software === 'courtreserve' ? !!(crPlan && (hasApiCredentials || hasFiles))
+    : software === 'courtreserve' ? !!(crPlan && (hasApiCredentials || hasCourtReserveFiles))
+    : software === 'podplay' ? hasPodPlayFiles
     : !!software
 
   return (

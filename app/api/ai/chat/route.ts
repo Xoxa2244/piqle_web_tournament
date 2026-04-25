@@ -9,6 +9,14 @@ import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
 import { createChatTools } from '@/lib/ai/chat-tools';
+import {
+  buildAdvisorStatePrompt,
+  clearAdvisorPendingClarification,
+  deriveAdvisorConversationState,
+} from '@/lib/ai/advisor-conversation-state';
+import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
+import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
+import { buildAdvisorOutcomeInsightsBlock } from '@/lib/ai/advisor-outcome-insights';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -156,12 +164,19 @@ export async function POST(req: Request) {
     // 4.5 Load prior conversation messages for multi-turn context
     step = 'history';
     let fullMessages = messages;
+    let storedConversationMessages: Array<{ role: string; content: string; metadata?: unknown }> = [];
     if (convId && conversationId) {
       try {
         const priorMessages = await prisma.aIMessage.findMany({
           where: { conversationId: convId },
           orderBy: { createdAt: 'asc' },
         });
+
+        storedConversationMessages = priorMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          metadata: message.metadata,
+        }))
 
         if (priorMessages.length > 0) {
           const dbMessages = priorMessages
@@ -243,28 +258,32 @@ export async function POST(req: Request) {
     // 6. Pre-fetch real-time club data (cached 5 min per club)
     step = 'prefetch';
     let liveDataBlock = ''
+    let outcomeInsightsBlock = ''
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, outcomeInsights: string
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights } = cached.data)
+        outcomeInsightsBlock = outcomeInsights || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
       } else {
         // Fresh fetch
         const tools = createChatTools(clubId)
         const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
           exec(tools.getReactivationCandidates, { limit: 10 }),
           exec(tools.getMembershipBreakdown, {}),
           exec(tools.getUpcomingSessions, { limit: 10 }),
+          buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
         ])
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions } })
+        outcomeInsightsBlock = outcomeInsights || ''
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights: outcomeInsightsBlock } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -358,12 +377,35 @@ ${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types
     try {
       const club: any = await prisma.club.findUnique({ where: { id: clubId } })
       const intelligenceSettings = club?.automationSettings?.intelligence || null
-      clubContextBlock = buildClubContextPrompt(intelligenceSettings)
+      const autonomyPolicy = resolveAdvisorAutonomyPolicy(club?.automationSettings)
+      const contactPolicy = resolveAdvisorContactPolicy({
+        timeZone: intelligenceSettings?.timezone,
+        automationSettings: club?.automationSettings,
+      })
+      const autonomyPolicyBlock = `\nCurrent agent autonomy policy:
+- Welcome: ${autonomyPolicy.welcome.mode} (confidence ${autonomyPolicy.welcome.minConfidenceAuto}+, max ${autonomyPolicy.welcome.maxRecipientsAuto}, membership required ${autonomyPolicy.welcome.requireMembershipSignal ? 'yes' : 'no'})
+- Slot filler: ${autonomyPolicy.slotFiller.mode} (confidence ${autonomyPolicy.slotFiller.minConfidenceAuto}+, max ${autonomyPolicy.slotFiller.maxRecipientsAuto}, membership required ${autonomyPolicy.slotFiller.requireMembershipSignal ? 'yes' : 'no'})
+- Check-in: ${autonomyPolicy.checkIn.mode} (confidence ${autonomyPolicy.checkIn.minConfidenceAuto}+, max ${autonomyPolicy.checkIn.maxRecipientsAuto}, membership required ${autonomyPolicy.checkIn.requireMembershipSignal ? 'yes' : 'no'})
+- Retention boost: ${autonomyPolicy.retentionBoost.mode} (confidence ${autonomyPolicy.retentionBoost.minConfidenceAuto}+, max ${autonomyPolicy.retentionBoost.maxRecipientsAuto}, membership required ${autonomyPolicy.retentionBoost.requireMembershipSignal ? 'yes' : 'no'})
+- Reactivation: ${autonomyPolicy.reactivation.mode} (confidence ${autonomyPolicy.reactivation.minConfidenceAuto}+, max ${autonomyPolicy.reactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.reactivation.requireMembershipSignal ? 'yes' : 'no'})
+- Trial follow-up: ${autonomyPolicy.trialFollowUp.mode} (confidence ${autonomyPolicy.trialFollowUp.minConfidenceAuto}+, max ${autonomyPolicy.trialFollowUp.maxRecipientsAuto}, membership required ${autonomyPolicy.trialFollowUp.requireMembershipSignal ? 'yes' : 'no'})
+- Renewal outreach: ${autonomyPolicy.renewalReactivation.mode} (confidence ${autonomyPolicy.renewalReactivation.minConfidenceAuto}+, max ${autonomyPolicy.renewalReactivation.maxRecipientsAuto}, membership required ${autonomyPolicy.renewalReactivation.requireMembershipSignal ? 'yes' : 'no'})
+- Membership lifecycle auto execution: ${intelligenceSettings?.lifecycleAutoExecutionEnabled === true ? 'enabled' : 'safety-locked off for testing' }`
+      const contactPolicyBlock = `\nCurrent contact policy:
+- Quiet hours: ${contactPolicy.quietHours.startHour}:00-${contactPolicy.quietHours.endHour}:00 (${contactPolicy.timeZone})
+- Cross-campaign cooldown: ${contactPolicy.cooldownHours} hours
+- Daily contact cap: ${contactPolicy.max24h}
+- Weekly contact cap: ${contactPolicy.max7d}
+- Recent booking suppression window: ${contactPolicy.recentBookingLookbackDays} days`
+      clubContextBlock = `${buildClubContextPrompt(intelligenceSettings)}${autonomyPolicyBlock}${contactPolicyBlock}`
     } catch { /* non-critical */ }
 
+    const advisorStateBlock = buildAdvisorStatePrompt(
+      deriveAdvisorConversationState(storedConversationMessages)
+    )
     const pageContextBlock = pageContext ? `\n\nCurrent page context: ${pageContext}` : ''
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${pageContextBlock}
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${outcomeInsightsBlock}${pageContextBlock}
 
 --- Real-Time Club Data (live from database) ---
 ${liveDataBlock || 'No live data available.'}
@@ -401,6 +443,9 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
       if (!convId) return;
       try {
+        const advisorState = clearAdvisorPendingClarification(
+          deriveAdvisorConversationState(storedConversationMessages)
+        )
         await prisma.aIMessage.createMany({
           data: [
             { conversationId: convId, role: 'user', content: lastUserText, metadata: {} },
@@ -412,6 +457,7 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
                 outputTokens: event.usage.outputTokens,
                 ragChunksUsed: ragChunks.length,
                 language: conversationLanguage,
+                ...(advisorState ? { advisorState } : {}),
                 ...(isFallback ? { fallback: true } : {}),
               },
             },

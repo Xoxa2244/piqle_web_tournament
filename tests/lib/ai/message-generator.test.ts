@@ -318,6 +318,61 @@ describe('AI-генерация сообщений > Генерация вари
     expect(call.prompt).toContain('10%')
     expect(call.tier).toBe('fast')
   })
+
+  // ── Voice injection — ensures every generated variant inherits the
+  // club's custom tone. Without this path, going "Live" with a voice
+  // profile set would silently fall back to platform defaults.
+  it('voice profile (custom instructions) попадает в system prompt', async () => {
+    mockGenerateWithFallback.mockResolvedValueOnce({
+      text: '[]',
+      model: 'gpt-4o-mini',
+      usage: { inputTokens: 300, outputTokens: 0 },
+    })
+
+    await generateLLMMessageVariants({
+      messageType: 'CHECK_IN',
+      context: baseContext,
+      channel: 'both',
+      clubId: 'club-austin-pbc',
+      voice: {
+        tone: 'warm',
+        customInstructions: 'Use Texan slang when it fits. Sign off as "Coach Mike".',
+      },
+    })
+
+    const call = mockGenerateWithFallback.mock.calls[0][0]
+    // The composed system prompt must carry both the base rules AND the
+    // voice block so the LLM has the full picture in one pass.
+    expect(call.system).toContain('VOICE & TONE')
+    expect(call.system).toContain('Coach Mike')
+    expect(call.system).toContain('Texan slang')
+    // Cost tracking wired too.
+    expect(call.clubId).toBe('club-austin-pbc')
+    expect(call.operation).toBe('generateVariants:CHECK_IN')
+  })
+
+  it('без voice → system prompt содержит defaults (friendly / medium / casual)', async () => {
+    mockGenerateWithFallback.mockResolvedValueOnce({
+      text: '[]',
+      model: 'gpt-4o-mini',
+      usage: { inputTokens: 300, outputTokens: 0 },
+    })
+
+    await generateLLMMessageVariants({
+      messageType: 'CHECK_IN',
+      context: baseContext,
+      channel: 'both',
+    })
+
+    const call = mockGenerateWithFallback.mock.calls[0][0]
+    // Even without explicit voice, composeSystem injects the default block
+    // so callers can't accidentally ship a prompt with no style guidance.
+    expect(call.system).toContain('VOICE & TONE')
+    expect(call.system).toMatch(/Do not use emoji/i)
+    // No clubId → no operation tag (cost-tracking is opt-in)
+    expect(call.clubId).toBeUndefined()
+    expect(call.operation).toBeUndefined()
+  })
 })
 
 // ── getPerformanceFeedback ──

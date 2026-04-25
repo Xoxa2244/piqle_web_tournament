@@ -15,6 +15,9 @@
 import { NextResponse } from 'next/server'
 import { cronLogger as log } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
+import { evaluateAgentControlPlaneAction } from '@/lib/ai/agent-control-plane'
+import { evaluateAgentOutreachRollout } from '@/lib/ai/agent-outreach-rollout'
+import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -48,6 +51,43 @@ async function sendReviewRequests() {
     const settings = typeof club.automationSettings === 'object' ? club.automationSettings : {}
     const googleReviewUrl = (settings as any)?.googleReviewUrl
     if (!googleReviewUrl) continue
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: club.automationSettings,
+      action: 'outreachSend',
+      clubId: club.id,
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: club.id,
+      automationSettings: club.automationSettings,
+      actionKind: 'create_campaign',
+    })
+
+    if (!controlPlane.allowed || controlPlane.shadow || !rollout.allowed) {
+      totalSkipped++
+      await persistAgentDecisionRecord(prisma, {
+        clubId: club.id,
+        actorType: 'system',
+        action: 'outreachSend',
+        targetType: 'review_request_cron',
+        mode: controlPlane.mode,
+        result: controlPlane.shadow ? 'shadowed' : 'blocked',
+        summary: controlPlane.allowed
+          ? controlPlane.shadow
+            ? `${controlPlane.reason} Review requests stayed in shadow mode.`
+            : rollout.reason
+          : controlPlane.reason,
+        metadata: {
+          source: 'review_request_cron',
+          reason: controlPlane.allowed
+            ? (controlPlane.shadow ? 'control_plane_shadow' : 'outreach_rollout_blocked')
+            : 'control_plane_disabled',
+          actionKind: 'create_campaign',
+          rolloutClubAllowlisted: rollout.clubAllowlisted,
+          rolloutActionEnabled: rollout.actionEnabled,
+        },
+      })
+      continue
+    }
 
     // Find members who played a session 2-24 hours ago
     const recentPlayers: any[] = await prisma.$queryRawUnsafe(`

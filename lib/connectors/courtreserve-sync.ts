@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { ExternalEntityType } from '@prisma/client'
 import { CourtReserveClient } from './courtreserve-client'
 import { decryptCredentials } from './encryption'
+import { normalizePhone } from '@/lib/phone-normalize'
 import type { CRMember, CRReservation, CRCourt, SyncResult, SyncError } from './courtreserve-types'
 
 const PARTNER_PREFIX = 'cr' // ExternalIdMapping partnerId prefix
@@ -173,8 +174,12 @@ async function syncMembersWithProgress(
           let dateOfBirth: Date | undefined
           if (member.dateOfBirth) { try { const p = new Date(member.dateOfBirth); if (!isNaN(p.getTime()) && p.getFullYear() > 1900) dateOfBirth = p } catch {} }
 
+          // Normalise to E.164 — `null` if CR sent garbage / partial.
+          // `|| undefined` keeps Prisma from overwriting an existing
+          // good number with `null` on incremental sync.
+          const normalisedPhone = normalizePhone(member.phonenumber) || undefined
           const userData = {
-            email, name: name || undefined, phone: member.phonenumber || undefined,
+            email, name: name || undefined, phone: normalisedPhone,
             gender: member.gender === 'Male' ? 'M' as const : member.gender === 'Female' ? 'F' as const : undefined,
             city: member.city || undefined,
             ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
@@ -278,10 +283,12 @@ async function syncSingleMember(
       } catch {}
     }
 
+    // Same E.164 normalisation as the chunked path above. See comment there.
+    const normalisedPhone = normalizePhone(member.phonenumber) || undefined
     const userData = {
       email,
       name: name || undefined,
-      phone: member.phonenumber || undefined,
+      phone: normalisedPhone,
       gender: member.gender === 'Male' ? 'M' as const : member.gender === 'Female' ? 'F' as const : undefined,
       city: member.city || undefined,
       ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),

@@ -292,7 +292,7 @@ function buildInvitationEmailHtml(
 ): string {
   const title = tournament?.title ?? 'Tournament'
   const tournamentLink = tournament?.id ? `${baseUrl}/?open=${tournament.id}` : baseUrl
-  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png?v=20260424`
   const imageUrl = tournament?.image ?? `${baseUrl}/tournament-placeholder.png`
   const entryFee =
     tournament?.entryFee != null && parseFloat(String(tournament.entryFee)) > 0

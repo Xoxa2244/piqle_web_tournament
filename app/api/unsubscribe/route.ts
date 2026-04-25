@@ -1,45 +1,51 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 import { verifyUnsubscribeToken } from '@/lib/unsubscribe'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function getAppBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  return 'https://stest.piqle.io'
+  return getPlatformBaseUrl()
 }
 
 async function processUnsubscribe(token: string): Promise<{ userId: string; clubId: string } | null> {
   const payload = verifyUnsubscribeToken(token)
   if (!payload) return null
 
-  await prisma.userPlayPreference.upsert({
-    where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
-    update: { notificationsOptOut: true },
-    create: {
-      userId: payload.userId,
-      clubId: payload.clubId,
-      notificationsOptOut: true,
-      preferredDays: [],
-      preferredFormats: [],
-      targetSessionsPerWeek: 2,
-      skillLevel: 'ALL_LEVELS',
-    },
-  })
+  await prisma.$transaction([
+    prisma.userPlayPreference.upsert({
+      where: { userId_clubId: { userId: payload.userId, clubId: payload.clubId } },
+      update: { notificationsOptOut: true },
+      create: {
+        userId: payload.userId,
+        clubId: payload.clubId,
+        notificationsOptOut: true,
+        preferredDays: [],
+        preferredFormats: [],
+        targetSessionsPerWeek: 2,
+        skillLevel: 'ALL_LEVELS',
+      },
+    }),
+    prisma.$executeRaw`
+      UPDATE users
+      SET
+        sms_opt_in = false,
+        "updatedAt" = NOW()
+      WHERE id = ${payload.userId}
+    `,
+    prisma.aIRecommendationLog.updateMany({
+      where: {
+        userId: payload.userId,
+        clubId: payload.clubId,
+        status: { in: ['PENDING', 'SENT'] },
+      },
+      data: { status: 'UNSUBSCRIBED' },
+    }),
+  ])
 
-  // Mark any pending/sent recommendations as unsubscribed
-  await prisma.aIRecommendationLog.updateMany({
-    where: {
-      userId: payload.userId,
-      clubId: payload.clubId,
-      status: { in: ['PENDING', 'SENT'] },
-    },
-    data: { status: 'UNSUBSCRIBED' },
-  })
-
-  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}`)
+  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}; sms_opt_in=false`)
 
   return payload
 }

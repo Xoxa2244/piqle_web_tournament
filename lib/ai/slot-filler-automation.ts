@@ -6,15 +6,24 @@
  * - "lastminute": find sessions starting in 2-6 hours, urgent invites (every 2h)
  *
  * Uses existing slot filler scoring, anti-spam, email/SMS infrastructure.
- * Dry run by default — no messages sent unless agentLive=true AND dryRun=false.
+ * Dry run by default — auto-send only happens when the club is live, the run is not dry,
+ * and autonomy policy allows slot filler to execute automatically.
  */
 
 import { PrismaClient } from '@prisma/client'
+import { buildPlatformUrl } from '@/lib/platform-base-url'
 import { generateSlotFillerRecommendations } from './slot-filler'
 import { checkAntiSpam } from './anti-spam'
 import { getFrequentPartnerIds } from './partners'
 import { sendSlotFillerInviteEmail } from '../email'
 import { inferPreferencesFromBookings } from './inferred-preferences'
+import {
+  buildAgentTriggerReasoning,
+  evaluateAgentTriggerRuntime,
+} from './agent-trigger-runtime'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
+import { persistAgentDecisionRecord } from './agent-decision-records'
 import type { MemberData, UserPlayPreferenceData, BookingHistory, PlaySessionData } from '../../types/intelligence'
 
 export type SlotFillerMode = 'tomorrow' | 'lastminute'
@@ -68,11 +77,53 @@ export async function runSlotFillerAutomation(
   for (const club of clubs) {
     const settings = (club.automationSettings as any)?.intelligence || {}
     const isLive = settings.agentLive === true
-    const effectiveDryRun = dryRun || !isLive
+    const requestedLiveMode = isLive && !dryRun
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: club.automationSettings,
+      action: 'outreachSend',
+      clubId: club.id,
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: club.id,
+      automationSettings: club.automationSettings,
+      actionKind: 'fill_session',
+    })
+    const liveModeAllowed = requestedLiveMode
+      && controlPlane.allowed
+      && !controlPlane.shadow
+      && rollout.allowed
 
     try {
+      if (requestedLiveMode && !liveModeAllowed) {
+        await persistAgentDecisionRecord(prisma, {
+          clubId: club.id,
+          actorType: 'system',
+          action: 'outreachSend',
+          targetType: 'slot_filler_automation_run',
+          targetId: `${club.id}:${mode}:${new Date().toISOString().slice(0, 13)}`,
+          mode: controlPlane.mode,
+          result: controlPlane.shadow ? 'shadowed' : 'blocked',
+          summary: controlPlane.shadow
+            ? `${controlPlane.reason} Slot filler automation stayed in shadow mode.`
+            : controlPlane.allowed
+              ? rollout.reason
+              : controlPlane.reason,
+          metadata: {
+            source: 'slot_filler_automation',
+            mode,
+            reason: controlPlane.allowed
+              ? (controlPlane.shadow ? 'control_plane_shadow' : 'outreach_rollout_blocked')
+              : 'control_plane_disabled',
+            actionKind: 'fill_session',
+            rolloutClubAllowlisted: rollout.clubAllowlisted,
+            rolloutActionEnabled: rollout.actionEnabled,
+          },
+        })
+      }
+
       const result = await processClub(prisma, club, mode, {
-        dryRun: effectiveDryRun,
+        dryRun,
+        liveMode: liveModeAllowed,
         maxCandidatesPerSession,
         minScore,
       })
@@ -94,11 +145,11 @@ export async function runSlotFillerAutomation(
 
 async function processClub(
   prisma: PrismaClient,
-  club: { id: string; name: string },
+  club: { id: string; name: string; automationSettings?: unknown },
   mode: SlotFillerMode,
-  options: { dryRun: boolean; maxCandidatesPerSession: number; minScore: number },
+  options: { dryRun: boolean; liveMode: boolean; maxCandidatesPerSession: number; minScore: number },
 ): Promise<ClubResult> {
-  const { dryRun, maxCandidatesPerSession, minScore } = options
+  const { dryRun, liveMode, maxCandidatesPerSession, minScore } = options
   const now = new Date()
 
   // Find target sessions based on mode
@@ -138,7 +189,19 @@ async function processClub(
   }
 
   for (const session of sessions) {
-    const maxPlayers = session.maxPlayers || 8
+    // Schema default is 8, but a club may set maxPlayers=0 to mean
+    // "closed / no invites". Previously `session.maxPlayers || 8`
+    // silently fell back to 8 for both null and 0, so the automation
+    // would invite players to a closed session. Treat non-positive
+    // capacity as a hard skip with a breadcrumb for ops.
+    const rawMax = session.maxPlayers
+    if (rawMax === null || rawMax === undefined || rawMax <= 0) {
+      console.warn(
+        `[SlotFillerAutomation] session ${session.id} has invalid maxPlayers (${rawMax}) — skipping`,
+      )
+      continue
+    }
+    const maxPlayers = rawMax
     const spotsLeft = maxPlayers - session.bookings.length
     if (spotsLeft <= 0) continue
 
@@ -180,6 +243,20 @@ async function processClub(
 
     result.candidatesFound += topCandidates.length
 
+    const averageScore = topCandidates.length > 0
+      ? Math.round(topCandidates.reduce((sum, rec) => sum + rec.score, 0) / topCandidates.length)
+      : null
+    const runtime = evaluateAgentTriggerRuntime({
+      source: 'slot_filler_automation',
+      triggerMode: 'immediate',
+      action: 'slotFiller',
+      automationSettings: club.automationSettings,
+      liveMode: liveMode && !dryRun,
+      confidence: averageScore,
+      recipientCount: topCandidates.length,
+      membershipSignal: 'weak',
+    })
+
     const sessionResult: SessionResult = {
       sessionId: session.id,
       sessionTitle: session.title || 'Session',
@@ -218,10 +295,51 @@ async function processClub(
         ? `${socialProof} Join the group!`
         : `${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left for ${session.title}. Don't miss out!`
 
-      // Send or log
-      if (!dryRun && rec.member.email) {
+      const deliveryStatus = runtime.decision.outcome === 'blocked'
+        ? 'blocked'
+        : runtime.decision.outcome === 'pending'
+          ? 'pending'
+          : 'sent'
+
+      // CRITICAL: Create log FIRST so we have an ID to pass as metadata to Mandrill.
+      // Without this, webhook events (open/click/bounce) cannot be correlated back
+      // to the recommendation record. See: app/api/webhooks/mailchimp/route.ts
+      let logRecord: { id: string } | null = null
+      try {
+        logRecord = await prisma.aIRecommendationLog.create({
+          data: {
+            clubId: club.id,
+            userId: rec.member.id,
+            type: 'SLOT_FILLER',
+            channel: isLastMinute ? 'both' : 'email',
+            sessionId: session.id,
+            score: rec.score,
+            variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
+            // Start as 'pending' — will update to 'sent' after email dispatched
+            status: deliveryStatus === 'sent' ? 'pending' : deliveryStatus,
+            reasoning: {
+              ...buildAgentTriggerReasoning(runtime, {
+                mode,
+                score: rec.score,
+                estimatedLikelihood: rec.estimatedLikelihood,
+                spotsLeft,
+                socialProof: socialProof || null,
+                dryRun: deliveryStatus !== 'sent',
+              }),
+            } as any,
+          },
+          select: { id: true },
+        })
+      } catch (logErr: any) {
+        console.error(`[SlotFiller Auto] Log create failed for ${rec.member.email}:`, logErr.message)
+        result.errors++
+        continue
+      }
+
+      // Send email (only if status is 'sent' and we have a log record for metadata)
+      if (deliveryStatus === 'sent' && rec.member.email && logRecord) {
         try {
-          await sendSlotFillerInviteEmail({
+          const { messageId } = await sendSlotFillerInviteEmail({
             to: rec.member.email,
             memberName: rec.member.name || rec.member.email.split('@')[0],
             clubName: club.name,
@@ -229,40 +347,50 @@ async function processClub(
             sessionDate: session.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
             sessionTime: `${session.startTime} - ${session.endTime}`,
             spotsLeft,
-            bookingUrl: `https://app.iqsport.ai/clubs/${club.id}/intelligence/sessions`,
+            // ?rec= tag so downstream analytics / partner bookings can
+            // attribute back to this recommendation. Mandrill click webhook
+            // will also fire on tracked clicks and set clickedAt — the
+            // attribution service then treats this as a deep_link.
+            bookingUrl: buildPlatformUrl(`/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`),
             customSubject: subject,
             customMessage: body,
+            // CRITICAL: metadata flows through Mandrill to webhooks for engagement tracking
+            metadata: {
+              logId: logRecord.id,
+              clubId: club.id,
+              userId: rec.member.id,
+              variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
+            },
+          })
+
+          // Update log with messageId + final status
+          await prisma.aIRecommendationLog.update({
+            where: { id: logRecord.id },
+            data: {
+              status: 'sent',
+              externalMessageId: messageId,
+            },
+          }).catch((updErr: any) => {
+            console.error(`[SlotFiller Auto] Log update failed (messageId lost):`, updErr.message)
           })
         } catch (err: any) {
           console.error(`[SlotFiller Auto] Email failed for ${rec.member.email}:`, err.message)
           result.errors++
+          // Mark log as failed so retry logic can find it
+          await prisma.aIRecommendationLog.update({
+            where: { id: logRecord.id },
+            data: { status: 'failed' },
+          }).catch(() => {})
         }
       }
 
-      // Log to AIRecommendationLog
-      await prisma.aIRecommendationLog.create({
-        data: {
-          clubId: club.id,
-          userId: rec.member.id,
-          type: 'SLOT_FILLER',
-          channel: isLastMinute ? 'both' : 'email',
-          sessionId: session.id,
-          score: rec.score,
-          variantId: isLastMinute ? 'slot_filler_lastminute' : 'slot_filler_tomorrow',
-          status: dryRun ? 'pending' : 'sent',
-          reasoning: {
-            mode,
-            score: rec.score,
-            estimatedLikelihood: rec.estimatedLikelihood,
-            spotsLeft,
-            socialProof: socialProof || null,
-            dryRun,
-          } as any,
-        },
-      }).catch(() => {})
-
-      sessionResult.invitesSent++
-      result.messagesSent++
+      if (deliveryStatus === 'sent') {
+        sessionResult.invitesSent++
+        result.messagesSent++
+      } else {
+        sessionResult.invitesSkipped++
+        result.messagesSkipped++
+      }
     }
 
     result.details.push(sessionResult)

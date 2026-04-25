@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X } from 'lucide-react'
 import { useTheme } from '../../IQThemeProvider'
 import { useCampaignCreator } from './useCampaignCreator'
-import { useCreateCampaign, useMemberAiProfiles } from '../../../_hooks/use-intelligence'
+import { useCreateCampaign } from '../../../_hooks/use-intelligence'
 import { CampaignCreatorStep1Type } from './CampaignCreatorStep1Type'
 import { CampaignCreatorStep2Audience } from './CampaignCreatorStep2Audience'
 import { CampaignCreatorStep3Message } from './CampaignCreatorStep3Message'
@@ -25,24 +25,6 @@ export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: Cam
   const creator = useCampaignCreator(initialType ?? undefined)
   const { state } = creator
   const campaign = useCreateCampaign()
-  const [usePersonalized, setUsePersonalized] = useState(true)
-
-  // Fetch AI profiles for sample personalized messages
-  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId)
-  const sampleMessages = useMemo(() => {
-    if (!aiProfilesRaw?.length) return []
-    const memberIds = new Set(state.audience.memberIds)
-    // Filter profiles that match audience, take up to 3 samples
-    const matching = aiProfilesRaw
-      .filter((p: any) => memberIds.size === 0 || memberIds.has(p.userId))
-      .filter((p: any) => p.reactivationMessage)
-      .slice(0, 3)
-      .map((p: any) => ({
-        name: p.memberName || p.userId?.slice(0, 8) || 'Member',
-        message: p.reactivationMessage as string,
-      }))
-    return matching
-  }, [aiProfilesRaw, state.audience.memberIds])
 
   const handleSend = () => {
     campaign.mutate(
@@ -118,9 +100,13 @@ export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: Cam
                   audienceCount={state.audience.count}
                   message={state.message}
                   onMessageChange={creator.setMessage}
-                  usePersonalized={usePersonalized}
-                  onPersonalizedChange={setUsePersonalized}
-                  sampleMessages={sampleMessages}
+                  context={{
+                    sessionTitle: state.sessionId
+                      ? state.audience.label.replace(/^(Slot filler|Event invite):\s*/, '')
+                      : undefined,
+                    riskSegment: state.riskSegment,
+                    inactivityDays: state.inactivityDays,
+                  }}
                   onContinue={creator.nextStep}
                   onBack={creator.prevStep}
                 />

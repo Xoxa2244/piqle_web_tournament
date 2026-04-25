@@ -7,7 +7,15 @@
  * don't trigger cross-type cooldown but DO count toward frequency caps.
  */
 
-type InviteType = 'SLOT_FILLER' | 'REACTIVATION' | 'EVENT_INVITE' | 'CHECK_IN' | 'RETENTION_BOOST'
+import { readAdvisorContactPolicyOverrides } from './advisor-contact-policy'
+
+type InviteType =
+  | 'SLOT_FILLER'
+  | 'REACTIVATION'
+  | 'EVENT_INVITE'
+  | 'CHECK_IN'
+  | 'RETENTION_BOOST'
+  | 'NEW_MEMBER_WELCOME'
 type PlayerPersona = 'COMPETITIVE' | 'SOCIAL' | 'IMPROVER' | 'CASUAL' | 'TEAM_PLAYER'
 
 interface SpamCheckInput {
@@ -16,6 +24,7 @@ interface SpamCheckInput {
   clubId: string
   type: InviteType
   sessionId?: string | null
+  automationSettings?: unknown
   /** If true, this is a follow-up within an existing sequence chain.
    *  Relaxes: cross-type cooldown is skipped. Still enforces frequency caps. */
   isSequenceFollowUp?: boolean
@@ -29,13 +38,13 @@ interface SpamCheckResult {
 // ── Persona-Aware Limits ──
 // COMPETITIVE/IMPROVER: more engaged, tolerate more contact
 // CASUAL: less engaged, contact less frequently
-const DEFAULT_LIMITS = { max24h: 2, max7d: 5, cooldownHours: 4 }
+const DEFAULT_LIMITS = { max24h: 5, max7d: 10, cooldownHours: 2 }
 const PERSONA_LIMITS: Record<PlayerPersona, { max24h: number; max7d: number; cooldownHours: number }> = {
-  COMPETITIVE: { max24h: 3, max7d: 7, cooldownHours: 3 },
-  IMPROVER:    { max24h: 3, max7d: 7, cooldownHours: 3 },
-  SOCIAL:      { max24h: 2, max7d: 5, cooldownHours: 4 },
-  TEAM_PLAYER: { max24h: 2, max7d: 6, cooldownHours: 3 },
-  CASUAL:      { max24h: 1, max7d: 3, cooldownHours: 6 },
+  COMPETITIVE: { max24h: 6, max7d: 12, cooldownHours: 2 },
+  IMPROVER:    { max24h: 6, max7d: 12, cooldownHours: 2 },
+  SOCIAL:      { max24h: 5, max7d: 10, cooldownHours: 2 },
+  TEAM_PLAYER: { max24h: 5, max7d: 10, cooldownHours: 2 },
+  CASUAL:      { max24h: 3, max7d: 6, cooldownHours: 4 },
 }
 
 /**
@@ -61,7 +70,26 @@ export async function checkAntiSpam(input: SpamCheckInput): Promise<SpamCheckRes
   }
 
   // Persona-aware limits (falls back to default)
-  const limits = persona ? PERSONA_LIMITS[persona] : DEFAULT_LIMITS
+  let automationSettings = input.automationSettings
+  if (automationSettings === undefined) {
+    try {
+      const club = await prisma.club.findUnique({
+        where: { id: clubId },
+        select: { automationSettings: true },
+      })
+      automationSettings = club?.automationSettings
+    } catch {
+      automationSettings = undefined
+    }
+  }
+
+  const policyOverrides = readAdvisorContactPolicyOverrides(automationSettings)
+  const baseLimits = persona ? PERSONA_LIMITS[persona] : DEFAULT_LIMITS
+  const limits = {
+    max24h: policyOverrides.max24h ?? baseLimits.max24h,
+    max7d: policyOverrides.max7d ?? baseLimits.max7d,
+    cooldownHours: policyOverrides.cooldownHours ?? baseLimits.cooldownHours,
+  }
 
   // 2. Dedup: same session + same user + same type
   if (sessionId && !sessionId.startsWith('csv-')) {

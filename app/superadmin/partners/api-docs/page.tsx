@@ -8,8 +8,6 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Copy, Check, Mail, Key, Users, Trophy, FileText, RefreshCw, Download } from 'lucide-react'
 
-const SUPERADMIN_AUTH_KEY = 'superadmin_authenticated'
-
 export default function ApiDocsPage() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 

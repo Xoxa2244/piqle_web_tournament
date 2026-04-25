@@ -18,6 +18,10 @@ import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
 
+function normalizeAdminReminderChannel(value: string | null | undefined): 'in_app' | 'email' | 'sms' | 'both' {
+  return value === 'email' || value === 'sms' || value === 'both' ? value : 'in_app'
+}
+
 export default function ProfilePage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -55,6 +59,9 @@ export default function ProfilePage() {
     duprLink: '',
     phone: '',
     smsOptIn: false,
+    adminReminderEmail: '',
+    adminReminderPhone: '',
+    adminReminderChannel: 'in_app' as 'in_app' | 'email' | 'sms' | 'both',
   })
 
   // Initialize form data when profile loads
@@ -67,6 +74,9 @@ export default function ProfilePage() {
         duprLink: profile.duprLink || '',
         phone: profile.phone || '',
         smsOptIn: profile.smsOptIn || false,
+        adminReminderEmail: profile.adminReminderEmail || '',
+        adminReminderPhone: profile.adminReminderPhone || '',
+        adminReminderChannel: normalizeAdminReminderChannel(profile.adminReminderChannel),
       })
       setAvatarPreview(null)
       setAvatarError(false)
@@ -224,6 +234,9 @@ export default function ProfilePage() {
         duprLink: profile.duprLink || '',
         phone: profile.phone || '',
         smsOptIn: profile.smsOptIn || false,
+        adminReminderEmail: profile.adminReminderEmail || '',
+        adminReminderPhone: profile.adminReminderPhone || '',
+        adminReminderChannel: normalizeAdminReminderChannel(profile.adminReminderChannel),
       })
       setIsEditing(true)
     }
@@ -238,6 +251,9 @@ export default function ProfilePage() {
       image: avatarPreview || undefined,
       phone: formData.phone,
       smsOptIn: formData.smsOptIn,
+      adminReminderEmail: formData.adminReminderEmail,
+      adminReminderPhone: formData.adminReminderPhone,
+      adminReminderChannel: formData.adminReminderChannel,
     })
   }
 
@@ -250,6 +266,9 @@ export default function ProfilePage() {
         duprLink: profile.duprLink || '',
         phone: profile.phone || '',
         smsOptIn: profile.smsOptIn || false,
+        adminReminderEmail: profile.adminReminderEmail || '',
+        adminReminderPhone: profile.adminReminderPhone || '',
+        adminReminderChannel: normalizeAdminReminderChannel(profile.adminReminderChannel),
       })
       setAvatarPreview(null)
     }
@@ -366,6 +385,12 @@ export default function ProfilePage() {
   const clubsCount = (profile as any).clubsJoinedCount ?? 0
   const playedCount = (profile as any).tournamentsPlayedCount ?? 0
   const createdCount = (profile as any).tournamentsCreatedCount ?? 0
+  const adminReminderChannelLabels: Record<'in_app' | 'email' | 'sms' | 'both', string> = {
+    in_app: 'In-app only',
+    email: 'Email',
+    sms: 'SMS',
+    both: 'Email + SMS',
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -519,6 +544,14 @@ export default function ProfilePage() {
                   {profile.city || 'Not specified'}
                 </div>
               )}
+            </div>
+
+            {/* Account Email */}
+            <div>
+              <Label>Account Email</Label>
+              <div className="mt-1 text-lg text-gray-900">
+                {profile.email || 'Not specified'}
+              </div>
             </div>
 
             {/* DUPR Link */}
@@ -679,6 +712,74 @@ export default function ProfilePage() {
                   ) : (
                     <span className="text-gray-400">No phone number. Edit profile to add.</span>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* Agent Reminder Contacts */}
+            <div className="border-t pt-4 mt-4 space-y-3">
+              <div>
+                <Label>Agent Reminder Contacts</Label>
+                <p className="mt-1 text-xs text-gray-500">
+                  These contacts are used for admin reminders from the AI Agent when you choose email or SMS delivery.
+                </p>
+              </div>
+
+              {isEditing ? (
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="adminReminderChannel">Reminder delivery</Label>
+                    <select
+                      id="adminReminderChannel"
+                      value={formData.adminReminderChannel}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        adminReminderChannel: e.target.value as 'in_app' | 'email' | 'sms' | 'both',
+                      })}
+                      className="mt-1 flex h-10 w-full rounded-md border border-input bg-background pl-3 py-2 text-sm pr-[2.5rem]"
+                    >
+                      <option value="in_app">In-app only</option>
+                      <option value="email">Email me</option>
+                      <option value="sms">Text me</option>
+                      <option value="both">Email + SMS</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="adminReminderEmail">Reminder email</Label>
+                    <Input
+                      id="adminReminderEmail"
+                      type="email"
+                      value={formData.adminReminderEmail}
+                      onChange={(e) => setFormData({ ...formData, adminReminderEmail: e.target.value })}
+                      className="mt-1"
+                      placeholder={profile.email || 'name@example.com'}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="adminReminderPhone">Reminder phone</Label>
+                    <Input
+                      id="adminReminderPhone"
+                      type="tel"
+                      value={formData.adminReminderPhone}
+                      onChange={(e) => setFormData({ ...formData, adminReminderPhone: e.target.value })}
+                      className="mt-1"
+                      placeholder="+1 (555) 123-4567"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div>
+                    Delivery: {adminReminderChannelLabels[(profile.adminReminderChannel || 'in_app') as 'in_app' | 'email' | 'sms' | 'both']}
+                  </div>
+                  <div>
+                    Email: {profile.adminReminderEmail || <span className="text-gray-400">Not set</span>}
+                  </div>
+                  <div>
+                    Phone: {profile.adminReminderPhone || <span className="text-gray-400">Not set</span>}
+                  </div>
                 </div>
               )}
             </div>

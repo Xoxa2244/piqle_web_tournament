@@ -5,15 +5,18 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Session } from 'next-auth'
 import { parse as parseCookie } from 'cookie'
+import { assertSuperadminAccess } from './utils/superadminAccess'
 
 interface CreateContextOptions {
   session: Session | null
+  req?: Request
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
   return {
     session: opts.session,
     prisma,
+    req: opts.req,
   }
 }
 
@@ -73,6 +76,7 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
 
   return createInnerTRPCContext({
     session,
+    req: opts.req,
   })
 }
 
@@ -97,6 +101,17 @@ export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
     ctx: {
       ...ctx,
       session: ctx.session as Session & { user: { id: string } },
+    },
+  })
+})
+
+export const superadminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const superadminAccess = assertSuperadminAccess({ session: ctx.session })
+
+  return next({
+    ctx: {
+      ...ctx,
+      superadminAccess,
     },
   })
 })

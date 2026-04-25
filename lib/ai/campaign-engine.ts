@@ -23,6 +23,16 @@ import { selectBestVariant } from './variant-optimizer'
 import { processSequences, hasActiveSequence, getSequenceType } from './sequence-runner'
 import { generateSequenceMessage, generateSequenceMessageVariants } from './sequence-messages'
 import { interpolateVariant, type MessageGenerationContext } from './llm/message-generator'
+import { mapOutreachTypeToAutonomyAction } from './agent-autonomy'
+import {
+  buildAgentTriggerReasoning,
+  evaluateAgentTriggerRuntime,
+} from './agent-trigger-runtime'
+import { evaluateAgentControlPlaneAction } from './agent-control-plane'
+import { evaluateAgentOutreachRollout } from './agent-outreach-rollout'
+import { normalizeMembership, resolveMembershipMappings } from './membership-intelligence'
+import { getPlatformBaseUrl, getPlatformOriginFromUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildEmailPanel, buildIqSportEmail, renderTextParagraphs } from '@/lib/email-brand'
 import type { SequenceDecision } from './sequence-runner'
 import type { RiskLevel, DayOfWeek, PlaySessionFormat, BookingWithSession } from '../../types/intelligence'
 
@@ -190,6 +200,7 @@ function buildOutreachHtml({
   sessionCard?: OutreachSessionCard
   unsubscribeUrl?: string
 }): string {
+  const platformUrl = getPlatformOriginFromUrl(bookingUrl) || getPlatformBaseUrl()
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   let sessionCardHtml = ''
@@ -200,56 +211,36 @@ function buildOutreachHtml({
         ? `<span style="color: #6b7280; font-size: 13px;">${sessionCard.confirmedCount} player${sessionCard.confirmedCount === 1 ? '' : 's'} signed up</span>`
         : ''
 
-    sessionCardHtml = `
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin: 16px 0;">
-        <tr>
-          <td style="padding: 14px 16px; background: #f8fafc;">
-            <strong style="font-size: 16px; color: #111827;">${sessionCard.title}</strong><br/>
-            <span style="color: #6b7280; font-size: 14px;">
-              ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
-            </span><br/>
-            <span style="color: ${sessionCard.spotsLeft <= 2 ? '#dc2626' : '#16a34a'}; font-size: 14px; font-weight: 600;">
-              ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
-            </span>
-            ${socialProofLine ? `<br/>${socialProofLine}` : ''}
-          </td>
-        </tr>
-      </table>`
+    sessionCardHtml = buildEmailPanel(`
+      <strong style="font-size:16px;color:#F8FAFC;">${sessionCard.title}</strong><br/>
+      <span style="color:#CBD5E1;font-size:14px;">
+        ${sessionCard.date} &middot; ${sessionCard.time} &middot; ${formatLabel(sessionCard.format)}
+      </span><br/>
+      <span style="color:${sessionCard.spotsLeft <= 2 ? '#F87171' : '#34D399'};font-size:14px;font-weight:700;">
+        ${sessionCard.spotsLeft} spot${sessionCard.spotsLeft !== 1 ? 's' : ''} left
+      </span>
+      ${socialProofLine ? `<br/>${socialProofLine}` : ''}
+    `)
   }
 
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; line-height: 1.6; color: #111827;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f9fafb;">
-    <tr>
-      <td align="center" style="padding: 32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto;">
-          <tr>
-            <td style="background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-              ${body.split('\n').map(line => line.trim() ? `<p style="margin: 0 0 12px 0; font-size: 15px;">${line}</p>` : '').join('\n')}
-              ${sessionCardHtml}
-              <div style="text-align: center; margin-top: 24px;">
-                <a href="${bookingUrl}" style="display: inline-block; background: linear-gradient(135deg, #84cc16, #22c55e); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; text-decoration: none;">
-                  Book a Session
-                </a>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding-top: 20px;">
-              <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-                Sent by ${clubName} via <a href="https://iqsport.ai" style="color: #84cc16; text-decoration: none;">IQSport.ai</a>
-                ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color: #9ca3af; text-decoration: underline; font-size: 11px;">Unsubscribe</a>` : ''}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  return buildIqSportEmail({
+    title: `${clubName} outreach`,
+    heading: clubName,
+    eyebrow: 'Campaign Outreach',
+    subheading: 'A personalized message from your club',
+    baseUrl: bookingUrl,
+    bodyHtml: `
+      ${renderTextParagraphs(body)}
+      ${sessionCardHtml}
+      ${buildEmailButton('Book a Session', bookingUrl)}
+    `,
+    footerHtml: `
+      <p style="font-size:12px;color:#94A3B8;margin:0;">
+        Sent by ${clubName} via <a href="${platformUrl}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>
+        ${unsubscribeUrl ? `<br/><a href="${unsubscribeUrl}" style="color:#94A3B8;text-decoration:underline;font-size:11px;">Unsubscribe</a>` : ''}
+      </p>
+    `,
+  })
 }
 
 // ── Execute Sequence Follow-Up Step ──
@@ -259,6 +250,7 @@ async function executeSequenceStep(
   decision: SequenceDecision,
   club: { id: string; name: string; slug?: string },
   settings: ClubAutomationSettings,
+  automationSettings: unknown,
   appUrl: string,
   upcomingSessions: any[],
   resolvedPrefMap: Map<string, any>,
@@ -271,7 +263,16 @@ async function executeSequenceStep(
   // Load user data
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, duprRatingDoubles: true, phone: true, smsOptIn: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      duprRatingDoubles: true,
+      phone: true,
+      smsOptIn: true,
+      membershipType: true,
+      membershipStatus: true,
+    },
   })
   if (!user) return false
 
@@ -283,12 +284,43 @@ async function executeSequenceStep(
     memberSkillLevel,
     preference: resolvedPrefMap.get(userId) || null,
     sessions: upcomingSessions,
-    clubSlug: club.slug || club.id,
+    clubSlug: club.id,
     appBaseUrl: appUrl,
   })
 
   // Get original subject from Step 0 reasoning
   const step0Reasoning = sequence.rootLog.reasoning as any
+  const autonomyAction = mapOutreachTypeToAutonomyAction(String(sequence.rootLog.type))
+  const membershipMappings = resolveMembershipMappings(automationSettings)
+  const normalizedMembership = normalizeMembership({
+    membershipType: user.membershipType,
+    membershipStatus: user.membershipStatus,
+    membershipMappings,
+  })
+  const sequenceRuntime = autonomyAction
+    ? evaluateAgentTriggerRuntime({
+        source: 'sequence_engine',
+        triggerMode: 'deferred',
+        action: autonomyAction,
+        automationSettings,
+        liveMode: true,
+        confidence: typeof step0Reasoning?.confidence === 'number' ? step0Reasoning.confidence : null,
+        recipientCount: 1,
+        membershipSignal: normalizedMembership.signal,
+        membershipStatus: normalizedMembership.normalizedStatus,
+        membershipType: normalizedMembership.normalizedType,
+        membershipConfidence: normalizedMembership.confidence,
+      })
+    : null
+  const inheritedApproval =
+    sequenceRuntime?.decision.outcome === 'pending' &&
+    sequenceRuntime.decision.configuredMode === 'approve'
+  const sequenceRuntimeActual = inheritedApproval
+    ? {
+        outcome: 'auto' as const,
+        reasons: ['Follow-up continued automatically because the parent sequence was already approved.'],
+      }
+    : undefined
 
   // Build member values for template interpolation
   const memberName = user.name || 'there'
@@ -383,15 +415,30 @@ async function executeSequenceStep(
       variantId,
       sequenceStep: action.stepNumber,
       parentLogId: sequence.rootLog.id,
-      reasoning: {
-        sequenceFollowUp: true,
-        parentLogId: sequence.rootLog.id,
-        stepNumber: action.stepNumber,
-        messageType: action.messageType,
-        reason: action.reason,
-        originalSubject: message.emailSubject,
-        llmVariant: variantId.startsWith('llm_'),
-      },
+      reasoning: sequenceRuntime
+        ? buildAgentTriggerReasoning(
+            sequenceRuntime,
+            {
+              sequenceFollowUp: true,
+              parentLogId: sequence.rootLog.id,
+              stepNumber: action.stepNumber,
+              messageType: action.messageType,
+              reason: action.reason,
+              originalSubject: message.emailSubject,
+              llmVariant: variantId.startsWith('llm_'),
+            },
+            sequenceRuntimeActual,
+          )
+        : {
+            source: 'sequence_engine',
+            sequenceFollowUp: true,
+            parentLogId: sequence.rootLog.id,
+            stepNumber: action.stepNumber,
+            messageType: action.messageType,
+            reason: action.reason,
+            originalSubject: message.emailSubject,
+            llmVariant: variantId.startsWith('llm_'),
+          },
       status: 'pending',
     },
   })
@@ -581,6 +628,7 @@ export async function runHealthCampaign(
           id: true, email: true, name: true, image: true,
           gender: true, city: true,
           duprRatingDoubles: true, duprRatingSingles: true,
+          membershipType: true, membershipStatus: true,
         },
       },
     },
@@ -632,6 +680,7 @@ export async function runHealthCampaign(
   const d60 = new Date(now.getTime() - 60 * 86400000)
 
   const prefMap = new Map<string, any>(preferences.map((p: any) => [p.userId, p]))
+  const membershipMappings = resolveMembershipMappings(rawSettings)
   const bookingMap = new Map<string, any[]>()
   for (const b of bookings) {
     if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
@@ -711,6 +760,13 @@ export async function runHealthCampaign(
         status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
       })),
       previousPeriodBookings: bookings30to60,
+      membershipInfo: {
+        membership: f.user.membershipType || null,
+        membershipStatus: f.user.membershipStatus || null,
+        lastVisit: null,
+        firstVisit: null,
+        membershipMappings,
+      },
     }
   })
 
@@ -731,9 +787,8 @@ export async function runHealthCampaign(
   let messagesSent = 0
   let messagesSkipped = 0
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const appUrl = getPlatformBaseUrl()
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // ── Pre-generate LLM message variants per club (shared across members) ──
   const llmVariantCache = new Map<OutreachType, OutreachMessageVariant[]>()
@@ -826,7 +881,55 @@ export async function runHealthCampaign(
       autoApproveThreshold,
     )
 
-    if (!confidence.autoApproved && !dryRun) {
+    const autonomyAction = mapOutreachTypeToAutonomyAction(outreachType)
+    const normalizedMembership = normalizeMembership({
+      membershipType: member.membershipType,
+      membershipStatus: member.membershipStatus,
+      membershipMappings,
+    })
+    const runtime = autonomyAction
+      ? evaluateAgentTriggerRuntime({
+          source: 'campaign_engine',
+          triggerMode: 'immediate',
+          action: autonomyAction,
+          automationSettings: rawSettings,
+          liveMode: !dryRun,
+          confidence: confidence.score,
+          recipientCount: 1,
+          membershipSignal: normalizedMembership.signal,
+          membershipStatus: normalizedMembership.normalizedStatus,
+          membershipType: normalizedMembership.normalizedType,
+          membershipConfidence: normalizedMembership.confidence,
+        })
+      : null
+
+    if (runtime?.decision.outcome === 'blocked') {
+      try {
+        await prisma.aIRecommendationLog.create({
+          data: {
+            clubId,
+            userId: member.memberId,
+            type: outreachType,
+            channel: settings.channel,
+            status: 'blocked',
+            reasoning: {
+              ...(runtime
+                ? buildAgentTriggerReasoning(runtime, {
+                    transition: `${prevRisk} → ${newRisk}`,
+                    healthScore: member.healthScore,
+                    confidenceReasons: confidence.reasons,
+                  })
+                : {}),
+            },
+          },
+        })
+      } catch { /* non-critical */ }
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `${outreachType.toLowerCase()} blocked`, status: 'skipped' })
+      messagesSkipped++
+      continue
+    }
+
+    if ((runtime?.decision.outcome === 'pending') || (!confidence.autoApproved && !dryRun)) {
       // Queue for morning digest — don't send, just log as pending
       try {
         await prisma.aIRecommendationLog.create({
@@ -837,16 +940,19 @@ export async function runHealthCampaign(
             channel: settings.channel,
             status: 'pending',
             reasoning: {
-              confidence: confidence.score,
-              autoApproved: false,
-              reasons: confidence.reasons,
-              transition: `${prevRisk} → ${newRisk}`,
-              healthScore: member.healthScore,
+              ...(runtime
+                ? buildAgentTriggerReasoning(runtime, {
+                    transition: `${prevRisk} → ${newRisk}`,
+                    healthScore: member.healthScore,
+                    confidenceReasons: confidence.reasons,
+                  })
+                : {}),
             },
           },
         })
       } catch { /* non-critical */ }
-      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (confidence ${confidence.score}%)`, status: 'skipped' })
+      const queueReason = runtime?.decision.reasons?.[0] || `confidence ${confidence.score}%`
+      transitions.push({ userId: member.memberId, from: prevRisk, to: newRisk, action: `queued (${queueReason})`, status: 'skipped' })
       messagesSkipped++
       continue
     }
@@ -859,7 +965,7 @@ export async function runHealthCampaign(
       memberSkillLevel,
       preference: resolvedPrefMap.get(member.memberId) || null,
       sessions: upcomingSessions,
-      clubSlug: club.slug || club.id,
+      clubSlug: club.id,
       appBaseUrl: appUrl,
     })
 
@@ -956,8 +1062,9 @@ export async function runHealthCampaign(
             variantId: variant.id,
             healthScore: member.healthScore,
             confidence: confidence.score,
-            autoApproved: confidence.autoApproved,
+            confidenceAutoApproved: confidence.autoApproved,
             confidenceReasons: confidence.reasons,
+            ...(runtime ? buildAgentTriggerReasoning(runtime) : {}),
             optimizerReason,
             sequenceType: getSequenceType(newRisk),
             originalSubject: variant.emailSubject,
@@ -1087,7 +1194,17 @@ export async function runHealthCampaign(
     // Execute follow-up actions
     for (const decision of seqDecisions) {
       try {
-        const sent = await executeSequenceStep(prisma, decision, club, settings, appUrl, upcomingSessions, resolvedPrefMap, bookingUrl)
+        const sent = await executeSequenceStep(
+          prisma,
+          decision,
+          club,
+          settings,
+          rawSettings,
+          appUrl,
+          upcomingSessions,
+          resolvedPrefMap,
+          bookingUrl,
+        )
         if (sent) sequenceFollowUps++
       } catch (err) {
         log.error(`[Campaign] Sequence step failed for ${decision.sequence.rootLog.userId}:`, (err as Error).message?.slice(0, 100))
@@ -1137,8 +1254,6 @@ export async function runHealthCampaignForAllClubs(
   prisma: any,
   options?: { dryRun?: boolean },
 ): Promise<{ results: CampaignResult[]; totalSent: number; totalSkipped: number }> {
-  // Get clubs that have at least one follower AND agent is live (opt-in)
-  // Without agentLive=true, club only gets dryRun regardless of param
   const allClubs = await prisma.club.findMany({
     where: {
       followers: { some: {} },
@@ -1146,11 +1261,23 @@ export async function runHealthCampaignForAllClubs(
     select: { id: true, automationSettings: true },
     take: 100, // safety limit
   })
-  // Filter: only clubs with agentLive=true get real emails; others forced dryRun
-  const clubs = allClubs.map((c: any) => ({
-    id: c.id,
-    forceDryRun: !(c.automationSettings as any)?.intelligence?.agentLive,
-  }))
+  const clubs = allClubs.map((c: any) => {
+    const controlPlane = evaluateAgentControlPlaneAction({
+      automationSettings: c.automationSettings,
+      action: 'outreachSend',
+      clubId: c.id,
+    })
+    const rollout = evaluateAgentOutreachRollout({
+      clubId: c.id,
+      automationSettings: c.automationSettings,
+      actionKind: 'create_campaign',
+    })
+    return {
+      id: c.id,
+      controlPlane,
+      forceDryRun: !!options?.dryRun || !controlPlane.allowed || controlPlane.shadow || !rollout.allowed,
+    }
+  })
 
   const results: CampaignResult[] = []
   let totalSent = 0

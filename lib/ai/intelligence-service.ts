@@ -14,8 +14,10 @@ import { detectPersona, persistPersona, generatePersonalizedInvite, type Behavio
 import { selectBestVariant } from './variant-optimizer';
 import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail } from '../email';
 import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
+import { generateUnsubscribeUrl } from '@/lib/unsubscribe';
 import { checkAntiSpam } from './anti-spam';
 import { resolvePreferences } from './inferred-preferences';
+import { getPlatformBaseUrl } from '@/lib/platform-base-url';
 import type { BookingHistory, UserPlayPreferenceData, MemberData, BookingWithSession } from '../../types/intelligence';
 
 // ── Persona Detection & Persistence ──
@@ -1069,18 +1071,21 @@ export async function getReactivationCandidates(
 /**
  * intelligence.sendInvites - Send invites to recommended users for a session
  */
-export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteInput>) {
+export async function sendInvites(
+  prisma: any,
+  input: z.infer<typeof sendInviteInput>,
+  options?: { baseUrl?: string | null },
+) {
   const { sessionId, clubId, candidates: candidateInputs } = input
 
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load session data (handle CSV vs real)
   let sessionData: { title: string; date: string; time: string; spotsLeft: number }
@@ -1217,6 +1222,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
         if (!phone) throw new Error('Phone number not available')
         const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
+        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
         const body = buildSlotFillerSms({
           memberName: user.name || 'there',
           clubName: club.name,
@@ -1226,6 +1232,7 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
           customMessage: candidate.customMessage || personalizedBody,
+          optOutUrl,
         })
         await sendSms({ to: phone, body })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
@@ -1259,8 +1266,9 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
 
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
+  const skipped = results.filter(r => r.status === 'skipped').length
 
-  return { sent, failed, csvSkipped, results }
+  return { sent, failed, skipped, csvSkipped, results }
 }
 
 /**
@@ -1269,18 +1277,19 @@ export async function sendInvites(prisma: any, input: z.infer<typeof sendInviteI
  */
 export async function sendReactivationMessages(
   prisma: any,
-  input: z.infer<typeof sendReactivationInput>
+  input: z.infer<typeof sendReactivationInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const { clubId, candidates: candidateInputs, customMessage } = input
+  log.info(`[Reactivation] sendReactivationMessages start clubId=${clubId} candidates=${candidateInputs.length}`)
 
   // Load club info
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
 
   // Load users
   const memberIds = candidateInputs.map(c => c.memberId)
@@ -1346,13 +1355,14 @@ export async function sendReactivationMessages(
   })
 
   const candidateDataById = new Map(reactivationData.map(c => [c.member.id, c]))
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   const results: Array<{ memberId: string; channel: string; status: string; error?: string }> = []
 
   for (const candidateInput of candidateInputs) {
     const user = usersById.get(candidateInput.memberId)
     if (!user) {
+      log.warn(`[Reactivation] member missing user record clubId=${clubId} memberId=${candidateInput.memberId}`)
       results.push({ memberId: candidateInput.memberId, channel: candidateInput.channel, status: 'failed', error: 'User not found' })
       continue
     }
@@ -1362,6 +1372,7 @@ export async function sendReactivationMessages(
       prisma, userId: user.id, clubId, type: 'REACTIVATION',
     })
     if (!spamCheck.allowed) {
+      log.info(`[Reactivation] skipped clubId=${clubId} userId=${user.id} channel=${candidateInput.channel} reason="${spamCheck.reason || 'unknown'}"`)
       results.push({ memberId: user.id, channel: candidateInput.channel, status: 'skipped', error: spamCheck.reason })
       continue
     }
@@ -1378,7 +1389,7 @@ export async function sendReactivationMessages(
         format: s.format || 'OPEN_PLAY',
         spotsLeft,
         confirmedCount,
-        deepLinkUrl: `${appUrl}/clubs/${club.slug || club.id}/play?session=${s.id}`,
+        deepLinkUrl: `${appUrl}/clubs/${club.id}/play?session=${s.id}`,
       }
     })
     const daysSince = reactivation?.daysSinceLastActivity || 0
@@ -1399,6 +1410,7 @@ export async function sendReactivationMessages(
     if (candidateInput.channel === 'email' || candidateInput.channel === 'both') {
       try {
         if (!user.email) throw new Error('No email address')
+        log.info(`[Reactivation] email send attempt clubId=${clubId} userId=${user.id} to=${user.email}`)
         const emailResult = await sendReactivationEmail({
           to: user.email,
           memberName: user.name || 'there',
@@ -1410,21 +1422,48 @@ export async function sendReactivationMessages(
           notifyMeUrl,
         })
         externalMessageId = (emailResult as any)?.messageId || null
+        log.info(`[Reactivation] email sent clubId=${clubId} userId=${user.id} messageId=${externalMessageId || 'none'}`)
         results.push({ memberId: user.id, channel: 'email', status: 'sent' })
       } catch (err: any) {
+        log.error(`[Reactivation] email failed clubId=${clubId} userId=${user.id}: ${err?.message || 'unknown error'}`)
         results.push({ memberId: user.id, channel: 'email', status: 'failed', error: err.message })
       }
     }
 
     // ── Send SMS ──
     if (candidateInput.channel === 'sms' || candidateInput.channel === 'both') {
-      // Note: User model doesn't have a phone field yet — SMS will fail gracefully
-      results.push({
-        memberId: user.id,
-        channel: 'sms',
-        status: 'failed',
-        error: 'Phone number not available (field not yet in User model)',
-      })
+      try {
+        const phone = user.phone
+        if (!phone) throw new Error('Phone number not available')
+        const smsOptIn = user.smsOptIn
+        if (!smsOptIn) throw new Error('User has not opted in to SMS')
+        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
+
+        const body = buildReactivationSms({
+          memberName: user.name || 'there',
+          clubName: club.name,
+          daysSinceLastActivity: daysSince,
+          sessionCount: suggestedSessions.length,
+          bookingUrl: firstSessionDeepLink,
+          customMessage,
+          optOutUrl,
+        })
+
+        const smsResult = await sendSms({ to: phone, body })
+        if (!externalMessageId && smsResult?.sid) {
+          externalMessageId = smsResult.sid
+        }
+        log.info(`[Reactivation] sms sent clubId=${clubId} userId=${user.id} sid=${smsResult?.sid || 'none'} status=${smsResult?.status || 'unknown'}`)
+        results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
+      } catch (err: any) {
+        log.error(`[Reactivation] sms failed clubId=${clubId} userId=${user.id}: ${err?.message || 'unknown error'}`)
+        results.push({
+          memberId: user.id,
+          channel: 'sms',
+          status: 'failed',
+          error: err?.message || 'Unable to send SMS',
+        })
+      }
     }
 
     // Log to ai_recommendation_logs for campaign tracking
@@ -1454,15 +1493,20 @@ export async function sendReactivationMessages(
 
   const sent = results.filter(r => r.status === 'sent').length
   const failed = results.filter(r => r.status === 'failed').length
+  const skipped = results.filter(r => r.status === 'skipped').length
+  log.info(`[Reactivation] sendReactivationMessages result clubId=${clubId} sent=${sent} failed=${failed} skipped=${skipped}`)
 
   // Report usage to Stripe for metered billing (non-blocking)
-  if (sent > 0) {
+  const emailSent = results.filter(r => r.channel === 'email' && r.status === 'sent').length
+  const smsSent = results.filter(r => r.channel === 'sms' && r.status === 'sent').length
+  if (emailSent > 0 || smsSent > 0) {
     import('@/lib/stripe-usage').then(({ reportUsage }) => {
-      reportUsage(clubId, 'email', sent)
+      if (emailSent > 0) void reportUsage(clubId, 'email', emailSent)
+      if (smsSent > 0) void reportUsage(clubId, 'sms', smsSent)
     }).catch(() => {})
   }
 
-  return { sent, failed, results }
+  return { sent, failed, skipped, results }
 }
 
 /**
@@ -1471,18 +1515,18 @@ export async function sendReactivationMessages(
  */
 export async function sendEventInviteMessages(
   prisma: any,
-  input: z.infer<typeof sendEventInviteInput>
+  input: z.infer<typeof sendEventInviteInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const { clubId, eventTitle, eventDate, eventTime, eventPrice, candidates: candidateInputs } = input
 
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const bookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
+  const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Filter out csv- members (no real user in DB)
   const realCandidates = candidateInputs.filter(c => !c.memberId.startsWith('csv-'))
@@ -1542,7 +1586,8 @@ export async function sendEventInviteMessages(
         if (!phone) throw new Error('Phone number not available')
         const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
-        await sendSms({ to: phone, body: candidate.customMessage })
+        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
+        await sendSms({ to: phone, body: `${candidate.customMessage} Opt out: ${optOutUrl}` })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
       } catch (err: any) {
         results.push({ memberId: user.id, channel: 'sms', status: 'failed', error: err.message })
@@ -1875,7 +1920,8 @@ const sendOutreachInput = z.object({
 
 export async function sendOutreachMessage(
   prisma: any,
-  input: z.infer<typeof sendOutreachInput>
+  input: z.infer<typeof sendOutreachInput>,
+  options?: { baseUrl?: string | null },
 ) {
   const {
     clubId, memberId, type, channel, variantId,
@@ -1886,13 +1932,13 @@ export async function sendOutreachMessage(
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true },
   })
 
   // Load user
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: memberId },
-    select: { id: true, email: true, name: true, duprRatingDoubles: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true, duprRatingDoubles: true },
   })
 
   // Anti-spam check
@@ -1903,9 +1949,8 @@ export async function sendOutreachMessage(
     return { sent: 0, failed: 0, skipped: 1, reason: spamCheck.reason }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'http://localhost:3000'
-  const appUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/$/, '') : `https://${baseUrl}`
-  const genericBookingUrl = `${appUrl}/clubs/${club.slug || club.id}/play`
+  const appUrl = getPlatformBaseUrl(options?.baseUrl)
+  const genericBookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load upcoming sessions + find best match for this member
   const { findBestSessionForMember, formatSessionDate, formatSessionTime } = await import('./session-matcher')
@@ -1943,7 +1988,7 @@ export async function sendOutreachMessage(
     memberSkillLevel,
     preference: resolvedPref,
     sessions: upcomingSessions,
-    clubSlug: club.slug || club.id,
+          clubSlug: club.id,
     appBaseUrl: appUrl,
   })
 
@@ -2017,11 +2062,20 @@ export async function sendOutreachMessage(
 
   // Send SMS
   if (channel === 'sms' || channel === 'both') {
-    results.push({
-      channel: 'sms',
-      status: 'failed',
-      error: 'Phone number not available (field not yet in User model)',
-    })
+    try {
+      const phone = (user as any).phone
+      if (!phone) throw new Error('Phone number not available')
+      const smsOptIn = (user as any).smsOptIn
+      if (!smsOptIn) throw new Error('User has not opted in to SMS')
+      const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
+      await sendSms({
+        to: phone,
+        body: `${variant.smsBody || `${variant.emailBody} ${bookingUrl}`.slice(0, 320)} Opt out: ${optOutUrl}`,
+      })
+      results.push({ channel: 'sms', status: 'sent' })
+    } catch (err: any) {
+      results.push({ channel: 'sms', status: 'failed', error: err.message })
+    }
   }
 
   // Log to DB

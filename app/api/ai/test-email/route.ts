@@ -10,6 +10,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendReactivationEmail } from '@/lib/email'
 import { generateInterestToken } from '@/lib/utils/interest-token'
+import { getPlatformBaseUrl } from '@/lib/platform-base-url'
 
 export const runtime = 'nodejs'
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   const to: string = body.to || session.user.email
   const memberName: string = body.memberName || session.user.name || 'Sol'
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stest.piqle.io'
+  const appUrl = getPlatformBaseUrl()
 
   // Use provided clubId or fall back to first club in DB
   let clubId: string = body.clubId

@@ -214,11 +214,28 @@ export async function generateOutreachMessagesWithLLM(
     console.warn(`[Outreach] Performance feedback failed:`, (err as Error).message?.slice(0, 80))
   }
 
+  // Load the club's voice profile — safe if missing (parseVoiceSettings
+  // normalizes nulls + corrupt JSON into an empty VoiceSettings object,
+  // which composeSystem() handles as "use platform defaults").
+  let voice: import('./voice-profile').VoiceSettings | null = null
+  try {
+    const { parseVoiceSettings } = await import('./voice-profile')
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { voiceSettings: true },
+    })
+    voice = parseVoiceSettings(club?.voiceSettings)
+  } catch (err) {
+    console.warn(`[Outreach] Voice lookup failed:`, (err as Error).message?.slice(0, 80))
+  }
+
   // Generate LLM variants
   const rawVariants = await generateLLMMessageVariants({
     messageType: type,
     context: fullContext,
     channel: 'both',
+    clubId,
+    voice,
   })
 
   // Map LLM variants to OutreachMessageVariant format
