@@ -97,9 +97,24 @@ function hhmmToMinutes(hhmm: string): number {
   return h * 60 + m
 }
 
-function dayNameFromDate(date: Date | string): string {
+/**
+ * Resolve the day-of-week for a session timestamp **in the club's
+ * timezone**. CR sessions are stored as UTC midnights one day later
+ * than the local date they represent (a Monday 09:00 EST session
+ * lands as `2026-04-21T00:00:00Z` in the DB), so a naive `getDay()`
+ * on a runtime that isn't in the club's TZ puts the cell in the
+ * wrong column. Same fix as `dayOfWeekFromDate` in the scheduler.
+ */
+function dayNameFromDate(date: Date | string, timezone = 'America/New_York'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return DAYS[((d.getDay() + 6) % 7)] // Monday=0
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      timeZone: timezone,
+    }).format(d)
+  } catch {
+    return DAYS[((d.getDay() + 6) % 7)]
+  }
 }
 
 /**

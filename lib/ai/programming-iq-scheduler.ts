@@ -149,6 +149,12 @@ export interface BuildWeeklyGridInput {
   /** Result of running `interpretRegeneratePrompt` on `regeneratePrompt`.
    *  Applied to the proposal set after scoring and before bin-packing. */
   regenerateHint?: import('./programming-iq-regenerate').RegenerateHint | null
+  /** Club's IANA timezone (`America/New_York` etc). Used to derive
+   *  day-of-week from `date` columns that are stored as UTC midnights
+   *  but represent local-day sessions. Without this, the conflict
+   *  check between AI proposals and live PlaySessions misfires near
+   *  UTC midnight (the EST → UTC offset shifts day boundaries). */
+  timezone?: string
 }
 
 export interface BuildWeeklyGridResult {
@@ -233,7 +239,44 @@ function jsDayToEnum(day: number): DayOfWeek {
   return map[day] || 'Monday'
 }
 
-export function dayOfWeekFromDate(date: Date): DayOfWeek {
+/**
+ * Resolve the day-of-week for a session timestamp **in the club's
+ * timezone**, not in the runtime's local timezone.
+ *
+ * Why this matters: CourtReserve stores sessions like "2026-04-20 09:00
+ * EST" as `2026-04-21T00:00:00.000Z` in the DB (UTC midnight one day
+ * later). On a UTC server (Vercel) `date.getDay()` returns Tuesday for
+ * what is really a Monday session in the club's time zone, so the
+ * conflict-check in `assignCourtsToProposals` builds its
+ * `liveByCourtDay` map under the wrong key, AI never sees the live
+ * session, and proposes a slot that visually overlaps it on the grid.
+ *
+ * Using `Intl.DateTimeFormat` with an explicit `timeZone` gives us the
+ * day name the club's admin actually sees in their booking software.
+ * Default is `America/New_York` because all current IQSport clubs are
+ * EST-based; callers should pass an explicit zone for international
+ * clubs once we have any.
+ */
+export function dayOfWeekFromDate(
+  date: Date,
+  timezone = 'America/New_York',
+): DayOfWeek {
+  try {
+    const dayName = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      timeZone: timezone,
+    }).format(date)
+    // `Intl` returns one of Sunday..Saturday in en-US — exactly our enum.
+    if (
+      dayName === 'Sunday' || dayName === 'Monday' || dayName === 'Tuesday'
+      || dayName === 'Wednesday' || dayName === 'Thursday'
+      || dayName === 'Friday' || dayName === 'Saturday'
+    ) {
+      return dayName
+    }
+  } catch {
+    // Bad timezone string → fall back to runtime-local interpretation.
+  }
   return jsDayToEnum(date.getDay())
 }
 
@@ -317,6 +360,10 @@ export function assignCourtsToProposals(
   existingWeekSessions: SchedulerExistingSession[],
   historicalSessions: SchedulerHistoricalSession[],
   weekStartDate: Date,
+  // Club's IANA timezone — passed through so dayOfWeekFromDate uses the
+  // right zone when keying the conflict map. See dayOfWeekFromDate
+  // doc-comment for the full background.
+  timezone = 'America/New_York',
 ): CourtAssignment[] {
   const activeCourts = courts.filter((c) => c.isActive)
   if (activeCourts.length === 0) {
@@ -336,11 +383,12 @@ export function assignCourtsToProposals(
   }
 
   // Pre-compute live-session occupancy map: courtId → day-of-week →
-  // list of {start, end, skillLevel} in that week.
+  // list of {start, end, skillLevel} in that week. Day-of-week resolved
+  // in the club's timezone — see dayOfWeekFromDate doc.
   const liveByCourtDay = new Map<string, SchedulerExistingSession[]>()
   for (const session of existingWeekSessions) {
     if (!session.courtId || session.status === 'CANCELLED') continue
-    const dow = dayOfWeekFromDate(new Date(session.date))
+    const dow = dayOfWeekFromDate(new Date(session.date), timezone)
     const key = `${session.courtId}__${dow}`
     if (!liveByCourtDay.has(key)) liveByCourtDay.set(key, [])
     liveByCourtDay.get(key)!.push(session)
@@ -645,6 +693,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     input.existingWeekSessions,
     input.historicalSessions,
     input.weekStartDate,
+    input.timezone,
   )
 
   // 5. Emit suggested cells for successful assignments.
@@ -688,7 +737,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     if (!session.courtId || session.status === 'CANCELLED') continue
     const court = activeCourts.find((c) => c.id === session.courtId)
     if (!court) continue
-    const dow = dayOfWeekFromDate(new Date(session.date))
+    const dow = dayOfWeekFromDate(new Date(session.date), input.timezone)
     cells.push({
       key: `live__${session.id}`,
       kind: 'live',

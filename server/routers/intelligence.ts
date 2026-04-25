@@ -8331,6 +8331,14 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         }
       }
 
+      // Resolve club timezone (CR-synced sessions store dates as UTC
+      // midnights but represent local-day events). Without this the
+      // conflict-detection misfires across the EST → UTC midnight
+      // boundary. Default 'America/New_York' for current IPC clubs.
+      const clubTimezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
         courts,
@@ -8343,6 +8351,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,
         regenerateHint,
+        timezone: clubTimezone,
       })
 
       // If the LLM returned a non-empty reasoning line, prepend it to
