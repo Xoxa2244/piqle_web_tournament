@@ -42,14 +42,22 @@ export function CellEditPopover(props: CellEditPopoverProps) {
     <div className="fixed inset-0 z-50 flex" aria-modal="true" role="dialog">
       {/* Click-outside backdrop */}
       <div
-        className="flex-1 bg-black/30 backdrop-blur-sm"
+        className="flex-1 bg-black/60 backdrop-blur-sm"
         onClick={props.onClose}
       />
 
-      {/* Right-side drawer */}
+      {/* Right-side drawer.
+       * `var(--card-bg)` resolves to a transparent value in the IQSport
+       * iqsport-theme on prod, which made the popover see-through against
+       * the schedule grid behind it. Explicit fallback ensures opacity in
+       * both light and dark modes regardless of how --card-bg is themed. */}
       <div
         className="w-full max-w-[440px] h-full overflow-y-auto shadow-2xl"
-        style={{ background: 'var(--card-bg)', borderLeft: '1px solid var(--card-border)' }}
+        style={{
+          background: 'var(--popover-bg, #0F172A)',
+          backgroundColor: 'var(--popover-bg, #0F172A)',
+          borderLeft: '1px solid var(--card-border)',
+        }}
       >
         {props.selection.kind === 'draft'
           ? <DraftPanel {...props} draft={props.selection.draft} />
@@ -309,10 +317,13 @@ function Header({
   onClose: () => void
 }) {
   return (
+    // Sticky header — must be opaque so content scrolling underneath
+    // doesn't bleed through. Same fallback strategy as the drawer.
     <div
       className="px-5 py-4 flex items-center justify-between sticky top-0 z-10"
       style={{
-        background: 'var(--card-bg)',
+        background: 'var(--popover-bg, #0F172A)',
+        backgroundColor: 'var(--popover-bg, #0F172A)',
         borderBottom: '1px solid var(--card-border)',
       }}
     >
