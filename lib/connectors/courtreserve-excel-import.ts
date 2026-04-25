@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { ExternalEntityType } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
+import { normalizePhone } from '@/lib/phone-normalize'
 import { randomUUID } from 'crypto'
 
 // ── Types ──
@@ -574,10 +575,14 @@ export async function _runImportPipeline(
           } catch { /* ignore */ }
         }
 
+        // Excel cells like "(555) 555-0123" or "+1 555-555-0123" go
+        // through the same E.164 normaliser as the API path. Garbage
+        // cells become undefined (we don't want to write "abc" into the
+        // phone column).
         const userData: ImportedUserPayload = {
           email,
           name: member.name || undefined,
-          phone: member.phone || undefined,
+          phone: normalizePhone(member.phone) || undefined,
           gender: member.gender || undefined,
           city: member.city || undefined,
         }

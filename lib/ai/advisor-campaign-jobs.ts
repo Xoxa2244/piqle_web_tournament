@@ -20,6 +20,7 @@ import {
   type ReferralExecutionContext,
 } from './referral-offers'
 import { generateUnsubscribeUrl } from '@/lib/unsubscribe'
+import { normalizePhone } from '@/lib/phone-normalize'
 
 type CampaignChannel = 'email' | 'sms' | 'both'
 type CampaignType =
@@ -139,11 +140,16 @@ async function deliverCampaignToUser(opts: {
   }
 
   if (shouldSendSms) {
-    if (smsText && user.phone && user.smsOptIn) {
+    // Defensive normalisation in case `user.phone` was written before
+    // we started normalising at the sync layer (legacy rows). Twilio
+    // rejects non-E.164 with a 400, so we'd rather skip than burn a
+    // request + AIRecommendationLog row on a guaranteed failure.
+    const smsTo = normalizePhone(user.phone) || user.phone || null
+    if (smsText && smsTo && user.smsOptIn) {
       try {
         const optOutUrl = generateUnsubscribeUrl(user.id, club.id)
         const result = await sendSms({
-          to: user.phone,
+          to: smsTo,
           body: appendSmsOptOut(smsText, optOutUrl),
           logId,
         })
