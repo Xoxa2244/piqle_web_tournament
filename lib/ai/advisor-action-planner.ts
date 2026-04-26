@@ -365,8 +365,20 @@ export async function planAdvisorActionIntent(message: string): Promise<AdvisorI
   // "change quiet hours"), skip the LLM round-trip entirely — it saves
   // 2-5s on the critical path for the ~70% of prompts where our keyword
   // lexicon is unambiguous. The LLM is still consulted for genuinely
-  // ambiguous or analytical phrasing where `action === 'none'`.
+  // ambiguous phrasing where `action === 'none'`.
   if (fallback.action !== 'none') {
+    return fallback
+  }
+
+  // Skip-LLM path for clearly analytical questions ("how many would I
+  // reach", "if I had $1000 to spend", "what's the best slot to add").
+  // The LLM-fallback historically misclassified these as create_cohort
+  // or draft_campaign because the explicit-rules in PLANNER_SYSTEM fire
+  // on bare nouns like "audience" / "session" — see Bug #3 from the
+  // 2026-04-25 audit. Definitively returning 'none' here keeps these
+  // prompts on the LLM-chat path with read-only tools instead of the
+  // Decision Card path.
+  if (looksAnalytical(message.toLowerCase())) {
     return fallback
   }
 
