@@ -355,9 +355,19 @@ ${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date}
       }
 
       if (membershipData && !('error' in membershipData)) {
-        parts.push(`## Membership Breakdown
-${Object.entries(membershipData.breakdown as Record<string, number>).map(([status, count]) => `- ${status}: ${count}`).join('\n')}
-${(membershipData.membershipTypes as any[])?.length ? `\nActive membership types:\n${(membershipData.membershipTypes as any[]).map((t: any) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+        const norm = membershipData.byNormalizedStatus as Record<string, number> | undefined
+        const raw = membershipData.byRawStatus as Record<string, number> | undefined
+        const types = membershipData.membershipTypesAmongActive as Array<{ type: string; count: number }> | undefined
+        parts.push(`## Membership Subscription Breakdown
+Total members scanned: ${membershipData.totalMembersScanned ?? 0}
+Active memberships (matches the Members page "Active Memberships" tile): ${membershipData.activeMemberships ?? 0}
+
+By normalized status (use these — they match the Members page):
+${norm ? Object.entries(norm).filter(([, c]) => c > 0).map(([status, count]) => `- ${status}: ${count}`).join('\n') : '(none)'}
+
+NOTE: This is subscription status (categorical field from CSV import), NOT booking activity. For "people who actually played in the last 30 days" use Active Players from the Club Metrics block above.
+${raw ? `\nRaw status (from CSV, before normalization — for debugging only):\n${Object.entries(raw).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
+${types?.length ? `\nMembership types among active members:\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
       }
 
       liveDataBlock = parts.join('\n\n')

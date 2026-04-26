@@ -425,32 +425,69 @@ export function createChatTools(clubId: string) {
 
     getMembershipBreakdown: defineTool({
       description:
-        'Get membership status breakdown: how many active, suspended, expired, no membership. Use when the user asks about membership, churn, who left, subscription status, or member retention.',
+        'Get membership SUBSCRIPTION status breakdown: how many members have active / trial / expired / suspended / cancelled / guest / none. These are categorical subscription states (what the club_management software tracks), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics. The normalized buckets here mirror what the Members page shows so the numbers match.',
       parameters: z.object({}),
       execute: async () => {
         try {
-          const rows = await prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
-            SELECT metadata->>'membershipStatus' as status, count(*) as cnt
-            FROM document_embeddings
-            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
-            GROUP BY metadata->>'membershipStatus'
-          `
-          const breakdown: Record<string, number> = {}
-          rows.forEach(r => { breakdown[r.status || 'Unknown'] = Number(r.cnt) })
+          const { normalizeMembership, resolveMembershipMappings } = await import('@/lib/ai/membership-intelligence')
+          const club = await prisma.club.findUnique({ where: { id: clubId }, select: { automationSettings: true } })
+          const membershipMappings = resolveMembershipMappings(club?.automationSettings)
 
-          // Also get membership types for active members
-          const types = await prisma.$queryRaw<Array<{ membership: string; cnt: bigint }>>`
-            SELECT metadata->>'membership' as membership, count(*) as cnt
-            FROM document_embeddings
+          // Pull every member embedding so we can normalize through the same
+          // pipeline the Members page uses (getMemberHealth → mapRealMembers
+          // → m.normalizedMembershipStatus). Without this the breakdown was
+          // grouping on the raw CSV string ("Currently Active" vs "Active"
+          // vs "ACTIVE") and didn't match what admins saw on the Members
+          // page — see "metric drift" follow-up from the 2026-04-25 audit.
+          const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
+            SELECT metadata FROM document_embeddings
             WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
-            AND metadata->>'membershipStatus' = 'Currently Active'
-            GROUP BY metadata->>'membership'
-            ORDER BY cnt DESC
-            LIMIT 10
           `
-          const membershipTypes = types.map(t => ({ type: t.membership, count: Number(t.cnt) }))
 
-          return { breakdown, membershipTypes }
+          const normalizedBreakdown: Record<string, number> = {
+            active: 0, trial: 0, expired: 0, cancelled: 0, suspended: 0, guest: 0, none: 0, unknown: 0,
+          }
+          const rawBreakdown: Record<string, number> = {}
+          const typeCounts: Record<string, number> = {}
+
+          for (const r of rows) {
+            let m: any
+            try {
+              m = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata
+            } catch {
+              continue
+            }
+            const rawStatus = m?.membershipStatus || 'Unknown'
+            rawBreakdown[rawStatus] = (rawBreakdown[rawStatus] || 0) + 1
+
+            const normalized = normalizeMembership({
+              membershipType: m?.membership,
+              membershipStatus: m?.membershipStatus,
+              membershipMappings,
+            })
+            const bucket = normalized.normalizedStatus in normalizedBreakdown ? normalized.normalizedStatus : 'unknown'
+            normalizedBreakdown[bucket]++
+
+            // Track type only for normalized-active members
+            if (normalized.normalizedStatus === 'active' && m?.membership) {
+              typeCounts[m.membership] = (typeCounts[m.membership] || 0) + 1
+            }
+          }
+
+          const membershipTypes = Object.entries(typeCounts)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([type, count]) => ({ type, count }))
+
+          const totalScanned = rows.length
+          return {
+            totalMembersScanned: totalScanned,
+            byNormalizedStatus: normalizedBreakdown,
+            activeMemberships: normalizedBreakdown.active,
+            byRawStatus: rawBreakdown,
+            membershipTypesAmongActive: membershipTypes,
+            statusDefinition: 'Subscription category from CSV import (matches the Members page "Active Memberships" tile). Different from booking activity — use getClubMetrics.activePlayers30d for "people who actually played recently".',
+          }
         } catch (err) {
           console.error('[ChatTool] getMembershipBreakdown failed:', err)
           return { error: 'Failed to load membership data.' }
