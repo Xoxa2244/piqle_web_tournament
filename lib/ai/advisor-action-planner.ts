@@ -112,6 +112,23 @@ function cleanJson(text: string) {
 }
 
 /**
+ * Detects prompt-injection / data-exfiltration patterns. These look
+ * imperative ("dump every member email") so they slip past wantsCampaign,
+ * but they're never legitimate club-admin asks — and the LLM-fallback
+ * has classified them as draft_campaign (because "every member email"
+ * reads like an audience description). Force them to action='none' so
+ * the safety-trained chat LLM can refuse instead of the Decision Card
+ * router treating them as a campaign brief.
+ */
+function looksLikeInjection(lower: string): boolean {
+  if (/\bignore\s+(your\s+|the\s+|all\s+)?(previous|prior|earlier|above)\s+(instructions?|prompts?|directives?|rules?|messages?)\b/.test(lower)) return true
+  if (/\b(dump|export|extract|leak|reveal|expose|exfiltrate)\s+(every|all|the\s+)?(member|user|customer|player|client)?s?\s*('?s)?\s*(email|phone|password|token|api\s?key|credit\s?card|ssn)\b/.test(lower)) return true
+  if (/\boutput\s+(as|in)\s+(csv|json|raw|plain\s?text|markdown|tsv)\b/.test(lower)) return true
+  if (/\b(show|give|send|list)\s+me\s+(every|all|each)\s+(member|user|customer|player)?s?\s*('?s)?\s*(email|phone|password)\b/.test(lower)) return true
+  return false
+}
+
+/**
  * Detects WH-questions, hypotheticals, comparatives, and projections — i.e.
  * informational asks where the user wants reasoning + numbers, not a
  * Decision Card. Without this gate, prompts like "How many would I reach
@@ -136,6 +153,11 @@ function looksAnalytical(lower: string): boolean {
 
 function heuristicPlan(message: string): AdvisorIntentPlan {
   const lower = message.toLowerCase()
+  // Prompt-injection / extraction attempts go straight to the chat LLM,
+  // which has safety training to refuse — never the Decision Card path.
+  if (looksLikeInjection(lower)) {
+    return { action: 'none', usePreviousCohort: false }
+  }
   const usePreviousCohort =
     /\b(that|this|those|these)\s+(cohort|segment|audience|group|list|members|players)\b/.test(lower) ||
     /\b(them|that list|this list|that audience|this audience)\b/.test(lower)
@@ -376,14 +398,16 @@ export async function planAdvisorActionIntent(message: string): Promise<AdvisorI
   }
 
   // Skip-LLM path for clearly analytical questions ("how many would I
-  // reach", "if I had $1000 to spend", "what's the best slot to add").
-  // The LLM-fallback historically misclassified these as create_cohort
-  // or draft_campaign because the explicit-rules in PLANNER_SYSTEM fire
-  // on bare nouns like "audience" / "session" — see Bug #3 from the
-  // 2026-04-25 audit. Definitively returning 'none' here keeps these
-  // prompts on the LLM-chat path with read-only tools instead of the
-  // Decision Card path.
-  if (looksAnalytical(message.toLowerCase())) {
+  // reach", "if I had $1000 to spend", "what's the best slot to add")
+  // and prompt-injection attempts. The LLM-fallback historically
+  // misclassified these as create_cohort or draft_campaign because the
+  // explicit-rules in PLANNER_SYSTEM fire on bare nouns like "audience"
+  // / "session" / "every member email" — see Bug #3 from the 2026-04-25
+  // audit. Definitively returning 'none' keeps these prompts on the LLM
+  // chat path (which has safety training + read-only tools) instead of
+  // the Decision Card path.
+  const lowerMsg = message.toLowerCase()
+  if (looksLikeInjection(lowerMsg) || looksAnalytical(lowerMsg)) {
     return fallback
   }
 
