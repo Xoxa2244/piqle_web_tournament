@@ -358,16 +358,16 @@ ${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date}
         const norm = membershipData.byNormalizedStatus as Record<string, number> | undefined
         const raw = membershipData.byRawStatus as Record<string, number> | undefined
         const types = membershipData.membershipTypesAmongActive as Array<{ type: string; count: number }> | undefined
-        parts.push(`## Membership Subscription Breakdown
-Total members scanned: ${membershipData.totalMembersScanned ?? 0}
-Active memberships (matches the Members page "Active Memberships" tile): ${membershipData.activeMemberships ?? 0}
+        parts.push(`## Membership Subscription Breakdown (subscription status, NOT booking activity)
+Total followers scanned: ${membershipData.totalFollowersScanned ?? 0}
+Active subscriptions (users.membership_status normalized to 'active'): ${membershipData.activeSubscriptions ?? 0}
 
-By normalized status (use these — they match the Members page):
+By normalized status:
 ${norm ? Object.entries(norm).filter(([, c]) => c > 0).map(([status, count]) => `- ${status}: ${count}`).join('\n') : '(none)'}
 
-NOTE: This is subscription status (categorical field from CSV import), NOT booking activity. For "people who actually played in the last 30 days" use Active Players from the Club Metrics block above.
-${raw ? `\nRaw status (from CSV, before normalization — for debugging only):\n${Object.entries(raw).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
-${types?.length ? `\nMembership types among active members:\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+NOTE: The Members page tile "Active Memberships" further restricts to members who have made at least one booking, so it will read smaller than activeSubscriptions above. For "people who actually played in the last 30 days" use Active Players from the Club Metrics block.
+${raw ? `\nRaw status values (pre-normalization, for context):\n${Object.entries(raw).slice(0, 10).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
+${types?.length ? `\nMembership types among active subscriptions (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
       }
 
       liveDataBlock = parts.join('\n\n')

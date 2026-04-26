@@ -425,7 +425,7 @@ export function createChatTools(clubId: string) {
 
     getMembershipBreakdown: defineTool({
       description:
-        'Get membership SUBSCRIPTION status breakdown: how many members have active / trial / expired / suspended / cancelled / guest / none. These are categorical subscription states (what the club_management software tracks), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics. The normalized buckets here mirror what the Members page shows so the numbers match.',
+        'Get membership SUBSCRIPTION status breakdown: how many followers have active / trial / expired / suspended / cancelled / guest / no-membership subscriptions. These are categorical subscription states from the club_management software (e.g. CourtReserve), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics.activePlayers30d.',
       parameters: z.object({}),
       execute: async () => {
         try {
@@ -433,60 +433,65 @@ export function createChatTools(clubId: string) {
           const club = await prisma.club.findUnique({ where: { id: clubId }, select: { automationSettings: true } })
           const membershipMappings = resolveMembershipMappings(club?.automationSettings)
 
-          // Pull every member embedding so we can normalize through the same
-          // pipeline the Members page uses (getMemberHealth → mapRealMembers
-          // → m.normalizedMembershipStatus). Without this the breakdown was
-          // grouping on the raw CSV string ("Currently Active" vs "Active"
-          // vs "ACTIVE") and didn't match what admins saw on the Members
-          // page — see "metric drift" follow-up from the 2026-04-25 audit.
-          const rows = await prisma.$queryRaw<Array<{ metadata: any }>>`
-            SELECT metadata FROM document_embeddings
-            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
+          // Pull membership_status + membership_type from the users table
+          // for every follower of this club. Earlier the tool scanned
+          // `document_embeddings (content_type='member', source_table='csv_import')`
+          // but on prod that source is empty for most clubs — the actual
+          // canonical source is `users.membership_status` populated by the
+          // CourtReserve sync. Tested on IPC North: 12,485 follower rows
+          // come back this way, matching the Integrations sync count.
+          const rows = await prisma.$queryRaw<Array<{
+            user_id: string
+            membership_status: string | null
+            membership_type: string | null
+          }>>`
+            SELECT cf.user_id, u.membership_status, u.membership_type
+            FROM club_followers cf
+            JOIN users u ON u.id = cf.user_id
+            WHERE cf.club_id = ${clubId}
           `
 
           const normalizedBreakdown: Record<string, number> = {
             active: 0, trial: 0, expired: 0, cancelled: 0, suspended: 0, guest: 0, none: 0, unknown: 0,
           }
           const rawBreakdown: Record<string, number> = {}
-          const typeCounts: Record<string, number> = {}
+          const typeAmongActive: Record<string, number> = {}
 
           for (const r of rows) {
-            let m: any
-            try {
-              m = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata
-            } catch {
-              continue
-            }
-            const rawStatus = m?.membershipStatus || 'Unknown'
+            const rawStatus = r.membership_status || 'Unknown'
             rawBreakdown[rawStatus] = (rawBreakdown[rawStatus] || 0) + 1
 
             const normalized = normalizeMembership({
-              membershipType: m?.membership,
-              membershipStatus: m?.membershipStatus,
+              membershipType: r.membership_type,
+              membershipStatus: r.membership_status,
               membershipMappings,
             })
             const bucket = normalized.normalizedStatus in normalizedBreakdown ? normalized.normalizedStatus : 'unknown'
             normalizedBreakdown[bucket]++
 
-            // Track type only for normalized-active members
-            if (normalized.normalizedStatus === 'active' && m?.membership) {
-              typeCounts[m.membership] = (typeCounts[m.membership] || 0) + 1
+            // Track membership type ONLY for normalized-active rows
+            if (normalized.normalizedStatus === 'active' && r.membership_type) {
+              typeAmongActive[r.membership_type] = (typeAmongActive[r.membership_type] || 0) + 1
             }
           }
 
-          const membershipTypes = Object.entries(typeCounts)
+          const membershipTypes = Object.entries(typeAmongActive)
             .sort(([, a], [, b]) => b - a)
             .slice(0, 10)
             .map(([type, count]) => ({ type, count }))
 
-          const totalScanned = rows.length
+          // Note: the Members page UI shows "Active Memberships" as the
+          // intersection (active-status AND has-booked-at-least-once) — a
+          // smaller number than the raw active count returned here. Both
+          // numbers are valid; we surface the raw subscription count as
+          // primary, and document the discrepancy so the LLM can explain.
           return {
-            totalMembersScanned: totalScanned,
+            totalFollowersScanned: rows.length,
+            activeSubscriptions: normalizedBreakdown.active,
             byNormalizedStatus: normalizedBreakdown,
-            activeMemberships: normalizedBreakdown.active,
             byRawStatus: rawBreakdown,
             membershipTypesAmongActive: membershipTypes,
-            statusDefinition: 'Subscription category from CSV import (matches the Members page "Active Memberships" tile). Different from booking activity — use getClubMetrics.activePlayers30d for "people who actually played recently".',
+            statusDefinition: 'Subscription category sourced from users.membership_status. The Members page tile labelled "Active Memberships" further restricts to members who have made at least one booking, so its count will be smaller than activeSubscriptions here. For "people who actually played in the last 30 days" use getClubMetrics.activePlayers30d.',
           }
         } catch (err) {
           console.error('[ChatTool] getMembershipBreakdown failed:', err)
