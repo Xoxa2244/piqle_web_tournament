@@ -3156,14 +3156,34 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const access = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const club: any = await ctx.prisma.club.findUniqueOrThrow({
-        where: { id: input.clubId },
-      })
-      const settings = club.automationSettings?.intelligence || null
+      const [club, syncedActiveCourts] = await Promise.all([
+        ctx.prisma.club.findUniqueOrThrow({ where: { id: input.clubId } }) as Promise<any>,
+        ctx.prisma.clubCourt.count({ where: { clubId: input.clubId, isActive: true } }),
+      ])
+      const rawSettings: any = club.automationSettings?.intelligence || null
+      // courtCount in onboarding is a self-reported number from when the
+      // admin first set up the club. Once CourtReserve sync runs, the
+      // actual courts live in club_courts and usually diverge — IPC
+      // North onboarded with 8, but CR has synced 24 active courts.
+      // Without this override the Settings UI, the AI Advisor system
+      // prompt (lib/ai/llm/prompts.ts), and the onboarding-completeness
+      // check (lib/ai/onboarding-tools.ts) all read a stale number.
+      // Returning the synced count when it's available and tagging the
+      // source lets the UI show "auto-detected" without losing the
+      // manually-entered fallback for clubs that haven't synced.
+      let settings = rawSettings
+      let courtCountSource: 'synced' | 'manual' | 'default' = rawSettings?.courtCount ? 'manual' : 'default'
+      if (rawSettings && syncedActiveCourts > 0) {
+        settings = { ...rawSettings, courtCount: syncedActiveCourts }
+        courtCountSource = 'synced'
+      } else if (!rawSettings && syncedActiveCourts > 0) {
+        settings = { courtCount: syncedActiveCourts }
+        courtCountSource = 'synced'
+      }
       // Derived fields consumed by CampaignsIQ etc.
-      const outreachRolloutStatus = settings?.controlPlane?.outreachRollout?.status || 'idle'
+      const outreachRolloutStatus = rawSettings?.controlPlane?.outreachRollout?.status || 'idle'
       const clubRole = access.isAdmin ? 'admin' : 'follower'
-      return { settings, outreachRolloutStatus, clubRole }
+      return { settings, courtCountSource, syncedActiveCourts, clubRole, outreachRolloutStatus }
     }),
 
   // ── Intelligence Settings: Save onboarding/config ──
