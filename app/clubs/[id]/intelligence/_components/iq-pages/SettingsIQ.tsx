@@ -962,6 +962,11 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
                 className="w-full px-3 py-2 rounded-xl text-sm outline-none"
                 style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t1)", colorScheme: isDark ? "dark" : "light" }}
               />
+              {(intelligenceData as any)?.courtCountSource === 'synced' && (
+                <p className="text-[11px] mt-1.5" style={{ color: "var(--t4)" }}>
+                  Auto-detected from {(intelligenceData as any)?.syncedActiveCourts ?? 0} active courts synced via CourtReserve. Edits save to settings but the synced value will continue to display on reload.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs mb-1.5 block" style={{ color: "var(--t3)", fontWeight: 600 }}>Avg Session Price ($)</label>
