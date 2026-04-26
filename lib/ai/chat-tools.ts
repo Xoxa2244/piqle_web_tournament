@@ -536,7 +536,7 @@ export function createChatTools(clubId: string) {
 
           // pickleball / DUPR path
           const where: any = {
-            clubFollowers: { some: { clubId } },
+            clubFollows: { some: { clubId } },
             duprRatingDoubles: { not: null },
           }
           if (minRating !== undefined || maxRating !== undefined) {
@@ -551,19 +551,37 @@ export function createChatTools(clubId: string) {
             orderBy: { duprRatingDoubles: 'desc' },
             take: limit ?? 50,
           })
+          // Also check how many followers HAVE any DUPR set, so we can
+          // distinguish "bracket filter returned nothing" from "we just
+          // don't have rating data on file at all".
+          const totalWithAnyRating = await prisma.user.count({
+            where: {
+              clubFollows: { some: { clubId } },
+              duprRatingDoubles: { not: null },
+            },
+          })
+          const totalFollowers = await prisma.clubFollower.count({ where: { clubId } })
+          let note: string
+          if (totalWithAnyRating === 0) {
+            note = `0 of ${totalFollowers} followers have a DUPR rating on file. CourtReserve sync does not pull DUPR ratings — admins would need to either (a) connect DUPR directly via the DUPR connector if available, (b) enter ratings manually on each member profile, or (c) leave them blank and rely on session skill_level for skill-based programming. Tell the user this honestly instead of guessing.`
+          } else if (total === 0) {
+            note = `${totalWithAnyRating} of ${totalFollowers} followers have any DUPR rating on file, but none match the requested bracket. The bracket may simply have no players at this club.`
+          } else {
+            note = `Returned the top ${players.length} of ${total} matching players, sorted by rating descending. ${totalWithAnyRating} of ${totalFollowers} total followers have any DUPR rating on file.`
+          }
           return {
             primarySport,
             ratingSystem: 'DUPR',
             integrated: true,
             filter: { minRating, maxRating },
             totalMatching: total,
+            totalWithAnyRating,
+            totalFollowers,
             samplePlayers: players.map((p) => ({
               name: p.name || p.email || 'Unknown',
               dupr: p.duprRatingDoubles ? Number(p.duprRatingDoubles) : null,
             })),
-            note: total === 0
-              ? 'No players match. Either no one in this rating bracket plays at the club, or DUPR data is sparse — check CourtReserve sync coverage.'
-              : `Returned the top ${players.length} of ${total} matching players, sorted by rating descending.`,
+            note,
           }
         } catch (err) {
           console.error('[ChatTool] getRatedPlayers failed:', err)

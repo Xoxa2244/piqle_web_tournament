@@ -395,15 +395,18 @@ ${ratedPlayers.message}`)
           parts.push(`## Player Skill Ratings
 Primary sport: ${ratedPlayers.primarySport}
 Rating system: ${ratedPlayers.ratingSystem}
-Total players with a rating on file: ${ratedPlayers.totalMatching}
+Total followers: ${ratedPlayers.totalFollowers ?? 'unknown'}
+Followers with a DUPR rating on file: ${ratedPlayers.totalWithAnyRating ?? 0}
 
-Top ${sample.length} by rating (descending):
+${ratedPlayers.note}
+
+${sample.length > 0 ? `Top ${sample.length} by rating (descending):
 ${sample.slice(0, 10).map((p) => `- ${p.name}: ${p.dupr ?? 'unrated'}`).join('\n')}
 
 Bracket distribution within this sample:
-${Object.entries(buckets).filter(([, c]) => c > 0).map(([b, c]) => `- ${b}: ${c}`).join('\n') || '- (no rated players)'}
+${Object.entries(buckets).filter(([, c]) => c > 0).map(([b, c]) => `- ${b}: ${c}`).join('\n')}` : ''}
 
-NOTE: Today only DUPR (pickleball) ratings are ingested via CourtReserve sync. UTR (tennis), Playtomic (padel), and other sport-specific systems are not yet integrated — say so plainly when asked.`)
+NOTE: CourtReserve sync does NOT pull DUPR ratings (that's why the count is often 0). UTR (tennis), Playtomic (padel), and other sport-specific systems are also not yet integrated — say so plainly when asked instead of guessing.`)
         }
       }
 
