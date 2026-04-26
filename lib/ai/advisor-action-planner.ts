@@ -268,6 +268,10 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
 
   // ── Ops intents first — "stop the agent" is unambiguous and should
   // never fall through to campaign drafting.
+  // (Cache-bust trailer 2026-04-26: Vercel was serving an older lambda
+  // that didn't include the analytical-gate / wantsShowDecisions
+  // tightening from the Bug #3 v1-v4 patch series. Touching this file
+  // forces a fresh build.)
   if (wantsKillSwitch) {
     return { action: 'ops_kill_switch', usePreviousCohort: false }
   }
