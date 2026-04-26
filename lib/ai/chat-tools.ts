@@ -120,6 +120,7 @@ export function createChatTools(clubId: string) {
               trend: m.trend,
               daysSinceLastVisit: m.daysSinceLastBooking,
               totalBookings: m.totalBookings,
+              duprRating: m.member?.duprRatingDoubles ?? null,
             })),
           }
         } catch (err) {
@@ -496,6 +497,77 @@ export function createChatTools(clubId: string) {
         } catch (err) {
           console.error('[ChatTool] getMembershipBreakdown failed:', err)
           return { error: 'Failed to load membership data.' }
+        }
+      },
+    }),
+
+    getRatedPlayers: defineTool({
+      description:
+        "Get players filtered by skill rating (DUPR for pickleball). Use when the user asks about rating brackets like '4.0+', '3.5-3.99', 'beginners', 'advanced players by rating', or 'how many players above X'. IMPORTANT: today we only ingest pickleball DUPR ratings from CourtReserve sync. UTR (tennis), Playtomic (padel), and other sport-specific rating systems are not yet integrated — for clubs whose primary sport is not pickleball, this tool returns an honest 'not yet integrated' notice instead of guessing.",
+      parameters: z.object({
+        minRating: z.number().optional().describe('Minimum rating, inclusive (e.g. 4.0)'),
+        maxRating: z.number().optional().describe('Maximum rating, exclusive (e.g. 4.5 to get 4.0-4.49 bracket)'),
+        limit: z.number().int().min(1).max(200).optional().describe('Max players to return. Default: 50'),
+      }),
+      execute: async ({ minRating, maxRating, limit }: { minRating?: number; maxRating?: number; limit?: number }) => {
+        try {
+          const club = await prisma.club.findUnique({ where: { id: clubId }, select: { automationSettings: true } })
+          const sportTypes: string[] = ((club?.automationSettings as any)?.intelligence?.sportTypes) || []
+          const primarySport = sportTypes[0] || 'pickleball'
+
+          // Multi-sport rating systems we know about, but don't ingest yet.
+          const SPORT_RATING_SYSTEM: Record<string, { system: string; integrated: boolean }> = {
+            pickleball: { system: 'DUPR', integrated: true },
+            tennis: { system: 'UTR', integrated: false },
+            padel: { system: 'Playtomic', integrated: false },
+            squash: { system: 'PSA / SquashLevels', integrated: false },
+            badminton: { system: 'BWF World Ranking', integrated: false },
+          }
+          const ratingMeta = SPORT_RATING_SYSTEM[primarySport.toLowerCase()] || { system: 'unknown', integrated: false }
+
+          if (!ratingMeta.integrated) {
+            return {
+              primarySport,
+              ratingSystem: ratingMeta.system,
+              integrated: false,
+              message: `Player ratings for ${primarySport} (${ratingMeta.system}) are not yet ingested into IQSport. Today we only sync DUPR for pickleball clubs via CourtReserve. To track ${ratingMeta.system}, an admin can enter ratings manually on each member profile, or we can add a connector — let the user know that's the limitation.`,
+            }
+          }
+
+          // pickleball / DUPR path
+          const where: any = {
+            clubFollowers: { some: { clubId } },
+            duprRatingDoubles: { not: null },
+          }
+          if (minRating !== undefined || maxRating !== undefined) {
+            where.duprRatingDoubles = {}
+            if (minRating !== undefined) where.duprRatingDoubles.gte = minRating
+            if (maxRating !== undefined) where.duprRatingDoubles.lt = maxRating
+          }
+          const total = await prisma.user.count({ where })
+          const players = await prisma.user.findMany({
+            where,
+            select: { id: true, name: true, email: true, duprRatingDoubles: true },
+            orderBy: { duprRatingDoubles: 'desc' },
+            take: limit ?? 50,
+          })
+          return {
+            primarySport,
+            ratingSystem: 'DUPR',
+            integrated: true,
+            filter: { minRating, maxRating },
+            totalMatching: total,
+            samplePlayers: players.map((p) => ({
+              name: p.name || p.email || 'Unknown',
+              dupr: p.duprRatingDoubles ? Number(p.duprRatingDoubles) : null,
+            })),
+            note: total === 0
+              ? 'No players match. Either no one in this rating bracket plays at the club, or DUPR data is sparse — check CourtReserve sync coverage.'
+              : `Returned the top ${players.length} of ${total} matching players, sorted by rating descending.`,
+          }
+        } catch (err) {
+          console.error('[ChatTool] getRatedPlayers failed:', err)
+          return { error: 'Failed to load rated player data.' }
         }
       },
     }),

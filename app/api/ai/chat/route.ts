@@ -268,18 +268,18 @@ export async function POST(req: Request) {
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, outcomeInsights: string
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, outcomeInsights: string, ratedPlayers: any
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights, ratedPlayers } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
       } else {
         // Fresh fetch
         const tools = createChatTools(clubId)
         const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights, ratedPlayers] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
@@ -287,9 +287,10 @@ export async function POST(req: Request) {
           exec(tools.getMembershipBreakdown, {}),
           exec(tools.getUpcomingSessions, { limit: 10 }),
           buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
+          exec(tools.getRatedPlayers, { limit: 30 }),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights: outcomeInsightsBlock } })
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights: outcomeInsightsBlock, ratedPlayers } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -368,6 +369,42 @@ ${norm ? Object.entries(norm).filter(([, c]) => c > 0).map(([status, count]) => 
 NOTE: The Members page tile "Active Memberships" further restricts to members who have made at least one booking, so it will read smaller than activeSubscriptions above. For "people who actually played in the last 30 days" use Active Players from the Club Metrics block.
 ${raw ? `\nRaw status values (pre-normalization, for context):\n${Object.entries(raw).slice(0, 10).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
 ${types?.length ? `\nMembership types among active subscriptions (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+      }
+
+      if (ratedPlayers && !('error' in ratedPlayers)) {
+        if (ratedPlayers.integrated === false) {
+          parts.push(`## Player Skill Ratings
+Primary sport: ${ratedPlayers.primarySport}
+Rating system for this sport: ${ratedPlayers.ratingSystem} — NOT YET INTEGRATED
+${ratedPlayers.message}`)
+        } else {
+          const sample = (ratedPlayers.samplePlayers as Array<{ name: string; dupr: number | null }>) || []
+          // Bucket the sample for at-a-glance distribution; full
+          // bracket counts would need a separate query but the top-30
+          // sample is enough for the LLM to answer typical "above 4.0"
+          // / "intermediate bracket" questions.
+          const buckets: Record<string, number> = { 'beginner (<3.0)': 0, 'intermediate (3.0-3.49)': 0, 'competitive (3.5-3.99)': 0, 'advanced (4.0-4.49)': 0, 'elite (4.5+)': 0 }
+          for (const p of sample) {
+            const r = p.dupr || 0
+            if (r >= 4.5) buckets['elite (4.5+)']++
+            else if (r >= 4.0) buckets['advanced (4.0-4.49)']++
+            else if (r >= 3.5) buckets['competitive (3.5-3.99)']++
+            else if (r >= 3.0) buckets['intermediate (3.0-3.49)']++
+            else if (r > 0) buckets['beginner (<3.0)']++
+          }
+          parts.push(`## Player Skill Ratings
+Primary sport: ${ratedPlayers.primarySport}
+Rating system: ${ratedPlayers.ratingSystem}
+Total players with a rating on file: ${ratedPlayers.totalMatching}
+
+Top ${sample.length} by rating (descending):
+${sample.slice(0, 10).map((p) => `- ${p.name}: ${p.dupr ?? 'unrated'}`).join('\n')}
+
+Bracket distribution within this sample:
+${Object.entries(buckets).filter(([, c]) => c > 0).map(([b, c]) => `- ${b}: ${c}`).join('\n') || '- (no rated players)'}
+
+NOTE: Today only DUPR (pickleball) ratings are ingested via CourtReserve sync. UTR (tennis), Playtomic (padel), and other sport-specific systems are not yet integrated — say so plainly when asked.`)
+        }
       }
 
       liveDataBlock = parts.join('\n\n')

@@ -160,7 +160,24 @@ export function buildClubContextPrompt(settings: {
 
   const parts: string[] = ['Club context:']
   if (settings.timezone) parts.push(`- Timezone: ${settings.timezone}`)
-  if (settings.sportTypes?.length) parts.push(`- Sports: ${settings.sportTypes.join(', ')}`)
+  if (settings.sportTypes?.length) {
+    const primary = settings.sportTypes[0]
+    parts.push(`- Sports: ${settings.sportTypes.join(', ')} (primary: ${primary})`)
+    // Surface which rating system applies to the primary sport so the
+    // LLM doesn't conflate DUPR (pickleball) with UTR (tennis) or
+    // Playtomic (padel). Today only DUPR is ingested via the
+    // CourtReserve sync — for non-pickleball clubs the LLM should
+    // tell users we don't yet track ratings for their sport.
+    const RATING_SYSTEM: Record<string, { system: string; integrated: boolean }> = {
+      pickleball: { system: 'DUPR', integrated: true },
+      tennis: { system: 'UTR', integrated: false },
+      padel: { system: 'Playtomic', integrated: false },
+      squash: { system: 'PSA / SquashLevels', integrated: false },
+      badminton: { system: 'BWF World Ranking', integrated: false },
+    }
+    const meta = RATING_SYSTEM[primary?.toLowerCase()] || { system: 'unknown', integrated: false }
+    parts.push(`- Player rating system for ${primary}: ${meta.system}${meta.integrated ? ' (ingested via CourtReserve)' : ' (NOT YET integrated — explain this if user asks about ratings)'}`)
+  }
   if (settings.courtCount) {
     const types = [settings.hasIndoorCourts && 'indoor', settings.hasOutdoorCourts && 'outdoor'].filter(Boolean).join(' + ')
     parts.push(`- Courts: ${settings.courtCount} (${types || 'unspecified'})`)
