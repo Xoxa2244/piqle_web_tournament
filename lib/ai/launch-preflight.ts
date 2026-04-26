@@ -82,8 +82,8 @@ export async function runLaunchPreflight(
           WHERE u.email ILIKE ANY (ARRAY[${blockedList}])
         )::int AS test_count
       FROM club_followers cf
-      JOIN users u ON u.id = cf."userId"
-      WHERE cf."clubId" = $1::uuid
+      JOIN users u ON u.id = cf.user_id
+      WHERE cf.club_id = $1
       `,
       clubId,
     )
