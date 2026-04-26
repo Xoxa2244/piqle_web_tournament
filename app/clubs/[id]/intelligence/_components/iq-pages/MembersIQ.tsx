@@ -3566,7 +3566,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
           const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
           return [
-            { label: "Active Members", value: String(active || allMembers.length), icon: Users, gradient: "from-violet-500 to-purple-600", sub: `of ${allMembers.length} total` },
+            { label: "Active Memberships", value: String(active || allMembers.length), icon: Users, gradient: "from-violet-500 to-purple-600", sub: `of ${allMembers.length} total · status='active'` },
             { label: "Avg Health", value: String(avgHealth), icon: Heart, gradient: "from-emerald-500 to-green-500", sub: "engagement score" },
             { label: "Guests / Drop-Ins", value: String(guests), icon: UserPlus, gradient: "from-cyan-500 to-teal-500", sub: guests > 0 ? "conversion pool" : "none" },
             { label: "Packages", value: String(packages), icon: CalendarDays, gradient: "from-amber-500 to-orange-500", sub: packages > 0 ? "credit holders" : "none" },

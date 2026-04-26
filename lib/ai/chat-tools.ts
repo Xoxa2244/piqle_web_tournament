@@ -190,7 +190,7 @@ export function createChatTools(clubId: string) {
 
     getClubMetrics: defineTool({
       description:
-        'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
+        'Get key club metrics aligned with the Dashboard: total followers, active players (booked in last 30d), bookings this week / this month, sessions, average court occupancy. Use when the user asks about club performance, overview, numbers, or how the club is doing. Note: "active players" here means people who actually played, not subscription status — for membership-status counts the user should look at the Members page.',
       parameters: z.object({}),
       execute: async () => {
         try {
@@ -216,10 +216,12 @@ export function createChatTools(clubId: string) {
             }),
             prisma.playSession.findMany({
               where: { clubId, date: { gte: d30, lte: now } },
+              select: { id: true, maxPlayers: true, registeredCount: true },
             }),
           ])
 
-          // Get booking counts for these sessions
+          // Get booking counts for these sessions (used as fallback when
+          // CSV-imported sessions don't have a registeredCount).
           const sessionIds = sessions30d.map(s => s.id)
           const bookingCounts = sessionIds.length > 0
             ? await prisma.playSessionBooking.groupBy({
@@ -233,12 +235,29 @@ export function createChatTools(clubId: string) {
             : []
           const countMap = new Map(bookingCounts.map((b: any) => [b.sessionId, b._count._all as number]))
 
-          const totalCapacity = sessions30d.reduce((sum, s) => sum + s.maxPlayers, 0)
-          const totalFilled = sessions30d.reduce((sum, s) => sum + (countMap.get(s.id) || 0), 0)
-          const avgOccupancy = totalCapacity > 0 ? Math.round((totalFilled / totalCapacity) * 100) : 0
+          // Average per-session occupancy ratio — must match the formula
+          // in `getDashboardV2` (server/routers/intelligence.ts) so admins
+          // don't see "9% occupancy" in the Advisor and "67% occupancy" on
+          // the Dashboard for the same period. Each session contributes
+          // one ratio; ratios are averaged. This way a 16-spot Open Play
+          // and a 4-spot ball-machine slot get equal weight (the natural
+          // pickleball-club intuition), instead of capacity-weighted total.
+          const occRatios = sessions30d
+            .map((s) => {
+              const max = s.maxPlayers ?? 0
+              const reg = s.registeredCount ?? countMap.get(s.id) ?? 0
+              return max > 0 ? (reg / max) * 100 : null
+            })
+            .filter((v): v is number => v !== null)
+          const avgOccupancy = occRatios.length === 0
+            ? 0
+            : Math.round(occRatios.reduce((a, b) => a + b, 0) / occRatios.length)
 
-          // Active = booked at least once in last 30 days
-          const activeUsers = await prisma.playSessionBooking.groupBy({
+          // Active player = made at least one CONFIRMED booking in last 30
+          // days. Same definition the Dashboard's "Active Players" card
+          // uses, NOT the same as membership status='active' on the
+          // Members page (which is a categorical subscription field).
+          const activePlayers = await prisma.playSessionBooking.groupBy({
             by: ['userId'],
             where: {
               playSession: { clubId },
@@ -248,13 +267,14 @@ export function createChatTools(clubId: string) {
           })
 
           return {
-            totalMembers,
-            activeMembers: activeUsers.length,
-            inactiveMembers: totalMembers - activeUsers.length,
+            totalFollowers: totalMembers,
+            activePlayers30d: activePlayers.length,
+            inactiveFollowers30d: totalMembers - activePlayers.length,
             bookingsLast30Days: totalBookings30d,
             bookingsLast7Days: totalBookings7d,
             sessionsLast30Days: sessions30d.length,
             averageOccupancy: `${avgOccupancy}%`,
+            occupancyDefinition: 'mean of per-session (registered / maxPlayers) — matches Dashboard',
           }
         } catch (err) {
           console.error('[ChatTool] getClubMetrics failed:', err)
@@ -326,7 +346,7 @@ export function createChatTools(clubId: string) {
 
     getCourtOccupancy: defineTool({
       description:
-        'Get court occupancy breakdown by day of week and time slot. Shows which courts and time slots are busy vs empty. Use when the user asks about occupancy, court utilization, busy/quiet times, when courts are empty, Tuesday morning, peak hours, or anything about court usage patterns.',
+        'Get COURT-HOUR UTILIZATION breakdown by day of week and time slot — i.e. what % of available court-hours actually have a session scheduled. Use when the user asks about utilization, scheduling density, busy/quiet times, when courts are empty, Tuesday morning, peak hours, or court usage patterns. NOTE: this is "are courts being used at all" (scheduling supply), NOT "how full are sessions when they run" (per-session player occupancy). For player occupancy use getClubMetrics. The two metrics will diverge — a club can have low court-hour utilization (only a few sessions scheduled) but high per-session occupancy (those sessions are full).',
       parameters: z.object({
         days: z.number().int().optional().describe('Look back period in days. Default: 30'),
       }),
@@ -390,7 +410,8 @@ export function createChatTools(clubId: string) {
           return {
             period: `Last ${lookback} days`,
             totalCourts,
-            overallOccupancy: `${overallOccupancy}%`,
+            overallCourtHourUtilization: `${overallOccupancy}%`,
+            metricDefinition: 'court-hour utilization = (court-hours with any session) / (operating court-hours). Different from per-session player occupancy — see getClubMetrics for that.',
             busiestSlots: slotSummary.slice(0, 10),
             quietestSlots: slotSummary.slice(-10).reverse(),
             totalSessions: sessions.length,

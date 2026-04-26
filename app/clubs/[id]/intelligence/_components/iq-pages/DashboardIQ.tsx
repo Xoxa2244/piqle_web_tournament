@@ -290,7 +290,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
       // Default to membership when pricingModel not configured
       const isMembership = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
       return [
-        { label: "Active Members", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
+        { label: "Active Players", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
         { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
         {
           label: "Player Sessions",
@@ -1281,9 +1281,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               prevSub: parseSessionCount(prv?.occupancy?.subtitle),
             },
             { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
-            { label: "Active Members", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
+            { label: "Active Players", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
             {
-              label: "Avg Sessions/Member",
+              label: "Avg Sessions/Player",
               cur: toNum(cur.members?.value) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.members?.value)) * 10) / 10 : 0,
               prev: toNum(prv?.members?.value) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.members?.value)) * 10) / 10 : 0,
               format: 'number',
