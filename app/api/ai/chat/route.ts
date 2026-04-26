@@ -114,14 +114,20 @@ export async function POST(req: Request) {
       const { checkUsageLimit } = await import('@/lib/subscription');
       const advisorCheck = await checkUsageLimit(clubId, 'ai_advisor');
       if (!advisorCheck.allowed) {
-        return new Response(JSON.stringify({
-          type: 'USAGE_LIMIT_REACHED',
-          resource: 'ai_advisor',
-          used: advisorCheck.used,
-          limit: advisorCheck.limit,
-          plan: advisorCheck.plan,
-          message: `AI Advisor daily limit reached (${advisorCheck.used}/${advisorCheck.limit}). Upgrade your plan for more conversations.`,
-        }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+        // Plain-text body so the front-end's `error.message` shows a
+        // human-readable line instead of a raw JSON payload — see Bug #2
+        // from the 2026-04-25 audit.
+        const friendly = `You have reached your daily AI Advisor message limit (${advisorCheck.used}/${advisorCheck.limit} on the ${advisorCheck.plan} plan). Upgrade to Pro or Enterprise for more conversations, or try again tomorrow.`;
+        return new Response(friendly, {
+          status: 429,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'X-Error-Type': 'USAGE_LIMIT_REACHED',
+            'X-Plan': advisorCheck.plan,
+            'X-Used': String(advisorCheck.used),
+            'X-Limit': String(advisorCheck.limit),
+          },
+        });
       }
     } catch (e) {
       // Non-critical — allow chat if usage check fails
@@ -535,6 +541,35 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
 
     return result.toUIMessageStreamResponse({
       headers: responseHeaders,
+      onError: (error: unknown) => {
+        // Map known provider failures to user-friendly text. Without this
+        // the AI SDK forwards the raw error JSON into the chat stream, so
+        // admins saw payloads like `{"type":"error","error":{"type":
+        // "insufficient_quota",...}}` directly in the conversation — see
+        // Bug #2 from the 2026-04-25 audit.
+        const raw = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error || {}));
+        const lower = raw.toLowerCase();
+        console.error('[AI Chat] Stream error:', raw.slice(0, 500));
+        if (lower.includes('insufficient_quota') || lower.includes('insufficient funds') || lower.includes('billing')) {
+          return 'AI service is temporarily unavailable due to a billing issue. Please contact support — we\'re on it.';
+        }
+        if (lower.includes('usage_limit_reached') || lower.includes('daily limit')) {
+          return 'You have reached your daily AI Advisor message limit. Upgrade your plan or try again tomorrow.';
+        }
+        if (lower.includes('rate_limit') || lower.includes('429') || lower.includes('rate limit')) {
+          return 'The AI is overloaded right now. Please wait a few seconds and try again.';
+        }
+        if (lower.includes('context_length_exceeded') || lower.includes('maximum context length')) {
+          return 'This conversation has gotten too long for me to follow. Start a new chat and I\'ll have a fresh memory.';
+        }
+        if (lower.includes('content_policy') || lower.includes('safety')) {
+          return 'I can\'t help with that request. Try rephrasing it as a question about your club\'s data.';
+        }
+        if (lower.includes('timeout') || lower.includes('timed out')) {
+          return 'The AI took too long to respond. Please try again.';
+        }
+        return 'Sorry, I ran into a problem answering that. Please try again, or rephrase your question.';
+      },
     });
   } catch (error) {
     const errMsg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
