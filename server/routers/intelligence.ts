@@ -3156,9 +3156,24 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const access = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const [club, syncedActiveCourts] = await Promise.all([
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000)
+      const [club, syncedActiveCourts, recentSessionDows] = await Promise.all([
         ctx.prisma.club.findUniqueOrThrow({ where: { id: input.clubId } }) as Promise<any>,
         ctx.prisma.clubCourt.count({ where: { clubId: input.clubId, isActive: true } }),
+        // Group session dates in the club's local zone — using UTC
+        // misclassifies late-evening sessions for US clubs (a Mon 9pm
+        // session would land on Tue when UTC-shifted).
+        ctx.prisma.$queryRaw<Array<{ dow: string; sessions: bigint }>>`
+          SELECT TO_CHAR(date AT TIME ZONE COALESCE(
+            (SELECT timezone FROM clubs WHERE id = ${input.clubId}::uuid),
+            'America/New_York'
+          ), 'Dy') AS dow, COUNT(*)::bigint AS sessions
+          FROM play_sessions
+          WHERE "clubId" = ${input.clubId}
+            AND date >= ${ninetyDaysAgo}
+            AND status != 'CANCELLED'
+          GROUP BY dow
+        `.catch(() => [] as Array<{ dow: string; sessions: bigint }>),
       ])
       const rawSettings: any = club.automationSettings?.intelligence || null
       // courtCount in onboarding is a self-reported number from when the
@@ -3180,10 +3195,60 @@ export const intelligenceRouter = createTRPCRouter({
         settings = { courtCount: syncedActiveCourts }
         courtCountSource = 'synced'
       }
+      // Same idea for operatingDays — if the last 90 days of session
+      // history shows the club active on certain weekdays, override the
+      // saved (often empty) onboarding value. Prevents the AI Advisor
+      // and Programming IQ from treating a 7-day-a-week club as closed
+      // because the admin never filled the chips during onboarding.
+      //
+      // Also normalises the saved-value format. Some clubs (incl. IPC
+      // North) have ["Monday","Tuesday",...] saved while the chips in
+      // the UI render and match on ["Mon","Tue",...]. The format
+      // mismatch made every chip render as deselected even though the
+      // settings object said all 7 days were operating. Convert both
+      // saved and synced to the short form here so the UI sees one
+      // canonical shape.
+      const DOW_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const SHORT_TO_LONG: Record<string, string> = {
+        Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday',
+        Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday',
+      }
+      const toShortDow = (raw: string): string | null => {
+        if (!raw) return null
+        if ((DOW_ORDER as string[]).includes(raw)) return raw
+        const long = String(raw).slice(0, 3)
+        const matchByLong = Object.entries(SHORT_TO_LONG).find(([, v]) => v === raw)?.[0]
+        if (matchByLong) return matchByLong
+        const cap = long.charAt(0).toUpperCase() + long.slice(1).toLowerCase()
+        return (DOW_ORDER as string[]).includes(cap) ? cap : null
+      }
+      const normalizedSavedDays = Array.isArray(rawSettings?.operatingDays)
+        ? rawSettings.operatingDays.map(toShortDow).filter((d: string | null): d is string => !!d)
+        : []
+      const syncedOperatingDays = recentSessionDows
+        .filter((r) => Number(r.sessions) > 0)
+        .map((r) => r.dow)
+      const orderedSyncedDays = DOW_ORDER.filter((d) => syncedOperatingDays.includes(d))
+      let operatingDaysSource: 'synced' | 'manual' | 'default' =
+        normalizedSavedDays.length > 0 ? 'manual' : 'default'
+      if (orderedSyncedDays.length > 0) {
+        settings = { ...(settings || {}), operatingDays: orderedSyncedDays }
+        operatingDaysSource = 'synced'
+      } else if (normalizedSavedDays.length > 0) {
+        settings = { ...(settings || {}), operatingDays: normalizedSavedDays }
+      }
       // Derived fields consumed by CampaignsIQ etc.
       const outreachRolloutStatus = rawSettings?.controlPlane?.outreachRollout?.status || 'idle'
       const clubRole = access.isAdmin ? 'admin' : 'follower'
-      return { settings, courtCountSource, syncedActiveCourts, clubRole, outreachRolloutStatus }
+      return {
+        settings,
+        courtCountSource,
+        syncedActiveCourts,
+        operatingDaysSource,
+        syncedOperatingDays: orderedSyncedDays,
+        clubRole,
+        outreachRolloutStatus,
+      }
     }),
 
   // ── Intelligence Settings: Save onboarding/config ──

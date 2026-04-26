@@ -987,6 +987,11 @@ export function SettingsIQ({ intelligenceData, automationData, saveMutation, sav
                 <Chip key={d} selected={operatingDays.includes(d)} onClick={() => toggleDay(d)}>{d}</Chip>
               ))}
             </div>
+            {(intelligenceData as any)?.operatingDaysSource === 'synced' && (
+              <p className="text-[11px] mt-1.5" style={{ color: "var(--t4)" }}>
+                Auto-detected from sessions in the last 90 days. Edits save to settings but the synced value will continue to display on reload.
+              </p>
+            )}
           </div>
 
           {/* Hours */}
