@@ -3157,17 +3157,14 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const access = await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000)
-      const [club, syncedActiveCourts, recentSessionDows] = await Promise.all([
-        ctx.prisma.club.findUniqueOrThrow({ where: { id: input.clubId } }) as Promise<any>,
+      const club = await ctx.prisma.club.findUniqueOrThrow({ where: { id: input.clubId } }) as any
+      // Resolve timezone from the same JSON the Timezone select reads
+      // (clubs.timezone is not a column on this DB). Falls back to ET.
+      const clubTz = (club.automationSettings as any)?.intelligence?.timezone || 'America/New_York'
+      const [syncedActiveCourts, recentSessionDows] = await Promise.all([
         ctx.prisma.clubCourt.count({ where: { clubId: input.clubId, isActive: true } }),
-        // Group session dates in the club's local zone — using UTC
-        // misclassifies late-evening sessions for US clubs (a Mon 9pm
-        // session would land on Tue when UTC-shifted).
         ctx.prisma.$queryRaw<Array<{ dow: string; sessions: bigint }>>`
-          SELECT TO_CHAR(date AT TIME ZONE COALESCE(
-            (SELECT timezone FROM clubs WHERE id = ${input.clubId}::uuid),
-            'America/New_York'
-          ), 'Dy') AS dow, COUNT(*)::bigint AS sessions
+          SELECT TO_CHAR(date AT TIME ZONE ${clubTz}, 'Dy') AS dow, COUNT(*)::bigint AS sessions
           FROM play_sessions
           WHERE "clubId" = ${input.clubId}
             AND date >= ${ninetyDaysAgo}
