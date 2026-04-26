@@ -205,9 +205,14 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
 
   // "Why did you skip X?" / "show recent decisions" / "why was this
   // blocked?" — pulls from AgentDecisionRecord for audit clarity.
+  // Tightened from `(why|...) AND (agent|...|you|it)` because that hijacked
+  // any chat question containing "why" and "you" (e.g. "where would you
+  // put it and why?"). Now requires an explicit audit anchor (why-did /
+  // explain-why / skipped / blocked / decisions+show) AND a concrete
+  // entity ('you/it' alone are too generic to count).
   const wantsShowDecisions =
-    /\b(why|reasoning|decision|decisions|explain|because|skipped|blocked|reject(?:ed)?)\b/.test(lower) &&
-    /\b(agent|ai|last|recent|previously|earlier|you|it)\b/.test(lower)
+    /\b(why\s+(did|was|were|are|is)|explain\s+why|skipped|blocked|reject(?:ed)?|recent\s+decisions|show\s+(me\s+)?(recent\s+)?decisions|reasoning\s+(why|behind))\b/.test(lower) &&
+    /\b(agent|ai|automation|action|campaign|outreach|send|message|skip|block|reject)\b/.test(lower)
 
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
   if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
