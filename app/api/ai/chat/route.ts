@@ -296,19 +296,24 @@ export async function POST(req: Request) {
       const parts: string[] = []
 
       if (metrics && !('error' in metrics)) {
-        parts.push(`## Club Metrics (real-time)
-Total members: ${metrics.totalMembers}
-Active members (last 30d): ${metrics.activeMembers}
-Inactive members: ${metrics.inactiveMembers}
+        // Field names match the renamed getClubMetrics tool. The labels
+        // here are what the LLM sees verbatim — keep them explicit so a
+        // chat answer about "active members" doesn't conflate
+        // booking-activity with subscription status (see Bug "metric
+        // drift" from the 2026-04-25 audit).
+        parts.push(`## Club Metrics (real-time, last 30 days)
+Total followers (anyone subscribed to this club): ${metrics.totalFollowers}
+Active players (made a confirmed booking in last 30 days): ${metrics.activePlayers30d}
+Inactive followers (subscribed but no booking in last 30 days): ${metrics.inactiveFollowers30d}
 Bookings last 7 days: ${metrics.bookingsLast7Days}
 Bookings last 30 days: ${metrics.bookingsLast30Days}
 Sessions last 30 days: ${metrics.sessionsLast30Days}
-Average occupancy: ${metrics.averageOccupancy}`)
+Average per-session occupancy: ${metrics.averageOccupancy} (mean of registered/maxPlayers across sessions — same formula the Dashboard uses)`)
       }
 
       if (courtOcc && !('error' in courtOcc)) {
-        parts.push(`## Court Occupancy (${courtOcc.period})
-Overall occupancy: ${courtOcc.overallOccupancy}
+        parts.push(`## Court-Hour Utilization (${courtOcc.period})
+Overall court-hour utilization: ${courtOcc.overallCourtHourUtilization} — % of operating court-hours that have ANY session scheduled (different from per-session player occupancy above; both are useful)
 Total courts: ${courtOcc.totalCourts}
 Total sessions: ${courtOcc.totalSessions}
 
