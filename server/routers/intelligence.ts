@@ -454,6 +454,8 @@ const COHORT_ALLOWED_FIELDS = new Set([
   'zipCode', 'city', 'sessionFormat', 'dayOfWeek', 'frequency',
   'recency', 'userId', 'duprRating',
   'normalizedMembershipType', 'normalizedMembershipStatus',
+  // P3-T3 D7 additions:
+  'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
 ])
 const COHORT_ALLOWED_OPS = new Set(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in'])
 
@@ -466,6 +468,8 @@ export const cohortFilterSchema = z.object({
     'zipCode', 'city', 'sessionFormat', 'dayOfWeek', 'frequency',
     'recency', 'userId', 'duprRating',
     'normalizedMembershipType', 'normalizedMembershipStatus',
+    // P3-T3 D7 additions:
+    'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
   ]),
   op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
   value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(200)]),
@@ -547,6 +551,42 @@ function buildCohortFilterClause(f: CohortFilter): string {
           return `u.id IN (${ids})`
         }
         return 'TRUE'
+      // ── P3-T3 D7 additions ──
+      case 'healthScore': {
+        // Latest MemberHealthSnapshot per user, score range filter.
+        const hsVal = Number(f.value)
+        if (!Number.isFinite(hsVal) || hsVal < 0 || hsVal > 100) return 'TRUE'
+        const hsOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
+        return `u.id IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid ORDER BY mhs.user_id, mhs.date DESC) AND u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+      }
+      case 'riskLevel': {
+        // Latest snapshot per user where risk_level = (string|in array).
+        if (f.op === 'in' && Array.isArray(f.value)) {
+          const safe = f.value
+            .map((v) => String(v).replace(/'/g, "''"))
+            .filter((v) => ['healthy', 'watch', 'at_risk', 'critical'].includes(v))
+          if (safe.length === 0) return 'TRUE'
+          const list = safe.map((v) => `'${v}'`).join(',')
+          return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        }
+        const safeVal = String(f.value).replace(/'/g, "''")
+        if (!['healthy', 'watch', 'at_risk', 'critical'].includes(safeVal)) return 'TRUE'
+        return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+      }
+      case 'joinedDaysAgo': {
+        // Days since user joined this club (club_followers.created_at).
+        const jVal = Number(f.value)
+        if (!Number.isFinite(jVal) || jVal < 0 || jVal > 36500) return 'TRUE'
+        // op=lte means "joined within the last N days" → cf.created_at >= NOW() - N days
+        const op = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
+        return `cf.created_at ${op} CURRENT_TIMESTAMP - INTERVAL '${jVal} days'`
+      }
+      case 'birthdayMonth': {
+        // Month number 1..12; uses date_of_birth on User.
+        const mVal = Number(f.value)
+        if (!Number.isFinite(mVal) || mVal < 1 || mVal > 12) return 'TRUE'
+        return `u.date_of_birth IS NOT NULL AND EXTRACT(MONTH FROM u.date_of_birth) = ${mVal}`
+      }
       case 'duprRating': {
         // Fallback: match against skill_level text when numeric DUPR is empty
         // skill_level values: "2.5-2.99 (Casual)", "3.0-3.49 (Intermediate)", "3.5-3.99 (Competitive)", "4.0+ (Advanced)"

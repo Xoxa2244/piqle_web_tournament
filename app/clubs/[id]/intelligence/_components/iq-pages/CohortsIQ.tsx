@@ -34,9 +34,30 @@ const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = [
   { label: 'No Membership', value: 'none' },
 ]
 
+const RISK_LEVEL_OPTIONS = [
+  { label: 'Healthy', value: 'healthy' },
+  { label: 'Watch', value: 'watch' },
+  { label: 'At-Risk', value: 'at_risk' },
+  { label: 'Critical', value: 'critical' },
+]
+
+const BIRTHDAY_MONTH_OPTIONS = [
+  { label: 'January',   value: '1'  }, { label: 'February',  value: '2'  },
+  { label: 'March',     value: '3'  }, { label: 'April',     value: '4'  },
+  { label: 'May',       value: '5'  }, { label: 'June',      value: '6'  },
+  { label: 'July',      value: '7'  }, { label: 'August',    value: '8'  },
+  { label: 'September', value: '9'  }, { label: 'October',   value: '10' },
+  { label: 'November',  value: '11' }, { label: 'December',  value: '12' },
+]
+
 const FILTER_FIELDS = [
   { key: 'age', label: 'Age', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
   { key: 'gender', label: 'Gender', type: 'select' as const, ops: ['eq'], options: [{ label: 'Male', value: 'M' }, { label: 'Female', value: 'F' }] },
+  // P3-T3 D7 fields:
+  { key: 'healthScore', label: 'Health Score', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
+  { key: 'riskLevel', label: 'Risk Level', type: 'select' as const, ops: ['eq'], options: RISK_LEVEL_OPTIONS },
+  { key: 'joinedDaysAgo', label: 'Joined (days ago)', type: 'number' as const, ops: ['lte', 'gte'] },
+  { key: 'birthdayMonth', label: 'Birthday Month', type: 'select' as const, ops: ['eq'], options: BIRTHDAY_MONTH_OPTIONS },
   { key: 'sessionFormat', label: 'Session Type', type: 'select' as const, ops: ['eq'], options: [
     { label: 'Open Play', value: 'OPEN_PLAY' }, { label: 'Clinic', value: 'CLINIC' },
     { label: 'League', value: 'LEAGUE_PLAY' }, { label: 'Drill', value: 'DRILL' }, { label: 'Social', value: 'SOCIAL' },
