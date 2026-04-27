@@ -238,6 +238,31 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
 }
 
 /**
+ * P2-T3: List existing user cohorts for bulk-action picker.
+ */
+export function useListCohorts(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.listCohorts.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 60_000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [
+        { id: 'demo-cohort-1', name: 'Age >= 30', description: '20 members', memberCount: 20, filters: [], createdAt: new Date() },
+        { id: 'demo-cohort-2', name: 'Gender = Female', description: '11 members', memberCount: 11, filters: [], createdAt: new Date() },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
  * P2-T1: Member KPI deltas (vs previous period of same length).
  *
  * Wraps `intelligence.getMemberHealthDeltas` (currently a stub returning

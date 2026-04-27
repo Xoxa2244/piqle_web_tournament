@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
-import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas, useListCohorts } from '../../_hooks/use-intelligence'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
@@ -1285,6 +1285,21 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
   // P2-T1: KPI deltas vs previous period (driven by `period` selector).
   const { data: kpiDeltas } = useMemberKpiDeltas(clubId || '', period === 'custom' ? 'month' : period)
+
+  // P2-T3: Bulk select for "Add to cohort" / "Send campaign" workflows.
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
+  const [bulkAddCohortOpen, setBulkAddCohortOpen] = useState(false)
+  const { data: existingCohortsForBulk = [] } = useListCohorts(clubId || '')
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev)
+      if (next.has(memberId)) next.delete(memberId)
+      else next.add(memberId)
+      return next
+    })
+  }
+  const clearMemberSelection = () => setSelectedMemberIds(new Set())
 
   // P2-T2: persist viewMode preference per user.
   useEffect(() => {
@@ -3977,6 +3992,18 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
+      {/* P2-T3: Bulk select toolbar — visible when 1+ members selected */}
+      {selectedMemberIds.size > 0 && (
+        <BulkSelectToolbar
+          clubId={clubId || ''}
+          selectedIds={Array.from(selectedMemberIds)}
+          existingCohorts={existingCohortsForBulk as any[]}
+          onClear={clearMemberSelection}
+          isOpen={bulkAddCohortOpen}
+          setOpen={setBulkAddCohortOpen}
+        />
+      )}
+
       {/* P2-T2: Member layout — list (default), grid (multi-col), cards (alias of grid for now) */}
       {(viewMode === "grid" || viewMode === "cards") ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -4096,17 +4123,41 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </div>
       ) : (
         <Card className="!p-0 overflow-hidden">
-          {/* List header */}
+          {/* List header — P2-T3: checkbox column added at start */}
           <div
             className="grid items-center px-5 py-3 text-[10px] uppercase tracking-wider"
             style={{
-              gridTemplateColumns: "40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+              gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
               gap: "0 12px",
               color: "var(--t4)",
               fontWeight: 600,
               borderBottom: "1px solid var(--divider)",
             }}
           >
+            {/* Master checkbox: select all on current page */}
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                aria-label="Select all on page"
+                className="w-4 h-4 cursor-pointer"
+                checked={paginated.length > 0 && paginated.every(m => selectedMemberIds.has(m.id))}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedMemberIds(prev => {
+                      const next = new Set(prev)
+                      paginated.forEach(m => next.add(m.id))
+                      return next
+                    })
+                  } else {
+                    setSelectedMemberIds(prev => {
+                      const next = new Set(prev)
+                      paginated.forEach(m => next.delete(m.id))
+                      return next
+                    })
+                  }
+                }}
+              />
+            </div>
             <span />
             <span>Member</span>
             <span className="hidden md:block">Segment</span>
@@ -4119,6 +4170,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           </div>
           {paginated.map((member, i) => {
             const seg = segmentConfig[member.segment];
+            const isSelected = selectedMemberIds.has(member.id)
             return (
               <motion.div
                 key={member.id}
@@ -4127,14 +4179,25 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 transition={{ delay: i * 0.02 }}
                 className="grid items-center px-5 py-3 cursor-pointer transition-colors"
                 style={{
-                  gridTemplateColumns: "40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+                  gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
                   gap: "0 12px",
                   borderBottom: "1px solid var(--divider)",
+                  background: isSelected ? "rgba(139,92,246,0.06)" : undefined,
                 }}
                 onClick={() => openMemberDrawer(member.id)}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--hover)" }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "rgba(139,92,246,0.06)" : "transparent" }}
               >
+                {/* P2-T3: per-row checkbox; click stops propagation so row click still opens drawer */}
+                <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${member.name}`}
+                    checked={isSelected}
+                    onChange={() => toggleMemberSelection(member.id)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                </div>
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center text-xs text-white"
                   style={{ background: `linear-gradient(135deg, ${seg.color}, ${seg.color}99)`, fontWeight: 700 }}
@@ -4241,6 +4304,140 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       )}
     </motion.div>
   );
+}
+
+// ── P2-T3: Bulk select toolbar ──
+// Sticky bar shown when ≥1 member is checked. Provides:
+//   - "Add to cohort ▾" — saves selection as new cohort, OR shows existing
+//     (existing cohorts disabled with "Coming in P3-T3" tooltip until the
+//     cohort builder enriches them with userId-IN merge logic).
+//   - "Send campaign" — disabled until P4-T1 (Campaign Wizard).
+//   - "Clear selection" — empties the Set.
+function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOpen, setOpen }: {
+  clubId: string
+  selectedIds: string[]
+  existingCohorts: any[]
+  onClear: () => void
+  isOpen: boolean
+  setOpen: (v: boolean) => void
+}) {
+  const [savedCohortName, setSavedCohortName] = useState<string | null>(null)
+  const createMutation = trpc.intelligence.createCohort.useMutation({
+    onSuccess: (cohort: any) => {
+      setSavedCohortName(cohort?.name || 'Cohort')
+      setOpen(false)
+      // Auto-clear after 2.5s so subsequent selections work fresh
+      setTimeout(() => {
+        setSavedCohortName(null)
+        onClear()
+      }, 2500)
+    },
+  })
+
+  if (savedCohortName) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+        style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10B981' }}
+      >
+        <Check className="w-4 h-4" />
+        <span className="text-sm font-semibold">Saved &ldquo;{savedCohortName}&rdquo;</span>
+      </motion.div>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-3 px-4 py-2.5 rounded-xl flex-wrap"
+      style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)' }}
+    >
+      <span className="text-sm font-semibold" style={{ color: '#A78BFA' }}>
+        {selectedIds.length} selected
+      </span>
+
+      <div className="relative">
+        <button
+          onClick={() => setOpen(!isOpen)}
+          disabled={createMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] disabled:opacity-50"
+          style={{ background: 'rgba(139,92,246,0.18)', color: '#A78BFA' }}
+        >
+          <Users className="w-3.5 h-3.5" />
+          Add to cohort
+          <ChevronRight className="w-3 h-3 rotate-90" />
+        </button>
+
+        {isOpen && (
+          <div
+            className="absolute top-full mt-1 left-0 z-20 min-w-[260px] rounded-xl shadow-lg overflow-hidden"
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+          >
+            {/* Create new cohort */}
+            <button
+              onClick={() => createMutation.mutate({
+                clubId,
+                name: `Selection of ${selectedIds.length} · ${new Date().toLocaleDateString()}`,
+                description: `Members hand-picked from Members list (${selectedIds.length} total)`,
+                filters: [{ field: 'userId', op: 'in' as const, value: selectedIds }],
+              })}
+              disabled={createMutation.isPending}
+              className="w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors hover:bg-[var(--hover)] disabled:opacity-50"
+              style={{ color: 'var(--heading)', borderBottom: '1px solid var(--divider)' }}
+            >
+              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+              <span className="font-semibold">+ Create new cohort from selection</span>
+            </button>
+
+            {/* Existing cohorts (disabled — P3-T3) */}
+            <div className="px-3 py-2 text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+              Add to existing
+            </div>
+            {existingCohorts.length === 0 ? (
+              <div className="px-3 pb-3 text-[11px]" style={{ color: 'var(--t4)' }}>
+                No saved cohorts yet.
+              </div>
+            ) : (
+              existingCohorts.slice(0, 6).map((cohort) => (
+                <div
+                  key={cohort.id}
+                  title="Add-to-existing-cohort lands in P3-T3 (Cohort Builder enrichment)"
+                  className="px-3 py-2 text-xs flex items-center justify-between gap-2"
+                  style={{ color: 'var(--t4)', cursor: 'not-allowed', opacity: 0.6 }}
+                >
+                  <span className="truncate">{cohort.name}</span>
+                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--t4)' }}>
+                    {cohort.memberCount} · soon
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <button
+        disabled
+        title="Available in P4-T1 (Campaign Wizard)"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold opacity-50 cursor-not-allowed"
+        style={{ background: 'rgba(6,182,212,0.18)', color: '#06B6D4' }}
+      >
+        <Mail className="w-3.5 h-3.5" />
+        Send campaign
+      </button>
+
+      <button
+        onClick={onClear}
+        className="ml-auto text-xs px-2 py-1 rounded-lg transition-colors hover:bg-[var(--hover)]"
+        style={{ color: 'var(--t3)' }}
+      >
+        Clear selection
+      </button>
+    </motion.div>
+  )
 }
 
 // ── Save filtered members as Cohort ──
