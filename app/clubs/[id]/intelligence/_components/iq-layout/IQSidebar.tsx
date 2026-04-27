@@ -31,7 +31,20 @@ interface NavSection {
   items: NavItem[];
 }
 
-function buildNavSections(isMembership: boolean): NavSection[] {
+function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[] {
+  const systemItems: NavItem[] = [
+    { icon: Rocket, label: "Launch", path: "/launch" },
+    { icon: CreditCard, label: "Billing", path: "/billing" },
+    { icon: Plug, label: "Integrations", path: "/integrations" },
+    { icon: Mail, label: "Email Domain", path: "/email-domain" },
+    { icon: Settings, label: "Settings", path: "/settings" },
+  ]
+  // Admin-only: Automation page (Agent Campaign Layer + triggers).
+  // See docs/ENGAGE_REDESIGN_SPEC.md §2 P0-T2 / §3 P1-T3.
+  if (isAdmin) {
+    systemItems.push({ icon: Bot, label: "Automation", path: "/settings/automation" })
+  }
+
   return [
   {
     id: "analytics",
@@ -66,13 +79,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     id: "system",
     title: "SYSTEM",
     icon: Settings,
-    items: [
-      { icon: Rocket, label: "Launch", path: "/launch" },
-      { icon: CreditCard, label: "Billing", path: "/billing" },
-      { icon: Plug, label: "Integrations", path: "/integrations" },
-      { icon: Mail, label: "Email Domain", path: "/email-domain" },
-      { icon: Settings, label: "Settings", path: "/settings" },
-    ],
+    items: systemItems,
   },
   ]
 }
@@ -101,7 +108,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const pricingModel = intelligenceSettings?.settings?.pricingModel;
   // Default to membership when pricingModel is not yet configured (most clubs are membership-based)
   const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
-  const navSections = buildNavSections(isMembershipClub);
+  const isAdmin = intelligenceSettings?.clubRole === 'ADMIN';
+  const navSections = buildNavSections(isMembershipClub, isAdmin);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
   const userEmail = session?.user?.email || "";
