@@ -302,10 +302,13 @@ export async function POST(req: Request) {
         // chat answer about "active members" doesn't conflate
         // booking-activity with subscription status (see Bug "metric
         // drift" from the 2026-04-25 audit).
-        parts.push(`## Club Metrics (real-time, last 30 days)
+        const metricPeriod = metrics.dashboardPeriod
+          ? `${new Date(metrics.dashboardPeriod.from).toLocaleDateString('en-US')}–${new Date(metrics.dashboardPeriod.to).toLocaleDateString('en-US')}`
+          : 'last 30 days'
+        parts.push(`## Club Metrics (real-time, Dashboard period: ${metricPeriod})
 Total followers (anyone subscribed to this club): ${metrics.totalFollowers}
-Active players (made a confirmed booking in last 30 days): ${metrics.activePlayers30d}
-Inactive followers (subscribed but no booking in last 30 days): ${metrics.inactiveFollowers30d}
+Active players (confirmed booking in a session dated within the Dashboard period): ${metrics.activePlayers30d}
+Inactive followers (subscribed but no confirmed booking in that Dashboard period): ${metrics.inactiveFollowers30d}
 Bookings last 7 days: ${metrics.bookingsLast7Days}
 Bookings last 30 days: ${metrics.bookingsLast30Days}
 Sessions last 30 days: ${metrics.sessionsLast30Days}

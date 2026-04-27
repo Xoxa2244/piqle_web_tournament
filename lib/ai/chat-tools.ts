@@ -191,13 +191,30 @@ export function createChatTools(clubId: string) {
 
     getClubMetrics: defineTool({
       description:
-        'Get key club metrics aligned with the Dashboard: total followers, active players (booked in last 30d), bookings this week / this month, sessions, average court occupancy. Use when the user asks about club performance, overview, numbers, or how the club is doing. Note: "active players" here means people who actually played, not subscription status — for membership-status counts the user should look at the Members page.',
+        'Get key club metrics aligned with the Dashboard: total followers, active players (confirmed booking in a session during the Dashboard period), bookings this week / this month, sessions, average court occupancy. Use when the user asks about club performance, overview, numbers, or how the club is doing. Note: "active players" here means people who actually played, not subscription status — for membership-status counts the user should look at the Members page.',
       parameters: z.object({}),
       execute: async () => {
         try {
           const now = new Date()
-          const d30 = new Date(now.getTime() - 30 * 86400000)
-          const d7 = new Date(now.getTime() - 7 * 86400000)
+          const currentEnd = now
+          let d30 = new Date(currentEnd.getTime() - 30 * 86400000)
+          const d7 = new Date(currentEnd.getTime() - 7 * 86400000)
+
+          // Mirror Dashboard V2's default historical-data fallback. Some
+          // demo/imported clubs have their latest completed sessions older
+          // than "today - 30d", so the Dashboard shifts its comparison window
+          // to the latest available completed session.
+          const latestSession = await prisma.playSession.findFirst({
+            where: { clubId, status: 'COMPLETED' },
+            orderBy: { date: 'desc' },
+            select: { date: true },
+          }).catch(() => null)
+
+          if (latestSession && new Date(latestSession.date) < d30) {
+            const latestDate = new Date(latestSession.date)
+            latestDate.setHours(23, 59, 59, 999)
+            d30 = new Date(latestDate.getTime() - 30 * 86400000)
+          }
 
           const [totalMembers, totalBookings30d, totalBookings7d, sessions30d] = await Promise.all([
             prisma.clubFollower.count({ where: { clubId } }),
@@ -216,7 +233,7 @@ export function createChatTools(clubId: string) {
               },
             }),
             prisma.playSession.findMany({
-              where: { clubId, date: { gte: d30, lte: now } },
+              where: { clubId, date: { gte: d30, lte: currentEnd } },
               select: { id: true, maxPlayers: true, registeredCount: true },
             }),
           ])
@@ -254,16 +271,15 @@ export function createChatTools(clubId: string) {
             ? 0
             : Math.round(occRatios.reduce((a, b) => a + b, 0) / occRatios.length)
 
-          // Active player = made at least one CONFIRMED booking in last 30
-          // days. Same definition the Dashboard's "Active Players" card
-          // uses, NOT the same as membership status='active' on the
-          // Members page (which is a categorical subscription field).
+          // Active player = has at least one CONFIRMED booking attached to a
+          // session in the Dashboard period. This intentionally filters by
+          // playSession.date, not booking.created/bookedAt, matching
+          // getDashboardV2's "Active Players" card.
           const activePlayers = await prisma.playSessionBooking.groupBy({
             by: ['userId'],
             where: {
-              playSession: { clubId },
               status: 'CONFIRMED',
-              bookedAt: { gte: d30 },
+              playSession: { clubId, date: { gte: d30, lte: currentEnd } },
             },
           })
 
@@ -276,6 +292,11 @@ export function createChatTools(clubId: string) {
             sessionsLast30Days: sessions30d.length,
             averageOccupancy: `${avgOccupancy}%`,
             occupancyDefinition: 'mean of per-session (registered / maxPlayers) — matches Dashboard',
+            activePlayersDefinition: 'unique users with CONFIRMED bookings in sessions dated within the Dashboard period — matches Dashboard',
+            dashboardPeriod: {
+              from: d30.toISOString(),
+              to: currentEnd.toISOString(),
+            },
           }
         } catch (err) {
           console.error('[ChatTool] getClubMetrics failed:', err)
