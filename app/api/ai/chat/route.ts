@@ -268,29 +268,31 @@ export async function POST(req: Request) {
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, outcomeInsights: string, ratedPlayers: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, ratedPlayers: any
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights, ratedPlayers } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, ratedPlayers } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
       } else {
         // Fresh fetch
         const tools = createChatTools(clubId)
         const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights, ratedPlayers] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, ratedPlayers] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
           exec(tools.getReactivationCandidates, { limit: 10 }),
           exec(tools.getMembershipBreakdown, {}),
-          exec(tools.getUpcomingSessions, { limit: 10 }),
+          exec(tools.getUpcomingSessions, { limit: 30, onlyOpenSpots: true }),
+          exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'today' }),
+          exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'tonight' }),
           buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
           exec(tools.getRatedPlayers, { limit: 30 }),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, outcomeInsights: outcomeInsightsBlock, ratedPlayers } })
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, ratedPlayers } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -355,7 +357,23 @@ ${(reactivation.candidates as any[]).map((c: any) => `- ${c.name}: ${c.daysSince
 
       if (upcomingSessions && !('error' in upcomingSessions)) {
         parts.push(`## Upcoming Sessions
-${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left`).join('\n')}`)
+${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')}`)
+      }
+
+      if (todayOpenSessions && !('error' in todayOpenSessions)) {
+        const sessions = (todayOpenSessions.sessions as any[]) ?? []
+        parts.push(`## Today's Sessions With Open Spots (${todayOpenSessions.timeZone || 'club local time'})
+${sessions.length > 0
+  ? sessions.map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')
+  : '- None today with open spots'}`)
+      }
+
+      if (tonightOpenSessions && !('error' in tonightOpenSessions)) {
+        const sessions = (tonightOpenSessions.sessions as any[]) ?? []
+        parts.push(`## Tonight's Sessions With Open Spots (${tonightOpenSessions.timeZone || 'club local time'})
+${sessions.length > 0
+  ? sessions.map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')
+  : '- None tonight with open spots'}`)
       }
 
       if (membershipData && !('error' in membershipData)) {
@@ -480,7 +498,12 @@ ${ragContext}
 --- End of Historical Context ---
 ${crossSessionContext}
 
-IMPORTANT: Use the Real-Time Club Data above to answer questions about current metrics, members, occupancy, and bookings. Use Historical Context for trends and patterns. Always cite specific numbers from the data. Never say "I don't have access to data" — the data is provided above.`;
+IMPORTANT: Use the Real-Time Club Data above to answer questions about current metrics, members, occupancy, and bookings. Use Historical Context for trends and patterns. Always cite specific numbers from the data. Never say "I don't have access to data" — the data is provided above.
+
+When answering about sessions with open spots today or tonight:
+- use the dedicated "Today's Sessions With Open Spots" / "Tonight's Sessions With Open Spots" blocks first, not just the generic upcoming list;
+- mention every relevant session from those blocks unless the user asked for a shorter shortlist;
+- preserve the provided Open event markdown link so the user can click straight into the event.`;
 
     // 7. Verify API key is available
     step = 'apikey';

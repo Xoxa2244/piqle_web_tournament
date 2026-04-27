@@ -109,8 +109,8 @@ export function CampaignCreatorStep3Message({
       <div
         className="rounded-xl p-4 mb-4"
         style={{
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(6,182,212,0.05))',
-          border: '1px solid rgba(139,92,246,0.15)',
+          background: 'linear-gradient(135deg, #161E33, #111A2C)',
+          border: '1px solid rgba(139,92,246,0.22)',
         }}
       >
         <div className="flex items-center gap-2 mb-1.5">

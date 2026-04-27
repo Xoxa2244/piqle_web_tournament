@@ -16,6 +16,33 @@ function defineTool(config: { description: string; parameters: z.ZodObject<any>;
   return tool({ description: config.description, inputSchema: config.parameters, execute: config.execute } as any)
 }
 
+function formatDateKeyInTimeZone(date: Date, timeZone: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+function getMinutesInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+  return hour * 60 + minute
+}
+
+function parseTimeToMinutes(time: string | null | undefined) {
+  if (!time) return 0
+  const [hours, minutes] = time.split(':').map((value) => Number(value || 0))
+  return hours * 60 + minutes
+}
+
 export function createChatTools(clubId: string) {
   return {
     getMemberHealth: defineTool({
@@ -135,19 +162,33 @@ export function createChatTools(clubId: string) {
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
       parameters: z.object({
         onlyUnderfilled: z.boolean().optional().describe('Only return sessions below 50% capacity. Default: false'),
+        onlyOpenSpots: z.boolean().optional().describe('Only return sessions that still have at least 1 open spot. Default: false'),
+        dayScope: z.enum(['all', 'today', 'today_upcoming', 'tonight']).optional().describe('Filter to all sessions, all sessions on today, sessions later today, or tonight. Default: all'),
         limit: z.number().int().min(1).optional().describe('Max sessions to return. Default: 10'),
       }),
-      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
+      execute: async ({ onlyUnderfilled, onlyOpenSpots, dayScope, limit }: { onlyUnderfilled?: boolean; onlyOpenSpots?: boolean; dayScope?: 'all' | 'today' | 'today_upcoming' | 'tonight'; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
+        const openOnly = onlyOpenSpots ?? false
+        const scope = dayScope ?? 'all'
         const l = limit ?? 10
         try {
+          const club = await prisma.club.findUnique({
+            where: { id: clubId },
+            select: { automationSettings: true },
+          }).catch(() => null)
+          const clubTimeZone = ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) || 'America/New_York'
+          const now = new Date()
+          const todayKey = formatDateKeyInTimeZone(now, clubTimeZone)
+          const nowMinutes = getMinutesInTimeZone(now, clubTimeZone)
+          const queryFloor = new Date(now.getTime() - 36 * 60 * 60 * 1000)
+
           const sessions = await prisma.playSession.findMany({
             where: {
               clubId,
-              date: { gte: new Date() },
+              date: { gte: queryFloor },
             },
             orderBy: { date: 'asc' },
-            take: 30,
+            take: 120,
           })
 
           // Get booking counts separately
@@ -165,7 +206,15 @@ export function createChatTools(clubId: string) {
           let result = sessions.map(s => {
             const confirmed: number = countMap.get(s.id) || 0
             const occupancy = s.maxPlayers > 0 ? Math.round((confirmed / s.maxPlayers) * 100) : 0
+            const spotsRemaining = Math.max(0, s.maxPlayers - confirmed)
+            const sessionDateKey = formatDateKeyInTimeZone(s.date, clubTimeZone)
+            const startMinutes = parseTimeToMinutes(s.startTime)
+            const isToday = sessionDateKey === todayKey
+            const isLaterToday = isToday && startMinutes >= nowMinutes
+            const isTonight = isLaterToday && startMinutes >= 17 * 60
+            const isFutureDay = sessionDateKey > todayKey
             return {
+              sessionId: s.id,
               title: s.title,
               date: s.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
               time: `${s.startTime}–${s.endTime}`,
@@ -173,15 +222,34 @@ export function createChatTools(clubId: string) {
               confirmed,
               maxPlayers: s.maxPlayers,
               occupancy: `${occupancy}%`,
-              spotsRemaining: s.maxPlayers - confirmed,
+              spotsRemaining,
+              isToday,
+              isLaterToday,
+              isTonight,
+              isFutureDay,
+              eventUrl: `/clubs/${clubId}/intelligence/slot-filler?session=${encodeURIComponent(s.id)}`,
             }
           })
+
+          result = result.filter((session) => session.isToday || session.isFutureDay)
 
           if (uf) {
             result = result.filter(s => parseInt(s.occupancy) < 50)
           }
 
-          return { sessions: result.slice(0, l), total: result.length }
+          if (openOnly) {
+            result = result.filter((s) => s.spotsRemaining > 0)
+          }
+
+          if (scope === 'today') {
+            result = result.filter((s) => s.isToday)
+          } else if (scope === 'today_upcoming') {
+            result = result.filter((s) => s.isLaterToday)
+          } else if (scope === 'tonight') {
+            result = result.filter((s) => s.isTonight)
+          }
+
+          return { sessions: result.slice(0, l), total: result.length, timeZone: clubTimeZone, dayScope: scope }
         } catch (err) {
           console.error('[ChatTool] getUpcomingSessions failed:', err)
           return { error: 'Failed to load sessions.' }

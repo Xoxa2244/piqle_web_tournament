@@ -261,7 +261,7 @@ function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienc
         </div>
       )}
       {sessionId && (
-        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
           <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             Recommended recipients
           </div>
@@ -277,7 +277,7 @@ function SessionAudience({ clubId, type, sessionId, onSessionIdChange, onAudienc
         </div>
       )}
       {!isLoading && list.length > 0 && (
-        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+        <div className="mt-4 rounded-xl px-3 py-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
           <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
             Available sessions
           </div>

@@ -21,7 +21,7 @@ export function CampaignAudiencePreviewList({
   const visible = expanded ? members : members.slice(0, limit)
 
   return (
-    <div className="rounded-xl px-3 py-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+    <div className="rounded-xl px-3 py-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
       <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
         {title}
       </div>
@@ -37,7 +37,7 @@ export function CampaignAudiencePreviewList({
               <div
                 key={member.id}
                 className="rounded-lg px-3 py-2"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}
+                style={{ background: '#141B2D', border: '1px solid rgba(255,255,255,0.06)' }}
               >
                 <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 600 }}>
                   {member.name}
