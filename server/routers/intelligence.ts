@@ -1096,7 +1096,7 @@ export const intelligenceRouter = createTRPCRouter({
           })
           const prefMap = new Map(preferences.map((pref: any) => [pref.userId, pref]))
 
-          return members
+          const preferenceBased = members
             .map((cf: any) => {
               const user = cf.user
               if (!user?.id || alreadyBookedUserIds.has(user.id)) return null
@@ -1170,6 +1170,109 @@ export const intelligenceRouter = createTRPCRouter({
                   recentlyActive: false,
                 },
                 source: 'member_preference_fallback' as const,
+              }
+            })
+            .filter(Boolean)
+            .sort((a: any, b: any) => b.score - a.score)
+            .slice(0, limit)
+
+          if (preferenceBased.length > 0) {
+            return preferenceBased
+          }
+
+          const embeddingRows: any[] = await prisma.$queryRawUnsafe(`
+            SELECT
+              de.source_id as user_id,
+              de.metadata->>'name' as name,
+              de.metadata->>'email' as email,
+              de.metadata->>'membership' as membership_type,
+              de.metadata->>'membershipStatus' as membership_status,
+              de.metadata->>'skillLevel' as skill_level,
+              de.metadata->>'lastVisit' as last_visit,
+              COALESCE((de.metadata->>'reservationCount')::int, 0) as reservation_count,
+              NULLIF(de.metadata->>'duprDoubles', '')::float as dupr_doubles
+            FROM document_embeddings de
+            WHERE de.club_id = $1
+              AND de.content_type = 'member'
+              AND de.source_table = 'csv_import'
+            ORDER BY
+              COALESCE((de.metadata->>'reservationCount')::int, 0) DESC,
+              COALESCE(NULLIF(de.metadata->>'lastVisit', '')::date, DATE '1900-01-01') DESC
+            LIMIT $2
+          `, clubId, Math.max(limit * 8, 32))
+
+          return embeddingRows
+            .map((row: any) => {
+              const userId = String(row.user_id || '')
+              if (!userId || alreadyBookedUserIds.has(userId)) return null
+              if (row.membership_status === 'Suspended' || row.membership_status === 'Expired') return null
+
+              const memberSkill = inferSkill(row.dupr_doubles != null ? Number(row.dupr_doubles) : null)
+              const csvSkill = String(row.skill_level || '').toUpperCase()
+              const skillMatch = skill === 'ALL_LEVELS'
+                || csvSkill === skill
+                || memberSkill === skill
+                || (skill === 'INTERMEDIATE' && csvSkill === 'ALL_LEVELS')
+                || (skill === 'BEGINNER' && csvSkill === 'ALL_LEVELS')
+                || (skill === 'ADVANCED' && (csvSkill === 'INTERMEDIATE' || memberSkill === 'INTERMEDIATE'))
+
+              let lastVisitDaysAgo: number | null = null
+              if (row.last_visit) {
+                const parsed = new Date(`${row.last_visit}T23:59:59`)
+                if (!Number.isNaN(parsed.getTime())) {
+                  lastVisitDaysAgo = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86400000))
+                }
+              }
+
+              const reservationCount = Number(row.reservation_count || 0)
+              const score =
+                38
+                + (skillMatch ? 18 : 0)
+                + Math.min(reservationCount * 2, 24)
+                + (lastVisitDaysAgo != null ? Math.max(0, 12 - Math.min(lastVisitDaysAgo, 12)) : 0)
+
+              const reasons: string[] = []
+              if (skillMatch) reasons.push('fits the session level')
+              if (reservationCount > 0) reasons.push(`${reservationCount} prior reservations`)
+              if (lastVisitDaysAgo != null) reasons.push(`last visited ${lastVisitDaysAgo}d ago`)
+              if (reasons.length === 0) reasons.push('imported active member')
+
+              return {
+                member: {
+                  id: userId,
+                  name: row.name || row.email || 'Unknown',
+                  email: row.email || '',
+                  image: null,
+                  duprRating: row.dupr_doubles ?? null,
+                  duprRatingDoubles: row.dupr_doubles ?? null,
+                  lastPlayedDaysAgo: lastVisitDaysAgo,
+                  membershipType: row.membership_type || null,
+                },
+                score: Math.min(score, 92),
+                estimatedLikelihood: (skillMatch && reservationCount >= 4) ? 'high' as const
+                  : (skillMatch || reservationCount >= 2) ? 'medium' as const
+                  : 'low' as const,
+                reasoning: {
+                  summary: `${reasons.slice(0, 3).join(', ')} — fallback from imported member roster`,
+                  components: {
+                    formatMatch: 0,
+                    skillMatch: skillMatch ? 1 : 0,
+                    timeMatch: 0,
+                    dowMatch: 0,
+                    courtMatch: 0,
+                    recencyDays: lastVisitDaysAgo,
+                    membership: row.membership_type || null,
+                  },
+                },
+                factors: {
+                  preferredTimeMatch: false,
+                  formatMatch: false,
+                  skillMatch,
+                  dayOfWeekMatch: false,
+                  frequentPlayer: reservationCount >= 3,
+                  recentlyActive: lastVisitDaysAgo != null && lastVisitDaysAgo <= 14,
+                },
+                source: 'member_embedding_fallback' as const,
               }
             })
             .filter(Boolean)
