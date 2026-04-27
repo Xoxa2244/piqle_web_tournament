@@ -525,7 +525,7 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
 When answering about sessions with open spots today or tonight:
 - use the dedicated "Today's Sessions With Open Spots" / "Tonight's Sessions With Open Spots" blocks first, not just the generic upcoming list;
 - mention every relevant session from those blocks unless the user asked for a shorter shortlist;
-- keep the event link embedded directly in the event title, not as a separate bullet or trailing line;
+- keep the event link embedded naturally inside the same session line, preferably in the event title; if needed, use short anchor text like [click here](...) in that same line;
 - copy the provided linked title exactly as given and never invent placeholder links like [Join here](#).`;
 
     // 7. Verify API key is available

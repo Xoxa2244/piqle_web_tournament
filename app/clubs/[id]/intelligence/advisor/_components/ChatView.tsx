@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
@@ -99,6 +100,86 @@ function linkifySessionTitles(
       return linkedLine
     })
     .join('\n')
+}
+
+function renderInlineMarkdown(
+  text: string,
+  keyPrefix: string
+): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null = null
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={`${keyPrefix}-text-${lastIndex}`}>
+          {text.slice(lastIndex, match.index)}
+        </span>
+      )
+    }
+
+    if (match[1] && match[2]) {
+      const label = match[1].replace(/\*\*/g, '')
+      const href = match[2]
+      nodes.push(
+        href.startsWith('/')
+          ? (
+              <Link key={`${keyPrefix}-link-${match.index}`} href={href} className="text-lime-600 hover:underline font-medium">
+                {label}
+              </Link>
+            )
+          : (
+              <a key={`${keyPrefix}-link-${match.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-medium">
+                {label}
+              </a>
+            )
+      )
+    } else if (match[3]) {
+      nodes.push(
+        <strong key={`${keyPrefix}-strong-${match.index}`} className="font-semibold">
+          {match[3]}
+        </strong>
+      )
+    }
+
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(
+      <span key={`${keyPrefix}-tail-${lastIndex}`}>
+        {text.slice(lastIndex)}
+      </span>
+    )
+  }
+
+  return nodes
+}
+
+function renderMessageWithInlineLinks(text: string) {
+  const lines = text.split('\n')
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, index) => {
+        if (!line.trim()) {
+          return <div key={`blank-${index}`} className="h-2" />
+        }
+
+        const indent = line.match(/^\s*/)?.[0].length ?? 0
+        return (
+          <div
+            key={`line-${index}`}
+            className="whitespace-pre-wrap"
+            style={{ paddingLeft: indent > 0 ? `${Math.min(indent, 4) * 10}px` : undefined }}
+          >
+            {renderInlineMarkdown(line.trimStart(), `line-${index}`)}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
@@ -421,6 +502,7 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                   const cleanText = message.role === 'assistant'
                     ? linkifySessionTitles(stripSuggestedTags(rawClean), linkableSessions, clubId)
                     : rawClean
+                  const hasInlineLinks = cleanText.includes('](/') || cleanText.includes('](http')
                   return (
                     <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
@@ -437,26 +519,30 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
                             <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
-                              <ReactMarkdown
-                                components={{
-                                  a: ({ href, children }) => {
-                                    if (href?.startsWith('/')) {
+                              {hasInlineLinks ? (
+                                renderMessageWithInlineLinks(cleanText)
+                              ) : (
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ href, children }) => {
+                                      if (href?.startsWith('/')) {
+                                        return (
+                                          <Link href={href} className="text-lime-600 hover:underline font-medium">
+                                            {children}
+                                          </Link>
+                                        )
+                                      }
                                       return (
-                                        <Link href={href} className="text-lime-600 hover:underline font-medium">
+                                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
                                           {children}
-                                        </Link>
+                                        </a>
                                       )
-                                    }
-                                    return (
-                                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
-                                        {children}
-                                      </a>
-                                    )
-                                  },
-                                }}
-                              >
-                                {cleanText}
-                              </ReactMarkdown>
+                                    },
+                                  }}
+                                >
+                                  {cleanText}
+                                </ReactMarkdown>
+                              )}
                             </div>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
