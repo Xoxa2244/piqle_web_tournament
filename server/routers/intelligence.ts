@@ -8110,6 +8110,92 @@ Generate 3 campaign strategies with different goals and timings based on the dat
   // `truncated` fields, and may add an alternative `conditions+logic` input
   // shape if the new Cohort Builder needs richer expressions.
 
+  // P2-T5 — Members AI Insight ribbon (rules-based v1).
+  //
+  // Returns at most one insight ranked by confidence/$-impact.
+  // V1 rules (deterministic, no LLM):
+  //   1. risk_shift — at-risk count grew by ≥3 in last 7d (vs snapshot)
+  //   2. cluster   — ≥5 at-risk/critical members right now
+  //   3. null      — no actionable signal, ribbon hidden
+  // Future iterations (P5+) will layer LLM-narrative explanations.
+  getMembersAIInsight: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000)
+
+      // Snapshot from ~7 days ago — count of at_risk + critical users
+      let atRiskSevenDaysAgo = 0
+      try {
+        const past = await ctx.prisma.memberHealthSnapshot.findMany({
+          where: {
+            clubId: input.clubId,
+            date: { lte: sevenDaysAgo },
+            riskLevel: { in: ['at_risk', 'critical'] },
+          },
+          select: { userId: true, date: true },
+          orderBy: { date: 'desc' },
+          take: 500,
+        })
+        // De-dupe by userId taking the most recent <=7d-ago snapshot per user
+        const seen = new Set<string>()
+        for (const r of past) {
+          if (r.userId && !seen.has(r.userId)) seen.add(r.userId)
+        }
+        atRiskSevenDaysAgo = seen.size
+      } catch {
+        atRiskSevenDaysAgo = 0
+      }
+
+      // Current at-risk count from latest snapshot per user
+      let atRiskNow = 0
+      try {
+        const latest = await ctx.prisma.$queryRaw<Array<{ user_id: string }>>`
+          SELECT DISTINCT ON (user_id) user_id
+          FROM member_health_snapshots
+          WHERE club_id = ${input.clubId}
+            AND risk_level IN ('at_risk', 'critical')
+          ORDER BY user_id, date DESC
+        `
+        atRiskNow = latest.length
+      } catch {
+        atRiskNow = 0
+      }
+
+      const delta = atRiskNow - atRiskSevenDaysAgo
+
+      // Rule 1 — risk_shift: meaningful jump in at-risk this week
+      if (delta >= 3) {
+        return {
+          kind: 'risk_shift' as const,
+          insightId: `risk_shift_${input.clubId}_${new Date().toISOString().slice(0, 10)}`,
+          title: `${delta} more members shifted to at-risk this week`,
+          cause: `Total at-risk count rose from ${atRiskSevenDaysAgo} to ${atRiskNow} over the last 7 days.`,
+          suggestedAction: 'Create cohort "Recently at-risk"',
+          suggestedCohortName: `Recently at-risk · ${new Date().toISOString().slice(0, 10)}`,
+          suggestedFilters: [{ field: 'riskLevel', op: 'in' as const, value: ['at_risk', 'critical'] }],
+          severity: delta >= 5 ? 'warning' : 'info',
+        }
+      }
+
+      // Rule 2 — cluster: many at-risk right now (regardless of trend)
+      if (atRiskNow >= 5) {
+        return {
+          kind: 'cluster' as const,
+          insightId: `cluster_atrisk_${input.clubId}_${new Date().toISOString().slice(0, 10)}`,
+          title: `${atRiskNow} members need attention`,
+          cause: 'They are tagged as at-risk or critical based on declining session activity. A targeted reactivation can win some back.',
+          suggestedAction: 'Create cohort "All at-risk"',
+          suggestedCohortName: 'All at-risk members',
+          suggestedFilters: [{ field: 'riskLevel', op: 'in' as const, value: ['at_risk', 'critical'] }],
+          severity: 'info' as const,
+        }
+      }
+
+      return null
+    }),
+
   // P0-T4 / P4-T6 — Active campaigns table on Campaigns page.
   // Phase 4 ships lightweight (name/cohort/channel/sent/status).
   // Phase 5 (P5-T4) adds open % + booked $ when attribution lands.

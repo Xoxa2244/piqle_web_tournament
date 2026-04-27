@@ -23,6 +23,7 @@ import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
 import { MemberDetailDrawer } from "../MemberDetailDrawer";
+import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
 import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
 
@@ -3722,6 +3723,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           );
         })}
       </div>
+
+      {/* P2-T5: AI Insight ribbon — single high-impact insight below KPIs.
+          Hidden when no rule matches OR user dismissed (7d localStorage).
+          See SPEC §4 P2-T5. */}
+      {clubId && <AIInsightRibbon clubId={clubId} />}
 
       {membersAgentActions.length > 0 && (
         <Card>
