@@ -3729,7 +3729,15 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           See SPEC §4 P2-T5. */}
       {clubId && <AIInsightRibbon clubId={clubId} />}
 
-      {membersAgentActions.length > 0 && (
+      {/* P2-T7: Agent Actions block REMOVED from Members page.
+          The "Renew Expired" / "Upsell Package" cards are now expressed
+          as AI-Suggested cohorts on the Cohorts page (P3-T2):
+            - Renew Expired   → "Renewal in 14d" generator
+            - Upsell Package  → future generator (out of D4 scope)
+          See SPEC §4 P2-T7 / PLAN §3.6 + §4.7. The membersAgentActions
+          memo is left in place for now — feeds nothing in the UI but is
+          referenced elsewhere; final removal in P5-T5 cleanup pass. */}
+      {false && membersAgentActions.length > 0 && (
         <Card>
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>

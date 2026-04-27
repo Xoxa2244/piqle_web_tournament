@@ -238,6 +238,66 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
 }
 
 /**
+ * P3-T2: AI-suggested cohorts (Renewal in 14d, Lost Evening, New & Engaged).
+ * Wraps `intelligence.listSuggestedCohorts` (P3-T1 generators).
+ */
+export function useSuggestedCohorts(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.listSuggestedCohorts.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [
+        {
+          id: 'demo:renewal-14d',
+          generatorKey: 'renewal_in_14d',
+          name: 'Renewal in 14d',
+          description: '7 members with packages expiring in the next 2 weeks. A nudge converts.',
+          memberCount: 7,
+          estImpactCents: 33_600,
+          suggestedAction: 'Renewal nudge',
+          suggestedTemplateKey: 'renewal_reminder',
+          userIds: [],
+          emoji: '📅',
+        },
+        {
+          id: 'demo:lost-evening',
+          generatorKey: 'lost_evening_players',
+          name: 'Lost Evening Players',
+          description: '12 members who used to play 4+ evenings/month, now ≤1.',
+          memberCount: 12,
+          estImpactCents: 11_520,
+          suggestedAction: 'Reactivation outreach',
+          suggestedTemplateKey: 'win_back_inactive',
+          userIds: [],
+          emoji: '⚠️',
+        },
+        {
+          id: 'demo:new-engaged',
+          generatorKey: 'new_and_engaged',
+          name: 'New & Engaged',
+          description: '5 new members (joined <30d, 4+ sessions). Welcome them properly.',
+          memberCount: 5,
+          estImpactCents: 90_000,
+          suggestedAction: 'Onboarding series',
+          suggestedTemplateKey: 'onboarding_series',
+          userIds: [],
+          emoji: '🌟',
+        },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
  * P2-T3: List existing user cohorts for bulk-action picker.
  */
 export function useListCohorts(clubId: string, options?: IntelligenceQueryOptions) {

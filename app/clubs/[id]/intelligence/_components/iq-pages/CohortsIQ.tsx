@@ -8,7 +8,8 @@ import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Spa
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
-import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession, useSuggestedCohorts } from '../../_hooks/use-intelligence'
+import { SuggestedCohortCard } from '../SuggestedCohortCard'
 
 // ── Filter field definitions ──
 const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = [
@@ -168,6 +169,8 @@ export default function CohortsIQ() {
   const [lookalikeExportPreset, setLookalikeExportPreset] = useState<LookalikeExportPreset>('generic_csv')
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
+  // P3-T2: AI-suggested cohorts (3 generators per D4)
+  const { data: suggestedCohorts = [] } = useSuggestedCohorts(clubId)
   const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
   const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8)
   const { data: lookalikeExportData } = useLookalikeAudienceExport(clubId)
@@ -367,6 +370,46 @@ export default function CohortsIQ() {
           />
         )}
       </AnimatePresence>
+
+      {/* P3-T2: AI-Suggested Cohorts.
+          Three generators (Renewal in 14d, Lost Evening Players,
+          New & Engaged) live in lib/ai/cohort-generators/. Sorted by
+          $ impact desc; empties hidden. See SPEC §5 P3-T2. */}
+      {!showCreate && !selectedCohortId && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+            <h2 className="text-base" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+              AI-Suggested Cohorts
+            </h2>
+            <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}>
+              refreshed daily
+            </span>
+          </div>
+          {suggestedCohorts.length === 0 ? (
+            <div
+              className="rounded-2xl p-5 text-sm"
+              style={{ background: 'var(--card-bg)', border: '1px dashed var(--card-border)', color: 'var(--t3)' }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#8B5CF6' }} />
+                <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>Generating suggestions…</span>
+              </div>
+              Once you have ~30 days of session history, IQ will surface high-impact cohorts here automatically.
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {suggestedCohorts.map((suggestion: any) => (
+                <SuggestedCohortCard
+                  key={suggestion.id}
+                  clubId={clubId}
+                  suggestion={suggestion}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Data Coverage Banner */}
       {coverage && !showCreate && !selectedCohortId && (
