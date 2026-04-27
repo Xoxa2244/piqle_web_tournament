@@ -238,6 +238,30 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
 }
 
 /**
+ * P4-T6: Active Campaigns (lightweight v1).
+ * Wraps `intelligence.listActiveCampaigns` stub. Returns [] until
+ * P5-T2 lands the Campaign DB model + real query.
+ */
+export function useListActiveCampaigns(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listActiveCampaigns.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 60_000 }
+  )
+  if (isDemo) {
+    return {
+      data: [
+        { id: 'demo-c1', name: 'Win Back Q1', cohortId: null, cohortName: 'Lost Evening Players', channel: 'email' as const, sentCount: 12, status: 'running' as const, startedAt: new Date() },
+        { id: 'demo-c2', name: 'Spring Renewal',  cohortId: null, cohortName: 'Renewal in 14d',     channel: 'email+sms' as const, sentCount: 7,  status: 'running' as const, startedAt: new Date() },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+  return query
+}
+
+/**
  * P3-T2: AI-suggested cohorts (Renewal in 14d, Lost Evening, New & Engaged).
  * Wraps `intelligence.listSuggestedCohorts` (P3-T1 generators).
  */

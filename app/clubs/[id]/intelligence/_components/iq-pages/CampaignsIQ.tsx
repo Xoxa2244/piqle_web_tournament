@@ -12,6 +12,10 @@ import { CampaignList } from './campaigns/CampaignList'
 // Kept commented for traceability:
 //   import { AutomationBanner } from './campaigns/AutomationBanner'
 import { CampaignCreator } from './campaigns/CampaignCreator'
+// P4-T1: New 4-step Campaign Wizard
+import { CampaignWizard } from '../CampaignWizard'
+// P4-T6: Active Campaigns table (lightweight)
+import { ActiveCampaignsTable } from '../ActiveCampaignsTable'
 import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 import {
   buildAdvisorContextHref as buildCampaignAdvisorHref,
@@ -302,6 +306,8 @@ function matchesDraftText(draft: any, patterns: string[]) {
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
   const [showCreator, setShowCreator] = useState(false)
   const [initialType, setInitialType] = useState<string | null>(null)
+  // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
+  const [showWizard, setShowWizard] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
   const [activityOfferFilter, setActivityOfferFilter] = useState<string>('all')
   const [activityRouteFilter, setActivityRouteFilter] = useState<string>('all')
@@ -726,17 +732,25 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-[1400px] mx-auto">
       {/* P1-T5: AutomationBanner removed — see import comment for context. */}
 
-      {/* Header + New Campaign */}
+      {/* Header + New Campaign — P4-T7 wires the button to the new Wizard */}
       <div className="flex items-center justify-between">
         <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--heading)' }}>Campaigns</h1>
         <button
-          onClick={() => setShowCreator(true)}
+          onClick={() => setShowWizard(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
         >
           <Plus className="w-4 h-4" /> New Campaign
         </button>
       </div>
+
+      {/* P4-T1: Campaign Wizard drawer */}
+      {showWizard && (
+        <CampaignWizard
+          clubId={clubId}
+          onClose={() => setShowWizard(false)}
+        />
+      )}
 
       {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
           Always rendered (was previously only shown when no summary).
@@ -749,6 +763,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           setShowCreator(true)
         }}
       />
+
+      {/* P4-T6: Active Campaigns lightweight table (empty until launch
+          backend lands in P5-T2). See SPEC §6 P4-T6. */}
+      <ActiveCampaignsTable clubId={clubId} />
 
       <div
         className="rounded-3xl p-5 md:p-6 space-y-5"
