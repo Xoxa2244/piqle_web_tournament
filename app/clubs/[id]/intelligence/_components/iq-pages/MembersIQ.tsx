@@ -13,10 +13,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
-import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas, useListCohorts } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas, useListCohorts, useChurnTrend } from '../../_hooks/use-intelligence'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line,
+  ResponsiveContainer, LineChart, Line, ComposedChart, Legend,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
@@ -1285,6 +1285,10 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
   // P2-T1: KPI deltas vs previous period (driven by `period` selector).
   const { data: kpiDeltas } = useMemberKpiDeltas(clubId || '', period === 'custom' ? 'month' : period)
+
+  // P2-T6: Churn & reactivation trend (driven by period selector → months).
+  const churnMonths = period === 'week' ? 2 : period === 'month' ? 6 : period === 'quarter' ? 12 : 6
+  const { data: churnTrendData } = useChurnTrend(clubId || '', churnMonths)
 
   // P2-T3: Bulk select for "Add to cohort" / "Send campaign" workflows.
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
@@ -3827,9 +3831,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         ))}
       </div>
 
-      {/* Charts */}
-      {(displayMemberGrowth.length > 0 || displayActivityDistribution.length > 0) && (
-      <div className="grid lg:grid-cols-2 gap-4">
+      {/* Charts — P2-T6: 3-col layout with new Churn & Reactivation trend
+          chart (sourced from getChurnTrend, populated by MemberHealthSnapshot
+          history; see PLAN §3.7). Hidden when no historical snapshots yet. */}
+      {(displayMemberGrowth.length > 0 || displayActivityDistribution.length > 0 || (churnTrendData?.trend?.length ?? 0) > 0) && (
+      <div className="grid lg:grid-cols-3 gap-4">
         {displayMemberGrowth.length > 0 && (
         <Card>
           <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Growth</h3>
@@ -3862,6 +3868,32 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           </ResponsiveContainer>
         </Card>
         )}
+
+        {/* P2-T6: Churn & Reactivation trend.
+            Lines for at-risk + churned counts; bars for reactivated counts.
+            Period selector (week/month/quarter) drives months window via
+            churnMonths above. Empty until MemberHealthSnapshot accumulates
+            enough history (see P5-T1 daily cron). */}
+        {(churnTrendData?.trend?.length ?? 0) > 0 ? (
+          <Card>
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Churn &amp; Reactivation</h3>
+            <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>
+              At-risk · churned · reactivated members per month
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={churnTrendData?.trend ?? []}>
+                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+                <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="reactivated" name="Reactivated" fill="#10B981" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="atRisk" name="At-Risk" stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: "#F59E0B" }} />
+                <Line type="monotone" dataKey="churned" name="Churned" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Card>
+        ) : null}
       </div>
       )}
 
