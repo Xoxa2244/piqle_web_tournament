@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import { trpc } from "@/lib/trpc";
 import {
@@ -22,6 +22,7 @@ import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
+import { MemberDetailDrawer } from "../MemberDetailDrawer";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
 import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
 
@@ -1247,6 +1248,8 @@ function mapRealMembers(data: any): Member[] {
 export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessionData, guestTrialBookingData, winBackSnapshot, referralSnapshot, isLoading: externalLoading, sendOutreach, clubId, reactivationCandidates, aiProfiles, onRegenerateProfiles, sendReactivation }: MembersIQProps = {}) {
   const { isDark } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParamsForUrl = useSearchParams();
   const guestTrialSuggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [view, setView] = useState<"all" | "at-risk" | "reactivation">("all");
@@ -1289,6 +1292,36 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       window.localStorage.setItem('iq:members:viewMode', viewMode)
     }
   }, [viewMode])
+
+  // P2-T4: URL ↔ selectedPlayerId sync for shareable Member Detail drawer.
+  // Reading `?member=<userId>` opens the drawer on page load (and from
+  // direct/shared links). Browser back closes the drawer because the
+  // URL param is part of history.
+  useEffect(() => {
+    const fromUrl = searchParamsForUrl?.get('member') ?? null
+    if (fromUrl !== selectedPlayerId) {
+      setSelectedPlayerId(fromUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParamsForUrl])
+
+  const openMemberDrawer = (memberId: string) => {
+    setSelectedPlayerId(memberId)
+    if (pathname) {
+      const next = new URLSearchParams(searchParamsForUrl?.toString() ?? '')
+      next.set('member', memberId)
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+    }
+  }
+  const closeMemberDrawer = () => {
+    setSelectedPlayerId(null)
+    if (pathname) {
+      const next = new URLSearchParams(searchParamsForUrl?.toString() ?? '')
+      next.delete('member')
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    }
+  }
   const [activeReferralRewardIssuanceKey, setActiveReferralRewardIssuanceKey] = useState<string | null>(null)
 
   const handleOutreach = (memberId: string, channel: "email" | "sms", member: Member) => {
@@ -1703,9 +1736,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
-  if (selectedPlayerId && clubId) {
-    return <PlayerProfileIQ userId={selectedPlayerId} clubId={clubId} onBack={() => setSelectedPlayerId(null)} />;
-  }
+  // P2-T4: PlayerProfileIQ used to be rendered as a full-page replacement
+  // here. Now wrapped in <MemberDetailDrawer> at the bottom of the return
+  // tree so the Members list stays visible behind the drawer.
 
   return (
     <motion.div
@@ -3955,7 +3988,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               transition={{ delay: i * 0.04 }}
             >
               <Card className="cursor-pointer transition-all hover:scale-[1.02]">
-                <div onClick={() => setSelectedPlayerId(member.id)} className="flex items-start gap-3 mb-4">
+                <div onClick={() => openMemberDrawer(member.id)} className="flex items-start gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-sm text-white shrink-0"
                     style={{ background: `linear-gradient(135deg, ${segmentConfig[member.segment].color}, ${segmentConfig[member.segment].color}99)`, fontWeight: 700 }}
@@ -4098,7 +4131,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                   gap: "0 12px",
                   borderBottom: "1px solid var(--divider)",
                 }}
-                onClick={() => setSelectedPlayerId(member.id)}
+                onClick={() => openMemberDrawer(member.id)}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
@@ -4196,6 +4229,16 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         )}
       </div>
       </>)}
+
+      {/* P2-T4: Member Detail side-drawer (replaces full-page navigation).
+          URL ?member=<userId> ↔ selectedPlayerId synced via useEffect above. */}
+      {clubId && (
+        <MemberDetailDrawer
+          memberId={selectedPlayerId}
+          clubId={clubId}
+          onClose={closeMemberDrawer}
+        />
+      )}
     </motion.div>
   );
 }
