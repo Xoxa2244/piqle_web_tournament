@@ -7,7 +7,10 @@ import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, 
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
 import { CampaignChart } from './campaigns/CampaignChart'
 import { CampaignList } from './campaigns/CampaignList'
-import { AutomationBanner } from './campaigns/AutomationBanner'
+// P1-T5: AutomationBanner removed — equivalent automation status now lives
+// in Settings → Automation page (AgentCampaignLayer column 2: Live Rollout).
+// Kept commented for traceability:
+//   import { AutomationBanner } from './campaigns/AutomationBanner'
 import { CampaignCreator } from './campaigns/CampaignCreator'
 import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 import {
@@ -721,8 +724,7 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-[1400px] mx-auto">
-      {/* Automation status */}
-      <AutomationBanner clubId={clubId} />
+      {/* P1-T5: AutomationBanner removed — see import comment for context. */}
 
       {/* Header + New Campaign */}
       <div className="flex items-center justify-between">
