@@ -16,7 +16,7 @@ import {
 } from '@/lib/ai/advisor-conversation-state';
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
-import { buildAdvisorOutcomeInsightsBlock } from '@/lib/ai/advisor-outcome-insights';
+import { buildAdvisorOutcomeInsightsBlock, buildAdvisorRecentSendSnapshotBlock } from '@/lib/ai/advisor-outcome-insights';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -297,21 +297,31 @@ export async function POST(req: Request) {
     step = 'prefetch';
     let liveDataBlock = ''
     let outcomeInsightsBlock = ''
+    let overnightSendBlock = ''
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, ratedPlayers: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, ratedPlayers } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
+        overnightSendBlock = overnightSends || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
       } else {
         // Fresh fetch
         const tools = createChatTools(clubId)
         const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, ratedPlayers] = await Promise.all([
+        const club = await prisma.club.findUnique({
+          where: { id: clubId },
+          select: { automationSettings: true },
+        }).catch(() => null)
+        const clubTimeZone =
+          ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) ||
+          'America/New_York'
+
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
@@ -321,10 +331,12 @@ export async function POST(req: Request) {
           exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'today' }),
           exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'tonight' }),
           buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
+          buildAdvisorRecentSendSnapshotBlock({ prisma, clubId, timeZone: clubTimeZone }).catch(() => ''),
           exec(tools.getRatedPlayers, { limit: 30 }),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, ratedPlayers } })
+        overnightSendBlock = overnightSends || ''
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -529,7 +541,7 @@ NOTE: CourtReserve sync does NOT pull DUPR ratings (that's why the count is ofte
     )
     const pageContextBlock = pageContext ? `\n\nCurrent page context: ${pageContext}` : ''
 
-    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${outcomeInsightsBlock}${pageContextBlock}
+    const systemPrompt = `${resolvedAdvisorPrompt}${languageInstruction}${clubContextBlock}${advisorStateBlock}${overnightSendBlock}${outcomeInsightsBlock}${pageContextBlock}
 
 --- Real-Time Club Data (live from database) ---
 ${liveDataBlock || 'No live data available.'}
@@ -541,6 +553,11 @@ ${ragContext}
 ${crossSessionContext}
 
 IMPORTANT: Use the Real-Time Club Data above to answer questions about current metrics, members, occupancy, and bookings. Use Historical Context for trends and patterns. Always cite specific numbers from the data. Never say "I don't have access to data" — the data is provided above.
+
+When answering whether anything was sent overnight / today / recently:
+- use the "Confirmed Overnight Outreach" block as the source of truth for actual live sends in that window;
+- do NOT treat "Recent Agent Outcomes" as send history, because that block may include drafts, previews, approvals, or scheduled actions;
+- if the confirmed-send block says no confirmed live sends, say that clearly and do not imply that anything was already sent.
 
 When answering about sessions with open spots today or tonight:
 - use the dedicated "Today's Sessions With Open Spots" / "Tonight's Sessions With Open Spots" blocks first, not just the generic upcoming list;

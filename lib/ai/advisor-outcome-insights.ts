@@ -45,6 +45,19 @@ export type AdvisorPerformanceSignal = {
   bullets: string[]
 }
 
+export type AdvisorRecentSendSnapshot = {
+  windowLabel: string
+  timeZone: string
+  totals: {
+    sent: number
+    delivered: number
+    opened: number
+    clicked: number
+    converted: number
+  }
+  flows: FlowInsight[]
+}
+
 export type AdvisorAdaptiveDefaults = {
   channel?: Extract<AdvisorAction, { kind: 'create_campaign' }>['campaign']['channel']
   channelDerivedFromOutcomes?: boolean
@@ -93,6 +106,35 @@ function getLocalHour(date: Date, timeZone: string) {
   }).format(date)
   const hour = Number(formatted)
   return Number.isFinite(hour) ? hour : null
+}
+
+function getZonedDateParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = Number(parts.find((part) => part.type === 'year')?.value ?? '0')
+  const month = Number(parts.find((part) => part.type === 'month')?.value ?? '1')
+  const day = Number(parts.find((part) => part.type === 'day')?.value ?? '1')
+  return { year, month, day }
+}
+
+function getUtcDateForTimeZoneLocal(input: {
+  reference: Date
+  timeZone: string
+  dayOffset?: number
+  hour?: number
+  minute?: number
+}) {
+  const { reference, timeZone, dayOffset = 0, hour = 0, minute = 0 } = input
+  const zoned = getZonedDateParts(reference, timeZone)
+  const approxUtc = new Date(Date.UTC(zoned.year, zoned.month - 1, zoned.day + dayOffset, hour, minute, 0, 0))
+  const localAsUtc = new Date(approxUtc.toLocaleString('en-US', { timeZone }))
+  const offsetMs = localAsUtc.getTime() - approxUtc.getTime()
+  return new Date(approxUtc.getTime() - offsetMs)
 }
 
 export function buildAdvisorOutcomeInsights(input: {
@@ -202,14 +244,116 @@ export function formatAdvisorOutcomeInsightsBlock(insights: AdvisorOutcomeInsigh
   }
 
   if (insights.recentOutcomes.length > 0) {
-    parts.push('Recent completed advisor actions:')
+    parts.push('Recent advisor actions (operational history, may include drafts, previews, or scheduled work and are NOT automatically live sends):')
     for (const outcome of insights.recentOutcomes.slice(0, 4)) {
       parts.push(`- ${outcome.summary}`)
     }
   }
 
-  parts.push('Use these outcomes as directional evidence when recommending channels, timing, audiences, and follow-up actions. Do not overclaim causality.')
+  parts.push('Use these outcomes as directional evidence when recommending channels, timing, audiences, and follow-up actions. Do not overclaim causality or describe drafts/previews/scheduled actions as sent.')
   parts.push('--- End of Recent Agent Outcomes ---')
+  return parts.join('\n')
+}
+
+export function buildAdvisorRecentSendSnapshot(input: {
+  campaignLogs: CampaignOutcomeLog[]
+  timeZone: string
+  windowLabel: string
+}): AdvisorRecentSendSnapshot {
+  const totals = {
+    sent: 0,
+    delivered: 0,
+    opened: 0,
+    clicked: 0,
+    converted: 0,
+  }
+
+  const byFlow = new Map<string, FlowInsight>()
+
+  for (const log of input.campaignLogs) {
+    const status = normalizeStatus(log.status)
+    const key = `${log.type}:${log.channel || 'mixed'}`
+    const existing = byFlow.get(key) || {
+      type: log.type,
+      channel: log.channel || 'mixed',
+      sent: 0,
+      delivered: 0,
+      opened: 0,
+      clicked: 0,
+      converted: 0,
+      openRate: 0,
+      clickRate: 0,
+      conversionRate: 0,
+    }
+
+    const sent = SENT_EQUIVALENT_STATUSES.has(status)
+    const delivered = !!log.deliveredAt || DELIVERED_EQUIVALENT_STATUSES.has(status)
+    const opened = !!log.openedAt || OPENED_EQUIVALENT_STATUSES.has(status)
+    const clicked = !!log.clickedAt || CLICKED_EQUIVALENT_STATUSES.has(status)
+    const converted = !!log.respondedAt || status === 'converted'
+
+    if (sent) {
+      existing.sent += 1
+      totals.sent += 1
+    }
+    if (delivered) {
+      existing.delivered += 1
+      totals.delivered += 1
+    }
+    if (opened) {
+      existing.opened += 1
+      totals.opened += 1
+    }
+    if (clicked) {
+      existing.clicked += 1
+      totals.clicked += 1
+    }
+    if (converted) {
+      existing.converted += 1
+      totals.converted += 1
+    }
+
+    byFlow.set(key, existing)
+  }
+
+  const flows = Array.from(byFlow.values())
+    .map((flow) => ({
+      ...flow,
+      openRate: formatPercent(flow.opened, Math.max(flow.delivered, flow.sent)),
+      clickRate: formatPercent(flow.clicked, Math.max(flow.opened, flow.sent)),
+      conversionRate: formatPercent(flow.converted, flow.sent),
+    }))
+    .filter((flow) => flow.sent > 0)
+    .sort((a, b) => b.sent - a.sent)
+
+  return {
+    windowLabel: input.windowLabel,
+    timeZone: input.timeZone,
+    totals,
+    flows,
+  }
+}
+
+export function formatAdvisorRecentSendSnapshotBlock(snapshot: AdvisorRecentSendSnapshot) {
+  const parts = ['\n--- Confirmed Overnight Outreach ---']
+  parts.push(`Window: ${snapshot.windowLabel} (${snapshot.timeZone})`)
+
+  if (snapshot.totals.sent === 0) {
+    parts.push('No confirmed live outreach sends were logged in this window.')
+  } else {
+    parts.push(
+      `Confirmed live sends in this window: ${snapshot.totals.sent} sent, ${snapshot.totals.delivered} delivered, ${snapshot.totals.opened} opened, ${snapshot.totals.clicked} clicked, ${snapshot.totals.converted} converted.`,
+    )
+    parts.push('Breakdown by flow:')
+    for (const flow of snapshot.flows.slice(0, 6)) {
+      parts.push(
+        `- ${humanizeType(flow.type)} via ${humanizeChannel(flow.channel)}: ${flow.sent} sent, ${flow.openRate}% open, ${flow.clickRate}% click, ${flow.conversionRate}% convert.`,
+      )
+    }
+  }
+
+  parts.push('Only treat this block as confirmed send history. Drafts, previews, approvals, and scheduled actions are not live sends unless this block says they were sent.')
+  parts.push('--- End Confirmed Overnight Outreach ---')
   return parts.join('\n')
 }
 
@@ -324,6 +468,73 @@ export async function buildAdvisorOutcomeInsightsBlock(opts: {
     }),
     opts.days || 30,
   )
+}
+
+export async function buildAdvisorRecentSendSnapshotBlock(opts: {
+  prisma: any
+  clubId: string
+  timeZone: string
+  now?: Date
+}) {
+  const now = opts.now || new Date()
+  const windowStart = getUtcDateForTimeZoneLocal({
+    reference: now,
+    timeZone: opts.timeZone,
+    dayOffset: -1,
+    hour: 22,
+    minute: 0,
+  })
+  const windowEnd = getUtcDateForTimeZoneLocal({
+    reference: now,
+    timeZone: opts.timeZone,
+    hour: 9,
+    minute: 0,
+  })
+
+  const campaignLogs: CampaignOutcomeLog[] = await opts.prisma.aIRecommendationLog.findMany({
+    where: {
+      clubId: opts.clubId,
+      createdAt: {
+        gte: windowStart,
+        lte: windowEnd,
+      },
+    },
+    select: {
+      type: true,
+      channel: true,
+      status: true,
+      openedAt: true,
+      clickedAt: true,
+      respondedAt: true,
+      deliveredAt: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  })
+
+  const startLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: opts.timeZone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(windowStart)
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: opts.timeZone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(windowEnd)
+
+  const snapshot = buildAdvisorRecentSendSnapshot({
+    campaignLogs,
+    timeZone: opts.timeZone,
+    windowLabel: `${startLabel} to ${endLabel}`,
+  })
+
+  return formatAdvisorRecentSendSnapshotBlock(snapshot)
 }
 
 export async function buildAdvisorPerformanceSignalForAction(opts: {
