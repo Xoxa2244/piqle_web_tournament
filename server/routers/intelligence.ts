@@ -8010,4 +8010,125 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         now: new Date(),
       })
     }),
+
+  // ════════════════════════════════════════════════════════════════════
+  // ENGAGE REDESIGN — Phase 0 stubs (P0-T4)
+  //
+  // These procedures return mock data so frontend can wire UI early.
+  // Real implementations land in later phases per
+  // docs/ENGAGE_REDESIGN_SPEC.md:
+  //   - getMemberHealthDeltas    → P2-T1 (Members KPI strip)
+  //   - listSuggestedCohorts     → P3-T1 (3 AI cohort generators)
+  //   - previewCohort            → P3-T3 (Cohort Builder live preview)
+  //   - listActiveCampaigns      → P4-T6 (Active Campaigns table) + P5-T4 (real metrics)
+  // ════════════════════════════════════════════════════════════════════
+
+  // P0-T4 / P2-T1 — Members KPI strip with vs-period deltas.
+  // Real impl reads MemberHealthSnapshot and current Member rows.
+  getMemberHealthDeltas: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      period: z.enum(['week', 'month', 'quarter']).default('month'),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO P2-T1: replace with real query against MemberHealthSnapshot.
+      // Compare current period averages vs previous period of same length.
+      // Return null deltas when no historical snapshot exists (new clubs).
+      return {
+        period: input.period,
+        activeCount: 19,
+        activeDelta: 3,
+        avgHealth: 61,
+        avgHealthDelta: 2,
+        atRiskCount: 5,
+        atRiskDelta: 2,
+        ltvTotalCents: 0,
+        ltvDeltaCents: 42_000,
+        vipCount: 13,
+        packageCount: 3,
+        _stub: true,
+      }
+    }),
+
+  // P0-T4 / P3-T1 — AI-suggested cohorts ranked by $ impact.
+  // Real impl runs 3 generators (Renewal in 14d, Lost Evening, New & Engaged)
+  // per spec D4. Cached 24h via ClubSuggestedCohortCache table (P3-T1).
+  listSuggestedCohorts: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO P3-T1: replace with real generator output from
+      // lib/ai/cohort-generators/{renewal-in-14d,lost-evening-players,new-and-engaged}.ts
+      return [
+        {
+          id: 'stub-renewal-14d',
+          name: 'Renewal in 14d',
+          description: 'Package expires soon, nudge to renew',
+          memberCount: 7,
+          estImpactCents: 140_000,
+          suggestedAction: 'Renewal nudge',
+          suggestedTemplateKey: 'renewal_reminder',
+          emoji: '📅',
+        },
+        {
+          id: 'stub-lost-evening',
+          name: 'Lost Evening Players',
+          description: 'Played 4+ evenings/mo, now ≤1',
+          memberCount: 12,
+          estImpactCents: 96_000,
+          suggestedAction: 'Reactivation',
+          suggestedTemplateKey: 'win_back_inactive',
+          emoji: '⚠️',
+        },
+        {
+          id: 'stub-new-engaged',
+          name: 'New & Engaged',
+          description: 'Joined <30d, 4+ sessions',
+          memberCount: 5,
+          estImpactCents: 60_000,
+          suggestedAction: 'Onboarding',
+          suggestedTemplateKey: 'onboarding_series',
+          emoji: '🌟',
+        },
+      ] as Array<{
+        id: string
+        name: string
+        description: string
+        memberCount: number
+        estImpactCents: number
+        suggestedAction: string
+        suggestedTemplateKey: string
+        emoji: string
+        _stub?: true
+      }>
+    }),
+
+  // NOTE: `previewCohort` is NOT stubbed here — it already exists at line 6706
+  // (input: { clubId, filters: cohortFilterSchema[] }, returns { count }).
+  // P3-T3 will enhance the existing procedure with `sampleUserIds` and
+  // `truncated` fields, and may add an alternative `conditions+logic` input
+  // shape if the new Cohort Builder needs richer expressions.
+
+  // P0-T4 / P4-T6 — Active campaigns table on Campaigns page.
+  // Phase 4 ships lightweight (name/cohort/channel/sent/status).
+  // Phase 5 (P5-T4) adds open % + booked $ when attribution lands.
+  listActiveCampaigns: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      // TODO P4-T6: read from Campaign / CampaignInstance table.
+      // Status enum: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed'.
+      return [] as Array<{
+        id: string
+        name: string
+        cohortId: string | null
+        cohortName: string | null
+        channel: 'email' | 'sms' | 'email+sms'
+        sentCount: number
+        status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed'
+        startedAt: Date | null
+        _stub?: true
+      }>
+    }),
 })

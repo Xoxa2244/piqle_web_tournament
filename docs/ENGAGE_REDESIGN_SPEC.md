@@ -105,24 +105,28 @@ These resolve PLAN §14 + reality-check blockers. Override here if context chang
 
 ---
 
-### P0-T4: Add tRPC procedure stubs (signatures only)
+### P0-T4: Add tRPC procedure stubs (signatures only) ✅ DONE
 **Files**:
-- `server/routers/intelligence.ts`
+- `server/routers/intelligence.ts` (added before closing `})` at line 8013, in clearly marked "ENGAGE REDESIGN — Phase 0 stubs" block)
 
-Add procedures (return mock data initially, real impl in later phases):
-- `getMemberHealthDeltas({ clubId, period: 'week'|'month'|'quarter' })` → `{ activeCount, activeDelta, avgHealth, avgHealthDelta, atRiskCount, atRiskDelta, ltvTotal, ltvDelta, vipCount, packageCount }`
-- `listSuggestedCohorts({ clubId })` → array of `{ id, name, description, memberCount, estImpactCents, suggestedAction, suggestedTemplateKey }`
-- `previewCohort({ clubId, conditions })` → `{ count, sampleUsers: [...] }`
-- `listActiveCampaigns({ clubId })` → array of `{ id, name, cohortId, channel, sentCount, status }`
+Procedures added (3 of 4 — see findings):
+- `getMemberHealthDeltas({ clubId, period })` → `{ activeCount/Delta, avgHealth/Delta, atRiskCount/Delta, ltvTotalCents/DeltaCents, vipCount, packageCount }` — TODO marker for P2-T1
+- `listSuggestedCohorts({ clubId })` → array of `{ id, name, description, memberCount, estImpactCents, suggestedAction, suggestedTemplateKey, emoji }` — TODO marker for P3-T1; returns 3 mock cohorts (Renewal in 14d, Lost Evening, New & Engaged) per D4
+- `listActiveCampaigns({ clubId })` → array `{ id, name, cohortId, cohortName, channel, sentCount, status, startedAt }` — TODO marker for P4-T6 / P5-T4
 
 **Depends on**: none
-**Effort**: 1–2h
+**Effort**: 1–2h (actual: ~30 min)
 **Acceptance**:
-- [ ] All four procedures present, typed, return mock data
-- [ ] `npm run typecheck` passes
-- [ ] Frontend can `useQuery` them without errors
+- [x] 3 procedures present, typed, return mock data
+- [x] `npm run typecheck` baseline preserved (901 → 901)
+- [x] Frontend can `useQuery` them via `trpc.intelligence.*`
 
-**Risk**: Existing intelligence router is large (>1000 lines) — make sure new procedures are placed in a logical group, not appended randomly.
+**Findings during P0-T4**:
+- **`previewCohort` already exists** at `server/routers/intelligence.ts:6706` with input `{ clubId, filters: cohortFilterSchema[] }` and return `{ count }`. Used by `CohortsIQ.tsx:1232`. **My duplicate stub was removed** to avoid name collision.
+- **P3-T3 implication:** `previewCohort` does NOT need to be created — only **enhanced** with `sampleUserIds` and `truncated` fields, and possibly an alternative `conditions + logic` input shape if the new Cohort Builder needs richer expressions. P3-T3 acceptance criteria stay the same; just less work to do.
+- All TODO markers cite their target task ID (P2-T1, P3-T1, P4-T6, P5-T4) for traceability.
+
+**Risk**: Resolved. Note for future: when adding new procedures, **always grep for the name first** — flat 8000-line router has many existing names.
 
 ---
 
