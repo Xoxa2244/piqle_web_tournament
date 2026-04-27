@@ -71,7 +71,12 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     items: [
       { icon: Users, label: "Members", path: "/members" },
       { icon: UsersRound, label: "Cohorts", path: "/cohorts" },
-      { icon: UserPlus, label: "Reactivation", path: "/reactivation" },
+      // Reactivation removed in P1-T1 (iqsport brand). Logic redistributed:
+      //   - At-Risk KPI         → Members KPI strip (P2-T1)
+      //   - Churn trend chart   → Members "How Members Play" row (P2-T6)
+      //   - At-Risk member list → Cohorts pre-built "At-Risk" cohort (P3-T1)
+      //   - Reactivation send   → Campaigns AI-Recommended template (P1-T4 / P4-T3)
+      // See docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T1 / PLAN.md §5.
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
     ],
   },

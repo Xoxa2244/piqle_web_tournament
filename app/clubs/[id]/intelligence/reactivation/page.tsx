@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useState, useMemo, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,9 @@ import type { PlayerArchetype } from '@/types/intelligence'
 import { MessageSelector } from '../_components/message-selector'
 import { useSetPageContext } from '../_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
-import { ReactivationIQ } from '../_components/iq-pages/ReactivationIQ'
+// P1-T2: ReactivationIQ removed (iqsport brand redirects to Members).
+// `OutreachConfirmIQModal` + `useReactivationSendFlow` are SHARED with legacy
+// branch below and intentionally kept.
 import { OutreachConfirmIQModal } from '../_components/iq-pages/shared/OutreachConfirmIQModal'
 import { useReactivationSendFlow } from '../_components/iq-pages/shared/useReactivationSendFlow'
 
@@ -43,7 +45,27 @@ const INACTIVITY_OPTIONS = [
 
 export default function ReactivationPage() {
   const params = useParams()
+  const router = useRouter()
   const clubId = params.id as string
+  const brand = useBrand()
+
+  // P1-T2: iqsport brand — Reactivation page removed.
+  // Logic redistributed across Members/Cohorts/Campaigns per
+  // docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T2 / PLAN.md §5.
+  // Phase 2 will pre-apply ?at_risk=1 filter on Members; until then redirect to plain Members.
+  useEffect(() => {
+    if (brand.key === 'iqsport') {
+      router.replace(`/clubs/${clubId}/intelligence/members`)
+    }
+  }, [brand.key, clubId, router])
+
+  if (brand.key === 'iqsport') {
+    return (
+      <div className="p-8 text-sm text-muted-foreground">
+        Redirecting to Members…
+      </div>
+    )
+  }
 
   const [inactivityDays, setInactivityDays] = useState(21)
   const [searchQuery, setSearchQuery] = useState('')
@@ -64,7 +86,7 @@ export default function ReactivationPage() {
   const sendReactivation = useSendReactivation()
   const isLoading = candidatesLoading || churnLoading || campaignListLoading
 
-  // Build userId → profile map for O(1) lookup in ReactivationIQ
+  // Build userId → profile map for O(1) lookup in legacy reactivation list
   const aiProfilesMap = useMemo(() => {
     if (!aiProfilesRaw?.length) return {}
     return Object.fromEntries(aiProfilesRaw.map((p: any) => [p.userId, p]))
@@ -155,9 +177,9 @@ export default function ReactivationPage() {
       ? Math.round((data.totalInactiveMembers / data.totalClubMembers) * 100)
       : 0
 
-  const brand = useBrand()
+  // P1-T2: iqsport early-return handled at top of component (lines ~50-65).
+  // From here down is the LEGACY brand path only — kept intentionally per D2.
   const { send, isPendingFor } = useReactivationSendFlow({ sendReactivation, clubId })
-  if (brand.key === 'iqsport') return <ReactivationIQ reactivationData={data} churnTrendData={churnTrendData} campaignListData={campaignListData} isLoading={isLoading} error={error} sendReactivation={sendReactivation} clubId={clubId} aiProfiles={aiProfilesMap} regenerateProfiles={regenerateProfiles} onGenerationStarted={() => setIsPolling(true)} generateNotifyMeLink={generateNotifyMeLink} />
 
   return (
     <div className="space-y-6">
