@@ -142,6 +142,28 @@ mockDashboard.underfilledSessions = mockDashboard.upcomingSessions.filter(
   (s) => s.occupancyPercent < 50
 )
 
+// ── Registered players for a single session (used by SessionDetailIQ) ──
+const SESSION_PLAYER_NAMES = [
+  'Sarah Chen', 'Mike Rodriguez', 'Emily Park', 'James Wilson', 'Karen Lewis',
+  'David Kim', 'Lisa Thompson', 'Alex Rivera', 'Rachel Green', 'Chris Martinez',
+  'Brian Johnson', 'Maria Garcia', 'Tyler Adams', 'Megan White', 'Daniel Kim',
+  'Emma Roberts', 'Jack Miller', 'Olivia Taylor', 'Josh Anderson', 'Natalie Hernandez',
+]
+
+export function mockSessionPlayers(sessionId: string, registered: number) {
+  // Deterministic slice based on sessionId hash so the same session always
+  // shows the same player list across re-renders.
+  let h = 0
+  for (let i = 0; i < sessionId.length; i++) h = (h * 31 + sessionId.charCodeAt(i)) >>> 0
+  const start = h % SESSION_PLAYER_NAMES.length
+  const count = Math.min(Math.max(0, registered), SESSION_PLAYER_NAMES.length)
+  const players = Array.from({ length: count }, (_, i) => {
+    const name = SESSION_PLAYER_NAMES[(start + i) % SESSION_PLAYER_NAMES.length]
+    return { id: `demo-sp-${sessionId}-${i}`, name }
+  })
+  return { players }
+}
+
 // ── Slot Filler Recommendations ──
 export function mockSlotFillerRecommendations(sessionId: string) {
   // Search in V1 sessions first, then V2 sessions

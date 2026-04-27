@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import { motion } from "motion/react"
 import {
   ArrowLeft, Users, Clock, MapPin, CalendarDays, Target,
@@ -9,6 +10,7 @@ import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
 import type { SessionCalendarItem } from "@/types/intelligence"
 import { PlayerProfileIQ } from "./PlayerProfileIQ"
+import { mockSlotFillerRecommendations, mockSessionPlayers } from "../../_data/mock"
 
 // ── Skill classification (shared with ScheduleIQ) ──
 
@@ -56,6 +58,8 @@ interface SessionDetailIQProps {
 
 export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProps) {
   const { isDark } = useTheme()
+  const searchParams = useSearchParams()
+  const isDemo = searchParams.get('demo') === 'true'
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
@@ -89,16 +93,22 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
   // Load registered players for this session
   const { data: playersData } = trpc.intelligence.getSessionPlayers.useQuery(
     { sessionId: session.id, clubId },
-    { enabled: !!session.id },
+    { enabled: !!session.id && !isDemo },
   )
-  const players: { id: string; name: string }[] = (playersData?.players ?? session.playerNames?.map((n: string, i: number) => ({ id: String(i), name: n })) ?? []).map((p: any) => ({ id: p.id || '', name: p.name || 'Unknown' }))
+  const playersRaw = isDemo
+    ? mockSessionPlayers(session.id, session.registered).players
+    : (playersData?.players ?? session.playerNames?.map((n: string, i: number) => ({ id: String(i), name: n })) ?? [])
+  const players: { id: string; name: string }[] = playersRaw.map((p: any) => ({ id: p.id || '', name: p.name || 'Unknown' }))
 
   // Load recommendations
-  const { data: recsData, isLoading: recsLoading } = trpc.intelligence.getSlotFillerRecommendations.useQuery(
+  const { data: recsData, isLoading: recsLoadingReal } = trpc.intelligence.getSlotFillerRecommendations.useQuery(
     { sessionId: session.id, clubId, limit: 20 },
-    { enabled: spotsLeft > 0 },
+    { enabled: spotsLeft > 0 && !isDemo },
   )
-  const recs = recsData?.recommendations ?? []
+  const recsLoading = isDemo ? false : recsLoadingReal
+  const recs = isDemo
+    ? mockSlotFillerRecommendations(session.id).recommendations
+    : (recsData?.recommendations ?? [])
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {

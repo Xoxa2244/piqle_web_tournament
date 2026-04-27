@@ -921,15 +921,19 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       </div>
 
       {/* AI-Attributed Revenue — the "money metric" tile.
-          Placed right after KPIs so club owners (and demo viewers) see
-          the ROI story before the deeper player-health analytics. */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <AIRevenueTile clubId={clubId} />
-      </motion.div>
+          Hidden in demo mode: the conservative-incremental math leans on
+          real attribution windows, and the resulting ROI numbers
+          (e.g. "91.5x ROI on $47.20 spend") read more like a stunt than
+          a credible signal when the underlying spend is mock. */}
+      {!isDemo && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <AIRevenueTile clubId={clubId} />
+        </motion.div>
+      )}
 
       {/* Player Health Overview */}
       <div className="space-y-4">
