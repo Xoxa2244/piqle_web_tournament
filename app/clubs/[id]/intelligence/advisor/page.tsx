@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { useToast } from '@/components/ui/use-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,13 +16,19 @@ import { MemberImportView } from './_components/MemberImportView'
 import type { ParsedSession } from './_hooks/useFileParser'
 import { useBrand } from '@/components/BrandProvider'
 import { AdvisorIQ } from '../_components/iq-pages/AdvisorIQ'
+import { DemoAdvisorIQ } from '../_components/iq-pages/DemoAdvisorIQ'
 
 export default function AIAdvisorPage() {
   const brand = useBrand()
   const params = useParams()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
+  const isDemo = searchParams.get('demo') === 'true'
 
-  if (brand.key === 'iqsport') return <AdvisorIQ clubId={clubId} />
+  if (brand.key === 'iqsport') {
+    if (isDemo) return <DemoAdvisorIQ clubId={clubId} />
+    return <AdvisorIQ clubId={clubId} />
+  }
 
   return <PiqleAdvisorPage />
 }

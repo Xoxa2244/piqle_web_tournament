@@ -31,7 +31,22 @@ interface NavSection {
   items: NavItem[];
 }
 
-function buildNavSections(isMembership: boolean): NavSection[] {
+function buildNavSections(isMembership: boolean, isDemo: boolean): NavSection[] {
+  const systemItems: NavItem[] = isDemo
+    ? [
+        // In demo mode, hide Launch + Email Domain (require live tRPC + auth).
+        { icon: CreditCard, label: "Billing", path: "/billing" },
+        { icon: Plug, label: "Integrations", path: "/integrations" },
+        { icon: Settings, label: "Settings", path: "/settings" },
+      ]
+    : [
+        { icon: Rocket, label: "Launch", path: "/launch" },
+        { icon: CreditCard, label: "Billing", path: "/billing" },
+        { icon: Plug, label: "Integrations", path: "/integrations" },
+        { icon: Mail, label: "Email Domain", path: "/email-domain" },
+        { icon: Settings, label: "Settings", path: "/settings" },
+      ]
+
   return [
   {
     id: "analytics",
@@ -69,13 +84,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     id: "system",
     title: "SYSTEM",
     icon: Settings,
-    items: [
-      { icon: Rocket, label: "Launch", path: "/launch" },
-      { icon: CreditCard, label: "Billing", path: "/billing" },
-      { icon: Plug, label: "Integrations", path: "/integrations" },
-      { icon: Mail, label: "Email Domain", path: "/email-domain" },
-      { icon: Settings, label: "Settings", path: "/settings" },
-    ],
+    items: systemItems,
   },
   ]
 }
@@ -104,7 +113,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const pricingModel = intelligenceSettings?.settings?.pricingModel;
   // Default to membership when pricingModel is not yet configured (most clubs are membership-based)
   const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
-  const navSections = buildNavSections(isMembershipClub);
+  const isDemo = searchParams.get("demo") === "true";
+  const navSections = buildNavSections(isMembershipClub, isDemo);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
   const userEmail = session?.user?.email || "";

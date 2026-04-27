@@ -11,14 +11,14 @@ const fmt = (daysFromNow: number) => {
 // ── Dashboard ──
 export const mockDashboard = {
   metrics: {
-    totalMembers: 127,
-    totalCourts: 6,
-    avgOccupancy: 62,
-    recentBookings: 284,
-    underfilledCount: 4,
-    aiRecommendationsThisWeek: 18,
-    estimatedLostRevenue: 1260,
-    emptySlots: 84,
+    totalMembers: 1500,
+    totalCourts: 8,
+    avgOccupancy: 64,
+    recentBookings: 3420,
+    underfilledCount: 18,
+    aiRecommendationsThisWeek: 27,
+    estimatedLostRevenue: 14820,
+    emptySlots: 312,
   },
   upcomingSessions: [
     {
@@ -397,29 +397,29 @@ export const mockDashboardV2: DashboardV2Data = {
   metrics: {
     members: {
       label: 'Members',
-      value: 127,
-      trend: { value: 127, previousValue: 113, changePercent: 12.4, direction: 'up', sparkline: [113, 115, 117, 119, 121, 124, 127] },
-      subtitle: '8 new this month',
+      value: 1500,
+      trend: { value: 1500, previousValue: 1342, changePercent: 11.8, direction: 'up', sparkline: [1342, 1378, 1412, 1438, 1461, 1482, 1500] },
+      subtitle: '94 new this month',
       description: 'Total active members following your club',
     },
     occupancy: {
       label: 'Avg Occupancy',
-      value: '62%',
-      trend: { value: 62, previousValue: 65, changePercent: -4.6, direction: 'down', sparkline: [58, 64, 55, 70, 62, 68, 60] },
-      subtitle: '42 sessions (30d)',
+      value: '64%',
+      trend: { value: 64, previousValue: 67, changePercent: -4.5, direction: 'down', sparkline: [60, 66, 57, 72, 64, 70, 62] },
+      subtitle: '418 sessions (30d)',
       description: 'Average % of filled spots across all sessions',
     },
     lostRevenue: {
       label: 'Est. Lost Revenue',
-      value: '$1,260',
-      trend: { value: 1260, previousValue: 1420, changePercent: -11.3, direction: 'down', sparkline: [220, 180, 200, 150, 190, 170, 150] },
-      subtitle: '84 empty slots',
+      value: '$14,820',
+      trend: { value: 14820, previousValue: 16740, changePercent: -11.5, direction: 'down', sparkline: [2580, 2120, 2350, 1760, 2230, 2000, 1780] },
+      subtitle: '312 empty slots',
       description: 'Revenue lost from unfilled spots based on pricing',
     },
     bookings: {
       label: 'Bookings',
-      value: 284,
-      trend: { value: 284, previousValue: 247, changePercent: 15.0, direction: 'up', sparkline: [35, 42, 38, 45, 40, 44, 40] },
+      value: 3420,
+      trend: { value: 3420, previousValue: 2974, changePercent: 15.0, direction: 'up', sparkline: [420, 506, 458, 542, 482, 530, 482] },
       subtitle: 'last 30 days',
       description: 'Total confirmed bookings across all sessions',
     },
@@ -465,21 +465,21 @@ export const mockDashboardV2: DashboardV2Data = {
   },
   players: {
     bySkillLevel: [
-      { label: 'Beginner', count: 22, percent: 17 },
-      { label: 'Intermediate', count: 58, percent: 46 },
-      { label: 'Advanced', count: 31, percent: 24 },
-      { label: 'Unrated', count: 16, percent: 13 },
+      { label: 'Beginner', count: 255, percent: 17 },
+      { label: 'Intermediate', count: 690, percent: 46 },
+      { label: 'Advanced', count: 360, percent: 24 },
+      { label: 'Unrated', count: 195, percent: 13 },
     ],
     byFormat: [
-      { label: 'Open Play', count: 98, percent: 35 },
-      { label: 'League', count: 72, percent: 25 },
-      { label: 'Social', count: 56, percent: 20 },
-      { label: 'Drill', count: 34, percent: 12 },
-      { label: 'Clinic', count: 24, percent: 8 },
+      { label: 'Open Play', count: 1148, percent: 35 },
+      { label: 'League', count: 820, percent: 25 },
+      { label: 'Social', count: 656, percent: 20 },
+      { label: 'Drill', count: 393, percent: 12 },
+      { label: 'Clinic', count: 263, percent: 8 },
     ],
-    activeCount: 89,
-    inactiveCount: 38,
-    newThisMonth: 8,
+    activeCount: 1050,
+    inactiveCount: 450,
+    newThisMonth: 94,
   },
 }
 
@@ -912,6 +912,162 @@ export function mockSessionsCalendar(): import('@/types/intelligence').SessionCa
 // ── Member Health ──
 import type { MemberHealthData, MemberHealthResult, RiskLevel, LifecycleStage, HealthScoreComponent } from '@/types/intelligence'
 
+// Deterministic PRNG for stable synthetic members across re-renders
+function seededRandom(seed: number) {
+  let s = seed
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0
+    return s / 4294967296
+  }
+}
+
+const FIRST_NAMES = [
+  'Aaron', 'Adam', 'Alan', 'Albert', 'Alex', 'Andrew', 'Anthony', 'Arthur', 'Austin', 'Ben',
+  'Bobby', 'Brad', 'Brandon', 'Brian', 'Bruce', 'Bryan', 'Cameron', 'Carl', 'Charles', 'Chris',
+  'Dan', 'David', 'Derek', 'Dustin', 'Edward', 'Eric', 'Frank', 'Gary', 'George', 'Glenn',
+  'Greg', 'Henry', 'Howard', 'Ian', 'Jack', 'James', 'Jason', 'Jeff', 'Jerry', 'Jim',
+  'John', 'Jose', 'Joe', 'Jordan', 'Justin', 'Keith', 'Ken', 'Kevin', 'Kyle', 'Larry',
+  'Lee', 'Marc', 'Mark', 'Martin', 'Matt', 'Michael', 'Mike', 'Nathan', 'Nick', 'Noah',
+  'Oliver', 'Patrick', 'Paul', 'Peter', 'Philip', 'Ralph', 'Randy', 'Ray', 'Richard', 'Robert',
+  'Roger', 'Ron', 'Russell', 'Ryan', 'Sam', 'Scott', 'Sean', 'Shawn', 'Stephen', 'Steve',
+  'Stewart', 'Ted', 'Thomas', 'Tim', 'Todd', 'Tony', 'Tyler', 'Victor', 'Vincent', 'Wade',
+  'Walter', 'Wayne', 'William', 'Zach',
+  'Alice', 'Amanda', 'Amber', 'Amy', 'Andrea', 'Angela', 'Anna', 'Ashley', 'Barbara', 'Beth',
+  'Brenda', 'Carol', 'Carolyn', 'Catherine', 'Cheryl', 'Christine', 'Christy', 'Cynthia', 'Dana', 'Deborah',
+  'Diana', 'Donna', 'Doris', 'Edith', 'Elaine', 'Elizabeth', 'Ellen', 'Emily', 'Emma', 'Erin',
+  'Eva', 'Frances', 'Gloria', 'Grace', 'Hannah', 'Heather', 'Helen', 'Holly', 'Irene', 'Janet',
+  'Jane', 'Jean', 'Jennifer', 'Jessica', 'Joan', 'Joanne', 'Joyce', 'Judith', 'Julia', 'Julie',
+  'Karen', 'Kate', 'Kathleen', 'Katherine', 'Kelly', 'Kim', 'Laura', 'Lauren', 'Linda', 'Lisa',
+  'Lori', 'Margaret', 'Maria', 'Marie', 'Marilyn', 'Martha', 'Mary', 'Megan', 'Melissa', 'Michelle',
+  'Monica', 'Nancy', 'Natalie', 'Nicole', 'Olivia', 'Pam', 'Patricia', 'Paula', 'Rachel', 'Rebecca',
+  'Renee', 'Robin', 'Rose', 'Ruth', 'Samantha', 'Sandra', 'Sarah', 'Sharon', 'Sherri', 'Sophia',
+  'Stephanie', 'Susan', 'Sylvia', 'Tammy', 'Teresa', 'Theresa', 'Tiffany', 'Tina', 'Tracy', 'Vanessa',
+  'Veronica', 'Victoria', 'Virginia', 'Wendy',
+]
+
+const LAST_NAMES = [
+  'Adams', 'Allen', 'Anderson', 'Bailey', 'Baker', 'Bell', 'Bennett', 'Brooks', 'Brown', 'Campbell',
+  'Carter', 'Chen', 'Clark', 'Cole', 'Collins', 'Cook', 'Cooper', 'Davis', 'Diaz', 'Evans',
+  'Fischer', 'Foster', 'Garcia', 'Gomez', 'Gray', 'Green', 'Hall', 'Hamilton', 'Harris', 'Hayes',
+  'Henderson', 'Hernandez', 'Hill', 'Howard', 'Hughes', 'Jackson', 'Jenkins', 'Johnson', 'Jones', 'Kelly',
+  'Kim', 'King', 'Lee', 'Lewis', 'Lopez', 'Martin', 'Martinez', 'Miller', 'Mitchell', 'Moore',
+  'Morales', 'Morgan', 'Morris', 'Murphy', 'Nelson', 'Nguyen', 'Park', 'Parker', 'Patel', 'Perez',
+  'Peterson', 'Phillips', 'Powell', 'Price', 'Reed', 'Reyes', 'Rivera', 'Roberts', 'Robinson', 'Rodriguez',
+  'Rogers', 'Ross', 'Russell', 'Sanchez', 'Sanders', 'Schmidt', 'Scott', 'Singh', 'Smith', 'Stewart',
+  'Sullivan', 'Taylor', 'Thomas', 'Thompson', 'Torres', 'Turner', 'Walker', 'Wang', 'Ward', 'Watson',
+  'White', 'Williams', 'Wilson', 'Wong', 'Wood', 'Wright', 'Yamamoto', 'Young', 'Zhang', 'Zimmerman',
+]
+
+// Generate synthetic health members procedurally to bring total to 1500.
+// Realistic distribution: 65% healthy, 18% watch, 12% at_risk, 5% critical.
+function generateSyntheticHealthMembers(count: number, baseIndex: number): MemberHealthResult[] {
+  const rng = seededRandom(baseIndex * 7919 + count * 31)
+  const out: MemberHealthResult[] = []
+
+  for (let i = 0; i < count; i++) {
+    const idx = baseIndex + i
+    const fn = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]
+    const ln = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]
+    const name = `${fn} ${ln}`
+    const email = `${fn.toLowerCase()}.${ln.toLowerCase()}${idx}@demo.com`
+    const isFemale = FIRST_NAMES.indexOf(fn) >= 94
+    const gender: 'M' | 'F' = isFemale ? 'F' : 'M'
+    const dupr = Math.round((2.5 + rng() * 3.0) * 10) / 10
+
+    // Risk distribution
+    const r = rng()
+    let riskLevel: RiskLevel
+    let stage: LifecycleStage
+    let healthScore: number
+    let trend: 'improving' | 'stable' | 'declining'
+    let daysSinceLast: number
+    let totalBookings: number
+    let joinedDaysAgo: number
+    let topRisks: string[] = []
+    let suggestedAction: string
+
+    if (r < 0.05) {
+      // Critical 5%
+      riskLevel = 'critical'
+      stage = rng() < 0.5 ? 'churned' : 'critical'
+      healthScore = 10 + Math.floor(rng() * 20)
+      trend = 'declining'
+      daysSinceLast = 30 + Math.floor(rng() * 30)
+      totalBookings = 5 + Math.floor(rng() * 25)
+      joinedDaysAgo = 90 + Math.floor(rng() * 240)
+      topRisks = ['Inactive 30+ days', 'Visit frequency dropped sharply']
+      suggestedAction = 'Use Reactivation to send a win-back message'
+    } else if (r < 0.17) {
+      // At-risk 12%
+      riskLevel = 'at_risk'
+      stage = 'at_risk'
+      healthScore = 30 + Math.floor(rng() * 15)
+      trend = 'declining'
+      daysSinceLast = 12 + Math.floor(rng() * 14)
+      totalBookings = 8 + Math.floor(rng() * 30)
+      joinedDaysAgo = 120 + Math.floor(rng() * 270)
+      topRisks = ['Visit frequency down 30-50%', `${daysSinceLast} days since last session`]
+      suggestedAction = 'Send targeted invite for their preferred session type'
+    } else if (r < 0.35) {
+      // Watch 18%
+      riskLevel = 'watch'
+      stage = 'active'
+      healthScore = 55 + Math.floor(rng() * 15)
+      trend = rng() < 0.6 ? 'stable' : 'declining'
+      daysSinceLast = 4 + Math.floor(rng() * 8)
+      totalBookings = 12 + Math.floor(rng() * 35)
+      joinedDaysAgo = 100 + Math.floor(rng() * 320)
+      topRisks = trend === 'declining' ? ['Slight frequency decline'] : []
+      suggestedAction = 'Monitor — consider a check-in message next week'
+    } else {
+      // Healthy 65%
+      riskLevel = 'healthy'
+      stage = 'active'
+      healthScore = 75 + Math.floor(rng() * 20)
+      trend = rng() < 0.7 ? 'stable' : 'improving'
+      daysSinceLast = Math.floor(rng() * 5)
+      totalBookings = 20 + Math.floor(rng() * 60)
+      joinedDaysAgo = 60 + Math.floor(rng() * 540)
+      suggestedAction = 'No action needed — member is engaged'
+    }
+
+    // Map MemberHealthResult.trend (improving/stable/declining) to UI EngagementTrend (growing/stable/declining/churning)
+    const engagementTrend: 'growing' | 'stable' | 'declining' | 'churning' =
+      riskLevel === 'critical' ? 'churning'
+      : trend === 'improving' ? 'growing'
+      : trend === 'declining' ? 'declining'
+      : 'stable'
+    const valueTier: 'high' | 'medium' | 'low' = totalBookings > 40 ? 'high' : totalBookings > 15 ? 'medium' : 'low'
+    const activityLevel: 'power' | 'regular' | 'casual' | 'occasional' =
+      totalBookings > 40 ? 'power'
+      : totalBookings > 20 ? 'regular'
+      : totalBookings > 5 ? 'casual'
+      : 'occasional'
+
+    out.push({
+      memberId: `mh-syn-${idx}`,
+      member: { id: `mh-syn-${idx}`, name, email, image: null, gender, city: null, duprRatingDoubles: dupr, duprRatingSingles: null },
+      healthScore, riskLevel, lifecycleStage: stage,
+      components: {
+        frequencyTrend: c(healthScore + Math.floor(rng() * 10) - 5, 35, 'Frequency trend'),
+        recency: c(Math.max(0, 100 - daysSinceLast * 3), 25, `Last played ${daysSinceLast} days ago`),
+        consistency: c(60 + Math.floor(rng() * 40), 20, 'Visit pattern'),
+        patternBreak: c(60 + Math.floor(rng() * 40), 15, 'Schedule adherence'),
+        noShowTrend: c(80 + Math.floor(rng() * 20), 5, 'Reliability'),
+      },
+      topRisks, suggestedAction, trend,
+      daysSinceLastBooking: daysSinceLast, totalBookings, joinedDaysAgo,
+      // Populate segment so MembersIQ table renders trend/value/activity badges correctly
+      segment: {
+        activityLevel, risk: riskLevel, trend: engagementTrend, valueTier,
+        behavioral: { timePreference: 'evening', dayPattern: 'mixed', formatPreference: 'open_play' },
+      } as any,
+    } as any)
+  }
+
+  return out
+}
+
 function mkHealth(
   id: string, name: string, email: string, dupr: number, gender: 'M' | 'F',
   healthScore: number, riskLevel: RiskLevel, stage: LifecycleStage,
@@ -1056,6 +1212,9 @@ export function mockMemberHealth(): MemberHealthData {
       c(50, 20, 'Building consistency — early days'), c(70, 15, 'No pattern established yet'), c(100, 5, 'No issues'),
       p.score < 65 ? ['Frequency still developing'] : [], p.score < 65 ? 'Monitor — consider a check-in message next week' : 'No action needed — member is engaged',
     )),
+
+    // ── Synthetic procedural members to bring total to 1500 ──
+    ...generateSyntheticHealthMembers(1450, 51),
   ]
 
   const total = members.length
@@ -1391,6 +1550,13 @@ export const mockReferralSnapshot = {
     offerLoop: [],
     routeLoop: [],
     outcomeFunnel: {
+      askCount: 0, engagedCount: 0, intentCount: 0, strongSignalCount: 0,
+      engagementRate: 0, intentRate: 0, strongSignalRate: 0,
+      summary: 'No asks sent yet in the current window — mock demo state.',
+    },
+    // MembersIQ.tsx line 2586 reads `referralSummary.funnel.summary` (typo for outcomeFunnel)
+    // — keeping a duplicate alias here so the demo doesn't crash on the typo.
+    funnel: {
       askCount: 0, engagedCount: 0, intentCount: 0, strongSignalCount: 0,
       engagementRate: 0, intentRate: 0, strongSignalRate: 0,
       summary: 'No asks sent yet in the current window — mock demo state.',
