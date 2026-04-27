@@ -8051,57 +8051,35 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
     }),
 
-  // P0-T4 / P3-T1 — AI-suggested cohorts ranked by $ impact.
-  // Real impl runs 3 generators (Renewal in 14d, Lost Evening, New & Engaged)
-  // per spec D4. Cached 24h via ClubSuggestedCohortCache table (P3-T1).
+  // P3-T1 — AI-suggested cohorts ranked by $ impact.
+  // Runs 3 generators (Renewal in 14d, Lost Evening, New & Engaged)
+  // from lib/ai/cohort-generators/* per spec D4. Each returns
+  // userIds + estImpactCents; results sorted desc by impact and
+  // empties dropped.
+  //
+  // Caching: deferred to P3-T1 follow-up (ClubSuggestedCohortCache
+  // table — see SPEC §9). For demo/early traffic, on-demand compute
+  // is fine since clubs are small. Add 24h cache when traffic grows.
   listSuggestedCohorts: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // TODO P3-T1: replace with real generator output from
-      // lib/ai/cohort-generators/{renewal-in-14d,lost-evening-players,new-and-engaged}.ts
-      return [
-        {
-          id: 'stub-renewal-14d',
-          name: 'Renewal in 14d',
-          description: 'Package expires soon, nudge to renew',
-          memberCount: 7,
-          estImpactCents: 140_000,
-          suggestedAction: 'Renewal nudge',
-          suggestedTemplateKey: 'renewal_reminder',
-          emoji: '📅',
-        },
-        {
-          id: 'stub-lost-evening',
-          name: 'Lost Evening Players',
-          description: 'Played 4+ evenings/mo, now ≤1',
-          memberCount: 12,
-          estImpactCents: 96_000,
-          suggestedAction: 'Reactivation',
-          suggestedTemplateKey: 'win_back_inactive',
-          emoji: '⚠️',
-        },
-        {
-          id: 'stub-new-engaged',
-          name: 'New & Engaged',
-          description: 'Joined <30d, 4+ sessions',
-          memberCount: 5,
-          estImpactCents: 60_000,
-          suggestedAction: 'Onboarding',
-          suggestedTemplateKey: 'onboarding_series',
-          emoji: '🌟',
-        },
-      ] as Array<{
-        id: string
-        name: string
-        description: string
-        memberCount: number
-        estImpactCents: number
-        suggestedAction: string
-        suggestedTemplateKey: string
-        emoji: string
-        _stub?: true
-      }>
+      const { runAllCohortGenerators } = await import('@/lib/ai/cohort-generators')
+      const suggestions = await runAllCohortGenerators(input.clubId, ctx.prisma as any)
+      return suggestions
+        .sort((a, b) => b.estImpactCents - a.estImpactCents)
+        .map((s) => ({
+          id: s.id,
+          generatorKey: s.generatorKey,
+          name: s.name,
+          description: s.description,
+          memberCount: s.memberCount,
+          estImpactCents: s.estImpactCents,
+          suggestedAction: s.suggestedAction,
+          suggestedTemplateKey: s.suggestedTemplateKey,
+          userIds: s.userIds,
+          emoji: s.emoji,
+        }))
     }),
 
   // NOTE: `previewCohort` is NOT stubbed here — it already exists at line 6706
