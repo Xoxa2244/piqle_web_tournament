@@ -404,6 +404,8 @@ export interface SessionCalendarItem {
   lostRevenue: number | null
   status: 'past' | 'today' | 'upcoming'
   peerAvgOccupancy: number | null
+  peerAvgRevenue?: number | null
+  peerSampleSize?: number | null
   deviationFromPeer: number | null
   recommendations: SessionRecommendation[]
 }

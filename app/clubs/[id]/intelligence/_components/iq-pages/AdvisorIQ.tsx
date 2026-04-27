@@ -12,6 +12,7 @@ import {
     CheckSquare, Activity, PowerOff,
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { trpc } from "@/lib/trpc";
 import { AdvisorActionCard } from "./AdvisorActionCard";
 import { PendingQueueCards } from "./PendingQueueCards";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
@@ -846,6 +847,17 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       .catch(() => {});
   }, [clubId]);
 
+  const deleteConversation = trpc.intelligence.deleteConversation.useMutation({
+    onSuccess: (_result, variables) => {
+      setConversations((prev) => prev.filter((conv) => conv.id !== variables.conversationId));
+      if (activeConvId === variables.conversationId) {
+        setActiveConvId(null);
+        setConversationId(null);
+        setMessages([]);
+      }
+    },
+  });
+
   // Apply pending conversation ID after streaming ends
   useEffect(() => {
     if (!isBusy && pendingConvIdRef.current) {
@@ -1074,10 +1086,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             {conversations.map((conv) => {
               const isActive = activeConvId === conv.id;
               return (
-                <button
+                <div
                   key={conv.id}
-                  onClick={() => loadConversation(conv.id)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl transition-all group"
+                  className="group rounded-xl transition-all"
                   style={{
                     background: isActive ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "transparent",
                     border: isActive ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
@@ -1085,13 +1096,32 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                   onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--hover)"; }}
                   onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs truncate flex-1" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
-                      {conv.title || 'New conversation'}
-                    </span>
+                  <div className="flex items-start gap-1 px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => loadConversation(conv.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="text-xs truncate" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
+                        {conv.title || 'New conversation'}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete conversation"
+                      disabled={deleteConversation.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConversation.mutate({ conversationId: conv.id });
+                      }}
+                      className="mt-0.5 rounded-lg p-1 opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-40"
+                      style={{ color: "var(--t4)" }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
-                </button>
+                </div>
               );
             })}
           </div>

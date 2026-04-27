@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
-import type { SessionCalendarItem } from "@/types/intelligence"
+import type { SessionCalendarItem, SessionRecommendation } from "@/types/intelligence"
 import { PlayerProfileIQ } from "./PlayerProfileIQ"
 
 // ── Skill classification (shared with ScheduleIQ) ──
@@ -44,6 +44,12 @@ function initials(name: string) {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
+function recommendationPriorityRank(priority: SessionRecommendation['priority']) {
+  if (priority === 'high') return 0
+  if (priority === 'medium') return 1
+  return 2
+}
+
 // ── Props ──
 
 interface SessionDetailIQProps {
@@ -64,6 +70,28 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
   const occPct = Math.round((session.registered / (session.capacity || 1)) * 100)
   const spotsLeft = Math.max(0, (session.capacity || 0) - session.registered)
   const baseline = session.peerAvgOccupancy ?? 70
+  const peerSampleSize = session.peerSampleSize ?? null
+  const deviationFromPeer = session.deviationFromPeer ?? null
+  const topInsightRecommendation = [...(session.recommendations || [])]
+    .sort((a, b) => recommendationPriorityRank(a.priority) - recommendationPriorityRank(b.priority))[0] || null
+  const demandState = occPct >= 90 ? 'high' : occPct >= 60 ? 'healthy' : occPct >= 35 ? 'soft' : 'weak'
+  const demandLabel = demandState === 'high'
+    ? 'High demand'
+    : demandState === 'healthy'
+      ? 'Healthy demand'
+      : demandState === 'soft'
+        ? 'Soft demand'
+        : 'Weak demand'
+  const benchmarkLabel = deviationFromPeer == null
+    ? null
+    : deviationFromPeer > 0
+      ? `+${deviationFromPeer} pts vs peer average`
+      : deviationFromPeer < 0
+        ? `${deviationFromPeer} pts vs peer average`
+        : 'Exactly on peer average'
+  const revenueDelta = session.peerAvgRevenue != null && session.revenue != null
+    ? Math.round(session.revenue - session.peerAvgRevenue)
+    : null
 
   // Human-readable title: "Open Play · Advanced" or "Drill" or "League"
   const formatLabel = useMemo(() => {
@@ -264,21 +292,81 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
           <Zap className="w-4 h-4" style={{ color: '#8B5CF6' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Session Insights</span>
         </div>
-        <div className="space-y-2">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>Benchmark</div>
+            <div className="mt-2 text-lg font-bold" style={{ color: 'var(--heading)' }}>{baseline}%</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {peerSampleSize
+                ? `${peerSampleSize} similar ${peerSampleSize === 1 ? 'session' : 'sessions'} over the last 90 days`
+                : 'Average for similar sessions over the last 90 days'}
+            </div>
+            {benchmarkLabel && (
+              <div className="text-[11px] mt-2" style={{ color: deviationFromPeer && deviationFromPeer < 0 ? '#F59E0B' : '#10B981' }}>
+                {benchmarkLabel}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>Demand Signal</div>
+            <div className="mt-2 text-lg font-bold" style={{ color: fillColor(occPct) }}>{demandLabel}</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              Today is at {occPct}% fill with {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} open
+            </div>
+            {occPct < baseline && (
+              <div className="text-[11px] mt-2" style={{ color: '#F59E0B' }}>
+                Running below the usual fill for this slot
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>Revenue Impact</div>
+            <div className="mt-2 text-lg font-bold" style={{ color: session.lostRevenue ? '#F59E0B' : 'var(--heading)' }}>
+              {session.lostRevenue != null && session.lostRevenue > 0 ? `$${Math.round(session.lostRevenue)}` : session.revenue != null ? `$${Math.round(session.revenue)}` : 'N/A'}
+            </div>
+            <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+              {session.lostRevenue != null && session.lostRevenue > 0
+                ? 'Estimated revenue still open in unfilled spots'
+                : session.revenue != null
+                  ? 'Estimated revenue captured by current registrations'
+                  : 'No pricing data for this slot'}
+            </div>
+            {revenueDelta != null && (
+              <div className="text-[11px] mt-2" style={{ color: revenueDelta >= 0 ? '#10B981' : '#F59E0B' }}>
+                {revenueDelta >= 0 ? '+' : ''}${revenueDelta} vs similar sessions
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2 mt-4">
           <div className="flex items-start gap-2 text-xs" style={{ color: 'var(--t3)' }}>
             <Target className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--t4)' }} />
-            <span>This slot fills <strong style={{ color: 'var(--heading)' }}>{baseline}%</strong> on average over the last 90 days</span>
+            <span>
+              Comparable {formatLabel.toLowerCase()} slots usually land around <strong style={{ color: 'var(--heading)' }}>{baseline}%</strong> fill{peerSampleSize ? ` across ${peerSampleSize} recent sessions` : ''}.
+            </span>
           </div>
           <div className="flex items-start gap-2 text-xs" style={{ color: 'var(--t3)' }}>
             <CalendarDays className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'var(--t4)' }} />
-            <span>Today: <strong style={{ color: fillColor(occPct) }}>{occPct}%</strong> — {occPct >= baseline ? 'above' : 'below'} average</span>
+            <span>
+              Today is <strong style={{ color: fillColor(occPct) }}>{occPct}%</strong>{deviationFromPeer != null ? `, which is ${Math.abs(deviationFromPeer)} points ${deviationFromPeer >= 0 ? 'above' : 'below'} its peer benchmark` : ''}.
+            </span>
           </div>
-          {occPct < 60 && (
+          {topInsightRecommendation ? (
+            <div className="flex items-start gap-2 text-xs" style={{ color: topInsightRecommendation.priority === 'high' ? '#F59E0B' : 'var(--t3)' }}>
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: topInsightRecommendation.priority === 'high' ? '#F59E0B' : 'var(--t4)' }} />
+              <span>
+                <strong style={{ color: 'var(--heading)' }}>{topInsightRecommendation.label}:</strong> {topInsightRecommendation.reason}
+              </span>
+            </div>
+          ) : occPct < 60 ? (
             <div className="flex items-start gap-2 text-xs" style={{ color: '#F59E0B' }}>
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>Consider promoting this session or adjusting the time</span>
+              <span>This slot is under 60% full, so a targeted promotion or timing/format tweak is worth considering.</span>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </motion.div>

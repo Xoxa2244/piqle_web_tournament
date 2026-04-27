@@ -215,6 +215,8 @@ export function buildSessionCalendarData(
       lostRevenue: lostRevenue > 0 ? lostRevenue : null,
       status,
       peerAvgOccupancy: peer?.avgOccupancy ?? null,
+      peerAvgRevenue: peer?.avgRevenue ?? null,
+      peerSampleSize: peer?.count ?? null,
       deviationFromPeer: peer ? Math.round(s.occupancy - peer.avgOccupancy) : null,
       recommendations: generateSessionRecommendations(s, peerAverages, csvSessions, clubId, status),
     }

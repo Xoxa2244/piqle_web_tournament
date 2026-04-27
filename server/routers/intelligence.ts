@@ -1108,6 +1108,33 @@ export const intelligenceRouter = createTRPCRouter({
           sessionId: input.sessionId,
           limit: input.limit,
         })
+
+        if (hybridResult.recommendations.length === 0) {
+          const fallbackPlayers = await getFrequentPlayersFallback(
+            ctx.prisma,
+            session.clubId,
+            {
+              format: session.format,
+              startTime: session.startTime,
+              courtId: session.courtId,
+              skillLevel: session.skillLevel,
+              date: session.date,
+            },
+            alreadyBooked,
+            input.limit,
+          )
+
+          if (fallbackPlayers.length > 0) {
+            return {
+              session: hybridResult.session,
+              recommendations: fallbackPlayers,
+              totalCandidatesScored: fallbackPlayers.length,
+              aiEnhancements: [],
+              source: 'frequent_players' as const,
+            }
+          }
+        }
+
         return {
           ...hybridResult,
           aiEnhancements: [],
