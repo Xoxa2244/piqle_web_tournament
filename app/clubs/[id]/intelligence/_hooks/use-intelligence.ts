@@ -237,6 +237,51 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
   return query
 }
 
+/**
+ * P2-T1: Member KPI deltas (vs previous period of same length).
+ *
+ * Wraps `intelligence.getMemberHealthDeltas` (currently a stub returning
+ * mock data — see SPEC §2 P0-T4). Real impl from MemberHealthSnapshot
+ * lands when daily cron (P5-T1) accumulates ≥30d of history.
+ *
+ * For demo mode, returns plausible mock deltas to showcase the UX.
+ */
+export function useMemberKpiDeltas(
+  clubId: string,
+  period: 'week' | 'month' | 'quarter' = 'month',
+  options?: IntelligenceQueryOptions,
+) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getMemberHealthDeltas.useQuery(
+    { clubId, period },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: {
+        period,
+        activeCount: 19,
+        activeDelta: 3,
+        avgHealth: 61,
+        avgHealthDelta: 2,
+        atRiskCount: 5,
+        atRiskDelta: 2,
+        ltvTotalCents: 0,
+        ltvDeltaCents: 42_000,
+        vipCount: 13,
+        packageCount: 3,
+        _stub: true,
+      },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
 // ── Send reactivation messages (email/SMS) ──
 export function useSendReactivation() {
   const isDemo = useIsDemo()

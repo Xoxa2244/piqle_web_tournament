@@ -9,10 +9,11 @@ import {
   CalendarDays, DollarSign, Mail,
   Smartphone, ArrowUpRight, ArrowDownRight, UserPlus,
   Target, LayoutGrid, List, Sparkles, ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
-import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas } from '../../_hooks/use-intelligence'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line,
@@ -1270,6 +1271,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const { data: guestTrialSuggestionDecisions = [] } = useAdminTodoDecisions(clubId || '', guestTrialSuggestionDateKey)
   const setAdminTodoDecision = useSetAdminTodoDecision()
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
+  // P2-T1: KPI deltas vs previous period (driven by `period` selector).
+  const { data: kpiDeltas } = useMemberKpiDeltas(clubId || '', period === 'custom' ? 'month' : period)
   const [activeReferralRewardIssuanceKey, setActiveReferralRewardIssuanceKey] = useState<string | null>(null)
 
   const handleOutreach = (memberId: string, channel: "email" | "sms", member: Member) => {
@@ -3557,20 +3560,74 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </Card>
       )}
 
-      {/* Membership Status KPIs */}
+      {/* P2-T1: Members KPI strip — Active / Avg Health / At-Risk / LTV / VIP+Package
+          Drop: Guests / Drop-Ins (uninformative).
+          Add: At-Risk + LTV with vs-period deltas via MemberHealthSnapshot
+          (real query lands in P5-T1 when daily cron accumulates ≥30d data;
+          stub returns mock deltas in interim). See SPEC §4 P2-T1 / PLAN §3.4.
+       */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {(() => {
           const active = allMembers.filter(m => m.normalizedMembershipStatus === 'active').length;
-          const guests = allMembers.filter(m => ['guest', 'drop_in'].includes(m.normalizedMembershipType || '') || ['guest', 'none'].includes(m.normalizedMembershipStatus || '')).length;
           const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
           const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
           const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
+          const atRisk = allMembers.filter(m => m.segment === 'at-risk' || m.segment === 'critical').length;
+          const ltvTotalCents = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
+
+          // Format delta for display: "↗ +3" / "↘ -2" / "—" when null
+          const fmtDelta = (delta: number | null | undefined, label = 'vs last') => {
+            if (delta == null) return { text: '—', color: 'var(--t4)' };
+            if (delta === 0) return { text: `0 ${label}`, color: 'var(--t4)' };
+            const sign = delta > 0 ? '↗ +' : '↘ ';
+            const color = delta > 0 ? '#10B981' : '#F59E0B';
+            return { text: `${sign}${Math.abs(delta)} ${label}`, color };
+          };
+          const fmtMoneyDelta = (cents: number | null | undefined) => {
+            if (cents == null) return { text: '—', color: 'var(--t4)' };
+            if (cents === 0) return { text: '$0 vs last', color: 'var(--t4)' };
+            const sign = cents > 0 ? '+' : '−';
+            const color = cents > 0 ? '#10B981' : '#F59E0B';
+            const dollars = Math.abs(Math.round(cents / 100));
+            const text = dollars >= 1000 ? `${sign}$${(dollars / 1000).toFixed(1)}K` : `${sign}$${dollars}`;
+            return { text: `${text} vs last`, color };
+          };
+
+          const ltvDisplay = ltvTotalCents >= 100_000
+            ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
+            : `$${Math.round(ltvTotalCents / 100)}`;
+
           return [
-            { label: "Active Members", value: String(active || allMembers.length), icon: Users, gradient: "from-violet-500 to-purple-600", sub: `of ${allMembers.length} total` },
-            { label: "Avg Health", value: String(avgHealth), icon: Heart, gradient: "from-emerald-500 to-green-500", sub: "engagement score" },
-            { label: "Guests / Drop-Ins", value: String(guests), icon: UserPlus, gradient: "from-cyan-500 to-teal-500", sub: guests > 0 ? "conversion pool" : "none" },
-            { label: "Packages", value: String(packages), icon: CalendarDays, gradient: "from-amber-500 to-orange-500", sub: packages > 0 ? "credit holders" : "none" },
-            { label: "VIP / Unlimited", value: String(vip), icon: DollarSign, gradient: "from-red-500 to-orange-500", sub: vip > 0 ? "high-value tier" : "none" },
+            {
+              label: 'Active Members', value: String(active || allMembers.length),
+              icon: Users, gradient: 'from-violet-500 to-purple-600',
+              sub: `of ${allMembers.length} total`,
+              delta: fmtDelta(kpiDeltas?.activeDelta),
+            },
+            {
+              label: 'Avg Health', value: String(avgHealth),
+              icon: Heart, gradient: 'from-emerald-500 to-green-500',
+              sub: 'engagement score',
+              delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last'),
+            },
+            {
+              label: 'At-Risk', value: String(atRisk),
+              icon: AlertTriangle, gradient: 'from-orange-500 to-red-500',
+              sub: atRisk > 0 ? 'need attention' : 'all healthy',
+              delta: fmtDelta(kpiDeltas?.atRiskDelta),
+            },
+            {
+              label: 'LTV total', value: ltvDisplay,
+              icon: DollarSign, gradient: 'from-amber-500 to-yellow-500',
+              sub: 'cumulative revenue',
+              delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents),
+            },
+            {
+              label: 'VIP', value: String(vip),
+              icon: Sparkles, gradient: 'from-cyan-500 to-blue-500',
+              sub: `${packages} Package${packages !== 1 ? 's' : ''}`,
+              delta: { text: '', color: 'transparent' }, // No delta for VIP/Package — count snapshot
+            },
           ];
         })().map((kpi, i) => {
           const Icon = kpi.icon;
@@ -3582,11 +3639,16 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                     <Icon className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
-                    <div className="text-[11px]" style={{ color: "var(--t3)" }}>{kpi.label}</div>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--heading)' }}>{kpi.value}</div>
+                    <div className="text-[11px]" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
                   </div>
                 </div>
-                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>{kpi.sub}</div>
+                <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>
+                {kpi.delta.text && (
+                  <div className="text-[10px] mt-1" style={{ color: kpi.delta.color, fontWeight: 600 }}>
+                    {kpi.delta.text}
+                  </div>
+                )}
               </Card>
             </motion.div>
           );
