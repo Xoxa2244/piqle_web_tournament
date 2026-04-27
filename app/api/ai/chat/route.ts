@@ -46,6 +46,15 @@ function formatAdvisorSessionLine(session: {
   - Occupancy: ${session.occupancy} (${session.confirmed} of ${session.maxPlayers} spots filled) — ${session.spotsRemaining} spots left`
 }
 
+function resolveAppOrigin(req: Request) {
+  const forwardedProto = req.headers.get('x-forwarded-proto')
+  const forwardedHost = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  if (forwardedHost) {
+    return `${forwardedProto || 'https'}://${forwardedHost}`
+  }
+  return new URL(req.url).origin
+}
+
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
   try {
@@ -107,6 +116,7 @@ const MAX_HISTORY_MESSAGES = 100;
 export async function POST(req: Request) {
   let step = 'init';
   try {
+    const appOrigin = resolveAppOrigin(req)
     // 1. Authenticate
     step = 'auth';
     const session = await getSessionFromRequest(req);
@@ -378,12 +388,19 @@ ${(reactivation.candidates as any[]).map((c: any) => `- ${c.name}: ${c.daysSince
       }
 
       if (upcomingSessions && !('error' in upcomingSessions)) {
+        const sessions = (upcomingSessions.sessions as any[]).map((session: any) => ({
+          ...session,
+          eventUrl: session.eventUrl ? new URL(session.eventUrl, appOrigin).toString() : session.eventUrl,
+        }))
         parts.push(`## Upcoming Sessions
-${(upcomingSessions.sessions as any[]).map((s: any) => formatAdvisorSessionLine(s)).join('\n')}`)
+${sessions.map((s: any) => formatAdvisorSessionLine(s)).join('\n')}`)
       }
 
       if (todayOpenSessions && !('error' in todayOpenSessions)) {
-        const sessions = (todayOpenSessions.sessions as any[]) ?? []
+        const sessions = ((todayOpenSessions.sessions as any[]) ?? []).map((session: any) => ({
+          ...session,
+          eventUrl: session.eventUrl ? new URL(session.eventUrl, appOrigin).toString() : session.eventUrl,
+        }))
         parts.push(`## Today's Sessions With Open Spots (${todayOpenSessions.timeZone || 'club local time'})
 ${sessions.length > 0
   ? sessions.map((s: any) => formatAdvisorSessionLine(s)).join('\n')
@@ -391,7 +408,10 @@ ${sessions.length > 0
       }
 
       if (tonightOpenSessions && !('error' in tonightOpenSessions)) {
-        const sessions = (tonightOpenSessions.sessions as any[]) ?? []
+        const sessions = ((tonightOpenSessions.sessions as any[]) ?? []).map((session: any) => ({
+          ...session,
+          eventUrl: session.eventUrl ? new URL(session.eventUrl, appOrigin).toString() : session.eventUrl,
+        }))
         parts.push(`## Tonight's Sessions With Open Spots (${tonightOpenSessions.timeZone || 'club local time'})
 ${sessions.length > 0
   ? sessions.map((s: any) => formatAdvisorSessionLine(s)).join('\n')
@@ -526,6 +546,7 @@ When answering about sessions with open spots today or tonight:
 - use the dedicated "Today's Sessions With Open Spots" / "Tonight's Sessions With Open Spots" blocks first, not just the generic upcoming list;
 - mention every relevant session from those blocks unless the user asked for a shorter shortlist;
 - keep the event link embedded naturally inside the same session line, preferably in the event title; if needed, use short anchor text like [click here](...) in that same line;
+- use the full markdown link exactly as provided, including the full URL and query string;
 - copy the provided linked title exactly as given and never invent placeholder links like [Join here](#).`;
 
     // 7. Verify API key is available

@@ -9,7 +9,6 @@ import {
   Send, Plus, Trash2, Loader2,
   Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
@@ -180,6 +179,10 @@ function renderMessageWithInlineLinks(text: string) {
       })}
     </div>
   )
+}
+
+function renderAssistantMessage(text: string) {
+  return renderMessageWithInlineLinks(text)
 }
 
 function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
@@ -502,7 +505,6 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                   const cleanText = message.role === 'assistant'
                     ? linkifySessionTitles(stripSuggestedTags(rawClean), linkableSessions, clubId)
                     : rawClean
-                  const hasInlineLinks = cleanText.includes('](/') || cleanText.includes('](http')
                   return (
                     <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
@@ -518,31 +520,8 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                             <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
-                              {hasInlineLinks ? (
-                                renderMessageWithInlineLinks(cleanText)
-                              ) : (
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ href, children }) => {
-                                      if (href?.startsWith('/')) {
-                                        return (
-                                          <Link href={href} className="text-lime-600 hover:underline font-medium">
-                                            {children}
-                                          </Link>
-                                        )
-                                      }
-                                      return (
-                                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
-                                          {children}
-                                        </a>
-                                      )
-                                    },
-                                  }}
-                                >
-                                  {cleanText}
-                                </ReactMarkdown>
-                              )}
+                            <div className="text-sm leading-relaxed">
+                              {renderAssistantMessage(cleanText)}
                             </div>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
