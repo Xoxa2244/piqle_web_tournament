@@ -104,6 +104,21 @@ CREATE INDEX IF NOT EXISTS "club_suggested_cohort_cache_computed_at_idx"
 
 -- 4. member_health_snapshots — add unique (club_id, user_id, date::date) so
 --    daily snapshot cron (P5-T1) can use upsert instead of duplicate-and-dedupe.
+--
+-- IMPORTANT: existing campaign-engine writes (lib/ai/campaign-engine.ts:1221)
+-- weren't idempotent, so duplicates may already exist. We dedupe first
+-- (keep earliest per day), then add the UNIQUE constraint.
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY club_id, user_id, DATE(date)
+           ORDER BY date ASC
+         ) AS rn
+  FROM member_health_snapshots
+)
+DELETE FROM member_health_snapshots
+WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+
 CREATE UNIQUE INDEX IF NOT EXISTS
   "member_health_snapshots_club_user_day_uniq"
   ON "member_health_snapshots" ("club_id", "user_id", DATE("date"));
