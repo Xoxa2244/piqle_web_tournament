@@ -4,13 +4,16 @@ import { useParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ShieldAlert, Bot } from 'lucide-react'
 import { useIntelligenceSettings } from '../../_hooks/use-intelligence'
+import { AgentCampaignLayer } from '../../_components/iq-pages/AgentCampaignLayer'
 
 /**
  * Settings → Automation page
  *
- * Skeleton landed in P0-T2. Real content (Agent Campaign Layer, automation
- * triggers, outreach mode toggle, allowlist) moves here from the Campaigns
- * page in P1-T3. See `docs/ENGAGE_REDESIGN_SPEC.md` §2 (P0-T2) and §3 (P1-T3).
+ * Skeleton landed in P0-T2. Agent Campaign Layer block moved here from
+ * Campaigns page in P1-T3 — see docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T3.
+ *
+ * Future content (per PLAN §7): outreach mode toggle UI, allowlist
+ * management, automation triggers — additional sections will land here.
  *
  * Access: ADMIN only. MODERATOR / null roles see access-denied panel.
  */
@@ -54,34 +57,22 @@ export default function SettingsAutomationPage() {
         <div>
           <h1 className="text-2xl font-bold">Automation</h1>
           <p className="text-muted-foreground">
-            Agent Campaign Layer · Draft Queue · Live Rollout · Live Pilot Health · Triggers
+            Agent execution layer · draft queue · live rollout · pilot health
           </p>
         </div>
       </div>
 
+      <AgentCampaignLayer clubId={clubId} />
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Skeleton — content arrives in P1-T3</CardTitle>
+          <CardTitle className="text-base">More automation controls — coming soon</CardTitle>
           <CardDescription>
-            Per <code className="text-xs">docs/ENGAGE_REDESIGN_SPEC.md</code> §3 (P1-T3),
-            the Agent Campaign Layer block (Draft Queue / Live Rollout / Live Pilot
-            Health) currently rendered at the top of the Campaigns page will move
-            here, alongside automation triggers, outreach mode toggle, and the
-            allowlist. The Campaigns page will then surface only AI-Recommended
-            and Active Campaigns to club directors.
+            Per <code className="text-xs">docs/ENGAGE_REDESIGN_SPEC.md</code>, additional sections will land here:
+            outreach mode toggle UI, allowlist management, automation triggers (4 trigger
+            types), shadow-back recommendations.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            <li>Draft Queue (review-ready, sandboxed, scheduled, blocked)</li>
-            <li>Live Rollout status (env allowlist, live types armed)</li>
-            <li>Live Pilot Health (sends, delivered, opened, failed)</li>
-            <li>Outreach Mode toggle (Disabled / Shadow / Live)</li>
-            <li>Allowlist management</li>
-            <li>Shadow-back recommendations</li>
-            <li>Automation triggers (4 trigger types)</li>
-          </ul>
-        </CardContent>
       </Card>
     </div>
   )
