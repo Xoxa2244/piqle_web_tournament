@@ -2,26 +2,51 @@
 
 import { useState, useCallback } from 'react'
 
+export interface CampaignAudiencePreviewMember {
+  id: string
+  name: string
+  email?: string
+  subtitle?: string
+}
+
+export interface CampaignAudienceState {
+  memberIds: string[]
+  count: number
+  label: string
+  previewMembers: CampaignAudiencePreviewMember[]
+}
+
+export interface CampaignMessageState {
+  subject: string
+  body: string
+  smsBody: string
+}
+
 export interface CampaignCreatorState {
   step: 0 | 1 | 2 | 3
   type: string | null
   channel: 'email' | 'sms' | 'both'
-  audience: { memberIds: string[]; count: number; label: string }
-  message: { subject: string; body: string; smsBody: string }
+  audience: CampaignAudienceState
+  message: CampaignMessageState
   sessionId: string | null
   inactivityDays: number
   riskSegment: string
+  messageEdited: boolean
 }
+
+const EMPTY_AUDIENCE: CampaignAudienceState = { memberIds: [], count: 0, label: '', previewMembers: [] }
+const EMPTY_MESSAGE: CampaignMessageState = { subject: '', body: '', smsBody: '' }
 
 const INITIAL_STATE: CampaignCreatorState = {
   step: 0,
   type: null,
   channel: 'email',
-  audience: { memberIds: [], count: 0, label: '' },
-  message: { subject: '', body: '', smsBody: '' },
+  audience: EMPTY_AUDIENCE,
+  message: EMPTY_MESSAGE,
   sessionId: null,
   inactivityDays: 30,
   riskSegment: 'watch',
+  messageEdited: false,
 }
 
 export function useCampaignCreator(initialType?: string) {
@@ -40,32 +65,66 @@ export function useCampaignCreator(initialType?: string) {
       ...s,
       type,
       step: 1 as const,
+      audience: EMPTY_AUDIENCE,
+      message: EMPTY_MESSAGE,
+      sessionId: null,
       riskSegment: type === 'CHECK_IN' ? 'watch' : type === 'RETENTION_BOOST' ? 'at_risk' : s.riskSegment,
+      messageEdited: false,
     }))
   }, [])
 
   const setChannel = useCallback((channel: 'email' | 'sms' | 'both') => {
-    setState(s => ({ ...s, channel }))
+    setState(s => ({
+      ...s,
+      channel,
+      message: s.messageEdited ? s.message : EMPTY_MESSAGE,
+      messageEdited: s.messageEdited,
+    }))
   }, [])
 
-  const setAudience = useCallback((audience: CampaignCreatorState['audience']) => {
-    setState(s => ({ ...s, audience }))
+  const setAudience = useCallback((audience: CampaignAudienceState) => {
+    setState(s => ({
+      ...s,
+      audience,
+      message: s.messageEdited ? s.message : EMPTY_MESSAGE,
+      messageEdited: s.messageEdited,
+    }))
   }, [])
 
-  const setMessage = useCallback((message: CampaignCreatorState['message']) => {
-    setState(s => ({ ...s, message }))
+  const setMessage = useCallback((message: CampaignMessageState) => {
+    setState(s => ({ ...s, message, messageEdited: true }))
+  }, [])
+
+  const setGeneratedMessage = useCallback((message: CampaignMessageState) => {
+    setState(s => ({ ...s, message, messageEdited: false }))
   }, [])
 
   const setSessionId = useCallback((sessionId: string | null) => {
-    setState(s => ({ ...s, sessionId }))
+    setState(s => ({
+      ...s,
+      sessionId,
+      audience: sessionId === s.sessionId ? s.audience : EMPTY_AUDIENCE,
+      message: s.messageEdited ? s.message : EMPTY_MESSAGE,
+      messageEdited: s.messageEdited,
+    }))
   }, [])
 
   const setInactivityDays = useCallback((inactivityDays: number) => {
-    setState(s => ({ ...s, inactivityDays }))
+    setState(s => ({
+      ...s,
+      inactivityDays,
+      message: s.messageEdited ? s.message : EMPTY_MESSAGE,
+      messageEdited: s.messageEdited,
+    }))
   }, [])
 
   const setRiskSegment = useCallback((riskSegment: string) => {
-    setState(s => ({ ...s, riskSegment }))
+    setState(s => ({
+      ...s,
+      riskSegment,
+      message: s.messageEdited ? s.message : EMPTY_MESSAGE,
+      messageEdited: s.messageEdited,
+    }))
   }, [])
 
   const nextStep = useCallback(() => {
@@ -92,5 +151,6 @@ export function useCampaignCreator(initialType?: string) {
     nextStep,
     prevStep,
     reset,
+    setGeneratedMessage,
   }
 }

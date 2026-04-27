@@ -403,6 +403,7 @@ function CreateCohortButton({ clubId, sessionId, playerCount }: { clubId: string
 
 // ── Fill This Session — Event Marketing Pipeline ──
 function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; sessionId: string; spotsLeft: number }) {
+  const STEP_LABELS = ['Audience', 'Message', 'Send']
   const [open, setOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [subject, setSubject] = useState('')
@@ -445,6 +446,7 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
 
   const audience = generateMutation.data?.audience || []
   const sessionInfo = generateMutation.data?.session
+  const currentStep = sent ? 2 : generateMutation.data ? 1 : 0
 
   return (
     <>
@@ -455,7 +457,7 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
         className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm text-white"
         style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700, boxShadow: '0 4px 20px rgba(139,92,246,0.3)' }}
       >
-        <Send className="w-4 h-4" /> Fill This Session ({spotsLeft} spots)
+        <Send className="w-4 h-4" /> Fill Open Spots ({spotsLeft})
       </motion.button>
 
       {/* Modal */}
@@ -464,40 +466,52 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-6"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl"
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
-                <Send className="w-5 h-5 inline mr-2" style={{ color: '#8B5CF6' }} />
-                Fill This Session
-              </h2>
-              <button onClick={() => setOpen(false)} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--card-border)' }}>
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Slot Filler Campaign</h2>
+                <div className="flex items-center gap-1.5">
+                  {STEP_LABELS.map((label, i) => (
+                    <div key={label} className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: i <= currentStep ? '#8B5CF6' : 'var(--subtle)' }} />
+                      {i < STEP_LABELS.length - 1 && <div className="w-3 h-px" style={{ background: i < currentStep ? '#8B5CF6' : 'var(--subtle)' }} />}
+                    </div>
+                  ))}
+                </div>
+                <span className="text-[10px]" style={{ color: 'var(--t4)' }}>Step {currentStep + 1} of 3</span>
+              </div>
+              <button onClick={() => setOpen(false)} className="p-1 rounded-lg transition-colors hover:bg-white/10">
+                <X className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+              </button>
             </div>
 
-            {generateMutation.isPending ? (
-              <div className="flex flex-col items-center gap-3 py-12">
-                <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#8B5CF6' }} />
-                <p className="text-sm" style={{ color: 'var(--t3)' }}>Finding best candidates...</p>
-              </div>
-            ) : sent ? (
-              <div className="text-center py-8">
-                <div className="text-3xl mb-3">✅</div>
-                <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Campaign Sent!</p>
-                <p className="text-sm" style={{ color: 'var(--t3)' }}>
-                  {sent.sent} sent, {sent.skipped} skipped, {sent.errors} errors
-                </p>
-                <button onClick={() => setOpen(false)} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}>
-                  Close
-                </button>
-              </div>
-            ) : (
-              <>
+            <div className="px-6 py-5">
+              {generateMutation.isPending ? (
+                <div className="flex flex-col items-center gap-3 py-12">
+                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#8B5CF6' }} />
+                  <p className="text-sm" style={{ color: 'var(--t3)' }}>Building slot-filler audience...</p>
+                </div>
+              ) : sent ? (
+                <div className="text-center py-8">
+                  <div className="text-3xl mb-3">✅</div>
+                  <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Campaign Sent!</p>
+                  <p className="text-sm" style={{ color: 'var(--t3)' }}>
+                    {sent.sent} sent, {sent.skipped} skipped, {sent.errors} errors
+                  </p>
+                  <button onClick={() => setOpen(false)} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}>
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <>
                 {/* Session info */}
                 {sessionInfo && (
-                  <div className="p-3 rounded-xl mb-4" style={{ background: 'var(--subtle)' }}>
-                    <div className="text-sm" style={{ fontWeight: 600, color: 'var(--heading)' }}>{sessionInfo.title}</div>
+                  <div className="p-4 rounded-2xl mb-5" style={{ background: 'var(--subtle)' }}>
+                    <div className="text-[11px] uppercase tracking-[0.16em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>Campaign target</div>
+                    <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>{sessionInfo.title}</div>
                     <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
                       {sessionInfo.date} · {sessionInfo.time} {sessionInfo.court ? `· ${sessionInfo.court}` : ''}
                       <span className="ml-2" style={{ color: '#8B5CF6', fontWeight: 700 }}>{sessionInfo.spotsLeft} spots left</span>
@@ -505,31 +519,15 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
                   </div>
                 )}
 
-                {/* Message */}
-                <div className="mb-4">
-                  <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
-                  <input
-                    value={subject} onChange={e => setSubject(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
-                  <textarea
-                    value={body} onChange={e => setBody(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                    style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-                  />
-                </div>
-
                 {/* Audience */}
-                <div className="mb-4">
+                <div className="mb-5">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs" style={{ fontWeight: 600, color: 'var(--t2)' }}>
-                      Recipients ({selectedIds.size} of {audience.length})
-                    </label>
+                    <div>
+                      <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Select audience</div>
+                      <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                        {selectedIds.size} selected out of {audience.length} matched players
+                      </div>
+                    </div>
                     <button
                       onClick={() => setSelectedIds(selectedIds.size === audience.length ? new Set() : new Set(audience.map(a => a.id)))}
                       className="text-[10px]" style={{ color: '#8B5CF6', fontWeight: 600 }}
@@ -565,18 +563,49 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
                   </div>
                 </div>
 
-                {/* Send */}
-                <button
-                  onClick={handleSend}
-                  disabled={selectedIds.size === 0 || sendMutation.isPending || !subject.trim()}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
-                >
-                  {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                  Send to {selectedIds.size} player{selectedIds.size > 1 ? 's' : ''}
-                </button>
+                {/* Message */}
+                <div className="mb-5">
+                  <div className="text-sm mb-2" style={{ fontWeight: 700, color: 'var(--heading)' }}>Review message</div>
+                  <div className="mb-3">
+                    <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
+                    <input
+                      value={subject} onChange={e => setSubject(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
+                    <textarea
+                      value={body} onChange={e => setBody(e.target.value)}
+                      rows={4}
+                      className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <button
+                    onClick={() => setOpen(false)}
+                    className="px-4 py-2 rounded-xl text-sm"
+                    style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSend}
+                    disabled={selectedIds.size === 0 || sendMutation.isPending || !subject.trim()}
+                    className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+                  >
+                    {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    Send Campaign ({selectedIds.size})
+                  </button>
+                </div>
               </>
             )}
+            </div>
           </motion.div>
         </div>
       )}
