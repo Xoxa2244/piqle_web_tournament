@@ -2887,7 +2887,6 @@ export const intelligenceRouter = createTRPCRouter({
         log.info(`[Intelligence] getMemberHealth preferences: ${preferences.length}`)
 
         // Build input for health scoring
-        const now = new Date()
         const d30 = new Date(now.getTime() - 30 * 86400000)
         const d60 = new Date(now.getTime() - 60 * 86400000)
 
