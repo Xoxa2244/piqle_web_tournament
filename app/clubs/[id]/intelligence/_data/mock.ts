@@ -142,6 +142,99 @@ mockDashboard.underfilledSessions = mockDashboard.upcomingSessions.filter(
   (s) => s.occupancyPercent < 50
 )
 
+// ── Player profile (deep-link from MembersIQ / SessionDetailIQ → PlayerProfileIQ) ──
+export function mockPlayerProfile(userId: string) {
+  // Pick a deterministic-but-varied name from the synthetic generator pool.
+  // For real synthetic IDs ("mh-syn-1234") we slice consistently; otherwise
+  // we hash whatever userId we got.
+  let h = 0
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0
+  const fn = SESSION_PLAYER_NAMES[h % SESSION_PLAYER_NAMES.length].split(' ')[0]
+  const ln = SESSION_PLAYER_NAMES[(h * 7) % SESSION_PLAYER_NAMES.length].split(' ')[1]
+  const name = `${fn} ${ln}`
+  const memberSinceDate = new Date(today.getTime() - (180 + (h % 700)) * 86400000).toISOString()
+  const lastPlayedDays = (h % 13)
+  const lastPlayed = new Date(today.getTime() - lastPlayedDays * 86400000).toISOString()
+  const totalSessions = 14 + (h % 80)
+  const healthScore = 60 + (h % 35)
+  const riskLevel: 'low' | 'medium' | 'high' = healthScore > 80 ? 'low' : healthScore > 60 ? 'medium' : 'high'
+  const avgGap = 3 + (h % 5)
+  const currentGap = lastPlayedDays
+  const frequencyChange = ((h % 21) - 10)
+
+  // 12 weeks of activity (last 4 highlighted)
+  const sessionsPerWeek = Array.from({ length: 12 }, (_, i) => {
+    const weekStart = new Date(today.getTime() - (11 - i) * 7 * 86400000)
+    return {
+      week: weekStart.toISOString().slice(0, 10),
+      count: Math.max(0, Math.round(2 + Math.sin(i + h * 0.01) * 1.5 + (i > 7 ? 1 : 0))),
+    }
+  })
+
+  return {
+    player: {
+      id: userId, name, email: `${fn.toLowerCase()}@demo.com`, image: null,
+      memberSince: memberSinceDate, lastPlayed, totalSessions,
+      healthScore, duprRatingDoubles: Math.round((3 + (h % 25) / 10) * 10) / 10,
+    },
+    activity: {
+      sessionsPerWeek,
+      trend: (frequencyChange > 5 ? 'increasing' : frequencyChange < -5 ? 'declining' : 'stable') as 'increasing' | 'declining' | 'stable',
+    },
+    patterns: {
+      topFormats: [
+        { format: 'OPEN_PLAY', count: 18 + (h % 10) },
+        { format: 'LEAGUE_PLAY', count: 9 + (h % 6) },
+        { format: 'SOCIAL', count: 5 + (h % 4) },
+      ],
+      topTimes: [
+        { hour: 18, count: 12 + (h % 6) },
+        { hour: 9, count: 8 + (h % 5) },
+        { hour: 12, count: 5 + (h % 4) },
+      ],
+      topDays: [
+        { day: 'Tue', count: 9 + (h % 5) },
+        { day: 'Sat', count: 7 + (h % 4) },
+        { day: 'Thu', count: 6 + (h % 3) },
+      ],
+      topCourts: [
+        { court: 'Court 1', count: 14 + (h % 8) },
+        { court: 'Court 3', count: 9 + (h % 5) },
+        { court: 'Court 2', count: 6 + (h % 4) },
+      ],
+    },
+    risk: { level: riskLevel, avgGapDays: avgGap, currentGapDays: currentGap, frequencyChange },
+    recentSessions: Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(today.getTime() - (lastPlayedDays + i * (3 + h % 4)) * 86400000)
+      const formats = ['OPEN_PLAY', 'LEAGUE_PLAY', 'SOCIAL', 'DRILL']
+      return {
+        date: d.toISOString().slice(0, 10),
+        format: formats[(h + i) % formats.length],
+        court: `Court ${1 + ((h + i) % 4)}`,
+        startTime: ['07:00', '09:00', '12:00', '18:00'][(h + i) % 4],
+        endTime: ['09:00', '11:00', '14:00', '20:00'][(h + i) % 4],
+      }
+    }),
+  }
+}
+
+export function mockFrequentPartners(userId: string) {
+  let h = 0
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) >>> 0
+  return Array.from({ length: 4 }, (_, i) => {
+    const idx = (h + i * 5) % SESSION_PLAYER_NAMES.length
+    const fullName = SESSION_PLAYER_NAMES[idx]
+    return {
+      id: `demo-fp-${userId}-${i}`,
+      name: fullName,
+      email: `${fullName.toLowerCase().replace(' ', '.')}@demo.com`,
+      shared_sessions: 12 - i * 2,
+      last_played_together: new Date(today.getTime() - (i * 7 + 3) * 86400000).toISOString().slice(0, 10),
+      favorite_format: ['OPEN_PLAY', 'LEAGUE_PLAY', 'SOCIAL', 'DRILL'][i],
+    }
+  })
+}
+
 // ── Registered players for a single session (used by SessionDetailIQ) ──
 const SESSION_PLAYER_NAMES = [
   'Sarah Chen', 'Mike Rodriguez', 'Emily Park', 'James Wilson', 'Karen Lewis',
