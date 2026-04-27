@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useInView, AnimatePresence } from "motion/react";
@@ -1259,7 +1259,16 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
+  // persisted per user via localStorage. Grid mode kept as alternative for
+  // working with 2-3 members at a time. "Cards" mode planned but not yet
+  // distinct from Grid — see SPEC §4 P2-T2.
+  const [viewMode, setViewMode] = useState<"list" | "grid" | "cards">(() => {
+    if (typeof window === 'undefined') return 'list'
+    const stored = window.localStorage.getItem('iq:members:viewMode')
+    if (stored === 'list' || stored === 'grid' || stored === 'cards') return stored
+    return 'list'
+  });
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -1273,6 +1282,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
   // P2-T1: KPI deltas vs previous period (driven by `period` selector).
   const { data: kpiDeltas } = useMemberKpiDeltas(clubId || '', period === 'custom' ? 'month' : period)
+
+  // P2-T2: persist viewMode preference per user.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('iq:members:viewMode', viewMode)
+    }
+  }, [viewMode])
   const [activeReferralRewardIssuanceKey, setActiveReferralRewardIssuanceKey] = useState<string | null>(null)
 
   const handleOutreach = (memberId: string, channel: "email" | "sms", member: Member) => {
@@ -3841,11 +3857,19 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             >
               {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
             </select>
+            {/* P2-T2: 3-mode toggle. List is default & most scalable.
+                Grid for small lists. Cards is currently aliased to Grid;
+                future Phase will give Cards a 1-col rich-card layout. */}
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-              {([{ mode: "grid" as const, Icon: LayoutGrid }, { mode: "list" as const, Icon: List }]).map(({ mode, Icon }) => (
+              {([
+                { mode: "list" as const, Icon: List, title: "List view (default)" },
+                { mode: "grid" as const, Icon: LayoutGrid, title: "Grid view" },
+                { mode: "cards" as const, Icon: Sparkles, title: "Cards view" },
+              ]).map(({ mode, Icon, title }) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
+                  title={title}
                   className="p-2 transition-all"
                   style={{
                     background: viewMode === mode ? "var(--pill-active)" : "transparent",
@@ -3920,8 +3944,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
-      {/* Member Grid */}
-      {viewMode === "grid" ? (
+      {/* P2-T2: Member layout — list (default), grid (multi-col), cards (alias of grid for now) */}
+      {(viewMode === "grid" || viewMode === "cards") ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {paginated.map((member, i) => (
             <motion.div
