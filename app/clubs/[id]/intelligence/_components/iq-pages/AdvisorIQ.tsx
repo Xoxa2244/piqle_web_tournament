@@ -32,6 +32,7 @@ import {
   formatGuestTrialWorkspaceSummary,
   formatReferralWorkspaceSummary,
 } from "./shared/growth-context";
+import { ChatRichText } from "../shared/ChatRichText";
 
 /* --- Suggested Prompts ---
  * Mix of "planning" prompts (draft, analyze, recommend) and "ops"
@@ -1559,22 +1560,15 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                           lineHeight: 1.7,
                         }}
                       >
-                        {cleanText.split("\n").map((line, i) => {
-                          const boldRegex = /\*\*(.*?)\*\*/g;
-                          const parts = line.split(boldRegex);
-                          return (
-                            <p key={i} className={line === "" ? "h-2" : ""}>
-                              {parts.map((part, j) =>
-                                j % 2 === 1 ? (
-                                  <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
-                                ) : (
-                                  <span key={j}>{part}</span>
-                                )
-                              )}
-                            </p>
-                          );
-                        })}
-                      </div>
+                            <ChatRichText
+                              text={cleanText}
+                              className="space-y-1.5"
+                              lineClassName="whitespace-pre-wrap"
+                              linkClassName="font-semibold underline"
+                              linkStyle={{ color: "#67E8F9" }}
+                              strongStyle={{ fontWeight: 700, color: "var(--heading)" }}
+                            />
+                          </div>
                     )}
 
                     {msg.role === "assistant" && action && (

@@ -9,10 +9,10 @@ import {
   Send, Upload, MessageSquare, Sparkles, Loader2,
   FileSpreadsheet, PartyPopper, ArrowRight,
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
 import { useTheme } from '../IQThemeProvider'
 import { IQFileDropZone } from './IQFileDropZone'
 import { OnboardingProgress, type OnboardingFields } from './OnboardingProgress'
+import { ChatRichText } from '../shared/ChatRichText'
 
 // ── Helpers ──
 
@@ -429,9 +429,14 @@ export function OnboardingChatIQ({ clubId, onComplete }: OnboardingChatIQProps) 
                   }
                 >
                   {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm max-w-none" style={{ color: 'inherit' }}>
-                      <ReactMarkdown>{text}</ReactMarkdown>
-                    </div>
+                    <ChatRichText
+                      text={text}
+                      className="space-y-1.5"
+                      lineClassName="whitespace-pre-wrap"
+                      linkClassName="font-medium underline"
+                      linkStyle={{ color: '#67E8F9' }}
+                      strongStyle={{ fontWeight: 700, color: 'inherit' }}
+                    />
                   ) : (
                     <p className="whitespace-pre-wrap">{text}</p>
                   )}
@@ -701,13 +706,18 @@ function DemoOnboarding({ isDark }: { isDark: boolean }) {
                       }
                 }
               >
-                {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm max-w-none" style={{ color: 'inherit' }}>
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-                )}
+                  {msg.role === 'assistant' ? (
+                    <ChatRichText
+                      text={msg.text}
+                      className="space-y-1.5"
+                      lineClassName="whitespace-pre-wrap"
+                      linkClassName="font-medium underline"
+                      linkStyle={{ color: '#67E8F9' }}
+                      strongStyle={{ fontWeight: 700, color: 'inherit' }}
+                    />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                  )}
               </div>
             </motion.div>
           ))}

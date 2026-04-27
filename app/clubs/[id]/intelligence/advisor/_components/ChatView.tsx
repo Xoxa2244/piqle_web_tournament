@@ -9,12 +9,11 @@ import {
   Send, Plus, Trash2, Loader2,
   Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
-import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
 import { useSessionsCalendar } from '../../_hooks/use-intelligence'
+import { ChatRichText } from '../../_components/shared/ChatRichText'
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -99,104 +98,6 @@ function linkifySessionTitles(
       return linkedLine
     })
     .join('\n')
-}
-
-function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
-  const nodes: ReactNode[] = []
-  let cursor = 0
-
-  while (cursor < text.length) {
-    const boldStart = text.indexOf('**', cursor)
-    const linkStart = text.indexOf('[', cursor)
-    const nextTokenStart = [boldStart, linkStart].filter((value) => value >= 0).sort((a, b) => a - b)[0]
-
-    if (nextTokenStart == null) {
-      nodes.push(<span key={`${keyPrefix}-tail-${cursor}`}>{text.slice(cursor)}</span>)
-      break
-    }
-
-    if (nextTokenStart > cursor) {
-      nodes.push(<span key={`${keyPrefix}-text-${cursor}`}>{text.slice(cursor, nextTokenStart)}</span>)
-      cursor = nextTokenStart
-    }
-
-    if (text.startsWith('**', cursor)) {
-      const boldEnd = text.indexOf('**', cursor + 2)
-      if (boldEnd === -1) {
-        nodes.push(<span key={`${keyPrefix}-rawbold-${cursor}`}>{text.slice(cursor)}</span>)
-        break
-      }
-      nodes.push(
-        <strong key={`${keyPrefix}-strong-${cursor}`} className="font-semibold">
-          {text.slice(cursor + 2, boldEnd)}
-        </strong>
-      )
-      cursor = boldEnd + 2
-      continue
-    }
-
-    if (text[cursor] === '[') {
-      const labelEnd = text.indexOf('](', cursor)
-      if (labelEnd === -1) {
-        nodes.push(<span key={`${keyPrefix}-rawlink-${cursor}`}>{text.slice(cursor)}</span>)
-        break
-      }
-      const urlEnd = text.indexOf(')', labelEnd + 2)
-      if (urlEnd === -1) {
-        nodes.push(<span key={`${keyPrefix}-rawurl-${cursor}`}>{text.slice(cursor)}</span>)
-        break
-      }
-
-      const label = text.slice(cursor + 1, labelEnd).replace(/\*\*/g, '')
-      const href = text.slice(labelEnd + 2, urlEnd)
-
-      nodes.push(
-        href.startsWith('/')
-          ? (
-              <Link key={`${keyPrefix}-link-${cursor}`} href={href} className="text-lime-600 hover:underline font-medium">
-                {label}
-              </Link>
-            )
-          : (
-              <a key={`${keyPrefix}-link-${cursor}`} href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-medium">
-                {label}
-              </a>
-            )
-      )
-      cursor = urlEnd + 1
-      continue
-    }
-  }
-
-  return nodes
-}
-
-function renderMessageWithInlineLinks(text: string) {
-  const lines = text.split('\n')
-  return (
-    <div className="space-y-1.5">
-      {lines.map((line, index) => {
-        if (!line.trim()) {
-          return <div key={`blank-${index}`} className="h-2" />
-        }
-
-        const indent = line.match(/^\s*/)?.[0].length ?? 0
-        return (
-          <div
-            key={`line-${index}`}
-            className="whitespace-pre-wrap"
-            style={{ paddingLeft: indent > 0 ? `${Math.min(indent, 4) * 10}px` : undefined }}
-          >
-            {renderInlineMarkdown(line.trimStart(), `line-${index}`)}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function renderAssistantMessage(text: string) {
-  return renderMessageWithInlineLinks(text)
 }
 
 function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
@@ -535,7 +436,13 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
                             <div className="text-sm leading-relaxed">
-                              {renderAssistantMessage(cleanText)}
+                              <ChatRichText
+                                text={cleanText}
+                                className="space-y-1.5"
+                                lineClassName="whitespace-pre-wrap"
+                                linkClassName="text-lime-600 hover:underline font-medium"
+                                strongClassName="font-semibold"
+                              />
                             </div>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
