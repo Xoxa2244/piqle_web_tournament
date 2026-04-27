@@ -24,6 +24,28 @@ export const maxDuration = 60;
 // ── In-memory cache for advisor pre-fetch (5 min TTL per club) ──
 const advisorDataCache = new Map<string, { ts: number; data: any }>()
 
+function formatAdvisorSessionLine(session: {
+  title: string
+  eventUrl?: string | null
+  date: string
+  time: string
+  format: string
+  confirmed: number
+  maxPlayers: number
+  occupancy: string
+  spotsRemaining: number
+}) {
+  const linkedTitle = session.eventUrl
+    ? `[${session.title}](${session.eventUrl})`
+    : session.title
+
+  return `- ${linkedTitle}
+  - Date: ${session.date}
+  - Time: ${session.time}
+  - Format: ${session.format}
+  - Occupancy: ${session.occupancy} (${session.confirmed} of ${session.maxPlayers} spots filled) — ${session.spotsRemaining} spots left`
+}
+
 // ── Auth helper (mirrors server/trpc.ts pattern exactly) ──
 async function getSessionFromRequest(req: Request) {
   try {
@@ -357,14 +379,14 @@ ${(reactivation.candidates as any[]).map((c: any) => `- ${c.name}: ${c.daysSince
 
       if (upcomingSessions && !('error' in upcomingSessions)) {
         parts.push(`## Upcoming Sessions
-${(upcomingSessions.sessions as any[]).map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')}`)
+${(upcomingSessions.sessions as any[]).map((s: any) => formatAdvisorSessionLine(s)).join('\n')}`)
       }
 
       if (todayOpenSessions && !('error' in todayOpenSessions)) {
         const sessions = (todayOpenSessions.sessions as any[]) ?? []
         parts.push(`## Today's Sessions With Open Spots (${todayOpenSessions.timeZone || 'club local time'})
 ${sessions.length > 0
-  ? sessions.map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')
+  ? sessions.map((s: any) => formatAdvisorSessionLine(s)).join('\n')
   : '- None today with open spots'}`)
       }
 
@@ -372,7 +394,7 @@ ${sessions.length > 0
         const sessions = (tonightOpenSessions.sessions as any[]) ?? []
         parts.push(`## Tonight's Sessions With Open Spots (${tonightOpenSessions.timeZone || 'club local time'})
 ${sessions.length > 0
-  ? sessions.map((s: any) => `- ${s.title} | ${s.date} ${s.time} | ${s.format} | ${s.confirmed}/${s.maxPlayers} (${s.occupancy}) | ${s.spotsRemaining} spots left | [Open event](${s.eventUrl})`).join('\n')
+  ? sessions.map((s: any) => formatAdvisorSessionLine(s)).join('\n')
   : '- None tonight with open spots'}`)
       }
 
@@ -503,7 +525,8 @@ IMPORTANT: Use the Real-Time Club Data above to answer questions about current m
 When answering about sessions with open spots today or tonight:
 - use the dedicated "Today's Sessions With Open Spots" / "Tonight's Sessions With Open Spots" blocks first, not just the generic upcoming list;
 - mention every relevant session from those blocks unless the user asked for a shorter shortlist;
-- preserve the provided Open event markdown link so the user can click straight into the event.`;
+- keep the event link embedded directly in the event title, not as a separate bullet or trailing line;
+- copy the provided linked title exactly as given and never invent placeholder links like [Join here](#).`;
 
     // 7. Verify API key is available
     step = 'apikey';
