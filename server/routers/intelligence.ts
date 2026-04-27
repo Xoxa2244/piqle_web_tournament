@@ -983,12 +983,11 @@ export const intelligenceRouter = createTRPCRouter({
             LIMIT $6
           `, clubId, fmt, sessionHour, crtId, since, limit, skill, sessionDow)
 
-          return rows.map((r: any) => {
+          const bookingBased = rows.map((r: any) => {
             if (alreadyBookedUserIds.has(r.user_id)) return null
             if (r.membership_status === 'Suspended' || r.membership_status === 'Expired') return null
 
             const totalScore = r.booking_count + r.format_match * 3 + r.skill_exact * 4 + r.time_match * 2 + r.dow_match * 2 + r.court_match
-            const maxPossible = Math.max(totalScore, 1)
 
             // Build reasoning
             const reasons: string[] = []
@@ -1042,6 +1041,140 @@ export const intelligenceRouter = createTRPCRouter({
               source: 'frequent_player' as const,
             }
           }).filter(Boolean)
+
+          if (bookingBased.length > 0) {
+            return bookingBased
+          }
+
+          const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+          const sessionDayName = sessionInfo.date ? dayNames[sessionInfo.date.getDay()] : null
+          const sessionTimeSlot = sessionHour < 12 ? 'morning' : sessionHour < 17 ? 'afternoon' : 'evening'
+          const inferSkill = (dupr: number | null | undefined) => {
+            if (dupr == null || Number.isNaN(Number(dupr))) return 'INTERMEDIATE'
+            if (Number(dupr) < 3.0) return 'BEGINNER'
+            if (Number(dupr) < 4.5) return 'INTERMEDIATE'
+            return 'ADVANCED'
+          }
+
+          const members = await prisma.clubFollower.findMany({
+            where: { clubId },
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  image: true,
+                  duprRatingDoubles: true,
+                  duprRatingSingles: true,
+                },
+              },
+            },
+            take: Math.max(limit * 6, 24),
+          })
+
+          const memberUserIds = members
+            .map((cf: any) => cf.user?.id)
+            .filter((id: string | null | undefined): id is string => !!id && !alreadyBookedUserIds.has(id))
+
+          if (memberUserIds.length === 0) {
+            return []
+          }
+
+          const preferences = await prisma.userPlayPreference.findMany({
+            where: { clubId, userId: { in: memberUserIds } },
+            select: {
+              userId: true,
+              preferredDays: true,
+              preferredTimeMorning: true,
+              preferredTimeAfternoon: true,
+              preferredTimeEvening: true,
+              preferredFormats: true,
+              skillLevel: true,
+              targetSessionsPerWeek: true,
+            },
+          })
+          const prefMap = new Map(preferences.map((pref: any) => [pref.userId, pref]))
+
+          return members
+            .map((cf: any) => {
+              const user = cf.user
+              if (!user?.id || alreadyBookedUserIds.has(user.id)) return null
+
+              const pref: any = prefMap.get(user.id)
+              const preferredDays = Array.isArray(pref?.preferredDays) ? pref.preferredDays : []
+              const preferredFormats = Array.isArray(pref?.preferredFormats) ? pref.preferredFormats : []
+              const preferredSkill = pref?.skillLevel || 'ALL_LEVELS'
+              const memberSkill = inferSkill(user.duprRatingDoubles ?? user.duprRatingSingles ?? null)
+
+              const dayMatch = !!sessionDayName && preferredDays.includes(sessionDayName)
+              const timeMatch = sessionTimeSlot === 'morning'
+                ? !!pref?.preferredTimeMorning
+                : sessionTimeSlot === 'afternoon'
+                  ? !!pref?.preferredTimeAfternoon
+                  : !!pref?.preferredTimeEvening
+              const formatMatch = !!fmt && preferredFormats.includes(fmt)
+              const skillMatch = skill === 'ALL_LEVELS'
+                || preferredSkill === 'ALL_LEVELS'
+                || preferredSkill === skill
+                || memberSkill === skill
+
+              const score =
+                35
+                + (dayMatch ? 20 : 0)
+                + (timeMatch ? 18 : 0)
+                + (formatMatch ? 18 : 0)
+                + (skillMatch ? 14 : 0)
+                + Math.min(Number(pref?.targetSessionsPerWeek || 0) * 2, 8)
+
+              const reasons: string[] = []
+              if (formatMatch) reasons.push('prefers this format')
+              if (timeMatch) reasons.push(`usually plays in the ${sessionTimeSlot}`)
+              if (dayMatch) reasons.push(`available on ${sessionDayName}`)
+              if (skillMatch) reasons.push('fits the level')
+              if (reasons.length === 0) reasons.push('active club member')
+
+              return {
+                member: {
+                  id: user.id,
+                  name: user.name || 'Unknown',
+                  email: user.email || '',
+                  image: user.image,
+                  duprRating: user.duprRatingDoubles ?? user.duprRatingSingles ?? null,
+                  duprRatingDoubles: user.duprRatingDoubles ?? user.duprRatingSingles ?? null,
+                  lastPlayedDaysAgo: null,
+                  membershipType: null,
+                },
+                score: Math.min(score, 95),
+                estimatedLikelihood: (dayMatch && timeMatch && formatMatch) ? 'high' as const
+                  : (dayMatch || timeMatch || formatMatch || skillMatch) ? 'medium' as const
+                  : 'low' as const,
+                reasoning: {
+                  summary: `${reasons.slice(0, 3).join(', ')} — fallback from member preferences`,
+                  components: {
+                    formatMatch: formatMatch ? 1 : 0,
+                    skillMatch: skillMatch ? 1 : 0,
+                    timeMatch: timeMatch ? 1 : 0,
+                    dowMatch: dayMatch ? 1 : 0,
+                    courtMatch: 0,
+                    recencyDays: null,
+                    membership: null,
+                  },
+                },
+                factors: {
+                  preferredTimeMatch: timeMatch,
+                  formatMatch,
+                  skillMatch,
+                  dayOfWeekMatch: dayMatch,
+                  frequentPlayer: false,
+                  recentlyActive: false,
+                },
+                source: 'member_preference_fallback' as const,
+              }
+            })
+            .filter(Boolean)
+            .sort((a: any, b: any) => b.score - a.score)
+            .slice(0, limit)
         } catch (err) {
           log.warn('[SlotFiller] Frequent players fallback failed:', err)
           return []
