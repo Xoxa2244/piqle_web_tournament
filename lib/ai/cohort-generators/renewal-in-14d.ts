@@ -11,6 +11,7 @@
  */
 
 import type { CohortGenerator } from './index'
+import { computeEstImpactCents } from '../attribution'
 
 const FOURTEEN_DAYS_MS = 14 * 86400000
 
@@ -59,9 +60,8 @@ export const generateRenewalIn14d: CohortGenerator = async (clubId, db) => {
 
   if (userIds.length === 0) return null
 
-  // Placeholder $ impact: ~$80 retention save × 60% probability per member.
-  // Real attribution lands in P5-T3.
-  const estImpactCents = userIds.length * 8000 * 0.6
+  // P5-T3: shared formula (lib/ai/attribution.ts → computeEstImpactCents)
+  const estImpactCents = computeEstImpactCents({ memberCount: userIds.length, action: 'renewal_reminder' })
 
   return {
     id: `renewal_in_14d:${clubId}:${new Date().toISOString().slice(0, 10)}`,
@@ -72,7 +72,7 @@ export const generateRenewalIn14d: CohortGenerator = async (clubId, db) => {
     suggestedTemplateKey: 'renewal_reminder',
     userIds,
     memberCount: userIds.length,
-    estImpactCents: Math.round(estImpactCents),
+    estImpactCents,
     emoji: '📅',
   }
 }

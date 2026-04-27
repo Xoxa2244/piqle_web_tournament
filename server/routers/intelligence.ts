@@ -8214,15 +8214,23 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       return null
     }),
 
-  // P0-T4 / P4-T6 — Active campaigns table on Campaigns page.
-  // Phase 4 ships lightweight (name/cohort/channel/sent/status).
-  // Phase 5 (P5-T4) adds open % + booked $ when attribution lands.
+  // P0-T4 / P4-T6 / P5-T4 — Active campaigns table on Campaigns page.
+  //
+  // Lightweight v1 ships sentCount + status (P4). P5-T4 extends the row
+  // shape with openRate + bookedRevenueCents — frontend already reads
+  // them, they fall through as 0 until the Campaign DB model is live
+  // (P5-T2 SQL migration applied).
   listActiveCampaigns: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // TODO P4-T6: read from Campaign / CampaignInstance table.
-      // Status enum: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed'.
+      // TODO P5-T2 deploy: switch this to:
+      //   ctx.prisma.campaign.findMany({
+      //     where: { clubId: input.clubId, status: { in: ['running','scheduled','paused'] } },
+      //     orderBy: { createdAt: 'desc' },
+      //     include: { cohort: { select: { name: true } } },
+      //   })
+      // and project to the same shape (with attribution.booked_count etc).
       return [] as Array<{
         id: string
         name: string
@@ -8230,6 +8238,12 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         cohortName: string | null
         channel: 'email' | 'sms' | 'email+sms'
         sentCount: number
+        // P5-T4 metrics — populated when Campaign model lands:
+        deliveredCount: number
+        openedCount: number
+        openRate: number          // 0..1 — openedCount / deliveredCount
+        bookedCount: number       // attribution.booked_count
+        bookedRevenueCents: number // attribution.booked_revenue_cents
         status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed'
         startedAt: Date | null
         _stub?: true

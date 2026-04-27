@@ -15,6 +15,7 @@
  */
 
 import type { CohortGenerator } from './index'
+import { computeEstImpactCents } from '../attribution'
 
 const DAY_MS = 86400000
 
@@ -61,8 +62,8 @@ export const generateLostEveningPlayers: CohortGenerator = async (clubId, db) =>
 
   if (userIds.length === 0) return null
 
-  // Placeholder $ impact: each won-back evening regular ≈ $80/mo × 12% conversion.
-  const estImpactCents = userIds.length * 8000 * 0.12
+  // P5-T3: shared formula (lib/ai/attribution.ts → computeEstImpactCents)
+  const estImpactCents = computeEstImpactCents({ memberCount: userIds.length, action: 'reactivate_dormant' })
 
   return {
     id: `lost_evening_players:${clubId}:${now.toISOString().slice(0, 10)}`,
@@ -73,7 +74,7 @@ export const generateLostEveningPlayers: CohortGenerator = async (clubId, db) =>
     suggestedTemplateKey: 'win_back_inactive',
     userIds,
     memberCount: userIds.length,
-    estImpactCents: Math.round(estImpactCents),
+    estImpactCents,
     emoji: '⚠️',
   }
 }

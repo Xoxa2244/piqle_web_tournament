@@ -627,61 +627,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       ].filter(Boolean)
     : []
 
-  const quickActions = (() => {
-    const actions = []
-
-    if (reviewReadyDrafts[0]) {
-      actions.push({
-        key: `review:${reviewReadyDrafts[0].id}`,
-        title: 'Review latest draft',
-        description: reviewReadyDrafts[0].title || 'Open the most recent campaign draft in Advisor.',
-        href: buildCampaignAdvisorHref(clubId, {
-          conversationId: reviewReadyDrafts[0].conversationId || null,
-          prompt: reviewReadyDrafts[0].originalIntent || undefined,
-        }),
-      })
-    }
-
-    actions.push({
-      key: 'reactivation',
-      title: 'Draft reactivation push',
-      description: 'Build a win-back draft for expired, cancelled, and drifting members.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a reactivation campaign for expired and cancelled members. Keep it as a review-ready draft first.',
-      }),
-    })
-
-    actions.push({
-      key: 'guest-conversion',
-      title: 'Convert guests',
-      description: 'Turn frequent guests and drop-ins into a campaign-ready membership offer.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a guest conversion campaign for frequent guests and drop-ins. Keep it in draft for review before sending.',
-      }),
-    })
-
-    if (pilotHealth?.recommendation) {
-      actions.push({
-        key: 'rework-risky',
-        title: 'Rework risky live action',
-        description: pilotHealth.recommendation.reason,
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: `Draft a safer ${pilotHealth.recommendation.label.toLowerCase()} alternative with a tighter audience and gentler copy. Keep it in draft only.`,
-        }),
-      })
-    } else {
-      actions.push({
-        key: 'vip-protect',
-        title: 'Protect VIP members',
-        description: 'Draft a high-touch campaign for unlimited and high-value members.',
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: 'Draft a VIP appreciation campaign for our unlimited and high-value members. Keep it as a review-ready draft first.',
-        }),
-      })
-    }
-
-    return actions.slice(0, 4)
-  })()
+  // P5-T5: dead-code removed — `quickActions` IIFE used to feed the
+  // "Agent Quick Starts" JSX block that P1-T4 deleted. The lookups it
+  // performs (reviewReadyDrafts[0], pilotHealth.recommendation, etc.)
+  // are still computed above for the AC Layer in Settings → Automation.
 
   const selectedCampaignName = selectedCampaign?.name || campaignDrilldown?.campaign?.name || 'Campaign'
   const selectedActionKind = selectedCampaign ? mapCampaignTypeToActionKind(selectedCampaign.type) : null
@@ -767,6 +716,21 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       {/* P4-T6: Active Campaigns lightweight table (empty until launch
           backend lands in P5-T2). See SPEC §6 P4-T6. */}
       <ActiveCampaignsTable clubId={clubId} />
+
+      {/* P5-T5: Campaign History collapsed accordion. Empty state until
+          Campaign model is live (P5-T2 deploy); keeps the UX shape so
+          directors know where past campaigns will appear. */}
+      <details className="rounded-2xl px-5 py-3 transition-all" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <summary className="cursor-pointer flex items-center justify-between text-sm" style={{ color: 'var(--heading)', fontWeight: 600 }}>
+          <span>Campaign History</span>
+          <span className="text-[11px]" style={{ color: 'var(--t4)' }}>0 past campaigns · $0 attributed (v1 — populates after Phase 5 launch)</span>
+        </summary>
+        <div className="mt-3 text-xs" style={{ color: 'var(--t3)' }}>
+          Past campaigns will appear here, sorted by recency, with attributed revenue
+          per row. Open rate and conversion rolled up to the Money Story widget on
+          the Dashboard (deferred to Dashboard redesign — see PLAN §11).
+        </div>
+      </details>
 
       <div
         className="rounded-3xl p-5 md:p-6 space-y-5"

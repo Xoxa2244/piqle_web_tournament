@@ -426,6 +426,53 @@ export async function runAttributionBackfill(
   return { scanned: bookings.length, linked, byMethod }
 }
 
+// ── P5-T3: Shared estimated-impact formula ─────────────────────────────────
+//
+// Single source of truth for "$ impact estimates" surfaced across the
+// product:
+//   - AI-Suggested cohort cards (P3-T1) — projected revenue from acting on
+//     a cohort of N members.
+//   - AI-Recommended Campaign cards (P1-T4 / P3-T2) — same scaffold.
+//   - Active Campaigns table (P4-T6 / P5-T4) — pre-launch projection;
+//     replaced by actual attribution post-send.
+//   - Future Money Story widget on Dashboard.
+//
+// Per SPEC §8.4, all callers MUST go through this helper so the number
+// shown on a cohort card matches the number used in dashboards.
+//
+// V1 formulas are placeholder constants per action kind. As real send
+// data accumulates (P5 attribution), we'll fit per-club coefficients
+// rather than ship one global table.
+
+export type EstImpactActionKind =
+  | 'reactivate_dormant'
+  | 'onboard_new'
+  | 'promote_event'
+  | 'upsell_tier'
+  | 'renewal_reminder'
+  | 'retention_check_in'
+  | 'fill_session'
+
+// Each entry is { perMemberCents, conversionRate }. Final = N * pmc * cr.
+const EST_IMPACT_TABLE: Record<EstImpactActionKind, { perMemberCents: number; conversionRate: number }> = {
+  reactivate_dormant:  { perMemberCents:  8000, conversionRate: 0.12 }, // ~$80 LTV-save × 12%
+  onboard_new:         { perMemberCents: 60000, conversionRate: 0.30 }, // ~$600 LTV-boost × 30%
+  promote_event:       { perMemberCents:  3500, conversionRate: 0.20 }, // ~$35/event × 20%
+  upsell_tier:         { perMemberCents: 15000, conversionRate: 0.08 }, // ~$150/yr × 8%
+  renewal_reminder:    { perMemberCents:  8000, conversionRate: 0.60 }, // ~$80 retention × 60%
+  retention_check_in:  { perMemberCents:  8000, conversionRate: 0.20 }, // ~$80 × 20% save
+  fill_session:        { perMemberCents: 18000, conversionRate: 1.00 }, // $180/filled slot, post-conversion
+}
+
+export function computeEstImpactCents(input: {
+  memberCount: number
+  action: EstImpactActionKind
+}): number {
+  const cfg = EST_IMPACT_TABLE[input.action]
+  if (!cfg) return 0
+  return Math.round(input.memberCount * cfg.perMemberCents * cfg.conversionRate)
+}
+
 // ── Exported for tests ──
 export const __test = {
   pickBest,
@@ -433,4 +480,5 @@ export const __test = {
   DEFAULT_WINDOW_MS,
   METHOD_PRIORITY,
   ATTRIBUTABLE_TYPES,
+  EST_IMPACT_TABLE,
 }

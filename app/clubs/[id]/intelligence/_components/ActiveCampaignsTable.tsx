@@ -56,6 +56,9 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                 <th className="text-left py-2 pr-3" style={{ fontWeight: 600 }}>Cohort</th>
                 <th className="text-left py-2 pr-3" style={{ fontWeight: 600 }}>Channel</th>
                 <th className="text-right py-2 pr-3" style={{ fontWeight: 600 }}>Sent</th>
+                {/* P5-T4 metrics columns: */}
+                <th className="text-right py-2 pr-3" style={{ fontWeight: 600 }}>Open %</th>
+                <th className="text-right py-2 pr-3" style={{ fontWeight: 600 }}>Booked $</th>
                 <th className="text-left py-2 pr-3" style={{ fontWeight: 600 }}>Status</th>
                 <th className="text-right py-2" style={{ fontWeight: 600 }}>Actions</th>
               </tr>
@@ -73,6 +76,17 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                     </span>
                   </td>
                   <td className="py-2.5 pr-3 text-right font-semibold" style={{ color: 'var(--heading)' }}>{c.sentCount ?? 0}</td>
+                  {/* P5-T4: Open% + Booked $ — populated once Campaign model is live (P5-T2 deploy) */}
+                  <td className="py-2.5 pr-3 text-right" style={{ color: c.openRate ? '#10B981' : 'var(--t4)', fontWeight: 600 }}>
+                    {c.openRate ? `${Math.round(c.openRate * 100)}%` : '—'}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right" style={{ color: c.bookedRevenueCents ? '#10B981' : 'var(--t4)', fontWeight: 600 }}>
+                    {c.bookedRevenueCents
+                      ? (c.bookedRevenueCents >= 100_000
+                          ? `$${(c.bookedRevenueCents / 100_000).toFixed(1)}K`
+                          : `$${Math.round(c.bookedRevenueCents / 100)}`)
+                      : '—'}
+                  </td>
                   <td className="py-2.5 pr-3">
                     <span
                       className="px-2 py-0.5 rounded-full text-[10px]"

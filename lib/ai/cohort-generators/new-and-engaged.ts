@@ -12,6 +12,7 @@
  */
 
 import type { CohortGenerator } from './index'
+import { computeEstImpactCents } from '../attribution'
 
 const DAY_MS = 86400000
 
@@ -67,8 +68,8 @@ export const generateNewAndEngaged: CohortGenerator = async (clubId, db) => {
 
   if (qualifying.length === 0) return null
 
-  // Placeholder $ impact: ~$600 LTV boost × 30% engagement-lift conversion.
-  const estImpactCents = qualifying.length * 60000 * 0.3
+  // P5-T3: shared formula (lib/ai/attribution.ts → computeEstImpactCents)
+  const estImpactCents = computeEstImpactCents({ memberCount: qualifying.length, action: 'onboard_new' })
 
   return {
     id: `new_and_engaged:${clubId}:${now.toISOString().slice(0, 10)}`,
@@ -79,7 +80,7 @@ export const generateNewAndEngaged: CohortGenerator = async (clubId, db) => {
     suggestedTemplateKey: 'onboarding_series',
     userIds: qualifying,
     memberCount: qualifying.length,
-    estImpactCents: Math.round(estImpactCents),
+    estImpactCents,
     emoji: '🌟',
   }
 }

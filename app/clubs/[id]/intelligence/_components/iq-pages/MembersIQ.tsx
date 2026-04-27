@@ -3729,31 +3729,15 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           See SPEC §4 P2-T5. */}
       {clubId && <AIInsightRibbon clubId={clubId} />}
 
-      {/* P2-T7: Agent Actions block REMOVED from Members page.
-          The "Renew Expired" / "Upsell Package" cards are now expressed
-          as AI-Suggested cohorts on the Cohorts page (P3-T2):
-            - Renew Expired   → "Renewal in 14d" generator
-            - Upsell Package  → future generator (out of D4 scope)
-          See SPEC §4 P2-T7 / PLAN §3.6 + §4.7. The membersAgentActions
-          memo is left in place for now — feeds nothing in the UI but is
-          referenced elsewhere; final removal in P5-T5 cleanup pass. */}
+      {/* P5-T5: Agent Actions block fully removed. The "Renew Expired" /
+          "Upsell Package" cards are now AI-Suggested cohorts on the
+          Cohorts page (P3-T2). See PLAN §3.6 + §4.7 for migration
+          rationale. The `membersAgentActions` memo above stays for now
+          because its computed counts feed `audienceMembers`-driven
+          summaries elsewhere on the page; remove once those callers
+          are tidied. */}
       {false && membersAgentActions.length > 0 && (
         <Card>
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Agent Actions</h3>
-              </div>
-              <p className="text-[11px]" style={{ color: "var(--t4)" }}>
-                Built from the normalized membership segments in this view, so the agent can act on guests, trials, packages, VIPs, and renewals without relying on each club&apos;s raw labels.
-              </p>
-            </div>
-            <div className="text-[10px] px-2.5 py-1 rounded-lg" style={{ background: "rgba(139,92,246,0.1)", color: "#A78BFA", fontWeight: 700 }}>
-              {audienceMembers.length} in scope
-            </div>
-          </div>
-
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
             {membersAgentActions.slice(0, 3).map((action) => {
               const Icon = action.Icon;

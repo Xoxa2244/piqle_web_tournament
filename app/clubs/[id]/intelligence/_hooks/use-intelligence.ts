@@ -251,8 +251,22 @@ export function useListActiveCampaigns(clubId: string, options?: IntelligenceQue
   if (isDemo) {
     return {
       data: [
-        { id: 'demo-c1', name: 'Win Back Q1', cohortId: null, cohortName: 'Lost Evening Players', channel: 'email' as const, sentCount: 12, status: 'running' as const, startedAt: new Date() },
-        { id: 'demo-c2', name: 'Spring Renewal',  cohortId: null, cohortName: 'Renewal in 14d',     channel: 'email+sms' as const, sentCount: 7,  status: 'running' as const, startedAt: new Date() },
+        {
+          id: 'demo-c1', name: 'Win Back Q1',
+          cohortId: null, cohortName: 'Lost Evening Players',
+          channel: 'email' as const,
+          sentCount: 12, deliveredCount: 12, openedCount: 7,
+          openRate: 0.583, bookedCount: 5, bookedRevenueCents: 24_000,
+          status: 'running' as const, startedAt: new Date(),
+        },
+        {
+          id: 'demo-c2', name: 'Spring Renewal',
+          cohortId: null, cohortName: 'Renewal in 14d',
+          channel: 'email+sms' as const,
+          sentCount: 7, deliveredCount: 7, openedCount: 5,
+          openRate: 0.714, bookedCount: 4, bookedRevenueCents: 140_000,
+          status: 'running' as const, startedAt: new Date(),
+        },
       ] as any,
       isLoading: false,
       error: null,
