@@ -3560,13 +3560,18 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       {/* Membership Status KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {(() => {
-          const active = allMembers.filter(m => m.normalizedMembershipStatus === 'active').length;
+          const activePlayers = memberHealthData?.summary?.activePlayers30d
+            ?? ((memberHealthData?.members || []).filter((m: any) => typeof m.daysSinceLastBooking === 'number' && m.daysSinceLastBooking <= 30).length);
+          const dashboardPeriod = memberHealthData?.summary?.dashboardPeriod;
+          const activePlayersSub = dashboardPeriod
+            ? `${new Date(dashboardPeriod.from).toLocaleDateString('en-US')}-${new Date(dashboardPeriod.to).toLocaleDateString('en-US')} session window`
+            : 'confirmed booking in dashboard window';
           const guests = allMembers.filter(m => ['guest', 'drop_in'].includes(m.normalizedMembershipType || '') || ['guest', 'none'].includes(m.normalizedMembershipStatus || '')).length;
           const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
           const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
           const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
           return [
-            { label: "Active Memberships", value: String(active || allMembers.length), icon: Users, gradient: "from-violet-500 to-purple-600", sub: `of ${allMembers.length} total · status='active'` },
+            { label: "Active Players", value: String(activePlayers), icon: Users, gradient: "from-violet-500 to-purple-600", sub: activePlayersSub },
             { label: "Avg Health", value: String(avgHealth), icon: Heart, gradient: "from-emerald-500 to-green-500", sub: "engagement score" },
             { label: "Guests / Drop-Ins", value: String(guests), icon: UserPlus, gradient: "from-cyan-500 to-teal-500", sub: guests > 0 ? "conversion pool" : "none" },
             { label: "Packages", value: String(packages), icon: CalendarDays, gradient: "from-amber-500 to-orange-500", sub: packages > 0 ? "credit holders" : "none" },

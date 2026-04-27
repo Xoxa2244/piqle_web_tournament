@@ -369,7 +369,7 @@ Active subscriptions (users.membership_status normalized to 'active'): ${members
 By normalized status:
 ${norm ? Object.entries(norm).filter(([, c]) => c > 0).map(([status, count]) => `- ${status}: ${count}`).join('\n') : '(none)'}
 
-NOTE: The Members page tile "Active Memberships" further restricts to members who have made at least one booking, so it will read smaller than activeSubscriptions above. For "people who actually played in the last 30 days" use Active Players from the Club Metrics block.
+NOTE: Membership subscription status is a different metric from recent play activity. For "people who actually played in the Dashboard period" use Active Players from the Club Metrics block.
 ${raw ? `\nRaw status values (pre-normalization, for context):\n${Object.entries(raw).slice(0, 10).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
 ${types?.length ? `\nMembership types among active subscriptions (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
       }

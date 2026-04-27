@@ -2761,6 +2761,22 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       try {
+        const now = new Date()
+        const currentEnd = now
+        let dashboardWindowStart = new Date(currentEnd.getTime() - 30 * 86400000)
+
+        const latestCompletedSession = await ctx.prisma.playSession.findFirst({
+          where: { clubId: input.clubId, status: 'COMPLETED' },
+          orderBy: { date: 'desc' },
+          select: { date: true },
+        }).catch(() => null)
+
+        if (latestCompletedSession && new Date(latestCompletedSession.date) < dashboardWindowStart) {
+          const latestDate = new Date(latestCompletedSession.date)
+          latestDate.setHours(23, 59, 59, 999)
+          dashboardWindowStart = new Date(latestDate.getTime() - 30 * 86400000)
+        }
+
         // Get only club members who have at least 1 confirmed booking.
         // Use Prisma instead of raw SQL to avoid production type/operator mismatches.
         const activeUserIds = await ctx.prisma.playSessionBooking.findMany({
@@ -3021,9 +3037,32 @@ export const intelligenceRouter = createTRPCRouter({
         const result = generateMemberHealth(memberInputs)
         log.info(`[Intelligence] getMemberHealth result: members=${result.members.length} summaryTotal=${result.summary.total}`)
 
+        const activePlayers30dRows = await ctx.prisma.playSessionBooking.findMany({
+          where: {
+            status: 'CONFIRMED',
+            playSession: {
+              clubId: input.clubId,
+              date: { gte: dashboardWindowStart, lte: currentEnd },
+            },
+          },
+          select: { userId: true },
+          distinct: ['userId'],
+        })
+        const activePlayers30d = new Set(
+          activePlayers30dRows
+            .map(row => row.userId)
+            .filter((id): id is string => !!id)
+        ).size
+
         // Add dormant count (followers with 0 bookings — filtered upfront for performance)
         result.summary.dormant = dormantCount
         result.summary.total = allFollowers.length
+        result.summary.activePlayers30d = activePlayers30d
+        result.summary.inactiveFollowers30d = Math.max(0, allFollowers.length - activePlayers30d)
+        result.summary.dashboardPeriod = {
+          from: dashboardWindowStart.toISOString(),
+          to: currentEnd.toISOString(),
+        }
 
         return result
       } catch (err) {

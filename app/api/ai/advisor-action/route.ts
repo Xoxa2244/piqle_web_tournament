@@ -250,6 +250,25 @@ async function getOrCreateConversation(opts: {
   return conversation.id
 }
 
+async function getExistingConversationId(opts: {
+  clubId: string
+  userId: string
+  conversationId?: string | null
+}) {
+  if (!opts.conversationId) return null
+
+  const existing = await prisma.aIConversation.findFirst({
+    where: {
+      id: opts.conversationId,
+      clubId: opts.clubId,
+      userId: opts.userId,
+    },
+    select: { id: true },
+  })
+
+  return existing?.id || null
+}
+
 async function getLastAdvisorAction(conversationId: string): Promise<AdvisorAction | null> {
   const priorMessages = await prisma.aIMessage.findMany({
     where: { conversationId, role: 'assistant' },
@@ -2068,10 +2087,12 @@ export async function POST(req: Request) {
       return Response.json({ error: 'clubId and message are required' }, { status: 400 })
     }
 
-    // Three independent lookups — verify access, fetch club context,
-    // and resolve/create conversation. Pre-fix these were sequential;
-    // they don't depend on each other so we run them in parallel.
-    const [access, clubContext, convId] = await profiler.span('access+club+conv (parallel)', () =>
+    // Verify access, fetch club context, and validate an existing
+    // conversation if one was provided. We intentionally do NOT create a
+    // new conversation yet — plain questions can fall through to
+    // /api/ai/chat, and creating here would leave duplicate empty threads
+    // in the sidebar.
+    const [access, clubContext, existingConvId] = await profiler.span('access+club+conv (parallel)', () =>
       Promise.all([
         verifyClubMembership(clubId, session.userId),
         prisma.club.findUnique({
@@ -2083,12 +2104,10 @@ export async function POST(req: Request) {
             country: true,
           },
         }),
-        getOrCreateConversation({
+        getExistingConversationId({
           clubId,
           userId: session.userId,
           conversationId,
-          titleSource: message,
-          language: detectLanguage(message),
         }),
       ]),
     )
@@ -2114,7 +2133,10 @@ export async function POST(req: Request) {
     // Memory (prior convo state) is needed to decide whether to even run
     // the intent planner. Plan runs in parallel when no pending
     // clarification exists — saves 1-3s on a common path.
-    const memory = await profiler.span('loadMemory', () => getAdvisorConversationMemory(convId))
+    let convId = existingConvId
+    const memory = convId
+      ? await profiler.span('loadMemory', () => getAdvisorConversationMemory(convId!))
+      : { state: null, lastAction: null }
     let effectiveMessage = message
     let plan = memory.state?.pendingClarification
       ? null
@@ -2595,6 +2617,14 @@ export async function POST(req: Request) {
 
     if (assistantMessage) {
       const assistantAction = extractAdvisorAction(assistantMessage)
+      convId = convId || await getOrCreateConversation({
+        clubId,
+        userId: session.userId,
+        conversationId,
+        titleSource: message,
+        language,
+      })
+
       const assistantRecord = await persistAdvisorExchange({
         clubId,
         userId: session.userId,
@@ -3182,7 +3212,11 @@ export async function POST(req: Request) {
       let audienceDraft: AdvisorCampaignAction['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
       const activeMemory = shouldReuseAudience ? memory : null
-      const previousAction = activeMemory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
+      const previousAction = activeMemory?.lastAction || (
+        shouldReuseAudience && convId
+          ? await getLastAdvisorAction(convId)
+          : null
+      )
 
       if (activeMemory?.state?.currentAudience) {
         audienceDraft = activeMemory.state.currentAudience
@@ -3295,6 +3329,14 @@ export async function POST(req: Request) {
     }
 
     const assistantAction = extractAdvisorAction(assistantMessage)
+    convId = convId || await getOrCreateConversation({
+      clubId,
+      userId: session.userId,
+      conversationId,
+      titleSource: message,
+      language,
+    })
+
     const assistantRecord = await persistAdvisorExchange({
       clubId,
       userId: session.userId,

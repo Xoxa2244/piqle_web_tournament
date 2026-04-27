@@ -502,18 +502,17 @@ export function createChatTools(clubId: string) {
             .slice(0, 10)
             .map(([type, count]) => ({ type, count }))
 
-          // Note: the Members page UI shows "Active Memberships" as the
-          // intersection (active-status AND has-booked-at-least-once) — a
-          // smaller number than the raw active count returned here. Both
-          // numbers are valid; we surface the raw subscription count as
-          // primary, and document the discrepancy so the LLM can explain.
+          // Note: the Members page UI's "Active Players" tile is now aligned
+          // with Dashboard / Advisor booking activity. This tool still
+          // returns subscription-status counts, which intentionally answer a
+          // different question than recent play activity.
           return {
             totalFollowersScanned: rows.length,
             activeSubscriptions: normalizedBreakdown.active,
             byNormalizedStatus: normalizedBreakdown,
             byRawStatus: rawBreakdown,
             membershipTypesAmongActive: membershipTypes,
-            statusDefinition: 'Subscription category sourced from users.membership_status. The Members page tile labelled "Active Memberships" further restricts to members who have made at least one booking, so its count will be smaller than activeSubscriptions here. For "people who actually played in the last 30 days" use getClubMetrics.activePlayers30d.',
+            statusDefinition: 'Subscription category sourced from users.membership_status. This is different from recent play activity. For "people who actually played in the Dashboard period" use getClubMetrics.activePlayers30d.',
           }
         } catch (err) {
           console.error('[ChatTool] getMembershipBreakdown failed:', err)
