@@ -736,6 +736,18 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         </button>
       </div>
 
+      {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
+          Always rendered (was previously only shown when no summary).
+          Sorted by $ impact desc; placeholder values until P3-T1 wires real
+          generators. See SPEC §3 P1-T4 / PLAN §6.4. */}
+      <CampaignSuggestions
+        clubId={clubId}
+        onSelectType={(type) => {
+          setInitialType(type)
+          setShowCreator(true)
+        }}
+      />
+
       <div
         className="rounded-3xl p-5 md:p-6 space-y-5"
         style={{
@@ -777,41 +789,9 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         </div>
 
         {/* P1-T3: Agent Campaign Layer 3-column grid moved to
-            Settings → Automation. See AgentCampaignLayer.tsx. */}
-
-        <div
-          className="rounded-2xl p-4 space-y-3"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-        >
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Agent quick starts</div>
-              <div className="text-sm mt-1" style={{ color: 'var(--t2)' }}>
-                Jump into Advisor with a prepared campaign brief instead of starting from a blank message box.
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {quickActions.map((action) => (
-              <Link
-                key={action.key}
-                href={action.href}
-                className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                style={{ background: 'var(--subtle)', border: '1px solid transparent' }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <ArrowRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
-                </div>
-                <div className="mt-4 text-sm font-semibold" style={{ color: 'var(--heading)' }}>{action.title}</div>
-                <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t3)' }}>{action.description}</div>
-              </Link>
-            ))}
-          </div>
-        </div>
+            Settings → Automation. See AgentCampaignLayer.tsx.
+            P1-T4: Agent Quick Starts deleted — duplicates AI-Recommended
+            (lifted to top of page). See PLAN §6.6. */}
 
         {guestTrialSummary && guestTrialPlays.length > 0 ? (
           <div
@@ -1488,15 +1468,11 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
       </div>
 
-      {!summary ? (
-        <CampaignSuggestions
-          clubId={clubId}
-          onSelectType={(type) => {
-            setInitialType(type)
-            setShowCreator(true)
-          }}
-        />
-      ) : (
+      {/* P1-T4: CampaignSuggestions lifted to top of page. The conditional
+          `!summary ? <CampaignSuggestions> : <KPIs+chart+list>` was replaced
+          with always-show suggestions at top + always-show KPIs/chart/list
+          below (when summary exists). */}
+      {summary && (
         <>
           {/* KPI cards */}
           <CampaignKPIs summary={summary} variantData={variantData} />

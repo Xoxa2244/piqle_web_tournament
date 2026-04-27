@@ -5,9 +5,12 @@ import { motion } from 'motion/react'
 import {
   ArrowRight,
   CalendarDays,
+  DollarSign,
   Heart,
   Loader2,
+  Mail,
   Megaphone,
+  MessageSquare,
   Shield,
   Sparkles,
   UserMinus,
@@ -28,6 +31,10 @@ interface Suggestion {
   title: string
   description: string
   count: number
+  // P1-T4: $ impact placeholder for sorting + display.
+  // Real values wired in P3-T1 via lib/ai/cohort-generators/* (D4).
+  estImpactCents: number
+  channels: Array<'email' | 'sms'>
 }
 
 interface CampaignSuggestionsProps {
@@ -122,6 +129,9 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Win Back Inactive Members',
         description: `${reactivationMembers.length} member${reactivationMembers.length !== 1 ? 's' : ''} haven't played in 21+ days. A personalized reactivation campaign can bring them back.`,
         count: reactivationMembers.length,
+        // Placeholder: ~$80/won-back member × 12% expected conversion (P3-T1 will compute real values)
+        estImpactCents: reactivationMembers.length * 8000 * 0.12 * 100,
+        channels: ['email', 'sms'],
       })
     }
 
@@ -135,6 +145,8 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Boost Retention',
         description: `${atRiskMembers.length} member${atRiskMembers.length !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
         count: atRiskMembers.length,
+        estImpactCents: atRiskMembers.length * 12000 * 0.18 * 100, // ~$120 LTV × 18% save rate
+        channels: ['email'],
       })
     }
 
@@ -147,6 +159,8 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Fill Open Sessions',
         description: `${underfilledSessions.length} session${underfilledSessions.length !== 1 ? 's' : ''} under capacity this week. Invite matching players to fill spots.`,
         count: underfilledSessions.length,
+        estImpactCents: underfilledSessions.length * 18000, // ~$180/filled slot
+        channels: ['email', 'sms'],
       })
     }
 
@@ -159,6 +173,8 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Welcome New Members',
         description: `${newMembers.length} new member${newMembers.length !== 1 ? 's' : ''} joined recently. A welcome message drives early engagement.`,
         count: newMembers.length,
+        estImpactCents: newMembers.length * 60000 * 0.30 * 100, // ~$600 LTV boost × 30% engagement lift
+        channels: ['email'],
       })
     }
 
@@ -172,11 +188,21 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Check In',
         description: `${watchMembers.length} member${watchMembers.length !== 1 ? 's' : ''} showing reduced activity. A quick check-in keeps them engaged.`,
         count: watchMembers.length,
+        estImpactCents: watchMembers.length * 8000 * 0.20 * 100, // ~$80 × 20% retention save
+        channels: ['email'],
       })
     }
 
-    return built.slice(0, 4)
+    // P1-T4: Sort by $ impact descending (placeholder formula until P3-T1 lands real generators)
+    return built.sort((a, b) => b.estImpactCents - a.estImpactCents).slice(0, 4)
   }, [healthData, newMembersData, reactivationData, underfilledData])
+
+  // Format cents → "$X.XK/mo" or "~$XYZ"
+  const formatImpact = (cents: number): string => {
+    const dollars = Math.round(cents / 100)
+    if (dollars >= 1000) return `~$${(dollars / 1000).toFixed(1)}K`
+    return `~$${dollars}`
+  }
 
   const hasAnyResults = suggestions.length > 0
   const showEmptyState = !anyLoading && !hasAnyResults
@@ -233,13 +259,12 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
           {suggestions.map((suggestion, index) => {
             const Icon = suggestion.icon
             return (
-              <motion.button
+              <motion.div
                 key={suggestion.type}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.06 }}
-                onClick={() => onSelectType(suggestion.type)}
-                className="text-left rounded-2xl p-5 transition-all hover:scale-[1.01] group"
+                className="rounded-2xl p-5 transition-all"
                 style={{
                   background: suggestion.gradient,
                   border: `1px solid ${suggestion.accentColor}22`,
@@ -253,7 +278,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
                     <Icon className="w-5 h-5" style={{ color: suggestion.accentColor }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="text-sm font-bold" style={{ color: 'var(--heading)' }}>
                         {suggestion.title}
                       </h3>
@@ -261,19 +286,44 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
                         className="text-xs font-bold px-2 py-0.5 rounded-full"
                         style={{ background: `${suggestion.accentColor}18`, color: suggestion.accentColor }}
                       >
-                        {suggestion.count}
+                        {suggestion.count} member{suggestion.count !== 1 ? 's' : ''}
                       </span>
                     </div>
                     <p className="text-xs leading-relaxed" style={{ color: 'var(--t3)' }}>
                       {suggestion.description}
                     </p>
+
+                    {/* P1-T4: $ impact + channel icons + explicit Launch button */}
+                    <div className="mt-3 flex items-center gap-3 flex-wrap">
+                      <div
+                        className="inline-flex items-center gap-1 text-xs font-bold"
+                        style={{ color: suggestion.accentColor }}
+                      >
+                        <DollarSign className="w-3 h-3" />
+                        <span>{formatImpact(suggestion.estImpactCents)}/mo recovery potential</span>
+                      </div>
+                      <div className="flex items-center gap-1.5" style={{ color: 'var(--t4)' }}>
+                        {suggestion.channels.includes('email') && <Mail className="w-3 h-3" />}
+                        {suggestion.channels.includes('sms') && <MessageSquare className="w-3 h-3" />}
+                      </div>
+                    </div>
                   </div>
-                  <ArrowRight
-                    className="w-4 h-4 shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ color: suggestion.accentColor }}
-                  />
                 </div>
-              </motion.button>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => onSelectType(suggestion.type)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-[1.02]"
+                    style={{
+                      background: suggestion.accentColor,
+                      color: '#FFFFFF',
+                    }}
+                  >
+                    Preview & Launch
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </motion.div>
             )
           })}
         </div>
