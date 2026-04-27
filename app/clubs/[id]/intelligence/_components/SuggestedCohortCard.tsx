@@ -30,6 +30,9 @@ interface SuggestedCohortCardProps {
     userIds: string[]
     emoji?: string
   }
+  /** P5-T5 fix #5: parent callback to open the Campaign Wizard with this
+   *  cohort pre-selected. When omitted, the "→ Campaign" button is disabled. */
+  onLaunchCampaign?: (suggestion: SuggestedCohortCardProps['suggestion']) => void
 }
 
 const PALETTE_BY_KEY: Record<string, { gradient: string; accent: string }> = {
@@ -44,19 +47,46 @@ function formatImpact(cents: number): string {
   return `~$${dollars}`
 }
 
-export function SuggestedCohortCard({ clubId, suggestion }: SuggestedCohortCardProps) {
+export function SuggestedCohortCard({ clubId, suggestion, onLaunchCampaign }: SuggestedCohortCardProps) {
   const [savedName, setSavedName] = useState<string | null>(null)
   const palette = PALETTE_BY_KEY[suggestion.generatorKey] ?? {
     gradient: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(168,85,247,0.08))',
     accent: '#8B5CF6',
   }
 
+  // P5-T5 fix #5: track which CTA invoked the mutation so onSuccess can
+  // either show the saved-confirmation OR hand off to the Campaign Wizard.
+  const [pendingAction, setPendingAction] = useState<'save' | 'campaign'>('save')
+
   const createMutation = trpc.intelligence.createCohort.useMutation({
-    onSuccess: (cohort: any) => setSavedName(cohort?.name ?? suggestion.name),
+    onSuccess: (cohort: any) => {
+      if (pendingAction === 'campaign' && onLaunchCampaign) {
+        onLaunchCampaign({ ...suggestion, id: cohort?.id ?? suggestion.id })
+      } else {
+        setSavedName(cohort?.name ?? suggestion.name)
+      }
+    },
   })
 
   const handleCreate = () => {
     if (suggestion.userIds.length === 0) return
+    setPendingAction('save')
+    createMutation.mutate({
+      clubId,
+      name: suggestion.name,
+      description: suggestion.description,
+      filters: [{ field: 'userId', op: 'in' as const, value: suggestion.userIds }],
+    })
+  }
+
+  const handleLaunchCampaign = () => {
+    if (!onLaunchCampaign) return
+    if (suggestion.userIds.length === 0) {
+      // Demo / empty userIds — still let the wizard pre-fill name etc.
+      onLaunchCampaign(suggestion)
+      return
+    }
+    setPendingAction('campaign')
     createMutation.mutate({
       clubId,
       name: suggestion.name,
@@ -149,13 +179,15 @@ export function SuggestedCohortCard({ clubId, suggestion }: SuggestedCohortCardP
         )}
 
         <button
-          disabled
-          title="Available in P4-T1 (Campaign Wizard)"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold opacity-50 cursor-not-allowed"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--t3)' }}
+          onClick={handleLaunchCampaign}
+          disabled={!onLaunchCampaign || createMutation.isPending}
+          title={onLaunchCampaign ? 'Save cohort and open Campaign Wizard pre-filled' : 'Wizard not wired by parent'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--heading)' }}
         >
-          → Campaign
-          <ArrowRight className="w-3.5 h-3.5" />
+          {createMutation.isPending && pendingAction === 'campaign'
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <>→ Campaign <ArrowRight className="w-3.5 h-3.5" /></>}
         </button>
       </div>
     </motion.div>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
@@ -308,6 +309,29 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const [initialType, setInitialType] = useState<string | null>(null)
   // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
   const [showWizard, setShowWizard] = useState(false)
+  // P5-T5 fix #5: read ?cohortId= from URL (set by Cohort Builder's
+  // "Save + Create Campaign →" handoff or by AI-Suggested → Campaign).
+  // Open the wizard once with the cohort pre-selected, then strip the
+  // param so refresh doesn't reopen the wizard unexpectedly.
+  const wizardSearchParams = useSearchParams()
+  const wizardRouter = useRouter()
+  const wizardPathname = usePathname()
+  const [wizardInitialCohortId, setWizardInitialCohortId] = useState<string | null>(null)
+  useEffect(() => {
+    const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
+    if (cohortIdFromUrl && !showWizard) {
+      setWizardInitialCohortId(cohortIdFromUrl)
+      setShowWizard(true)
+      // Strip the param after we've consumed it.
+      if (wizardPathname) {
+        const next = new URLSearchParams(wizardSearchParams.toString())
+        next.delete('cohortId')
+        const qs = next.toString()
+        wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardSearchParams])
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
   const [activityOfferFilter, setActivityOfferFilter] = useState<string>('all')
   const [activityRouteFilter, setActivityRouteFilter] = useState<string>('all')
@@ -693,11 +717,17 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         </button>
       </div>
 
-      {/* P4-T1: Campaign Wizard drawer */}
+      {/* P4-T1: Campaign Wizard drawer.
+          P5-T5 fix #5: initialCohortId wired from ?cohortId= URL param
+          (set by Cohort Builder's "Save + Create Campaign →"). */}
       {showWizard && (
         <CampaignWizard
           clubId={clubId}
-          onClose={() => setShowWizard(false)}
+          initialCohortId={wizardInitialCohortId}
+          onClose={() => {
+            setShowWizard(false)
+            setWizardInitialCohortId(null)
+          }}
         />
       )}
 

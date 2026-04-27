@@ -19,7 +19,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { cronLogger as log } from '@/lib/logger'
-import { runHealthCampaignForAllClubs } from '@/lib/ai/campaign-engine'
+import { snapshotAllClubs } from '@/lib/ai/snapshot-writer'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,45 +44,24 @@ async function run(request: Request) {
   }
 
   const startedAt = new Date()
-  const today = new Date()
-  today.setUTCHours(0, 0, 0, 0)
-  const tomorrow = new Date(today.getTime() + 86400000)
 
   try {
-    // Reuse the existing aggregation/computation pipeline in dryRun mode —
-    // it already iterates clubs, computes health, and can persist snapshots.
-    // We then de-dupe by deleting any duplicate rows that were created today
-    // before the canonical one (defense — campaign-engine isn't idempotent).
-    const { results } = await runHealthCampaignForAllClubs(prisma, { dryRun: true })
+    // Use the dedicated snapshot-writer (NOT campaign-engine) so clubs with
+    // automation disabled still get snapshots. Idempotency: each call skips
+    // members that already have a today-snapshot.
+    const results = await snapshotAllClubs(prisma)
 
-    // Idempotency sweep: keep only the EARLIEST snapshot per (clubId, userId)
-    // for today. Defensive — campaign-engine may have already run earlier and
-    // duplicated. Done via raw SQL because Prisma doesn't expose DELETE-with-
-    // window-function elegantly.
-    const dedupeResult: Array<{ deleted: bigint }> = await prisma.$queryRaw`
-      WITH ranked AS (
-        SELECT id,
-               ROW_NUMBER() OVER (
-                 PARTITION BY club_id, user_id, DATE(date)
-                 ORDER BY date ASC
-               ) AS rn
-        FROM member_health_snapshots
-        WHERE date >= ${today} AND date < ${tomorrow}
-      )
-      DELETE FROM member_health_snapshots
-      WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
-      RETURNING id
-    ` as any
-    const dedupedRows = Array.isArray(dedupeResult) ? dedupeResult.length : 0
-
-    const totalSnapshots = results.reduce((sum, r) => sum + (r.snapshotsSaved ?? 0), 0)
+    const totalCreated = results.reduce((s, r) => s + r.snapshotsCreated, 0)
+    const totalSkipped = results.reduce((s, r) => s + r.snapshotsSkipped, 0)
+    const totalErrors  = results.reduce((s, r) => s + r.errors, 0)
 
     log.info(
       {
         cron: 'health-snapshot',
         clubs: results.length,
-        snapshotsSaved: totalSnapshots,
-        dedupedRows,
+        snapshotsCreated: totalCreated,
+        snapshotsSkipped: totalSkipped,
+        errors: totalErrors,
         durationMs: Date.now() - startedAt.getTime(),
       },
       'Daily health-snapshot complete',
@@ -94,8 +73,9 @@ async function run(request: Request) {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
       clubs: results.length,
-      snapshotsSaved: totalSnapshots,
-      dedupedRows,
+      snapshotsCreated: totalCreated,
+      snapshotsSkipped: totalSkipped,
+      errors: totalErrors,
     })
   } catch (error: any) {
     log.error('[Cron health-snapshot] Failed:', error)

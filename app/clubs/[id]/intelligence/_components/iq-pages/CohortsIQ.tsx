@@ -425,6 +425,11 @@ export default function CohortsIQ() {
                   key={suggestion.id}
                   clubId={clubId}
                   suggestion={suggestion}
+                  // P5-T5 fix #5: hand off to Campaign Wizard via
+                  // ?cohortId=… on the Campaigns page.
+                  onLaunchCampaign={(s) => {
+                    router.push(`/clubs/${clubId}/intelligence/campaigns?cohortId=${s.id}`)
+                  }}
                 />
               ))}
             </div>

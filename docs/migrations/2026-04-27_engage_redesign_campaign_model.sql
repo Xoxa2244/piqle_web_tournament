@@ -6,6 +6,10 @@
 --   clubs.id  is UUID
 --   users.id  is TEXT
 --   *_id columns follow that convention (UUID for club_id, TEXT for user_id).
+--
+-- This migration is IDEMPOTENT — safe to re-run on a partially-applied state.
+-- Every CREATE TABLE / CREATE INDEX uses IF NOT EXISTS and every ADD CONSTRAINT
+-- is wrapped in a DO block that ignores duplicate_object errors.
 -- ─────────────────────────────────────────────────────────────────────────
 
 -- 1. campaigns table — aggregates a single send (one row per Campaign).
@@ -50,24 +54,32 @@ CREATE TABLE IF NOT EXISTS "campaigns" (
 );
 
 -- FKs (nullable cohort_id so legacy/orphan campaigns don't break).
-ALTER TABLE "campaigns"
-  ADD CONSTRAINT "campaigns_club_id_fkey"
-    FOREIGN KEY ("club_id") REFERENCES "clubs"("id") ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "campaigns"
+    ADD CONSTRAINT "campaigns_club_id_fkey"
+      FOREIGN KEY ("club_id") REFERENCES "clubs"("id") ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "campaigns"
-  ADD CONSTRAINT "campaigns_cohort_id_fkey"
-    FOREIGN KEY ("cohort_id") REFERENCES "club_cohorts"("id") ON DELETE SET NULL;
+DO $$ BEGIN
+  ALTER TABLE "campaigns"
+    ADD CONSTRAINT "campaigns_cohort_id_fkey"
+      FOREIGN KEY ("cohort_id") REFERENCES "club_cohorts"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-ALTER TABLE "campaigns"
-  ADD CONSTRAINT "campaigns_created_by_user_fkey"
-    FOREIGN KEY ("created_by_user") REFERENCES "users"("id") ON DELETE SET NULL;
+DO $$ BEGIN
+  ALTER TABLE "campaigns"
+    ADD CONSTRAINT "campaigns_created_by_user_fkey"
+      FOREIGN KEY ("created_by_user") REFERENCES "users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE INDEX "campaigns_club_id_status_idx"      ON "campaigns" ("club_id", "status");
-CREATE INDEX "campaigns_club_id_created_at_idx"  ON "campaigns" ("club_id", "created_at" DESC);
-CREATE INDEX "campaigns_cohort_id_idx"           ON "campaigns" ("cohort_id");
+CREATE INDEX IF NOT EXISTS "campaigns_club_id_status_idx"
+  ON "campaigns" ("club_id", "status");
+CREATE INDEX IF NOT EXISTS "campaigns_club_id_created_at_idx"
+  ON "campaigns" ("club_id", "created_at" DESC);
+CREATE INDEX IF NOT EXISTS "campaigns_cohort_id_idx"
+  ON "campaigns" ("cohort_id");
 
 -- 2. club_cohorts — add isDynamic flag (auto-refresh vs static frozen list).
---    Existing column is_dynamic may not exist; add nullable then default true.
 ALTER TABLE "club_cohorts"
   ADD COLUMN IF NOT EXISTS "is_dynamic" BOOLEAN NOT NULL DEFAULT true;
 
@@ -81,11 +93,13 @@ CREATE TABLE IF NOT EXISTS "club_suggested_cohort_cache" (
   PRIMARY KEY ("club_id", "generator_key")
 );
 
-ALTER TABLE "club_suggested_cohort_cache"
-  ADD CONSTRAINT "club_suggested_cohort_cache_club_id_fkey"
-    FOREIGN KEY ("club_id") REFERENCES "clubs"("id") ON DELETE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "club_suggested_cohort_cache"
+    ADD CONSTRAINT "club_suggested_cohort_cache_club_id_fkey"
+      FOREIGN KEY ("club_id") REFERENCES "clubs"("id") ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE INDEX "club_suggested_cohort_cache_computed_at_idx"
+CREATE INDEX IF NOT EXISTS "club_suggested_cohort_cache_computed_at_idx"
   ON "club_suggested_cohort_cache" ("computed_at" DESC);
 
 -- 4. member_health_snapshots — add unique (club_id, user_id, date::date) so

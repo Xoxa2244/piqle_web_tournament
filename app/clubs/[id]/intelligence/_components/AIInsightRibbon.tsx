@@ -20,6 +20,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Sparkles, Check, X, Users, Loader2 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
+import { useMembersAIInsight } from '../_hooks/use-intelligence'
 
 interface AIInsightRibbonProps {
   clubId: string
@@ -42,12 +43,10 @@ function setDismissed(insightId: string) {
 }
 
 export function AIInsightRibbon({ clubId }: AIInsightRibbonProps) {
-  const insightQuery = (trpc.intelligence as any).getMembersAIInsight?.useQuery?.(
-    { clubId },
-    { enabled: !!clubId, staleTime: 5 * 60 * 1000 }
-  )
-
-  const insight = insightQuery?.data
+  // P5-T5 fix #6: route through hook so demo mode gets a mock insight
+  // instead of hammering the real DB.
+  const insightQuery = useMembersAIInsight(clubId)
+  const insight: any = insightQuery?.data
   const [createdName, setCreatedName] = useState<string | null>(null)
   const [localDismissed, setLocalDismissed] = useState(false)
 

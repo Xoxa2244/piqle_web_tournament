@@ -8063,8 +8063,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
   //   - listActiveCampaigns      → P4-T6 (Active Campaigns table) + P5-T4 (real metrics)
   // ════════════════════════════════════════════════════════════════════
 
-  // P0-T4 / P2-T1 — Members KPI strip with vs-period deltas.
-  // Real impl reads MemberHealthSnapshot and current Member rows.
+  // P2-T1 — Members KPI strip with vs-period deltas.
+  //
+  // Reads MemberHealthSnapshot for historical health/risk/lifecycle and
+  // current Member rows for membership tier counts. When there is no
+  // snapshot from "period days ago", deltas come back as null and the
+  // frontend renders "—" instead of fabricating a number.
+  //
+  // Note: snapshot data is populated by the daily cron in
+  //   app/api/cron/health-snapshot/route.ts (P5-T1 follow-up fix).
+  // First-time clubs see deltas come online ~24h after enabling.
   getMemberHealthDeltas: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -8072,22 +8080,102 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // TODO P2-T1: replace with real query against MemberHealthSnapshot.
-      // Compare current period averages vs previous period of same length.
-      // Return null deltas when no historical snapshot exists (new clubs).
+      const periodDays = input.period === 'week' ? 7 : input.period === 'quarter' ? 90 : 30
+      const cutoffDate = new Date(Date.now() - periodDays * 86400000)
+
+      // ── Current values: from User × ClubFollower ──────────────────────
+      const followers = await ctx.prisma.clubFollower.findMany({
+        where: { clubId: input.clubId },
+        select: {
+          userId: true,
+          user: { select: { membershipType: true, membershipStatus: true } },
+        },
+      })
+      const activeCount = followers.filter(
+        (f: any) => f.user?.membershipStatus === 'active',
+      ).length
+      const vipCount = followers.filter(
+        (f: any) => f.user?.membershipType === 'unlimited',
+      ).length
+      const packageCount = followers.filter(
+        (f: any) => f.user?.membershipType === 'package',
+      ).length
+
+      // ── Latest snapshot per user → current avg health + at-risk count ─
+      type LatestRow = { user_id: string; health_score: number; risk_level: string; lifecycle_stage: string }
+      let latestSnapshots: LatestRow[] = []
+      try {
+        latestSnapshots = await ctx.prisma.$queryRaw<LatestRow[]>`
+          SELECT DISTINCT ON (user_id) user_id, health_score, risk_level, lifecycle_stage
+          FROM member_health_snapshots
+          WHERE club_id = ${input.clubId}::uuid
+          ORDER BY user_id, date DESC
+        `
+      } catch {
+        latestSnapshots = []
+      }
+      const avgHealth = latestSnapshots.length > 0
+        ? Math.round(latestSnapshots.reduce((s, r) => s + r.health_score, 0) / latestSnapshots.length)
+        : 0
+      const atRiskCount = latestSnapshots.filter(
+        (r) => r.risk_level === 'at_risk' || r.risk_level === 'critical',
+      ).length
+
+      // ── Historical: latest snapshot per user as of cutoffDate ─────────
+      let historicalSnapshots: LatestRow[] = []
+      try {
+        historicalSnapshots = await ctx.prisma.$queryRaw<LatestRow[]>`
+          SELECT DISTINCT ON (user_id) user_id, health_score, risk_level, lifecycle_stage
+          FROM member_health_snapshots
+          WHERE club_id = ${input.clubId}::uuid
+            AND date <= ${cutoffDate}
+          ORDER BY user_id, date DESC
+        `
+      } catch {
+        historicalSnapshots = []
+      }
+
+      let activeDelta: number | null = null
+      let avgHealthDelta: number | null = null
+      let atRiskDelta: number | null = null
+
+      if (historicalSnapshots.length > 0) {
+        const histAvgHealth = Math.round(
+          historicalSnapshots.reduce((s, r) => s + r.health_score, 0) /
+            historicalSnapshots.length,
+        )
+        avgHealthDelta = avgHealth - histAvgHealth
+
+        // Use lifecycle_stage='active' as the historical proxy for
+        // "active member" since membership_status is current-state only.
+        const histActive = historicalSnapshots.filter(
+          (r) => r.lifecycle_stage === 'active',
+        ).length
+        activeDelta = activeCount - histActive
+
+        const histAtRisk = historicalSnapshots.filter(
+          (r) => r.risk_level === 'at_risk' || r.risk_level === 'critical',
+        ).length
+        atRiskDelta = atRiskCount - histAtRisk
+      }
+
+      // LTV total/delta: schema lacks per-user revenue aggregation today.
+      // Lands alongside P5-T3 attribution coverage. Until then return 0/null.
+      const ltvTotalCents = 0
+      const ltvDeltaCents: number | null = null
+
       return {
         period: input.period,
-        activeCount: 19,
-        activeDelta: 3,
-        avgHealth: 61,
-        avgHealthDelta: 2,
-        atRiskCount: 5,
-        atRiskDelta: 2,
-        ltvTotalCents: 0,
-        ltvDeltaCents: 42_000,
-        vipCount: 13,
-        packageCount: 3,
-        _stub: true,
+        activeCount,
+        activeDelta,
+        avgHealth,
+        avgHealthDelta,
+        atRiskCount,
+        atRiskDelta,
+        ltvTotalCents,
+        ltvDeltaCents,
+        vipCount,
+        packageCount,
       }
     }),
 

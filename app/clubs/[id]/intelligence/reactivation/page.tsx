@@ -43,15 +43,19 @@ const INACTIVITY_OPTIONS = [
   { value: 45, label: '45 days' },
 ]
 
+/**
+ * Brand router. Pure top-level component so the iqsport early-return
+ * doesn't sit above the legacy hooks (P5-T5 fix to a Rules-of-Hooks
+ * violation introduced in P1-T2). Hooks all live inside the per-brand
+ * components, never conditionally executed.
+ */
 export default function ReactivationPage() {
   const params = useParams()
   const router = useRouter()
   const clubId = params.id as string
   const brand = useBrand()
 
-  // P1-T2: iqsport brand — Reactivation page removed.
-  // Logic redistributed across Members/Cohorts/Campaigns per
-  // docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T2 / PLAN.md §5.
+  // iqsport branch — page is gone, just redirect.
   // Phase 2 will pre-apply ?at_risk=1 filter on Members; until then redirect to plain Members.
   useEffect(() => {
     if (brand.key === 'iqsport') {
@@ -67,6 +71,11 @@ export default function ReactivationPage() {
     )
   }
 
+  // Legacy brand — full reactivation page.
+  return <LegacyReactivationPage clubId={clubId} />
+}
+
+function LegacyReactivationPage({ clubId }: { clubId: string }) {
   const [inactivityDays, setInactivityDays] = useState(21)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCard, setExpandedCard] = useState<string | null>(null)

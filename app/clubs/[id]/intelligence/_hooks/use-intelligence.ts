@@ -276,6 +276,37 @@ export function useListActiveCampaigns(clubId: string, options?: IntelligenceQue
 }
 
 /**
+ * P2-T5: AI Insight ribbon — single rule-based insight on Members page.
+ * Demo mode returns a plausible mock so the ribbon renders end-to-end.
+ */
+export function useMembersAIInsight(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+  const query = (trpc.intelligence as any).getMembersAIInsight?.useQuery?.(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: {
+        kind: 'risk_shift' as const,
+        insightId: `demo_risk_shift_${new Date().toISOString().slice(0, 10)}`,
+        title: '5 members shifted to at-risk this week',
+        cause: 'Most of them dropped weekday evening sessions in the last 7 days. A short reactivation push usually wins ~30% back.',
+        suggestedAction: 'Create cohort "Recently at-risk"',
+        suggestedCohortName: 'Recently at-risk · ' + new Date().toISOString().slice(0, 10),
+        suggestedFilters: [{ field: 'riskLevel', op: 'in' as const, value: ['at_risk', 'critical'] }],
+        severity: 'warning' as const,
+      },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
  * P3-T2: AI-suggested cohorts (Renewal in 14d, Lost Evening, New & Engaged).
  * Wraps `intelligence.listSuggestedCohorts` (P3-T1 generators).
  */
