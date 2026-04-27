@@ -101,57 +101,71 @@ function linkifySessionTitles(
     .join('\n')
 }
 
-function renderInlineMarkdown(
-  text: string,
-  keyPrefix: string
-): ReactNode[] {
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = []
-  const pattern = /\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g
-  let lastIndex = 0
-  let match: RegExpExecArray | null = null
+  let cursor = 0
 
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(
-        <span key={`${keyPrefix}-text-${lastIndex}`}>
-          {text.slice(lastIndex, match.index)}
-        </span>
-      )
+  while (cursor < text.length) {
+    const boldStart = text.indexOf('**', cursor)
+    const linkStart = text.indexOf('[', cursor)
+    const nextTokenStart = [boldStart, linkStart].filter((value) => value >= 0).sort((a, b) => a - b)[0]
+
+    if (nextTokenStart == null) {
+      nodes.push(<span key={`${keyPrefix}-tail-${cursor}`}>{text.slice(cursor)}</span>)
+      break
     }
 
-    if (match[1] && match[2]) {
-      const label = match[1].replace(/\*\*/g, '')
-      const href = match[2]
+    if (nextTokenStart > cursor) {
+      nodes.push(<span key={`${keyPrefix}-text-${cursor}`}>{text.slice(cursor, nextTokenStart)}</span>)
+      cursor = nextTokenStart
+    }
+
+    if (text.startsWith('**', cursor)) {
+      const boldEnd = text.indexOf('**', cursor + 2)
+      if (boldEnd === -1) {
+        nodes.push(<span key={`${keyPrefix}-rawbold-${cursor}`}>{text.slice(cursor)}</span>)
+        break
+      }
+      nodes.push(
+        <strong key={`${keyPrefix}-strong-${cursor}`} className="font-semibold">
+          {text.slice(cursor + 2, boldEnd)}
+        </strong>
+      )
+      cursor = boldEnd + 2
+      continue
+    }
+
+    if (text[cursor] === '[') {
+      const labelEnd = text.indexOf('](', cursor)
+      if (labelEnd === -1) {
+        nodes.push(<span key={`${keyPrefix}-rawlink-${cursor}`}>{text.slice(cursor)}</span>)
+        break
+      }
+      const urlEnd = text.indexOf(')', labelEnd + 2)
+      if (urlEnd === -1) {
+        nodes.push(<span key={`${keyPrefix}-rawurl-${cursor}`}>{text.slice(cursor)}</span>)
+        break
+      }
+
+      const label = text.slice(cursor + 1, labelEnd).replace(/\*\*/g, '')
+      const href = text.slice(labelEnd + 2, urlEnd)
+
       nodes.push(
         href.startsWith('/')
           ? (
-              <Link key={`${keyPrefix}-link-${match.index}`} href={href} className="text-lime-600 hover:underline font-medium">
+              <Link key={`${keyPrefix}-link-${cursor}`} href={href} className="text-lime-600 hover:underline font-medium">
                 {label}
               </Link>
             )
           : (
-              <a key={`${keyPrefix}-link-${match.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-medium">
+              <a key={`${keyPrefix}-link-${cursor}`} href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline font-medium">
                 {label}
               </a>
             )
       )
-    } else if (match[3]) {
-      nodes.push(
-        <strong key={`${keyPrefix}-strong-${match.index}`} className="font-semibold">
-          {match[3]}
-        </strong>
-      )
+      cursor = urlEnd + 1
+      continue
     }
-
-    lastIndex = match.index + match[0].length
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(
-      <span key={`${keyPrefix}-tail-${lastIndex}`}>
-        {text.slice(lastIndex)}
-      </span>
-    )
   }
 
   return nodes
