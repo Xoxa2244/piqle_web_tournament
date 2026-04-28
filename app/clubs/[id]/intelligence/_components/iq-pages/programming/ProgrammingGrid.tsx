@@ -85,10 +85,9 @@ interface ProgrammingGridProps {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const HOUR_START = 6
-const HOUR_END = 22 // 22:00 inclusive → last row spans 22:00 – 23:00
+const DEFAULT_HOUR_START = 6
+const DEFAULT_HOUR_END = 22 // 22:00 inclusive → last row spans 22:00 – 23:00
 const ROW_HEIGHT = 60 // px per hour row
-const ROWS = HOUR_END - HOUR_START + 1
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -166,9 +165,14 @@ function formatHour(h: number): string {
  *
  * `rowStart` is 1-based (CSS grid convention). End is exclusive.
  */
-function computeRowSpan(startMin: number, endMin: number): { rowStart: number; rowSpan: number } | null {
-  const startHour = HOUR_START * 60
-  const endHour = (HOUR_END + 1) * 60
+function computeRowSpan(
+  startMin: number,
+  endMin: number,
+  visibleHourStart: number,
+  visibleHourEndExclusive: number,
+): { rowStart: number; rowSpan: number } | null {
+  const startHour = visibleHourStart * 60
+  const endHour = visibleHourEndExclusive * 60
   if (endMin <= startHour || startMin >= endHour) return null
   // Clip to visible window so a 06:00–08:00 session in a 6a-22p grid
   // still anchors at row 1, not row -1.
@@ -213,7 +217,38 @@ export function ProgrammingGrid({
   }, [activeCourts, liveSessions, drafts])
 
   const current = byCourt.get(activeCourtId) || { live: [], draft: [] }
-  const hours = Array.from({ length: ROWS }, (_, i) => HOUR_START + i)
+  const visibleHourWindow = useMemo(() => {
+    const sessionStarts = current.live.map((s) => hhmmToMinutes(s.startTime))
+    const sessionEnds = current.live.map((s) => hhmmToMinutes(s.endTime))
+    const draftStarts = current.draft.map((d) => hhmmToMinutes(d.startTime))
+    const draftEnds = current.draft.map((d) => hhmmToMinutes(d.endTime))
+    const allStarts = [...sessionStarts, ...draftStarts]
+    const allEnds = [...sessionEnds, ...draftEnds]
+
+    if (allStarts.length === 0 || allEnds.length === 0) {
+      return {
+        start: DEFAULT_HOUR_START,
+        endExclusive: DEFAULT_HOUR_END + 1,
+      }
+    }
+
+    const earliestStartHour = Math.floor(Math.min(...allStarts) / 60)
+    const latestEndHourExclusive = Math.ceil(Math.max(...allEnds) / 60)
+
+    const start = Math.max(DEFAULT_HOUR_START, earliestStartHour)
+    const endExclusive = Math.min(
+      DEFAULT_HOUR_END + 1,
+      Math.max(start + 1, latestEndHourExclusive),
+    )
+
+    return { start, endExclusive }
+  }, [current.draft, current.live])
+
+  const hours = useMemo(
+    () => Array.from({ length: visibleHourWindow.endExclusive - visibleHourWindow.start }, (_, i) => visibleHourWindow.start + i),
+    [visibleHourWindow.endExclusive, visibleHourWindow.start],
+  )
+  const rowCount = hours.length
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{
@@ -270,7 +305,7 @@ export function ProgrammingGrid({
           style={{
             display: 'grid',
             gridTemplateColumns: '52px repeat(7, minmax(0, 1fr))',
-            gridTemplateRows: `repeat(${ROWS}, ${ROW_HEIGHT}px)`,
+            gridTemplateRows: `repeat(${rowCount}, ${ROW_HEIGHT}px)`,
           }}
         >
           {/* Background slot guides — one per (hour × day) so we can show
@@ -310,7 +345,12 @@ export function ProgrammingGrid({
             const day = dayNameFromDate(s.date)
             const dayIdx = DAYS.indexOf(day as typeof DAYS[number])
             if (dayIdx < 0) return null
-            const span = computeRowSpan(hhmmToMinutes(s.startTime), hhmmToMinutes(s.endTime))
+            const span = computeRowSpan(
+              hhmmToMinutes(s.startTime),
+              hhmmToMinutes(s.endTime),
+              visibleHourWindow.start,
+              visibleHourWindow.endExclusive,
+            )
             if (!span) return null
             return (
               <div
@@ -331,7 +371,12 @@ export function ProgrammingGrid({
           {current.draft.map((d) => {
             const dayIdx = DAYS.indexOf(d.dayOfWeek as typeof DAYS[number])
             if (dayIdx < 0) return null
-            const span = computeRowSpan(hhmmToMinutes(d.startTime), hhmmToMinutes(d.endTime))
+            const span = computeRowSpan(
+              hhmmToMinutes(d.startTime),
+              hhmmToMinutes(d.endTime),
+              visibleHourWindow.start,
+              visibleHourWindow.endExclusive,
+            )
             if (!span) return null
             return (
               <div
