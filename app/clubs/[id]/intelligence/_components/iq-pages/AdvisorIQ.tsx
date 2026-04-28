@@ -597,6 +597,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationMessages, setConversationMessages] = useState<Record<string, AdvisorUiMessage[]>>({});
   const [draftMessages, setDraftMessages] = useState<AdvisorUiMessage[]>([]);
+  const [visibleMessages, setVisibleMessages] = useState<AdvisorUiMessage[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   // /api/ai/advisor-action goes OUTSIDE useChat's streaming flow (plain
@@ -656,7 +657,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // POST so every place that cares about "AI is working" (send button
   // disabled, typing indicator, suggestions hidden) stays truthful.
   const isBusy = status === 'submitted' || status === 'streaming' || advisorActionPending;
-  const visibleMessages = activeConvId ? (conversationMessages[activeConvId] || []) : draftMessages;
 
   const refreshConversations = useCallback(() => {
     fetch(`/api/ai/conversations?clubId=${clubId}`)
@@ -733,6 +733,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         setActiveConvId(null);
         setConversationId(null);
         setDraftMessages([]);
+        setVisibleMessages([]);
         setMessages([]);
       }
     },
@@ -755,6 +756,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     if (!streamConvId) return;
 
     setConversationMessages((prev) => ({ ...prev, [streamConvId]: messages as AdvisorUiMessage[] }));
+    if (activeConvIdRef.current === streamConvId) {
+      setVisibleMessages(messages as AdvisorUiMessage[]);
+    }
 
     if (status !== 'submitted' && status !== 'streaming') {
       streamConvIdRef.current = null;
@@ -792,19 +796,24 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
     try {
+      setActiveConvId(convId);
+      setConversationId(convId);
+      setVisibleMessages(conversationMessages[convId] || []);
+
       const res = await fetch(`/api/ai/conversations/${convId}/messages`);
       if (!res.ok) return;
       const data = await res.json();
       const nextMessages = mapStoredMessages(data.messages || []);
       setConversationMessages((prev) => ({ ...prev, [convId]: nextMessages }));
-      setConversationId(convId);
-      setActiveConvId(convId);
+      if (activeConvIdRef.current === convId) {
+        setVisibleMessages(nextMessages);
+      }
 
       if (!streamConvIdRef.current || streamConvIdRef.current === convId) {
         setMessages(nextMessages);
       }
     } catch { /* ignore */ }
-  }, [mapStoredMessages, setMessages]);
+  }, [conversationMessages, mapStoredMessages, setMessages]);
 
   useEffect(() => {
     const requestedConversationId = searchParams.get('conversationId');
@@ -823,6 +832,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     setActiveConvId(null);
     setConversationId(null);
     setDraftMessages([]);
+    setVisibleMessages([]);
     if (!streamConvIdRef.current) {
       setMessages([]);
     }
@@ -848,6 +858,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           updateConversationMessages(conversation.id, draftSeedMessages);
           setDraftMessages([]);
         }
+        setVisibleMessages(draftSeedMessages);
       } catch {
         targetConvId = null;
       }
@@ -869,7 +880,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       parts: [{ type: 'text' as const, text: msg }],
       createdAt: new Date(),
     };
-    updateConversationMessages(targetConvId, [...baseMessages, optimisticUserMessage]);
+    const optimisticMessages = [...baseMessages, optimisticUserMessage];
+    updateConversationMessages(targetConvId, optimisticMessages);
+    if (activeConvIdRef.current === targetConvId || (!activeConvIdRef.current && !targetConvId)) {
+      setVisibleMessages(optimisticMessages);
+    }
     setAdvisorActionPending(true);
 
     try {
@@ -896,16 +911,21 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             setConversationId(nextConvId);
           }
 
-          updateConversationMessages(nextConvId || targetConvId, (prev) => [
-            ...prev,
-            {
-              id: payload.assistantMessageId || crypto.randomUUID(),
-              role: 'assistant',
-              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-              createdAt: new Date(),
-              metadata: payload.assistantMetadata ?? undefined,
-            },
-          ]);
+          const resolvedConvId = nextConvId || targetConvId;
+          const assistantMessage: AdvisorUiMessage = {
+            id: payload.assistantMessageId || crypto.randomUUID(),
+            role: 'assistant',
+            parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+            createdAt: new Date(),
+            metadata: payload.assistantMetadata ?? undefined,
+          };
+          updateConversationMessages(resolvedConvId, (prev) => {
+            const nextMessages = [...prev, assistantMessage];
+            if (activeConvIdRef.current === resolvedConvId || (!activeConvIdRef.current && !resolvedConvId)) {
+              setVisibleMessages(nextMessages);
+            }
+            return nextMessages;
+          });
           void refetchAdvisorDrafts();
           refreshConversations();
           setAdvisorActionPending(false);
@@ -924,6 +944,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // message first — useChat appends its own, and duplicates would
     // leak into the DB conversation history on save.
     updateConversationMessages(targetConvId, baseMessages);
+    if (activeConvIdRef.current === targetConvId || (!activeConvIdRef.current && !targetConvId)) {
+      setVisibleMessages(baseMessages);
+    }
     pendingGuestTrialContextRef.current = null;
     pendingReferralContextRef.current = null;
     if (targetConvId) {
