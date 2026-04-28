@@ -1,12 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'motion/react'
 import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
+import { mockCohorts, mockCohortDataCoverage } from '../../_data/mock'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
 import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession } from '../../_hooks/use-intelligence'
 
@@ -156,6 +157,8 @@ function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
 export default function CohortsIQ() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isDemo = searchParams.get('demo') === 'true'
   const clubId = params.id as string
   const suggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -167,8 +170,10 @@ export default function CohortsIQ() {
   const [selectedLookalikeAudienceKeys, setSelectedLookalikeAudienceKeys] = useState<string[]>([])
   const [lookalikeExportPreset, setLookalikeExportPreset] = useState<LookalikeExportPreset>('generic_csv')
 
-  const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
-  const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
+  const { data: cohortsReal, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId }, { enabled: !isDemo })
+  const { data: coverageReal, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId }, { enabled: !isDemo })
+  const cohorts = isDemo ? (mockCohorts as any) : cohortsReal
+  const coverage = isDemo ? (mockCohortDataCoverage() as any) : coverageReal
   const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8)
   const { data: lookalikeExportData } = useLookalikeAudienceExport(clubId)
   const { data: lookalikeExportHistory = [], isLoading: lookalikeExportHistoryLoading } = useLookalikeExportHistory(clubId, 8)
@@ -329,7 +334,7 @@ export default function CohortsIQ() {
         <div>
           <h1 className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
             <Users className="w-6 h-6 inline mr-2" />
-            Cohorts
+            Segments
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
             Create custom member segments for targeted AI campaigns
@@ -342,7 +347,7 @@ export default function CohortsIQ() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
         >
-          <Plus className="w-4 h-4" /> Create Cohort
+          <Plus className="w-4 h-4" /> Create Segment
         </motion.button>
       </div>
 
@@ -1037,7 +1042,7 @@ export default function CohortsIQ() {
           {cohorts?.length === 0 && (
             <div className="col-span-full text-center py-16" style={{ color: 'var(--t4)' }}>
               <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No cohorts yet. Create your first one!</p>
+              <p className="text-sm">No segments yet. Create your first one!</p>
             </div>
           )}
         </div>

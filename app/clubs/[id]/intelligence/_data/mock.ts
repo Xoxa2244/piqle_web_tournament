@@ -142,6 +142,88 @@ mockDashboard.underfilledSessions = mockDashboard.upcomingSessions.filter(
   (s) => s.occupancyPercent < 50
 )
 
+// ── Cohorts / Segments (Cohorts page) ──
+export const mockCohorts = [
+  {
+    id: 'demo-coh-1',
+    name: 'VIP Power Players',
+    description: 'Top-revenue members playing 4+ sessions/week. Highest LTV, most influential for word-of-mouth.',
+    memberCount: 87,
+    filters: { activityLevel: 'power', valueTier: 'high', engagementTrend: 'stable' },
+    createdAt: new Date(today.getTime() - 28 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-2',
+    name: 'At-Risk Regulars',
+    description: 'Members who used to play 2+ times/week, frequency dropped 30%+ in last 14 days.',
+    memberCount: 64,
+    filters: { riskLevel: 'at_risk', engagementTrend: 'declining' },
+    createdAt: new Date(today.getTime() - 21 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-3',
+    name: 'New Members (last 30 days)',
+    description: 'Recently joined — needs onboarding nudge to lock in first 3 bookings before drop-off.',
+    memberCount: 94,
+    filters: { lifecycleStage: 'onboarding', joinedDaysAgo: { lte: 30 } },
+    createdAt: new Date(today.getTime() - 14 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-4',
+    name: 'Tuesday Morning Regulars',
+    description: 'Members with 5+ Tuesday AM bookings in last 90 days — perfect audience for new Tuesday formats.',
+    memberCount: 38,
+    filters: { dayPattern: 'weekday_morning', preferredDay: 'Tuesday' },
+    createdAt: new Date(today.getTime() - 35 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-5',
+    name: 'Beginners (DUPR < 3.0)',
+    description: 'Learning the game — high churn risk if not matched with appropriate skill-level sessions.',
+    memberCount: 218,
+    filters: { duprMax: 3.0, skillLevel: 'beginner' },
+    createdAt: new Date(today.getTime() - 42 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-6',
+    name: 'Lapsed Trials',
+    description: 'Signed up for trial 14-60 days ago, never converted to paid. Ripe for win-back offer.',
+    memberCount: 41,
+    filters: { membershipStatus: 'trial_lapsed', daysSinceLastBooking: { gte: 14 } },
+    createdAt: new Date(today.getTime() - 18 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-7',
+    name: 'Weekend Warriors',
+    description: 'Books exclusively on Sat/Sun. Untapped weekday demand if scheduled correctly.',
+    memberCount: 156,
+    filters: { dayPattern: 'weekend_only' },
+    createdAt: new Date(today.getTime() - 56 * 86400000).toISOString(),
+  },
+  {
+    id: 'demo-coh-8',
+    name: 'Senior League (60+)',
+    description: 'Senior members preferring morning leagues and clinics. Strong retention, low churn.',
+    memberCount: 73,
+    filters: { ageMin: 60, formatPreference: 'league' },
+    createdAt: new Date(today.getTime() - 70 * 86400000).toISOString(),
+  },
+]
+
+export function mockCohortDataCoverage() {
+  return {
+    totalActive: 1500,
+    fields: {
+      gender: { count: 1410, percent: 94 },
+      age: { count: 1287, percent: 86 },
+      skillLevel: { count: 1305, percent: 87 },
+      duprRating: { count: 1158, percent: 77 },
+      membershipType: { count: 1500, percent: 100 },
+      lastBookingDate: { count: 1500, percent: 100 },
+    },
+  }
+}
+
 // ── Occupancy Heatmap (7 days × 17 hours) ──
 export function mockOccupancyHeatmap() {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
