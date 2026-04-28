@@ -3359,7 +3359,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM ai_recommendation_logs arl
           LEFT JOIN user_play_preferences upp
             ON arl."userId" = upp."userId" AND arl."clubId" = upp."clubId"
-          WHERE arl."clubId" = ${input.clubId}
+          WHERE arl."clubId" = ${input.clubId}::uuid
             AND arl."createdAt" >= ${since}
           GROUP BY upp.detected_persona
           ORDER BY total DESC
@@ -4838,7 +4838,8 @@ export const intelligenceRouter = createTRPCRouter({
             WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
         FROM play_sessions ps
         LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-        WHERE ps."clubId" = $1          AND ps.date >= CURRENT_DATE
+        WHERE ps."clubId" = $1::uuid
+          AND ps.date >= CURRENT_DATE
           AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
           AND ps.status::text = 'SCHEDULED'
         ORDER BY ps.date, ps."startTime"
@@ -4865,9 +4866,11 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId" = cf.user_id
-            AND ps."clubId" = $1            AND b.status = 'CONFIRMED'
+            AND ps."clubId" = $1::uuid
+            AND b.status::text = 'CONFIRMED'
         ) first_booking ON true
-        WHERE cf.club_id = $1          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
+        WHERE cf.club_id = $1::uuid
+          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
         ORDER BY first_booking."firstPlayedAt" DESC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }
@@ -8260,7 +8263,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         const latest = await ctx.prisma.$queryRaw<Array<{ user_id: string }>>`
           SELECT DISTINCT ON (user_id) user_id
           FROM member_health_snapshots
-          WHERE club_id = ${input.clubId}
+          WHERE club_id = ${input.clubId}::uuid
             AND risk_level IN ('at_risk', 'critical')
           ORDER BY user_id, date DESC
         `
