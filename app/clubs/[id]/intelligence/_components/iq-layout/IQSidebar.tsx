@@ -92,6 +92,7 @@ function buildNavSections(isMembership: boolean, isDemo: boolean): NavSection[] 
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpand, setHoverExpand] = useState(false);
+  const [hoverExpandLocked, setHoverExpandLocked] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -319,7 +320,18 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
 
           {!isMobile && (
             <button
-              onClick={() => setCollapsed((p) => !p)}
+              onClick={() => {
+                setCollapsed((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    setHoverExpand(false);
+                    setHoverExpandLocked(true);
+                  } else {
+                    setHoverExpandLocked(false);
+                  }
+                  return next;
+                });
+              }}
               className="w-full flex items-center gap-3 rounded-xl transition-all"
               style={{
                 padding: showExpanded ? "10px 12px" : "10px 0",
@@ -342,8 +354,13 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
       <motion.aside
         animate={{ width: expanded ? 260 : 72 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        onMouseEnter={() => collapsed && setHoverExpand(true)}
-        onMouseLeave={() => setHoverExpand(false)}
+        onMouseEnter={() => {
+          if (collapsed && !hoverExpandLocked) setHoverExpand(true);
+        }}
+        onMouseLeave={() => {
+          setHoverExpand(false);
+          setHoverExpandLocked(false);
+        }}
         className="relative hidden md:flex flex-col shrink-0 h-full z-30"
         style={{
           background: "var(--sidebar-bg)",
