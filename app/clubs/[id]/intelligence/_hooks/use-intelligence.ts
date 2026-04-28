@@ -281,7 +281,7 @@ export function useListActiveCampaigns(clubId: string, options?: IntelligenceQue
  */
 export function useMembersAIInsight(clubId: string, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
-  const query = (trpc.intelligence as any).getMembersAIInsight?.useQuery?.(
+  const query = trpc.intelligence.getMembersAIInsight.useQuery(
     { clubId },
     { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )

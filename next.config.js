@@ -30,9 +30,6 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // TEMP: expose client source maps for one debug deploy.
-  // Revert to default (false) once Members page crash is diagnosed.
-  productionBrowserSourceMaps: true,
   serverExternalPackages: ['@prisma/client'],
   images: {
     remotePatterns: [
@@ -80,9 +77,8 @@ module.exports = withSentryConfig(nextConfig, {
   // Don't widen source maps scope
   widenClientFileUpload: true,
 
-  // TEMP: keep source maps public (paired with productionBrowserSourceMaps).
-  // Revert to true once Members page crash is diagnosed.
-  hideSourceMaps: false,
+  // Automatically tree-shake Sentry logger
+  hideSourceMaps: true,
 
   // Skip source map upload if no auth token (local dev)
   ...(process.env.SENTRY_AUTH_TOKEN ? {} : { sourcemaps: { disable: true } }),
