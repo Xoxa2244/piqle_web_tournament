@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
@@ -297,6 +298,8 @@ function matchesDraftText(draft: any, patterns: string[]) {
 }
 
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
+  const searchParams = useSearchParams()
+  const isDemo = searchParams.get('demo') === 'true'
   const [showCreator, setShowCreator] = useState(false)
   const [initialType, setInitialType] = useState<string | null>(null)
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
@@ -744,6 +747,13 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           boxShadow: 'var(--card-shadow)',
         }}
       >
+        {/* Hide the operator-facing "Agent Campaign Layer" hero (rollout
+            posture, draft queue, live pilot health) in demo mode — those
+            counts are operational metadata that all read as zeros without
+            a live agent, which makes the AI look broken to a demo viewer.
+            Quick Starts and Referral sections still render below. */}
+        {!isDemo && (
+        <>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}>
@@ -987,6 +997,8 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
             </div>
           </div>
         </div>
+        </>
+        )}
 
         <div
           className="rounded-2xl p-4 space-y-3"
