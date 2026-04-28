@@ -28,10 +28,6 @@ import {
   type ReferralExecutionContext,
 } from "@/lib/ai/referral-offers";
 import { useAdvisorDrafts } from "../../_hooks/use-intelligence";
-import {
-  formatGuestTrialWorkspaceSummary,
-  formatReferralWorkspaceSummary,
-} from "./shared/growth-context";
 import { ChatRichText } from "../shared/ChatRichText";
 
 /* --- Suggested Prompts ---
@@ -59,194 +55,6 @@ interface Conversation {
   id: string;
   title: string;
   updatedAt: string;
-}
-
-interface AdvisorDraftWorkspaceItem {
-  id: string
-  kind: string
-  status: string
-  title: string
-  summary: string | null
-  originalIntent: string | null
-  selectedPlan: 'requested' | 'recommended'
-  sandboxMode: boolean
-  scheduledFor?: string | Date | null
-  timeZone?: string | null
-  metadata?: {
-    sandboxPreview?: {
-      kind?: string
-      channel?: 'email' | 'sms' | 'both'
-      deliveryMode?: 'send_now' | 'send_later'
-      recipientCount?: number
-      skippedCount?: number
-      scheduledLabel?: string
-      note?: string
-      recipients?: Array<{
-        memberId: string
-        name: string
-        channel: 'email' | 'sms' | 'both'
-        score?: number
-        email?: string
-        phone?: string
-      }>
-    } | null
-    programmingPreview?: {
-      goal: string
-      publishMode: 'draft_only'
-      primary: {
-        id: string
-        title: string
-        dayOfWeek: string
-        timeSlot: 'morning' | 'afternoon' | 'evening'
-        startTime: string
-        endTime: string
-        format: string
-        skillLevel: string
-        projectedOccupancy: number
-        estimatedInterestedMembers: number
-        confidence: number
-      }
-      alternatives?: Array<{
-        id: string
-        title: string
-        dayOfWeek: string
-        timeSlot: 'morning' | 'afternoon' | 'evening'
-        startTime: string
-        endTime: string
-        format: string
-        skillLevel: string
-        projectedOccupancy: number
-        estimatedInterestedMembers: number
-        confidence: number
-      }>
-      insights?: string[]
-    } | null
-    opsSessionDrafts?: Array<{
-      id: string
-      sourceProposalId: string
-      origin: 'primary' | 'alternative'
-      state: 'ready_for_ops'
-      title: string
-      dayOfWeek: string
-      timeSlot: 'morning' | 'afternoon' | 'evening'
-      startTime: string
-      endTime: string
-      format: string
-      skillLevel: string
-      maxPlayers: number
-      projectedOccupancy: number
-      estimatedInterestedMembers: number
-      confidence: number
-      note: string
-    }> | null
-    guestTrialContext?: GuestTrialExecutionContext | null
-    referralContext?: ReferralExecutionContext | null
-  } | null
-  updatedAt: string | Date
-  createdAt: string | Date
-  conversationId?: string | null
-  conversation?: {
-    id: string
-    title: string | null
-  } | null
-}
-
-const advisorDraftSections = [
-  { key: 'review_ready', label: 'Needs Review' },
-  { key: 'sandboxed', label: 'Preview Inbox' },
-  { key: 'draft_saved', label: 'Drafts' },
-  { key: 'scheduled', label: 'Scheduled' },
-  { key: 'completed', label: 'Recently Applied' },
-  { key: 'paused', label: 'Paused' },
-  { key: 'stopped', label: 'Stopped' },
-] as const
-
-function getAdvisorDraftBucket(status: string) {
-  if (status === 'review_ready') return 'review_ready'
-  if (status === 'sandboxed') return 'sandboxed'
-  if (status === 'draft_saved') return 'draft_saved'
-  if (status === 'scheduled') return 'scheduled'
-  if (status === 'approved' || status === 'sent') return 'completed'
-  if (status === 'snoozed') return 'paused'
-  return 'stopped'
-}
-
-function formatDraftStatus(status: string) {
-  switch (status) {
-    case 'review_ready': return 'Review'
-    case 'draft_saved': return 'Draft'
-    case 'sandboxed': return 'Preview'
-    case 'scheduled': return 'Scheduled'
-    case 'approved': return 'Applied'
-    case 'sent': return 'Sent'
-    case 'snoozed': return 'Snoozed'
-    case 'declined': return 'Declined'
-    case 'blocked': return 'Blocked'
-    default: return status
-  }
-}
-
-function getDraftStatusStyles(status: string) {
-  switch (status) {
-    case 'review_ready':
-      return { background: "rgba(139,92,246,0.14)", color: "#C4B5FD" }
-    case 'draft_saved':
-      return { background: "rgba(6,182,212,0.14)", color: "#67E8F9" }
-    case 'sandboxed':
-      return { background: "rgba(244,114,182,0.14)", color: "#F9A8D4" }
-    case 'scheduled':
-      return { background: "rgba(245,158,11,0.14)", color: "#FCD34D" }
-    case 'approved':
-    case 'sent':
-      return { background: "rgba(16,185,129,0.14)", color: "#86EFAC" }
-    case 'snoozed':
-      return { background: "rgba(148,163,184,0.14)", color: "#CBD5E1" }
-    default:
-      return { background: "rgba(239,68,68,0.14)", color: "#FCA5A5" }
-  }
-}
-
-function formatDraftKind(kind: string) {
-  switch (kind) {
-    case 'create_campaign': return 'Campaign'
-    case 'fill_session': return 'Slot Filler'
-    case 'reactivate_members': return 'Reactivation'
-    case 'trial_follow_up': return 'Trial Follow-up'
-    case 'renewal_reactivation': return 'Renewal Outreach'
-    case 'program_schedule': return 'Programming Plan'
-    case 'create_cohort': return 'Audience'
-    case 'update_contact_policy': return 'Contact Policy'
-    case 'update_autonomy_policy': return 'Autopilot Policy'
-    case 'update_sandbox_routing': return 'Sandbox Routing'
-    case 'update_admin_reminder_routing': return 'Admin Reminder Routing'
-    default: return kind.replace(/_/g, ' ')
-  }
-}
-
-function formatDraftSchedule(value: string | Date | null | undefined, timeZone?: string | null) {
-  if (!value) return null
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: timeZone || undefined,
-  }).format(date)
-}
-
-function formatProgrammingValue(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function formatProgrammingWindow(preview: NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']) {
-  if (!preview) return null
-  return `${preview.primary.dayOfWeek} · ${preview.primary.startTime}-${preview.primary.endTime} · ${formatProgrammingValue(preview.primary.format)} · ${formatProgrammingValue(preview.primary.skillLevel)}`
 }
 
 /* --- Typing Indicator --- */
@@ -789,20 +597,17 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [advisorActionPending, setAdvisorActionPending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const {
-    data: advisorDrafts = [],
-    isLoading: isDraftsLoading,
-    refetch: refetchAdvisorDrafts,
-  } = useAdvisorDrafts(clubId, 24);
+  const { refetch: refetchAdvisorDrafts } = useAdvisorDrafts(clubId, 24);
 
   // Track conversation ID from API response without re-creating transport mid-stream
   const convIdRef = useRef<string | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
   const pendingConvIdRef = useRef<string | null>(null);
-  const loadFromDbRef = useRef(false);
   const appliedPromptRef = useRef<string | null>(null);
   const pendingGuestTrialContextRef = useRef<GuestTrialExecutionContext | null>(null);
   const pendingReferralContextRef = useRef<ReferralExecutionContext | null>(null);
   convIdRef.current = conversationId;
+  activeConvIdRef.current = activeConvId;
 
   // Build transport (memoized on clubId)
   const transport = useMemo(() => {
@@ -846,6 +651,34 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       .then(r => r.ok ? r.json() : { conversations: [] })
       .then(data => setConversations(data.conversations || []))
       .catch(() => {});
+  }, [clubId]);
+
+  const createConversation = useCallback(async (titleSource: string) => {
+    const response = await fetch('/api/ai/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clubId,
+        titleSource,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create conversation');
+    }
+
+    const payload = await response.json();
+    const conversation = payload?.conversation as Conversation | undefined;
+    if (!conversation?.id) {
+      throw new Error('Conversation payload missing id');
+    }
+
+    setConversations((prev) => [
+      conversation,
+      ...prev.filter((item) => item.id !== conversation.id),
+    ]);
+
+    return conversation;
   }, [clubId]);
 
   const deleteConversation = trpc.intelligence.deleteConversation.useMutation({
@@ -931,6 +764,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   }, [messages, isBusy]);
 
   const startNewChat = useCallback(() => {
+    pendingConvIdRef.current = null;
     setActiveConvId(null);
     setConversationId(null);
     setMessages([]);
@@ -942,6 +776,19 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     const msg = text || inputValue.trim();
     if (!msg || isBusy) return;
     setInputValue("");
+
+    let targetConvId = convIdRef.current;
+    if (!targetConvId) {
+      try {
+        const conversation = await createConversation(msg);
+        targetConvId = conversation.id;
+        convIdRef.current = conversation.id;
+        setConversationId(conversation.id);
+        setActiveConvId(conversation.id);
+      } catch {
+        targetConvId = null;
+      }
+    }
 
     // Optimistic UI: push the user's message immediately so the typing
     // indicator + bubble show up the moment the chip/Send is clicked.
@@ -967,7 +814,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         body: JSON.stringify({
           clubId,
           message: msg,
-          conversationId: convIdRef.current,
+          conversationId: targetConvId,
           guestTrialContext: pendingGuestTrialContextRef.current,
           referralContext: pendingReferralContextRef.current,
         }),
@@ -978,24 +825,26 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         if (payload?.handled) {
           pendingGuestTrialContextRef.current = null;
           pendingReferralContextRef.current = null;
-          const nextConvId = payload.conversationId || convIdRef.current;
+          const nextConvId = payload.conversationId || targetConvId || convIdRef.current;
           if (nextConvId) {
+            convIdRef.current = nextConvId;
             setConversationId(nextConvId);
-            setActiveConvId(nextConvId);
           }
 
-          // User message already optimistically added — only append the
-          // assistant reply so we don't duplicate.
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: payload.assistantMessageId || crypto.randomUUID(),
-              role: 'assistant',
-              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-              createdAt: new Date(),
-              metadata: payload.assistantMetadata ?? undefined,
-            },
-          ]);
+          if (activeConvIdRef.current === nextConvId || (!activeConvIdRef.current && !nextConvId)) {
+            // User message already optimistically added — only append the
+            // assistant reply so we don't duplicate.
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: payload.assistantMessageId || crypto.randomUUID(),
+                role: 'assistant',
+                parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+                createdAt: new Date(),
+                metadata: payload.assistantMetadata ?? undefined,
+              },
+            ]);
+          }
           void refetchAdvisorDrafts();
           refreshConversations();
           setAdvisorActionPending(false);
@@ -1015,8 +864,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // leak into the DB conversation history on save.
     setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsgId));
     pendingGuestTrialContextRef.current = null;
+    pendingReferralContextRef.current = null;
     sendMessage({ text: msg });
-  }, [clubId, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
+  }, [clubId, createConversation, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1027,41 +877,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     setInputValue(text);
     inputRef.current?.focus();
   }, []);
-
-  const groupedDrafts = useMemo(() => {
-    const buckets = new Map<string, AdvisorDraftWorkspaceItem[]>()
-    advisorDraftSections.forEach((section) => buckets.set(section.key, []))
-
-    for (const draft of advisorDrafts as AdvisorDraftWorkspaceItem[]) {
-      if (draft.kind === 'program_schedule') continue
-      const bucket = getAdvisorDraftBucket(draft.status)
-      buckets.get(bucket)?.push(draft)
-    }
-
-    return advisorDraftSections
-      .map((section) => ({
-        ...section,
-        drafts: buckets.get(section.key) || [],
-      }))
-      .filter((section) => section.drafts.length > 0)
-  }, [advisorDrafts]);
-
-  const programmingDrafts = useMemo(
-    () => (advisorDrafts as AdvisorDraftWorkspaceItem[]).filter((draft) => draft.kind === 'program_schedule').slice(0, 4),
-    [advisorDrafts],
-  );
-
-  const openDraftWorkspaceItem = useCallback((draft: AdvisorDraftWorkspaceItem) => {
-    if (draft.conversationId) {
-      void loadConversation(draft.conversationId)
-      return
-    }
-
-    startNewChat()
-    if (draft.originalIntent) {
-      draftIntoComposer(draft.originalIntent)
-    }
-  }, [draftIntoComposer, loadConversation, startNewChat]);
 
   return (
     <div className="flex gap-6 max-w-[1400px] mx-auto" style={{ height: "calc(100vh - 112px)" }}>
@@ -1125,316 +940,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                 </div>
               );
             })}
-          </div>
-
-          <div className="pt-3" style={{ borderTop: "1px solid var(--divider)" }}>
-            <div className="flex items-center justify-between px-2 pb-2">
-              <div>
-                <h4 style={{ fontSize: "12px", fontWeight: 700, color: "var(--heading)" }}>Agent Drafts</h4>
-                <div className="text-[10px]" style={{ color: "var(--t4)" }}>
-                  {advisorDrafts.length} records in the agent workspace
-                </div>
-              </div>
-              <button
-                onClick={() => void refetchAdvisorDrafts()}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-colors"
-                style={{ background: "var(--subtle)", color: "var(--t3)", fontWeight: 600 }}
-              >
-                <RotateCcw className="w-3 h-3" />
-                Refresh
-              </button>
-            </div>
-
-            {isDraftsLoading && (
-              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
-                Loading draft workspace…
-              </div>
-            )}
-
-            {!isDraftsLoading && groupedDrafts.length === 0 && (
-              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
-                No agent drafts yet
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {programmingDrafts.length > 0 && (
-                <div>
-                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
-                    Programming Drafts
-                  </div>
-                  <div className="space-y-2">
-                    {programmingDrafts.map((draft) => {
-                      const preview = draft.metadata?.programmingPreview || null
-                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
-                      const statusStyles = getDraftStatusStyles(draft.status)
-                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
-                      const previewWindow = formatProgrammingWindow(preview || null)
-
-                      return (
-                        <button
-                          key={`programming-${draft.id}`}
-                          onClick={() => openDraftWorkspaceItem(draft)}
-                          className="w-full text-left px-3 py-3 rounded-xl transition-all"
-                          style={{
-                            background: isDraftActive ? (isDark ? "rgba(139,92,246,0.10)" : "rgba(139,92,246,0.05)") : "rgba(139,92,246,0.05)",
-                            border: isDraftActive ? "1px solid rgba(139,92,246,0.26)" : "1px solid rgba(139,92,246,0.12)",
-                          }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[11px]" style={{ color: "#C4B5FD", fontWeight: 700 }}>
-                                Draft-first schedule plan
-                              </div>
-                              <div className="text-xs mt-1 truncate" style={{ color: "var(--heading)", fontWeight: 700 }}>
-                                {preview?.primary.title || draft.title}
-                              </div>
-                            </div>
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
-                              style={{ ...statusStyles, fontWeight: 700 }}
-                            >
-                              {formatDraftStatus(draft.status)}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px]"
-                              style={{ background: "rgba(139,92,246,0.16)", color: "#DDD6FE", fontWeight: 700 }}
-                            >
-                              {preview ? `${1 + (preview.alternatives?.length || 0)} ideas` : 'Programming'}
-                            </span>
-                            {draft.selectedPlan === 'recommended' && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
-                              >
-                                Agent plan
-                              </span>
-                            )}
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px]"
-                              style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                            >
-                              Draft only
-                            </span>
-                            {opsSessionDrafts.length > 0 && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(16,185,129,0.12)", color: "#86EFAC", fontWeight: 700 }}
-                              >
-                                {opsSessionDrafts.length} ops ready
-                              </span>
-                            )}
-                          </div>
-
-                          {previewWindow && (
-                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                              {previewWindow}
-                            </div>
-                          )}
-
-                          {preview && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(255,255,255,0.04)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Programming preview
-                              </div>
-                              <div className="mt-1">
-                                {preview.primary.projectedOccupancy}% projected fill · {preview.primary.estimatedInterestedMembers} likely players · {preview.primary.confidence}/100 confidence
-                              </div>
-                              {opsSessionDrafts.length > 0 && (
-                                <div className="mt-1" style={{ color: "#67E8F9" }}>
-                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for scheduling review.
-                                </div>
-                              )}
-                              {preview.insights?.[0] && (
-                                <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                  {preview.insights[0]}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
-                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
-                            <span>{formatRelative(String(draft.updatedAt))}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {groupedDrafts.map((section) => (
-                <div key={section.key}>
-                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
-                    {section.label}
-                  </div>
-                  <div className="space-y-1">
-                    {section.drafts.map((draft) => {
-                      const statusStyles = getDraftStatusStyles(draft.status)
-                      const scheduleLabel = formatDraftSchedule(draft.scheduledFor, draft.timeZone)
-                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
-                      const sandboxPreview = draft.metadata?.sandboxPreview || null
-                      const sandboxRecipients = sandboxPreview?.recipients || []
-                      const programmingPreview = draft.metadata?.programmingPreview || null
-                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
-                      const guestTrialContext = parseGuestTrialExecutionContext(draft.metadata?.guestTrialContext || null)
-                      const guestTrialWorkspaceSummary = formatGuestTrialWorkspaceSummary(guestTrialContext)
-                      const referralContext = parseReferralExecutionContext(draft.metadata?.referralContext || null)
-                      const referralWorkspaceSummary = formatReferralWorkspaceSummary(referralContext)
-                      const programmingWindow = formatProgrammingWindow(programmingPreview || null)
-                      const sandboxSummary = draft.status === 'sandboxed'
-                        ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
-                        : null
-
-                      return (
-                        <button
-                          key={draft.id}
-                          onClick={() => openDraftWorkspaceItem(draft)}
-                          className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
-                          style={{
-                            background: isDraftActive ? (isDark ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.05)") : "var(--subtle)",
-                            border: isDraftActive ? "1px solid rgba(6,182,212,0.22)" : "1px solid var(--card-border)",
-                          }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[11px]" style={{ color: "var(--t4)", fontWeight: 700 }}>
-                                {formatDraftKind(draft.kind)}
-                              </div>
-                              <div className="text-xs truncate mt-0.5" style={{ color: "var(--heading)", fontWeight: 700 }}>
-                                {draft.title}
-                              </div>
-                            </div>
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
-                              style={{ ...statusStyles, fontWeight: 700 }}
-                            >
-                              {formatDraftStatus(draft.status)}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {draft.selectedPlan === 'recommended' && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(139,92,246,0.12)", color: "#C4B5FD", fontWeight: 700 }}
-                              >
-                                Agent plan
-                              </span>
-                            )}
-                            {draft.sandboxMode && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                              >
-                                Sandbox
-                              </span>
-                            )}
-                            {guestTrialWorkspaceSummary && (
-                              <>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
-                                >
-                                  {guestTrialWorkspaceSummary.stage}
-                                </span>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--t2)" }}
-                                >
-                                  {guestTrialWorkspaceSummary.detail}
-                                </span>
-                              </>
-                            )}
-                            {referralWorkspaceSummary && (
-                              <>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                                >
-                                  {referralWorkspaceSummary.lane}
-                                </span>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(245,158,11,0.10)", color: "#FDE68A", fontWeight: 700 }}
-                                >
-                                  {referralWorkspaceSummary.detail}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {(draft.summary || scheduleLabel) && (
-                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                              {draft.summary || (scheduleLabel ? `Scheduled for ${scheduleLabel}` : '')}
-                            </div>
-                          )}
-
-                          {sandboxSummary && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(244,114,182,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Sandbox preview
-                              </div>
-                              <div className="mt-1">
-                                {sandboxSummary}
-                                {sandboxPreview?.scheduledLabel ? ` · ${sandboxPreview.scheduledLabel}` : ''}
-                              </div>
-                              {sandboxRecipients.length > 0 && (
-                                <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                  {sandboxRecipients.slice(0, 3).map((recipient) => recipient.name).join(', ')}
-                                  {sandboxPreview?.recipientCount && sandboxPreview.recipientCount > 3
-                                    ? ` +${sandboxPreview.recipientCount - 3} more`
-                                    : ''}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {!sandboxSummary && draft.kind === 'program_schedule' && programmingPreview && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(139,92,246,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Draft preview
-                              </div>
-                              <div className="mt-1">
-                                {programmingPreview.primary.title}
-                                {programmingWindow ? ` · ${programmingWindow}` : ''}
-                              </div>
-                              <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                {programmingPreview.primary.projectedOccupancy}% projected fill · {programmingPreview.primary.estimatedInterestedMembers} likely players
-                                {programmingPreview.alternatives?.length ? ` · +${programmingPreview.alternatives.length} alternatives` : ''}
-                              </div>
-                              {opsSessionDrafts.length > 0 && (
-                                <div className="mt-1" style={{ color: "#67E8F9" }}>
-                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for the club ops team
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
-                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
-                            <span>{formatRelative(String(draft.updatedAt))}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>

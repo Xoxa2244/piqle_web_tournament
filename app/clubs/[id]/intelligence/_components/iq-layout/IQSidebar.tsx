@@ -82,7 +82,6 @@ function buildNavSections(isMembership: boolean): NavSection[] {
 
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [hoverExpand, setHoverExpand] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -115,7 +114,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const basePath = `/clubs/${clubId}/intelligence`;
   const demoParam = searchParams.get("demo") === "true" ? "?demo=true" : "";
 
-  const expanded = !collapsed || hoverExpand;
+  const expanded = !collapsed;
 
   // Close mobile sidebar on navigation
   useEffect(() => {
@@ -332,8 +331,6 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
       <motion.aside
         animate={{ width: expanded ? 260 : 72 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        onMouseEnter={() => collapsed && setHoverExpand(true)}
-        onMouseLeave={() => setHoverExpand(false)}
         className="relative hidden md:flex flex-col shrink-0 h-full z-30"
         style={{
           background: "var(--sidebar-bg)",

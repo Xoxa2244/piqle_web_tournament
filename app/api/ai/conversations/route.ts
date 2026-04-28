@@ -36,6 +36,15 @@ async function getSessionFromRequest(req: Request) {
   return { userId: dbSession.userId };
 }
 
+async function verifyClubMembership(clubId: string, userId: string) {
+  const [admin, follower] = await Promise.all([
+    prisma.clubAdmin.findFirst({ where: { clubId, userId } }),
+    prisma.clubFollower.findFirst({ where: { clubId, userId } }),
+  ]);
+
+  return !!(admin || follower);
+}
+
 export async function GET(req: Request) {
   try {
     const session = await getSessionFromRequest(req);
@@ -70,6 +79,50 @@ export async function GET(req: Request) {
     return Response.json({ conversations });
   } catch (error) {
     console.error('[AI Conversations] GET error:', error instanceof Error ? error.message : error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const session = await getSessionFromRequest(req);
+    if (!session) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    const body = await req.json().catch(() => null);
+    const clubId = typeof body?.clubId === 'string' ? body.clubId : '';
+    const titleSource = typeof body?.titleSource === 'string' ? body.titleSource.trim() : '';
+
+    if (!clubId) {
+      return Response.json({ error: 'clubId is required' }, { status: 400 });
+    }
+
+    const hasAccess = await verifyClubMembership(clubId, session.userId);
+    if (!hasAccess) {
+      return new Response('Forbidden', { status: 403 });
+    }
+
+    const conversation = await prisma.aIConversation.create({
+      data: {
+        clubId,
+        userId: session.userId,
+        title: titleSource.slice(0, 100) || 'New conversation',
+        language: 'en',
+      },
+      select: {
+        id: true,
+        title: true,
+        language: true,
+        summary: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return Response.json({ conversation });
+  } catch (error) {
+    console.error('[AI Conversations] POST error:', error instanceof Error ? error.message : error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
