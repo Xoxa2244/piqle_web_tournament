@@ -754,6 +754,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   useEffect(() => {
     const streamConvId = streamConvIdRef.current;
     if (!streamConvId) return;
+    if ((messages as AdvisorUiMessage[]).length === 0) return;
 
     setConversationMessages((prev) => ({ ...prev, [streamConvId]: messages as AdvisorUiMessage[] }));
     if (activeConvIdRef.current === streamConvId) {
@@ -940,10 +941,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // Fallback to the useChat stream path. Drop the optimistic user
     // message first — useChat appends its own, and duplicates would
     // leak into the DB conversation history on save.
-    updateConversationMessages(targetConvId, baseMessages);
-    if (activeConvIdRef.current === targetConvId || (!activeConvIdRef.current && !targetConvId)) {
-      setVisibleMessages(baseMessages);
-    }
     pendingGuestTrialContextRef.current = null;
     pendingReferralContextRef.current = null;
     if (targetConvId) {
