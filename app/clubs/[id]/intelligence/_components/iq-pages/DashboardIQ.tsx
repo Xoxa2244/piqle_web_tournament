@@ -22,6 +22,7 @@ import { X, Check, ChevronRight, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
+import { mockClubInsights } from "../../_data/mock";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -544,10 +545,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { clubId, dateFrom: calAFrom, dateTo: calATo },
     { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo },
   );
-  const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
+  const insightsQueryReal = trpc.intelligence.getClubInsights.useQuery(
     { clubId: clubId! },
     { enabled: !!clubId && !isDemo },
   );
+  // In demo, surface a hand-curated set of insights so the panel doesn't
+  // sit on a skeleton — mirrors the kind of items the live planner would
+  // generate from real club data.
+  const insightsQuery = isDemo
+    ? { data: mockClubInsights, isLoading: false }
+    : insightsQueryReal;
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");

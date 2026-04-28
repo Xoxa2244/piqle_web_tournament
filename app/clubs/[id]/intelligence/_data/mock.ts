@@ -142,6 +142,72 @@ mockDashboard.underfilledSessions = mockDashboard.upcomingSessions.filter(
   (s) => s.occupancyPercent < 50
 )
 
+// ── Occupancy Heatmap (7 days × 17 hours) ──
+export function mockOccupancyHeatmap() {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const timeSlots = ['7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM', '9PM']
+  // Realistic demand pattern: weekday evenings high, weekend mornings high, midday weekday low
+  const dayPeak = [55, 70, 50, 75, 45, 82, 70] // weekly avg per day
+  const slotShape = [40, 55, 75, 70, 50, 35, 30, 45, 50, 60, 70, 90, 95, 88, 60] // hourly intensity (matches timeSlots)
+  let h = 0
+  return {
+    heatmap: days.map((day, di) => ({
+      day,
+      slots: slotShape.map((base, si) => {
+        h = (h * 1664525 + 1013904223) >>> 0
+        const noise = ((h % 16) - 8)
+        const dayBoost = (dayPeak[di] - 60) * 0.4
+        return Math.max(5, Math.min(99, Math.round(base + dayBoost + noise)))
+      }),
+    })),
+    timeSlots,
+  }
+}
+
+// ── AI Insights (Dashboard panel) ──
+export const mockClubInsights = [
+  {
+    id: 'demo-insight-1',
+    type: 'member_retention',
+    priority: 'high',
+    title: '32 members at risk of churning',
+    description: '4 critical (inactive 30+ days) and 28 at-risk (frequency down 30-45%). Estimated revenue at risk: $2,816/month.',
+    actionLink: '/reactivation',
+  },
+  {
+    id: 'demo-insight-2',
+    type: 'court_optimization',
+    priority: 'high',
+    title: 'Tuesday morning occupancy 38% — well below avg',
+    description: '3 of 4 Tuesday morning slots are Beginner Drill. Only 3.2% of your members are Beginners. Convert 2 slots to Intermediate Open Play (+$1,260/mo projected).',
+    actionLink: '/programming',
+  },
+  {
+    id: 'demo-insight-3',
+    type: 'growth',
+    priority: 'medium',
+    title: '23 trial members haven\'t booked their first session',
+    description: 'Welcome window is closing. Personalized first-booking outreach with 50% off has historically converted at 35%.',
+    actionLink: '/advisor?prompt=Draft+first-booking+outreach+for+trial+members',
+  },
+  {
+    id: 'demo-insight-4',
+    type: 'schedule',
+    priority: 'medium',
+    title: '6 underbooked sessions this week',
+    description: 'Slot Filler can match 47 members whose preferences fit these slots. Projected fill rate: 74%, +$540 weekly revenue.',
+    actionLink: '/slot-filler',
+  },
+  {
+    id: 'demo-insight-5',
+    type: 'alert',
+    priority: 'low',
+    title: 'Email deliverability drift on Friday morning digest',
+    description: 'Open rate dropped from 28% to 19% week-over-week. Likely cause: subject line variant introduced 6 days ago.',
+    actionLink: '/campaigns',
+  },
+]
+
 // ── Player profile (deep-link from MembersIQ / SessionDetailIQ → PlayerProfileIQ) ──
 export function mockPlayerProfile(userId: string) {
   // Pick a deterministic-but-varied name from the synthetic generator pool.

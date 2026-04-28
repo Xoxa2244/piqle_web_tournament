@@ -21,6 +21,8 @@ import {
   mockWinBackSnapshot,
   mockReferralSnapshot,
   mockAIRevenueAttribution,
+  mockOccupancyHeatmap,
+  mockClubInsights,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -457,7 +459,7 @@ export function useOccupancyHeatmap(clubId: string, days = 90) {
     { clubId, days },
     { enabled: !!clubId && !isDemo, staleTime: 5 * 60 * 1000 }
   )
-  if (isDemo) return { data: null, isLoading: false, error: null }
+  if (isDemo) return { data: mockOccupancyHeatmap() as any, isLoading: false, error: null }
   return query
 }
 
