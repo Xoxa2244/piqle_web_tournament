@@ -145,20 +145,26 @@ async function peakHourOverflow(prisma: any, clubId: string): Promise<Insight | 
 
 // ── 3. VIP Members at Risk ──
 async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | null> {
+  // Membership data lives on users.membership_type / membership_status now,
+  // not document_embeddings.csv_import (that source isn't populated for
+  // most clubs). Monthly dues are extracted from the membership_type
+  // label, which CourtReserve embeds (e.g. "Open Play Pass - $49.99/Month").
   const rows: any[] = await prisma.$queryRawUnsafe(`
     WITH vip_members AS (
       SELECT
-        de.source_id AS "userId",
-        de.metadata->>'membership' AS membership,
-        de.metadata->>'membershipStatus' AS status,
-        de.metadata->>'monthlyDues' AS dues
-      FROM document_embeddings de
-      WHERE de.club_id = $1
-        AND de.content_type = 'member'
-        AND de.source_table = 'csv_import'
-        AND de.source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        AND de.metadata->>'membershipStatus' = 'Currently Active'
-        AND (de.metadata->>'membership' ILIKE '%VIP%' OR de.metadata->>'membership' ILIKE '%Premium%' OR de.metadata->>'membership' ILIKE '%Unlimited%')
+        u.id AS "userId",
+        u.membership_type AS membership,
+        -- Parse "$49.99/Month" or "$49.99/mo" out of the membership label
+        NULLIF(SUBSTRING(u.membership_type FROM '\\$([0-9]+(?:\\.[0-9]+)?)\\s*/\\s*(?:Month|mo|month)'), '')::numeric AS dues
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      WHERE cf.club_id = $1
+        AND u.membership_status = 'Active'
+        AND (
+          u.membership_type ILIKE '%VIP%'
+          OR u.membership_type ILIKE '%Premium%'
+          OR u.membership_type ILIKE '%Unlimited%'
+        )
     ),
     last_play AS (
       SELECT
@@ -205,22 +211,22 @@ async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | 
 
 // ── 4. Guest Pass Upsell ──
 async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | null> {
+  // Same source switch: users.membership_type holds CourtReserve's full
+  // pass label, e.g. "Guest Pass - Pay Per Play at Non-Member Rates".
   const rows: any[] = await prisma.$queryRawUnsafe(`
     WITH guest_members AS (
       SELECT
-        de.source_id AS "userId",
-        de.metadata->>'membership' AS membership
-      FROM document_embeddings de
-      WHERE de.club_id = $1
-        AND de.content_type = 'member'
-        AND de.source_table = 'csv_import'
-        AND de.source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        AND de.metadata->>'membershipStatus' = 'Currently Active'
+        u.id AS "userId",
+        u.membership_type AS membership
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      WHERE cf.club_id = $1
+        AND u.membership_status = 'Active'
         AND (
-          de.metadata->>'membership' ILIKE '%guest%'
-          OR de.metadata->>'membership' ILIKE '%pay per%'
-          OR de.metadata->>'membership' ILIKE '%drop%in%'
-          OR de.metadata->>'membership' ILIKE '%trial%'
+          u.membership_type ILIKE '%guest%'
+          OR u.membership_type ILIKE '%pay per%'
+          OR u.membership_type ILIKE '%drop%in%'
+          OR u.membership_type ILIKE '%trial%'
         )
     ),
     booking_counts AS (
@@ -269,14 +275,12 @@ async function suspendedWinback(prisma: any, clubId: string): Promise<Insight | 
   const rows: any[] = await prisma.$queryRawUnsafe(`
     WITH suspended AS (
       SELECT
-        de.source_id AS "userId",
-        de.metadata->>'membership' AS membership
-      FROM document_embeddings de
-      WHERE de.club_id = $1
-        AND de.content_type = 'member'
-        AND de.source_table = 'csv_import'
-        AND de.source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        AND de.metadata->>'membershipStatus' = 'Suspended'
+        u.id AS "userId",
+        u.membership_type AS membership
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      WHERE cf.club_id = $1
+        AND u.membership_status = 'Suspended'
     ),
     recent_activity AS (
       SELECT
@@ -407,24 +411,17 @@ async function dayOfWeekGap(prisma: any, clubId: string): Promise<Insight | null
 
 // ── 8. New Member Onboarding ──
 async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight | null> {
+  // "New" = first booking landed in the last 30 days at this club. Using
+  // first booking instead of csv_import.firstMembershipStartDate (which
+  // isn't populated for most clubs) and instead of cf.created_at (which
+  // is the bulk-import timestamp, not the actual join). Follow-up trigger
+  // is total bookings <= 2 — the same "didn't stick yet" signal.
   const rows: any[] = await prisma.$queryRawUnsafe(`
-    WITH new_members AS (
-      SELECT
-        de.source_id AS "userId",
-        (de.metadata->>'firstMembershipStartDate')::date AS "joinDate"
-      FROM document_embeddings de
-      WHERE de.club_id = $1
-        AND de.content_type = 'member'
-        AND de.source_table = 'csv_import'
-        AND de.source_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-        AND de.metadata->>'membershipStatus' = 'Currently Active'
-        AND de.metadata->>'firstMembershipStartDate' IS NOT NULL
-        AND (de.metadata->>'firstMembershipStartDate')::date >= NOW() - INTERVAL '90 days'
-    ),
-    booking_counts AS (
+    WITH first_play AS (
       SELECT
         b."userId",
-        COUNT(*) AS "bookingCount"
+        MIN(ps.date) AS "firstPlayed",
+        COUNT(*) AS "totalBookings"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
       WHERE ps."clubId" = $1
@@ -432,12 +429,15 @@ async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight
       GROUP BY b."userId"
     )
     SELECT
-      nm."userId",
-      nm."joinDate",
-      COALESCE(bc."bookingCount", 0) AS "bookingCount"
-    FROM new_members nm
-    LEFT JOIN booking_counts bc ON bc."userId" = nm."userId"
-    WHERE COALESCE(bc."bookingCount", 0) <= 2
+      fp."userId",
+      fp."firstPlayed" AS "joinDate",
+      fp."totalBookings" AS "bookingCount"
+    FROM first_play fp
+    JOIN club_followers cf ON cf.user_id::text = fp."userId"::text AND cf.club_id = $1
+    JOIN users u ON u.id::text = fp."userId"::text
+    WHERE fp."firstPlayed" >= NOW() - INTERVAL '30 days'
+      AND fp."totalBookings" <= 2
+      AND u.membership_status = 'Active'
   `, clubId)
 
   if (!rows || rows.length === 0) return null
