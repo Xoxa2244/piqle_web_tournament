@@ -1068,6 +1068,39 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          {!activeConvId && !isBusy && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
+                <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+              </div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--heading)" }}>Ask me anything about your club</h3>
+              <p className="text-sm mb-6 max-w-md" style={{ color: "var(--t3)" }}>
+                I have access to your sessions, members, bookings, and revenue data. Ask me to analyze trends, build audiences, draft campaigns, or suggest strategies.
+              </p>
+              <div className="grid grid-cols-2 gap-2 max-w-lg">
+                {suggestedPrompts.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <button
+                      key={p.text}
+                      onClick={() => handleSend(p.text)}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left transition-all hover:scale-[1.02]"
+                      style={{
+                        background: "var(--subtle)",
+                        border: "1px solid var(--card-border)",
+                        color: "var(--t2)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+                      <span>{p.text}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Empty state */}
           {Boolean(activeConvId) && loadingConversationId === activeConvId && (
             <div className="flex items-center justify-center h-full">
@@ -1077,7 +1110,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             </div>
           )}
 
-          {visibleMessages.length === 0 && !isBusy && loadingConversationId !== activeConvId && (
+          {Boolean(activeConvId) && visibleMessages.length === 0 && !isBusy && loadingConversationId !== activeConvId && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
                 <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
