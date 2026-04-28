@@ -858,7 +858,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           updateConversationMessages(conversation.id, draftSeedMessages);
           setDraftMessages([]);
         }
-        setVisibleMessages(draftSeedMessages);
       } catch {
         targetConvId = null;
       }
@@ -882,9 +881,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     };
     const optimisticMessages = [...baseMessages, optimisticUserMessage];
     updateConversationMessages(targetConvId, optimisticMessages);
-    if (activeConvIdRef.current === targetConvId || (!activeConvIdRef.current && !targetConvId)) {
-      setVisibleMessages(optimisticMessages);
-    }
+    setVisibleMessages(optimisticMessages);
     setAdvisorActionPending(true);
 
     try {
