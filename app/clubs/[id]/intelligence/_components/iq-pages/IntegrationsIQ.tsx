@@ -1371,9 +1371,46 @@ interface ExcelFile {
   rows: Record<string, any>[]
 }
 
+type PodPlayFileType = 'customers' | 'settlements'
+
+function buildMockRows(count: number, label: string) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${label}-${index + 1}`,
+    name: `${label} ${index + 1}`,
+  }))
+}
+
+const DEMO_COURT_RESERVE_FILES: ExcelFile[] = [
+  { type: 'members', name: 'MembersReport_2026-04-27.xlsx', rows: buildMockRows(186, 'CR Member') },
+  { type: 'reservations', name: 'ReservationReport_2026-04-27.xlsx', rows: buildMockRows(428, 'CR Reservation') },
+  { type: 'events', name: 'EventRegistrantsReport_2026-04-27.xlsx', rows: buildMockRows(64, 'CR Event') },
+]
+
+const DEMO_PODPLAY_FILES: Record<PodPlayFileType, { name: string; rows: any[] }> = {
+  customers: { name: 'Customers_2026-04-27.csv', rows: buildMockRows(142, 'PP Customer') },
+  settlements: { name: '3 files (391 rows)', rows: buildMockRows(391, 'PP Settlement') },
+}
+
+const DEMO_COURT_RESERVE_RESULT = {
+  members: { created: 186, updated: 24, errors: 0 },
+  sessions: { created: 64, updated: 12, errors: 0 },
+  bookings: { created: 428, updated: 37, errors: 0 },
+}
+
+const DEMO_PODPLAY_RESULT = {
+  courts: { created: 8, updated: 0, errors: 0 },
+  members: { created: 142, updated: 18, matched: 97, errors: 0 },
+  sessions: { created: 54, updated: 6, errors: 0 },
+  bookings: { created: 391, updated: 22, errors: 0 },
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function ExcelImportSection({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
-  const [files, setFiles] = useState<ExcelFile[]>([])
+  const [files, setFiles] = useState<ExcelFile[]>(() => DEMO_COURT_RESERVE_FILES.map((file) => ({ ...file, rows: [...file.rows] })))
   const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
   const [result, setResult] = useState<any>(null)
@@ -1424,6 +1461,26 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
     setError(null)
     setResult(null)
     setProgress({ current: '', done: [], errors: [] })
+
+    const usingDemoFiles =
+      files.length === DEMO_COURT_RESERVE_FILES.length &&
+      DEMO_COURT_RESERVE_FILES.every((demoFile) => {
+        const activeFile = files.find((file) => file.type === demoFile.type)
+        return activeFile?.name === demoFile.name
+      })
+
+    if (usingDemoFiles) {
+      for (const file of files) {
+        setProgress((prev) => ({ ...prev, current: file.name }))
+        await wait(250)
+        setProgress((prev) => ({ ...prev, done: [...prev.done, file.name] }))
+      }
+
+      setResult(DEMO_COURT_RESERVE_RESULT)
+      setProgress((prev) => ({ ...prev, current: '' }))
+      setImporting(false)
+      return
+    }
 
     const combined: any = { members: { created: 0, updated: 0, errors: 0 }, sessions: { created: 0, updated: 0, errors: 0 }, bookings: { created: 0, updated: 0, errors: 0 } }
     let hadErrors = false
@@ -1634,14 +1691,12 @@ function ExcelImportSection({ clubId }: { clubId: string }) {
 
 // ── PodPlay CSV Import ──
 
-type PodPlayFileType = 'customers' | 'settlements'
-
 function PodPlayImportSection({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
-  const [files, setFiles] = useState<Record<PodPlayFileType, { name: string; rows: any[] } | null>>({
-    customers: null,
-    settlements: null,
-  })
+  const [files, setFiles] = useState<Record<PodPlayFileType, { name: string; rows: any[] } | null>>(() => ({
+    customers: { ...DEMO_PODPLAY_FILES.customers, rows: [...DEMO_PODPLAY_FILES.customers.rows] },
+    settlements: { ...DEMO_PODPLAY_FILES.settlements, rows: [...DEMO_PODPLAY_FILES.settlements.rows] },
+  }))
   const [importing, setImporting] = useState(false)
   const [progress, setProgress] = useState<{ current: string; done: string[]; errors: string[] }>({ current: '', done: [], errors: [] })
   const [result, setResult] = useState<any>(null)
@@ -1716,6 +1771,26 @@ function PodPlayImportSection({ clubId }: { clubId: string }) {
     setImporting(true)
     setResult(null)
     setProgress({ current: '', done: [], errors: [] })
+
+    const usingDemoFiles =
+      files.customers?.name === DEMO_PODPLAY_FILES.customers.name &&
+      files.settlements?.name === DEMO_PODPLAY_FILES.settlements.name
+
+    if (usingDemoFiles) {
+      const order: PodPlayFileType[] = ['customers', 'settlements']
+      for (const type of order) {
+        const file = files[type]
+        if (!file) continue
+        setProgress((prev) => ({ ...prev, current: type }))
+        await wait(250)
+        setProgress((prev) => ({ ...prev, done: [...prev.done, type] }))
+      }
+
+      setResult(DEMO_PODPLAY_RESULT)
+      setProgress((prev) => ({ ...prev, current: '' }))
+      setImporting(false)
+      return
+    }
 
     const merged: any = {
       courts: { created: 0, updated: 0, errors: 0 },
