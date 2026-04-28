@@ -57,6 +57,14 @@ interface Conversation {
   updatedAt: string;
 }
 
+type AdvisorUiMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: Array<{ type: 'text'; text: string }>;
+  createdAt?: Date;
+  metadata?: unknown;
+};
+
 /* --- Typing Indicator --- */
 function TypingIndicator() {
   return (
@@ -587,6 +595,8 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<Record<string, AdvisorUiMessage[]>>({});
+  const [draftMessages, setDraftMessages] = useState<AdvisorUiMessage[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   // /api/ai/advisor-action goes OUTSIDE useChat's streaming flow (plain
@@ -602,6 +612,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // Track conversation ID from API response without re-creating transport mid-stream
   const convIdRef = useRef<string | null>(null);
   const activeConvIdRef = useRef<string | null>(null);
+  const streamConvIdRef = useRef<string | null>(null);
   const pendingConvIdRef = useRef<string | null>(null);
   const appliedPromptRef = useRef<string | null>(null);
   const pendingGuestTrialContextRef = useRef<GuestTrialExecutionContext | null>(null);
@@ -645,6 +656,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // POST so every place that cares about "AI is working" (send button
   // disabled, typing indicator, suggestions hidden) stays truthful.
   const isBusy = status === 'submitted' || status === 'streaming' || advisorActionPending;
+  const visibleMessages = activeConvId ? (conversationMessages[activeConvId] || []) : draftMessages;
 
   const refreshConversations = useCallback(() => {
     fetch(`/api/ai/conversations?clubId=${clubId}`)
@@ -652,6 +664,34 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       .then(data => setConversations(data.conversations || []))
       .catch(() => {});
   }, [clubId]);
+
+  const mapStoredMessages = useCallback((items: any[]): AdvisorUiMessage[] => (
+    (items || [])
+      .filter((m: any) => m.role !== 'system')
+      .map((m: any) => ({
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        parts: [{ type: 'text' as const, text: m.content }],
+        createdAt: new Date(m.createdAt),
+        metadata: m.metadata ?? undefined,
+      }))
+  ), []);
+
+  const updateConversationMessages = useCallback((
+    targetConvId: string | null,
+    updater: AdvisorUiMessage[] | ((prev: AdvisorUiMessage[]) => AdvisorUiMessage[]),
+  ) => {
+    if (!targetConvId) {
+      setDraftMessages((prev) => typeof updater === 'function' ? updater(prev) : updater);
+      return;
+    }
+
+    setConversationMessages((prev) => {
+      const current = prev[targetConvId] || [];
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return { ...prev, [targetConvId]: next };
+    });
+  }, []);
 
   const createConversation = useCallback(async (titleSource: string) => {
     const response = await fetch('/api/ai/conversations', {
@@ -684,9 +724,15 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const deleteConversation = trpc.intelligence.deleteConversation.useMutation({
     onSuccess: (_result, variables) => {
       setConversations((prev) => prev.filter((conv) => conv.id !== variables.conversationId));
+      setConversationMessages((prev) => {
+        const next = { ...prev };
+        delete next[variables.conversationId];
+        return next;
+      });
       if (activeConvId === variables.conversationId) {
         setActiveConvId(null);
         setConversationId(null);
+        setDraftMessages([]);
         setMessages([]);
       }
     },
@@ -696,11 +742,25 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   useEffect(() => {
     if (!isBusy && pendingConvIdRef.current) {
       setConversationId(pendingConvIdRef.current);
-      setActiveConvId(pendingConvIdRef.current);
+      if (!activeConvIdRef.current) {
+        setActiveConvId(pendingConvIdRef.current);
+      }
       pendingConvIdRef.current = null;
       refreshConversations();
     }
   }, [isBusy, refreshConversations]);
+
+  useEffect(() => {
+    const streamConvId = streamConvIdRef.current;
+    if (!streamConvId) return;
+
+    setConversationMessages((prev) => ({ ...prev, [streamConvId]: messages as AdvisorUiMessage[] }));
+
+    if (status !== 'submitted' && status !== 'streaming') {
+      streamConvIdRef.current = null;
+      refreshConversations();
+    }
+  }, [messages, refreshConversations, status]);
 
   // Load conversation list on mount
   useEffect(() => {
@@ -735,21 +795,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       const res = await fetch(`/api/ai/conversations/${convId}/messages`);
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(
-        (data.messages || [])
-          .filter((m: any) => m.role !== 'system')
-          .map((m: any) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            parts: [{ type: 'text' as const, text: m.content }],
-              createdAt: new Date(m.createdAt),
-              metadata: m.metadata ?? undefined,
-            }))
-      );
+      const nextMessages = mapStoredMessages(data.messages || []);
+      setConversationMessages((prev) => ({ ...prev, [convId]: nextMessages }));
       setConversationId(convId);
       setActiveConvId(convId);
+
+      if (!streamConvIdRef.current || streamConvIdRef.current === convId) {
+        setMessages(nextMessages);
+      }
     } catch { /* ignore */ }
-  }, [setMessages]);
+  }, [mapStoredMessages, setMessages]);
 
   useEffect(() => {
     const requestedConversationId = searchParams.get('conversationId');
@@ -761,13 +816,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isBusy]);
+  }, [isBusy, visibleMessages]);
 
   const startNewChat = useCallback(() => {
     pendingConvIdRef.current = null;
     setActiveConvId(null);
     setConversationId(null);
-    setMessages([]);
+    setDraftMessages([]);
+    if (!streamConvIdRef.current) {
+      setMessages([]);
+    }
     setInputValue("");
     inputRef.current?.focus();
   }, [setMessages]);
@@ -777,6 +835,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     if (!msg || isBusy) return;
     setInputValue("");
 
+    const draftSeedMessages = draftMessages;
     let targetConvId = convIdRef.current;
     if (!targetConvId) {
       try {
@@ -785,10 +844,18 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         convIdRef.current = conversation.id;
         setConversationId(conversation.id);
         setActiveConvId(conversation.id);
+        if (draftSeedMessages.length > 0) {
+          updateConversationMessages(conversation.id, draftSeedMessages);
+          setDraftMessages([]);
+        }
       } catch {
         targetConvId = null;
       }
     }
+
+    const baseMessages = targetConvId
+      ? (conversationMessages[targetConvId] || draftSeedMessages)
+      : draftSeedMessages;
 
     // Optimistic UI: push the user's message immediately so the typing
     // indicator + bubble show up the moment the chip/Send is clicked.
@@ -796,15 +863,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // without this, the whole page looks frozen and users click the chip
     // a second time assuming nothing happened.
     const optimisticUserMsgId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: optimisticUserMsgId,
-        role: 'user',
-        parts: [{ type: 'text' as const, text: msg }],
-        createdAt: new Date(),
-      },
-    ]);
+    const optimisticUserMessage: AdvisorUiMessage = {
+      id: optimisticUserMsgId,
+      role: 'user',
+      parts: [{ type: 'text' as const, text: msg }],
+      createdAt: new Date(),
+    };
+    updateConversationMessages(targetConvId, [...baseMessages, optimisticUserMessage]);
     setAdvisorActionPending(true);
 
     try {
@@ -831,20 +896,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             setConversationId(nextConvId);
           }
 
-          if (activeConvIdRef.current === nextConvId || (!activeConvIdRef.current && !nextConvId)) {
-            // User message already optimistically added — only append the
-            // assistant reply so we don't duplicate.
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: payload.assistantMessageId || crypto.randomUUID(),
-                role: 'assistant',
-                parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-                createdAt: new Date(),
-                metadata: payload.assistantMetadata ?? undefined,
-              },
-            ]);
-          }
+          updateConversationMessages(nextConvId || targetConvId, (prev) => [
+            ...prev,
+            {
+              id: payload.assistantMessageId || crypto.randomUUID(),
+              role: 'assistant',
+              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+              createdAt: new Date(),
+              metadata: payload.assistantMetadata ?? undefined,
+            },
+          ]);
           void refetchAdvisorDrafts();
           refreshConversations();
           setAdvisorActionPending(false);
@@ -862,11 +923,20 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // Fallback to the useChat stream path. Drop the optimistic user
     // message first — useChat appends its own, and duplicates would
     // leak into the DB conversation history on save.
-    setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsgId));
+    updateConversationMessages(targetConvId, baseMessages);
     pendingGuestTrialContextRef.current = null;
     pendingReferralContextRef.current = null;
+    if (targetConvId) {
+      streamConvIdRef.current = targetConvId;
+      convIdRef.current = targetConvId;
+      setConversationId(targetConvId);
+      setMessages(baseMessages);
+    } else {
+      streamConvIdRef.current = null;
+      setMessages(baseMessages);
+    }
     sendMessage({ text: msg });
-  }, [clubId, createConversation, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
+  }, [clubId, conversationMessages, createConversation, draftMessages, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages, updateConversationMessages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -973,7 +1043,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Empty state */}
-          {messages.length === 0 && !isBusy && (
+          {visibleMessages.length === 0 && !isBusy && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
                 <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
@@ -1007,7 +1077,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           )}
 
           <AnimatePresence>
-            {messages.map((msg, msgIdx) => {
+            {visibleMessages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
               const action = msg.role === 'assistant'
                 ? getAdvisorActionFromMetadata((msg as any).metadata) || extractAdvisorAction(text)
@@ -1034,7 +1104,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               }
               // Skip assistant messages with no text/action/queue
               if (msg.role === 'assistant' && !textWithoutAction.trim() && !action && !pendingQueue) return null;
-              const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
+              const isLastAssistant = msg.role === 'assistant' && msgIdx === visibleMessages.length - 1;
               const { cleanText, suggestions } = msg.role === 'assistant'
                 ? extractSuggestions(textWithoutAction)
                 : { cleanText: text, suggestions: [] };
@@ -1185,7 +1255,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           </AnimatePresence>
 
           {/* Loading indicator when waiting for first response chunk */}
-          {isBusy && messages[messages.length - 1]?.role === 'user' && (
+          {isBusy && visibleMessages[visibleMessages.length - 1]?.role === 'user' && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
                 <Sparkles className="w-4 h-4 text-white" />
