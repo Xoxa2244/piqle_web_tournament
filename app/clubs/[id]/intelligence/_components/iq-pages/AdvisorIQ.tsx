@@ -1069,7 +1069,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Empty state */}
-          {loadingConversationId === activeConvId && (
+          {Boolean(activeConvId) && loadingConversationId === activeConvId && (
             <div className="flex items-center justify-center h-full">
               <div className="rounded-2xl px-4 py-3" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
                 <TypingIndicator />
