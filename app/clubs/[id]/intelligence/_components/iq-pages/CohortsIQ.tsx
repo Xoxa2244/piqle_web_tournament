@@ -1196,7 +1196,11 @@ function QuickCampaignModal({ clubId, cohort, onClose }: { clubId: string; cohor
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-6"
-        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+        style={{
+          background: 'var(--bg)',
+          border: '1px solid var(--card-border)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+        }}
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
