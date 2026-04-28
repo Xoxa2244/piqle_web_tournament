@@ -14,12 +14,11 @@ import {
 import { MetricCard } from '../_components/metric-card'
 import { ListSkeleton } from '../_components/skeleton'
 import { EmptyState } from '../_components/empty-state'
-import { useMemberHealth, useSendOutreach, useSendReactivation, useMemberOutreachHistory, useIsDemo, useMemberGrowth, useReactivationCandidates, useMemberAiProfiles, useRegenerateMemberProfiles, useSmartFirstSession, useGuestTrialBooking, useWinBackSnapshot, useReferralSnapshot } from '../_hooks/use-intelligence'
+import { useSendOutreach, useMemberOutreachHistory, useIsDemo } from '../_hooks/use-intelligence'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from '../_hooks/usePageContext'
-import { useBrand } from '@/components/BrandProvider'
-import { MembersIQ } from '../_components/iq-pages/MembersIQ'
-import type { MemberHealthResult, RiskLevel, LifecycleStage } from '@/types/intelligence'
+import { mockMemberHealth } from '../_data/mock'
+import type { MemberHealthData, MemberHealthResult, NormalizedMembershipStatus, RiskLevel, LifecycleStage } from '@/types/intelligence'
 
 // ── Constants ──
 
@@ -36,6 +35,17 @@ const riskConfig: Record<RiskLevel, { color: string; bg: string; border: string;
   at_risk: { color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', label: 'At Risk' },
   watch: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Watch' },
   healthy: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Healthy' },
+}
+
+const membershipConfig: Record<NormalizedMembershipStatus, { color: string; bg: string; border: string; label: string }> = {
+  active: { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Active' },
+  suspended: { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', label: 'Suspended' },
+  expired: { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', label: 'Expired' },
+  cancelled: { color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', label: 'Cancelled' },
+  trial: { color: 'text-cyan-700', bg: 'bg-cyan-50', border: 'border-cyan-200', label: 'Trial' },
+  guest: { color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200', label: 'Guest' },
+  none: { color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200', label: 'No Membership' },
+  unknown: { color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200', label: 'Unknown' },
 }
 
 const stageLabels: Record<LifecycleStage, string> = {
@@ -83,13 +93,9 @@ export default function MembersPage() {
   const [sortAsc, setSortAsc] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const { data, isLoading: healthLoading, error } = useMemberHealth(clubId)
-  const { data: memberGrowthData, isLoading: growthLoading } = useMemberGrowth(clubId)
-  const { data: smartFirstSessionData } = useSmartFirstSession(clubId)
-  const { data: guestTrialBookingData } = useGuestTrialBooking(clubId)
-  const { data: winBackSnapshot } = useWinBackSnapshot(clubId)
-  const { data: referralSnapshot } = useReferralSnapshot(clubId)
-  const isLoading = healthLoading || growthLoading
+  const data = useMemo(() => mockMemberHealth(), [])
+  const isLoading = false
+  const error = null
 
   const setPageContext = useSetPageContext()
   useEffect(() => {
@@ -147,19 +153,6 @@ export default function MembersPage() {
       setSortAsc(false)
     }
   }
-
-  const sendOutreach = useSendOutreach()
-  const sendReactivation = useSendReactivation()
-  const { data: reactivationData } = useReactivationCandidates(clubId, 21)
-  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId)
-  const regenerateProfiles = useRegenerateMemberProfiles()
-  const aiProfilesMap = useMemo(() => {
-    if (!aiProfilesRaw?.length) return {}
-    return Object.fromEntries(aiProfilesRaw.map((p: any) => [p.userId, p]))
-  }, [aiProfilesRaw])
-
-  const brand = useBrand()
-  if (brand.key === 'iqsport') return <MembersIQ memberHealthData={data} memberGrowthData={memberGrowthData} smartFirstSessionData={smartFirstSessionData} guestTrialBookingData={guestTrialBookingData} winBackSnapshot={winBackSnapshot} referralSnapshot={referralSnapshot} isLoading={isLoading} sendOutreach={sendOutreach} sendReactivation={sendReactivation} clubId={clubId} reactivationCandidates={reactivationData?.candidates} aiProfiles={aiProfilesMap} onRegenerateProfiles={() => regenerateProfiles.mutate({ clubId })} />
 
   return (
     <div className="space-y-6">
@@ -265,11 +258,11 @@ export default function MembersPage() {
           </div>
 
           {/* Table header */}
-          <div className="hidden sm:grid grid-cols-[40px_1fr_80px_90px_80px_50px_20px_28px] gap-3 px-3 py-2 text-xs font-semibold text-muted-foreground">
+          <div className="hidden sm:grid grid-cols-[40px_1fr_90px_110px_80px_50px_20px_28px] gap-3 px-3 py-2 text-xs font-semibold text-muted-foreground">
             <div />
             <SortHeader label="Member" sortKey="name" current={sortBy} asc={sortAsc} onClick={handleSort} />
             <SortHeader label="Health" sortKey="health" current={sortBy} asc={sortAsc} onClick={handleSort} />
-            <div>Stage</div>
+            <div>Membership</div>
             <SortHeader label="Last Played" sortKey="lastPlayed" current={sortBy} asc={sortAsc} onClick={handleSort} />
             <SortHeader label="Bookings" sortKey="bookings" current={sortBy} asc={sortAsc} onClick={handleSort} />
             <div>Trend</div>
@@ -303,7 +296,7 @@ export default function MembersPage() {
 
 // ── Risk Distribution Bar ──
 
-function RiskDistributionBar({ summary }: { summary: NonNullable<ReturnType<typeof useMemberHealth>['data']>['summary'] }) {
+function RiskDistributionBar({ summary }: { summary: MemberHealthData['summary'] }) {
   const { total, healthy, watch, atRisk, critical } = summary
   if (total === 0) return null
 
@@ -391,6 +384,8 @@ function MemberRow({
   onToggle: () => void
 }) {
   const risk = riskConfig[m.riskLevel]
+  const membershipStatus = m.normalizedMembershipStatus || 'unknown'
+  const membership = membershipConfig[membershipStatus]
   const daysLabel = m.daysSinceLastBooking === null
     ? 'Never'
     : m.daysSinceLastBooking === 0
@@ -403,7 +398,7 @@ function MemberRow({
     <div className="rounded-xl border border-border/60 bg-card shadow-sm">
       {/* Main row */}
       <div
-        className="flex sm:grid sm:grid-cols-[40px_1fr_80px_90px_80px_50px_20px_28px] items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-xl"
+        className="flex sm:grid sm:grid-cols-[40px_1fr_90px_110px_80px_50px_20px_28px] items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-xl"
         onClick={onToggle}
       >
         {/* Health score badge */}
@@ -432,9 +427,12 @@ function MemberRow({
           {risk.label}
         </Badge>
 
-        {/* Stage */}
-        <Badge variant="secondary" className="text-xs w-full justify-center truncate hidden sm:flex">
-          {stageLabels[m.lifecycleStage]}
+        {/* Membership */}
+        <Badge
+          variant="outline"
+          className={cn('text-xs w-full justify-center truncate hidden sm:flex', membership.color, membership.bg, membership.border)}
+        >
+          {membership.label}
         </Badge>
 
         {/* Last played */}
@@ -543,6 +541,8 @@ function MemberRow({
 
           {/* Quick stats */}
           <div className="flex gap-4 text-xs text-muted-foreground">
+            <span>Stage: <strong className="text-foreground">{stageLabels[m.lifecycleStage]}</strong></span>
+            <span>Plan: <strong className="text-foreground">{m.membershipType || 'Unmapped'}</strong></span>
             <span>Joined: <strong className="text-foreground">{m.joinedDaysAgo}d ago</strong></span>
             <span>Total bookings: <strong className="text-foreground">{m.totalBookings}</strong></span>
             <span>Last played: <strong className="text-foreground">{daysLabel}</strong></span>
