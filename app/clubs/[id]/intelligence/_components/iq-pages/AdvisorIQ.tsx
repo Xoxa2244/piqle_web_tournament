@@ -599,6 +599,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [draftMessages, setDraftMessages] = useState<AdvisorUiMessage[]>([]);
   const [visibleMessages, setVisibleMessages] = useState<AdvisorUiMessage[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   // /api/ai/advisor-action goes OUTSIDE useChat's streaming flow (plain
   // POST → JSON), so `status` from useChat doesn't flip to 'submitted'
@@ -799,7 +800,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     try {
       setActiveConvId(convId);
       setConversationId(convId);
-      setVisibleMessages(conversationMessages[convId] || []);
+      const cachedMessages = conversationMessages[convId] || [];
+      setVisibleMessages(cachedMessages);
+      if (cachedMessages.length === 0) {
+        setLoadingConversationId(convId);
+      }
 
       const res = await fetch(`/api/ai/conversations/${convId}/messages`);
       if (!res.ok) return;
@@ -814,6 +819,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         setMessages(nextMessages);
       }
     } catch { /* ignore */ }
+    finally {
+      setLoadingConversationId((current) => (current === convId ? null : current));
+    }
   }, [conversationMessages, mapStoredMessages, setMessages]);
 
   useEffect(() => {
@@ -830,6 +838,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
 
   const startNewChat = useCallback(() => {
     pendingConvIdRef.current = null;
+    setLoadingConversationId(null);
     setActiveConvId(null);
     setConversationId(null);
     setDraftMessages([]);
@@ -1060,7 +1069,15 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Empty state */}
-          {visibleMessages.length === 0 && !isBusy && (
+          {loadingConversationId === activeConvId && (
+            <div className="flex items-center justify-center h-full">
+              <div className="rounded-2xl px-4 py-3" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                <TypingIndicator />
+              </div>
+            </div>
+          )}
+
+          {visibleMessages.length === 0 && !isBusy && loadingConversationId !== activeConvId && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
                 <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
