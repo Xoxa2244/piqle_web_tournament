@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
-import { mockCohorts, mockCohortDataCoverage } from '../../_data/mock'
+import { mockCohorts, mockCohortDataCoverage, mockMemberHealth } from '../../_data/mock'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
 import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession } from '../../_hooks/use-intelligence'
 
@@ -79,6 +79,83 @@ function formatCohortFilterValue(field: string, value: string | number | string[
 function parseCohortFilters(raw: unknown): CohortFilter[] {
   if (!Array.isArray(raw)) return []
   return raw as CohortFilter[]
+}
+
+function inferDemoSkillLevel(duprRating: number | null | undefined) {
+  if (!duprRating) return null
+  if (duprRating < 3) return 'Beginner'
+  if (duprRating < 4) return 'Intermediate'
+  return 'Advanced'
+}
+
+function toDemoCohortMember(entry: any, index: number) {
+  const duprRating = entry?.member?.duprRatingDoubles ?? null
+  return {
+    id: entry.memberId,
+    name: entry?.member?.name || 'Unnamed',
+    email: entry?.member?.email || '',
+    age: 22 + ((index * 7) % 45),
+    gender: entry?.member?.gender || null,
+    duprRating,
+    membershipType: entry?.membershipType || null,
+    normalizedMembershipType: entry?.normalizedMembershipType || null,
+    normalizedMembershipStatus: entry?.normalizedMembershipStatus || null,
+    skillLevel: inferDemoSkillLevel(duprRating),
+    healthScore: entry?.healthScore ?? null,
+    riskLevel: entry?.riskLevel ?? null,
+    lifecycleStage: entry?.lifecycleStage ?? null,
+    joinedDaysAgo: entry?.joinedDaysAgo ?? null,
+    daysSinceLastBooking: entry?.daysSinceLastBooking ?? null,
+    totalBookings: entry?.totalBookings ?? 0,
+    totalRevenue: entry?.totalRevenue ?? entry?.totalBookings ?? 0,
+  }
+}
+
+function buildDemoCohortMembers(cohortId: string) {
+  const source = mockMemberHealth().members
+  const members = source.map((entry, index) => toDemoCohortMember(entry, index))
+  const byHealthDesc = [...members].sort((a, b) => (b.healthScore || 0) - (a.healthScore || 0))
+  const byBookingsDesc = [...members].sort((a, b) => (b.totalBookings || 0) - (a.totalBookings || 0))
+  const byNewest = [...members].sort((a, b) => (a.joinedDaysAgo || 999) - (b.joinedDaysAgo || 999))
+  const byRisk = [...members].sort((a, b) => (b.daysSinceLastBooking || 0) - (a.daysSinceLastBooking || 0))
+
+  switch (cohortId) {
+    case 'demo-coh-1':
+      return byHealthDesc.filter((m) =>
+        ['unlimited', 'monthly', 'package'].includes(m.normalizedMembershipType || '') &&
+        (m.healthScore || 0) >= 82
+      ).slice(0, 12)
+    case 'demo-coh-2':
+      return byRisk.filter((m) => ['at_risk', 'critical'].includes(m.riskLevel || '')).slice(0, 12)
+    case 'demo-coh-3':
+      return byNewest.filter((m) =>
+        ['onboarding', 'ramping'].includes(m.lifecycleStage || '') || (m.joinedDaysAgo || 999) <= 45
+      ).slice(0, 12)
+    case 'demo-coh-4':
+      return byBookingsDesc.filter((m) =>
+        ['healthy', 'watch'].includes(m.riskLevel || '') &&
+        (m.totalBookings || 0) >= 18 &&
+        (m.totalBookings || 0) <= 40
+      ).slice(0, 12)
+    case 'demo-coh-5':
+      return byNewest.filter((m) => (m.duprRating || 99) < 3).slice(0, 12)
+    case 'demo-coh-6':
+      return byRisk.filter((m) =>
+        ['trial', 'guest', 'none'].includes(m.normalizedMembershipStatus || '') &&
+        (m.joinedDaysAgo || 0) >= 14 &&
+        (m.joinedDaysAgo || 999) <= 60
+      ).slice(0, 12)
+    case 'demo-coh-7':
+      return byBookingsDesc.filter((m) =>
+        ['healthy', 'watch'].includes(m.riskLevel || '') &&
+        (m.totalBookings || 0) >= 16 &&
+        (m.totalBookings || 0) <= 35
+      ).slice(0, 12)
+    case 'demo-coh-8':
+      return byHealthDesc.filter((m) => (m.age || 0) >= 60).slice(0, 12)
+    default:
+      return byHealthDesc.slice(0, 12)
+  }
 }
 
 function buildCohortAdvisorHref(clubId: string, prompt: string) {
@@ -368,6 +445,7 @@ export default function CohortsIQ() {
           <CohortDetail
             clubId={clubId}
             cohortId={selectedCohortId}
+            isDemo={isDemo}
             onClose={() => setSelectedCohortId(null)}
           />
         )}
@@ -1459,10 +1537,19 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
 }
 
 // ── Cohort Detail View ──
-function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId: string; onClose: () => void }) {
-  const { data, isLoading } = trpc.intelligence.getCohortMembers.useQuery({ clubId, cohortId })
+function CohortDetail({ clubId, cohortId, isDemo, onClose }: { clubId: string; cohortId: string; isDemo: boolean; onClose: () => void }) {
+  const { data, isLoading } = trpc.intelligence.getCohortMembers.useQuery(
+    { clubId, cohortId },
+    { enabled: !isDemo }
+  )
+  const demoCohort = useMemo(() => (
+    isDemo ? (mockCohorts.find((cohort) => cohort.id === cohortId) as any) : null
+  ), [cohortId, isDemo])
+  const demoMembers = useMemo(() => (
+    isDemo ? buildDemoCohortMembers(cohortId) : []
+  ), [cohortId, isDemo])
 
-  if (isLoading) {
+  if (!isDemo && isLoading) {
     return (
       <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div className="space-y-3">
@@ -1472,8 +1559,8 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
     )
   }
 
-  const cohort = data?.cohort as any
-  const members = (data?.members || []) as any[]
+  const cohort = (isDemo ? demoCohort : data?.cohort) as any
+  const members = ((isDemo ? demoMembers : (data?.members || [])) as any[])
 
   return (
     <motion.div
@@ -1506,7 +1593,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
       </div>
 
       {/* AI Campaign Strategies — primary action */}
-      <CohortCampaignSuggestion clubId={clubId} cohortId={cohortId} memberCount={members.length} />
+      <CohortCampaignSuggestion clubId={clubId} cohortId={cohortId} memberCount={members.length} isDemo={isDemo} />
 
       {/* Members list */}
       <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
@@ -1556,7 +1643,7 @@ const STRATEGY_STYLES: Record<string, { gradient: string; icon: string; label: s
 }
 
 // ── AI Campaign Suggestions ──
-function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: string; cohortId: string; memberCount: number }) {
+function CohortCampaignSuggestion({ clubId, cohortId, memberCount, isDemo }: { clubId: string; cohortId: string; memberCount: number; isDemo: boolean }) {
   const [campaigns, setCampaigns] = useState<any[] | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
   const generateMutation = trpc.intelligence.generateCohortCampaign.useMutation({
@@ -1567,6 +1654,28 @@ function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: s
   })
 
   if (memberCount === 0) return null
+
+  if (isDemo) {
+    return (
+      <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+            <Sparkles className="w-4 h-4 inline mr-1.5" style={{ color: '#F59E0B' }} />
+            Demo Campaign Angle
+          </h3>
+          <span className="text-[10px] px-2.5 py-1 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6', fontWeight: 700 }}>
+            Mock preview
+          </span>
+        </div>
+        <p className="text-sm" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+          This segment is ready for a targeted outreach draft.
+        </p>
+        <p className="text-xs mt-2" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
+          We&apos;re showing demo members here, so the cohort preview opens with realistic people instead of an empty state. Campaign generation can be wired to real cohort ids later.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
