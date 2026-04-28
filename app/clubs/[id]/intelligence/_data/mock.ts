@@ -1351,6 +1351,65 @@ function mkHealth(
 
 const c = (s: number, w: number, l: string): HealthScoreComponent => ({ score: s, weight: w, label: l })
 
+type DemoMembershipProfile = Pick<
+  MemberHealthResult,
+  'membershipType' | 'membershipStatus' | 'normalizedMembershipType' | 'normalizedMembershipStatus' | 'membershipConfidence' | 'membershipSignal'
+>
+
+function demoMembershipProfileFor(
+  riskLevel: RiskLevel,
+  stage: LifecycleStage,
+  totalBookings: number,
+  index: number,
+): DemoMembershipProfile {
+  const activeProfiles: DemoMembershipProfile[] = [
+    { membershipType: 'Annual Unlimited', membershipStatus: 'Currently Active', normalizedMembershipType: 'unlimited', normalizedMembershipStatus: 'active', membershipConfidence: 0.98, membershipSignal: 'strong' },
+    { membershipType: 'Monthly Plus', membershipStatus: 'Currently Active', normalizedMembershipType: 'monthly', normalizedMembershipStatus: 'active', membershipConfidence: 0.96, membershipSignal: 'strong' },
+    { membershipType: '10-Session Package', membershipStatus: 'Currently Active', normalizedMembershipType: 'package', normalizedMembershipStatus: 'active', membershipConfidence: 0.94, membershipSignal: 'strong' },
+    { membershipType: 'Insurance Plan', membershipStatus: 'Currently Active', normalizedMembershipType: 'insurance', normalizedMembershipStatus: 'active', membershipConfidence: 0.9, membershipSignal: 'strong' },
+    { membershipType: 'Discounted Monthly', membershipStatus: 'Currently Active', normalizedMembershipType: 'discounted', normalizedMembershipStatus: 'active', membershipConfidence: 0.9, membershipSignal: 'strong' },
+    { membershipType: 'Staff Comp', membershipStatus: 'Currently Active', normalizedMembershipType: 'staff', normalizedMembershipStatus: 'active', membershipConfidence: 0.88, membershipSignal: 'strong' },
+  ]
+
+  const inactiveProfiles: DemoMembershipProfile[] = [
+    { membershipType: 'Annual Unlimited', membershipStatus: 'Expired', normalizedMembershipType: 'unlimited', normalizedMembershipStatus: 'expired', membershipConfidence: 0.95, membershipSignal: 'strong' },
+    { membershipType: 'Monthly Plus', membershipStatus: 'Cancelled', normalizedMembershipType: 'monthly', normalizedMembershipStatus: 'cancelled', membershipConfidence: 0.92, membershipSignal: 'strong' },
+    { membershipType: '10-Session Package', membershipStatus: 'Expired', normalizedMembershipType: 'package', normalizedMembershipStatus: 'expired', membershipConfidence: 0.9, membershipSignal: 'strong' },
+    { membershipType: 'Monthly Plus', membershipStatus: 'Suspended', normalizedMembershipType: 'monthly', normalizedMembershipStatus: 'suspended', membershipConfidence: 0.88, membershipSignal: 'strong' },
+    { membershipType: 'Drop-In Pass', membershipStatus: 'No Membership', normalizedMembershipType: 'drop_in', normalizedMembershipStatus: 'none', membershipConfidence: 0.82, membershipSignal: 'weak' },
+  ]
+
+  const newcomerProfiles: DemoMembershipProfile[] = [
+    { membershipType: 'Intro Trial', membershipStatus: 'Trial', normalizedMembershipType: 'trial', normalizedMembershipStatus: 'trial', membershipConfidence: 0.94, membershipSignal: 'strong' },
+    { membershipType: 'Guest Pass', membershipStatus: 'Guest', normalizedMembershipType: 'guest', normalizedMembershipStatus: 'guest', membershipConfidence: 0.92, membershipSignal: 'strong' },
+    { membershipType: 'Drop-In Pass', membershipStatus: 'No Membership', normalizedMembershipType: 'drop_in', normalizedMembershipStatus: 'none', membershipConfidence: 0.82, membershipSignal: 'weak' },
+  ]
+
+  if (stage === 'onboarding' || stage === 'ramping') {
+    return newcomerProfiles[index % newcomerProfiles.length]
+  }
+
+  if (riskLevel === 'critical' || stage === 'churned') {
+    return inactiveProfiles[index % inactiveProfiles.length]
+  }
+
+  if (riskLevel === 'at_risk') {
+    return index % 4 === 0
+      ? inactiveProfiles[index % inactiveProfiles.length]
+      : activeProfiles[(index + totalBookings) % activeProfiles.length]
+  }
+
+  if (riskLevel === 'watch' && index % 6 === 0) {
+    return inactiveProfiles[3]
+  }
+
+  if (riskLevel === 'watch' && index % 5 === 0) {
+    return newcomerProfiles[2]
+  }
+
+  return activeProfiles[(index + totalBookings) % activeProfiles.length]
+}
+
 export function mockMemberHealth(): MemberHealthData {
   const members: MemberHealthResult[] = [
     // ── Critical (4) ──
@@ -1478,7 +1537,10 @@ export function mockMemberHealth(): MemberHealthData {
 
     // ── Synthetic procedural members to bring total to 1500 ──
     ...generateSyntheticHealthMembers(1450, 51),
-  ]
+  ].map((member, index) => ({
+    ...member,
+    ...demoMembershipProfileFor(member.riskLevel, member.lifecycleStage, member.totalBookings, index + 1),
+  }))
 
   const total = members.length
   const healthy = members.filter(m => m.riskLevel === 'healthy').length

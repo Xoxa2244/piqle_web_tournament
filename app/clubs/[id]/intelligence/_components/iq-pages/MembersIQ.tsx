@@ -1112,9 +1112,13 @@ function buildReferredGuestFollowUpPrompt(input: {
   }
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = "", ...props }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl p-5 ${className}`} style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}>
+    <div
+      {...props}
+      className={`rounded-2xl p-5 ${className}`}
+      style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)", ...props.style }}
+    >
       {children}
     </div>
   );
@@ -3868,8 +3872,19 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.04 }}
             >
-              <Card className="cursor-pointer transition-all hover:scale-[1.02]">
-                <div onClick={() => setSelectedPlayerId(member.id)} className="flex items-start gap-3 mb-4">
+              <Card
+                className="cursor-pointer transition-all hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-violet-400/50"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedPlayerId(member.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedPlayerId(member.id);
+                  }
+                }}
+              >
+                <div className="flex items-start gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-sm text-white shrink-0"
                     style={{ background: `linear-gradient(135deg, ${segmentConfig[member.segment].color}, ${segmentConfig[member.segment].color}99)`, fontWeight: 700 }}
@@ -3899,7 +3914,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                           {formatNormalizedMembershipType(member.normalizedMembershipType)}
                         </span>
                       )}
-                      {formatNormalizedMembershipStatus(member.normalizedMembershipStatus) && member.normalizedMembershipStatus !== 'active' && (
+                      {formatNormalizedMembershipStatus(member.normalizedMembershipStatus) && (
                         <span className="px-1.5 py-0.5 rounded text-[9px]" style={{
                           background: getNormalizedMembershipStatusStyle(member.normalizedMembershipStatus).bg,
                           color: getNormalizedMembershipStatusStyle(member.normalizedMembershipStatus).text,
@@ -4033,7 +4048,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                     {formatNormalizedMembershipType(member.normalizedMembershipType) && (
                       <span>{formatNormalizedMembershipType(member.normalizedMembershipType)}</span>
                     )}
-                    {formatNormalizedMembershipStatus(member.normalizedMembershipStatus) && member.normalizedMembershipStatus !== 'active' && (
+                    {formatNormalizedMembershipStatus(member.normalizedMembershipStatus) && (
                       <span>{formatNormalizedMembershipStatus(member.normalizedMembershipStatus)}</span>
                     )}
                   </div>
