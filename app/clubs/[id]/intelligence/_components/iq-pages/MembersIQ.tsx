@@ -1470,6 +1470,18 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const realMembers = mapRealMembers(memberHealthData);
   const allMembers = realMembers.length > 0 ? realMembers : [];
 
+  // Counts for Quick view presets — shown next to each item in the
+  // dropdown so admin sees the size of each segment before clicking.
+  const presetCounts = useMemo(() => ({
+    all: allMembers.length,
+    'at-risk': allMembers.filter(m => m.segment === 'at-risk').length,
+    critical: allMembers.filter(m => m.segment === 'critical').length,
+    vip: allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length,
+    trial: allMembers.filter(m => m.normalizedMembershipType === 'trial').length,
+    inactive: allMembers.filter(m => m.activityLevel === 'occasional').length,
+    power: allMembers.filter(m => m.activityLevel === 'power').length,
+  }), [allMembers])
+
   // Member growth chart — from real data
   const displayMemberGrowth = memberGrowthData?.growth?.length
     ? memberGrowthData.growth.map((g: any) => ({
@@ -1878,15 +1890,33 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Members</h1>
           <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>360° member profiles with health scores and segments</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
-          style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Member
-        </motion.button>
+        <div className="flex items-center gap-2">
+          {/* P2-T8: Insights moved here from the toolbar — it's a "look at the
+              data" CTA, not a list-affecting filter, so it sits next to the
+              other page-level CTAs (Add Member). */}
+          <button
+            onClick={() => setChartsDrawerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all"
+            style={{
+              background: "var(--subtle)",
+              color: "var(--t2)",
+              fontWeight: 600,
+              border: "1px solid var(--card-border)",
+            }}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Insights
+          </button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
+            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </motion.button>
+        </div>
       </div>
 
       {/* View Subtabs */}
@@ -3805,21 +3835,6 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               )}
             </button>
 
-            {/* Insights drawer trigger — KPI strip + Period selector + 3 trend charts */}
-            <button
-              onClick={() => setChartsDrawerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
-              style={{
-                background: "var(--subtle)",
-                color: "var(--t3)",
-                fontWeight: 600,
-                border: "1px solid var(--card-border)",
-              }}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Insights
-            </button>
-
             {/* Quick presets dropdown */}
             <div className="relative">
               <button
@@ -3843,11 +3858,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                     onClick={() => setPresetMenuOpen(false)}
                   />
                   <div
-                    className="absolute right-0 mt-2 z-30 rounded-xl py-1 min-w-[180px]"
+                    className="absolute right-0 mt-2 z-30 rounded-xl py-1 min-w-[220px] backdrop-blur-md"
                     style={{
-                      background: "var(--card-bg)",
+                      background: isDark ? "#15151F" : "#FFFFFF",
                       border: "1px solid var(--card-border)",
-                      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
                     }}
                   >
                     {[
@@ -3858,18 +3873,33 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                       { key: "trial", label: "Trial members" },
                       { key: "inactive", label: "Inactive" },
                       { key: "power", label: "Power players" },
-                    ].map(p => (
-                      <button
-                        key={p.key}
-                        onClick={() => { applyPreset(p.key); setPresetMenuOpen(false); }}
-                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
-                        style={{ color: "var(--t2)" }}
-                        onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "var(--hover)"; }}
-                        onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "transparent"; }}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                    ].map(p => {
+                      const count = presetCounts[p.key as keyof typeof presetCounts] ?? 0
+                      return (
+                        <button
+                          key={p.key}
+                          onClick={() => { applyPreset(p.key); setPresetMenuOpen(false); }}
+                          className="w-full flex items-center justify-between gap-3 text-left px-3 py-1.5 text-xs transition-colors"
+                          style={{ color: "var(--t2)" }}
+                          onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
+                          onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <span>{p.label}</span>
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-md tabular-nums"
+                            style={{
+                              background: count > 0 ? "var(--subtle)" : "transparent",
+                              color: count > 0 ? "var(--t3)" : "var(--t4)",
+                              fontWeight: 600,
+                              minWidth: 22,
+                              textAlign: "center",
+                            }}
+                          >
+                            {count}
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </>
               )}
