@@ -545,9 +545,13 @@ function buildCohortFilterClause(f: CohortFilter): string {
         return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
       case 'userId':
-        // Direct user ID filter (used for "cohort from session")
+        // Direct user ID filter (used for "cohort from session" and bulk-select
+        // "Add to existing"). users.id is TEXT in DB (not uuid — see CLAUDE.md
+        // DB type notes), so the previous ::uuid cast on each id produced
+        // `text = uuid` → ERROR: operator does not exist. Compare as text.
         if (f.op === 'in' && Array.isArray(f.value)) {
-          const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'::uuid`).join(',')
+          const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'`).join(',')
+          if (ids.length === 0) return 'FALSE'
           return `u.id IN (${ids})`
         }
         return 'TRUE'
