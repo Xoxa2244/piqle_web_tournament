@@ -18,8 +18,8 @@ import { trpc } from '@/lib/trpc'
 import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
 import { Step2Goal } from './Step2Goal'
-import { Step3Message } from './Step3Message'
-import { Step4Schedule } from './Step4Schedule'
+import { Step3Schedule } from './Step3Schedule'
+import { Step4Message } from './Step4Message'
 import { EMPTY_WIZARD_STATE, type WizardStep, type WizardState, type AudienceSelection, type CampaignGoal, type MessageDraft, type ScheduleSettings } from './types'
 
 interface CampaignWizardProps {
@@ -30,14 +30,19 @@ interface CampaignWizardProps {
   initialCohortId?: string | null
   /** Open from AI-Suggested card with a generated cohort already chosen. */
   initialSuggestedCohort?: AudienceSelection | null
+  /** Pre-fill the Goal step (e.g. AI-Recommended card → reactivate_dormant). */
+  initialGoal?: CampaignGoal | null
   onClose: () => void
 }
 
+// P2-T9: reorder. Format/Schedule moved BEFORE Message so the message
+// editor in Step 4 can render the right number of slots (one for One-time,
+// N for Sequence, etc.) once those formats ship.
 const STEPS: Array<{ n: WizardStep; label: string }> = [
   { n: 1, label: 'Audience' },
   { n: 2, label: 'Goal' },
-  { n: 3, label: 'Message' },
-  { n: 4, label: 'Schedule' },
+  { n: 3, label: 'Schedule' },
+  { n: 4, label: 'Message' },
 ]
 
 export function CampaignWizard({
@@ -45,6 +50,7 @@ export function CampaignWizard({
   initialUserIds,
   initialCohortId,
   initialSuggestedCohort,
+  initialGoal,
   onClose,
 }: CampaignWizardProps) {
   const [step, setStep] = useState<WizardStep>(1)
@@ -84,13 +90,18 @@ export function CampaignWizard({
     } else if (initialUserIds?.length) {
       setState((s) => ({ ...s, audience: { kind: 'inline_userIds', cohortId: null, cohortName: `Hand-picked (${initialUserIds.length})`, userIds: initialUserIds, memberCount: initialUserIds.length } }))
     }
+    if (initialGoal) {
+      setState((s) => ({ ...s, goal: initialGoal }))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal
-    if (step === 3) return state.message.subject.trim().length > 0 && state.message.body.trim().length > 0
+    // Step 3 (Schedule): always advanceable — defaults are valid (one_time, send now, email).
+    if (step === 3) return true
+    // Step 4 (Message) is final — Launch button is in-step, no Next.
     return false
   })()
 
@@ -242,16 +253,18 @@ export function CampaignWizard({
                 onChange={(goal: CampaignGoal) => setState((s) => ({ ...s, goal }))}
               />
             ) : step === 3 ? (
-              <Step3Message
+              <Step3Schedule
+                schedule={state.schedule}
+                onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
+              />
+            ) : (
+              <Step4Message
+                clubId={clubId}
                 audience={state.audience}
                 goal={state.goal}
                 message={state.message}
-                onChange={(message: MessageDraft) => setState((s) => ({ ...s, message }))}
-              />
-            ) : (
-              <Step4Schedule
                 schedule={state.schedule}
-                onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
+                onChange={(message: MessageDraft) => setState((s) => ({ ...s, message }))}
                 liveMode={liveMode}
                 onLaunch={handleLaunch}
                 isLaunching={isLaunching}
