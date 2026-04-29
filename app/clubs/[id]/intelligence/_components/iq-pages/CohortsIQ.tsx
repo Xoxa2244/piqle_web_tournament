@@ -2284,7 +2284,10 @@ function CohortBuilder({
                   </select>
                 </div>
 
-                <div className="space-y-2">
+                <div
+                  className="space-y-2 overflow-y-auto pr-1"
+                  style={{ maxHeight: 'min(52vh, 560px)' }}
+                >
                   {sortedPreviewMembers.map((member: any) => (
                     <div key={member.id} className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
                       <div className="flex items-start gap-3">
