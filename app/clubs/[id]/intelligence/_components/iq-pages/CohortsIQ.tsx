@@ -1795,32 +1795,30 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
         })}
       </div>
 
-      {/* AI Natural Language Input */}
-      <div className="space-y-2 rounded-2xl p-4" style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.16)' }}>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>AI assist</div>
-          <span className="text-[10px] uppercase tracking-wider" style={{ color: '#A78BFA', fontWeight: 700 }}>Plain English → Rules</span>
+      {mode === 'advanced' ? (
+        <div className="space-y-2 rounded-2xl p-4" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+          <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Describe with AI</div>
+          <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+            <input
+              type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAiParse()}
+              placeholder="e.g. trial members inactive 14+ days, or women 55+ with DUPR 3.0+"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+              style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+            />
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleAiParse}
+              disabled={!aiPrompt.trim() || aiParsing}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm text-white min-w-[96px]"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)', fontWeight: 600, opacity: (!aiPrompt.trim() || aiParsing) ? 0.5 : 1 }}
+            >
+              {aiParsing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'AI'}
+            </motion.button>
+          </div>
         </div>
-        <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-          <input
-            type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAiParse()}
-            placeholder="e.g. trial members inactive 14+ days, or women 55+ with DUPR 3.0+"
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
-            style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid rgba(139,92,246,0.2)' }}
-          />
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleAiParse}
-            disabled={!aiPrompt.trim() || aiParsing}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm text-white min-w-[108px]"
-            style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)', fontWeight: 600, opacity: (!aiPrompt.trim() || aiParsing) ? 0.5 : 1 }}
-          >
-            {aiParsing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '✨'} AI
-          </motion.button>
-        </div>
-      </div>
+      ) : null}
       {parseMutation.error && (
         <p className="text-xs" style={{ color: '#EF4444' }}>{parseMutation.error.message}</p>
       )}
@@ -1841,16 +1839,13 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_320px] items-start">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_300px] items-start">
         <div className="space-y-5">
           {mode === 'quick' ? (
             <div className="rounded-2xl p-4 space-y-5" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Quick presets</div>
-                  <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-                    Start from a common audience, then tune the filters below.
-                  </p>
                 </div>
                 <button
                   type="button"
@@ -1954,9 +1949,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                     />
                   </label>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--t4)' }}>
-                  Need city, DUPR, birthday month, or session-specific rules? Switch to Advanced Builder.
-                </p>
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>More exact matching lives in Advanced Builder.</p>
               </div>
             </div>
           ) : (
@@ -2033,15 +2026,12 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
         <div className="xl:sticky xl:top-5">
           <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Live Preview</div>
-                <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{mode === 'quick' ? 'Built from your quick filters.' : 'Uses valid advanced rules only.'}</p>
-              </div>
-              <Eye className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+              <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Preview</div>
+              <Eye className="w-4 h-4" style={{ color: 'var(--t4)' }} />
             </div>
 
-            <div className="rounded-2xl p-4" style={{ background: 'rgba(139,92,246,0.08)' }}>
-              <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#C4B5FD', fontWeight: 700 }}>Matches</div>
+            <div className="rounded-xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
+              <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--t4)', fontWeight: 700 }}>Matches</div>
               <div className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
                 {effectiveFilters.length === 0
                   ? '—'
@@ -2051,7 +2041,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                       ? 'Error'
                       : String(previewQuery.data?.count ?? 0)}
               </div>
-              <p className="text-xs mt-1" style={{ color: '#DDD6FE' }}>
+              <p className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
                 {effectiveFilters.length === 0
                   ? 'Add a filter to preview this audience.'
                   : hasIncompleteFilters
@@ -2062,10 +2052,10 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
 
             {activeFilterSummaries.length > 0 ? (
               <div className="space-y-2">
-                <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Applied filters</div>
+                <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Applied</div>
                 <div className="flex flex-wrap gap-1.5">
                   {activeFilterSummaries.map((summary, index) => (
-                    <span key={`${summary}-${index}`} className="text-[10px] px-2 py-1 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#C4B5FD' }}>
+                    <span key={`${summary}-${index}`} className="text-[10px] px-2 py-1 rounded-full" style={{ background: 'var(--subtle)', color: 'var(--t2)', border: '1px solid var(--card-border)' }}>
                       {summary}
                     </span>
                   ))}
@@ -2082,7 +2072,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
             {sortedPreviewMembers.length > 0 ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sample members</div>
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sample</div>
                   <select
                     value={previewSort}
                     onChange={(e) => setPreviewSort(e.target.value as PreviewSort)}
@@ -2099,7 +2089,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
 
                 <div className="space-y-2">
                   {sortedPreviewMembers.map((member: any) => (
-                    <div key={member.id} className="rounded-xl p-3" style={{ background: 'var(--subtle)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                    <div key={member.id} className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs text-white shrink-0"
                           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
@@ -2114,27 +2104,13 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                               member.city,
                             ].filter(Boolean).join(' · ') || member.email || 'Member profile'}
                           </div>
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {member.healthScore != null ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.12)', color: '#FCA5A5' }}>
-                                Health {member.healthScore}
-                              </span>
-                            ) : null}
-                            {member.sessionsLast30 != null ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}>
-                                {member.sessionsLast30} in 30d
-                              </span>
-                            ) : null}
-                            {member.daysSinceLastVisit != null ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#FCD34D' }}>
-                                {member.daysSinceLastVisit}d since visit
-                              </span>
-                            ) : null}
-                            {member.joinedDaysAgo != null ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#C4B5FD' }}>
-                                Joined {member.joinedDaysAgo}d ago
-                              </span>
-                            ) : null}
+                          <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>
+                            {[
+                              member.healthScore != null ? `Health ${member.healthScore}` : null,
+                              member.sessionsLast30 != null ? `${member.sessionsLast30} in 30d` : null,
+                              member.daysSinceLastVisit != null ? `${member.daysSinceLastVisit}d since visit` : null,
+                              member.joinedDaysAgo != null ? `Joined ${member.joinedDaysAgo}d ago` : null,
+                            ].filter(Boolean).join(' · ')}
                           </div>
                         </div>
                       </div>
