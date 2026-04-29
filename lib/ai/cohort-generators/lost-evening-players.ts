@@ -25,17 +25,19 @@ export const generateLostEveningPlayers: CohortGenerator = async (clubId, db) =>
   const previousWindowStart = new Date(now.getTime() - 60 * DAY_MS)
 
   // Pull confirmed evening bookings for this club in the last 60 days.
-  // Filter "evening" by session.startsAt hour ≥ 17.
-  let rows: Array<{ userId: string; startsAt: Date }> = []
+  // PlaySession schema stores `date DateTime` + `startTime String` ("HH:mm"),
+  // not a combined `startsAt` timestamp. We filter "evening" via lexicographic
+  // compare on startTime (works for HH:mm) and bucket by `date`.
+  let rows: Array<{ userId: string; sessionDate: Date }> = []
   try {
-    rows = await db.$queryRaw<Array<{ userId: string; startsAt: Date }>>`
-      SELECT b."userId" as "userId", ps."startsAt" as "startsAt"
+    rows = await db.$queryRaw<Array<{ userId: string; sessionDate: Date }>>`
+      SELECT b."userId" as "userId", ps.date as "sessionDate"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = ${clubId}
-        AND b.status = 'CONFIRMED'
-        AND ps."startsAt" >= ${previousWindowStart}
-        AND EXTRACT(HOUR FROM ps."startsAt") >= 17
+      WHERE ps."clubId" = ${clubId}::uuid
+        AND b.status::text = 'CONFIRMED'
+        AND ps.date >= ${previousWindowStart}
+        AND ps."startTime" >= '17:00'
     `
   } catch {
     return null
@@ -48,7 +50,7 @@ export const generateLostEveningPlayers: CohortGenerator = async (clubId, db) =>
   for (const r of rows) {
     if (!r.userId) continue
     const bucket = byUser.get(r.userId) ?? { previous: 0, recent: 0 }
-    if (r.startsAt >= recentWindowStart) bucket.recent += 1
+    if (r.sessionDate >= recentWindowStart) bucket.recent += 1
     else bucket.previous += 1
     byUser.set(r.userId, bucket)
   }

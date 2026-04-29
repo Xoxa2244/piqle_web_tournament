@@ -359,15 +359,9 @@ export default function CohortsIQ() {
             Create custom member segments for targeted AI campaigns
           </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setShowCreate(true); setSelectedCohortId(null) }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
-        >
-          <Plus className="w-4 h-4" /> Create Cohort
-        </motion.button>
+        {/* Top-right "Create Cohort" CTA removed — duplicated the in-flow
+            "+ Build a custom cohort" tile in Your Cohorts. Single CTA keeps
+            the action near context. */}
       </div>
 
       {/* Create / Edit modal */}
@@ -412,11 +406,20 @@ export default function CohortsIQ() {
               className="rounded-2xl p-5 text-sm"
               style={{ background: 'var(--card-bg)', border: '1px dashed var(--card-border)', color: 'var(--t3)' }}
             >
-              <div className="flex items-center gap-2 mb-1">
-                <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#8B5CF6' }} />
-                <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>Generating suggestions…</span>
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>No suggestions right now</span>
               </div>
-              Once you have ~30 days of session history, IQ will surface high-impact cohorts here automatically.
+              <p className="text-xs leading-relaxed mb-2">
+                IQ checks three angles every day: members whose membership expires soon,
+                regulars who stopped showing up to evening sessions, and new joiners who
+                are engaging fast. None matched today — usually because the club doesn't
+                have enough session history yet, or the underlying data (e.g. membership
+                expiry from CSV import) isn't populated.
+              </p>
+              <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                Cards appear here automatically once the data lines up. You can always build a custom cohort below.
+              </p>
             </div>
           ) : (
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1074,15 +1077,10 @@ export default function CohortsIQ() {
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
                     <Users className="w-5 h-5 text-white" />
                   </div>
+                  {/* Delete kept on hover only — destructive, don't surface
+                      it as a primary affordance. Campaign CTA moves to the
+                      bottom row where it's always visible. */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
-                      className="p-1.5 rounded-lg transition-all hover:bg-violet-500/10"
-                      style={{ color: '#8B5CF6' }}
-                      title="Launch campaign"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
                       className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
@@ -1095,29 +1093,43 @@ export default function CohortsIQ() {
                 </div>
                 <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
                 {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                    <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
-                    <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
-                  </div>
-                  <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
+                <div className="flex items-center gap-1.5 mb-3">
+                  <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                  <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
+                  <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
                 </div>
                 {/* Filter tags */}
-                <div className="flex flex-wrap gap-1 mt-3">
+                <div className="flex flex-wrap gap-1 mb-3">
                   {parseCohortFilters(c.filters).map((f, i) => (
                     <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
                       {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
                     </span>
                   ))}
                 </div>
-                {/* P3-T6: last edited timestamp */}
-                {(c.updatedAt || c.createdAt) && (
-                  <div className="text-[10px] mt-3 flex items-center gap-1" style={{ color: 'var(--t4)' }}>
-                    <Clock className="w-3 h-3" />
-                    Last edit: {new Date(c.updatedAt ?? c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </div>
-                )}
+                {/* Always-visible Create campaign CTA + last-edit timestamp.
+                    Mirrors the "→ Campaign" affordance on AI-Suggested cards
+                    so saved cohorts have the same fast-path. */}
+                <div className="flex items-center justify-between gap-2 pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+                  {(c.updatedAt || c.createdAt) ? (
+                    <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--t4)' }}>
+                      <Clock className="w-3 h-3" />
+                      {new Date(c.updatedAt ?? c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  ) : <span />}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
+                    style={{
+                      background: 'rgba(139,92,246,0.12)',
+                      color: '#A78BFA',
+                      fontWeight: 700,
+                      border: '1px solid rgba(139,92,246,0.2)',
+                    }}
+                  >
+                    <Send className="w-3 h-3" />
+                    Create campaign
+                  </button>
+                </div>
               </motion.div>
             ))}
 

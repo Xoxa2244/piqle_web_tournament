@@ -42,13 +42,15 @@ export const generateNewAndEngaged: CohortGenerator = async (clubId, db) => {
 
   let bookings: Array<{ userId: string }> = []
   try {
+    // Schema notes: ps.clubId is uuid (needs ::uuid cast for raw SQL), there's
+    // no `startsAt` column — date filtering uses ps.date (DateTime).
     bookings = await db.$queryRaw<Array<{ userId: string }>>`
       SELECT b."userId" as "userId"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = ${clubId}
-        AND b.status = 'CONFIRMED'
-        AND ps."startsAt" >= ${thirtyDaysAgo}
+      WHERE ps."clubId" = ${clubId}::uuid
+        AND b.status::text = 'CONFIRMED'
+        AND ps.date >= ${thirtyDaysAgo}
         AND b."userId" = ANY(${userIds})
     `
   } catch {
