@@ -596,9 +596,9 @@ const ACTIVE_MEMBER_JOIN = `
   JOIN (
     SELECT DISTINCT psb."userId"
     FROM play_session_bookings psb
-    JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED'
-  ) active ON active."userId" = u.id
+    JOIN play_sessions ps ON ps.id::text = psb."sessionId"::text
+    WHERE ps."clubId"::text = $1::text AND psb.status = 'CONFIRMED'
+  ) active ON active."userId"::text = u.id::text
 `
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
@@ -606,9 +606,9 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
   const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
     SELECT COUNT(DISTINCT cf.user_id) as count
     FROM club_followers cf
-    JOIN users u ON u.id = cf.user_id
+    JOIN users u ON u.id::text = cf.user_id::text
     ${ACTIVE_MEMBER_JOIN}
-    WHERE cf.club_id = $1::uuid AND ${where}
+    WHERE cf.club_id::text = $1::text AND ${where}
   `, clubId)
   return Number(result[0]?.count ?? 0)
 }
@@ -629,9 +629,9 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
            COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
            u.image
     FROM club_followers cf
-    JOIN users u ON u.id = cf.user_id
+    JOIN users u ON u.id::text = cf.user_id::text
     ${ACTIVE_MEMBER_JOIN}
-    WHERE cf.club_id = $1::uuid AND ${where}
+    WHERE cf.club_id::text = $1::text AND ${where}
     ORDER BY u.name ASC
     LIMIT 500
   `, clubId)
