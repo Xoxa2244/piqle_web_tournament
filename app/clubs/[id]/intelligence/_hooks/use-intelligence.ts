@@ -237,6 +237,205 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
   return query
 }
 
+/**
+ * P4-T6: Active Campaigns (lightweight v1).
+ * Wraps `intelligence.listActiveCampaigns` stub. Returns [] until
+ * P5-T2 lands the Campaign DB model + real query.
+ */
+export function useListActiveCampaigns(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.listActiveCampaigns.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 60_000 }
+  )
+  if (isDemo) {
+    return {
+      data: [
+        {
+          id: 'demo-c1', name: 'Win Back Q1',
+          cohortId: null, cohortName: 'Lost Evening Players',
+          channel: 'email' as const,
+          sentCount: 12, deliveredCount: 12, openedCount: 7,
+          openRate: 0.583, bookedCount: 5, bookedRevenueCents: 24_000,
+          status: 'running' as const, startedAt: new Date(),
+        },
+        {
+          id: 'demo-c2', name: 'Spring Renewal',
+          cohortId: null, cohortName: 'Renewal in 14d',
+          channel: 'email+sms' as const,
+          sentCount: 7, deliveredCount: 7, openedCount: 5,
+          openRate: 0.714, bookedCount: 4, bookedRevenueCents: 140_000,
+          status: 'running' as const, startedAt: new Date(),
+        },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+  return query
+}
+
+/**
+ * P2-T5: AI Insight ribbon — single rule-based insight on Members page.
+ * Demo mode returns a plausible mock so the ribbon renders end-to-end.
+ */
+export function useMembersAIInsight(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+  const query = trpc.intelligence.getMembersAIInsight.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: {
+        kind: 'risk_shift' as const,
+        insightId: `demo_risk_shift_${new Date().toISOString().slice(0, 10)}`,
+        title: '5 members shifted to at-risk this week',
+        cause: 'Most of them dropped weekday evening sessions in the last 7 days. A short reactivation push usually wins ~30% back.',
+        suggestedAction: 'Create cohort "Recently at-risk"',
+        suggestedCohortName: 'Recently at-risk · ' + new Date().toISOString().slice(0, 10),
+        suggestedFilters: [{ field: 'riskLevel', op: 'in' as const, value: ['at_risk', 'critical'] }],
+        severity: 'warning' as const,
+      },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
+ * P3-T2: AI-suggested cohorts (Renewal in 14d, Lost Evening, New & Engaged).
+ * Wraps `intelligence.listSuggestedCohorts` (P3-T1 generators).
+ */
+export function useSuggestedCohorts(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.listSuggestedCohorts.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [
+        {
+          id: 'demo:renewal-14d',
+          generatorKey: 'renewal_in_14d',
+          name: 'Renewal in 14d',
+          description: '7 members with packages expiring in the next 2 weeks. A nudge converts.',
+          memberCount: 7,
+          estImpactCents: 33_600,
+          suggestedAction: 'Renewal nudge',
+          suggestedTemplateKey: 'renewal_reminder',
+          userIds: [],
+          emoji: '📅',
+        },
+        {
+          id: 'demo:lost-evening',
+          generatorKey: 'lost_evening_players',
+          name: 'Lost Evening Players',
+          description: '12 members who used to play 4+ evenings/month, now ≤1.',
+          memberCount: 12,
+          estImpactCents: 11_520,
+          suggestedAction: 'Reactivation outreach',
+          suggestedTemplateKey: 'win_back_inactive',
+          userIds: [],
+          emoji: '⚠️',
+        },
+        {
+          id: 'demo:new-engaged',
+          generatorKey: 'new_and_engaged',
+          name: 'New & Engaged',
+          description: '5 new members (joined <30d, 4+ sessions). Welcome them properly.',
+          memberCount: 5,
+          estImpactCents: 90_000,
+          suggestedAction: 'Onboarding series',
+          suggestedTemplateKey: 'onboarding_series',
+          userIds: [],
+          emoji: '🌟',
+        },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
+ * P2-T3: List existing user cohorts for bulk-action picker.
+ */
+export function useListCohorts(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.listCohorts.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 60_000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [
+        { id: 'demo-cohort-1', name: 'Age >= 30', description: '20 members', memberCount: 20, filters: [], createdAt: new Date() },
+        { id: 'demo-cohort-2', name: 'Gender = Female', description: '11 members', memberCount: 11, filters: [], createdAt: new Date() },
+      ] as any,
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
+ * P2-T1: Member KPI deltas (vs previous period of same length).
+ *
+ * Wraps `intelligence.getMemberHealthDeltas` (currently a stub returning
+ * mock data — see SPEC §2 P0-T4). Real impl from MemberHealthSnapshot
+ * lands when daily cron (P5-T1) accumulates ≥30d of history.
+ *
+ * For demo mode, returns plausible mock deltas to showcase the UX.
+ */
+export function useMemberKpiDeltas(
+  clubId: string,
+  period: 'week' | 'month' | 'quarter' = 'month',
+  options?: IntelligenceQueryOptions,
+) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getMemberHealthDeltas.useQuery(
+    { clubId, period },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: {
+        period,
+        activeCount: 19,
+        activeDelta: 3,
+        avgHealth: 61,
+        avgHealthDelta: 2,
+        atRiskCount: 5,
+        atRiskDelta: 2,
+        ltvTotalCents: 0,
+        ltvDeltaCents: 42_000,
+        vipCount: 13,
+        packageCount: 3,
+        _stub: true,
+      },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
 // ── Send reactivation messages (email/SMS) ──
 export function useSendReactivation() {
   const isDemo = useIsDemo()

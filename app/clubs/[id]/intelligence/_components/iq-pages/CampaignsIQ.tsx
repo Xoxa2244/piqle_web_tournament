@@ -2,13 +2,21 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
 import { CampaignChart } from './campaigns/CampaignChart'
 import { CampaignList } from './campaigns/CampaignList'
-import { AutomationBanner } from './campaigns/AutomationBanner'
+// P1-T5: AutomationBanner removed — equivalent automation status now lives
+// in Settings → Automation page (AgentCampaignLayer column 2: Live Rollout).
+// Kept commented for traceability:
+//   import { AutomationBanner } from './campaigns/AutomationBanner'
 import { CampaignCreator } from './campaigns/CampaignCreator'
+// P4-T1: New 4-step Campaign Wizard
+import { CampaignWizard } from '../CampaignWizard'
+// P4-T6: Active Campaigns table (lightweight)
+import { ActiveCampaignsTable } from '../ActiveCampaignsTable'
 import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 import {
   buildAdvisorContextHref as buildCampaignAdvisorHref,
@@ -299,6 +307,31 @@ function matchesDraftText(draft: any, patterns: string[]) {
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
   const [showCreator, setShowCreator] = useState(false)
   const [initialType, setInitialType] = useState<string | null>(null)
+  // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
+  const [showWizard, setShowWizard] = useState(false)
+  // P5-T5 fix #5: read ?cohortId= from URL (set by Cohort Builder's
+  // "Save + Create Campaign →" handoff or by AI-Suggested → Campaign).
+  // Open the wizard once with the cohort pre-selected, then strip the
+  // param so refresh doesn't reopen the wizard unexpectedly.
+  const wizardSearchParams = useSearchParams()
+  const wizardRouter = useRouter()
+  const wizardPathname = usePathname()
+  const [wizardInitialCohortId, setWizardInitialCohortId] = useState<string | null>(null)
+  useEffect(() => {
+    const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
+    if (cohortIdFromUrl && !showWizard) {
+      setWizardInitialCohortId(cohortIdFromUrl)
+      setShowWizard(true)
+      // Strip the param after we've consumed it.
+      if (wizardPathname) {
+        const next = new URLSearchParams(wizardSearchParams.toString())
+        next.delete('cohortId')
+        const qs = next.toString()
+        wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardSearchParams])
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
   const [activityOfferFilter, setActivityOfferFilter] = useState<string>('all')
   const [activityRouteFilter, setActivityRouteFilter] = useState<string>('all')
@@ -618,61 +651,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       ].filter(Boolean)
     : []
 
-  const quickActions = (() => {
-    const actions = []
-
-    if (reviewReadyDrafts[0]) {
-      actions.push({
-        key: `review:${reviewReadyDrafts[0].id}`,
-        title: 'Review latest draft',
-        description: reviewReadyDrafts[0].title || 'Open the most recent campaign draft in Advisor.',
-        href: buildCampaignAdvisorHref(clubId, {
-          conversationId: reviewReadyDrafts[0].conversationId || null,
-          prompt: reviewReadyDrafts[0].originalIntent || undefined,
-        }),
-      })
-    }
-
-    actions.push({
-      key: 'reactivation',
-      title: 'Draft reactivation push',
-      description: 'Build a win-back draft for expired, cancelled, and drifting members.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a reactivation campaign for expired and cancelled members. Keep it as a review-ready draft first.',
-      }),
-    })
-
-    actions.push({
-      key: 'guest-conversion',
-      title: 'Convert guests',
-      description: 'Turn frequent guests and drop-ins into a campaign-ready membership offer.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a guest conversion campaign for frequent guests and drop-ins. Keep it in draft for review before sending.',
-      }),
-    })
-
-    if (pilotHealth?.recommendation) {
-      actions.push({
-        key: 'rework-risky',
-        title: 'Rework risky live action',
-        description: pilotHealth.recommendation.reason,
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: `Draft a safer ${pilotHealth.recommendation.label.toLowerCase()} alternative with a tighter audience and gentler copy. Keep it in draft only.`,
-        }),
-      })
-    } else {
-      actions.push({
-        key: 'vip-protect',
-        title: 'Protect VIP members',
-        description: 'Draft a high-touch campaign for unlimited and high-value members.',
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: 'Draft a VIP appreciation campaign for our unlimited and high-value members. Keep it as a review-ready draft first.',
-        }),
-      })
-    }
-
-    return actions.slice(0, 4)
-  })()
+  // P5-T5: dead-code removed — `quickActions` IIFE used to feed the
+  // "Agent Quick Starts" JSX block that P1-T4 deleted. The lookups it
+  // performs (reviewReadyDrafts[0], pilotHealth.recommendation, etc.)
+  // are still computed above for the AC Layer in Settings → Automation.
 
   const selectedCampaignName = selectedCampaign?.name || campaignDrilldown?.campaign?.name || 'Campaign'
   const selectedActionKind = selectedCampaign ? mapCampaignTypeToActionKind(selectedCampaign.type) : null
@@ -721,20 +703,64 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-[1400px] mx-auto">
-      {/* Automation status */}
-      <AutomationBanner clubId={clubId} />
+      {/* P1-T5: AutomationBanner removed — see import comment for context. */}
 
-      {/* Header + New Campaign */}
+      {/* Header + New Campaign — P4-T7 wires the button to the new Wizard */}
       <div className="flex items-center justify-between">
         <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--heading)' }}>Campaigns</h1>
         <button
-          onClick={() => setShowCreator(true)}
+          onClick={() => setShowWizard(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
         >
           <Plus className="w-4 h-4" /> New Campaign
         </button>
       </div>
+
+      {/* P4-T1: Campaign Wizard drawer.
+          P5-T5 fix #5: initialCohortId wired from ?cohortId= URL param
+          (set by Cohort Builder's "Save + Create Campaign →"). */}
+      {showWizard && (
+        <CampaignWizard
+          clubId={clubId}
+          initialCohortId={wizardInitialCohortId}
+          onClose={() => {
+            setShowWizard(false)
+            setWizardInitialCohortId(null)
+          }}
+        />
+      )}
+
+      {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
+          Always rendered (was previously only shown when no summary).
+          Sorted by $ impact desc; placeholder values until P3-T1 wires real
+          generators. See SPEC §3 P1-T4 / PLAN §6.4. */}
+      <CampaignSuggestions
+        clubId={clubId}
+        onSelectType={(type) => {
+          setInitialType(type)
+          setShowCreator(true)
+        }}
+      />
+
+      {/* P4-T6: Active Campaigns lightweight table (empty until launch
+          backend lands in P5-T2). See SPEC §6 P4-T6. */}
+      <ActiveCampaignsTable clubId={clubId} />
+
+      {/* P5-T5: Campaign History collapsed accordion. Empty state until
+          Campaign model is live (P5-T2 deploy); keeps the UX shape so
+          directors know where past campaigns will appear. */}
+      <details className="rounded-2xl px-5 py-3 transition-all" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <summary className="cursor-pointer flex items-center justify-between text-sm" style={{ color: 'var(--heading)', fontWeight: 600 }}>
+          <span>Campaign History</span>
+          <span className="text-[11px]" style={{ color: 'var(--t4)' }}>0 past campaigns · $0 attributed (v1 — populates after Phase 5 launch)</span>
+        </summary>
+        <div className="mt-3 text-xs" style={{ color: 'var(--t3)' }}>
+          Past campaigns will appear here, sorted by recency, with attributed revenue
+          per row. Open rate and conversion rolled up to the Money Story widget on
+          the Dashboard (deferred to Dashboard redesign — see PLAN §11).
+        </div>
+      </details>
 
       <div
         className="rounded-3xl p-5 md:p-6 space-y-5"
@@ -748,16 +774,19 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}>
               <Sparkles className="w-3.5 h-3.5" />
-              Agent Campaign Layer
+              Campaign Operations
             </div>
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--heading)' }}>Campaign control, draft review, and live pilot health</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--heading)' }}>Growth lanes, guest trial, and referral campaigns</h2>
               <p className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 760 }}>
-                Advisor drafts, rollout posture, blocked live sends, and pilot outcomes now sit on top of the campaigns surface instead of living in separate corners of the product.
+                Director-facing campaign surface. The agent execution layer (draft queue, rollout, pilot health) lives in <Link href={`/clubs/${clubId}/intelligence/settings/automation`} className="underline" style={{ color: '#8B5CF6' }}>Settings → Automation</Link>.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* P1-T3: Outreach Mode + Pilot Health badges stay on Campaigns
+                per SPEC §3 acceptance — useful at-a-glance status while
+                launching campaigns. */}
             <span
               className="px-3 py-1.5 rounded-full text-xs font-semibold"
               style={{ background: outreachModeStyle.bg, color: outreachModeStyle.color }}
@@ -773,254 +802,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-3">
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Draft queue</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>{campaignDrafts.length} agent campaign drafts</div>
-              </div>
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                <Clock3 className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Review ready', value: reviewReadyDrafts.length },
-                { label: 'Sandboxed', value: sandboxedDrafts.length },
-                { label: 'Scheduled', value: scheduledDrafts.length },
-                { label: 'Blocked', value: blockedDrafts.length },
-              ].map((item) => (
-                <div key={item.label} className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                  <div className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-2">
-              {latestDrafts.length === 0 ? (
-                <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                  No campaign drafts are waiting right now. Use the quick starts below to seed a new one in Advisor.
-                </div>
-              ) : latestDrafts.map((draft: any) => {
-                const draftStatusStyle = DRAFT_STATUS_STYLES[draft.status] || DRAFT_STATUS_STYLES.draft_saved
-                return (
-                  <Link
-                    key={draft.id}
-                    href={buildCampaignAdvisorHref(clubId, {
-                      conversationId: draft.conversationId || null,
-                      prompt: draft.originalIntent || undefined,
-                    })}
-                    className="block rounded-xl px-3 py-3 transition-all hover:translate-x-[2px]"
-                    style={{ background: 'var(--subtle)' }}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate" style={{ color: 'var(--heading)' }}>
-                          {draft.title || formatCampaignDraftKind(draft.kind)}
-                        </div>
-                        <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-                          {formatCampaignDraftKind(draft.kind)} · {formatRelativeTime(draft.updatedAt)}
-                        </div>
-                      </div>
-                      <span
-                        className="px-2 py-1 rounded-full text-[10px] font-semibold shrink-0"
-                        style={{ background: draftStatusStyle.bg, color: draftStatusStyle.color }}
-                      >
-                        {draftStatusStyle.label}
-                      </span>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Live rollout</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.summary || 'Shadow-only until rollout is armed'}
-                </div>
-              </div>
-              <div
-                className="w-11 h-11 rounded-2xl flex items-center justify-center"
-                style={{
-                  background: rolloutStatus?.clubAllowlisted ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)',
-                  color: rolloutStatus?.clubAllowlisted ? '#10B981' : '#F59E0B',
-                }}
-              >
-                {rolloutStatus?.clubAllowlisted ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Allowlist</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.clubAllowlisted ? 'Live enabled' : rolloutStatus?.envAllowlistConfigured ? 'Waiting on superadmin' : 'No env allowlist'}
-                </div>
-              </div>
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Armed actions</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.enabledActionKinds?.length || 0} live types armed
-                </div>
-              </div>
-            </div>
-
-            {rolloutFriction.length > 0 ? (
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Recent rollout friction</div>
-                {rolloutFriction.slice(0, 3).map((record: any) => (
-                  <div key={record.id} className="rounded-xl px-3 py-3" style={{ background: 'var(--subtle)' }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-sm" style={{ color: 'var(--heading)' }}>{record.summary}</div>
-                      <span
-                        className="px-2 py-1 rounded-full text-[10px] font-semibold shrink-0"
-                        style={{
-                          background: record.result === 'blocked' ? 'rgba(239,68,68,0.14)' : 'rgba(245,158,11,0.14)',
-                          color: record.result === 'blocked' ? '#EF4444' : '#F59E0B',
-                        }}
-                      >
-                        {record.result === 'blocked' ? 'Blocked' : 'Shadowed'}
-                      </span>
-                    </div>
-                    <div className="text-xs mt-2" style={{ color: 'var(--t3)' }}>
-                      {formatRelativeTime(record.createdAt)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                No recent blocked or shadowed outreach sends. Rollout posture looks clean from this page.
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/clubs/${clubId}/intelligence/settings`}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}
-              >
-                Open settings <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Live pilot health</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.summary || 'No live outreach outcomes in the last 14d.'}
-                </div>
-              </div>
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: pilotStyle.bg, color: pilotStyle.color }}>
-                <Radar className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top live action</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.topAction?.label || 'No clear leader yet'}
-                </div>
-              </div>
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Bookings</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.totals?.converted || 0} booked from live sends
-                </div>
-              </div>
-            </div>
-
-            {pilotHealth?.recommendation ? (
-              <div
-                className="rounded-xl px-3 py-3 space-y-2"
-                style={{
-                  background: pilotHealth.recommendation.health === 'at_risk' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
-                  border: `1px solid ${pilotHealth.recommendation.health === 'at_risk' ? 'rgba(239,68,68,0.16)' : 'rgba(245,158,11,0.16)'}`,
-                }}
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: pilotHealth.recommendation.health === 'at_risk' ? '#EF4444' : '#F59E0B' }}>
-                  <AlertTriangle className="w-4 h-4" />
-                  Shadow-back recommendation
-                </div>
-                <div className="text-sm" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth.recommendation.reason}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                No action currently needs to move back to shadow. This is a good place to monitor live campaign quality before widening rollout.
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={buildCampaignAdvisorHref(clubId, {
-                  prompt: pilotHealth?.topAction
-                    ? `Draft another ${pilotHealth.topAction.label.toLowerCase()} based on our recent strongest live outreach, but keep it in review-ready draft mode first.`
-                    : 'Draft a high-confidence campaign for our best current audience. Keep it as a review-ready draft first.',
-                })}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}
-              >
-                <TestTube2 className="w-3.5 h-3.5" />
-                Draft from live signal
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="rounded-2xl p-4 space-y-3"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-        >
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Agent quick starts</div>
-              <div className="text-sm mt-1" style={{ color: 'var(--t2)' }}>
-                Jump into Advisor with a prepared campaign brief instead of starting from a blank message box.
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {quickActions.map((action) => (
-              <Link
-                key={action.key}
-                href={action.href}
-                className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                style={{ background: 'var(--subtle)', border: '1px solid transparent' }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <ArrowRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
-                </div>
-                <div className="mt-4 text-sm font-semibold" style={{ color: 'var(--heading)' }}>{action.title}</div>
-                <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t3)' }}>{action.description}</div>
-              </Link>
-            ))}
-          </div>
-        </div>
+        {/* P1-T3: Agent Campaign Layer 3-column grid moved to
+            Settings → Automation. See AgentCampaignLayer.tsx.
+            P1-T4: Agent Quick Starts deleted — duplicates AI-Recommended
+            (lifted to top of page). See PLAN §6.6. */}
 
         {guestTrialSummary && guestTrialPlays.length > 0 ? (
           <div
@@ -1697,15 +1482,11 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
       </div>
 
-      {!summary ? (
-        <CampaignSuggestions
-          clubId={clubId}
-          onSelectType={(type) => {
-            setInitialType(type)
-            setShowCreator(true)
-          }}
-        />
-      ) : (
+      {/* P1-T4: CampaignSuggestions lifted to top of page. The conditional
+          `!summary ? <CampaignSuggestions> : <KPIs+chart+list>` was replaced
+          with always-show suggestions at top + always-show KPIs/chart/list
+          below (when summary exists). */}
+      {summary && (
         <>
           {/* KPI cards */}
           <CampaignKPIs summary={summary} variantData={variantData} />

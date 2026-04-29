@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X, CreditCard, Plug, Activity, Mail, Rocket, Sparkles,
+  Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -31,7 +31,20 @@ interface NavSection {
   items: NavItem[];
 }
 
-function buildNavSections(isMembership: boolean): NavSection[] {
+function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[] {
+  const systemItems: NavItem[] = [
+    { icon: Rocket, label: "Launch", path: "/launch" },
+    { icon: CreditCard, label: "Billing", path: "/billing" },
+    { icon: Plug, label: "Integrations", path: "/integrations" },
+    { icon: Mail, label: "Email Domain", path: "/email-domain" },
+    { icon: Settings, label: "Settings", path: "/settings" },
+  ]
+  // Admin-only: Automation page (Agent Campaign Layer + triggers).
+  // See docs/ENGAGE_REDESIGN_SPEC.md §2 P0-T2 / §3 P1-T3.
+  if (isAdmin) {
+    systemItems.push({ icon: Bot, label: "Automation", path: "/settings/automation" })
+  }
+
   return [
   {
     id: "analytics",
@@ -47,11 +60,8 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     title: "AI TOOLS",
     icon: Cpu,
     items: [
-      // AI Agent tab retired 2026-04-24 — Advisor itself is the agent now.
-      // The `/intelligence/agent` route still exists as a redirect so old
-      // reminder/preflight URLs don't 404 (see agent/page.tsx).
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-      { icon: Sparkles, label: "Programming IQ", path: "/programming", isAI: true },
+      { icon: Bot, label: "AI Agent", path: "/agent", isAI: true },
     ],
   },
   {
@@ -60,8 +70,13 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: Building2,
     items: [
       { icon: Users, label: "Members", path: "/members" },
-      { icon: UsersRound, label: "Segments", path: "/cohorts" },
-      { icon: UserPlus, label: "Reactivation", path: "/reactivation" },
+      { icon: UsersRound, label: "Cohorts", path: "/cohorts" },
+      // Reactivation removed in P1-T1 (iqsport brand). Logic redistributed:
+      //   - At-Risk KPI         → Members KPI strip (P2-T1)
+      //   - Churn trend chart   → Members "How Members Play" row (P2-T6)
+      //   - At-Risk member list → Cohorts pre-built "At-Risk" cohort (P3-T1)
+      //   - Reactivation send   → Campaigns AI-Recommended template (P1-T4 / P4-T3)
+      // See docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T1 / PLAN.md §5.
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
     ],
   },
@@ -69,19 +84,14 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     id: "system",
     title: "SYSTEM",
     icon: Settings,
-    items: [
-      { icon: Rocket, label: "Launch", path: "/launch" },
-      { icon: CreditCard, label: "Billing", path: "/billing" },
-      { icon: Plug, label: "Integrations", path: "/integrations" },
-      { icon: Mail, label: "Email Domain", path: "/email-domain" },
-      { icon: Settings, label: "Settings", path: "/settings" },
-    ],
+    items: systemItems,
   },
   ]
 }
 
 export function IQSidebar({ children, clubId }: { children: React.ReactNode; clubId: string }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [hoverExpand, setHoverExpand] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -103,7 +113,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const pricingModel = intelligenceSettings?.settings?.pricingModel;
   // Default to membership when pricingModel is not yet configured (most clubs are membership-based)
   const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
-  const navSections = buildNavSections(isMembershipClub);
+  const isAdmin = intelligenceSettings?.clubRole === 'ADMIN';
+  const navSections = buildNavSections(isMembershipClub, isAdmin);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
   const userEmail = session?.user?.email || "";
@@ -114,7 +125,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const basePath = `/clubs/${clubId}/intelligence`;
   const demoParam = searchParams.get("demo") === "true" ? "?demo=true" : "";
 
-  const expanded = !collapsed;
+  const expanded = !collapsed || hoverExpand;
 
   // Close mobile sidebar on navigation
   useEffect(() => {
@@ -331,6 +342,8 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
       <motion.aside
         animate={{ width: expanded ? 260 : 72 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        onMouseEnter={() => collapsed && setHoverExpand(true)}
+        onMouseLeave={() => setHoverExpand(false)}
         className="relative hidden md:flex flex-col shrink-0 h-full z-30"
         style={{
           background: "var(--sidebar-bg)",

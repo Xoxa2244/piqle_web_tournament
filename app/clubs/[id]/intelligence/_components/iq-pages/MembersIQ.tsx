@@ -1,7 +1,7 @@
 'use client'
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useInView, AnimatePresence } from "motion/react";
 import { trpc } from "@/lib/trpc";
 import {
@@ -9,18 +9,23 @@ import {
   CalendarDays, DollarSign, Mail,
   Smartphone, ArrowUpRight, ArrowDownRight, UserPlus,
   Target, LayoutGrid, List, Sparkles, ChevronRight,
+  AlertTriangle, Filter as FilterIcon, BarChart3, ChevronDown, X as XIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
-import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useSetAdminTodoDecision, useUpdateReferralRewardIssuance, useMemberKpiDeltas, useListCohorts, useChurnTrend } from '../../_hooks/use-intelligence'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line,
+  ResponsiveContainer, LineChart, Line, ComposedChart, Legend,
 } from "recharts";
 import { useTheme } from "../IQThemeProvider";
 import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
+import { MemberDetailDrawer } from "../MemberDetailDrawer";
+import { MembersFilterDrawer } from "../MembersFilterDrawer";
+import { MembersChartsDrawer } from "../MembersChartsDrawer";
+import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
 import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
 
@@ -1246,6 +1251,8 @@ function mapRealMembers(data: any): Member[] {
 export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessionData, guestTrialBookingData, winBackSnapshot, referralSnapshot, isLoading: externalLoading, sendOutreach, clubId, reactivationCandidates, aiProfiles, onRegenerateProfiles, sendReactivation }: MembersIQProps = {}) {
   const { isDark } = useTheme();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParamsForUrl = useSearchParams();
   const guestTrialSuggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [view, setView] = useState<"all" | "at-risk" | "reactivation">("all");
@@ -1258,7 +1265,16 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
+  // persisted per user via localStorage. Grid mode kept as alternative for
+  // working with 2-3 members at a time. "Cards" mode planned but not yet
+  // distinct from Grid — see SPEC §4 P2-T2.
+  const [viewMode, setViewMode] = useState<"list" | "grid" | "cards">(() => {
+    if (typeof window === 'undefined') return 'list'
+    const stored = window.localStorage.getItem('iq:members:viewMode')
+    if (stored === 'list' || stored === 'grid' || stored === 'cards') return stored
+    return 'list'
+  });
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -1270,6 +1286,166 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const { data: guestTrialSuggestionDecisions = [] } = useAdminTodoDecisions(clubId || '', guestTrialSuggestionDateKey)
   const setAdminTodoDecision = useSetAdminTodoDecision()
   const updateReferralRewardIssuance = useUpdateReferralRewardIssuance()
+  // P2-T1: KPI deltas vs previous period (driven by `period` selector).
+  const { data: kpiDeltas } = useMemberKpiDeltas(clubId || '', period === 'custom' ? 'month' : period)
+
+  // P2-T6: Churn & reactivation trend (driven by period selector → months).
+  const churnMonths = period === 'week' ? 2 : period === 'month' ? 6 : period === 'quarter' ? 12 : 6
+  const { data: churnTrendData } = useChurnTrend(clubId || '', churnMonths)
+
+  // P2-T3: Bulk select for "Add to cohort" / "Send campaign" workflows.
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
+  const [bulkAddCohortOpen, setBulkAddCohortOpen] = useState(false)
+  const { data: existingCohortsForBulk = [] } = useListCohorts(clubId || '')
+
+  // P2-T8: Filter & charts drawers replace the prior 6-row inline filter
+  // strip + 3-col chart grid that pushed the table below the fold. Filter
+  // state lives here; drawers are pure presentation.
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
+  const [chartsDrawerOpen, setChartsDrawerOpen] = useState(false)
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+
+  const clearAllFilters = () => {
+    setFilterMembershipStatus('all')
+    setFilterMembershipType('all')
+    setFilterActivity('all')
+    setFilterRisk('all')
+    setFilterTrend('all')
+    setFilterValue('all')
+  }
+
+  // Quick presets — each clears all filters then sets only what the preset
+  // implies. Single-axis only by design (current state model has no OR
+  // logic, so multi-axis presets would lie about results).
+  const applyPreset = (key: string) => {
+    clearAllFilters()
+    if (key === 'at-risk') setFilterRisk('at-risk')
+    else if (key === 'critical') setFilterRisk('critical')
+    else if (key === 'vip') setFilterMembershipType('unlimited')
+    else if (key === 'trial') setFilterMembershipType('trial')
+    else if (key === 'inactive') setFilterActivity('occasional')
+    else if (key === 'power') setFilterActivity('power')
+    setPage(1)
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; group: string; label: string; onClear: () => void }> = []
+    if (filterMembershipStatus !== 'all') {
+      chips.push({
+        key: 'state',
+        group: 'State',
+        label: formatNormalizedMembershipStatus(filterMembershipStatus) || filterMembershipStatus,
+        onClear: () => setFilterMembershipStatus('all'),
+      })
+    }
+    if (filterMembershipType !== 'all') {
+      chips.push({
+        key: 'tier',
+        group: 'Tier',
+        label: formatNormalizedMembershipType(filterMembershipType) || filterMembershipType,
+        onClear: () => setFilterMembershipType('all'),
+      })
+    }
+    if (filterActivity !== 'all') {
+      const labelMap: Record<string, string> = { power: 'Power', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' }
+      chips.push({
+        key: 'activity',
+        group: 'Activity',
+        label: labelMap[filterActivity] || filterActivity,
+        onClear: () => setFilterActivity('all'),
+      })
+    }
+    if (filterRisk !== 'all') {
+      // Risk uses internal segment values: power→Healthy, regular→Watch
+      const labelMap: Record<string, string> = { power: 'Healthy', regular: 'Watch', 'at-risk': 'At-Risk', critical: 'Critical' }
+      chips.push({
+        key: 'risk',
+        group: 'Risk',
+        label: labelMap[filterRisk] || filterRisk,
+        onClear: () => setFilterRisk('all'),
+      })
+    }
+    if (filterTrend !== 'all') {
+      chips.push({
+        key: 'trend',
+        group: 'Trend',
+        label: filterTrend.charAt(0).toUpperCase() + filterTrend.slice(1),
+        onClear: () => setFilterTrend('all'),
+      })
+    }
+    if (filterValue !== 'all') {
+      const labelMap: Record<string, string> = { high: 'High LTV', medium: 'Mid', low: 'Low' }
+      chips.push({
+        key: 'value',
+        group: 'Value',
+        label: labelMap[filterValue] || filterValue,
+        onClear: () => setFilterValue('all'),
+      })
+    }
+    return chips
+  }, [filterMembershipStatus, filterMembershipType, filterActivity, filterRisk, filterTrend, filterValue])
+
+  const activeFilterCount = activeFilterChips.length
+
+  const currentPresetLabel = useMemo(() => {
+    if (activeFilterCount === 0) return 'All members'
+    if (activeFilterCount === 1) {
+      if (filterRisk === 'at-risk') return 'At-Risk'
+      if (filterRisk === 'critical') return 'Critical'
+      if (filterMembershipType === 'unlimited') return 'VIP'
+      if (filterMembershipType === 'trial') return 'Trial members'
+      if (filterActivity === 'occasional') return 'Inactive'
+      if (filterActivity === 'power') return 'Power players'
+    }
+    return 'Custom'
+  }, [activeFilterCount, filterRisk, filterMembershipType, filterActivity])
+
+  const toggleMemberSelection = (memberId: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev)
+      if (next.has(memberId)) next.delete(memberId)
+      else next.add(memberId)
+      return next
+    })
+  }
+  const clearMemberSelection = () => setSelectedMemberIds(new Set())
+
+  // P2-T2: persist viewMode preference per user.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('iq:members:viewMode', viewMode)
+    }
+  }, [viewMode])
+
+  // P2-T4: URL ↔ selectedPlayerId sync for shareable Member Detail drawer.
+  // Reading `?member=<userId>` opens the drawer on page load (and from
+  // direct/shared links). Browser back closes the drawer because the
+  // URL param is part of history.
+  useEffect(() => {
+    const fromUrl = searchParamsForUrl?.get('member') ?? null
+    if (fromUrl !== selectedPlayerId) {
+      setSelectedPlayerId(fromUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParamsForUrl])
+
+  const openMemberDrawer = (memberId: string) => {
+    setSelectedPlayerId(memberId)
+    if (pathname) {
+      const next = new URLSearchParams(searchParamsForUrl?.toString() ?? '')
+      next.set('member', memberId)
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+    }
+  }
+  const closeMemberDrawer = () => {
+    setSelectedPlayerId(null)
+    if (pathname) {
+      const next = new URLSearchParams(searchParamsForUrl?.toString() ?? '')
+      next.delete('member')
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    }
+  }
   const [activeReferralRewardIssuanceKey, setActiveReferralRewardIssuanceKey] = useState<string | null>(null)
 
   const handleOutreach = (memberId: string, channel: "email" | "sms", member: Member) => {
@@ -1293,6 +1469,18 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   // Use real data — no mock fallback
   const realMembers = mapRealMembers(memberHealthData);
   const allMembers = realMembers.length > 0 ? realMembers : [];
+
+  // Counts for Quick view presets — shown next to each item in the
+  // dropdown so admin sees the size of each segment before clicking.
+  const presetCounts = useMemo(() => ({
+    all: allMembers.length,
+    'at-risk': allMembers.filter(m => m.segment === 'at-risk').length,
+    critical: allMembers.filter(m => m.segment === 'critical').length,
+    vip: allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length,
+    trial: allMembers.filter(m => m.normalizedMembershipType === 'trial').length,
+    inactive: allMembers.filter(m => m.activityLevel === 'occasional').length,
+    power: allMembers.filter(m => m.activityLevel === 'power').length,
+  }), [allMembers])
 
   // Member growth chart — from real data
   const displayMemberGrowth = memberGrowthData?.growth?.length
@@ -1684,9 +1872,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     return <EmptyStateIQ icon={Users} title="No members yet" description="Import session data with player names to track member health, engagement, and retention." ctaLabel="Import Data" ctaHref={clubId ? `/clubs/${clubId}/intelligence` : undefined} />;
   }
 
-  if (selectedPlayerId && clubId) {
-    return <PlayerProfileIQ userId={selectedPlayerId} clubId={clubId} onBack={() => setSelectedPlayerId(null)} />;
-  }
+  // P2-T4: PlayerProfileIQ used to be rendered as a full-page replacement
+  // here. Now wrapped in <MemberDetailDrawer> at the bottom of the return
+  // tree so the Members list stays visible behind the drawer.
 
   return (
     <motion.div
@@ -1702,15 +1890,33 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           <h1 style={{ fontSize: "24px", fontWeight: 800, color: "var(--heading)" }}>Members</h1>
           <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>360° member profiles with health scores and segments</p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
-          style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Member
-        </motion.button>
+        <div className="flex items-center gap-2">
+          {/* P2-T8: Insights moved here from the toolbar — it's a "look at the
+              data" CTA, not a list-affecting filter, so it sits next to the
+              other page-level CTAs (Add Member). */}
+          <button
+            onClick={() => setChartsDrawerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all"
+            style={{
+              background: "var(--subtle)",
+              color: "var(--t2)",
+              fontWeight: 600,
+              border: "1px solid var(--card-border)",
+            }}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Insights
+          </button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
+            style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)" }}
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </motion.button>
+        </div>
       </div>
 
       {/* View Subtabs */}
@@ -1750,6 +1956,21 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         );
       })()}
 
+      {/* P2-T8: Bulk select toolbar lifted out of the All Members branch so
+          it also shows when ticking checkboxes inside the Reactivation view.
+          Same selection state (selectedMemberIds) feeds both views. */}
+      {selectedMemberIds.size > 0 && (
+        <BulkSelectToolbar
+          clubId={clubId || ''}
+          selectedIds={Array.from(selectedMemberIds)}
+          existingCohorts={existingCohortsForBulk as any[]}
+          onClear={clearMemberSelection}
+          isOpen={bulkAddCohortOpen}
+          setOpen={setBulkAddCohortOpen}
+          isDark={isDark}
+        />
+      )}
+
       {/* Reactivation View */}
       {view === "reactivation" ? (
         <MembersReactivationSection
@@ -1761,35 +1982,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           clubId={clubId}
           clubName={memberHealthData?.clubName}
           isDark={isDark}
+          selectedMemberIds={selectedMemberIds}
+          onToggleSelection={toggleMemberSelection}
         />
       ) : (<>
 
-      {/* Period Tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-          {(["week", "month", "quarter", "custom"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="px-4 py-2 text-xs capitalize transition-all"
-              style={{
-                background: period === p ? "var(--pill-active)" : "transparent",
-                color: period === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-                fontWeight: period === p ? 600 : 500,
-              }}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        {period === "custom" && (
-          <div className="flex items-center gap-2">
-            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
-            <span className="text-xs" style={{ color: "var(--t4)" }}>to</span>
-            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
-          </div>
-        )}
-      </div>
+      {/* P2-T8: Period selector moved into Insights drawer (it only drives
+          KPI deltas + churn chart window — neither affects the list). */}
 
       {guestTrialSummary && guestTrialSummary.totalCandidates > 0 && (
         <Card>
@@ -3557,64 +3756,23 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </Card>
       )}
 
-      {/* Membership Status KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {(() => {
-          const activePlayers = memberHealthData?.summary?.activePlayers30d
-            ?? ((memberHealthData?.members || []).filter((m: any) => typeof m.daysSinceLastBooking === 'number' && m.daysSinceLastBooking <= 30).length);
-          const dashboardPeriod = memberHealthData?.summary?.dashboardPeriod;
-          const activePlayersSub = dashboardPeriod
-            ? `${new Date(dashboardPeriod.from).toLocaleDateString('en-US')}-${new Date(dashboardPeriod.to).toLocaleDateString('en-US')} session window`
-            : 'confirmed booking in dashboard window';
-          const guests = allMembers.filter(m => ['guest', 'drop_in'].includes(m.normalizedMembershipType || '') || ['guest', 'none'].includes(m.normalizedMembershipStatus || '')).length;
-          const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
-          const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
-          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
-          return [
-            { label: "Active Players", value: String(activePlayers), icon: Users, gradient: "from-violet-500 to-purple-600", sub: activePlayersSub },
-            { label: "Avg Health", value: String(avgHealth), icon: Heart, gradient: "from-emerald-500 to-green-500", sub: "engagement score" },
-            { label: "Guests / Drop-Ins", value: String(guests), icon: UserPlus, gradient: "from-cyan-500 to-teal-500", sub: guests > 0 ? "conversion pool" : "none" },
-            { label: "Packages", value: String(packages), icon: CalendarDays, gradient: "from-amber-500 to-orange-500", sub: packages > 0 ? "credit holders" : "none" },
-            { label: "VIP / Unlimited", value: String(vip), icon: DollarSign, gradient: "from-red-500 to-orange-500", sub: vip > 0 ? "high-value tier" : "none" },
-          ];
-        })().map((kpi, i) => {
-          const Icon = kpi.icon;
-          return (
-            <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-              <Card>
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
-                    <div className="text-[11px]" style={{ color: "var(--t3)" }}>{kpi.label}</div>
-                  </div>
-                </div>
-                <div className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>{kpi.sub}</div>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </div>
+      {/* P2-T8: KPI strip moved into Insights drawer (assembled below before
+          drawer mount; rendered there so the table is visible immediately). */}
 
-      {membersAgentActions.length > 0 && (
+      {/* P2-T5: AI Insight ribbon — single high-impact insight below KPIs.
+          Hidden when no rule matches OR user dismissed (7d localStorage).
+          See SPEC §4 P2-T5. */}
+      {clubId && <AIInsightRibbon clubId={clubId} />}
+
+      {/* P5-T5: Agent Actions block fully removed. The "Renew Expired" /
+          "Upsell Package" cards are now AI-Suggested cohorts on the
+          Cohorts page (P3-T2). See PLAN §3.6 + §4.7 for migration
+          rationale. The `membersAgentActions` memo above stays for now
+          because its computed counts feed `audienceMembers`-driven
+          summaries elsewhere on the page; remove once those callers
+          are tidied. */}
+      {false && membersAgentActions.length > 0 && (
         <Card>
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Agent Actions</h3>
-              </div>
-              <p className="text-[11px]" style={{ color: "var(--t4)" }}>
-                Built from the normalized membership segments in this view, so the agent can act on guests, trials, packages, VIPs, and renewals without relying on each club&apos;s raw labels.
-              </p>
-            </div>
-            <div className="text-[10px] px-2.5 py-1 rounded-lg" style={{ background: "rgba(139,92,246,0.1)", color: "#A78BFA", fontWeight: 700 }}>
-              {audienceMembers.length} in scope
-            </div>
-          </div>
-
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
             {membersAgentActions.slice(0, 3).map((action) => {
               const Icon = action.Icon;
@@ -3648,107 +3806,17 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </Card>
       )}
 
-      {/* Canonical Membership Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Membership State:</span>
-        {[
-          { key: "all", label: "All" },
-          { key: "active", label: "Active" },
-          { key: "trial", label: "Trial" },
-          { key: "guest", label: "Guest" },
-          { key: "none", label: "No Membership" },
-          { key: "suspended", label: "Suspended" },
-          { key: "expired", label: "Expired" },
-          { key: "cancelled", label: "Cancelled" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilterMembershipStatus(f.key)}
-            className="px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: filterMembershipStatus === f.key ? "var(--pill-active)" : "transparent",
-              color: filterMembershipStatus === f.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-              fontWeight: filterMembershipStatus === f.key ? 600 : 500,
-              border: `1px solid ${filterMembershipStatus === f.key ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Membership Tier:</span>
-        {[
-          { key: "all", label: "All" },
-          { key: "guest", label: "Guest" },
-          { key: "drop_in", label: "Drop-In" },
-          { key: "trial", label: "Trial" },
-          { key: "package", label: "Package" },
-          { key: "monthly", label: "Monthly" },
-          { key: "unlimited", label: "VIP / Unlimited" },
-          { key: "discounted", label: "Discounted" },
-          { key: "insurance", label: "Insurance" },
-          { key: "staff", label: "Staff" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilterMembershipType(f.key)}
-            className="px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: filterMembershipType === f.key ? "var(--pill-active)" : "transparent",
-              color: filterMembershipType === f.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-              fontWeight: filterMembershipType === f.key ? 600 : 500,
-              border: `1px solid ${filterMembershipType === f.key ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Charts */}
-      {(displayMemberGrowth.length > 0 || displayActivityDistribution.length > 0) && (
-      <div className="grid lg:grid-cols-2 gap-4">
-        {displayMemberGrowth.length > 0 && (
-        <Card>
-          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Growth</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={displayMemberGrowth}>
-              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line type="monotone" dataKey="total" name="Total" stroke="#8B5CF6" strokeWidth={2} dot={{ r: 4, fill: "#8B5CF6" }} />
-              <Line type="monotone" dataKey="new" name="New" stroke="#10B981" strokeWidth={2} dot={{ r: 3, fill: "#10B981" }} />
-              <Line type="monotone" dataKey="churned" name="Churned" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-        )}
-
-        {displayActivityDistribution.length > 0 && (
-        <Card>
-          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>How Often Members Play</h3>
-          <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>Members grouped by sessions per week (last 30 days)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={displayActivityDistribution}>
-              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-              <XAxis dataKey="range" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} label={{ value: "Sessions/week", position: "insideBottom", offset: -2, style: { fill: "var(--chart-tick)", fontSize: 10 } }} />
-              <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count" name="Members" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        )}
-      </div>
-      )}
-
-      {/* Filters + Table */}
+      {/* P2-T8: Compact toolbar replacing the prior 6-row inline filter strip
+          + 3-col chart grid. All filters now live in MembersFilterDrawer (right
+          slide-in); charts in MembersChartsDrawer. Active filters render as
+          dismissible chips below the toolbar. */}
       <div className="space-y-3">
-        {/* Search + Sort + View toggle */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 240 }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* Search */}
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[240px] max-w-[360px]"
+            style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
+          >
             <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
             <input
               placeholder="Search by name or email..."
@@ -3758,9 +3826,105 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               style={{ color: "var(--t1)" }}
             />
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--t3)" }}>
-              <span>Sort by:</span>
+
+          {/* Right cluster */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filters drawer trigger */}
+            <button
+              onClick={() => setFilterDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+              style={{
+                background: activeFilterCount > 0 ? "var(--pill-active)" : "var(--subtle)",
+                color: activeFilterCount > 0 ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                fontWeight: activeFilterCount > 0 ? 700 : 600,
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <FilterIcon className="w-3.5 h-3.5" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span
+                  className="px-1.5 rounded-full text-[10px]"
+                  style={{ background: "rgba(139,92,246,0.25)", fontWeight: 700 }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {/* Quick presets dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setPresetMenuOpen(o => !o)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+                style={{
+                  background: "var(--subtle)",
+                  color: "var(--t3)",
+                  fontWeight: 600,
+                  border: "1px solid var(--card-border)",
+                }}
+              >
+                {currentPresetLabel}
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {presetMenuOpen && (
+                <>
+                  {/* Click-outside catcher */}
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setPresetMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 mt-2 z-30 rounded-xl py-1 min-w-[220px] backdrop-blur-md"
+                    style={{
+                      background: isDark ? "#15151F" : "#FFFFFF",
+                      border: "1px solid var(--card-border)",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+                    }}
+                  >
+                    {[
+                      { key: "all", label: "All members" },
+                      { key: "at-risk", label: "At-Risk" },
+                      { key: "critical", label: "Critical" },
+                      { key: "vip", label: "VIP" },
+                      { key: "trial", label: "Trial members" },
+                      { key: "inactive", label: "Inactive" },
+                      { key: "power", label: "Power players" },
+                    ].map(p => {
+                      const count = presetCounts[p.key as keyof typeof presetCounts] ?? 0
+                      return (
+                        <button
+                          key={p.key}
+                          onClick={() => { applyPreset(p.key); setPresetMenuOpen(false); }}
+                          className="w-full flex items-center justify-between gap-3 text-left px-3 py-1.5 text-xs transition-colors"
+                          style={{ color: "var(--t2)" }}
+                          onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
+                          onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "transparent"; }}
+                        >
+                          <span>{p.label}</span>
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded-md tabular-nums"
+                            style={{
+                              background: count > 0 ? "var(--subtle)" : "transparent",
+                              color: count > 0 ? "var(--t3)" : "var(--t4)",
+                              fontWeight: 600,
+                              minWidth: 22,
+                              textAlign: "center",
+                            }}
+                          >
+                            {count}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-1 text-[11px]" style={{ color: "var(--t3)" }}>
+              <span>Sort:</span>
               {(["health", "revenue", "sessions", "name"] as const).map((s) => (
                 <button
                   key={s}
@@ -3776,19 +3940,28 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 </button>
               ))}
             </div>
+
+            {/* Page size */}
             <select
               value={pageSize}
               onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
               className="text-[11px] px-2 py-1.5 rounded-xl outline-none"
               style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
             >
-              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
+
+            {/* View toggle */}
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-              {([{ mode: "grid" as const, Icon: LayoutGrid }, { mode: "list" as const, Icon: List }]).map(({ mode, Icon }) => (
+              {([
+                { mode: "list" as const, Icon: List, title: "List view (default)" },
+                { mode: "grid" as const, Icon: LayoutGrid, title: "Grid view" },
+                { mode: "cards" as const, Icon: Sparkles, title: "Cards view" },
+              ]).map(({ mode, Icon, title }) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
+                  title={title}
                   className="p-2 transition-all"
                   style={{
                     background: viewMode === mode ? "var(--pill-active)" : "transparent",
@@ -3802,53 +3975,35 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           </div>
         </div>
 
-        {/* Segment Filters */}
-        <div className="space-y-2">
-          {/* Activity */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Activity</span>
-            {["all", "power", "regular", "casual", "occasional"].map(v => (
-              <button key={v} onClick={() => setFilterActivity(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterActivity === v ? "var(--pill-active)" : "transparent", color: filterActivity === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterActivity === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'power' ? 'Power' : v === 'regular' ? 'Regular' : v === 'casual' ? 'Casual' : 'Occasional'}
+        {/* Active filter chips — dismissible */}
+        {activeFilterCount > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {activeFilterChips.map(c => (
+              <button
+                key={c.key}
+                onClick={c.onClear}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
+                style={{
+                  background: "var(--pill-active)",
+                  color: isDark ? "#C4B5FD" : "#7C3AED",
+                  fontWeight: 600,
+                  border: "1px solid rgba(139,92,246,0.25)",
+                }}
+              >
+                <span style={{ color: "var(--t4)", fontWeight: 500 }}>{c.group}:</span>
+                {c.label}
+                <XIcon className="w-3 h-3 opacity-70" />
               </button>
             ))}
+            <button
+              onClick={clearAllFilters}
+              className="text-[11px] px-2 py-1 rounded-lg transition-colors"
+              style={{ color: "var(--t4)" }}
+            >
+              Clear all
+            </button>
           </div>
-          {/* Risk */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Risk</span>
-            {["all", "healthy", "watch", "at-risk", "critical"].map(v => (
-              <button key={v} onClick={() => setFilterRisk(v === "healthy" ? "power" : v === "watch" ? "regular" : v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "var(--pill-active)" : "transparent", color: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "#C4B5FD" : "var(--t3)", fontWeight: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'healthy' ? 'Healthy' : v === 'watch' ? 'Watch' : v === 'at-risk' ? 'At-Risk' : 'Critical'}
-              </button>
-            ))}
-          </div>
-          {/* Trend */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Trend</span>
-            {["all", "growing", "stable", "declining", "churning"].map(v => (
-              <button key={v} onClick={() => setFilterTrend(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterTrend === v ? "var(--pill-active)" : "transparent", color: filterTrend === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterTrend === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v}
-              </button>
-            ))}
-          </div>
-          {/* Value */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Value</span>
-            {["all", "high", "medium", "low"].map(v => (
-              <button key={v} onClick={() => setFilterValue(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterValue === v ? "var(--pill-active)" : "transparent", color: filterValue === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterValue === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'high' ? 'High LTV' : v === 'medium' ? 'Mid' : 'Low'}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Save filtered members as Cohort */}
@@ -3863,8 +4018,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
-      {/* Member Grid */}
-      {viewMode === "grid" ? (
+      {/* P2-T8: BulkSelectToolbar lifted to top of view (above ternary) so
+          it appears on both All Members and Reactivation views. */}
+
+      {/* P2-T2: Member layout — list (default), grid (multi-col), cards (alias of grid for now) */}
+      {(viewMode === "grid" || viewMode === "cards") ? (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           {paginated.map((member, i) => (
             <motion.div
@@ -3874,7 +4032,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               transition={{ delay: i * 0.04 }}
             >
               <Card className="cursor-pointer transition-all hover:scale-[1.02]">
-                <div onClick={() => setSelectedPlayerId(member.id)} className="flex items-start gap-3 mb-4">
+                <div onClick={() => openMemberDrawer(member.id)} className="flex items-start gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-sm text-white shrink-0"
                     style={{ background: `linear-gradient(135deg, ${segmentConfig[member.segment].color}, ${segmentConfig[member.segment].color}99)`, fontWeight: 700 }}
@@ -3982,17 +4140,41 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </div>
       ) : (
         <Card className="!p-0 overflow-hidden">
-          {/* List header */}
+          {/* List header — P2-T3: checkbox column added at start */}
           <div
             className="grid items-center px-5 py-3 text-[10px] uppercase tracking-wider"
             style={{
-              gridTemplateColumns: "40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+              gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
               gap: "0 12px",
               color: "var(--t4)",
               fontWeight: 600,
               borderBottom: "1px solid var(--divider)",
             }}
           >
+            {/* Master checkbox: select all on current page */}
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                aria-label="Select all on page"
+                className="w-4 h-4 cursor-pointer"
+                checked={paginated.length > 0 && paginated.every(m => selectedMemberIds.has(m.id))}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedMemberIds(prev => {
+                      const next = new Set(prev)
+                      paginated.forEach(m => next.add(m.id))
+                      return next
+                    })
+                  } else {
+                    setSelectedMemberIds(prev => {
+                      const next = new Set(prev)
+                      paginated.forEach(m => next.delete(m.id))
+                      return next
+                    })
+                  }
+                }}
+              />
+            </div>
             <span />
             <span>Member</span>
             <span className="hidden md:block">Segment</span>
@@ -4005,6 +4187,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           </div>
           {paginated.map((member, i) => {
             const seg = segmentConfig[member.segment];
+            const isSelected = selectedMemberIds.has(member.id)
             return (
               <motion.div
                 key={member.id}
@@ -4013,14 +4196,25 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 transition={{ delay: i * 0.02 }}
                 className="grid items-center px-5 py-3 cursor-pointer transition-colors"
                 style={{
-                  gridTemplateColumns: "40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+                  gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
                   gap: "0 12px",
                   borderBottom: "1px solid var(--divider)",
+                  background: isSelected ? "rgba(139,92,246,0.06)" : undefined,
                 }}
-                onClick={() => setSelectedPlayerId(member.id)}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                onClick={() => openMemberDrawer(member.id)}
+                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--hover)" }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "rgba(139,92,246,0.06)" : "transparent" }}
               >
+                {/* P2-T3: per-row checkbox; click stops propagation so row click still opens drawer */}
+                <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${member.name}`}
+                    checked={isSelected}
+                    onChange={() => toggleMemberSelection(member.id)}
+                    className="w-4 h-4 cursor-pointer"
+                  />
+                </div>
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center text-xs text-white"
                   style={{ background: `linear-gradient(135deg, ${seg.color}, ${seg.color}99)`, fontWeight: 700 }}
@@ -4115,8 +4309,341 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         )}
       </div>
       </>)}
+
+      {/* P2-T4: Member Detail side-drawer (replaces full-page navigation).
+          URL ?member=<userId> ↔ selectedPlayerId synced via useEffect above. */}
+      {clubId && (
+        <MemberDetailDrawer
+          memberId={selectedPlayerId}
+          clubId={clubId}
+          onClose={closeMemberDrawer}
+        />
+      )}
+
+      {/* P2-T8: Filter drawer — replaces 6-row inline filter strip. */}
+      <MembersFilterDrawer
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        matchCount={filtered.length}
+        filterMembershipStatus={filterMembershipStatus}
+        setFilterMembershipStatus={setFilterMembershipStatus}
+        filterMembershipType={filterMembershipType}
+        setFilterMembershipType={setFilterMembershipType}
+        filterActivity={filterActivity}
+        setFilterActivity={setFilterActivity}
+        filterRisk={filterRisk}
+        setFilterRisk={setFilterRisk}
+        filterTrend={filterTrend}
+        setFilterTrend={setFilterTrend}
+        filterValue={filterValue}
+        setFilterValue={setFilterValue}
+        isDark={isDark}
+      />
+
+      {/* P2-T8: Insights drawer — Period selector + KPI strip + 3 trend
+          charts. State stays here; drawer renders the JSX we hand it. */}
+      <MembersChartsDrawer
+        open={chartsDrawerOpen}
+        onClose={() => setChartsDrawerOpen(false)}
+        memberGrowth={displayMemberGrowth}
+        activityDistribution={displayActivityDistribution}
+        churnTrend={churnTrendData?.trend ?? []}
+        header={(() => {
+          // Period buttons drive useMemberKpiDeltas + useChurnTrend windows.
+          // Custom date range is reserved for Phase 6 — currently behaves like Month.
+          const periodButtons = (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--t4)" }}>Period</span>
+              <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+                {(["week", "month", "quarter", "custom"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className="px-3 py-1.5 text-xs capitalize transition-all"
+                    style={{
+                      background: period === p ? "var(--pill-active)" : "transparent",
+                      color: period === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                      fontWeight: period === p ? 600 : 500,
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              {period === "custom" && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+                  <span className="text-xs" style={{ color: "var(--t4)" }}>to</span>
+                  <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+                </div>
+              )}
+            </div>
+          );
+
+          // KPI strip — same logic as before, just rendered inside the
+          // drawer at 2-col on narrow / 3-col on the 720px drawer width.
+          const active = allMembers.filter(m => m.normalizedMembershipStatus === 'active').length;
+          const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
+          const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
+          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
+          const atRisk = allMembers.filter(m => m.segment === 'at-risk' || m.segment === 'critical').length;
+          const ltvTotalCents = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
+
+          const fmtDelta = (delta: number | null | undefined, label = 'vs last') => {
+            if (delta == null) return { text: '—', color: 'var(--t4)' };
+            if (delta === 0) return { text: `0 ${label}`, color: 'var(--t4)' };
+            const sign = delta > 0 ? '↗ +' : '↘ ';
+            const color = delta > 0 ? '#10B981' : '#F59E0B';
+            return { text: `${sign}${Math.abs(delta)} ${label}`, color };
+          };
+          const fmtMoneyDelta = (cents: number | null | undefined) => {
+            if (cents == null) return { text: '—', color: 'var(--t4)' };
+            if (cents === 0) return { text: '$0 vs last', color: 'var(--t4)' };
+            const sign = cents > 0 ? '+' : '−';
+            const color = cents > 0 ? '#10B981' : '#F59E0B';
+            const dollars = Math.abs(Math.round(cents / 100));
+            const text = dollars >= 1000 ? `${sign}$${(dollars / 1000).toFixed(1)}K` : `${sign}$${dollars}`;
+            return { text: `${text} vs last`, color };
+          };
+
+          const ltvDisplay = ltvTotalCents >= 100_000
+            ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
+            : `$${Math.round(ltvTotalCents / 100)}`;
+
+          const kpis = [
+            { label: 'Active Members', value: String(active || allMembers.length), icon: Users, gradient: 'from-violet-500 to-purple-600', sub: `of ${allMembers.length} total`, delta: fmtDelta(kpiDeltas?.activeDelta) },
+            { label: 'Avg Health', value: String(avgHealth), icon: Heart, gradient: 'from-emerald-500 to-green-500', sub: 'engagement score', delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last') },
+            { label: 'At-Risk', value: String(atRisk), icon: AlertTriangle, gradient: 'from-orange-500 to-red-500', sub: atRisk > 0 ? 'need attention' : 'all healthy', delta: fmtDelta(kpiDeltas?.atRiskDelta) },
+            { label: 'LTV total', value: ltvDisplay, icon: DollarSign, gradient: 'from-amber-500 to-yellow-500', sub: 'cumulative revenue', delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents) },
+            { label: 'VIP', value: String(vip), icon: Sparkles, gradient: 'from-cyan-500 to-blue-500', sub: `${packages} Package${packages !== 1 ? 's' : ''}`, delta: { text: '', color: 'transparent' } },
+          ];
+
+          return (
+            <div className="space-y-4">
+              {periodButtons}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {kpis.map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div key={kpi.label} className="rounded-2xl p-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center shrink-0`}>
+                          <Icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--heading)', lineHeight: 1 }}>{kpi.value}</div>
+                          <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>
+                      {kpi.delta.text && (
+                        <div className="text-[10px] mt-1" style={{ color: kpi.delta.color, fontWeight: 600 }}>
+                          {kpi.delta.text}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      />
     </motion.div>
   );
+}
+
+// ── P2-T3: Bulk select toolbar ──
+// Sticky bar shown when ≥1 member is checked. Provides:
+//   - "Add to cohort ▾" — saves selection as new cohort, OR shows existing
+//     (existing cohorts disabled with "Coming in P3-T3" tooltip until the
+//     cohort builder enriches them with userId-IN merge logic).
+//   - "Send campaign" — disabled until P4-T1 (Campaign Wizard).
+//   - "Clear selection" — empties the Set.
+function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOpen, setOpen, isDark }: {
+  clubId: string
+  selectedIds: string[]
+  existingCohorts: any[]
+  onClear: () => void
+  isOpen: boolean
+  setOpen: (v: boolean) => void
+  isDark?: boolean
+}) {
+  const [savedCohortName, setSavedCohortName] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const utils = trpc.useUtils()
+
+  const showSavedBadge = (name: string) => {
+    setSavedCohortName(name)
+    setOpen(false)
+    setErrorMessage(null)
+    // Refresh Your Cohorts list (and sidebar counters) so the new/updated
+    // cohort shows up without a manual reload.
+    utils.intelligence.listCohorts.invalidate({ clubId }).catch(() => {})
+    setTimeout(() => {
+      setSavedCohortName(null)
+      onClear()
+    }, 2500)
+  }
+
+  const showError = (msg: string) => {
+    setErrorMessage(msg)
+    setOpen(false)
+    setTimeout(() => setErrorMessage(null), 4500)
+  }
+
+  const createMutation = trpc.intelligence.createCohort.useMutation({
+    onSuccess: (cohort: any) => showSavedBadge(cohort?.name || 'Cohort'),
+    onError: (err: any) => showError(`Couldn't create cohort: ${err?.message || 'unknown error'}`),
+  })
+
+  // P2-T8: real "Add to existing" wiring (was disabled with "soon" label).
+  // Direct call — `?.useMutation?.()` style breaks `this`-binding through
+  // the tRPC react-query proxy (same crash we hit on Members AI Insight).
+  const addMembersMutation = (trpc.intelligence as any).addMembersToCohort.useMutation({
+    onSuccess: (cohort: any) => showSavedBadge(`${cohort?.name || 'Cohort'} (+${selectedIds.length})`),
+    onError: (err: any) => showError(`Couldn't add to cohort: ${err?.message || 'unknown error'}`),
+  })
+
+  if (savedCohortName) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+        style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10B981' }}
+      >
+        <Check className="w-4 h-4" />
+        <span className="text-sm font-semibold">Saved &ldquo;{savedCohortName}&rdquo;</span>
+      </motion.div>
+    )
+  }
+
+  if (errorMessage) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#F87171' }}
+      >
+        <AlertTriangle className="w-4 h-4" />
+        <span className="text-sm">{errorMessage}</span>
+      </motion.div>
+    )
+  }
+
+  const isPending = createMutation.isPending || addMembersMutation?.isPending
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex items-center gap-3 px-4 py-2.5 rounded-xl flex-wrap"
+      style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)' }}
+    >
+      <span className="text-sm font-semibold" style={{ color: '#A78BFA' }}>
+        {selectedIds.length} selected
+      </span>
+
+      <div className="relative">
+        <button
+          onClick={() => setOpen(!isOpen)}
+          disabled={isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] disabled:opacity-50"
+          style={{ background: 'rgba(139,92,246,0.18)', color: '#A78BFA' }}
+        >
+          <Users className="w-3.5 h-3.5" />
+          Add to cohort
+          <ChevronRight className="w-3 h-3 rotate-90" />
+        </button>
+
+        {isOpen && (
+          <>
+            {/* Click-outside catcher */}
+            <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+            <div
+              className="absolute top-full mt-1 left-0 z-30 min-w-[280px] rounded-xl shadow-lg overflow-hidden backdrop-blur-md"
+              style={{
+                background: isDark ? '#15151F' : '#FFFFFF',
+                border: '1px solid var(--card-border)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+              }}
+            >
+              {/* Create new cohort */}
+              <button
+                onClick={() => createMutation.mutate({
+                  clubId,
+                  name: `Selection of ${selectedIds.length} · ${new Date().toLocaleDateString()}`,
+                  description: `Members hand-picked from Members list (${selectedIds.length} total)`,
+                  filters: [{ field: 'userId', op: 'in' as const, value: selectedIds }],
+                })}
+                disabled={isPending}
+                className="w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                style={{ color: 'var(--heading)', borderBottom: '1px solid var(--card-border)' }}
+                onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }}
+              >
+                {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+                <span className="font-semibold">+ Create new cohort from selection</span>
+              </button>
+
+              {/* Existing cohorts — clickable, calls addMembersToCohort */}
+              <div className="px-3 py-2 text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+                Add to existing
+              </div>
+              {existingCohorts.length === 0 ? (
+                <div className="px-3 pb-3 text-[11px]" style={{ color: 'var(--t4)' }}>
+                  No saved cohorts yet.
+                </div>
+              ) : (
+                existingCohorts.slice(0, 8).map((cohort) => (
+                  <button
+                    key={cohort.id}
+                    onClick={() => {
+                      addMembersMutation.mutate({
+                        clubId,
+                        cohortId: cohort.id,
+                        userIds: selectedIds,
+                      })
+                    }}
+                    disabled={isPending}
+                    className="w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 transition-colors disabled:opacity-50"
+                    style={{ color: 'var(--t2)' }}
+                    onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                    onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span className="truncate">{cohort.name}</span>
+                    <span className="shrink-0 text-[10px]" style={{ color: 'var(--t4)' }}>
+                      {cohort.memberCount} · +{selectedIds.length}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      <button
+        disabled
+        title="Available in P4-T1 (Campaign Wizard)"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold opacity-50 cursor-not-allowed"
+        style={{ background: 'rgba(6,182,212,0.18)', color: '#06B6D4' }}
+      >
+        <Mail className="w-3.5 h-3.5" />
+        Send campaign
+      </button>
+
+      <button
+        onClick={onClear}
+        className="ml-auto text-xs px-2 py-1 rounded-lg transition-colors hover:bg-[var(--hover)]"
+        style={{ color: 'var(--t3)' }}
+      >
+        Clear selection
+      </button>
+    </motion.div>
+  )
 }
 
 // ── Save filtered members as Cohort ──

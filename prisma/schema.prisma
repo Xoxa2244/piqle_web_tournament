@@ -86,6 +86,7 @@ model User {
   playSessionsHosted       PlaySession[]              @relation("PlaySessionHost")
   memberHealthSnapshots    MemberHealthSnapshot[]     @relation("MemberHealthSnapshots")
   memberAiProfiles         MemberAiProfile[]          @relation("MemberAiProfiles")
+  campaignsCreated         Campaign[]                 @relation("UserCampaigns")
 
   // AI Advisor conversations
   aiConversations          AIConversation[]           @relation("UserAIConversations")
@@ -286,6 +287,8 @@ model Club {
   aiRecommendationLogs    AIRecommendationLog[]
   memberHealthSnapshots   MemberHealthSnapshot[]     @relation("ClubMemberHealthSnapshots")
   memberAiProfiles        MemberAiProfile[]          @relation("MemberAiProfiles")
+  campaigns               Campaign[]                 @relation("ClubCampaigns")
+  suggestedCohortCache    ClubSuggestedCohortCache[] @relation("ClubSuggestedCohortCache")
 
   // AI features
   documentEmbeddings      DocumentEmbedding[]        @relation("ClubEmbeddings")
@@ -587,12 +590,15 @@ model ClubCohort {
   description String?
   filters     Json     @default("[]")
   memberCount Int      @default(0) @map("member_count")
+  // P5-T2 (P3-T6): isDynamic = re-evaluates filters on read; false = frozen userId list.
+  isDynamic   Boolean  @default(true) @map("is_dynamic")
   createdBy   String   @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @map("updated_at")
 
-  club    Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  creator User @relation("ClubCohortCreator", fields: [createdBy], references: [id])
+  club      Club       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator   User       @relation("ClubCohortCreator", fields: [createdBy], references: [id])
+  campaigns Campaign[] @relation("CohortCampaigns")
 
   @@index([clubId])
   @@map("club_cohorts")
@@ -2054,6 +2060,69 @@ model MemberHealthSnapshot {
   @@index([clubId, date])
   @@index([userId, date])
   @@map("member_health_snapshots")
+}
+
+// ── P5-T2: Campaign aggregate (replaces ad-hoc AdvisorDraft for v1 campaigns).
+//    Created by Campaign Wizard (P4) on Launch. Cohort linkage is nullable
+//    so legacy/orphan campaigns keep working. Attribution JSON written by
+//    P5-T3 pipeline.
+model Campaign {
+  id              String   @id @default(uuid())
+  clubId          String   @map("club_id")
+  cohortId        String?  @map("cohort_id")
+  createdByUser   String?  @map("created_by_user")
+
+  name            String
+  goal            String   // reactivate_dormant, onboard_new, promote_event, upsell_tier, renewal_reminder, custom
+  subject         String?
+  body            String?
+
+  channels        String[] @default([]) // ['email','sms']
+
+  status          String   @default("draft") // draft|scheduled|running|paused|completed|failed
+
+  scheduledAt     DateTime? @map("scheduled_at")
+  launchedAt      DateTime? @map("launched_at")
+  completedAt     DateTime? @map("completed_at")
+
+  sentCount       Int      @default(0) @map("sent_count")
+  deliveredCount  Int      @default(0) @map("delivered_count")
+  openedCount     Int      @default(0) @map("opened_count")
+  failedCount     Int      @default(0) @map("failed_count")
+
+  // Frozen view of cohort membership at send time:
+  //   { userIds: string[], rendered_at: ISO }
+  cohortSnapshot  Json     @default("{}") @map("cohort_snapshot")
+  // Result of P5-T3 attribution:
+  //   { booked_count, booked_revenue_cents, last_computed_at }
+  attribution     Json     @default("{}")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  club            Club        @relation("ClubCampaigns", fields: [clubId], references: [id], onDelete: Cascade)
+  cohort          ClubCohort? @relation("CohortCampaigns", fields: [cohortId], references: [id], onDelete: SetNull)
+  creator         User?       @relation("UserCampaigns", fields: [createdByUser], references: [id], onDelete: SetNull)
+
+  @@index([clubId, status])
+  @@index([clubId, createdAt(sort: Desc)])
+  @@index([cohortId])
+  @@map("campaigns")
+}
+
+// ── P3-T1 / P5-T2: 24h cache for AI-suggested cohort generators.
+//    Avoids recomputing on every Cohorts page load.
+model ClubSuggestedCohortCache {
+  clubId       String   @map("club_id")
+  generatorKey String   @map("generator_key")
+  payload      Json
+  computedAt   DateTime @default(now()) @map("computed_at")
+
+  club Club @relation("ClubSuggestedCohortCache", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@id([clubId, generatorKey])
+  @@index([computedAt(sort: Desc)])
+  @@map("club_suggested_cohort_cache")
 }
 
 model WeeklySummary {

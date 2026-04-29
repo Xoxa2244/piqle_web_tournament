@@ -8,7 +8,8 @@ import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Spa
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
-import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession } from '../../_hooks/use-intelligence'
+import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession, useSuggestedCohorts } from '../../_hooks/use-intelligence'
+import { SuggestedCohortCard } from '../SuggestedCohortCard'
 
 // ── Filter field definitions ──
 const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = [
@@ -33,9 +34,30 @@ const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = [
   { label: 'No Membership', value: 'none' },
 ]
 
+const RISK_LEVEL_OPTIONS = [
+  { label: 'Healthy', value: 'healthy' },
+  { label: 'Watch', value: 'watch' },
+  { label: 'At-Risk', value: 'at_risk' },
+  { label: 'Critical', value: 'critical' },
+]
+
+const BIRTHDAY_MONTH_OPTIONS = [
+  { label: 'January',   value: '1'  }, { label: 'February',  value: '2'  },
+  { label: 'March',     value: '3'  }, { label: 'April',     value: '4'  },
+  { label: 'May',       value: '5'  }, { label: 'June',      value: '6'  },
+  { label: 'July',      value: '7'  }, { label: 'August',    value: '8'  },
+  { label: 'September', value: '9'  }, { label: 'October',   value: '10' },
+  { label: 'November',  value: '11' }, { label: 'December',  value: '12' },
+]
+
 const FILTER_FIELDS = [
   { key: 'age', label: 'Age', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
   { key: 'gender', label: 'Gender', type: 'select' as const, ops: ['eq'], options: [{ label: 'Male', value: 'M' }, { label: 'Female', value: 'F' }] },
+  // P3-T3 D7 fields:
+  { key: 'healthScore', label: 'Health Score', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
+  { key: 'riskLevel', label: 'Risk Level', type: 'select' as const, ops: ['eq'], options: RISK_LEVEL_OPTIONS },
+  { key: 'joinedDaysAgo', label: 'Joined (days ago)', type: 'number' as const, ops: ['lte', 'gte'] },
+  { key: 'birthdayMonth', label: 'Birthday Month', type: 'select' as const, ops: ['eq'], options: BIRTHDAY_MONTH_OPTIONS },
   { key: 'sessionFormat', label: 'Session Type', type: 'select' as const, ops: ['eq'], options: [
     { label: 'Open Play', value: 'OPEN_PLAY' }, { label: 'Clinic', value: 'CLINIC' },
     { label: 'League', value: 'LEAGUE_PLAY' }, { label: 'Drill', value: 'DRILL' }, { label: 'Social', value: 'SOCIAL' },
@@ -168,6 +190,8 @@ export default function CohortsIQ() {
   const [lookalikeExportPreset, setLookalikeExportPreset] = useState<LookalikeExportPreset>('generic_csv')
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
+  // P3-T2: AI-suggested cohorts (3 generators per D4)
+  const { data: suggestedCohorts = [] } = useSuggestedCohorts(clubId)
   const { data: coverage, refetch: refetchCoverage } = trpc.intelligence.getCohortDataCoverage.useQuery({ clubId })
   const { data: smartFirstSessionData } = useSmartFirstSession(clubId, 21, 8)
   const { data: lookalikeExportData } = useLookalikeAudienceExport(clubId)
@@ -329,21 +353,15 @@ export default function CohortsIQ() {
         <div>
           <h1 className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
             <Users className="w-6 h-6 inline mr-2" />
-            Segments
+            Cohorts
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
             Create custom member segments for targeted AI campaigns
           </p>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => { setShowCreate(true); setSelectedCohortId(null) }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
-        >
-          <Plus className="w-4 h-4" /> Create Segment
-        </motion.button>
+        {/* Top-right "Create Cohort" CTA removed — duplicated the in-flow
+            "+ Build a custom cohort" tile in Your Cohorts. Single CTA keeps
+            the action near context. */}
       </div>
 
       {/* Create / Edit modal */}
@@ -367,6 +385,60 @@ export default function CohortsIQ() {
           />
         )}
       </AnimatePresence>
+
+      {/* P3-T2: AI-Suggested Cohorts.
+          Three generators (Renewal in 14d, Lost Evening Players,
+          New & Engaged) live in lib/ai/cohort-generators/. Sorted by
+          $ impact desc; empties hidden. See SPEC §5 P3-T2. */}
+      {!showCreate && !selectedCohortId && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+            <h2 className="text-base" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+              AI-Suggested Cohorts
+            </h2>
+            <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}>
+              refreshed daily
+            </span>
+          </div>
+          {suggestedCohorts.length === 0 ? (
+            <div
+              className="rounded-2xl p-5 text-sm"
+              style={{ background: 'var(--card-bg)', border: '1px dashed var(--card-border)', color: 'var(--t3)' }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+                <span className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>No suggestions right now</span>
+              </div>
+              <p className="text-xs leading-relaxed mb-2">
+                IQ checks three angles every day: members whose membership expires soon,
+                regulars who stopped showing up to evening sessions, and new joiners who
+                are engaging fast. None matched today — usually because the club doesn&apos;t
+                have enough session history yet, or the underlying data (e.g. membership
+                expiry from CSV import) isn&apos;t populated.
+              </p>
+              <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                Cards appear here automatically once the data lines up. You can always build a custom cohort below.
+              </p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {suggestedCohorts.map((suggestion: any) => (
+                <SuggestedCohortCard
+                  key={suggestion.id}
+                  clubId={clubId}
+                  suggestion={suggestion}
+                  // P5-T5 fix #5: hand off to Campaign Wizard via
+                  // ?cohortId=… on the Campaigns page.
+                  onLaunchCampaign={(s) => {
+                    router.push(`/clubs/${clubId}/intelligence/campaigns?cohortId=${s.id}`)
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Data Coverage Banner */}
       {coverage && !showCreate && !selectedCohortId && (
@@ -979,67 +1051,115 @@ export default function CohortsIQ() {
         </div>
       ) : null}
 
-      {/* Cohort list */}
+      {/* P3-T6: Your Cohorts — heading + cards + "+ Create empty" tile */}
       {!showCreate && !selectedCohortId && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {cohorts?.map((c: any) => (
-            <motion.div
-              key={c.id}
-              whileHover={{ scale: 1.02 }}
-              className="group rounded-2xl p-5 cursor-pointer transition-all"
-              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-              onClick={() => setSelectedCohortId(c.id)}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
-                  <Users className="w-5 h-5 text-white" />
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-4 h-4" style={{ color: '#06B6D4' }} />
+            <h2 className="text-base" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+              Your Cohorts
+            </h2>
+            <span className="text-[11px]" style={{ color: 'var(--t4)' }}>
+              {cohorts?.length ?? 0} saved
+            </span>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {cohorts?.map((c: any) => (
+              <motion.div
+                key={c.id}
+                whileHover={{ scale: 1.02 }}
+                className="group rounded-2xl p-5 cursor-pointer transition-all"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+                onClick={() => setSelectedCohortId(c.id)}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}>
+                    <Users className="w-5 h-5 text-white" />
+                  </div>
+                  {/* Delete kept on hover only — destructive, don't surface
+                      it as a primary affordance. Campaign CTA moves to the
+                      bottom row where it's always visible. */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
+                      className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
+                      style={{ color: 'var(--t4)' }}
+                      title="Delete cohort"
+                    >
+                      <Trash2 className="w-4 h-4 hover:text-red-400" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
-                    className="p-1.5 rounded-lg transition-all hover:bg-violet-500/10"
-                    style={{ color: '#8B5CF6' }}
-                    title="Launch campaign"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
-                    className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
-                    style={{ color: 'var(--t4)' }}
-                    title="Delete cohort"
-                  >
-                    <Trash2 className="w-4 h-4 hover:text-red-400" />
-                  </button>
-                </div>
-              </div>
-              <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
-              {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
+                <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
+                {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
+                <div className="flex items-center gap-1.5 mb-3">
                   <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
                   <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
                   <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
                 </div>
-                <ChevronRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
-              </div>
-              {/* Filter tags */}
-              <div className="flex flex-wrap gap-1 mt-3">
-                {parseCohortFilters(c.filters).map((f, i) => (
-                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
-                    {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
-                  </span>
-                ))}
-              </div>
-            </motion.div>
-          ))}
+                {/* Filter tags */}
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {parseCohortFilters(c.filters).map((f, i) => (
+                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
+                      {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
+                    </span>
+                  ))}
+                </div>
+                {/* Always-visible Create campaign CTA + last-edit timestamp.
+                    Mirrors the "→ Campaign" affordance on AI-Suggested cards
+                    so saved cohorts have the same fast-path. */}
+                <div className="flex items-center justify-between gap-2 pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+                  {(c.updatedAt || c.createdAt) ? (
+                    <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--t4)' }}>
+                      <Clock className="w-3 h-3" />
+                      {new Date(c.updatedAt ?? c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  ) : <span />}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
+                    style={{
+                      background: 'rgba(139,92,246,0.12)',
+                      color: '#A78BFA',
+                      fontWeight: 700,
+                      border: '1px solid rgba(139,92,246,0.2)',
+                    }}
+                  >
+                    <Send className="w-3 h-3" />
+                    Create campaign
+                  </button>
+                </div>
+              </motion.div>
+            ))}
 
-          {cohorts?.length === 0 && (
-            <div className="col-span-full text-center py-16" style={{ color: 'var(--t4)' }}>
-              <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No segments yet. Create your first one!</p>
-            </div>
-          )}
+            {/* P3-T6: "+ Create empty" tile at end of list */}
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => { setShowCreate(true); setSelectedCohortId(null) }}
+              className="rounded-2xl p-5 transition-all flex flex-col items-center justify-center gap-2 text-center"
+              style={{
+                background: 'transparent',
+                border: '1px dashed var(--card-border)',
+                color: 'var(--t3)',
+                minHeight: 180,
+              }}
+            >
+              <Plus className="w-8 h-8" style={{ color: '#8B5CF6' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Build a custom cohort</span>
+              <span className="text-[11px] leading-relaxed max-w-[180px]" style={{ color: 'var(--t4)' }}>
+                AND/OR conditions across 17 fields with live preview
+              </span>
+            </motion.button>
+
+            {cohorts?.length === 0 && (
+              <div className="col-span-full sm:col-span-1 lg:col-span-2 text-center py-8" style={{ color: 'var(--t4)' }}>
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No saved cohorts yet — start with the AI suggestions above or build a custom one →</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1270,6 +1390,29 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
     }
   }
 
+  // P3-T4: "Save + Create campaign →" — saves cohort, then redirects to
+  // Campaigns page. When Phase 4 lands the wizard (P4-T1), this will
+  // open the wizard pre-filled with the new cohort instead of redirecting.
+  const router = useRouter()
+  const handleSaveAndCampaign = async () => {
+    if (!name.trim() || previewFilters.length === 0) return
+    setSaving(true)
+    try {
+      const created = await createMutation.mutateAsync({
+        clubId,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        filters: previewFilters,
+      })
+      // Redirect to Campaigns with cohort pre-selected via query param.
+      // Phase 4 wizard will read ?cohortId=<id> on load.
+      const cohortId = (created as any)?.id
+      router.push(`/clubs/${clubId}/intelligence/campaigns${cohortId ? `?cohortId=${cohortId}` : ''}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1281,7 +1424,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
       <div className="flex items-center justify-between">
         <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
           <Filter className="w-5 h-5 inline mr-2" />
-          Create Segment
+          Create Cohort
         </h2>
         <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
       </div>
@@ -1432,21 +1575,41 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
       )}
 
       {/* Save */}
-      <div className="flex justify-end gap-3">
+      <div className="flex justify-end gap-3 flex-wrap">
         <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm" style={{ color: 'var(--t3)' }}>Cancel</button>
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           onClick={handleSave}
           disabled={!name.trim() || previewFilters.length === 0 || saving}
-          className="px-5 py-2.5 rounded-xl text-sm text-white"
+          className="px-5 py-2.5 rounded-xl text-sm"
+          style={{
+            background: 'rgba(139,92,246,0.16)',
+            color: '#A78BFA',
+            border: '1px solid rgba(139,92,246,0.32)',
+            fontWeight: 600,
+            opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
+          }}
+        >
+          {saving ? 'Creating...' : 'Save Cohort'}
+        </motion.button>
+        {/* P3-T4: Save + Create campaign bridge.
+            v1 redirects to Campaigns page; P4-T1 wizard will open
+            pre-filled with the new cohort once the wizard ships. */}
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={handleSaveAndCampaign}
+          disabled={!name.trim() || previewFilters.length === 0 || saving}
+          className="px-5 py-2.5 rounded-xl text-sm text-white flex items-center gap-1.5"
           style={{
             background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
             fontWeight: 600,
             opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
-          {saving ? 'Creating...' : 'Create Segment'}
+          {saving ? 'Creating...' : 'Save + Create Campaign'}
+          <ChevronRight className="w-4 h-4" />
         </motion.button>
       </div>
     </motion.div>
