@@ -378,6 +378,9 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                 const uid = c.member?.id;
                 return uid && aiProfiles && aiProfiles[uid];
               }).length;
+              const missingCandidateIds = candidates
+                .map((c: any) => c.member?.id)
+                .filter((uid: any) => typeof uid === 'string' && uid && !(aiProfiles && aiProfiles[uid]));
               const allDone = total > 0 && withProfile >= total;
               if (allDone) return null;
               return (
@@ -393,20 +396,25 @@ export function ReactivationIQ({ reactivationData, churnTrendData, campaignListD
                     let totalGenerated = 0;
                     let totalErrors = 0;
                     let sampleError = '';
-                    let remaining = total - withProfile;
+                    const targetIds = [...missingCandidateIds];
+                    let remaining = targetIds.length;
+                    let processed = 0;
                     let iteration = 0;
-                    const maxIterations = Math.ceil(total / CHUNK) + 2; // safety cap
+                    const maxIterations = Math.ceil(Math.max(targetIds.length, 1) / CHUNK) + 2; // safety cap
 
                     try {
                       while (remaining > 0 && iteration < maxIterations) {
                         iteration++;
                         setAiGenerateResult(`⏳ Generating… ${withProfile + totalGenerated}/${total}`);
+                        const batchIds = targetIds.slice(processed, processed + CHUNK);
+                        if (batchIds.length === 0) break;
+                        processed += batchIds.length;
 
                         const res = await fetch('/api/ai/generate-member-profiles', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           credentials: 'include',
-                          body: JSON.stringify({ clubId, limit: CHUNK }),
+                          body: JSON.stringify({ clubId, userIds: batchIds, limit: CHUNK }),
                         });
 
                         const data = await res.json().catch(() => ({}));
