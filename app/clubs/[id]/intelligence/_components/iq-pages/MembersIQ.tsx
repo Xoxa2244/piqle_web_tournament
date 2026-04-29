@@ -1940,32 +1940,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         />
       ) : (<>
 
-      {/* Period Tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
-          {(["week", "month", "quarter", "custom"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="px-4 py-2 text-xs capitalize transition-all"
-              style={{
-                background: period === p ? "var(--pill-active)" : "transparent",
-                color: period === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-                fontWeight: period === p ? 600 : 500,
-              }}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        {period === "custom" && (
-          <div className="flex items-center gap-2">
-            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
-            <span className="text-xs" style={{ color: "var(--t4)" }}>to</span>
-            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
-          </div>
-        )}
-      </div>
+      {/* P2-T8: Period selector moved into Insights drawer (it only drives
+          KPI deltas + churn chart window — neither affects the list). */}
 
       {guestTrialSummary && guestTrialSummary.totalCandidates > 0 && (
         <Card>
@@ -3733,100 +3709,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </Card>
       )}
 
-      {/* P2-T1: Members KPI strip — Active / Avg Health / At-Risk / LTV / VIP+Package
-          Drop: Guests / Drop-Ins (uninformative).
-          Add: At-Risk + LTV with vs-period deltas via MemberHealthSnapshot
-          (real query lands in P5-T1 when daily cron accumulates ≥30d data;
-          stub returns mock deltas in interim). See SPEC §4 P2-T1 / PLAN §3.4.
-       */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {(() => {
-          const active = allMembers.filter(m => m.normalizedMembershipStatus === 'active').length;
-          const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
-          const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
-          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
-          const atRisk = allMembers.filter(m => m.segment === 'at-risk' || m.segment === 'critical').length;
-          const ltvTotalCents = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
-
-          // Format delta for display: "↗ +3" / "↘ -2" / "—" when null
-          const fmtDelta = (delta: number | null | undefined, label = 'vs last') => {
-            if (delta == null) return { text: '—', color: 'var(--t4)' };
-            if (delta === 0) return { text: `0 ${label}`, color: 'var(--t4)' };
-            const sign = delta > 0 ? '↗ +' : '↘ ';
-            const color = delta > 0 ? '#10B981' : '#F59E0B';
-            return { text: `${sign}${Math.abs(delta)} ${label}`, color };
-          };
-          const fmtMoneyDelta = (cents: number | null | undefined) => {
-            if (cents == null) return { text: '—', color: 'var(--t4)' };
-            if (cents === 0) return { text: '$0 vs last', color: 'var(--t4)' };
-            const sign = cents > 0 ? '+' : '−';
-            const color = cents > 0 ? '#10B981' : '#F59E0B';
-            const dollars = Math.abs(Math.round(cents / 100));
-            const text = dollars >= 1000 ? `${sign}$${(dollars / 1000).toFixed(1)}K` : `${sign}$${dollars}`;
-            return { text: `${text} vs last`, color };
-          };
-
-          const ltvDisplay = ltvTotalCents >= 100_000
-            ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
-            : `$${Math.round(ltvTotalCents / 100)}`;
-
-          return [
-            {
-              label: 'Active Members', value: String(active || allMembers.length),
-              icon: Users, gradient: 'from-violet-500 to-purple-600',
-              sub: `of ${allMembers.length} total`,
-              delta: fmtDelta(kpiDeltas?.activeDelta),
-            },
-            {
-              label: 'Avg Health', value: String(avgHealth),
-              icon: Heart, gradient: 'from-emerald-500 to-green-500',
-              sub: 'engagement score',
-              delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last'),
-            },
-            {
-              label: 'At-Risk', value: String(atRisk),
-              icon: AlertTriangle, gradient: 'from-orange-500 to-red-500',
-              sub: atRisk > 0 ? 'need attention' : 'all healthy',
-              delta: fmtDelta(kpiDeltas?.atRiskDelta),
-            },
-            {
-              label: 'LTV total', value: ltvDisplay,
-              icon: DollarSign, gradient: 'from-amber-500 to-yellow-500',
-              sub: 'cumulative revenue',
-              delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents),
-            },
-            {
-              label: 'VIP', value: String(vip),
-              icon: Sparkles, gradient: 'from-cyan-500 to-blue-500',
-              sub: `${packages} Package${packages !== 1 ? 's' : ''}`,
-              delta: { text: '', color: 'transparent' }, // No delta for VIP/Package — count snapshot
-            },
-          ];
-        })().map((kpi, i) => {
-          const Icon = kpi.icon;
-          return (
-            <motion.div key={kpi.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
-              <Card>
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--heading)' }}>{kpi.value}</div>
-                    <div className="text-[11px]" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
-                  </div>
-                </div>
-                <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>
-                {kpi.delta.text && (
-                  <div className="text-[10px] mt-1" style={{ color: kpi.delta.color, fontWeight: 600 }}>
-                    {kpi.delta.text}
-                  </div>
-                )}
-              </Card>
-            </motion.div>
-          );
-        })}
-      </div>
+      {/* P2-T8: KPI strip moved into Insights drawer (assembled below before
+          drawer mount; rendered there so the table is visible immediately). */}
 
       {/* P2-T5: AI Insight ribbon — single high-impact insight below KPIs.
           Hidden when no rule matches OR user dismissed (7d localStorage).
@@ -3921,7 +3805,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               )}
             </button>
 
-            {/* Charts drawer trigger */}
+            {/* Insights drawer trigger — KPI strip + Period selector + 3 trend charts */}
             <button
               onClick={() => setChartsDrawerOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
@@ -3933,7 +3817,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               }}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              Charts
+              Insights
             </button>
 
             {/* Quick presets dropdown */}
@@ -4418,13 +4302,114 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         isDark={isDark}
       />
 
-      {/* P2-T8: Charts drawer — replaces 3-col inline chart grid. */}
+      {/* P2-T8: Insights drawer — Period selector + KPI strip + 3 trend
+          charts. State stays here; drawer renders the JSX we hand it. */}
       <MembersChartsDrawer
         open={chartsDrawerOpen}
         onClose={() => setChartsDrawerOpen(false)}
         memberGrowth={displayMemberGrowth}
         activityDistribution={displayActivityDistribution}
         churnTrend={churnTrendData?.trend ?? []}
+        header={(() => {
+          // Period buttons drive useMemberKpiDeltas + useChurnTrend windows.
+          // Custom date range is reserved for Phase 6 — currently behaves like Month.
+          const periodButtons = (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--t4)" }}>Period</span>
+              <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
+                {(["week", "month", "quarter", "custom"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className="px-3 py-1.5 text-xs capitalize transition-all"
+                    style={{
+                      background: period === p ? "var(--pill-active)" : "transparent",
+                      color: period === p ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                      fontWeight: period === p ? 600 : 500,
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              {period === "custom" && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+                  <span className="text-xs" style={{ color: "var(--t4)" }}>to</span>
+                  <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 px-2 text-xs rounded-lg outline-none" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)", colorScheme: isDark ? "dark" : "light" }} />
+                </div>
+              )}
+            </div>
+          );
+
+          // KPI strip — same logic as before, just rendered inside the
+          // drawer at 2-col on narrow / 3-col on the 720px drawer width.
+          const active = allMembers.filter(m => m.normalizedMembershipStatus === 'active').length;
+          const packages = allMembers.filter(m => m.normalizedMembershipType === 'package').length;
+          const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
+          const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
+          const atRisk = allMembers.filter(m => m.segment === 'at-risk' || m.segment === 'critical').length;
+          const ltvTotalCents = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
+
+          const fmtDelta = (delta: number | null | undefined, label = 'vs last') => {
+            if (delta == null) return { text: '—', color: 'var(--t4)' };
+            if (delta === 0) return { text: `0 ${label}`, color: 'var(--t4)' };
+            const sign = delta > 0 ? '↗ +' : '↘ ';
+            const color = delta > 0 ? '#10B981' : '#F59E0B';
+            return { text: `${sign}${Math.abs(delta)} ${label}`, color };
+          };
+          const fmtMoneyDelta = (cents: number | null | undefined) => {
+            if (cents == null) return { text: '—', color: 'var(--t4)' };
+            if (cents === 0) return { text: '$0 vs last', color: 'var(--t4)' };
+            const sign = cents > 0 ? '+' : '−';
+            const color = cents > 0 ? '#10B981' : '#F59E0B';
+            const dollars = Math.abs(Math.round(cents / 100));
+            const text = dollars >= 1000 ? `${sign}$${(dollars / 1000).toFixed(1)}K` : `${sign}$${dollars}`;
+            return { text: `${text} vs last`, color };
+          };
+
+          const ltvDisplay = ltvTotalCents >= 100_000
+            ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
+            : `$${Math.round(ltvTotalCents / 100)}`;
+
+          const kpis = [
+            { label: 'Active Members', value: String(active || allMembers.length), icon: Users, gradient: 'from-violet-500 to-purple-600', sub: `of ${allMembers.length} total`, delta: fmtDelta(kpiDeltas?.activeDelta) },
+            { label: 'Avg Health', value: String(avgHealth), icon: Heart, gradient: 'from-emerald-500 to-green-500', sub: 'engagement score', delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last') },
+            { label: 'At-Risk', value: String(atRisk), icon: AlertTriangle, gradient: 'from-orange-500 to-red-500', sub: atRisk > 0 ? 'need attention' : 'all healthy', delta: fmtDelta(kpiDeltas?.atRiskDelta) },
+            { label: 'LTV total', value: ltvDisplay, icon: DollarSign, gradient: 'from-amber-500 to-yellow-500', sub: 'cumulative revenue', delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents) },
+            { label: 'VIP', value: String(vip), icon: Sparkles, gradient: 'from-cyan-500 to-blue-500', sub: `${packages} Package${packages !== 1 ? 's' : ''}`, delta: { text: '', color: 'transparent' } },
+          ];
+
+          return (
+            <div className="space-y-4">
+              {periodButtons}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {kpis.map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div key={kpi.label} className="rounded-2xl p-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center shrink-0`}>
+                          <Icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--heading)', lineHeight: 1 }}>{kpi.value}</div>
+                          <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>
+                      {kpi.delta.text && (
+                        <div className="text-[10px] mt-1" style={{ color: kpi.delta.color, fontWeight: 600 }}>
+                          {kpi.delta.text}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       />
     </motion.div>
   );

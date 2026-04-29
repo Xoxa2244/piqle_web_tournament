@@ -24,6 +24,11 @@ interface MembersChartsDrawerProps {
   open: boolean
   onClose: () => void
 
+  /** Optional header slot rendered above the charts — currently used to host
+   *  the Period selector + KPI strip. State stays in the parent; this prop
+   *  is a pure JSX hand-off. */
+  header?: React.ReactNode
+
   memberGrowth: Array<{ month: string; total: number; new: number; churned: number }>
   activityDistribution: Array<{ range: string; count: number }>
   churnTrend: Array<{ month: string; atRisk: number; churned: number; reactivated: number }>
@@ -77,6 +82,7 @@ function ChartCard({
 export function MembersChartsDrawer({
   open,
   onClose,
+  header,
   memberGrowth,
   activityDistribution,
   churnTrend,
@@ -159,6 +165,8 @@ export function MembersChartsDrawer({
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+              {header}
+
               {!hasAny && (
                 <div
                   className="rounded-2xl p-6 text-center"
