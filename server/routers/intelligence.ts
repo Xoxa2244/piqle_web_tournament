@@ -6546,6 +6546,79 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       return { success: true }
     }),
 
+  /**
+   * Add a set of member userIds to an existing cohort.
+   *
+   * Behaviour: resolves the cohort's current members (by re-evaluating its
+   * filters), unions with the new userIds (deduped), and rewrites the cohort
+   * with a single `userId IN [...]` filter. This intentionally **freezes**
+   * any predicate-based cohort: once an admin manually adds members to e.g.
+   * a "Gender = Male" cohort, semantics shift from "everyone matching the
+   * predicate" to "this explicit list" — there's no safe way to express
+   * "predicate OR these extra userIds" in the existing AND-only filter
+   * model. The UI surfaces a "frozen" indicator after this operation.
+   *
+   * Used by the Bulk Select toolbar's "Add to existing" dropdown action.
+   */
+  addMembersToCohort: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      cohortId: z.string().uuid(),
+      userIds: z.array(z.string()).min(1).max(500),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const cohort = await ctx.prisma.clubCohort.findUnique({
+        where: { id: input.cohortId },
+      })
+      if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
+      if (cohort.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Cohort does not belong to this club' })
+      }
+
+      // Resolve current member set. Empty filters → empty current set.
+      const existingFilters = (cohort.filters as unknown as CohortFilter[]) || []
+      let currentIds = new Set<string>()
+      if (existingFilters.length > 0) {
+        try {
+          const rows = await queryCohortMembers(ctx.prisma, input.clubId, existingFilters)
+          for (const r of rows) {
+            if (typeof r.id === 'string') currentIds.add(r.id)
+          }
+        } catch {
+          // If predicate evaluation blows up, fall back to whatever was
+          // previously frozen as a userId-IN filter (if any).
+          for (const f of existingFilters) {
+            if (f.field === 'userId' && f.op === 'in' && Array.isArray(f.value)) {
+              for (const v of f.value) if (typeof v === 'string') currentIds.add(v)
+            }
+          }
+        }
+      }
+
+      // Union with newly-added ids
+      for (const id of input.userIds) currentIds.add(id)
+
+      const merged = Array.from(currentIds)
+      const newFilters: CohortFilter[] = [{
+        field: 'userId',
+        op: 'in',
+        value: merged,
+      }]
+
+      return ctx.prisma.clubCohort.update({
+        where: { id: input.cohortId },
+        data: {
+          filters: newFilters as any,
+          memberCount: merged.length,
+          // Frozen: explicit list of userIds, no longer derivable from predicates.
+          isDynamic: false,
+          updatedAt: new Date(),
+        },
+      })
+    }),
+
   getCohortMembers: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), cohortId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {

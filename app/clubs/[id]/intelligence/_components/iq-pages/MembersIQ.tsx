@@ -1967,6 +1967,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           onClear={clearMemberSelection}
           isOpen={bulkAddCohortOpen}
           setOpen={setBulkAddCohortOpen}
+          isDark={isDark}
         />
       )}
 
@@ -4459,25 +4460,49 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
 //     cohort builder enriches them with userId-IN merge logic).
 //   - "Send campaign" — disabled until P4-T1 (Campaign Wizard).
 //   - "Clear selection" — empties the Set.
-function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOpen, setOpen }: {
+function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOpen, setOpen, isDark }: {
   clubId: string
   selectedIds: string[]
   existingCohorts: any[]
   onClear: () => void
   isOpen: boolean
   setOpen: (v: boolean) => void
+  isDark?: boolean
 }) {
   const [savedCohortName, setSavedCohortName] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const utils = trpc.useUtils()
+
+  const showSavedBadge = (name: string) => {
+    setSavedCohortName(name)
+    setOpen(false)
+    setErrorMessage(null)
+    // Refresh Your Cohorts list (and sidebar counters) so the new/updated
+    // cohort shows up without a manual reload.
+    utils.intelligence.listCohorts.invalidate({ clubId }).catch(() => {})
+    setTimeout(() => {
+      setSavedCohortName(null)
+      onClear()
+    }, 2500)
+  }
+
+  const showError = (msg: string) => {
+    setErrorMessage(msg)
+    setOpen(false)
+    setTimeout(() => setErrorMessage(null), 4500)
+  }
+
   const createMutation = trpc.intelligence.createCohort.useMutation({
-    onSuccess: (cohort: any) => {
-      setSavedCohortName(cohort?.name || 'Cohort')
-      setOpen(false)
-      // Auto-clear after 2.5s so subsequent selections work fresh
-      setTimeout(() => {
-        setSavedCohortName(null)
-        onClear()
-      }, 2500)
-    },
+    onSuccess: (cohort: any) => showSavedBadge(cohort?.name || 'Cohort'),
+    onError: (err: any) => showError(`Couldn't create cohort: ${err?.message || 'unknown error'}`),
+  })
+
+  // P2-T8: real "Add to existing" wiring (was disabled with "soon" label).
+  // Direct call — `?.useMutation?.()` style breaks `this`-binding through
+  // the tRPC react-query proxy (same crash we hit on Members AI Insight).
+  const addMembersMutation = (trpc.intelligence as any).addMembersToCohort.useMutation({
+    onSuccess: (cohort: any) => showSavedBadge(`${cohort?.name || 'Cohort'} (+${selectedIds.length})`),
+    onError: (err: any) => showError(`Couldn't add to cohort: ${err?.message || 'unknown error'}`),
   })
 
   if (savedCohortName) {
@@ -4494,6 +4519,22 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
     )
   }
 
+  if (errorMessage) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+        style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#F87171' }}
+      >
+        <AlertTriangle className="w-4 h-4" />
+        <span className="text-sm">{errorMessage}</span>
+      </motion.div>
+    )
+  }
+
+  const isPending = createMutation.isPending || addMembersMutation?.isPending
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -4508,7 +4549,7 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
       <div className="relative">
         <button
           onClick={() => setOpen(!isOpen)}
-          disabled={createMutation.isPending}
+          disabled={isPending}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-[1.02] disabled:opacity-50"
           style={{ background: 'rgba(139,92,246,0.18)', color: '#A78BFA' }}
         >
@@ -4518,50 +4559,69 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
         </button>
 
         {isOpen && (
-          <div
-            className="absolute top-full mt-1 left-0 z-20 min-w-[260px] rounded-xl shadow-lg overflow-hidden"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            {/* Create new cohort */}
-            <button
-              onClick={() => createMutation.mutate({
-                clubId,
-                name: `Selection of ${selectedIds.length} · ${new Date().toLocaleDateString()}`,
-                description: `Members hand-picked from Members list (${selectedIds.length} total)`,
-                filters: [{ field: 'userId', op: 'in' as const, value: selectedIds }],
-              })}
-              disabled={createMutation.isPending}
-              className="w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors hover:bg-[var(--hover)] disabled:opacity-50"
-              style={{ color: 'var(--heading)', borderBottom: '1px solid var(--divider)' }}
+          <>
+            {/* Click-outside catcher */}
+            <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+            <div
+              className="absolute top-full mt-1 left-0 z-30 min-w-[280px] rounded-xl shadow-lg overflow-hidden backdrop-blur-md"
+              style={{
+                background: isDark ? '#15151F' : '#FFFFFF',
+                border: '1px solid var(--card-border)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+              }}
             >
-              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
-              <span className="font-semibold">+ Create new cohort from selection</span>
-            </button>
+              {/* Create new cohort */}
+              <button
+                onClick={() => createMutation.mutate({
+                  clubId,
+                  name: `Selection of ${selectedIds.length} · ${new Date().toLocaleDateString()}`,
+                  description: `Members hand-picked from Members list (${selectedIds.length} total)`,
+                  filters: [{ field: 'userId', op: 'in' as const, value: selectedIds }],
+                })}
+                disabled={isPending}
+                className="w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                style={{ color: 'var(--heading)', borderBottom: '1px solid var(--card-border)' }}
+                onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }}
+              >
+                {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+                <span className="font-semibold">+ Create new cohort from selection</span>
+              </button>
 
-            {/* Existing cohorts (disabled — P3-T3) */}
-            <div className="px-3 py-2 text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
-              Add to existing
-            </div>
-            {existingCohorts.length === 0 ? (
-              <div className="px-3 pb-3 text-[11px]" style={{ color: 'var(--t4)' }}>
-                No saved cohorts yet.
+              {/* Existing cohorts — clickable, calls addMembersToCohort */}
+              <div className="px-3 py-2 text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+                Add to existing
               </div>
-            ) : (
-              existingCohorts.slice(0, 6).map((cohort) => (
-                <div
-                  key={cohort.id}
-                  title="Add-to-existing-cohort lands in P3-T3 (Cohort Builder enrichment)"
-                  className="px-3 py-2 text-xs flex items-center justify-between gap-2"
-                  style={{ color: 'var(--t4)', cursor: 'not-allowed', opacity: 0.6 }}
-                >
-                  <span className="truncate">{cohort.name}</span>
-                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--t4)' }}>
-                    {cohort.memberCount} · soon
-                  </span>
+              {existingCohorts.length === 0 ? (
+                <div className="px-3 pb-3 text-[11px]" style={{ color: 'var(--t4)' }}>
+                  No saved cohorts yet.
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                existingCohorts.slice(0, 8).map((cohort) => (
+                  <button
+                    key={cohort.id}
+                    onClick={() => {
+                      addMembersMutation.mutate({
+                        clubId,
+                        cohortId: cohort.id,
+                        userIds: selectedIds,
+                      })
+                    }}
+                    disabled={isPending}
+                    className="w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 transition-colors disabled:opacity-50"
+                    style={{ color: 'var(--t2)' }}
+                    onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                    onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span className="truncate">{cohort.name}</span>
+                    <span className="shrink-0 text-[10px]" style={{ color: 'var(--t4)' }}>
+                      {cohort.memberCount} · +{selectedIds.length}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
         )}
       </div>
 
