@@ -669,10 +669,41 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
            u.skill_level as "skillLevel",
            u.zip_code as "zipCode",
            COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
-           u.image
+           u.image,
+           latest_health.health_score as "healthScore",
+           latest_health.risk_level as "riskLevel",
+           EXTRACT(DAY FROM (CURRENT_DATE - cf.created_at::date))::int as "joinedDaysAgo",
+           recent_activity.sessions_last_30 as "sessionsLast30",
+           recent_activity.days_since_last_visit as "daysSinceLastVisit"
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
     ${ACTIVE_MEMBER_JOIN}
+    LEFT JOIN LATERAL (
+      SELECT
+        mhs.health_score,
+        mhs.risk_level
+      FROM member_health_snapshots mhs
+      WHERE mhs.club_id = $1::uuid
+        AND mhs.user_id = u.id
+      ORDER BY mhs.date DESC
+      LIMIT 1
+    ) latest_health ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (
+          WHERE ps.date >= CURRENT_DATE - INTERVAL '30 days'
+        )::int as sessions_last_30,
+        CASE
+          WHEN MAX(ps.date) IS NOT NULL
+            THEN EXTRACT(DAY FROM (CURRENT_DATE - MAX(ps.date)::date))::int
+          ELSE NULL
+        END as days_since_last_visit
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE psb."userId" = u.id
+        AND ps."clubId" = $1::uuid
+        AND psb.status = 'CONFIRMED'
+    ) recent_activity ON TRUE
     WHERE cf.club_id = $1::uuid AND ${where}
     ORDER BY u.name ASC
     LIMIT 500
@@ -6841,8 +6872,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const count = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
-      return { count }
+      const [count, members] = await Promise.all([
+        countCohortMembers(ctx.prisma, input.clubId, input.filters),
+        queryCohortMembers(ctx.prisma, input.clubId, input.filters),
+      ])
+
+      return {
+        count,
+        sampleMembers: members.slice(0, 6),
+        truncated: count > members.length,
+      }
     }),
 
   // ── Cross-Data Insights ──

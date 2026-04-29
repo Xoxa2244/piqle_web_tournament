@@ -44,7 +44,7 @@ interface MembersFilterDrawerProps {
   isDark?: boolean
 }
 
-const STATUS_OPTIONS = [
+export const STATUS_OPTIONS = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
   { key: 'trial', label: 'Trial' },
@@ -55,7 +55,7 @@ const STATUS_OPTIONS = [
   { key: 'cancelled', label: 'Cancelled' },
 ]
 
-const TIER_OPTIONS = [
+export const TIER_OPTIONS = [
   { key: 'all', label: 'All' },
   { key: 'guest', label: 'Guest' },
   { key: 'drop_in', label: 'Drop-In' },
