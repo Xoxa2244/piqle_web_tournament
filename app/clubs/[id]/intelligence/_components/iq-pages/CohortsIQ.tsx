@@ -1845,7 +1845,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
             <div className="rounded-2xl p-4 space-y-5" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Quick presets</div>
+                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Presets</div>
                 </div>
                 <button
                   type="button"
@@ -1873,7 +1873,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
               </div>
 
               <div className="space-y-4 pt-1" style={{ borderTop: '1px solid var(--card-border)' }}>
-                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Audience</div>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Filters</div>
                 {renderMultiChipGroup(
                   QUICK_FILTER_COPY.membershipStatus.label,
                   QUICK_FILTER_COPY.membershipStatus.hint,
@@ -1895,10 +1895,6 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                   quickFilters.riskLevel,
                   (value) => updateQuickFilter('riskLevel', toggleQuickValue(quickFilters.riskLevel, value)),
                 )}
-              </div>
-
-              <div className="space-y-4 pt-1" style={{ borderTop: '1px solid var(--card-border)' }}>
-                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Behavior</div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5">
                     <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Joined in last</span>
@@ -1949,7 +1945,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                     />
                   </label>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--t4)' }}>More exact matching lives in Advanced Builder.</p>
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>Every selected condition narrows the same cohort. More exact matching lives in Advanced Builder.</p>
               </div>
             </div>
           ) : (
