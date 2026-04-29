@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'motion/react'
-import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download } from 'lucide-react'
+import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download, Pencil, Check as CheckIcon } from 'lucide-react'
 import { DuprBadge } from './shared/SmsBadge'
 import { trpc } from '@/lib/trpc'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
@@ -202,6 +202,26 @@ export default function CohortsIQ() {
   const exportLookalikeAudienceCsv = useExportLookalikeAudienceCsv()
   const deleteMutation = trpc.intelligence.deleteCohort.useMutation({ onSuccess: () => refetch() })
   const createCohortMutation = trpc.intelligence.createCohort.useMutation({ onSuccess: () => refetch() })
+  const updateCohortMutation = trpc.intelligence.updateCohort.useMutation({ onSuccess: () => refetch() })
+
+  // P2-T8 follow-up: inline rename. Click pencil → name turns into input;
+  // Enter saves, Esc cancels. Only one rename open at a time.
+  const [renamingCohortId, setRenamingCohortId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const startRename = (id: string, currentName: string) => {
+    setRenamingCohortId(id)
+    setRenameDraft(currentName)
+  }
+  const cancelRename = () => {
+    setRenamingCohortId(null)
+    setRenameDraft('')
+  }
+  const commitRename = (cohortId: string) => {
+    const trimmed = renameDraft.trim()
+    if (!trimmed) { cancelRename(); return }
+    updateCohortMutation.mutate({ clubId, cohortId, name: trimmed })
+    cancelRename()
+  }
   const enrichMutation = trpc.intelligence.enrichMemberData.useMutation({
     onSuccess: (data) => {
       refetchCoverage()
@@ -1091,21 +1111,96 @@ export default function CohortsIQ() {
                     </button>
                   </div>
                 </div>
-                <h3 className="text-base mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
+                {/* Title — inline-editable on pencil click */}
+                {renamingCohortId === c.id ? (
+                  <div className="flex items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      autoFocus
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRename(c.id)
+                        else if (e.key === 'Escape') cancelRename()
+                      }}
+                      className="flex-1 text-base px-2 py-1 rounded-lg outline-none"
+                      style={{
+                        background: 'var(--subtle)',
+                        border: '1px solid var(--card-border)',
+                        color: 'var(--heading)',
+                        fontWeight: 700,
+                      }}
+                      maxLength={100}
+                      placeholder="Cohort name"
+                    />
+                    <button
+                      onClick={() => commitRename(c.id)}
+                      className="p-1.5 rounded-lg hover:bg-emerald-500/10"
+                      style={{ color: '#10B981' }}
+                      title="Save (Enter)"
+                    >
+                      <CheckIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelRename}
+                      className="p-1.5 rounded-lg hover:bg-red-500/10"
+                      style={{ color: 'var(--t4)' }}
+                      title="Cancel (Esc)"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-1.5 mb-1 group/title">
+                    <h3 className="text-base flex-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.name}</h3>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startRename(c.id, c.name) }}
+                      className="p-1 rounded-md transition-opacity opacity-0 group-hover/title:opacity-100 hover:bg-violet-500/10"
+                      style={{ color: 'var(--t4)' }}
+                      title="Rename cohort"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
                 {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
                 <div className="flex items-center gap-1.5 mb-3">
                   <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
                   <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
                   <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
                 </div>
-                {/* Filter tags */}
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {parseCohortFilters(c.filters).map((f, i) => (
-                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
-                      {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
-                    </span>
-                  ))}
-                </div>
+                {/* Filter tags. Frozen userId-IN cohorts (created from a member
+                    selection or after Add-to-existing) get a single
+                    "N hand-picked members" pill instead of dumping the raw uuid
+                    list onto the card. Predicate-based filters render as
+                    before. */}
+                {(() => {
+                  const parsed = parseCohortFilters(c.filters)
+                  const handPickedFilter = parsed.find(
+                    (f) => f.field === 'userId' && f.op === 'in' && Array.isArray(f.value),
+                  )
+                  const otherFilters = parsed.filter((f) => f !== handPickedFilter)
+                  const handPickedCount = handPickedFilter && Array.isArray(handPickedFilter.value)
+                    ? handPickedFilter.value.length
+                    : 0
+                  return (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {handPickedFilter && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                          style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}
+                          title="Frozen list — fixed members, no longer re-evaluated against filters"
+                        >
+                          🔒 {handPickedCount} hand-picked
+                        </span>
+                      )}
+                      {otherFilters.map((f, i) => (
+                        <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
+                          {FILTER_FIELDS.find((ff) => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                })()}
                 {/* Always-visible Create campaign CTA + last-edit timestamp.
                     Mirrors the "→ Campaign" affordance on AI-Suggested cards
                     so saved cohorts have the same fast-path. */}
