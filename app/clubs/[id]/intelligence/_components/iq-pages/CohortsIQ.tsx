@@ -319,23 +319,27 @@ function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
     filters.push({ field: 'valueTier', op: 'in', value: draft.valueTier })
   }
 
-  const joinedWithinDays = Number(draft.joinedWithinDays)
-  if (Number.isFinite(joinedWithinDays) && joinedWithinDays > 0) {
+  const joinedWithinDaysRaw = draft.joinedWithinDays.trim()
+  const joinedWithinDays = Number(joinedWithinDaysRaw)
+  if (joinedWithinDaysRaw && Number.isFinite(joinedWithinDays) && joinedWithinDays > 0) {
     filters.push({ field: 'joinedDaysAgo', op: 'lte', value: joinedWithinDays })
   }
 
-  const inactiveDays = Number(draft.inactiveDays)
-  if (Number.isFinite(inactiveDays) && inactiveDays > 0) {
+  const inactiveDaysRaw = draft.inactiveDays.trim()
+  const inactiveDays = Number(inactiveDaysRaw)
+  if (inactiveDaysRaw && Number.isFinite(inactiveDays) && inactiveDays > 0) {
     filters.push({ field: 'recency', op: 'gte', value: inactiveDays })
   }
 
-  const sessionsPerMonthMin = Number(draft.sessionsPerMonthMin)
-  if (Number.isFinite(sessionsPerMonthMin) && sessionsPerMonthMin >= 0) {
+  const sessionsPerMonthMinRaw = draft.sessionsPerMonthMin.trim()
+  const sessionsPerMonthMin = Number(sessionsPerMonthMinRaw)
+  if (sessionsPerMonthMinRaw && Number.isFinite(sessionsPerMonthMin) && sessionsPerMonthMin >= 0) {
     filters.push({ field: 'frequency', op: 'gte', value: sessionsPerMonthMin })
   }
 
-  const sessionsPerMonthMax = Number(draft.sessionsPerMonthMax)
-  if (Number.isFinite(sessionsPerMonthMax) && sessionsPerMonthMax >= 0) {
+  const sessionsPerMonthMaxRaw = draft.sessionsPerMonthMax.trim()
+  const sessionsPerMonthMax = Number(sessionsPerMonthMaxRaw)
+  if (sessionsPerMonthMaxRaw && Number.isFinite(sessionsPerMonthMax) && sessionsPerMonthMax >= 0) {
     filters.push({ field: 'frequency', op: 'lte', value: sessionsPerMonthMax })
   }
 
