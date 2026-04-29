@@ -28,6 +28,7 @@ import { MembersChartsDrawer } from "../MembersChartsDrawer";
 import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
 import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
+import { buildQuickCohortSearchParams, mapMembersFiltersToQuickCohort } from "../cohorts/quick-cohort-intent";
 
 
 type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "critical";
@@ -1533,6 +1534,40 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterMembershipType,
     filterMembershipStatus,
   });
+  const membersQuickCohortIntent = useMemo(() => mapMembersFiltersToQuickCohort({
+    view,
+    searchQuery,
+    filterActivity,
+    filterRisk,
+    filterTrend,
+    filterValue,
+    filterMembershipType,
+    filterMembershipStatus,
+  }), [
+    view,
+    searchQuery,
+    filterActivity,
+    filterRisk,
+    filterTrend,
+    filterValue,
+    filterMembershipType,
+    filterMembershipStatus,
+  ])
+  const dynamicCohortHref = useMemo(() => {
+    if (!clubId || !membersQuickCohortIntent.supported) return null
+    const cohortName = currentPresetLabel !== 'Custom' && currentPresetLabel !== 'All members'
+      ? currentPresetLabel
+      : 'Members segment'
+    const description = audienceContext
+      ? `Created from Members filters: ${audienceContext}`
+      : `Created from the current Members view (${filtered.length} members)`
+    const params = buildQuickCohortSearchParams({
+      name: cohortName,
+      description,
+      quickFilters: membersQuickCohortIntent.quickFilters,
+    })
+    return `/clubs/${clubId}/intelligence/cohorts?${params.toString()}`
+  }, [clubId, membersQuickCohortIntent, currentPresetLabel, audienceContext, filtered.length])
   const audienceLabel = audienceContext
     ? `the current Members view (${audienceMembers.length} members, ${audienceContext})`
     : `the current member base (${audienceMembers.length} members)`;
@@ -4007,8 +4042,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       </div>
 
       {/* Save filtered members as Cohort */}
-      {(filterRisk !== 'all' || filterTrend !== 'all' || filterValue !== 'all' || filterActivity !== 'all' || filterMembershipType !== 'all' || filterMembershipStatus !== 'all') && filtered.length > 0 && (
-        <SaveAsCohortButton clubId={clubId!} memberIds={filtered.map(m => m.id).filter(Boolean) as string[]} filterDescription={[
+      {(view === 'at-risk' || filterRisk !== 'all' || filterTrend !== 'all' || filterValue !== 'all' || filterActivity !== 'all' || filterMembershipType !== 'all' || filterMembershipStatus !== 'all') && filtered.length > 0 && (
+        <SaveAsCohortButton clubId={clubId!} dynamicHref={dynamicCohortHref} memberIds={filtered.map(m => m.id).filter(Boolean) as string[]} filterDescription={[
+          view === 'at-risk' ? 'View: at-risk' : '',
           filterRisk !== 'all' ? `Risk: ${filterRisk}` : '',
           filterTrend !== 'all' ? `Trend: ${filterTrend}` : '',
           filterValue !== 'all' ? `Value: ${filterValue}` : '',
@@ -4647,10 +4683,11 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
 }
 
 // ── Save filtered members as Cohort ──
-function SaveAsCohortButton({ clubId, memberIds, filterDescription, count }: {
-  clubId: string; memberIds: string[]; filterDescription: string; count: number
+function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription, count }: {
+  clubId: string; dynamicHref: string | null; memberIds: string[]; filterDescription: string; count: number
 }) {
   const [saved, setSaved] = useState(false)
+  const router = useRouter()
   const createMutation = trpc.intelligence.createCohort.useMutation({
     onSuccess: () => setSaved(true),
   })
@@ -4664,22 +4701,44 @@ function SaveAsCohortButton({ clubId, memberIds, filterDescription, count }: {
   }
 
   return (
-    <motion.button
-      initial={{ opacity: 0, y: -5 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.02 }}
-      onClick={() => createMutation.mutate({
-        clubId,
-        name: `Members: ${filterDescription}`,
-        description: `Auto-created from Members filter: ${filterDescription}`,
-        filters: [{ field: 'userId', op: 'in' as const, value: memberIds }],
-      })}
-      disabled={createMutation.isPending}
-      className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
-      style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600, border: 'none', cursor: 'pointer' }}
-    >
-      {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
-      Save as Cohort ({count} members)
-    </motion.button>
+    <div className="flex items-center gap-2 flex-wrap">
+      {dynamicHref ? (
+        <motion.button
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ scale: 1.02 }}
+          onClick={() => router.push(dynamicHref)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
+          style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600, border: 'none', cursor: 'pointer' }}
+        >
+          <Users className="w-3.5 h-3.5" />
+          Open in Cohorts ({count})
+        </motion.button>
+      ) : null}
+
+      <motion.button
+        initial={{ opacity: 0, y: -5 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.02 }}
+        onClick={() => createMutation.mutate({
+          clubId,
+          name: `Members: ${filterDescription}`,
+          description: `Auto-created from Members filter: ${filterDescription}`,
+          filters: [{ field: 'userId', op: 'in' as const, value: memberIds }],
+        })}
+        disabled={createMutation.isPending}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs transition-all"
+        style={{
+          background: dynamicHref ? 'transparent' : 'rgba(139,92,246,0.1)',
+          color: dynamicHref ? 'var(--t3)' : '#8B5CF6',
+          fontWeight: 600,
+          border: dynamicHref ? '1px solid var(--card-border)' : 'none',
+          cursor: 'pointer',
+        }}
+      >
+        {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
+        {dynamicHref ? 'Freeze current members' : `Save as Cohort (${count} members)`}
+      </motion.button>
+    </div>
   )
 }

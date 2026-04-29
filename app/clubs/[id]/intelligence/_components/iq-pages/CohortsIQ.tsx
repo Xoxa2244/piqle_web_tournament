@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'motion/react'
 import { Users, Plus, Trash2, X, Filter, ChevronRight, Eye, Send, UserCheck, Sparkles, Clock, Mail, MessageSquare, Wand2, Loader2, Download, Pencil, Check as CheckIcon } from 'lucide-react'
@@ -11,6 +11,7 @@ import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/l
 import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession, useSuggestedCohorts } from '../../_hooks/use-intelligence'
 import { SuggestedCohortCard } from '../SuggestedCohortCard'
 import { STATUS_OPTIONS, TIER_OPTIONS } from '../MembersFilterDrawer'
+import { EMPTY_QUICK_COHORT, parseQuickCohortSearchParams, QUICK_COHORT_QUERY_KEYS, type QuickCohortState } from '../cohorts/quick-cohort-intent'
 
 // ── Filter field definitions ──
 const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = TIER_OPTIONS
@@ -28,6 +29,26 @@ const RISK_LEVEL_OPTIONS = [
   { label: 'Critical', value: 'critical' },
 ]
 
+const ACTIVITY_LEVEL_OPTIONS = [
+  { label: 'Power', value: 'power' },
+  { label: 'Regular', value: 'regular' },
+  { label: 'Casual', value: 'casual' },
+  { label: 'Occasional', value: 'occasional' },
+]
+
+const ENGAGEMENT_TREND_OPTIONS = [
+  { label: 'Growing', value: 'growing' },
+  { label: 'Stable', value: 'stable' },
+  { label: 'Declining', value: 'declining' },
+  { label: 'Churning', value: 'churning' },
+]
+
+const VALUE_TIER_OPTIONS = [
+  { label: 'High LTV', value: 'high' },
+  { label: 'Mid', value: 'medium' },
+  { label: 'Low', value: 'low' },
+]
+
 const QUICK_FILTER_COPY = {
   membershipStatus: {
     label: 'Membership State',
@@ -37,9 +58,21 @@ const QUICK_FILTER_COPY = {
     label: 'Membership Tier',
     hint: 'Trial, package, monthly, VIP, and more.',
   },
+  activityLevel: {
+    label: 'Activity',
+    hint: 'Same engagement buckets as Members.',
+  },
   riskLevel: {
     label: 'Risk',
     hint: 'Current health-based save priority.',
+  },
+  engagementTrend: {
+    label: 'Trend',
+    hint: 'Momentum over the last 30 vs previous 30 days.',
+  },
+  valueTier: {
+    label: 'Value',
+    hint: 'Revenue rank relative to the whole club base.',
   },
 }
 
@@ -57,7 +90,10 @@ const FILTER_FIELDS = [
   { key: 'gender', label: 'Gender', type: 'select' as const, ops: ['eq'], options: [{ label: 'Male', value: 'M' }, { label: 'Female', value: 'F' }] },
   // P3-T3 D7 fields:
   { key: 'healthScore', label: 'Health Score', type: 'number' as const, ops: ['gte', 'lte', 'gt', 'lt', 'eq'] },
+  { key: 'activityLevel', label: 'Activity', type: 'select' as const, ops: ['eq'], options: ACTIVITY_LEVEL_OPTIONS },
   { key: 'riskLevel', label: 'Risk Level', type: 'select' as const, ops: ['eq'], options: RISK_LEVEL_OPTIONS },
+  { key: 'engagementTrend', label: 'Trend', type: 'select' as const, ops: ['eq'], options: ENGAGEMENT_TREND_OPTIONS },
+  { key: 'valueTier', label: 'Value', type: 'select' as const, ops: ['eq'], options: VALUE_TIER_OPTIONS },
   { key: 'joinedDaysAgo', label: 'Joined (days ago)', type: 'number' as const, ops: ['lte', 'gte'] },
   { key: 'birthdayMonth', label: 'Birthday Month', type: 'select' as const, ops: ['eq'], options: BIRTHDAY_MONTH_OPTIONS },
   { key: 'sessionFormat', label: 'Session Type', type: 'select' as const, ops: ['eq'], options: [
@@ -131,7 +167,7 @@ const SUGGESTION_DECISION_STYLES: Record<string, { bg: string; color: string; la
 
 type FilterOp = 'eq' | 'ne' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in'
 type CohortBuilderMode = 'quick' | 'advanced'
-type PreviewSort = 'alpha' | 'risk' | 'activity' | 'newest' | 'inactive'
+type PreviewSort = 'alpha' | 'risk' | 'activity' | 'value' | 'newest' | 'inactive'
 
 // Must stay in sync with cohortFilterSchema in server/routers/intelligence.ts
 // — if you add a new field on the server, mirror it here so TS accepts it at
@@ -140,7 +176,7 @@ type CohortFilterField =
   | 'age' | 'gender' | 'membershipType' | 'membershipStatus' | 'skillLevel'
   | 'zipCode' | 'city' | 'sessionFormat' | 'dayOfWeek' | 'frequency'
   | 'recency' | 'userId' | 'duprRating'
-  | 'healthScore' | 'riskLevel' | 'joinedDaysAgo' | 'birthdayMonth'
+  | 'healthScore' | 'activityLevel' | 'riskLevel' | 'engagementTrend' | 'valueTier' | 'joinedDaysAgo' | 'birthdayMonth'
   | 'normalizedMembershipType' | 'normalizedMembershipStatus'
 
 interface CohortFilter {
@@ -149,31 +185,12 @@ interface CohortFilter {
   value: string | number | string[]
 }
 
-interface QuickCohortState {
-  membershipStatus: string[]
-  membershipType: string[]
-  riskLevel: string[]
-  joinedWithinDays: string
-  inactiveDays: string
-  sessionsPerMonthMin: string
-  sessionsPerMonthMax: string
-}
-
-const EMPTY_QUICK_COHORT: QuickCohortState = {
-  membershipStatus: [],
-  membershipType: [],
-  riskLevel: [],
-  joinedWithinDays: '',
-  inactiveDays: '',
-  sessionsPerMonthMin: '',
-  sessionsPerMonthMax: '',
-}
-
 const QUICK_COHORT_PRESETS: Array<{
   id: string
   label: string
   description: string
   name: string
+  previewSort?: PreviewSort
   state: Partial<QuickCohortState>
 }> = [
   {
@@ -181,6 +198,7 @@ const QUICK_COHORT_PRESETS: Array<{
     label: 'At-Risk VIPs',
     description: 'Unlimited members who need attention before they quietly churn.',
     name: 'At-Risk VIPs',
+    previewSort: 'risk',
     state: { membershipType: ['unlimited'], riskLevel: ['at_risk', 'critical'] },
   },
   {
@@ -188,6 +206,7 @@ const QUICK_COHORT_PRESETS: Array<{
     label: 'Trial Not Converted',
     description: 'Trial players who have already touched the product and need a nudge.',
     name: 'Trial Not Converted',
+    previewSort: 'inactive',
     state: { membershipStatus: ['trial'], sessionsPerMonthMin: '2', inactiveDays: '7' },
   },
   {
@@ -195,14 +214,32 @@ const QUICK_COHORT_PRESETS: Array<{
     label: 'Inactive Regulars',
     description: 'Previously active members who have gone quiet long enough to matter.',
     name: 'Inactive Regulars',
-    state: { membershipStatus: ['active'], inactiveDays: '21', sessionsPerMonthMin: '1' },
+    previewSort: 'inactive',
+    state: { membershipStatus: ['active'], activityLevel: ['regular'], inactiveDays: '21', sessionsPerMonthMin: '1' },
   },
   {
     id: 'new-members',
     label: 'New Members',
     description: 'Fresh joiners who should move into onboarding or first-campaign flows.',
     name: 'New Members',
+    previewSort: 'newest',
     state: { joinedWithinDays: '30', membershipStatus: ['active', 'trial'] },
+  },
+  {
+    id: 'high-value-watchlist',
+    label: 'High-Value Watchlist',
+    description: 'Top-spending members showing early warning signs before they slip.',
+    name: 'High-Value Watchlist',
+    previewSort: 'value',
+    state: { valueTier: ['high'], riskLevel: ['watch', 'at_risk'] },
+  },
+  {
+    id: 'power-players',
+    label: 'Power Players',
+    description: 'Most engaged members for ambassador, referral or premium offers.',
+    name: 'Power Players',
+    previewSort: 'activity',
+    state: { activityLevel: ['power'], membershipStatus: ['active'] },
   },
 ]
 
@@ -210,6 +247,37 @@ function toggleQuickValue(values: string[], nextValue: string) {
   return values.includes(nextValue)
     ? values.filter((value) => value !== nextValue)
     : [...values, nextValue]
+}
+
+function equalStringSets(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+  const left = [...a].sort()
+  const right = [...b].sort()
+  return left.every((value, index) => value === right[index])
+}
+
+function getRecommendedPreviewSort(draft: QuickCohortState): PreviewSort {
+  if (draft.valueTier.length > 0) return 'value'
+  if (draft.riskLevel.length > 0) return 'risk'
+  if (draft.inactiveDays || draft.engagementTrend.includes('churning') || draft.engagementTrend.includes('declining')) return 'inactive'
+  if (draft.joinedWithinDays) return 'newest'
+  if (draft.activityLevel.length > 0 || draft.sessionsPerMonthMin || draft.sessionsPerMonthMax) return 'activity'
+  return 'alpha'
+}
+
+function isQuickPresetActive(draft: QuickCohortState, preset: typeof QUICK_COHORT_PRESETS[number]) {
+  const state = preset.state
+  if (state.membershipStatus && !equalStringSets(draft.membershipStatus, state.membershipStatus)) return false
+  if (state.membershipType && !equalStringSets(draft.membershipType, state.membershipType)) return false
+  if (state.activityLevel && !equalStringSets(draft.activityLevel, state.activityLevel)) return false
+  if (state.riskLevel && !equalStringSets(draft.riskLevel, state.riskLevel)) return false
+  if (state.engagementTrend && !equalStringSets(draft.engagementTrend, state.engagementTrend)) return false
+  if (state.valueTier && !equalStringSets(draft.valueTier, state.valueTier)) return false
+  if (state.joinedWithinDays != null && draft.joinedWithinDays !== state.joinedWithinDays) return false
+  if (state.inactiveDays != null && draft.inactiveDays !== state.inactiveDays) return false
+  if (state.sessionsPerMonthMin != null && draft.sessionsPerMonthMin !== state.sessionsPerMonthMin) return false
+  if (state.sessionsPerMonthMax != null && draft.sessionsPerMonthMax !== state.sessionsPerMonthMax) return false
+  return true
 }
 
 function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
@@ -227,10 +295,28 @@ function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
     filters.push({ field: 'normalizedMembershipType', op: 'in', value: draft.membershipType })
   }
 
+  if (draft.activityLevel.length === 1) {
+    filters.push({ field: 'activityLevel', op: 'eq', value: draft.activityLevel[0] })
+  } else if (draft.activityLevel.length > 1) {
+    filters.push({ field: 'activityLevel', op: 'in', value: draft.activityLevel })
+  }
+
   if (draft.riskLevel.length === 1) {
     filters.push({ field: 'riskLevel', op: 'eq', value: draft.riskLevel[0] })
   } else if (draft.riskLevel.length > 1) {
     filters.push({ field: 'riskLevel', op: 'in', value: draft.riskLevel })
+  }
+
+  if (draft.engagementTrend.length === 1) {
+    filters.push({ field: 'engagementTrend', op: 'eq', value: draft.engagementTrend[0] })
+  } else if (draft.engagementTrend.length > 1) {
+    filters.push({ field: 'engagementTrend', op: 'in', value: draft.engagementTrend })
+  }
+
+  if (draft.valueTier.length === 1) {
+    filters.push({ field: 'valueTier', op: 'eq', value: draft.valueTier[0] })
+  } else if (draft.valueTier.length > 1) {
+    filters.push({ field: 'valueTier', op: 'in', value: draft.valueTier })
   }
 
   const joinedWithinDays = Number(draft.joinedWithinDays)
@@ -258,12 +344,21 @@ function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
 
 function looksLikeRawFilterDescription(description: string | null | undefined) {
   if (!description) return false
-  return /(userId|riskLevel|normalizedMembership|joinedDaysAgo|membershipStatus|membershipType|frequency|recency)\s+(eq|in|gte|lte|contains)/i.test(description)
+  return /(userId|riskLevel|normalizedMembership|activityLevel|engagementTrend|valueTier|joinedDaysAgo|membershipStatus|membershipType|frequency|recency)\s+(eq|in|gte|lte|contains)/i.test(description)
 }
 
 function formatCohortFilterSummary(filter: CohortFilter) {
   if (filter.field === 'userId' && filter.op === 'in' && Array.isArray(filter.value)) {
     return `${filter.value.length} hand-picked members`
+  }
+  if (filter.field === 'activityLevel' && filter.op === 'eq' && typeof filter.value === 'string') {
+    return `${formatCohortFilterValue('activityLevel', filter.value)} players`
+  }
+  if (filter.field === 'engagementTrend' && filter.op === 'eq' && typeof filter.value === 'string') {
+    return `${formatCohortFilterValue('engagementTrend', filter.value)} engagement`
+  }
+  if (filter.field === 'valueTier' && filter.op === 'eq' && typeof filter.value === 'string') {
+    return `${formatCohortFilterValue('valueTier', filter.value)} value`
   }
   if (filter.field === 'joinedDaysAgo' && filter.op === 'lte' && typeof filter.value === 'number') {
     return `Joined in last ${filter.value} days`
@@ -330,8 +425,15 @@ function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
 export default function CohortsIQ() {
   const params = useParams()
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const clubId = params.id as string
   const suggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const builderIntentKey = searchParams?.toString() || ''
+  const builderIntent = useMemo(
+    () => parseQuickCohortSearchParams({ get: (key) => searchParams?.get(key) || null }),
+    [builderIntentKey, searchParams],
+  )
 
   const [showCreate, setShowCreate] = useState(false)
   const [selectedCohortId, setSelectedCohortId] = useState<string | null>(null)
@@ -340,6 +442,22 @@ export default function CohortsIQ() {
   const [activeLookalikeSaveKey, setActiveLookalikeSaveKey] = useState<string | null>(null)
   const [selectedLookalikeAudienceKeys, setSelectedLookalikeAudienceKeys] = useState<string[]>([])
   const [lookalikeExportPreset, setLookalikeExportPreset] = useState<LookalikeExportPreset>('generic_csv')
+
+  const clearBuilderIntent = () => {
+    if (!pathname) return
+    const next = new URLSearchParams(searchParams?.toString() || '')
+    for (const key of QUICK_COHORT_QUERY_KEYS) {
+      next.delete(key)
+    }
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+
+  useEffect(() => {
+    if (!builderIntent) return
+    setSelectedCohortId(null)
+    setShowCreate(true)
+  }, [builderIntent])
 
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
   // P3-T2: AI-suggested cohorts (3 generators per D4)
@@ -541,8 +659,9 @@ export default function CohortsIQ() {
         {showCreate && (
           <CohortBuilder
             clubId={clubId}
-            onClose={() => setShowCreate(false)}
-            onSaved={() => { setShowCreate(false); refetch() }}
+            initialSeed={builderIntent}
+            onClose={() => { setShowCreate(false); clearBuilderIntent() }}
+            onSaved={() => { setShowCreate(false); clearBuilderIntent(); refetch() }}
           />
         )}
       </AnimatePresence>
@@ -1323,6 +1442,17 @@ export default function CohortsIQ() {
                   <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
                   <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
                   <span className="text-xs" style={{ color: 'var(--t4)' }}>members</span>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full ml-1"
+                    style={{
+                      background: c.isDynamic ? 'rgba(6,182,212,0.12)' : 'rgba(245,158,11,0.12)',
+                      color: c.isDynamic ? '#06B6D4' : '#F59E0B',
+                      fontWeight: 700,
+                    }}
+                    title={c.isDynamic ? 'This cohort re-evaluates from filters.' : 'This cohort is frozen to an explicit member list.'}
+                  >
+                    {c.isDynamic ? 'Dynamic' : 'Frozen'}
+                  </span>
                 </div>
                 {/* Filter tags. Frozen userId-IN cohorts (created from a member
                     selection or after Add-to-existing) get a single
@@ -1572,16 +1702,27 @@ function QuickCampaignModal({ clubId, cohort, onClose }: { clubId: string; cohor
 }
 
 // ── Cohort Builder ──
-function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [mode, setMode] = useState<CohortBuilderMode>('quick')
-  const [quickFilters, setQuickFilters] = useState<QuickCohortState>(EMPTY_QUICK_COHORT)
+function CohortBuilder({
+  clubId,
+  initialSeed,
+  onClose,
+  onSaved,
+}: {
+  clubId: string
+  initialSeed?: { mode: 'quick'; name: string; description: string; quickFilters: QuickCohortState } | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(initialSeed?.name || '')
+  const [description, setDescription] = useState(initialSeed?.description || '')
+  const [mode, setMode] = useState<CohortBuilderMode>(initialSeed?.mode || 'quick')
+  const [quickFilters, setQuickFilters] = useState<QuickCohortState>(initialSeed?.quickFilters || EMPTY_QUICK_COHORT)
   const [filters, setFilters] = useState<CohortFilter[]>([])
   const [saving, setSaving] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiParsing, setAiParsing] = useState(false)
   const [previewSort, setPreviewSort] = useState<PreviewSort>('alpha')
+  const [previewSortTouched, setPreviewSortTouched] = useState(false)
 
   const parseMutation = trpc.intelligence.parseCohortFromText.useMutation({
     onSuccess: (data) => {
@@ -1605,6 +1746,10 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   const advancedPreviewFilters = useMemo(() => sanitizeCohortFilters(filters), [filters])
   const quickPreviewFilters = useMemo(() => buildQuickCohortFilters(quickFilters), [quickFilters])
   const effectiveFilters = mode === 'quick' ? quickPreviewFilters : advancedPreviewFilters
+  const recommendedPreviewSort = useMemo(
+    () => (mode === 'quick' ? getRecommendedPreviewSort(quickFilters) : 'alpha'),
+    [mode, quickFilters],
+  )
   const hasIncompleteFilters = mode === 'advanced' && filters.length > 0 && advancedPreviewFilters.length !== filters.length
   const generatedDescription = useMemo(() => {
     if (mode !== 'quick') return ''
@@ -1681,9 +1826,17 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
     [effectiveFilters],
   )
 
+  useEffect(() => {
+    if (mode !== 'quick') return
+    if (previewSortTouched) return
+    setPreviewSort(recommendedPreviewSort)
+  }, [mode, previewSortTouched, recommendedPreviewSort])
+
   const sortedPreviewMembers = useMemo(() => {
     const members = [...(((previewQuery.data?.sampleMembers || []) as any[]))]
     const riskRank: Record<string, number> = { critical: 4, at_risk: 3, watch: 2, healthy: 1 }
+    const activityRank: Record<string, number> = { power: 4, regular: 3, casual: 2, occasional: 1 }
+    const valueRank: Record<string, number> = { high: 3, medium: 2, low: 1 }
     members.sort((a, b) => {
       if (previewSort === 'risk') {
         return (riskRank[b.riskLevel || ''] || 0) - (riskRank[a.riskLevel || ''] || 0)
@@ -1691,7 +1844,13 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
           || String(a.name || '').localeCompare(String(b.name || ''))
       }
       if (previewSort === 'activity') {
-        return Number(b.sessionsLast30 ?? 0) - Number(a.sessionsLast30 ?? 0)
+        return (activityRank[b.activityLevel || ''] || 0) - (activityRank[a.activityLevel || ''] || 0)
+          || Number(b.sessionsLast30 ?? 0) - Number(a.sessionsLast30 ?? 0)
+          || String(a.name || '').localeCompare(String(b.name || ''))
+      }
+      if (previewSort === 'value') {
+        return (valueRank[b.valueTier || ''] || 0) - (valueRank[a.valueTier || ''] || 0)
+          || Number(b.totalRevenue ?? 0) - Number(a.totalRevenue ?? 0)
           || String(a.name || '').localeCompare(String(b.name || ''))
       }
       if (previewSort === 'newest') {
@@ -1714,6 +1873,8 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   const applyPreset = (preset: typeof QUICK_COHORT_PRESETS[number]) => {
     setMode('quick')
     setQuickFilters({ ...EMPTY_QUICK_COHORT, ...preset.state })
+    setPreviewSortTouched(false)
+    setPreviewSort(preset.previewSort || getRecommendedPreviewSort({ ...EMPTY_QUICK_COHORT, ...preset.state }))
     if (!name.trim()) setName(preset.name)
     if (!description.trim()) setDescription(preset.description)
   }
@@ -1849,7 +2010,10 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                 </div>
                 <button
                   type="button"
-                  onClick={() => setQuickFilters(EMPTY_QUICK_COHORT)}
+                  onClick={() => {
+                    setPreviewSortTouched(false)
+                    setQuickFilters(EMPTY_QUICK_COHORT)
+                  }}
                   className="text-xs px-3 py-1.5 rounded-full"
                   style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
                 >
@@ -1858,18 +2022,26 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {QUICK_COHORT_PRESETS.map((preset) => (
+                {QUICK_COHORT_PRESETS.map((preset) => {
+                  const active = isQuickPresetActive(quickFilters, preset)
+                  return (
                   <button
                     key={preset.id}
                     type="button"
                     onClick={() => applyPreset(preset)}
                     className="px-3 py-1.5 rounded-full text-xs transition-all"
-                    style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 700 }}
+                    style={{
+                      background: active ? 'rgba(139,92,246,0.16)' : 'var(--subtle)',
+                      border: `1px solid ${active ? 'rgba(139,92,246,0.35)' : 'var(--card-border)'}`,
+                      color: active ? '#C4B5FD' : 'var(--t2)',
+                      fontWeight: 700,
+                    }}
                     title={preset.description}
                   >
                     {preset.label}
                   </button>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="space-y-4 pt-1" style={{ borderTop: '1px solid var(--card-border)' }}>
@@ -1889,11 +2061,32 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                   (value) => updateQuickFilter('membershipType', toggleQuickValue(quickFilters.membershipType, value)),
                 )}
                 {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.activityLevel.label,
+                  QUICK_FILTER_COPY.activityLevel.hint,
+                  ACTIVITY_LEVEL_OPTIONS,
+                  quickFilters.activityLevel,
+                  (value) => updateQuickFilter('activityLevel', toggleQuickValue(quickFilters.activityLevel, value)),
+                )}
+                {renderMultiChipGroup(
                   QUICK_FILTER_COPY.riskLevel.label,
                   QUICK_FILTER_COPY.riskLevel.hint,
                   RISK_LEVEL_OPTIONS,
                   quickFilters.riskLevel,
                   (value) => updateQuickFilter('riskLevel', toggleQuickValue(quickFilters.riskLevel, value)),
+                )}
+                {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.engagementTrend.label,
+                  QUICK_FILTER_COPY.engagementTrend.hint,
+                  ENGAGEMENT_TREND_OPTIONS,
+                  quickFilters.engagementTrend,
+                  (value) => updateQuickFilter('engagementTrend', toggleQuickValue(quickFilters.engagementTrend, value)),
+                )}
+                {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.valueTier.label,
+                  QUICK_FILTER_COPY.valueTier.hint,
+                  VALUE_TIER_OPTIONS,
+                  quickFilters.valueTier,
+                  (value) => updateQuickFilter('valueTier', toggleQuickValue(quickFilters.valueTier, value)),
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5">
@@ -2071,13 +2264,17 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                   <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sample</div>
                   <select
                     value={previewSort}
-                    onChange={(e) => setPreviewSort(e.target.value as PreviewSort)}
+                    onChange={(e) => {
+                      setPreviewSortTouched(true)
+                      setPreviewSort(e.target.value as PreviewSort)
+                    }}
                     className="px-2 py-1 rounded-lg text-[11px] outline-none"
                     style={{ background: 'var(--subtle)', color: 'var(--t2)', border: '1px solid var(--card-border)' }}
                   >
                     <option value="alpha">A-Z</option>
                     <option value="risk">Highest risk first</option>
                     <option value="activity">Most active first</option>
+                    <option value="value">Highest value first</option>
                     <option value="newest">Newest first</option>
                     <option value="inactive">Longest inactive first</option>
                   </select>
@@ -2095,7 +2292,10 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
                           <div className="text-sm truncate" style={{ fontWeight: 700, color: 'var(--heading)' }}>{member.name || 'Unnamed'}</div>
                           <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--t4)' }}>
                             {[
+                              member.activityLevel ? formatCohortFilterValue('activityLevel', member.activityLevel) : null,
                               member.riskLevel ? formatCohortFilterValue('riskLevel', member.riskLevel) : null,
+                              member.engagementTrend ? formatCohortFilterValue('engagementTrend', member.engagementTrend) : null,
+                              member.valueTier ? formatCohortFilterValue('valueTier', member.valueTier) : null,
                               member.membershipType || formatCohortFilterValue('normalizedMembershipType', member.normalizedMembershipType || ''),
                               member.city,
                             ].filter(Boolean).join(' · ') || member.email || 'Member profile'}
