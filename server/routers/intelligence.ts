@@ -672,7 +672,7 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
            u.image,
            latest_health.health_score as "healthScore",
            latest_health.risk_level as "riskLevel",
-           EXTRACT(DAY FROM (CURRENT_DATE - cf.created_at::date))::int as "joinedDaysAgo",
+           (CURRENT_DATE - cf.created_at::date)::int as "joinedDaysAgo",
            recent_activity.sessions_last_30 as "sessionsLast30",
            recent_activity.days_since_last_visit as "daysSinceLastVisit"
     FROM club_followers cf
@@ -695,7 +695,7 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
         )::int as sessions_last_30,
         CASE
           WHEN MAX(ps.date) IS NOT NULL
-            THEN EXTRACT(DAY FROM (CURRENT_DATE - MAX(ps.date)::date))::int
+            THEN (CURRENT_DATE - MAX(ps.date)::date)::int
           ELSE NULL
         END as days_since_last_visit
       FROM play_session_bookings psb
