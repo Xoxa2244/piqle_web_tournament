@@ -20,6 +20,13 @@ interface MembersReactivationSectionProps {
   clubId?: string;
   clubName?: string;
   isDark: boolean;
+
+  /** P2-T8 follow-up: bulk select wired to the parent's selection state so
+   *  the same BulkSelectToolbar that serves the main Members list also fires
+   *  here. Lets admin tick a few reactivation candidates and bundle them
+   *  into a cohort / campaign in one go. */
+  selectedMemberIds?: Set<string>;
+  onToggleSelection?: (memberId: string) => void;
 }
 
 type RiskLevel = "high" | "medium" | "low";
@@ -100,6 +107,8 @@ export function MembersReactivationSection({
   clubId,
   clubName,
   isDark,
+  selectedMemberIds,
+  onToggleSelection,
 }: MembersReactivationSectionProps) {
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -169,16 +178,35 @@ export function MembersReactivationSection({
       <div className="space-y-3">
         {filtered.map((member, i) => {
           const isExpanded = expandedMember === member.id;
+          const isSelected = !!selectedMemberIds?.has(member.id);
           return (
             <motion.div key={member.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Card className="!p-0 overflow-hidden">
                 {/* Main Row */}
                 <div
-                  className="flex items-center gap-4 px-5 py-4 cursor-pointer transition-colors"
+                  className="flex items-center gap-3 px-4 py-4 cursor-pointer transition-colors"
+                  style={{
+                    background: isSelected ? "rgba(139,92,246,0.06)" : undefined,
+                  }}
                   onClick={() => setExpandedMember(isExpanded ? null : member.id)}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "var(--hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = isSelected ? "rgba(139,92,246,0.06)" : "transparent"; }}
                 >
+                  {/* P2-T8: per-row checkbox — click stops propagation so the
+                      card click still expands the row. Hidden when parent
+                      hasn't wired selection state. */}
+                  {onToggleSelection && (
+                    <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelection(member.id)}
+                        aria-label={`Select ${member.name}`}
+                        className="w-4 h-4 rounded cursor-pointer"
+                        style={{ accentColor: "#8B5CF6" }}
+                      />
+                    </div>
+                  )}
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center text-xs text-white shrink-0"
                     style={{

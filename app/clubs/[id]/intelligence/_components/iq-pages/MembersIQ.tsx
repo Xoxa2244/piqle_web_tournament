@@ -1956,6 +1956,20 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         );
       })()}
 
+      {/* P2-T8: Bulk select toolbar lifted out of the All Members branch so
+          it also shows when ticking checkboxes inside the Reactivation view.
+          Same selection state (selectedMemberIds) feeds both views. */}
+      {selectedMemberIds.size > 0 && (
+        <BulkSelectToolbar
+          clubId={clubId || ''}
+          selectedIds={Array.from(selectedMemberIds)}
+          existingCohorts={existingCohortsForBulk as any[]}
+          onClear={clearMemberSelection}
+          isOpen={bulkAddCohortOpen}
+          setOpen={setBulkAddCohortOpen}
+        />
+      )}
+
       {/* Reactivation View */}
       {view === "reactivation" ? (
         <MembersReactivationSection
@@ -1967,6 +1981,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           clubId={clubId}
           clubName={memberHealthData?.clubName}
           isDark={isDark}
+          selectedMemberIds={selectedMemberIds}
+          onToggleSelection={toggleMemberSelection}
         />
       ) : (<>
 
@@ -4001,17 +4017,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
-      {/* P2-T3: Bulk select toolbar — visible when 1+ members selected */}
-      {selectedMemberIds.size > 0 && (
-        <BulkSelectToolbar
-          clubId={clubId || ''}
-          selectedIds={Array.from(selectedMemberIds)}
-          existingCohorts={existingCohortsForBulk as any[]}
-          onClear={clearMemberSelection}
-          isOpen={bulkAddCohortOpen}
-          setOpen={setBulkAddCohortOpen}
-        />
-      )}
+      {/* P2-T8: BulkSelectToolbar lifted to top of view (above ternary) so
+          it appears on both All Members and Reactivation views. */}
 
       {/* P2-T2: Member layout — list (default), grid (multi-col), cards (alias of grid for now) */}
       {(viewMode === "grid" || viewMode === "cards") ? (
