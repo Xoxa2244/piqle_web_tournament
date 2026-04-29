@@ -9018,29 +9018,139 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // TODO P5-T2 deploy: switch this to:
-      //   ctx.prisma.campaign.findMany({
-      //     where: { clubId: input.clubId, status: { in: ['running','scheduled','paused'] } },
-      //     orderBy: { createdAt: 'desc' },
-      //     include: { cohort: { select: { name: true } } },
-      //   })
-      // and project to the same shape (with attribution.booked_count etc).
-      return [] as Array<{
-        id: string
-        name: string
-        cohortId: string | null
-        cohortName: string | null
-        channel: 'email' | 'sms' | 'email+sms'
-        sentCount: number
-        // P5-T4 metrics — populated when Campaign model lands:
-        deliveredCount: number
-        openedCount: number
-        openRate: number          // 0..1 — openedCount / deliveredCount
-        bookedCount: number       // attribution.booked_count
-        bookedRevenueCents: number // attribution.booked_revenue_cents
-        status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed'
-        startedAt: Date | null
-        _stub?: true
-      }>
+      // P2-T9: real Campaign query (was stubbed return []). Active = anything
+      // that isn't `draft` or `completed` — the surface admins want to see
+      // before/while campaigns are doing work.
+      const rows = await ctx.prisma.campaign.findMany({
+        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused'] } },
+        orderBy: { createdAt: 'desc' },
+        include: { cohort: { select: { name: true } } },
+      })
+      return rows.map((c: any) => {
+        const channelArr = Array.isArray(c.channels) ? c.channels : []
+        const channel: 'email' | 'sms' | 'email+sms' = channelArr.includes('email') && channelArr.includes('sms')
+          ? 'email+sms'
+          : channelArr.includes('sms') ? 'sms' : 'email'
+        const attribution = (c.attribution as any) || {}
+        const openRate = c.deliveredCount > 0 ? c.openedCount / c.deliveredCount : 0
+        return {
+          id: c.id,
+          name: c.name,
+          cohortId: c.cohortId,
+          cohortName: c.cohort?.name ?? null,
+          channel,
+          sentCount: c.sentCount,
+          deliveredCount: c.deliveredCount,
+          openedCount: c.openedCount,
+          openRate,
+          bookedCount: Number(attribution.booked_count ?? 0),
+          bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
+          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed',
+          startedAt: c.launchedAt ?? c.scheduledAt,
+        }
+      })
+    }),
+
+  /**
+   * P2-T9 / Priority-1.1 — Launch a campaign.
+   *
+   * Resolves the audience to a frozen list of userIds (either from a saved
+   * cohort's filters, an AI-suggested cohort's userIds payload, or hand-picked
+   * inline ids), creates a Campaign row, and returns its id. The actual
+   * outbound sends are performed by the campaign-sends cron in Priority-1.2;
+   * this mutation only persists intent.
+   *
+   * Status logic:
+   *   - scheduledAt in the future → status='scheduled'
+   *   - otherwise → status='running' + launchedAt=now (cron picks up next tick)
+   */
+  launchCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      name: z.string().min(1).max(100),
+      goal: z.string().min(1).max(64),
+      subject: z.string().min(1).max(200),
+      body: z.string().min(1).max(5000),
+      channels: z.array(z.enum(['email', 'sms'])).min(1),
+      // Audience source — exactly one branch must be supplied.
+      cohortId: z.string().uuid().optional(),
+      userIds: z.array(z.string()).max(2000).optional(),
+      audienceLabel: z.string().max(120).optional(), // for cohortName when inline
+      scheduledAt: z.string().optional(), // ISO; absent or past → run now
+      format: z.enum(['one_time', 'sequence', 'recurring']).default('one_time'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Phase-1 only ships one_time. Sequence/Recurring will refuse explicitly
+      // until the multi-step runner ships — better than silently dropping.
+      if (input.format !== 'one_time') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Send format "${input.format}" is not yet supported. Switch to One-time in Step 3.`,
+        })
+      }
+
+      // Resolve recipient userIds. Cohort takes priority over inline userIds
+      // when both are provided (shouldn't happen, but cohort is the canonical source).
+      let recipientIds: string[] = []
+      let resolvedCohortId: string | null = null
+      let resolvedCohortName = input.audienceLabel ?? 'Untitled cohort'
+      if (input.cohortId) {
+        const cohort = await ctx.prisma.clubCohort.findUnique({
+          where: { id: input.cohortId },
+        })
+        if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
+        if (cohort.clubId !== input.clubId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Cohort does not belong to this club' })
+        }
+        const filters = (cohort.filters as unknown as CohortFilter[]) || []
+        const rows = await queryCohortMembers(ctx.prisma, input.clubId, filters)
+        recipientIds = (rows as any[]).map((r) => r.id).filter((id): id is string => typeof id === 'string')
+        resolvedCohortId = cohort.id
+        resolvedCohortName = cohort.name
+      } else if (input.userIds && input.userIds.length > 0) {
+        recipientIds = Array.from(new Set(input.userIds))
+      } else {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Provide either cohortId or userIds' })
+      }
+
+      if (recipientIds.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Audience is empty — nothing to send' })
+      }
+
+      const now = new Date()
+      const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : null
+      const isFuture = scheduledDate ? scheduledDate.getTime() > now.getTime() : false
+      const status = isFuture ? 'scheduled' : 'running'
+
+      const campaign = await ctx.prisma.campaign.create({
+        data: {
+          clubId: input.clubId,
+          cohortId: resolvedCohortId,
+          createdByUser: ctx.session.user.id,
+          name: input.name,
+          goal: input.goal,
+          subject: input.subject,
+          body: input.body,
+          channels: input.channels,
+          status,
+          scheduledAt: scheduledDate,
+          launchedAt: status === 'running' ? now : null,
+          // Frozen audience snapshot — the send queue reads userIds from here,
+          // so cohort filter changes after launch don't affect this campaign.
+          cohortSnapshot: {
+            userIds: recipientIds,
+            cohortName: resolvedCohortName,
+            rendered_at: now.toISOString(),
+          } as any,
+        },
+      })
+
+      return {
+        campaignId: campaign.id,
+        recipientCount: recipientIds.length,
+        status: campaign.status,
+      }
     }),
 })

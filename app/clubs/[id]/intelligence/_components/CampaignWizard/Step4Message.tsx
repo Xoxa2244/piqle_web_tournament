@@ -32,6 +32,8 @@ interface Step4Props {
   liveMode: 'disabled' | 'shadow' | 'live'
   onLaunch: () => void
   isLaunching: boolean
+  /** Server error from launchCampaign mutation. Rendered inline above Launch. */
+  launchError?: string | null
 }
 
 /** Maps the wizard's CampaignGoal → the legacy campaignType enum that
@@ -97,6 +99,7 @@ export function Step4Message({
   liveMode,
   onLaunch,
   isLaunching,
+  launchError,
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
   const [testEmail, setTestEmail] = useState('')
@@ -276,6 +279,14 @@ export function Step4Message({
           </button>
         </div>
       </div>
+
+      {/* Server error from launch */}
+      {launchError && (
+        <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#F87171' }}>
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span className="text-xs">{launchError}</span>
+        </div>
+      )}
 
       {/* Launch */}
       {!isLive && (

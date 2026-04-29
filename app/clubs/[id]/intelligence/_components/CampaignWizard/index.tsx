@@ -129,15 +129,51 @@ export function CampaignWizard({
     }
   }
 
-  // Launch — v1 stub. Real DB write lands in P5-T2 with Campaign model.
+  // Launch — Priority-1.1: writes a real Campaign row via launchCampaign
+  // mutation. Send fan-out happens in the campaign-sends cron (Priority-1.2).
+  const utils = trpc.useUtils()
+  const [launchError, setLaunchError] = useState<string | null>(null)
+  const [launchResult, setLaunchResult] = useState<{ recipientCount: number; status: string } | null>(null)
+  const launchMutation = trpc.intelligence.launchCampaign.useMutation({
+    onSuccess: (res: any) => {
+      setLaunchError(null)
+      setLaunchResult({ recipientCount: res.recipientCount, status: res.status })
+      setLaunched(true)
+      // Refresh Active Campaigns so the new row shows up immediately.
+      utils.intelligence.listActiveCampaigns.invalidate({ clubId }).catch(() => {})
+    },
+    onError: (err: any) => {
+      setLaunchError(err?.message || 'Launch failed — try again or check Live Mode in Settings → Automation.')
+    },
+  })
+
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
+    if (!state.audience || !state.goal) return
     setIsLaunching(true)
     try {
-      // TODO P5-T2: insert Campaign row + queue sends.
-      // For now show success state without DB write.
-      await new Promise((r) => setTimeout(r, 600))
-      setLaunched(true)
+      // Build audience input. cohortId wins if available; otherwise use the
+      // hand-picked userIds list.
+      const cohortId = state.audience.cohortId
+      const userIds = !cohortId ? state.audience.userIds : undefined
+      launchMutation.mutate({
+        clubId,
+        name: `${state.goal.replace(/_/g, ' ')} · ${new Date().toLocaleDateString()}`,
+        goal: state.goal,
+        subject: state.message.subject.trim(),
+        body: state.message.body.trim(),
+        channels: [
+          ...(state.schedule.channels.email ? ['email' as const] : []),
+          ...(state.schedule.channels.sms ? ['sms' as const] : []),
+        ],
+        cohortId: cohortId ?? undefined,
+        userIds,
+        audienceLabel: state.audience.cohortName,
+        scheduledAt: state.schedule.mode === 'scheduled' && state.schedule.scheduledAt
+          ? new Date(state.schedule.scheduledAt).toISOString()
+          : undefined,
+        format: state.schedule.format,
+      })
     } finally {
       setIsLaunching(false)
     }
@@ -224,11 +260,12 @@ export function CampaignWizard({
               <div className="space-y-4 text-center py-8">
                 <div className="text-4xl">🚀</div>
                 <h3 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>
-                  Campaign on its way to {state.audience?.memberCount ?? 0} members
+                  {launchResult?.status === 'scheduled'
+                    ? `Scheduled for ${launchResult?.recipientCount ?? state.audience?.memberCount ?? 0} members`
+                    : `Queued for ${launchResult?.recipientCount ?? state.audience?.memberCount ?? 0} members`}
                 </h3>
                 <p className="text-xs max-w-sm mx-auto" style={{ color: 'var(--t3)' }}>
-                  Track delivery, opens, and bookings in the Active Campaigns table. We&apos;ll
-                  also surface results in the Campaign History accordion once it ships (P5-T5).
+                  Track delivery, opens, and bookings in the Active Campaigns table. The campaign-sends cron picks up <em>running</em> campaigns and fans out to recipients (Priority-1.2).
                 </p>
                 <button
                   onClick={onClose}
@@ -267,7 +304,8 @@ export function CampaignWizard({
                 onChange={(message: MessageDraft) => setState((s) => ({ ...s, message }))}
                 liveMode={liveMode}
                 onLaunch={handleLaunch}
-                isLaunching={isLaunching}
+                isLaunching={isLaunching || launchMutation.isPending}
+                launchError={launchError}
               />
             )}
           </div>
