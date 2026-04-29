@@ -413,9 +413,9 @@ export default function CohortsIQ() {
               <p className="text-xs leading-relaxed mb-2">
                 IQ checks three angles every day: members whose membership expires soon,
                 regulars who stopped showing up to evening sessions, and new joiners who
-                are engaging fast. None matched today — usually because the club doesn't
+                are engaging fast. None matched today — usually because the club doesn&apos;t
                 have enough session history yet, or the underlying data (e.g. membership
-                expiry from CSV import) isn't populated.
+                expiry from CSV import) isn&apos;t populated.
               </p>
               <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
                 Cards appear here automatically once the data lines up. You can always build a custom cohort below.
