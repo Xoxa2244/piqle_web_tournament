@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useInView, AnimatePresence } from "motion/react";
@@ -9,7 +9,7 @@ import {
   CalendarDays, DollarSign, Mail,
   Smartphone, ArrowUpRight, ArrowDownRight, UserPlus,
   Target, LayoutGrid, List, Sparkles, ChevronRight,
-  AlertTriangle,
+  AlertTriangle, Filter as FilterIcon, BarChart3, ChevronDown, X as XIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SmsComingSoon, DuprBadge } from './shared/SmsBadge'
@@ -23,6 +23,8 @@ import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
 import { MemberDetailDrawer } from "../MemberDetailDrawer";
+import { MembersFilterDrawer } from "../MembersFilterDrawer";
+import { MembersChartsDrawer } from "../MembersChartsDrawer";
 import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
 import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
@@ -1295,6 +1297,108 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
   const [bulkAddCohortOpen, setBulkAddCohortOpen] = useState(false)
   const { data: existingCohortsForBulk = [] } = useListCohorts(clubId || '')
+
+  // P2-T8: Filter & charts drawers replace the prior 6-row inline filter
+  // strip + 3-col chart grid that pushed the table below the fold. Filter
+  // state lives here; drawers are pure presentation.
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
+  const [chartsDrawerOpen, setChartsDrawerOpen] = useState(false)
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false)
+
+  const clearAllFilters = () => {
+    setFilterMembershipStatus('all')
+    setFilterMembershipType('all')
+    setFilterActivity('all')
+    setFilterRisk('all')
+    setFilterTrend('all')
+    setFilterValue('all')
+  }
+
+  // Quick presets — each clears all filters then sets only what the preset
+  // implies. Single-axis only by design (current state model has no OR
+  // logic, so multi-axis presets would lie about results).
+  const applyPreset = (key: string) => {
+    clearAllFilters()
+    if (key === 'at-risk') setFilterRisk('at-risk')
+    else if (key === 'critical') setFilterRisk('critical')
+    else if (key === 'vip') setFilterMembershipType('unlimited')
+    else if (key === 'trial') setFilterMembershipType('trial')
+    else if (key === 'inactive') setFilterActivity('occasional')
+    else if (key === 'power') setFilterActivity('power')
+    setPage(1)
+  }
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; group: string; label: string; onClear: () => void }> = []
+    if (filterMembershipStatus !== 'all') {
+      chips.push({
+        key: 'state',
+        group: 'State',
+        label: formatNormalizedMembershipStatus(filterMembershipStatus) || filterMembershipStatus,
+        onClear: () => setFilterMembershipStatus('all'),
+      })
+    }
+    if (filterMembershipType !== 'all') {
+      chips.push({
+        key: 'tier',
+        group: 'Tier',
+        label: formatNormalizedMembershipType(filterMembershipType) || filterMembershipType,
+        onClear: () => setFilterMembershipType('all'),
+      })
+    }
+    if (filterActivity !== 'all') {
+      const labelMap: Record<string, string> = { power: 'Power', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' }
+      chips.push({
+        key: 'activity',
+        group: 'Activity',
+        label: labelMap[filterActivity] || filterActivity,
+        onClear: () => setFilterActivity('all'),
+      })
+    }
+    if (filterRisk !== 'all') {
+      // Risk uses internal segment values: power→Healthy, regular→Watch
+      const labelMap: Record<string, string> = { power: 'Healthy', regular: 'Watch', 'at-risk': 'At-Risk', critical: 'Critical' }
+      chips.push({
+        key: 'risk',
+        group: 'Risk',
+        label: labelMap[filterRisk] || filterRisk,
+        onClear: () => setFilterRisk('all'),
+      })
+    }
+    if (filterTrend !== 'all') {
+      chips.push({
+        key: 'trend',
+        group: 'Trend',
+        label: filterTrend.charAt(0).toUpperCase() + filterTrend.slice(1),
+        onClear: () => setFilterTrend('all'),
+      })
+    }
+    if (filterValue !== 'all') {
+      const labelMap: Record<string, string> = { high: 'High LTV', medium: 'Mid', low: 'Low' }
+      chips.push({
+        key: 'value',
+        group: 'Value',
+        label: labelMap[filterValue] || filterValue,
+        onClear: () => setFilterValue('all'),
+      })
+    }
+    return chips
+  }, [filterMembershipStatus, filterMembershipType, filterActivity, filterRisk, filterTrend, filterValue])
+
+  const activeFilterCount = activeFilterChips.length
+
+  const currentPresetLabel = useMemo(() => {
+    if (activeFilterCount === 0) return 'All members'
+    if (activeFilterCount === 1) {
+      if (filterRisk === 'at-risk') return 'At-Risk'
+      if (filterRisk === 'critical') return 'Critical'
+      if (filterMembershipType === 'unlimited') return 'VIP'
+      if (filterMembershipType === 'trial') return 'Trial members'
+      if (filterActivity === 'occasional') return 'Inactive'
+      if (filterActivity === 'power') return 'Power players'
+    }
+    return 'Custom'
+  }, [activeFilterCount, filterRisk, filterMembershipType, filterActivity])
 
   const toggleMemberSelection = (memberId: string) => {
     setSelectedMemberIds(prev => {
@@ -3771,135 +3875,17 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         </Card>
       )}
 
-      {/* Canonical Membership Filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Membership State:</span>
-        {[
-          { key: "all", label: "All" },
-          { key: "active", label: "Active" },
-          { key: "trial", label: "Trial" },
-          { key: "guest", label: "Guest" },
-          { key: "none", label: "No Membership" },
-          { key: "suspended", label: "Suspended" },
-          { key: "expired", label: "Expired" },
-          { key: "cancelled", label: "Cancelled" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilterMembershipStatus(f.key)}
-            className="px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: filterMembershipStatus === f.key ? "var(--pill-active)" : "transparent",
-              color: filterMembershipStatus === f.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-              fontWeight: filterMembershipStatus === f.key ? 600 : 500,
-              border: `1px solid ${filterMembershipStatus === f.key ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs mr-1" style={{ color: "var(--t4)", fontWeight: 600 }}>Membership Tier:</span>
-        {[
-          { key: "all", label: "All" },
-          { key: "guest", label: "Guest" },
-          { key: "drop_in", label: "Drop-In" },
-          { key: "trial", label: "Trial" },
-          { key: "package", label: "Package" },
-          { key: "monthly", label: "Monthly" },
-          { key: "unlimited", label: "VIP / Unlimited" },
-          { key: "discounted", label: "Discounted" },
-          { key: "insurance", label: "Insurance" },
-          { key: "staff", label: "Staff" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilterMembershipType(f.key)}
-            className="px-3 py-1.5 rounded-lg text-xs transition-all"
-            style={{
-              background: filterMembershipType === f.key ? "var(--pill-active)" : "transparent",
-              color: filterMembershipType === f.key ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
-              fontWeight: filterMembershipType === f.key ? 600 : 500,
-              border: `1px solid ${filterMembershipType === f.key ? (isDark ? "rgba(139,92,246,0.3)" : "rgba(139,92,246,0.2)") : "var(--card-border)"}`,
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Charts — P2-T6: 3-col layout with new Churn & Reactivation trend
-          chart (sourced from getChurnTrend, populated by MemberHealthSnapshot
-          history; see PLAN §3.7). Hidden when no historical snapshots yet. */}
-      {(displayMemberGrowth.length > 0 || displayActivityDistribution.length > 0 || (churnTrendData?.trend?.length ?? 0) > 0) && (
-      <div className="grid lg:grid-cols-3 gap-4">
-        {displayMemberGrowth.length > 0 && (
-        <Card>
-          <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Member Growth</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={displayMemberGrowth}>
-              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line type="monotone" dataKey="total" name="Total" stroke="#8B5CF6" strokeWidth={2} dot={{ r: 4, fill: "#8B5CF6" }} />
-              <Line type="monotone" dataKey="new" name="New" stroke="#10B981" strokeWidth={2} dot={{ r: 3, fill: "#10B981" }} />
-              <Line type="monotone" dataKey="churned" name="Churned" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-        )}
-
-        {displayActivityDistribution.length > 0 && (
-        <Card>
-          <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>How Often Members Play</h3>
-          <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>Members grouped by sessions per week (last 30 days)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={displayActivityDistribution}>
-              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-              <XAxis dataKey="range" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} label={{ value: "Sessions/week", position: "insideBottom", offset: -2, style: { fill: "var(--chart-tick)", fontSize: 10 } }} />
-              <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count" name="Members" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-        )}
-
-        {/* P2-T6: Churn & Reactivation trend.
-            Lines for at-risk + churned counts; bars for reactivated counts.
-            Period selector (week/month/quarter) drives months window via
-            churnMonths above. Empty until MemberHealthSnapshot accumulates
-            enough history (see P5-T1 daily cron). */}
-        {(churnTrendData?.trend?.length ?? 0) > 0 ? (
-          <Card>
-            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Churn &amp; Reactivation</h3>
-            <p className="text-[11px] mb-4 mt-0.5" style={{ color: "var(--t4)" }}>
-              At-risk · churned · reactivated members per month
-            </p>
-            <ResponsiveContainer width="100%" height={200}>
-              <ComposedChart data={churnTrendData?.trend ?? []}>
-                <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
-                <XAxis dataKey="month" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-                <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="reactivated" name="Reactivated" fill="#10B981" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="atRisk" name="At-Risk" stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: "#F59E0B" }} />
-                <Line type="monotone" dataKey="churned" name="Churned" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </Card>
-        ) : null}
-      </div>
-      )}
-
-      {/* Filters + Table */}
+      {/* P2-T8: Compact toolbar replacing the prior 6-row inline filter strip
+          + 3-col chart grid. All filters now live in MembersFilterDrawer (right
+          slide-in); charts in MembersChartsDrawer. Active filters render as
+          dismissible chips below the toolbar. */}
       <div className="space-y-3">
-        {/* Search + Sort + View toggle */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", minWidth: 240 }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          {/* Search */}
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[240px] max-w-[360px]"
+            style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}
+          >
             <Search className="w-4 h-4" style={{ color: "var(--t4)" }} />
             <input
               placeholder="Search by name or email..."
@@ -3909,9 +3895,105 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               style={{ color: "var(--t1)" }}
             />
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-[11px]" style={{ color: "var(--t3)" }}>
-              <span>Sort by:</span>
+
+          {/* Right cluster */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filters drawer trigger */}
+            <button
+              onClick={() => setFilterDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+              style={{
+                background: activeFilterCount > 0 ? "var(--pill-active)" : "var(--subtle)",
+                color: activeFilterCount > 0 ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t3)",
+                fontWeight: activeFilterCount > 0 ? 700 : 600,
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <FilterIcon className="w-3.5 h-3.5" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span
+                  className="px-1.5 rounded-full text-[10px]"
+                  style={{ background: "rgba(139,92,246,0.25)", fontWeight: 700 }}
+                >
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {/* Charts drawer trigger */}
+            <button
+              onClick={() => setChartsDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+              style={{
+                background: "var(--subtle)",
+                color: "var(--t3)",
+                fontWeight: 600,
+                border: "1px solid var(--card-border)",
+              }}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Charts
+            </button>
+
+            {/* Quick presets dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setPresetMenuOpen(o => !o)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all"
+                style={{
+                  background: "var(--subtle)",
+                  color: "var(--t3)",
+                  fontWeight: 600,
+                  border: "1px solid var(--card-border)",
+                }}
+              >
+                {currentPresetLabel}
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {presetMenuOpen && (
+                <>
+                  {/* Click-outside catcher */}
+                  <div
+                    className="fixed inset-0 z-20"
+                    onClick={() => setPresetMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 mt-2 z-30 rounded-xl py-1 min-w-[180px]"
+                    style={{
+                      background: "var(--card-bg)",
+                      border: "1px solid var(--card-border)",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    {[
+                      { key: "all", label: "All members" },
+                      { key: "at-risk", label: "At-Risk" },
+                      { key: "critical", label: "Critical" },
+                      { key: "vip", label: "VIP" },
+                      { key: "trial", label: "Trial members" },
+                      { key: "inactive", label: "Inactive" },
+                      { key: "power", label: "Power players" },
+                    ].map(p => (
+                      <button
+                        key={p.key}
+                        onClick={() => { applyPreset(p.key); setPresetMenuOpen(false); }}
+                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
+                        style={{ color: "var(--t2)" }}
+                        onMouseEnter={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "var(--hover)"; }}
+                        onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-1 text-[11px]" style={{ color: "var(--t3)" }}>
+              <span>Sort:</span>
               {(["health", "revenue", "sessions", "name"] as const).map((s) => (
                 <button
                   key={s}
@@ -3927,17 +4009,18 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 </button>
               ))}
             </div>
+
+            {/* Page size */}
             <select
               value={pageSize}
               onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
               className="text-[11px] px-2 py-1.5 rounded-xl outline-none"
               style={{ background: "var(--subtle)", border: "1px solid var(--card-border)", color: "var(--t2)" }}
             >
-              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+              {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
             </select>
-            {/* P2-T2: 3-mode toggle. List is default & most scalable.
-                Grid for small lists. Cards is currently aliased to Grid;
-                future Phase will give Cards a 1-col rich-card layout. */}
+
+            {/* View toggle */}
             <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
               {([
                 { mode: "list" as const, Icon: List, title: "List view (default)" },
@@ -3961,53 +4044,35 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           </div>
         </div>
 
-        {/* Segment Filters */}
-        <div className="space-y-2">
-          {/* Activity */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Activity</span>
-            {["all", "power", "regular", "casual", "occasional"].map(v => (
-              <button key={v} onClick={() => setFilterActivity(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterActivity === v ? "var(--pill-active)" : "transparent", color: filterActivity === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterActivity === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'power' ? 'Power' : v === 'regular' ? 'Regular' : v === 'casual' ? 'Casual' : 'Occasional'}
+        {/* Active filter chips — dismissible */}
+        {activeFilterCount > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {activeFilterChips.map(c => (
+              <button
+                key={c.key}
+                onClick={c.onClear}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
+                style={{
+                  background: "var(--pill-active)",
+                  color: isDark ? "#C4B5FD" : "#7C3AED",
+                  fontWeight: 600,
+                  border: "1px solid rgba(139,92,246,0.25)",
+                }}
+              >
+                <span style={{ color: "var(--t4)", fontWeight: 500 }}>{c.group}:</span>
+                {c.label}
+                <XIcon className="w-3 h-3 opacity-70" />
               </button>
             ))}
+            <button
+              onClick={clearAllFilters}
+              className="text-[11px] px-2 py-1 rounded-lg transition-colors"
+              style={{ color: "var(--t4)" }}
+            >
+              Clear all
+            </button>
           </div>
-          {/* Risk */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Risk</span>
-            {["all", "healthy", "watch", "at-risk", "critical"].map(v => (
-              <button key={v} onClick={() => setFilterRisk(v === "healthy" ? "power" : v === "watch" ? "regular" : v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "var(--pill-active)" : "transparent", color: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? "#C4B5FD" : "var(--t3)", fontWeight: (v === "healthy" && filterRisk === "power") || (v === "watch" && filterRisk === "regular") || (v !== "healthy" && v !== "watch" && filterRisk === v) ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'healthy' ? 'Healthy' : v === 'watch' ? 'Watch' : v === 'at-risk' ? 'At-Risk' : 'Critical'}
-              </button>
-            ))}
-          </div>
-          {/* Trend */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Trend</span>
-            {["all", "growing", "stable", "declining", "churning"].map(v => (
-              <button key={v} onClick={() => setFilterTrend(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterTrend === v ? "var(--pill-active)" : "transparent", color: filterTrend === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterTrend === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v}
-              </button>
-            ))}
-          </div>
-          {/* Value */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-wider w-14" style={{ color: "var(--t4)", fontWeight: 600 }}>Value</span>
-            {["all", "high", "medium", "low"].map(v => (
-              <button key={v} onClick={() => setFilterValue(v)}
-                className="px-2.5 py-1 rounded-lg text-[11px] transition-all capitalize"
-                style={{ background: filterValue === v ? "var(--pill-active)" : "transparent", color: filterValue === v ? "#C4B5FD" : "var(--t3)", fontWeight: filterValue === v ? 600 : 400 }}>
-                {v === 'all' ? 'All' : v === 'high' ? 'High LTV' : v === 'medium' ? 'Mid' : 'Low'}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Save filtered members as Cohort */}
@@ -4332,6 +4397,35 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           onClose={closeMemberDrawer}
         />
       )}
+
+      {/* P2-T8: Filter drawer — replaces 6-row inline filter strip. */}
+      <MembersFilterDrawer
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        matchCount={filtered.length}
+        filterMembershipStatus={filterMembershipStatus}
+        setFilterMembershipStatus={setFilterMembershipStatus}
+        filterMembershipType={filterMembershipType}
+        setFilterMembershipType={setFilterMembershipType}
+        filterActivity={filterActivity}
+        setFilterActivity={setFilterActivity}
+        filterRisk={filterRisk}
+        setFilterRisk={setFilterRisk}
+        filterTrend={filterTrend}
+        setFilterTrend={setFilterTrend}
+        filterValue={filterValue}
+        setFilterValue={setFilterValue}
+        isDark={isDark}
+      />
+
+      {/* P2-T8: Charts drawer — replaces 3-col inline chart grid. */}
+      <MembersChartsDrawer
+        open={chartsDrawerOpen}
+        onClose={() => setChartsDrawerOpen(false)}
+        memberGrowth={displayMemberGrowth}
+        activityDistribution={displayActivityDistribution}
+        churnTrend={churnTrendData?.trend ?? []}
+      />
     </motion.div>
   );
 }
