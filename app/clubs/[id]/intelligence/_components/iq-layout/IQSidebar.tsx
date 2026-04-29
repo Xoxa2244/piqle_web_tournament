@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket,
+  Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -60,8 +60,11 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     title: "AI TOOLS",
     icon: Cpu,
     items: [
+      // AI Agent tab retired 2026-04-24 — Advisor itself is the agent now.
+      // The `/intelligence/agent` route still exists as a redirect so old
+      // reminder/preflight URLs don't 404 (see agent/page.tsx).
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-      { icon: Bot, label: "AI Agent", path: "/agent", isAI: true },
+      { icon: Sparkles, label: "Programming IQ", path: "/programming", isAI: true },
     ],
   },
   {
