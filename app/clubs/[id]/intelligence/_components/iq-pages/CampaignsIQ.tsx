@@ -12,7 +12,7 @@ import { CampaignList } from './campaigns/CampaignList'
 // in Settings → Automation page (AgentCampaignLayer column 2: Live Rollout).
 // Kept commented for traceability:
 //   import { AutomationBanner } from './campaigns/AutomationBanner'
-import { CampaignCreator } from './campaigns/CampaignCreator'
+// P2-T9: CampaignCreator removed — replaced everywhere by CampaignWizard.
 // P4-T1: New 4-step Campaign Wizard
 import { CampaignWizard } from '../CampaignWizard'
 // P4-T6: Active Campaigns table (lightweight)
@@ -305,10 +305,11 @@ function matchesDraftText(draft: any, patterns: string[]) {
 }
 
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
-  const [showCreator, setShowCreator] = useState(false)
-  const [initialType, setInitialType] = useState<string | null>(null)
   // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
   const [showWizard, setShowWizard] = useState(false)
+  // P2-T9: pre-fill the wizard's Goal step when launched from an
+  // AI-Recommended card. Mapped from the legacy CHECK_IN/etc enum.
+  const [wizardInitialGoal, setWizardInitialGoal] = useState<'reactivate_dormant' | 'onboard_new' | 'promote_event' | 'upsell_tier' | 'renewal_reminder' | 'custom' | null>(null)
   // P5-T5 fix #5: read ?cohortId= from URL (set by Cohort Builder's
   // "Save + Create Campaign →" handoff or by AI-Suggested → Campaign).
   // Open the wizard once with the cohort pre-selected, then strip the
@@ -724,22 +725,33 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         <CampaignWizard
           clubId={clubId}
           initialCohortId={wizardInitialCohortId}
+          initialGoal={wizardInitialGoal}
           onClose={() => {
             setShowWizard(false)
             setWizardInitialCohortId(null)
+            setWizardInitialGoal(null)
           }}
         />
       )}
 
       {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
-          Always rendered (was previously only shown when no summary).
-          Sorted by $ impact desc; placeholder values until P3-T1 wires real
-          generators. See SPEC §3 P1-T4 / PLAN §6.4. */}
+          P2-T9: "Preview & Launch" now opens the new CampaignWizard with the
+          mapped Goal pre-filled (was opening the deprecated CampaignCreator). */}
       <CampaignSuggestions
         clubId={clubId}
         onSelectType={(type) => {
-          setInitialType(type)
-          setShowCreator(true)
+          // Map the legacy AI-suggestion enum (CHECK_IN/RETENTION_BOOST/...)
+          // to the wizard's CampaignGoal vocabulary.
+          const map: Record<string, typeof wizardInitialGoal> = {
+            CHECK_IN: 'reactivate_dormant',
+            RETENTION_BOOST: 'reactivate_dormant',
+            REACTIVATION: 'reactivate_dormant',
+            SLOT_FILLER: 'promote_event',
+            EVENT_INVITE: 'promote_event',
+            NEW_MEMBER_WELCOME: 'onboard_new',
+          }
+          setWizardInitialGoal(map[type] ?? 'custom')
+          setShowWizard(true)
         }}
       />
 
@@ -2206,15 +2218,8 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         </>
       )}
 
-      {/* Campaign Creator modal */}
-      {showCreator && (
-        <CampaignCreator
-          clubId={clubId}
-          initialType={initialType}
-          onClose={() => { setShowCreator(false); setInitialType(null) }}
-          onSuccess={() => { setShowCreator(false); setInitialType(null) }}
-        />
-      )}
+      {/* P2-T9: Legacy CampaignCreator removed. AI-Recommended cards and the
+          "+ New Campaign" button both open the unified CampaignWizard now. */}
     </motion.div>
   )
 }
