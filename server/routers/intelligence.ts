@@ -803,7 +803,7 @@ async function fetchCohortBaseMembers(
         END as days_since_last_visit,
         COUNT(*) FILTER (WHERE psb.status = 'CONFIRMED')::int as total_confirmed_sessions,
         COALESCE(
-          SUM(COALESCE(ps.price_per_slot, 0)) FILTER (WHERE psb.status = 'CONFIRMED'),
+          SUM(COALESCE(ps."pricePerSlot", 0)) FILTER (WHERE psb.status = 'CONFIRMED'),
           0
         )::int as total_revenue
       FROM play_session_bookings psb
