@@ -1,4 +1,10 @@
-const { withSentryConfig } = require('@sentry/nextjs')
+let withSentryConfig = (config) => config
+
+try {
+  ;({ withSentryConfig } = require('@sentry/nextjs'))
+} catch {
+  console.warn('[next.config] @sentry/nextjs is not installed; building without Sentry integration.')
+}
 
 // Security headers — applied to all routes
 // Docs: https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy

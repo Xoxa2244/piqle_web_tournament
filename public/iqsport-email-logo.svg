@@ -1,15 +1,35 @@
-<svg width="200" height="50" viewBox="0 0 200 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="248" height="64" viewBox="0 0 248 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+    <linearGradient id="iqsport-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#7C3AED" />
       <stop offset="50%" stop-color="#8B5CF6" />
       <stop offset="100%" stop-color="#06B6D4" />
     </linearGradient>
+    <linearGradient id="iqsport-arc" x1="36" y1="16" x2="61" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C4B5FD" />
+      <stop offset="100%" stop-color="#22D3EE" />
+    </linearGradient>
+    <filter id="iqsport-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
   </defs>
-  <rect x="2" y="2" width="46" height="46" rx="12" fill="url(#bg)" />
-  <rect x="14" y="14" width="5" height="22" rx="2.5" fill="white" fill-opacity="0.95" />
-  <circle cx="16.5" cy="12" r="1.5" fill="white" fill-opacity="0.5" />
-  <circle cx="31" cy="24" r="9" stroke="white" stroke-width="4" stroke-opacity="0.95" fill="none" />
-  <line x1="36" y1="30" x2="42" y2="40" stroke="#22D3EE" stroke-width="3.5" stroke-linecap="round" />
-  <text x="58" y="35" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#1E293B">IQSport</text>
+
+  <rect x="0" y="0" width="64" height="64" rx="16" fill="url(#iqsport-bg)" />
+  <rect x="0" y="0" width="64" height="64" rx="16" fill="white" fill-opacity="0.06" />
+  <rect x="16" y="17" width="7" height="31" rx="3.5" fill="white" fill-opacity="0.96" />
+  <circle cx="19.5" cy="14" r="2.1" fill="white" fill-opacity="0.55" />
+  <circle cx="39" cy="30.5" r="13" stroke="white" stroke-width="5.5" stroke-opacity="0.96" />
+  <line x1="46.5" y1="39" x2="55" y2="52" stroke="url(#iqsport-arc)" stroke-width="5" stroke-linecap="round" />
+  <circle cx="55" cy="52" r="3.6" fill="#22D3EE" filter="url(#iqsport-glow)" />
+  <circle cx="39" cy="17" r="2.5" fill="white" fill-opacity="0.68" filter="url(#iqsport-glow)" />
+  <line x1="21.5" y1="14.5" x2="36.5" y2="17" stroke="white" stroke-width="1" stroke-opacity="0.24" stroke-dasharray="2 2" />
+  <circle cx="28" cy="30.5" r="1.5" fill="white" fill-opacity="0.3" />
+
+  <text x="84" y="30" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" fill="#FFFFFF">IQ</text>
+  <text x="113" y="30" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" fill="#3B82F6">Sport</text>
+  <text x="84" y="48" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" letter-spacing="4" fill="#22D3EE">INTELLIGENCE</text>
 </svg>

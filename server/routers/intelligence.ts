@@ -79,6 +79,17 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
   return { isAdmin: true, isMember: true }
 }
 
+// ── Helper: bucket a 24h time into morning/afternoon/evening ──
+// Used by Programming IQ when persisting OpsSessionDraft rows so its
+// timeSlot stays aligned with the rest of the ops-session workflows.
+function timeSlotFromStart(startTime: string): 'morning' | 'afternoon' | 'evening' {
+  const m = startTime.match(/^(\d{1,2}):(\d{2})/)
+  const hour = m ? Number(m[1]) : 12
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  return 'evening'
+}
+
 // ── Helper: describe agent action for pending queue ──
 function describeAgentAction(type: string, reasoning: any): string {
   const sequenceLabel = reasoning?.sequenceFollowUp && typeof reasoning?.stepNumber === 'number'
@@ -658,10 +669,41 @@ async function queryCohortMembers(prisma: any, clubId: string, filters: CohortFi
            u.skill_level as "skillLevel",
            u.zip_code as "zipCode",
            COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
-           u.image
+           u.image,
+           latest_health.health_score as "healthScore",
+           latest_health.risk_level as "riskLevel",
+           (CURRENT_DATE - cf.created_at::date)::int as "joinedDaysAgo",
+           recent_activity.sessions_last_30 as "sessionsLast30",
+           recent_activity.days_since_last_visit as "daysSinceLastVisit"
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
     ${ACTIVE_MEMBER_JOIN}
+    LEFT JOIN LATERAL (
+      SELECT
+        mhs.health_score,
+        mhs.risk_level
+      FROM member_health_snapshots mhs
+      WHERE mhs.club_id = $1::uuid
+        AND mhs.user_id = u.id
+      ORDER BY mhs.date DESC
+      LIMIT 1
+    ) latest_health ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (
+          WHERE ps.date >= CURRENT_DATE - INTERVAL '30 days'
+        )::int as sessions_last_30,
+        CASE
+          WHEN MAX(ps.date) IS NOT NULL
+            THEN (CURRENT_DATE - MAX(ps.date)::date)::int
+          ELSE NULL
+        END as days_since_last_visit
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE psb."userId" = u.id
+        AND ps."clubId" = $1::uuid
+        AND psb.status = 'CONFIRMED'
+    ) recent_activity ON TRUE
     WHERE cf.club_id = $1::uuid AND ${where}
     ORDER BY u.name ASC
     LIMIT 500
@@ -6830,8 +6872,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const count = await countCohortMembers(ctx.prisma, input.clubId, input.filters)
-      return { count }
+      const [count, members] = await Promise.all([
+        countCohortMembers(ctx.prisma, input.clubId, input.filters),
+        queryCohortMembers(ctx.prisma, input.clubId, input.filters),
+      ])
+
+      return {
+        count,
+        sampleMembers: members.slice(0, 6),
+        truncated: count > members.length,
+      }
     }),
 
   // ── Cross-Data Insights ──
@@ -7941,6 +7991,582 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         },
       })
       return csv
+    }),
+
+  // ══════════════════════════════════════════════════════════════════
+  // ══════ PROGRAMMING IQ — auto-scheduled optimal weekly calendar ═══
+  // ══════════════════════════════════════════════════════════════════
+
+  generateProgrammingSchedule: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(),
+      regeneratePrompt: z.string().max(1000).optional(),
+      courtIds: z.array(z.string()).max(50).optional(),
+      targetSuggestionCount: z.number().int().min(1).max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 7)
+      const since60d = new Date()
+      since60d.setDate(since60d.getDate() - 60)
+
+      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests] =
+        await Promise.all([
+          ctx.prisma.clubCourt.findMany({
+            where: {
+              clubId: input.clubId,
+              ...(input.courtIds ? { id: { in: input.courtIds } } : {}),
+            },
+            select: { id: true, name: true, isIndoor: true, isActive: true },
+          }),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, date: { gte: since60d }, status: { not: 'CANCELLED' } },
+            select: { courtId: true, startTime: true, endTime: true },
+            take: 1000,
+          }).catch(() => []),
+          ctx.prisma.playSession.findMany({
+            where: {
+              clubId: input.clubId,
+              date: { gte: weekStart, lt: weekEnd },
+              status: { not: 'CANCELLED' },
+            },
+            select: {
+              id: true,
+              courtId: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              title: true,
+              format: true,
+              skillLevel: true,
+              maxPlayers: true,
+              status: true,
+            },
+          }).catch(() => []),
+          ctx.prisma.playSession.findMany({
+            where: { clubId: input.clubId, date: { gte: since60d }, status: { not: 'CANCELLED' } },
+            select: {
+              title: true,
+              date: true,
+              startTime: true,
+              endTime: true,
+              format: true,
+              skillLevel: true,
+              maxPlayers: true,
+              registeredCount: true,
+            },
+            take: 500,
+            orderBy: { date: 'desc' },
+          }).catch(() => []),
+          ctx.prisma.userPlayPreference.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              userId: true,
+              preferredDays: true,
+              preferredTimeMorning: true,
+              preferredTimeAfternoon: true,
+              preferredTimeEvening: true,
+              skillLevel: true,
+              preferredFormats: true,
+              targetSessionsPerWeek: true,
+              notificationsOptOut: true,
+            },
+            take: 1000,
+          }).catch(() => []),
+          ctx.prisma.sessionInterestRequest.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              preferredDays: true,
+              preferredFormats: true,
+              preferredTimeSlots: true,
+              status: true,
+              sessionId: true,
+            },
+            take: 500,
+            orderBy: { updatedAt: 'desc' },
+          }).catch(() => []),
+        ])
+
+      const explicitUserIds = new Set(
+        (preferences as any[]).map((p) => p.userId).filter(Boolean),
+      )
+      const bookingsForInference = await ctx.prisma.playSessionBooking.findMany({
+        where: {
+          status: 'CONFIRMED',
+          bookedAt: { gte: since60d },
+          playSession: { clubId: input.clubId },
+          ...(explicitUserIds.size > 0
+            ? { userId: { notIn: Array.from(explicitUserIds) } }
+            : {}),
+        },
+        select: {
+          status: true,
+          userId: true,
+          playSession: {
+            select: {
+              date: true,
+              startTime: true,
+              format: true,
+              category: true,
+            },
+          },
+        },
+        take: 5000,
+      }).catch(() => [])
+
+      const { inferPreferencesFromBookings } = await import('@/lib/ai/inferred-preferences')
+      const bookingsByUser = new Map<string, any[]>()
+      for (const booking of bookingsForInference) {
+        if (!booking.userId) continue
+        const list = bookingsByUser.get(booking.userId) || []
+        list.push({
+          status: booking.status,
+          userId: booking.userId,
+          session: booking.playSession,
+        })
+        bookingsByUser.set(booking.userId, list)
+      }
+
+      const inferredRows: any[] = []
+      for (const userBookings of Array.from(bookingsByUser.values())) {
+        const inferred = inferPreferencesFromBookings(userBookings as any)
+        if (!inferred) continue
+        inferredRows.push({
+          preferredDays: inferred.preferredDays,
+          preferredTimeMorning: inferred.preferredTimeSlots.morning,
+          preferredTimeAfternoon: inferred.preferredTimeSlots.afternoon,
+          preferredTimeEvening: inferred.preferredTimeSlots.evening,
+          skillLevel: 'ALL_LEVELS',
+          preferredFormats: inferred.preferredFormats,
+          targetSessionsPerWeek: 3,
+          notificationsOptOut: false,
+        })
+      }
+      const enrichedPreferences = [...(preferences as any[]), ...inferredRows]
+
+      const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      })
+      const policySettings = (club?.automationSettings as any)?.contactPolicy
+      const inviteCapPerMemberPerWeek = Number(
+        policySettings?.inviteCapPerMemberPerWeek ?? policySettings?.weeklyCap ?? 3,
+      )
+
+      let regenerateHint: any = null
+      if (input.regeneratePrompt?.trim()) {
+        try {
+          const { interpretRegeneratePrompt } = await import('@/lib/ai/programming-iq-regenerate')
+          regenerateHint = await interpretRegeneratePrompt({
+            prompt: input.regeneratePrompt,
+            clubId: input.clubId,
+          })
+        } catch (err: any) {
+          log.warn(
+            '[programming-iq] regenerate LLM threw:',
+            err?.message?.slice(0, 160),
+          )
+        }
+      }
+
+      const clubTimezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+
+      const grid = buildWeeklyGrid({
+        weekStartDate: weekStart,
+        courts,
+        historicalSessions: historicalSessions as any,
+        existingWeekSessions: weekSessions as any,
+        lastNDaysSessions: lastNDaysSessions as any,
+        preferences: enrichedPreferences as any,
+        interestRequests: interestRequests as any,
+        contactPolicy: { inviteCapPerMemberPerWeek },
+        targetSuggestionCount: input.targetSuggestionCount,
+        regeneratePrompt: input.regeneratePrompt,
+        regenerateHint,
+        timezone: clubTimezone,
+      })
+
+      if (regenerateHint?.reasoning) {
+        grid.insights = [
+          `AI understood your prompt: ${regenerateHint.reasoning}`,
+          ...grid.insights,
+        ]
+      }
+
+      await (ctx.prisma as any).opsSessionDraft.deleteMany({
+        where: {
+          clubId: input.clubId,
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          origin: 'programming_iq',
+          publishedPlaySessionId: null,
+        },
+      }).catch(() => ({ count: 0 }))
+
+      const carrierDraft = await ctx.prisma.agentDraft.create({
+        data: {
+          clubId: input.clubId,
+          createdByUserId: ctx.session.user.id,
+          kind: 'program_schedule',
+          status: 'review_ready',
+          title: `Programming IQ · ${input.weekStartDate}`,
+          summary: 'Auto-generated programming suggestions',
+          originalIntent: input.regeneratePrompt?.trim() || `Generate schedule for week ${input.weekStartDate}`,
+          selectedPlan: 'requested',
+          requestedAction: {
+            kind: 'program_schedule',
+            clubId: input.clubId,
+            weekStartDate: input.weekStartDate,
+            regeneratePrompt: input.regeneratePrompt || null,
+          },
+          workingAction: {
+            kind: 'program_schedule',
+            clubId: input.clubId,
+            weekStartDate: input.weekStartDate,
+            regeneratePrompt: input.regeneratePrompt || null,
+          },
+          sandboxMode: false,
+          metadata: {
+            source: 'programming_iq',
+            weekStartDate: input.weekStartDate,
+            generationId: grid.generationId,
+          },
+        } as any,
+        select: { id: true },
+      })
+
+      const draftRows: any[] = []
+      for (const cell of grid.cells) {
+        if (cell.kind !== 'suggested') continue
+        const row = await (ctx.prisma as any).opsSessionDraft.create({
+          data: {
+            clubId: input.clubId,
+            agentDraftId: carrierDraft.id,
+            createdByUserId: ctx.session.user.id,
+            sourceProposalId: cell.key,
+            origin: 'programming_iq',
+            status: 'READY_FOR_OPS',
+            title: cell.title || 'Suggested session',
+            dayOfWeek: cell.dayOfWeek,
+            timeSlot: timeSlotFromStart(cell.startTime),
+            startTime: cell.startTime,
+            endTime: cell.endTime,
+            format: cell.format || 'OPEN_PLAY',
+            skillLevel: cell.skillLevel || 'ALL_LEVELS',
+            maxPlayers: cell.maxPlayers || 8,
+            projectedOccupancy: cell.projectedOccupancy || 0,
+            estimatedInterestedMembers: cell.estimatedInterestedMembers || 0,
+            confidence: cell.confidence || 50,
+            note: (cell.rationale || []).join(' · ').slice(0, 1000),
+            courtId: cell.courtId,
+            generationId: grid.generationId,
+            metadata: {
+              weekStartDate: input.weekStartDate,
+              rationale: cell.rationale || [],
+              warnings: cell.warnings || [],
+              origin: 'programming_iq',
+            },
+          },
+        }).catch((err: any) => {
+          log.warn('[programming_iq] draft create failed:', err?.message?.slice(0, 120))
+          return null
+        })
+        if (row) {
+          cell.draftId = row.id
+          draftRows.push(row)
+        }
+      }
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqGenerate',
+        targetType: 'programming_generation',
+        targetId: grid.generationId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Generated ${grid.stats.suggested} suggested cells for week ${input.weekStartDate}`,
+        metadata: {
+          generationId: grid.generationId,
+          weekStartDate: input.weekStartDate,
+          stats: grid.stats,
+          regeneratePrompt: input.regeneratePrompt || null,
+        },
+      })
+
+      return {
+        ...grid,
+        draftCount: draftRows.length,
+      }
+    }),
+
+  getProgrammingScheduleGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+      const weekEnd = new Date(weekStart)
+      weekEnd.setDate(weekEnd.getDate() + 7)
+
+      const [courts, liveSessions, drafts, memberCount] = await Promise.all([
+        ctx.prisma.clubCourt.findMany({
+          where: { clubId: input.clubId },
+          select: { id: true, name: true, isIndoor: true, isActive: true },
+          orderBy: { name: 'asc' },
+        }),
+        ctx.prisma.playSession.findMany({
+          where: {
+            clubId: input.clubId,
+            date: { gte: weekStart, lt: weekEnd },
+            status: { not: 'CANCELLED' },
+          },
+          select: {
+            id: true,
+            courtId: true,
+            date: true,
+            startTime: true,
+            endTime: true,
+            title: true,
+            format: true,
+            skillLevel: true,
+            maxPlayers: true,
+            registeredCount: true,
+          },
+          orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+        }).catch(() => []),
+        (ctx.prisma as any).opsSessionDraft.findMany({
+          where: {
+            clubId: input.clubId,
+            origin: 'programming_iq',
+            status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        }).catch(() => []),
+        ctx.prisma.userPlayPreference.count({
+          where: {
+            clubId: input.clubId,
+            notificationsOptOut: false,
+          },
+        }).catch(() => 0),
+      ])
+
+      return {
+        courts,
+        liveSessions,
+        drafts,
+        memberCount,
+      }
+    }),
+
+  updateProgrammingGridCell: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+      patch: z.object({
+        title: z.string().max(200).optional(),
+        format: z.enum(['OPEN_PLAY', 'CLINIC', 'DRILL', 'LEAGUE_PLAY', 'SOCIAL', 'TOURNAMENT']).optional(),
+        skillLevel: z.enum(['ALL_LEVELS', 'BEGINNER', 'CASUAL', 'INTERMEDIATE', 'COMPETITIVE', 'ADVANCED']).optional(),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        maxPlayers: z.number().int().min(1).max(50).optional(),
+        courtId: z.string().nullable().optional(),
+      }),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: input.patch,
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Draft not found or update failed: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+      return { ok: true, draft: updated }
+    }),
+
+  bulkApproveProgrammingGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftIds: z.array(z.string()).min(1).max(100),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const result = await (ctx.prisma as any).opsSessionDraft.updateMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: input.draftIds },
+          status: 'READY_FOR_OPS',
+        },
+        data: {
+          status: 'SESSION_DRAFT',
+          sessionDraftedAt: new Date(),
+        },
+      })
+      return { ok: true, approved: result.count }
+    }),
+
+  publishProgrammingGrid: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftIds: z.array(z.string()).min(1).max(100),
+      weekStartDate: z.string(),
+      dryRun: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const weekStart = new Date(input.weekStartDate)
+      if (Number.isNaN(weekStart.getTime())) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
+      }
+
+      const drafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: input.draftIds },
+        },
+      })
+
+      const DAY_OFFSET: Record<string, number> = {
+        Monday: 0,
+        Tuesday: 1,
+        Wednesday: 2,
+        Thursday: 3,
+        Friday: 4,
+        Saturday: 5,
+        Sunday: 6,
+      }
+
+      const results: Array<{
+        draftId: string
+        status: 'published' | 'skipped_already_published' | 'conflict' | 'error'
+        playSessionId?: string
+        reason?: string
+      }> = []
+
+      for (const draft of drafts) {
+        if (draft.publishedPlaySessionId) {
+          results.push({
+            draftId: draft.id,
+            status: 'skipped_already_published',
+            playSessionId: draft.publishedPlaySessionId,
+          })
+          continue
+        }
+
+        const offset = DAY_OFFSET[draft.dayOfWeek] ?? 0
+        const sessionDate = new Date(weekStart)
+        sessionDate.setDate(sessionDate.getDate() + offset)
+
+        const conflict = await ctx.prisma.playSession.findFirst({
+          where: {
+            clubId: input.clubId,
+            courtId: draft.courtId,
+            date: sessionDate,
+            startTime: draft.startTime,
+            status: { not: 'CANCELLED' },
+          },
+          select: { id: true },
+        }).catch(() => null)
+
+        if (conflict) {
+          results.push({
+            draftId: draft.id,
+            status: 'conflict',
+            reason: `Existing session ${conflict.id} already on ${draft.dayOfWeek} ${draft.startTime}`,
+          })
+          continue
+        }
+
+        if (input.dryRun) {
+          results.push({ draftId: draft.id, status: 'published', reason: 'dry-run' })
+          continue
+        }
+
+        try {
+          const published = await ctx.prisma.$transaction(async (tx: any) => {
+            const session = await tx.playSession.create({
+              data: {
+                clubId: input.clubId,
+                courtId: draft.courtId,
+                title: draft.title,
+                description: draft.description || null,
+                date: sessionDate,
+                startTime: draft.startTime,
+                endTime: draft.endTime,
+                format: draft.format,
+                skillLevel: draft.skillLevel,
+                maxPlayers: draft.maxPlayers,
+                status: 'SCHEDULED',
+              },
+            })
+            await tx.opsSessionDraft.update({
+              where: { id: draft.id },
+              data: {
+                status: 'PUBLISHED',
+                publishedPlaySessionId: session.id,
+              },
+            })
+            return session
+          })
+
+          await persistAgentDecisionRecord(ctx.prisma, {
+            clubId: input.clubId,
+            userId: ctx.session.user.id,
+            action: 'programmingIqPublish',
+            targetType: 'ops_session_draft',
+            targetId: draft.id,
+            mode: 'live',
+            result: 'executed',
+            summary: `Published ${draft.title} on ${draft.dayOfWeek} ${draft.startTime}`,
+            metadata: {
+              draftId: draft.id,
+              playSessionId: published.id,
+              courtId: draft.courtId,
+            },
+          })
+
+          results.push({
+            draftId: draft.id,
+            status: 'published',
+            playSessionId: published.id,
+          })
+        } catch (err: any) {
+          results.push({
+            draftId: draft.id,
+            status: 'error',
+            reason: err?.message?.slice(0, 200) || 'unknown error',
+          })
+        }
+      }
+
+      const counts = {
+        published: results.filter((r) => r.status === 'published').length,
+        conflicts: results.filter((r) => r.status === 'conflict').length,
+        skipped: results.filter((r) => r.status === 'skipped_already_published').length,
+        errors: results.filter((r) => r.status === 'error').length,
+      }
+
+      return { ok: counts.errors === 0, results, counts }
     }),
 
   // ═══════════════════════════════════════════════════════════════════════

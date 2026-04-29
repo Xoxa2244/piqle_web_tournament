@@ -333,7 +333,7 @@ export default function SuperadminAgentRolloutPage() {
                         >
                           {processingKey === `${club.id}:${club.outreachPilot.recommendation?.actionKind}` ? 'Moving…' : 'Move to shadow'}
                         </Button>
-                        <Link href={`/clubs/${club.id}/intelligence/agent`}>
+                        <Link href={`/clubs/${club.id}/intelligence/advisor`}>
                           <Button variant="outline" size="sm">Open agent</Button>
                         </Link>
                         <Link href={`/clubs/${club.id}/intelligence/settings`}>

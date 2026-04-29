@@ -51,7 +51,7 @@ export function buildIqSportEmail(opts: {
   footerHtml?: string
 }) {
   const baseUrl = getEmailBaseUrl(opts.baseUrl)
-  const logoIconUrl = `${baseUrl}/iqsport-logo.svg`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png?v=20260424`
   const eyebrow = opts.eyebrow || 'IQSPORT'
   const footerHtml = opts.footerHtml || `
     <p style="margin:0;font-size:12px;line-height:1.6;color:#94A3B8;">
@@ -73,21 +73,7 @@ export function buildIqSportEmail(opts: {
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;">
           <tr>
             <td align="center" style="padding-bottom:20px;">
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
-                <tr>
-                  <td style="vertical-align:middle;padding-right:12px;">
-                    <img src="${logoIconUrl}" alt="IQSport" width="58" style="display:block;width:58px;height:58px;border:0;outline:none;" />
-                  </td>
-                  <td style="vertical-align:middle;text-align:left;">
-                    <div style="font-size:20px;line-height:1.05;font-weight:800;letter-spacing:-0.02em;color:#F8FAFC;">
-                      IQ<span style="color:#22D3EE;">Sport</span>
-                    </div>
-                    <div style="margin-top:4px;font-size:11px;line-height:1;letter-spacing:0.18em;font-weight:800;color:#22D3EE;text-transform:uppercase;">
-                      Intelligence
-                    </div>
-                  </td>
-                </tr>
-              </table>
+              <img src="${logoUrl}" alt="IQSport Intelligence" width="248" style="display:block;width:248px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;" />
             </td>
           </tr>
           <tr>

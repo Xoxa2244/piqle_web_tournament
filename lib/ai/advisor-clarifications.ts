@@ -185,7 +185,22 @@ export function maybeStartAdvisorClarification(opts: {
     plan.action === 'update_contact_policy' ||
     plan.action === 'update_autonomy_policy' ||
     plan.action === 'update_sandbox_routing' ||
-    plan.action === 'update_admin_reminder_routing'
+    plan.action === 'update_admin_reminder_routing' ||
+    // Ops actions render their own response in the route's later if-else
+    // chain (see app/api/ai/advisor-action/route.ts ~L2624). They were
+    // missing here, so any ops query fell through to the generic
+    // draft_campaign clarification ("Who should this campaign target?")
+    // which then prevented the ops branch from running because the
+    // route bails early once assistantMessage is set. Verified the
+    // hijack on 2026-04-26 against "what did the agent do today" and
+    // "show me pending approvals".
+    plan.action === 'ops_kill_switch' ||
+    plan.action === 'ops_approve_pending' ||
+    plan.action === 'ops_skip_pending' ||
+    plan.action === 'ops_snooze_pending' ||
+    plan.action === 'ops_show_pending' ||
+    plan.action === 'ops_show_activity' ||
+    plan.action === 'ops_show_decisions'
   ) return null
 
   if (plan.action === 'create_cohort') {

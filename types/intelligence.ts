@@ -404,6 +404,8 @@ export interface SessionCalendarItem {
   lostRevenue: number | null
   status: 'past' | 'today' | 'upcoming'
   peerAvgOccupancy: number | null
+  peerAvgRevenue?: number | null
+  peerSampleSize?: number | null
   deviationFromPeer: number | null
   recommendations: SessionRecommendation[]
 }
@@ -513,6 +515,12 @@ export interface MemberHealthSummary {
   critical: number
   churned: number               // 45+ days inactive — already gone, separate from at-risk
   dormant?: number              // 0 bookings ever — registered but never played
+  activePlayers30d?: number
+  inactiveFollowers30d?: number
+  dashboardPeriod?: {
+    from: string
+    to: string
+  }
   avgHealthScore: number
   revenueAtRisk: number         // at-risk + critical members × avg subscription
   trendVsPrevWeek: number       // change in at-risk count vs last week

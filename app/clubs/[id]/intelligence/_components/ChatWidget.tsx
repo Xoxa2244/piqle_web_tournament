@@ -7,10 +7,9 @@ import {
   Send, Loader2,
   Sparkles, MessageSquare, ChevronRight, Minus, Plus,
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePageContextData } from '../_hooks/usePageContext'
+import { ChatRichText } from './shared/ChatRichText'
 // Mock responses kept as fallback for unauthenticated demo sessions
 
 // ── Extract suggested follow-up questions ──
@@ -391,28 +390,15 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
                             className="rounded-xl rounded-tl-sm px-3 py-3"
                             style={{ background: "var(--subtle, rgba(255,255,255,0.04))", border: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
                           >
-                            <div className="text-xs leading-relaxed prose prose-xs max-w-none dark:prose-invert prose-p:my-1 prose-li:my-0 prose-headings:mb-1 prose-headings:mt-2 first:prose-headings:mt-0" style={{ color: "var(--t2, #ccc)" }}>
-                              <ReactMarkdown
-                                components={{
-                                  a: ({ href, children }) => {
-                                    if (href?.startsWith('/')) {
-                                      return (
-                                        <Link href={href} className="hover:underline font-medium" style={{ color: "#06B6D4" }} onClick={() => setIsOpen(false)}>
-                                          {children}
-                                        </Link>
-                                      )
-                                    }
-                                    return (
-                                      <a href={href} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "#06B6D4" }}>
-                                        {children}
-                                      </a>
-                                    )
-                                  },
-                                }}
-                              >
-                                {cleanText}
-                              </ReactMarkdown>
-                            </div>
+                            <ChatRichText
+                              text={cleanText}
+                              className="text-xs leading-relaxed space-y-1.5"
+                              lineClassName="whitespace-pre-wrap"
+                              linkClassName="hover:underline font-medium"
+                              linkStyle={{ color: "#06B6D4" }}
+                              strongStyle={{ fontWeight: 700, color: "var(--heading, #fff)" }}
+                              onLinkClick={() => setIsOpen(false)}
+                            />
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (
                             <div className="flex flex-wrap gap-1 mt-2">

@@ -1,10 +1,7 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { motion } from "motion/react"
 import {
-  ChevronLeft, ChevronRight, CalendarDays, ArrowUpRight, Brain, Sparkles,
+  ChevronLeft, ChevronRight, CalendarDays, Sparkles,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import type { SessionCalendarItem } from "@/types/intelligence"
@@ -15,6 +12,8 @@ import { SessionDetailIQ } from "./SessionDetailIQ"
 const HOUR_START = 6
 const HOUR_END = 23
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
+const SCHEDULE_ROW_HEIGHT = 40
+const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 function formatHour(h: number): string {
   if (h === 0) return '12 AM'
@@ -23,8 +22,25 @@ function formatHour(h: number): string {
   return `${h - 12} PM`
 }
 
-function toDateStr(d: Date): string { return d.toISOString().slice(0, 10) }
+function toDateStr(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r }
+function monthLabel(d: Date): string { return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) }
+function buildMonthCells(monthDate: Date): Array<{ dateStr: string; day: number; inMonth: boolean }> {
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const first = new Date(year, month, 1)
+  const firstWeekday = (first.getDay() + 6) % 7
+  const start = addDays(first, -firstWeekday)
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = addDays(start, i)
+    return { dateStr: toDateStr(d), day: d.getDate(), inMonth: d.getMonth() === month }
+  })
+}
 
 // ── Skill-level color map ──
 
@@ -79,31 +95,10 @@ interface ScheduleIQProps {
   dashboardData: any
   isLoading: boolean
   clubId: string
-  createOpsSessionDraftFromAdvisorDraft?: {
-    mutate: (input: {
-      clubId: string
-      advisorDraftId: string
-      sourceProposalId: string
-    }, opts?: {
-      onSuccess?: (result: any) => void
-      onError?: (...args: any[]) => void
-      onSettled?: (...args: any[]) => void
-    }) => void
-    isPending?: boolean
-  }
-  createFillSessionDraftFromSchedule?: {
-    mutate: (input: {
-      clubId: string
-      sessionId: string
-      channel?: 'email' | 'sms' | 'both'
-      candidateLimit?: number
-    }, opts?: {
-      onSuccess?: (result: any) => void
-      onError?: (...args: any[]) => void
-      onSettled?: (...args: any[]) => void
-    }) => void
-    isPending?: boolean
-  }
+  // `createOpsSessionDraftFromAdvisorDraft` / `createFillSessionDraftFromSchedule`
+  // / `opsSessionDrafts` used to drive the Agent Schedule Layer card below
+  // the day header. That card moved out to /intelligence/programming on
+  // 2026-04-24 — props removed to keep the contract tight.
   advisorDrafts?: Array<{
     id: string
     kind: string
@@ -177,229 +172,6 @@ interface ScheduleIQProps {
       } | null
     } | null
   }>
-  opsSessionDrafts?: Array<{
-    id: string
-    title: string
-    status: 'ready_for_ops' | 'session_draft' | 'rejected' | 'archived'
-    dayOfWeek: string
-    timeSlot: 'morning' | 'afternoon' | 'evening'
-    startTime: string
-    endTime: string
-    format: string
-    skillLevel: string
-    projectedOccupancy: number
-    estimatedInterestedMembers: number
-    confidence: number
-    conflict?: {
-      overlapRisk: 'low' | 'medium' | 'high'
-      cannibalizationRisk: 'low' | 'medium' | 'high'
-      courtPressureRisk: 'low' | 'medium' | 'high'
-      overallRisk: 'low' | 'medium' | 'high'
-      riskSummary: string
-      warnings: string[]
-      saferAlternativeId?: string
-      saferAlternativeReason?: string
-    } | null
-    agentDraft?: {
-      conversationId?: string | null
-      originalIntent?: string | null
-    } | null
-    metadata?: {
-      sessionDraft?: {
-        nextStep?: string
-      } | null
-    } | null
-  }>
-}
-
-function formatProgrammingValue(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function buildAdvisorDraftHref(
-  clubId: string,
-  draft: { conversationId?: string | null; originalIntent?: string | null },
-) {
-  if (draft.conversationId) {
-    return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(draft.conversationId)}`
-  }
-  if (draft.originalIntent) {
-    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(draft.originalIntent)}`
-  }
-  return `/clubs/${clubId}/intelligence/advisor`
-}
-
-function buildAdvisorDraftPromptHref(
-  clubId: string,
-  draft: { conversationId?: string | null; originalIntent?: string | null },
-  prompt: string,
-) {
-  const params = new URLSearchParams()
-  if (draft.conversationId) {
-    params.set('conversationId', draft.conversationId)
-  }
-  params.set('prompt', prompt)
-  return `/clubs/${clubId}/intelligence/advisor?${params.toString()}`
-}
-
-function buildAgentFocusHref(
-  clubId: string,
-  options: {
-    focus: 'programming-cockpit' | 'ops-board' | 'ops-queue'
-    day?: string
-    draftId?: string
-    opsDraftId?: string
-  },
-) {
-  const params = new URLSearchParams()
-  params.set('focus', options.focus)
-  if (options.day) params.set('day', options.day)
-  if (options.draftId) params.set('draftId', options.draftId)
-  if (options.opsDraftId) params.set('opsDraftId', options.opsDraftId)
-  return `/clubs/${clubId}/intelligence/agent?${params.toString()}`
-}
-
-function buildProgrammingPrimaryPrompt(proposal: {
-  dayOfWeek: string
-  timeSlot: 'morning' | 'afternoon' | 'evening'
-  format: string
-}) {
-  return `Use the ${proposal.dayOfWeek} ${proposal.timeSlot} ${proposal.format.replace(/_/g, ' ').toLowerCase()} option as the primary programming plan instead.`
-}
-
-function buildProgrammingOpsPrompt(proposal: {
-  dayOfWeek: string
-  timeSlot: 'morning' | 'afternoon' | 'evening'
-  format: string
-}) {
-  return `Keep the ${proposal.dayOfWeek} ${proposal.timeSlot} ${proposal.format.replace(/_/g, ' ').toLowerCase()} option as the primary programming plan and prepare it for ops review.`
-}
-
-function buildFillSessionPrompt(session: {
-  format: string
-  date: string
-  startTime: string
-}) {
-  return `Prepare a fill plan for the ${session.format.replace(/_/g, ' ').toLowerCase()} session on ${session.date} at ${session.startTime}.`
-}
-
-function buildAdvisorConversationHref(
-  clubId: string,
-  result: {
-    conversationId?: string | null
-    originalIntent?: string | null
-  },
-  fallbackPrompt?: string,
-) {
-  if (result.conversationId) {
-    return `/clubs/${clubId}/intelligence/advisor?conversationId=${encodeURIComponent(result.conversationId)}`
-  }
-
-  if (result.originalIntent) {
-    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(result.originalIntent)}`
-  }
-
-  if (fallbackPrompt) {
-    return `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
-  }
-
-  return `/clubs/${clubId}/intelligence/advisor`
-}
-
-function getProgrammingConflictStyles(level?: 'low' | 'medium' | 'high' | null) {
-  if (level === 'high') {
-    return {
-      label: 'High conflict',
-      text: '#FCA5A5',
-      bg: 'rgba(239,68,68,0.10)',
-      border: 'rgba(239,68,68,0.18)',
-    }
-  }
-
-  if (level === 'medium') {
-    return {
-      label: 'Watch conflicts',
-      text: '#FBBF24',
-      bg: 'rgba(245,158,11,0.10)',
-      border: 'rgba(245,158,11,0.18)',
-    }
-  }
-
-  return {
-    label: 'Cleaner opening',
-    text: '#86EFAC',
-    bg: 'rgba(16,185,129,0.10)',
-    border: 'rgba(16,185,129,0.18)',
-  }
-}
-
-function getProgrammingOperationalScore(proposal: {
-  confidence: number
-  projectedOccupancy: number
-  estimatedInterestedMembers: number
-  conflict?: {
-    overlapRisk: 'low' | 'medium' | 'high'
-    cannibalizationRisk: 'low' | 'medium' | 'high'
-    courtPressureRisk: 'low' | 'medium' | 'high'
-  } | null
-}) {
-  const conflictPenalty = proposal.conflict
-    ? (
-      (proposal.conflict.overlapRisk === 'high' ? 6 : proposal.conflict.overlapRisk === 'medium' ? 3 : 0) +
-      (proposal.conflict.cannibalizationRisk === 'high' ? 8 : proposal.conflict.cannibalizationRisk === 'medium' ? 4 : 0) +
-      (proposal.conflict.courtPressureRisk === 'high' ? 5 : proposal.conflict.courtPressureRisk === 'medium' ? 2 : 0)
-    )
-    : 0
-
-  return (
-    proposal.confidence * 1.2 +
-    proposal.projectedOccupancy * 0.45 +
-    proposal.estimatedInterestedMembers * 1.3 -
-    conflictPenalty
-  )
-}
-
-function getProgrammingConflictSeverity(level?: 'low' | 'medium' | 'high' | null) {
-  if (level === 'high') return 2
-  if (level === 'medium') return 1
-  return 0
-}
-
-function sortProgrammingDraftsBySafety<T extends {
-  primary: {
-    confidence: number
-    projectedOccupancy: number
-    estimatedInterestedMembers: number
-    conflict?: {
-      overlapRisk: 'low' | 'medium' | 'high'
-      cannibalizationRisk: 'low' | 'medium' | 'high'
-      courtPressureRisk: 'low' | 'medium' | 'high'
-      overallRisk: 'low' | 'medium' | 'high'
-    } | null
-  }
-}>(drafts: T[]) {
-  return [...drafts].sort((left, right) => {
-    const riskComparisons = [
-      getProgrammingConflictSeverity(left.primary.conflict?.overallRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overallRisk),
-      getProgrammingConflictSeverity(left.primary.conflict?.cannibalizationRisk) - getProgrammingConflictSeverity(right.primary.conflict?.cannibalizationRisk),
-      getProgrammingConflictSeverity(left.primary.conflict?.overlapRisk) - getProgrammingConflictSeverity(right.primary.conflict?.overlapRisk),
-      getProgrammingConflictSeverity(left.primary.conflict?.courtPressureRisk) - getProgrammingConflictSeverity(right.primary.conflict?.courtPressureRisk),
-    ]
-
-    for (const delta of riskComparisons) {
-      if (delta !== 0) return delta
-    }
-
-    if (right.primary.confidence !== left.primary.confidence) return right.primary.confidence - left.primary.confidence
-    if (right.primary.projectedOccupancy !== left.primary.projectedOccupancy) {
-      return right.primary.projectedOccupancy - left.primary.projectedOccupancy
-    }
-    return right.primary.estimatedInterestedMembers - left.primary.estimatedInterestedMembers
-  })
 }
 
 // ── Main Component ──
@@ -409,17 +181,13 @@ export function ScheduleIQ({
   dashboardData,
   isLoading,
   clubId,
-  createOpsSessionDraftFromAdvisorDraft,
-  createFillSessionDraftFromSchedule,
   advisorDrafts,
-  opsSessionDrafts,
 }: ScheduleIQProps) {
   const { isDark } = useTheme()
-  const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()))
   const [selectedSession, setSelectedSession] = useState<SessionCalendarItem | null>(null)
-  const [creatingOpsDraftKey, setCreatingOpsDraftKey] = useState<string | null>(null)
-  const [creatingFillDraftSessionId, setCreatingFillDraftSessionId] = useState<string | null>(null)
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(selectedDate + 'T12:00:00'))
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
@@ -475,49 +243,35 @@ export function ScheduleIQ({
     })
   }, [selectedDate])
 
+  const visibleHours = useMemo(() => {
+    if (daySessions.length === 0) return HOURS
+    const starts = daySessions.map((s) => parseInt(s.startTime.split(':')[0], 10))
+    const ends = daySessions.map((s) => {
+      const endH = parseInt(s.endTime.split(':')[0], 10)
+      const endM = parseInt(s.endTime.split(':')[1] || '0', 10)
+      return endH + (endM > 0 ? 1 : 0)
+    })
+    const start = Math.max(HOUR_START, Math.min(...starts))
+    const end = Math.min(HOUR_END, Math.max(start + 1, Math.max(...ends)))
+    return Array.from({ length: end - start }, (_, i) => start + i)
+  }, [daySessions])
+
   const todayStr = toDateStr(new Date())
   const formattedDate = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
   }, [selectedDate])
+  const calendarCells = useMemo(() => buildMonthCells(calendarMonth), [calendarMonth])
   const selectedDayName = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
     return d.toLocaleDateString('en-US', { weekday: 'long' })
   }, [selectedDate])
 
-  const programmingSignals = useMemo(() => {
-    const cards = (advisorDrafts || [])
-      .filter((draft) => draft.kind === 'program_schedule' && draft.metadata?.programmingPreview?.primary)
-      .map((draft) => ({
-        id: draft.id,
-        title: draft.title,
-        summary: draft.summary || null,
-        conversationId: draft.conversationId || null,
-        originalIntent: draft.originalIntent || null,
-        primary: draft.metadata!.programmingPreview!.primary,
-        insights: draft.metadata?.programmingPreview?.insights || [],
-        alternatives: draft.metadata?.programmingPreview?.alternatives || [],
-        opsSessionDrafts: ((draft.metadata as { opsSessionDrafts?: Array<{ id: string }> } | null | undefined)?.opsSessionDrafts || []),
-      }))
-
-    const matching = cards.filter((draft) =>
-      draft.primary.dayOfWeek === selectedDayName ||
-      draft.alternatives.some((proposal) => proposal.dayOfWeek === selectedDayName),
-    )
-
-    const rankedMatching = [...matching].sort((left, right) => getProgrammingOperationalScore(right.primary) - getProgrammingOperationalScore(left.primary))
-    const rankedAll = [...cards].sort((left, right) => getProgrammingOperationalScore(right.primary) - getProgrammingOperationalScore(left.primary))
-    const safestMatching = sortProgrammingDraftsBySafety(matching)
-    const safestAll = sortProgrammingDraftsBySafety(cards)
-
-    return {
-      matching: rankedMatching,
-      strongest: rankedAll[0] || null,
-      strongestForDay: rankedMatching[0] || null,
-      safestForDay: safestMatching[0] || null,
-      safest: safestAll[0] || null,
-    }
-  }, [advisorDrafts, selectedDayName])
+  // Programming ideas / ops-session signals were surfaced in the
+  // "Agent Schedule Layer" block on this page until 2026-04-24. The
+  // dedicated Programming IQ tab (/intelligence/programming) now owns
+  // that story end-to-end with a court × day × hour grid, so the
+  // computations below were dead code and are removed.
 
   const fillSessionDraftBySessionId = useMemo(() => {
     const drafts = new Map<string, {
@@ -568,37 +322,8 @@ export function ScheduleIQ({
     return drafts
   }, [advisorDrafts])
 
-  const selectedDayOpsDrafts = useMemo(() => {
-    return (opsSessionDrafts || [])
-      .filter((draft) => draft.dayOfWeek === selectedDayName && draft.status !== 'archived' && draft.status !== 'rejected')
-      .sort((left, right) => right.confidence - left.confidence)
-  }, [opsSessionDrafts, selectedDayName])
-
-  const selectedDayUnderfilled = useMemo(() => {
-    return daySessions
-      .filter((session) => session.status !== 'past' && session.occupancy < 70)
-      .sort((left, right) => left.occupancy - right.occupancy)
-  }, [daySessions])
-  const selectedAgentHref = useMemo(() => {
-    if (selectedDayOpsDrafts.length > 0) {
-      return buildAgentFocusHref(clubId, {
-        focus: 'ops-queue',
-        day: selectedDayName,
-        opsDraftId: selectedDayOpsDrafts[0].id,
-      })
-    }
-
-    const topProgrammingDraft = programmingSignals.matching[0] || programmingSignals.strongest
-    if (topProgrammingDraft) {
-      return buildAgentFocusHref(clubId, {
-        focus: 'programming-cockpit',
-        day: selectedDayName,
-        draftId: topProgrammingDraft.id,
-      })
-    }
-
-    return `/clubs/${clubId}/intelligence/agent`
-  }, [clubId, programmingSignals.matching, programmingSignals.strongest, selectedDayName, selectedDayOpsDrafts])
+  // selectedDayOpsDrafts / selectedDayUnderfilled / selectedAgentHref
+  // also died with the Agent Schedule Layer block above.
 
   const handlePrev = useCallback(() => {
     setSelectedDate((d) => toDateStr(addDays(new Date(d + 'T12:00:00'), -1)))
@@ -610,7 +335,18 @@ export function ScheduleIQ({
       return next <= maxDate ? next : d
     })
   }, [allDates])
-  const handleToday = useCallback(() => setSelectedDate(toDateStr(new Date())), [])
+  const handleToday = useCallback(() => {
+    setSelectedDate(toDateStr(new Date()))
+    setIsDatePickerOpen(false)
+  }, [])
+  const handleDateButtonClick = useCallback(() => {
+    setCalendarMonth(new Date(selectedDate + 'T12:00:00'))
+    setIsDatePickerOpen((open) => !open)
+  }, [selectedDate])
+  const handleCalendarPick = useCallback((dateStr: string) => {
+    setSelectedDate(dateStr)
+    setIsDatePickerOpen(false)
+  }, [])
 
   if (isLoading) {
     return (
@@ -640,26 +376,109 @@ export function ScheduleIQ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Day navigation */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl px-1 py-1" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
-            <button onClick={handlePrev} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-3 py-1 text-sm font-medium" style={{ color: 'var(--heading)' }}>{formattedDate}</span>
-            <button onClick={handleNext} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--t3)' }}><ChevronRight className="w-4 h-4" /></button>
+          <div className="relative">
+            <div
+              className="flex w-[260px] items-center justify-between gap-1 rounded-xl px-1 py-0.5"
+              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+            >
+              <button
+                onClick={handlePrev}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDateButtonClick}
+                className="h-8 flex-1 truncate rounded-lg px-2 text-center text-sm font-semibold transition-all hover:bg-white/5"
+                style={{ color: 'var(--heading)' }}
+                aria-expanded={isDatePickerOpen}
+                aria-haspopup="dialog"
+              >
+                {formattedDate}
+              </button>
+              <button
+                onClick={handleNext}
+                className="flex h-8 w-8 items-center justify-center rounded-lg hover:opacity-70"
+                style={{ color: 'var(--t3)' }}
+                aria-label="Next day"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            {isDatePickerOpen && (
+              <div
+                className="absolute right-0 top-11 z-30 w-[300px] rounded-2xl p-3 shadow-2xl"
+                style={{
+                  background: isDark ? '#111225' : '#FFFFFF',
+                  border: '1px solid var(--card-border)',
+                  boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.45)' : '0 24px 60px rgba(15,23,42,0.18)',
+                }}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Previous month"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                    {monthLabel(calendarMonth)}
+                  </div>
+                  <button
+                    onClick={() => setCalendarMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg hover:opacity-70"
+                    style={{ color: 'var(--t3)' }}
+                    aria-label="Next month"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase" style={{ color: 'var(--t4)' }}>
+                  {WEEKDAY_LABELS.map((label, index) => <div key={`${label}-${index}`}>{label}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarCells.map((cell) => {
+                    const isSelected = cell.dateStr === selectedDate
+                    const hasSessions = allSessions.some((s) => s.date === cell.dateStr)
+                    return (
+                      <button
+                        key={cell.dateStr}
+                        onClick={() => handleCalendarPick(cell.dateStr)}
+                        className="h-8 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                          background: isSelected ? 'rgba(139,92,246,0.22)' : hasSessions ? 'rgba(16,185,129,0.1)' : 'transparent',
+                          border: isSelected ? '1px solid rgba(139,92,246,0.55)' : '1px solid transparent',
+                          color: isSelected ? '#A78BFA' : cell.inMonth ? 'var(--t2)' : 'var(--t4)',
+                          opacity: cell.inMonth ? 1 : 0.35,
+                        }}
+                      >
+                        {cell.day}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={handleToday}
-            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
+            className="px-2.5 py-1 rounded-xl text-xs font-semibold transition-all"
             style={{ background: selectedDate === todayStr ? 'rgba(139,92,246,0.15)' : 'var(--subtle)', color: selectedDate === todayStr ? '#8B5CF6' : 'var(--t3)', border: '1px solid var(--card-border)' }}
           >Today</button>
         </div>
       </div>
 
       {/* Week overview bar */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
         {weekPills.map((p) => {
           const isSelected = p.dateStr === selectedDate
           const isToday = p.dateStr === todayStr
@@ -668,7 +487,7 @@ export function ScheduleIQ({
             <button
               key={p.dateStr}
               onClick={() => setSelectedDate(p.dateStr)}
-              className="flex flex-col items-center px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
+              className="flex min-w-[44px] flex-col items-center px-2 py-1 rounded-lg text-xs font-medium transition-all"
               style={{
                 background: isSelected ? 'rgba(139,92,246,0.15)' : 'transparent',
                 border: `1px solid ${isSelected ? 'rgba(139,92,246,0.3)' : isToday ? 'rgba(139,92,246,0.2)' : 'transparent'}`,
@@ -677,458 +496,12 @@ export function ScheduleIQ({
               }}
             >
               <span className="text-[10px] uppercase">{p.label}</span>
-              <span className="text-sm font-semibold">{p.day}</span>
+              <span className="text-xs font-semibold">{p.day}</span>
             </button>
           )
         })}
       </div>
 
-      <div
-        className="rounded-2xl p-4"
-        style={{
-          background: isDark ? 'rgba(103,232,249,0.04)' : 'rgba(6,182,212,0.05)',
-          border: '1px solid rgba(103,232,249,0.12)',
-        }}
-      >
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Brain className="w-4 h-4" style={{ color: '#67E8F9' }} />
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Agent Schedule Layer
-              </div>
-            </div>
-            <div className="text-xs mt-1" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
-              The live schedule stays untouched here. The agent only highlights pressure, opportunities, and internal draft changes for {selectedDayName}.
-            </div>
-          </div>
-          <Link
-            href={selectedAgentHref}
-            className="inline-flex items-center gap-1 text-xs font-medium shrink-0"
-            style={{ color: 'var(--heading)' }}
-          >
-            Open in Agent
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1fr_1fr] gap-3">
-          <div
-            className="rounded-xl p-3"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4" style={{ color: '#A78BFA' }} />
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Today&apos;s pressure
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="rounded-lg p-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.16)' }}>
-                <div className="text-[11px]" style={{ color: '#EF4444' }}>Underfilled</div>
-                <div className="text-lg font-bold tabular-nums" style={{ color: '#EF4444' }}>{selectedDayUnderfilled.length}</div>
-              </div>
-              <div className="rounded-lg p-2" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.16)' }}>
-                <div className="text-[11px]" style={{ color: '#10B981' }}>Live sessions</div>
-                <div className="text-lg font-bold tabular-nums" style={{ color: '#10B981' }}>{daySessions.length}</div>
-              </div>
-            </div>
-            <div className="space-y-2 mt-3">
-              {selectedDayUnderfilled.length === 0 ? (
-                <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                  No clear slot-filler pressure on this day right now.
-                </div>
-              ) : (
-                selectedDayUnderfilled.slice(0, 3).map((session) => {
-                  const existingFillDraft = fillSessionDraftBySessionId.get(session.id)
-                  const fallbackPrompt = buildFillSessionPrompt({
-                    format: session.format,
-                    date: session.date,
-                    startTime: session.startTime,
-                  })
-                  const fallbackHref = existingFillDraft
-                    ? buildAdvisorDraftHref(clubId, existingFillDraft)
-                    : `/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(fallbackPrompt)}`
-                  const createFillDraft = () => {
-                    if (!createFillSessionDraftFromSchedule?.mutate) {
-                      router.push(fallbackHref)
-                      return
-                    }
-
-                    setCreatingFillDraftSessionId(session.id)
-                    createFillSessionDraftFromSchedule.mutate(
-                      {
-                        clubId,
-                        sessionId: session.id,
-                        channel: 'email',
-                        candidateLimit: 5,
-                      },
-                      {
-                        onSuccess: (result) => {
-                          router.push(buildAdvisorConversationHref(clubId, result, fallbackPrompt))
-                        },
-                        onError: () => {
-                          router.push(fallbackHref)
-                        },
-                        onSettled: () => {
-                          setCreatingFillDraftSessionId((current) => (current === session.id ? null : current))
-                        },
-                      },
-                    )
-                  }
-                  const isCreatingFillDraft = creatingFillDraftSessionId === session.id
-
-                  return (
-                    <div key={session.id} className="rounded-lg p-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                      <div className="text-[11px] font-semibold" style={{ color: 'var(--heading)' }}>
-                        {session.format} · {session.startTime}
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-                        {session.occupancy}% occupancy · {session.registered}/{session.capacity} booked
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {existingFillDraft ? (
-                          <Link
-                            href={buildAdvisorDraftHref(clubId, existingFillDraft)}
-                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold"
-                            style={{ background: 'rgba(6,182,212,0.12)', color: '#67E8F9' }}
-                          >
-                            Open fill draft
-                            <ArrowUpRight className="w-3 h-3" />
-                          </Link>
-                        ) : (
-                          <button
-                            onClick={createFillDraft}
-                            disabled={isCreatingFillDraft}
-                            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold transition-all disabled:opacity-60"
-                            style={{ background: 'rgba(139,92,246,0.16)', color: '#DDD6FE' }}
-                          >
-                            {isCreatingFillDraft ? 'Preparing fill draft…' : 'Create fill draft'}
-                          </button>
-                        )}
-                        <Link
-                          href={fallbackHref}
-                          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold"
-                          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}
-                        >
-                          Review in Advisor
-                          <ArrowUpRight className="w-3 h-3" />
-                        </Link>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          <div
-            className="rounded-xl p-3"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center gap-2">
-              <CalendarDays className="w-4 h-4" style={{ color: '#A78BFA' }} />
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Programming ideas for {selectedDayName}
-              </div>
-            </div>
-            <div className="space-y-3 mt-3">
-              {(() => {
-                const highUpsideDraft = programmingSignals.strongestForDay || programmingSignals.strongest
-                const safeDraft = programmingSignals.safestForDay || programmingSignals.safest
-                const cards = [
-                  highUpsideDraft ? {
-                    key: `upside-${highUpsideDraft.id}`,
-                    eyebrow: 'Highest upside here',
-                    draft: highUpsideDraft,
-                    description:
-                      highUpsideDraft.primary.conflict?.overallRisk === 'high'
-                        ? 'This window has the strongest upside, but it may eat into an existing session if ops does not compare it first.'
-                        : 'This is the strongest demand-weighted option the agent sees around this day right now.',
-                  } : null,
-                  safeDraft ? {
-                    key: `safe-${safeDraft.id}`,
-                    eyebrow: 'Safer option here',
-                    draft: safeDraft,
-                    description:
-                      safeDraft.id === highUpsideDraft?.id
-                        ? 'The top-upside idea is also the cleanest operational shape for this day.'
-                        : safeDraft.primary.conflict?.riskSummary || 'This option carries the cleanest conflict profile for this day.',
-                  } : null,
-                ].filter(Boolean) as Array<{
-                  key: string
-                  eyebrow: string
-                  draft: NonNullable<typeof highUpsideDraft>
-                  description: string
-                }>
-
-                return cards.map(({ key, eyebrow, draft, description }) => {
-                  const conflictStyles = getProgrammingConflictStyles(draft.primary.conflict?.overallRisk)
-                  const isHighUpsideCard = draft.id === highUpsideDraft?.id
-                  const comparisonDraft = isHighUpsideCard ? safeDraft : highUpsideDraft
-                  const comparisonLabel = isHighUpsideCard ? 'Open safer option' : 'Open higher-upside option'
-                  const comparisonHref = comparisonDraft
-                    ? buildAgentFocusHref(clubId, {
-                        focus: 'programming-cockpit',
-                        day: comparisonDraft.primary.dayOfWeek,
-                        draftId: comparisonDraft.id,
-                      })
-                    : null
-                  const useThisHref = buildAdvisorDraftPromptHref(
-                    clubId,
-                    draft,
-                    buildProgrammingPrimaryPrompt(draft.primary),
-                  )
-                  const opsHref = draft.opsSessionDrafts?.length
-                    ? buildAgentFocusHref(clubId, {
-                        focus: 'ops-queue',
-                        day: draft.primary.dayOfWeek,
-                        opsDraftId: draft.opsSessionDrafts[0]?.id,
-                      })
-                    : buildAdvisorDraftPromptHref(
-                        clubId,
-                        draft,
-                        buildProgrammingOpsPrompt(draft.primary),
-                      )
-                  const createOpsDraft = () => {
-                    if (!createOpsSessionDraftFromAdvisorDraft?.mutate) {
-                      router.push(opsHref)
-                      return
-                    }
-
-                    setCreatingOpsDraftKey(key)
-                    createOpsSessionDraftFromAdvisorDraft.mutate(
-                      {
-                        clubId,
-                        advisorDraftId: draft.id,
-                        sourceProposalId: draft.primary.id,
-                      },
-                      {
-                        onSuccess: (result) => {
-                          router.push(buildAgentFocusHref(clubId, {
-                            focus: 'ops-queue',
-                            day: draft.primary.dayOfWeek,
-                            opsDraftId: result.opsSessionDraft?.id,
-                          }))
-                        },
-                        onSettled: () => {
-                          setCreatingOpsDraftKey((current) => (current === key ? null : current))
-                        },
-                      },
-                    )
-                  }
-                  const isCreatingOpsDraft = creatingOpsDraftKey === key
-                  return (
-                    <div key={key} className="rounded-lg p-3" style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.16)' }}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.08em]" style={{ color: '#A78BFA', fontWeight: 700 }}>
-                            {eyebrow}
-                          </div>
-                          <div className="text-xs font-semibold mt-1" style={{ color: 'var(--heading)' }}>
-                            {draft.primary.title}
-                          </div>
-                          <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-                            {draft.primary.dayOfWeek} · {draft.primary.startTime}-{draft.primary.endTime} · {formatProgrammingValue(draft.primary.format)} · {formatProgrammingValue(draft.primary.skillLevel)}
-                          </div>
-                        </div>
-                        <div className="text-[11px] px-2 py-1 rounded-full" style={{ background: 'rgba(103,232,249,0.12)', color: '#67E8F9', fontWeight: 700 }}>
-                          {draft.primary.confidence}/100
-                        </div>
-                      </div>
-                      <div className="text-[11px] mt-2" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
-                        {draft.primary.projectedOccupancy}% projected fill · {draft.primary.estimatedInterestedMembers} likely players
-                      </div>
-                      {draft.primary.conflict && (
-                        <div className="mt-2 space-y-2">
-                          <div
-                            className="inline-flex items-center text-[10px] px-2 py-1 rounded-full font-medium"
-                            style={{ background: conflictStyles.bg, border: `1px solid ${conflictStyles.border}`, color: conflictStyles.text }}
-                          >
-                            {conflictStyles.label}
-                          </div>
-                          <div className="text-[11px]" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
-                            {description}
-                          </div>
-                          {draft.primary.conflict.warnings?.[0] ? (
-                            <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                              {draft.primary.conflict.warnings[0]}
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-                      {!draft.primary.conflict && (
-                        <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                          {description}
-                        </div>
-                      )}
-                      <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                        {draft.insights[0] || draft.summary || 'Agent-backed schedule opportunity ready for review.'}
-                      </div>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Link
-                          href={useThisHref}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium"
-                          style={{ color: '#67E8F9' }}
-                        >
-                          {isHighUpsideCard ? 'Back this option' : 'Use safer option'}
-                          <ArrowUpRight className="w-3 h-3" />
-                        </Link>
-                        <Link
-                          href={buildAgentFocusHref(clubId, {
-                            focus: 'programming-cockpit',
-                            day: selectedDayName,
-                            draftId: draft.id,
-                          })}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium"
-                          style={{ color: 'var(--heading)' }}
-                        >
-                          Review in Agent
-                          <ArrowUpRight className="w-3 h-3" />
-                        </Link>
-                        {comparisonHref ? (
-                          <Link
-                            href={comparisonHref}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium"
-                            style={{ color: 'var(--t3)' }}
-                          >
-                            {comparisonLabel}
-                            <ArrowUpRight className="w-3 h-3" />
-                          </Link>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={createOpsDraft}
-                          disabled={isCreatingOpsDraft || !!createOpsSessionDraftFromAdvisorDraft?.isPending}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium"
-                          style={{ color: 'var(--t3)', opacity: isCreatingOpsDraft ? 0.7 : 1 }}
-                        >
-                          {draft.opsSessionDrafts?.length
-                            ? 'Open ops queue'
-                            : isCreatingOpsDraft
-                              ? 'Creating ops draft…'
-                              : 'Create ops draft'}
-                          <ArrowUpRight className="w-3 h-3" />
-                        </button>
-                        {!draft.opsSessionDrafts?.length ? (
-                          <Link
-                            href={opsHref}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium"
-                            style={{ color: 'var(--t3)' }}
-                          >
-                            Prep in Advisor
-                            <ArrowUpRight className="w-3 h-3" />
-                          </Link>
-                        ) : null}
-                      </div>
-                    </div>
-                  )
-                })
-              })()}
-              {!programmingSignals.matching.length && !programmingSignals.strongest && !programmingSignals.safest && (
-                <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                  No programming draft is attached to this day yet. Ask the agent what format should be added here.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="rounded-xl p-3"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center gap-2">
-              <CalendarDays className="w-4 h-4" style={{ color: '#10B981' }} />
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Internal session drafts
-              </div>
-            </div>
-            <div className="space-y-3 mt-3">
-              {selectedDayOpsDrafts.slice(0, 2).map((draft) => (
-                <div key={draft.id} className="rounded-lg p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.16)' }}>
-                  {(() => {
-                    const conflictStyles = getProgrammingConflictStyles(draft.conflict?.overallRisk)
-                    return (
-                      <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold" style={{ color: 'var(--heading)' }}>
-                        {draft.title}
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-                        {draft.startTime}-{draft.endTime} · {formatProgrammingValue(draft.format)} · {formatProgrammingValue(draft.skillLevel)}
-                      </div>
-                    </div>
-                    <div
-                      className="text-[10px] px-2 py-1 rounded-full font-medium"
-                      style={{
-                        background: draft.status === 'session_draft' ? 'rgba(6,182,212,0.12)' : 'rgba(16,185,129,0.12)',
-                        color: draft.status === 'session_draft' ? '#67E8F9' : '#10B981',
-                      }}
-                    >
-                      {draft.status === 'session_draft' ? 'Session Draft' : 'Ready For Ops'}
-                    </div>
-                  </div>
-                  <div className="text-[11px] mt-2" style={{ color: 'var(--t3)' }}>
-                    {draft.projectedOccupancy}% projected fill · {draft.estimatedInterestedMembers} likely players
-                  </div>
-                  <div className="text-[11px] mt-2" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                    {draft.metadata?.sessionDraft?.nextStep || draft.conflict?.riskSummary || 'Internal-only session draft. Still manual and not live-published.'}
-                  </div>
-                  {draft.conflict && (
-                    <div className="mt-2 space-y-1">
-                      <div
-                        className="inline-flex items-center text-[10px] px-2 py-1 rounded-full font-medium"
-                        style={{ background: conflictStyles.bg, border: `1px solid ${conflictStyles.border}`, color: conflictStyles.text }}
-                      >
-                        {conflictStyles.label}
-                      </div>
-                      {draft.conflict.warnings.slice(0, 1).map((warning) => (
-                        <div key={warning} className="text-[11px]" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>
-                          {warning}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Link
-                      href={buildAgentFocusHref(clubId, {
-                        focus: 'ops-queue',
-                        day: selectedDayName,
-                        opsDraftId: draft.id,
-                      })}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium"
-                      style={{ color: 'var(--heading)' }}
-                    >
-                      Review in Agent
-                      <ArrowUpRight className="w-3 h-3" />
-                    </Link>
-                    <Link
-                      href={buildAdvisorDraftHref(clubId, {
-                        conversationId: draft.agentDraft?.conversationId || null,
-                        originalIntent: draft.agentDraft?.originalIntent || null,
-                      })}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium"
-                      style={{ color: 'var(--t3)' }}
-                    >
-                      Open source draft
-                      <ArrowUpRight className="w-3 h-3" />
-                    </Link>
-                  </div>
-                      </>
-                    )
-                  })()}
-                </div>
-              ))}
-              {selectedDayOpsDrafts.length === 0 && (
-                <div className="text-[11px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-                  No internal session draft is attached to this day yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Court Grid */}
       <div>
@@ -1140,17 +513,17 @@ export function ScheduleIQ({
         ) : (
           <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
             <div className="overflow-x-auto">
-              <div style={{ minWidth: Math.max(600, courts.length * 140 + 70) }}>
+              <div style={{ minWidth: Math.max(520, courts.length * 112 + 54) }}>
                 {/* Court header */}
                 <div className="flex sticky top-0 z-10" style={{ background: 'var(--card-bg)', borderBottom: '1px solid var(--card-border)' }}>
-                  <div className="w-[70px] shrink-0 p-2" />
+                  <div className="w-[54px] shrink-0 p-1.5" />
                   {courts.map((c) => (
-                    <div key={c} className="flex-1 min-w-[120px] p-2 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
+                    <div key={c} className="flex-1 min-w-[104px] p-1.5 text-center" style={{ borderLeft: '1px solid var(--card-border)' }}>
+                      <div className="text-[11px] font-semibold" style={{ color: c === '__unassigned__' ? 'var(--t4)' : 'var(--heading)' }}>
                         {c === '__unassigned__' ? 'Unassigned' : shortenCourt(c)}
                       </div>
                       {c !== '__unassigned__' && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full mt-0.5 inline-block" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
+                        <span className="text-[8px] px-1.5 py-0.5 rounded-full inline-block leading-none" style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981' }}>Pickleball</span>
                       )}
                     </div>
                   ))}
@@ -1160,17 +533,17 @@ export function ScheduleIQ({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: `70px repeat(${courts.length}, minmax(120px, 1fr))`,
-                    gridTemplateRows: `repeat(${HOURS.length}, minmax(56px, auto))`,
+                    gridTemplateColumns: `54px repeat(${courts.length}, minmax(104px, 1fr))`,
+                    gridTemplateRows: `repeat(${visibleHours.length}, minmax(${SCHEDULE_ROW_HEIGHT}px, auto))`,
                   }}
                 >
-                  {HOURS.map((hour, rowIdx) => {
+                  {visibleHours.map((hour, rowIdx) => {
                     const isNow = hour === currentHour && selectedDate === todayStr
                     return (
                       <React.Fragment key={hour}>
                         {/* Time label */}
                         <div
-                          className="p-1.5 text-right pr-3 flex items-start justify-end sticky left-0 z-[5]"
+                          className="p-1 text-right pr-2 flex items-start justify-end sticky left-0 z-[5]"
                           style={{
                             gridColumn: 1,
                             gridRow: rowIdx + 1,
@@ -1196,19 +569,19 @@ export function ScheduleIQ({
                           return (
                             <div
                               key={key}
-                              className="relative p-0.5"
+                              className="relative p-[2px]"
                               style={{
                                 gridColumn: colIdx + 2,
                                 gridRow: span > 1 ? `${rowIdx + 1} / span ${span}` : rowIdx + 1,
                                 // For fractional spans (e.g. 1.5h session in 2-row span), clip the content
-                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * 56}px` } : {}),
+                                ...(fractional !== span && span > 1 ? { maxHeight: `${fractional * SCHEDULE_ROW_HEIGHT}px` } : {}),
                                 borderTop: '1px solid var(--card-border)',
                                 borderLeft: '1px solid var(--card-border)',
                                 background: isNow ? 'rgba(139,92,246,0.03)' : 'transparent',
                               }}
                             >
                               {!cellSessions ? (
-                                <div className="w-full h-full min-h-[48px] rounded-lg border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.15 }} />
+                                <div className="w-full h-full min-h-[34px] rounded-md border border-dashed" style={{ borderColor: 'var(--card-border)', opacity: 0.12 }} />
                               ) : (
                                 cellSessions.map((s) => {
                                   const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
@@ -1219,17 +592,16 @@ export function ScheduleIQ({
                                     <button
                                       key={s.id}
                                       onClick={() => setSelectedSession(s)}
-                                      className="w-full text-left rounded-lg p-2 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
+                                      className="w-full text-left rounded-md px-1.5 py-1 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
                                       style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
                                     >
                                       <div>
-                                        <div className="text-[11px] font-semibold" style={{ color: colors.text }}>{sk.label}</div>
-                                        {sk.range && <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{sk.range}</div>}
-                                        {span > 1 && <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
+                                        <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{sk.label}</div>
+                                        {span > 1 && <div className="text-[8px] leading-tight" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
                                       </div>
-                                      <div>
-                                        <div className="text-[10px] font-medium mt-1" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
-                                        <div className="h-1.5 rounded-full mt-1 overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                                      <div className="mt-0.5 flex items-center justify-between gap-1">
+                                        <div className="text-[9px] font-medium leading-none" style={{ color: 'var(--heading)' }}>{s.registered}/{s.capacity}</div>
+                                        <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                                           <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: colors.text }} />
                                         </div>
                                       </div>

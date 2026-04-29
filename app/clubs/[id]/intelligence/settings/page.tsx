@@ -2161,6 +2161,11 @@ function PiqleSettingsPage() {
                 value={settings.courtCount}
                 onChange={(e) => updateSettings({ courtCount: Number(e.target.value) || 1 })}
               />
+              {(intelligenceData as any)?.courtCountSource === 'synced' && (
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>
+                  Auto-detected from {(intelligenceData as any)?.syncedActiveCourts ?? 0} active courts synced via CourtReserve. Edits save to settings but the synced value will continue to display on reload.
+                </p>
+              )}
             </div>
             <div className="flex items-end gap-4 col-span-2">
               <label className="flex items-center gap-2 cursor-pointer">

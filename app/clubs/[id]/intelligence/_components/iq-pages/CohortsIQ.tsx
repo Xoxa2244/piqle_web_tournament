@@ -10,29 +10,16 @@ import { trpc } from '@/lib/trpc'
 import { LOOKALIKE_EXPORT_PRESETS, type LookalikeExportPreset } from '@/lib/ai/lookalike-export'
 import { useAdminTodoDecisions, useClearAdminTodoDecisions, useExportLookalikeAudienceCsv, useLookalikeAudienceExport, useLookalikeAudienceExportPreview, useLookalikeExportHistory, useSetAdminTodoDecision, useSmartFirstSession, useSuggestedCohorts } from '../../_hooks/use-intelligence'
 import { SuggestedCohortCard } from '../SuggestedCohortCard'
+import { STATUS_OPTIONS, TIER_OPTIONS } from '../MembersFilterDrawer'
 
 // ── Filter field definitions ──
-const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = [
-  { label: 'Guest', value: 'guest' },
-  { label: 'Drop-In', value: 'drop_in' },
-  { label: 'Trial', value: 'trial' },
-  { label: 'Package', value: 'package' },
-  { label: 'Monthly', value: 'monthly' },
-  { label: 'VIP / Unlimited', value: 'unlimited' },
-  { label: 'Discounted', value: 'discounted' },
-  { label: 'Insurance', value: 'insurance' },
-  { label: 'Staff', value: 'staff' },
-]
+const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = TIER_OPTIONS
+  .filter((option) => option.key !== 'all')
+  .map((option) => ({ label: option.label, value: option.key }))
 
-const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = [
-  { label: 'Active', value: 'active' },
-  { label: 'Suspended', value: 'suspended' },
-  { label: 'Expired', value: 'expired' },
-  { label: 'Cancelled', value: 'cancelled' },
-  { label: 'Trial', value: 'trial' },
-  { label: 'Guest', value: 'guest' },
-  { label: 'No Membership', value: 'none' },
-]
+const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = STATUS_OPTIONS
+  .filter((option) => option.key !== 'all')
+  .map((option) => ({ label: option.label, value: option.key }))
 
 const RISK_LEVEL_OPTIONS = [
   { label: 'Healthy', value: 'healthy' },
@@ -40,6 +27,21 @@ const RISK_LEVEL_OPTIONS = [
   { label: 'At-Risk', value: 'at_risk' },
   { label: 'Critical', value: 'critical' },
 ]
+
+const QUICK_FILTER_COPY = {
+  membershipStatus: {
+    label: 'Membership State',
+    hint: 'Same lifecycle vocabulary as Members.',
+  },
+  membershipType: {
+    label: 'Membership Tier',
+    hint: 'Trial, package, monthly, VIP, and more.',
+  },
+  riskLevel: {
+    label: 'Risk',
+    hint: 'Current health-based save priority.',
+  },
+}
 
 const BIRTHDAY_MONTH_OPTIONS = [
   { label: 'January',   value: '1'  }, { label: 'February',  value: '2'  },
@@ -128,6 +130,8 @@ const SUGGESTION_DECISION_STYLES: Record<string, { bg: string; color: string; la
 }
 
 type FilterOp = 'eq' | 'ne' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in'
+type CohortBuilderMode = 'quick' | 'advanced'
+type PreviewSort = 'alpha' | 'risk' | 'activity' | 'newest' | 'inactive'
 
 // Must stay in sync with cohortFilterSchema in server/routers/intelligence.ts
 // — if you add a new field on the server, mirror it here so TS accepts it at
@@ -136,12 +140,160 @@ type CohortFilterField =
   | 'age' | 'gender' | 'membershipType' | 'membershipStatus' | 'skillLevel'
   | 'zipCode' | 'city' | 'sessionFormat' | 'dayOfWeek' | 'frequency'
   | 'recency' | 'userId' | 'duprRating'
+  | 'healthScore' | 'riskLevel' | 'joinedDaysAgo' | 'birthdayMonth'
   | 'normalizedMembershipType' | 'normalizedMembershipStatus'
 
 interface CohortFilter {
   field: CohortFilterField
   op: FilterOp
   value: string | number | string[]
+}
+
+interface QuickCohortState {
+  membershipStatus: string[]
+  membershipType: string[]
+  riskLevel: string[]
+  joinedWithinDays: string
+  inactiveDays: string
+  sessionsPerMonthMin: string
+  sessionsPerMonthMax: string
+}
+
+const EMPTY_QUICK_COHORT: QuickCohortState = {
+  membershipStatus: [],
+  membershipType: [],
+  riskLevel: [],
+  joinedWithinDays: '',
+  inactiveDays: '',
+  sessionsPerMonthMin: '',
+  sessionsPerMonthMax: '',
+}
+
+const QUICK_COHORT_PRESETS: Array<{
+  id: string
+  label: string
+  description: string
+  name: string
+  state: Partial<QuickCohortState>
+}> = [
+  {
+    id: 'at-risk-vips',
+    label: 'At-Risk VIPs',
+    description: 'Unlimited members who need attention before they quietly churn.',
+    name: 'At-Risk VIPs',
+    state: { membershipType: ['unlimited'], riskLevel: ['at_risk', 'critical'] },
+  },
+  {
+    id: 'trial-not-converted',
+    label: 'Trial Not Converted',
+    description: 'Trial players who have already touched the product and need a nudge.',
+    name: 'Trial Not Converted',
+    state: { membershipStatus: ['trial'], sessionsPerMonthMin: '2', inactiveDays: '7' },
+  },
+  {
+    id: 'inactive-regulars',
+    label: 'Inactive Regulars',
+    description: 'Previously active members who have gone quiet long enough to matter.',
+    name: 'Inactive Regulars',
+    state: { membershipStatus: ['active'], inactiveDays: '21', sessionsPerMonthMin: '1' },
+  },
+  {
+    id: 'new-members',
+    label: 'New Members',
+    description: 'Fresh joiners who should move into onboarding or first-campaign flows.',
+    name: 'New Members',
+    state: { joinedWithinDays: '30', membershipStatus: ['active', 'trial'] },
+  },
+]
+
+function toggleQuickValue(values: string[], nextValue: string) {
+  return values.includes(nextValue)
+    ? values.filter((value) => value !== nextValue)
+    : [...values, nextValue]
+}
+
+function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
+  const filters: CohortFilter[] = []
+
+  if (draft.membershipStatus.length === 1) {
+    filters.push({ field: 'normalizedMembershipStatus', op: 'eq', value: draft.membershipStatus[0] })
+  } else if (draft.membershipStatus.length > 1) {
+    filters.push({ field: 'normalizedMembershipStatus', op: 'in', value: draft.membershipStatus })
+  }
+
+  if (draft.membershipType.length === 1) {
+    filters.push({ field: 'normalizedMembershipType', op: 'eq', value: draft.membershipType[0] })
+  } else if (draft.membershipType.length > 1) {
+    filters.push({ field: 'normalizedMembershipType', op: 'in', value: draft.membershipType })
+  }
+
+  if (draft.riskLevel.length === 1) {
+    filters.push({ field: 'riskLevel', op: 'eq', value: draft.riskLevel[0] })
+  } else if (draft.riskLevel.length > 1) {
+    filters.push({ field: 'riskLevel', op: 'in', value: draft.riskLevel })
+  }
+
+  const joinedWithinDays = Number(draft.joinedWithinDays)
+  if (Number.isFinite(joinedWithinDays) && joinedWithinDays > 0) {
+    filters.push({ field: 'joinedDaysAgo', op: 'lte', value: joinedWithinDays })
+  }
+
+  const inactiveDays = Number(draft.inactiveDays)
+  if (Number.isFinite(inactiveDays) && inactiveDays > 0) {
+    filters.push({ field: 'recency', op: 'gte', value: inactiveDays })
+  }
+
+  const sessionsPerMonthMin = Number(draft.sessionsPerMonthMin)
+  if (Number.isFinite(sessionsPerMonthMin) && sessionsPerMonthMin >= 0) {
+    filters.push({ field: 'frequency', op: 'gte', value: sessionsPerMonthMin })
+  }
+
+  const sessionsPerMonthMax = Number(draft.sessionsPerMonthMax)
+  if (Number.isFinite(sessionsPerMonthMax) && sessionsPerMonthMax >= 0) {
+    filters.push({ field: 'frequency', op: 'lte', value: sessionsPerMonthMax })
+  }
+
+  return filters
+}
+
+function looksLikeRawFilterDescription(description: string | null | undefined) {
+  if (!description) return false
+  return /(userId|riskLevel|normalizedMembership|joinedDaysAgo|membershipStatus|membershipType|frequency|recency)\s+(eq|in|gte|lte|contains)/i.test(description)
+}
+
+function formatCohortFilterSummary(filter: CohortFilter) {
+  if (filter.field === 'userId' && filter.op === 'in' && Array.isArray(filter.value)) {
+    return `${filter.value.length} hand-picked members`
+  }
+  if (filter.field === 'joinedDaysAgo' && filter.op === 'lte' && typeof filter.value === 'number') {
+    return `Joined in last ${filter.value} days`
+  }
+  if (filter.field === 'recency' && filter.op === 'gte' && typeof filter.value === 'number') {
+    return `Inactive ${filter.value}+ days`
+  }
+  if (filter.field === 'frequency' && filter.op === 'gte' && typeof filter.value === 'number') {
+    return `${filter.value}+ sessions / month`
+  }
+  if (filter.field === 'frequency' && filter.op === 'lte' && typeof filter.value === 'number') {
+    return `Up to ${filter.value} sessions / month`
+  }
+
+  const fieldLabel = FILTER_FIELDS.find((entry) => entry.key === filter.field)?.label || filter.field
+  return `${fieldLabel} ${OP_LABELS[filter.op]} ${formatCohortFilterValue(filter.field, filter.value)}`
+}
+
+function buildReadableCohortDescription(filters: CohortFilter[]) {
+  if (filters.length === 0) return ''
+  const summaries = filters.map(formatCohortFilterSummary)
+  const visible = summaries.slice(0, 3)
+  return summaries.length > 3
+    ? `${visible.join(' · ')} +${summaries.length - 3} more`
+    : visible.join(' · ')
+}
+
+function getCohortDisplayDescription(description: string | null | undefined, rawFilters: unknown) {
+  if (description && !looksLikeRawFilterDescription(description)) return description
+  return buildReadableCohortDescription(parseCohortFilters(rawFilters))
 }
 
 function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
@@ -165,7 +317,7 @@ function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
     const raw = String(filter.value ?? '').trim()
     if (!raw) return []
 
-    if (fieldDef?.type === 'number' || ['age', 'frequency', 'recency', 'duprRating'].includes(filter.field)) {
+    if (fieldDef?.type === 'number' || ['age', 'frequency', 'recency', 'duprRating', 'healthScore', 'joinedDaysAgo'].includes(filter.field)) {
       const numericValue = Number(raw)
       if (!Number.isFinite(numericValue)) return []
       return [{ ...filter, value: numericValue }]
@@ -1162,7 +1314,11 @@ export default function CohortsIQ() {
                     </button>
                   </div>
                 )}
-                {c.description && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>{c.description}</p>}
+                {getCohortDisplayDescription(c.description, c.filters) ? (
+                  <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--t3)' }}>
+                    {getCohortDisplayDescription(c.description, c.filters)}
+                  </p>
+                ) : null}
                 <div className="flex items-center gap-1.5 mb-3">
                   <UserCheck className="w-4 h-4" style={{ color: '#8B5CF6' }} />
                   <span className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>{c.memberCount}</span>
@@ -1244,7 +1400,7 @@ export default function CohortsIQ() {
               <Plus className="w-8 h-8" style={{ color: '#8B5CF6' }} />
               <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Build a custom cohort</span>
               <span className="text-[11px] leading-relaxed max-w-[180px]" style={{ color: 'var(--t4)' }}>
-                AND/OR conditions across 17 fields with live preview
+                Start with quick segments or drop into the advanced rule builder
               </span>
             </motion.button>
 
@@ -1419,16 +1575,22 @@ function QuickCampaignModal({ clubId, cohort, onClose }: { clubId: string; cohor
 function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [mode, setMode] = useState<CohortBuilderMode>('quick')
+  const [quickFilters, setQuickFilters] = useState<QuickCohortState>(EMPTY_QUICK_COHORT)
   const [filters, setFilters] = useState<CohortFilter[]>([])
   const [saving, setSaving] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiParsing, setAiParsing] = useState(false)
+  const [previewSort, setPreviewSort] = useState<PreviewSort>('alpha')
 
   const parseMutation = trpc.intelligence.parseCohortFromText.useMutation({
     onSuccess: (data) => {
       if (data.name) setName(data.name)
       if (data.description) setDescription(data.description)
-      if (data.filters?.length) setFilters(data.filters as CohortFilter[])
+      if (data.filters?.length) {
+        setMode('advanced')
+        setFilters(data.filters as CohortFilter[])
+      }
       setAiPrompt('')
     },
     onSettled: () => setAiParsing(false),
@@ -1440,12 +1602,18 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
     parseMutation.mutate({ clubId, text: aiPrompt.trim() })
   }
 
-  const previewFilters = useMemo(() => sanitizeCohortFilters(filters), [filters])
-  const hasIncompleteFilters = filters.length > 0 && previewFilters.length !== filters.length
+  const advancedPreviewFilters = useMemo(() => sanitizeCohortFilters(filters), [filters])
+  const quickPreviewFilters = useMemo(() => buildQuickCohortFilters(quickFilters), [quickFilters])
+  const effectiveFilters = mode === 'quick' ? quickPreviewFilters : advancedPreviewFilters
+  const hasIncompleteFilters = mode === 'advanced' && filters.length > 0 && advancedPreviewFilters.length !== filters.length
+  const generatedDescription = useMemo(() => {
+    if (mode !== 'quick') return ''
+    return buildReadableCohortDescription(quickPreviewFilters)
+  }, [mode, quickPreviewFilters])
 
   const previewQuery = trpc.intelligence.previewCohort.useQuery(
-    { clubId, filters: previewFilters },
-    { enabled: previewFilters.length > 0 }
+    { clubId, filters: effectiveFilters },
+    { enabled: effectiveFilters.length > 0 }
   )
 
   const createMutation = trpc.intelligence.createCohort.useMutation({
@@ -1471,14 +1639,14 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   const removeFilter = (i: number) => setFilters(filters.filter((_, idx) => idx !== i))
 
   const handleSave = async () => {
-    if (!name.trim() || previewFilters.length === 0) return
+    if (!name.trim() || effectiveFilters.length === 0) return
     setSaving(true)
     try {
       await createMutation.mutateAsync({
         clubId,
         name: name.trim(),
-        description: description.trim() || undefined,
-        filters: previewFilters,
+        description: description.trim() || generatedDescription || undefined,
+        filters: effectiveFilters,
       })
     } finally {
       setSaving(false)
@@ -1490,14 +1658,14 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
   // open the wizard pre-filled with the new cohort instead of redirecting.
   const router = useRouter()
   const handleSaveAndCampaign = async () => {
-    if (!name.trim() || previewFilters.length === 0) return
+    if (!name.trim() || effectiveFilters.length === 0) return
     setSaving(true)
     try {
       const created = await createMutation.mutateAsync({
         clubId,
         name: name.trim(),
-        description: description.trim() || undefined,
-        filters: previewFilters,
+        description: description.trim() || generatedDescription || undefined,
+        filters: effectiveFilters,
       })
       // Redirect to Campaigns with cohort pre-selected via query param.
       // Phase 4 wizard will read ?cohortId=<id> on load.
@@ -1507,6 +1675,84 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
       setSaving(false)
     }
   }
+
+  const activeFilterSummaries = useMemo(
+    () => effectiveFilters.map(formatCohortFilterSummary),
+    [effectiveFilters],
+  )
+
+  const sortedPreviewMembers = useMemo(() => {
+    const members = [...(((previewQuery.data?.sampleMembers || []) as any[]))]
+    const riskRank: Record<string, number> = { critical: 4, at_risk: 3, watch: 2, healthy: 1 }
+    members.sort((a, b) => {
+      if (previewSort === 'risk') {
+        return (riskRank[b.riskLevel || ''] || 0) - (riskRank[a.riskLevel || ''] || 0)
+          || Number(a.healthScore ?? 999) - Number(b.healthScore ?? 999)
+          || String(a.name || '').localeCompare(String(b.name || ''))
+      }
+      if (previewSort === 'activity') {
+        return Number(b.sessionsLast30 ?? 0) - Number(a.sessionsLast30 ?? 0)
+          || String(a.name || '').localeCompare(String(b.name || ''))
+      }
+      if (previewSort === 'newest') {
+        return Number(a.joinedDaysAgo ?? 99999) - Number(b.joinedDaysAgo ?? 99999)
+          || String(a.name || '').localeCompare(String(b.name || ''))
+      }
+      if (previewSort === 'inactive') {
+        return Number(b.daysSinceLastVisit ?? -1) - Number(a.daysSinceLastVisit ?? -1)
+          || String(a.name || '').localeCompare(String(b.name || ''))
+      }
+      return String(a.name || '').localeCompare(String(b.name || ''))
+    })
+    return members
+  }, [previewQuery.data?.sampleMembers, previewSort])
+
+  const updateQuickFilter = (key: keyof QuickCohortState, value: string | string[]) => {
+    setQuickFilters((current) => ({ ...current, [key]: value }))
+  }
+
+  const applyPreset = (preset: typeof QUICK_COHORT_PRESETS[number]) => {
+    setMode('quick')
+    setQuickFilters({ ...EMPTY_QUICK_COHORT, ...preset.state })
+    if (!name.trim()) setName(preset.name)
+    if (!description.trim()) setDescription(preset.description)
+  }
+
+  const renderMultiChipGroup = (
+    label: string,
+    hint: string,
+    options: Array<{ label: string; value: string }>,
+    values: string[],
+    onToggle: (value: string) => void,
+  ) => (
+    <div className="space-y-2">
+      <div>
+        <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>{label}</div>
+        {hint ? <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{hint}</p> : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const active = values.includes(option.value)
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onToggle(option.value)}
+              className="px-3 py-1.5 rounded-full text-xs transition-all"
+              style={{
+                background: active ? 'rgba(139,92,246,0.16)' : 'var(--subtle)',
+                color: active ? '#C4B5FD' : 'var(--t3)',
+                border: `1px solid ${active ? 'rgba(139,92,246,0.35)' : 'var(--card-border)'}`,
+                fontWeight: active ? 700 : 500,
+              }}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   return (
     <motion.div
@@ -1524,150 +1770,364 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
         <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
       </div>
 
-      {/* AI Natural Language Input */}
-      <div className="flex gap-2">
-        <input
-          type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAiParse()}
-          placeholder="Describe your cohort: e.g. &quot;DUPR 2-3, men 55+&quot; or &quot;active beginner women&quot;"
-          className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
-          style={{ background: 'rgba(139,92,246,0.06)', color: 'var(--t1)', border: '1px solid rgba(139,92,246,0.2)' }}
-        />
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleAiParse}
-          disabled={!aiPrompt.trim() || aiParsing}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm text-white"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)', fontWeight: 600, opacity: (!aiPrompt.trim() || aiParsing) ? 0.5 : 1 }}
-        >
-          {aiParsing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '✨'} AI
-        </motion.button>
+      <div className="inline-flex rounded-2xl p-1" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+        {([
+          { key: 'quick', label: 'Quick Cohort' },
+          { key: 'advanced', label: 'Advanced Builder' },
+        ] as const).map((option) => {
+          const active = mode === option.key
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => setMode(option.key)}
+              className="px-4 py-2 rounded-xl text-sm transition-all"
+              style={{
+                background: active ? 'rgba(139,92,246,0.14)' : 'transparent',
+                border: `1px solid ${active ? 'rgba(139,92,246,0.28)' : 'transparent'}`,
+                color: active ? '#C4B5FD' : 'var(--t3)',
+                fontWeight: active ? 700 : 600,
+              }}
+            >
+              {option.label}
+            </button>
+          )
+        })}
       </div>
+
+      {mode === 'advanced' ? (
+        <div className="space-y-2 rounded-2xl p-4" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
+          <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Describe with AI</div>
+          <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+            <input
+              type="text" value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAiParse()}
+              placeholder="e.g. trial members inactive 14+ days, or women 55+ with DUPR 3.0+"
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
+              style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+            />
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleAiParse}
+              disabled={!aiPrompt.trim() || aiParsing}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm text-white min-w-[96px]"
+              style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)', fontWeight: 600, opacity: (!aiPrompt.trim() || aiParsing) ? 0.5 : 1 }}
+            >
+              {aiParsing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'AI'}
+            </motion.button>
+          </div>
+        </div>
+      ) : null}
       {parseMutation.error && (
         <p className="text-xs" style={{ color: '#EF4444' }}>{parseMutation.error.message}</p>
       )}
-
-      <div className="flex items-center gap-3">
-        <div className="flex-1 h-px" style={{ background: 'var(--card-border)' }} />
-        <span className="text-[10px] uppercase" style={{ color: 'var(--t4)' }}>or build manually</span>
-        <div className="flex-1 h-px" style={{ background: 'var(--card-border)' }} />
-      </div>
 
       {/* Name + description */}
       <div className="space-y-3">
         <input
           type="text" value={name} onChange={e => setName(e.target.value)}
-          placeholder="Cohort name (e.g. Senior Men 55+)"
+          placeholder="Cohort name (e.g. At-Risk VIPs)"
           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
           style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
         />
         <input
           type="text" value={description} onChange={e => setDescription(e.target.value)}
-          placeholder="Description (optional)"
+          placeholder={mode === 'quick' && generatedDescription ? generatedDescription : 'Description (optional)'}
           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
           style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
         />
       </div>
 
-      {/* Filters */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Conditions</span>
-          <button onClick={addFilter} className="text-xs flex items-center gap-1" style={{ color: '#8B5CF6', fontWeight: 600 }}>
-            <Plus className="w-3.5 h-3.5" /> Add filter
-          </button>
-        </div>
-
-        {filters.map((f, i) => {
-          const fieldDef = FILTER_FIELDS.find(ff => ff.key === f.field)
-          return (
-            <div key={i} className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--subtle)' }}>
-              {/* Field */}
-              <select
-                value={f.field}
-                onChange={e => updateFilter(i, { field: e.target.value as CohortFilterField })}
-                className="px-2 py-1.5 rounded-lg text-xs outline-none"
-                style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-              >
-                {FILTER_FIELDS.map(ff => <option key={ff.key} value={ff.key}>{ff.label}</option>)}
-              </select>
-
-              {/* Operator */}
-              <select
-                value={f.op}
-                onChange={e => updateFilter(i, { op: e.target.value as FilterOp })}
-                className="px-2 py-1.5 rounded-lg text-xs outline-none"
-                style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-              >
-                {(fieldDef?.ops || ['eq']).map(op => <option key={op} value={op}>{OP_LABELS[op]}</option>)}
-              </select>
-
-              {/* Value */}
-              {fieldDef?.type === 'select' ? (
-                <select
-                  value={f.value as string}
-                  onChange={e => updateFilter(i, { value: e.target.value })}
-                  className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
-                  style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_300px] items-start">
+        <div className="space-y-5">
+          {mode === 'quick' ? (
+            <div className="rounded-2xl p-4 space-y-5" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Presets</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQuickFilters(EMPTY_QUICK_COHORT)}
+                  className="text-xs px-3 py-1.5 rounded-full"
+                  style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
                 >
-                  <option value="">Select...</option>
-                  {fieldDef.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input
-                  type={fieldDef?.type === 'number' ? 'number' : 'text'}
-                  value={f.value as string}
-                  onChange={e => updateFilter(i, { value: e.target.value })}
-                  placeholder={fieldDef?.type === 'number' ? '0' : 'Value...'}
-                  className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
-                  style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-                />
-              )}
+                  Clear
+                </button>
+              </div>
 
-              <button onClick={() => removeFilter(i)} style={{ color: 'var(--t4)' }}>
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {QUICK_COHORT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyPreset(preset)}
+                    className="px-3 py-1.5 rounded-full text-xs transition-all"
+                    style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t2)', fontWeight: 700 }}
+                    title={preset.description}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-4 pt-1" style={{ borderTop: '1px solid var(--card-border)' }}>
+                <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Filters</div>
+                {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.membershipStatus.label,
+                  QUICK_FILTER_COPY.membershipStatus.hint,
+                  NORMALIZED_MEMBERSHIP_STATUS_OPTIONS,
+                  quickFilters.membershipStatus,
+                  (value) => updateQuickFilter('membershipStatus', toggleQuickValue(quickFilters.membershipStatus, value)),
+                )}
+                {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.membershipType.label,
+                  QUICK_FILTER_COPY.membershipType.hint,
+                  NORMALIZED_MEMBERSHIP_TYPE_OPTIONS,
+                  quickFilters.membershipType,
+                  (value) => updateQuickFilter('membershipType', toggleQuickValue(quickFilters.membershipType, value)),
+                )}
+                {renderMultiChipGroup(
+                  QUICK_FILTER_COPY.riskLevel.label,
+                  QUICK_FILTER_COPY.riskLevel.hint,
+                  RISK_LEVEL_OPTIONS,
+                  quickFilters.riskLevel,
+                  (value) => updateQuickFilter('riskLevel', toggleQuickValue(quickFilters.riskLevel, value)),
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Joined in last</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={quickFilters.joinedWithinDays}
+                      onChange={(e) => updateQuickFilter('joinedWithinDays', e.target.value)}
+                      placeholder="Days"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Inactive for</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={quickFilters.inactiveDays}
+                      onChange={(e) => updateQuickFilter('inactiveDays', e.target.value)}
+                      placeholder="Days"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sessions / month min</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={quickFilters.sessionsPerMonthMin}
+                      onChange={(e) => updateQuickFilter('sessionsPerMonthMin', e.target.value)}
+                      placeholder="Minimum"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sessions / month max</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={quickFilters.sessionsPerMonthMax}
+                      onChange={(e) => updateQuickFilter('sessionsPerMonthMax', e.target.value)}
+                      placeholder="Maximum"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--t4)' }}>Every selected condition narrows the same cohort. More exact matching lives in Advanced Builder.</p>
+              </div>
             </div>
-          )
-        })}
+          ) : (
+            <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Advanced conditions</div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Use raw fields when quick filters are not enough.</p>
+                </div>
+                <button onClick={addFilter} className="text-xs flex items-center gap-1" style={{ color: '#8B5CF6', fontWeight: 600 }}>
+                  <Plus className="w-3.5 h-3.5" /> Add filter
+                </button>
+              </div>
 
-        {filters.length === 0 && (
-          <p className="text-xs text-center py-4" style={{ color: 'var(--t4)' }}>
-            Add conditions to define who belongs to this cohort
-          </p>
-        )}
-      </div>
+              {filters.map((f, i) => {
+                const fieldDef = FILTER_FIELDS.find(ff => ff.key === f.field)
+                return (
+                  <div key={i} className="flex items-center gap-2 p-3 rounded-xl flex-wrap" style={{ background: 'var(--subtle)' }}>
+                    <select
+                      value={f.field}
+                      onChange={e => updateFilter(i, { field: e.target.value as CohortFilterField })}
+                      className="px-2 py-1.5 rounded-lg text-xs outline-none"
+                      style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    >
+                      {FILTER_FIELDS.map(ff => <option key={ff.key} value={ff.key}>{ff.label}</option>)}
+                    </select>
 
-      {/* Preview count */}
-      {filters.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl" style={{ background: 'rgba(139,92,246,0.08)' }}>
-            <Eye className="w-4 h-4" style={{ color: '#8B5CF6' }} />
-            <span className="text-sm" style={{ color: '#A78BFA', fontWeight: 600 }}>
-              {previewQuery.isLoading
-                ? 'Counting...'
-                : previewQuery.error
-                  ? 'Could not preview this cohort'
-                  : hasIncompleteFilters
-                    ? `${previewFilters.length} valid filter${previewFilters.length === 1 ? '' : 's'} ready — complete the remaining fields`
-                    : `${previewQuery.data?.count ?? 0} members match`}
-            </span>
-          </div>
+                    <select
+                      value={f.op}
+                      onChange={e => updateFilter(i, { op: e.target.value as FilterOp })}
+                      className="px-2 py-1.5 rounded-lg text-xs outline-none"
+                      style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                    >
+                      {(fieldDef?.ops || ['eq']).map(op => <option key={op} value={op}>{OP_LABELS[op]}</option>)}
+                    </select>
 
-          {hasIncompleteFilters ? (
-            <p className="text-xs" style={{ color: '#F59E0B' }}>
-              Some filters are still incomplete, so they are currently ignored in the preview.
-            </p>
-          ) : null}
+                    {fieldDef?.type === 'select' ? (
+                      <select
+                        value={f.value as string}
+                        onChange={e => updateFilter(i, { value: e.target.value })}
+                        className="flex-1 min-w-[180px] px-2 py-1.5 rounded-lg text-xs outline-none"
+                        style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                      >
+                        <option value="">Select...</option>
+                        {fieldDef.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        type={fieldDef?.type === 'number' ? 'number' : 'text'}
+                        value={f.value as string}
+                        onChange={e => updateFilter(i, { value: e.target.value })}
+                        placeholder={fieldDef?.type === 'number' ? '0' : 'Value...'}
+                        className="flex-1 min-w-[180px] px-2 py-1.5 rounded-lg text-xs outline-none"
+                        style={{ background: 'var(--card-bg)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
+                      />
+                    )}
 
-          {previewQuery.error ? (
-            <p className="text-xs" style={{ color: '#EF4444' }}>
-              {previewQuery.error.message}
-            </p>
-          ) : null}
+                    <button onClick={() => removeFilter(i)} style={{ color: 'var(--t4)' }}>
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )
+              })}
+
+              {filters.length === 0 && (
+                <p className="text-xs text-center py-4" style={{ color: 'var(--t4)' }}>
+                  Add conditions to define who belongs to this cohort
+                </p>
+              )}
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="xl:sticky xl:top-5">
+          <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Preview</div>
+              <Eye className="w-4 h-4" style={{ color: 'var(--t4)' }} />
+            </div>
+
+            <div className="rounded-xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
+              <div className="text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--t4)', fontWeight: 700 }}>Matches</div>
+              <div className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
+                {effectiveFilters.length === 0
+                  ? '—'
+                  : previewQuery.isLoading
+                    ? '...'
+                    : previewQuery.error
+                      ? 'Error'
+                      : String(previewQuery.data?.count ?? 0)}
+              </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                {effectiveFilters.length === 0
+                  ? 'Add a filter to preview this audience.'
+                  : hasIncompleteFilters
+                    ? `${advancedPreviewFilters.length} valid filter${advancedPreviewFilters.length === 1 ? '' : 's'} active while you finish the rest.`
+                    : 'Updates as you edit.'}
+              </p>
+            </div>
+
+            {activeFilterSummaries.length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Applied</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeFilterSummaries.map((summary, index) => (
+                    <span key={`${summary}-${index}`} className="text-[10px] px-2 py-1 rounded-full" style={{ background: 'var(--subtle)', color: 'var(--t2)', border: '1px solid var(--card-border)' }}>
+                      {summary}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {previewQuery.error ? (
+              <p className="text-xs" style={{ color: '#EF4444' }}>
+                {previewQuery.error.message}
+              </p>
+            ) : null}
+
+            {sortedPreviewMembers.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Sample</div>
+                  <select
+                    value={previewSort}
+                    onChange={(e) => setPreviewSort(e.target.value as PreviewSort)}
+                    className="px-2 py-1 rounded-lg text-[11px] outline-none"
+                    style={{ background: 'var(--subtle)', color: 'var(--t2)', border: '1px solid var(--card-border)' }}
+                  >
+                    <option value="alpha">A-Z</option>
+                    <option value="risk">Highest risk first</option>
+                    <option value="activity">Most active first</option>
+                    <option value="newest">Newest first</option>
+                    <option value="inactive">Longest inactive first</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  {sortedPreviewMembers.map((member: any) => (
+                    <div key={member.id} className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs text-white shrink-0"
+                          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
+                          {(member.name || member.email || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm truncate" style={{ fontWeight: 700, color: 'var(--heading)' }}>{member.name || 'Unnamed'}</div>
+                          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--t4)' }}>
+                            {[
+                              member.riskLevel ? formatCohortFilterValue('riskLevel', member.riskLevel) : null,
+                              member.membershipType || formatCohortFilterValue('normalizedMembershipType', member.normalizedMembershipType || ''),
+                              member.city,
+                            ].filter(Boolean).join(' · ') || member.email || 'Member profile'}
+                          </div>
+                          <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>
+                            {[
+                              member.healthScore != null ? `Health ${member.healthScore}` : null,
+                              member.sessionsLast30 != null ? `${member.sessionsLast30} in 30d` : null,
+                              member.daysSinceLastVisit != null ? `${member.daysSinceLastVisit}d since visit` : null,
+                              member.joinedDaysAgo != null ? `Joined ${member.joinedDaysAgo}d ago` : null,
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {previewQuery.data?.truncated ? (
+                  <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                    Sample only. Save the cohort to inspect the full audience.
+                  </p>
+                ) : null}
+              </div>
+            ) : effectiveFilters.length > 0 && !previewQuery.isLoading && !previewQuery.error ? (
+              <p className="text-xs" style={{ color: 'var(--t4)' }}>
+                No members match these filters yet.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
 
       {/* Save */}
       <div className="flex justify-end gap-3 flex-wrap">
@@ -1676,14 +2136,14 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           onClick={handleSave}
-          disabled={!name.trim() || previewFilters.length === 0 || saving}
+          disabled={!name.trim() || effectiveFilters.length === 0 || saving}
           className="px-5 py-2.5 rounded-xl text-sm"
           style={{
             background: 'rgba(139,92,246,0.16)',
             color: '#A78BFA',
             border: '1px solid rgba(139,92,246,0.32)',
             fontWeight: 600,
-            opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
+            opacity: (!name.trim() || effectiveFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
           {saving ? 'Creating...' : 'Save Cohort'}
@@ -1695,12 +2155,12 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           onClick={handleSaveAndCampaign}
-          disabled={!name.trim() || previewFilters.length === 0 || saving}
+          disabled={!name.trim() || effectiveFilters.length === 0 || saving}
           className="px-5 py-2.5 rounded-xl text-sm text-white flex items-center gap-1.5"
           style={{
             background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
             fontWeight: 600,
-            opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
+            opacity: (!name.trim() || effectiveFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
           {saving ? 'Creating...' : 'Save + Create Campaign'}
@@ -1740,7 +2200,11 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>{cohort?.name}</h2>
-            {cohort?.description && <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{cohort.description}</p>}
+            {getCohortDisplayDescription(cohort?.description, cohort?.filters) ? (
+              <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                {getCohortDisplayDescription(cohort?.description, cohort?.filters)}
+              </p>
+            ) : null}
           </div>
           <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
         </div>

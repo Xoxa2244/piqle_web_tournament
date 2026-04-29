@@ -81,14 +81,19 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
   })
 
   describe('UserId filter (NEW — cohort from session)', () => {
+    // ship-blocker #1 (2026-04-18) hardens this path against SQL injection
+    // by casting each id to `::uuid` — PostgreSQL rejects the row with a
+    // type error if a non-UUID string ever sneaks in. Tests assert the
+    // cast is present so a future refactor can't silently drop it.
     it('in operator with array of IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ['user-1', 'user-2', 'user-3'] }])
-      expect(result).toContain("u.id IN ('user-1','user-2','user-3')")
+      expect(result).toContain("u.id IN ('user-1'::uuid,'user-2'::uuid,'user-3'::uuid)")
     })
 
     it('escapes single quotes in user IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ["user-O'Brien"] }])
-      expect(result).toContain("u.id IN ('user-O''Brien')")
+      // Escape + cast still applied even with embedded quote.
+      expect(result).toContain("u.id IN ('user-O''Brien'::uuid)")
     })
 
     it('non-in operator returns TRUE (safety)', () => {

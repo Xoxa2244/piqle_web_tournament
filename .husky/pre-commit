@@ -1,1 +1,10 @@
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" npx tsc --noEmit
+#!/usr/bin/env sh
+
+# Run the local TypeScript CLI directly so Git Bash on Windows does not
+# depend on resolving the global `npx` shim from "C:/Program Files/...".
+if [ -f "node_modules/typescript/bin/tsc" ]; then
+  exec node node_modules/typescript/bin/tsc --noEmit
+fi
+
+echo "TypeScript is not installed. Run npm install first."
+exit 1

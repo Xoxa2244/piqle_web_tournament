@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getBrandFromHostname, BRANDS } from "@/lib/brand"
 
+const PUBLIC_FILE = /\.(.*)$/
+const PUBLIC_PAGE_PREFIXES = [
+  '/auth',
+  '/login',
+  '/unsubscribe',
+]
+
+function isPublicPageRoute(pathname: string) {
+  if (PUBLIC_FILE.test(pathname)) return true
+  return PUBLIC_PAGE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+}
+
 export async function middleware(req: NextRequest) {
   // Basic Auth for dev is disabled for now.
 
@@ -22,6 +34,33 @@ export async function middleware(req: NextRequest) {
     response.cookies.delete('next-auth.callback-url')
     response.cookies.delete('__Secure-next-auth.csrf-token')
     response.cookies.delete('next-auth.csrf-token')
+    return response
+  }
+
+  // Проверяем наличие cookie с сессией
+  // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
+  const correctCookieName = process.env.NODE_ENV === 'production'
+    ? '__Secure-next-auth.session-token'
+    : 'next-auth.session-token'
+
+  const oldCookieName = process.env.NODE_ENV === 'production'
+    ? '_Secure-next-auth.session-token' // Старая cookie с одним подчеркиванием
+    : null
+
+  const allCookies = req.cookies.getAll()
+  const sessionToken = allCookies.find((cookie) => (
+    cookie.name === correctCookieName || cookie.name.startsWith(`${correctCookieName}.`)
+  ))
+  const oldCookie = oldCookieName
+    ? allCookies.find((cookie) => cookie.name === oldCookieName || cookie.name.startsWith(`${oldCookieName}.`))
+    : null
+
+  if (!sessionToken && !isPublicPageRoute(req.nextUrl.pathname)) {
+    const signInUrl = new URL('/auth/signin', req.url)
+    const callbackPath = `${req.nextUrl.pathname}${req.nextUrl.search}`
+    signInUrl.searchParams.set('callbackUrl', callbackPath)
+    const response = NextResponse.redirect(signInUrl)
+    if (oldCookieName) response.cookies.delete(oldCookieName)
     return response
   }
 
@@ -55,19 +94,6 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Проверяем наличие cookie с сессией
-  // В production NextAuth использует __Secure- (два подчеркивания) для secure cookies
-  const correctCookieName = process.env.NODE_ENV === 'production'
-    ? '__Secure-next-auth.session-token'
-    : 'next-auth.session-token'
-
-  const oldCookieName = process.env.NODE_ENV === 'production'
-    ? '_Secure-next-auth.session-token' // Старая cookie с одним подчеркиванием
-    : null
-
-  const sessionToken = req.cookies.get(correctCookieName)
-  const oldCookie = oldCookieName ? req.cookies.get(oldCookieName) : null
-
   // IQSport root redirect (needs cookie check above)
   if (brandKey === 'iqsport' && !host.startsWith('demo.')) {
     const pathname = req.nextUrl.pathname
@@ -83,7 +109,6 @@ export async function middleware(req: NextRequest) {
 
   // Debug logging
   if (req.nextUrl.pathname.startsWith('/admin')) {
-    const allCookies = req.cookies.getAll()
     console.log('[Middleware] Path:', req.nextUrl.pathname)
     console.log('[Middleware] Looking for cookie:', correctCookieName)
     console.log('[Middleware] Found session token:', sessionToken?.value ? 'YES' : 'NO')

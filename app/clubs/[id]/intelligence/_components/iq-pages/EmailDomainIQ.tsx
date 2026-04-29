@@ -196,7 +196,7 @@ export function EmailDomainIQ({ clubId }: Props) {
                 type="text"
                 value={fromNameInput}
                 onChange={(e) => setFromNameInput(e.target.value)}
-                placeholder="Austin Pickleball Club"
+                placeholder={statusQuery.data?.fromName || 'Your Club Name'}
                 className="w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{
                   background: 'var(--subtle)',

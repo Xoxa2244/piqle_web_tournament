@@ -5,6 +5,7 @@ import { motion } from 'motion/react'
 import { Send, CheckCircle, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react'
 import { useTheme } from '../../IQThemeProvider'
 import type { CampaignCreatorState } from './useCampaignCreator'
+import { CampaignAudiencePreviewList } from './CampaignAudiencePreviewList'
 
 interface Step4Props {
   clubId: string
@@ -78,8 +79,6 @@ export function CampaignCreatorStep4Confirm({ clubId, state, onSend, isSending, 
   }
 
   // Confirmation state
-  const truncated = (text: string, max: number) => text.length > max ? text.slice(0, max) + '...' : text
-
   return (
     <div>
       <h3 className="text-xs mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Review & send</h3>
@@ -98,23 +97,58 @@ export function CampaignCreatorStep4Confirm({ clubId, state, onSend, isSending, 
             <span style={{ color: 'var(--t3)' }}>Audience</span>
             <span style={{ color: 'var(--heading)', fontWeight: 600 }}>{state.audience.count} members</span>
           </div>
+          {state.audience.label && (
+            <div className="text-xs" style={{ color: 'var(--t2)' }}>
+              {state.audience.label}
+            </div>
+          )}
           <div className="flex items-center justify-between text-xs">
             <span style={{ color: 'var(--t3)' }}>Channel</span>
             <span style={{ color: 'var(--heading)', fontWeight: 600 }}>{state.channel}</span>
           </div>
-          {state.message.subject && (
-            <div className="text-xs">
-              <span style={{ color: 'var(--t3)' }}>Subject: </span>
-              <span style={{ color: 'var(--t2)' }}>{truncated(state.message.subject, 60)}</span>
-            </div>
-          )}
-          {state.message.body && (
-            <div className="text-xs">
-              <span style={{ color: 'var(--t3)' }}>Message: </span>
-              <span style={{ color: 'var(--t2)' }}>{truncated(state.message.body, 100)}</span>
-            </div>
-          )}
         </div>
+      </div>
+
+      <div className="space-y-4 mb-5">
+        <CampaignAudiencePreviewList
+          members={state.audience.previewMembers}
+          title="Recipients who will receive this campaign"
+          emptyText="No recipients selected"
+          compact
+        />
+
+        {state.message.subject && (
+          <div className="rounded-xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <div className="text-[11px] mb-1" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              Email subject
+            </div>
+            <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+              {state.message.subject}
+            </div>
+          </div>
+        )}
+
+        {state.message.body && (
+          <div className="rounded-xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              Email body
+            </div>
+            <div className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--t2)' }}>
+              {state.message.body}
+            </div>
+          </div>
+        )}
+
+        {state.message.smsBody && (
+          <div className="rounded-xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+            <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              SMS copy
+            </div>
+            <div className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--t2)' }}>
+              {state.message.smsBody}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Actions */}

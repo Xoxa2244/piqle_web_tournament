@@ -82,8 +82,8 @@ export async function runLaunchPreflight(
           WHERE u.email ILIKE ANY (ARRAY[${blockedList}])
         )::int AS test_count
       FROM club_followers cf
-      JOIN users u ON u.id = cf."userId"
-      WHERE cf."clubId" = $1::uuid
+      JOIN users u ON u.id = cf.user_id
+      WHERE cf.club_id = $1
       `,
       clubId,
     )
@@ -214,7 +214,7 @@ export async function runLaunchPreflight(
         status: 'warn',
         message: "No AI recommendation logs in the last 48h with a non-sent status. Run the automation in dry mode once so you know what WOULD send.",
         actionLabel: 'Run dry-run',
-        actionHref: `/clubs/${clubId}/intelligence/agent`,
+        actionHref: `/clubs/${clubId}/intelligence/advisor`,
       })
     } else {
       checks.push({

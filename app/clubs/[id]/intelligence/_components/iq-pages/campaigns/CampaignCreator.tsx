@@ -49,7 +49,7 @@ export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: Cam
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl"
-        style={{ background: isDark ? '#0F1729' : '#FFFFFF', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}
+        style={{ background: isDark ? '#0B1220' : '#FFFFFF', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--card-border)' }}>
@@ -98,9 +98,15 @@ export function CampaignCreator({ clubId, initialType, onClose, onSuccess }: Cam
                   type={state.type!}
                   channel={state.channel}
                   audienceCount={state.audience.count}
+                  audienceLabel={state.audience.label}
+                  previewMembers={state.audience.previewMembers}
                   message={state.message}
                   onMessageChange={creator.setMessage}
+                  onGeneratedMessage={creator.setGeneratedMessage}
                   context={{
+                    sessionTitle: state.sessionId
+                      ? state.audience.label.replace(/^(Slot filler|Event invite):\s*/, '')
+                      : undefined,
                     riskSegment: state.riskSegment,
                     inactivityDays: state.inactivityDays,
                   }}

@@ -12,6 +12,7 @@ import {
     CheckSquare, Activity, PowerOff,
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { trpc } from "@/lib/trpc";
 import { AdvisorActionCard } from "./AdvisorActionCard";
 import { PendingQueueCards } from "./PendingQueueCards";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
@@ -27,10 +28,7 @@ import {
   type ReferralExecutionContext,
 } from "@/lib/ai/referral-offers";
 import { useAdvisorDrafts } from "../../_hooks/use-intelligence";
-import {
-  formatGuestTrialWorkspaceSummary,
-  formatReferralWorkspaceSummary,
-} from "./shared/growth-context";
+import { ChatRichText } from "../shared/ChatRichText";
 
 /* --- Suggested Prompts ---
  * Mix of "planning" prompts (draft, analyze, recommend) and "ops"
@@ -59,193 +57,13 @@ interface Conversation {
   updatedAt: string;
 }
 
-interface AdvisorDraftWorkspaceItem {
-  id: string
-  kind: string
-  status: string
-  title: string
-  summary: string | null
-  originalIntent: string | null
-  selectedPlan: 'requested' | 'recommended'
-  sandboxMode: boolean
-  scheduledFor?: string | Date | null
-  timeZone?: string | null
-  metadata?: {
-    sandboxPreview?: {
-      kind?: string
-      channel?: 'email' | 'sms' | 'both'
-      deliveryMode?: 'send_now' | 'send_later'
-      recipientCount?: number
-      skippedCount?: number
-      scheduledLabel?: string
-      note?: string
-      recipients?: Array<{
-        memberId: string
-        name: string
-        channel: 'email' | 'sms' | 'both'
-        score?: number
-        email?: string
-        phone?: string
-      }>
-    } | null
-    programmingPreview?: {
-      goal: string
-      publishMode: 'draft_only'
-      primary: {
-        id: string
-        title: string
-        dayOfWeek: string
-        timeSlot: 'morning' | 'afternoon' | 'evening'
-        startTime: string
-        endTime: string
-        format: string
-        skillLevel: string
-        projectedOccupancy: number
-        estimatedInterestedMembers: number
-        confidence: number
-      }
-      alternatives?: Array<{
-        id: string
-        title: string
-        dayOfWeek: string
-        timeSlot: 'morning' | 'afternoon' | 'evening'
-        startTime: string
-        endTime: string
-        format: string
-        skillLevel: string
-        projectedOccupancy: number
-        estimatedInterestedMembers: number
-        confidence: number
-      }>
-      insights?: string[]
-    } | null
-    opsSessionDrafts?: Array<{
-      id: string
-      sourceProposalId: string
-      origin: 'primary' | 'alternative'
-      state: 'ready_for_ops'
-      title: string
-      dayOfWeek: string
-      timeSlot: 'morning' | 'afternoon' | 'evening'
-      startTime: string
-      endTime: string
-      format: string
-      skillLevel: string
-      maxPlayers: number
-      projectedOccupancy: number
-      estimatedInterestedMembers: number
-      confidence: number
-      note: string
-    }> | null
-    guestTrialContext?: GuestTrialExecutionContext | null
-    referralContext?: ReferralExecutionContext | null
-  } | null
-  updatedAt: string | Date
-  createdAt: string | Date
-  conversationId?: string | null
-  conversation?: {
-    id: string
-    title: string | null
-  } | null
-}
-
-const advisorDraftSections = [
-  { key: 'review_ready', label: 'Needs Review' },
-  { key: 'sandboxed', label: 'Preview Inbox' },
-  { key: 'draft_saved', label: 'Drafts' },
-  { key: 'scheduled', label: 'Scheduled' },
-  { key: 'completed', label: 'Recently Applied' },
-  { key: 'paused', label: 'Paused' },
-  { key: 'stopped', label: 'Stopped' },
-] as const
-
-function getAdvisorDraftBucket(status: string) {
-  if (status === 'review_ready') return 'review_ready'
-  if (status === 'sandboxed') return 'sandboxed'
-  if (status === 'draft_saved') return 'draft_saved'
-  if (status === 'scheduled') return 'scheduled'
-  if (status === 'approved' || status === 'sent') return 'completed'
-  if (status === 'snoozed') return 'paused'
-  return 'stopped'
-}
-
-function formatDraftStatus(status: string) {
-  switch (status) {
-    case 'review_ready': return 'Review'
-    case 'draft_saved': return 'Draft'
-    case 'sandboxed': return 'Preview'
-    case 'scheduled': return 'Scheduled'
-    case 'approved': return 'Applied'
-    case 'sent': return 'Sent'
-    case 'snoozed': return 'Snoozed'
-    case 'declined': return 'Declined'
-    case 'blocked': return 'Blocked'
-    default: return status
-  }
-}
-
-function getDraftStatusStyles(status: string) {
-  switch (status) {
-    case 'review_ready':
-      return { background: "rgba(139,92,246,0.14)", color: "#C4B5FD" }
-    case 'draft_saved':
-      return { background: "rgba(6,182,212,0.14)", color: "#67E8F9" }
-    case 'sandboxed':
-      return { background: "rgba(244,114,182,0.14)", color: "#F9A8D4" }
-    case 'scheduled':
-      return { background: "rgba(245,158,11,0.14)", color: "#FCD34D" }
-    case 'approved':
-    case 'sent':
-      return { background: "rgba(16,185,129,0.14)", color: "#86EFAC" }
-    case 'snoozed':
-      return { background: "rgba(148,163,184,0.14)", color: "#CBD5E1" }
-    default:
-      return { background: "rgba(239,68,68,0.14)", color: "#FCA5A5" }
-  }
-}
-
-function formatDraftKind(kind: string) {
-  switch (kind) {
-    case 'create_campaign': return 'Campaign'
-    case 'fill_session': return 'Slot Filler'
-    case 'reactivate_members': return 'Reactivation'
-    case 'trial_follow_up': return 'Trial Follow-up'
-    case 'renewal_reactivation': return 'Renewal Outreach'
-    case 'program_schedule': return 'Programming Plan'
-    case 'create_cohort': return 'Audience'
-    case 'update_contact_policy': return 'Contact Policy'
-    case 'update_autonomy_policy': return 'Autopilot Policy'
-    case 'update_sandbox_routing': return 'Sandbox Routing'
-    case 'update_admin_reminder_routing': return 'Admin Reminder Routing'
-    default: return kind.replace(/_/g, ' ')
-  }
-}
-
-function formatDraftSchedule(value: string | Date | null | undefined, timeZone?: string | null) {
-  if (!value) return null
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: timeZone || undefined,
-  }).format(date)
-}
-
-function formatProgrammingValue(value: string) {
-  return value
-    .toLowerCase()
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function formatProgrammingWindow(preview: NonNullable<AdvisorDraftWorkspaceItem['metadata']>['programmingPreview']) {
-  if (!preview) return null
-  return `${preview.primary.dayOfWeek} · ${preview.primary.startTime}-${preview.primary.endTime} · ${formatProgrammingValue(preview.primary.format)} · ${formatProgrammingValue(preview.primary.skillLevel)}`
-}
+type AdvisorUiMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: Array<{ type: 'text'; text: string }>;
+  createdAt?: Date;
+  metadata?: unknown;
+};
 
 /* --- Typing Indicator --- */
 function TypingIndicator() {
@@ -777,7 +595,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const searchParams = useSearchParams();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<Record<string, AdvisorUiMessage[]>>({});
+  const [draftMessages, setDraftMessages] = useState<AdvisorUiMessage[]>([]);
+  const [visibleMessages, setVisibleMessages] = useState<AdvisorUiMessage[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   // /api/ai/advisor-action goes OUTSIDE useChat's streaming flow (plain
   // POST → JSON), so `status` from useChat doesn't flip to 'submitted'
@@ -787,20 +609,18 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const [advisorActionPending, setAdvisorActionPending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const {
-    data: advisorDrafts = [],
-    isLoading: isDraftsLoading,
-    refetch: refetchAdvisorDrafts,
-  } = useAdvisorDrafts(clubId, 24);
+  const { refetch: refetchAdvisorDrafts } = useAdvisorDrafts(clubId, 24);
 
   // Track conversation ID from API response without re-creating transport mid-stream
   const convIdRef = useRef<string | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+  const streamConvIdRef = useRef<string | null>(null);
   const pendingConvIdRef = useRef<string | null>(null);
-  const loadFromDbRef = useRef(false);
   const appliedPromptRef = useRef<string | null>(null);
   const pendingGuestTrialContextRef = useRef<GuestTrialExecutionContext | null>(null);
   const pendingReferralContextRef = useRef<ReferralExecutionContext | null>(null);
   convIdRef.current = conversationId;
+  activeConvIdRef.current = activeConvId;
 
   // Build transport (memoized on clubId)
   const transport = useMemo(() => {
@@ -846,15 +666,107 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       .catch(() => {});
   }, [clubId]);
 
+  const mapStoredMessages = useCallback((items: any[]): AdvisorUiMessage[] => (
+    (items || [])
+      .filter((m: any) => m.role !== 'system')
+      .map((m: any) => ({
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        parts: [{ type: 'text' as const, text: m.content }],
+        createdAt: new Date(m.createdAt),
+        metadata: m.metadata ?? undefined,
+      }))
+  ), []);
+
+  const updateConversationMessages = useCallback((
+    targetConvId: string | null,
+    updater: AdvisorUiMessage[] | ((prev: AdvisorUiMessage[]) => AdvisorUiMessage[]),
+  ) => {
+    if (!targetConvId) {
+      setDraftMessages((prev) => typeof updater === 'function' ? updater(prev) : updater);
+      return;
+    }
+
+    setConversationMessages((prev) => {
+      const current = prev[targetConvId] || [];
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return { ...prev, [targetConvId]: next };
+    });
+  }, []);
+
+  const createConversation = useCallback(async (titleSource: string) => {
+    const response = await fetch('/api/ai/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clubId,
+        titleSource,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create conversation');
+    }
+
+    const payload = await response.json();
+    const conversation = payload?.conversation as Conversation | undefined;
+    if (!conversation?.id) {
+      throw new Error('Conversation payload missing id');
+    }
+
+    setConversations((prev) => [
+      conversation,
+      ...prev.filter((item) => item.id !== conversation.id),
+    ]);
+
+    return conversation;
+  }, [clubId]);
+
+  const deleteConversation = trpc.intelligence.deleteConversation.useMutation({
+    onSuccess: (_result, variables) => {
+      setConversations((prev) => prev.filter((conv) => conv.id !== variables.conversationId));
+      setConversationMessages((prev) => {
+        const next = { ...prev };
+        delete next[variables.conversationId];
+        return next;
+      });
+      if (activeConvId === variables.conversationId) {
+        setActiveConvId(null);
+        setConversationId(null);
+        setDraftMessages([]);
+        setVisibleMessages([]);
+        setMessages([]);
+      }
+    },
+  });
+
   // Apply pending conversation ID after streaming ends
   useEffect(() => {
     if (!isBusy && pendingConvIdRef.current) {
       setConversationId(pendingConvIdRef.current);
-      setActiveConvId(pendingConvIdRef.current);
+      if (!activeConvIdRef.current) {
+        setActiveConvId(pendingConvIdRef.current);
+      }
       pendingConvIdRef.current = null;
       refreshConversations();
     }
   }, [isBusy, refreshConversations]);
+
+  useEffect(() => {
+    const streamConvId = streamConvIdRef.current;
+    if (!streamConvId) return;
+    if ((messages as AdvisorUiMessage[]).length === 0) return;
+
+    setConversationMessages((prev) => ({ ...prev, [streamConvId]: messages as AdvisorUiMessage[] }));
+    if (activeConvIdRef.current === streamConvId) {
+      setVisibleMessages(messages as AdvisorUiMessage[]);
+    }
+
+    if (status !== 'submitted' && status !== 'streaming') {
+      streamConvIdRef.current = null;
+      refreshConversations();
+    }
+  }, [messages, refreshConversations, status]);
 
   // Load conversation list on mount
   useEffect(() => {
@@ -886,24 +798,31 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // Load a specific conversation's messages from DB
   const loadConversation = useCallback(async (convId: string) => {
     try {
+      setActiveConvId(convId);
+      setConversationId(convId);
+      const cachedMessages = conversationMessages[convId] || [];
+      setVisibleMessages(cachedMessages);
+      if (cachedMessages.length === 0) {
+        setLoadingConversationId(convId);
+      }
+
       const res = await fetch(`/api/ai/conversations/${convId}/messages`);
       if (!res.ok) return;
       const data = await res.json();
-      setMessages(
-        (data.messages || [])
-          .filter((m: any) => m.role !== 'system')
-          .map((m: any) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            parts: [{ type: 'text' as const, text: m.content }],
-              createdAt: new Date(m.createdAt),
-              metadata: m.metadata ?? undefined,
-            }))
-      );
-      setConversationId(convId);
-      setActiveConvId(convId);
+      const nextMessages = mapStoredMessages(data.messages || []);
+      setConversationMessages((prev) => ({ ...prev, [convId]: nextMessages }));
+      if (activeConvIdRef.current === convId) {
+        setVisibleMessages(nextMessages);
+      }
+
+      if (!streamConvIdRef.current || streamConvIdRef.current === convId) {
+        setMessages(nextMessages);
+      }
     } catch { /* ignore */ }
-  }, [setMessages]);
+    finally {
+      setLoadingConversationId((current) => (current === convId ? null : current));
+    }
+  }, [conversationMessages, mapStoredMessages, setMessages]);
 
   useEffect(() => {
     const requestedConversationId = searchParams.get('conversationId');
@@ -915,12 +834,18 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isBusy]);
+  }, [isBusy, visibleMessages]);
 
   const startNewChat = useCallback(() => {
+    pendingConvIdRef.current = null;
+    setLoadingConversationId(null);
     setActiveConvId(null);
     setConversationId(null);
-    setMessages([]);
+    setDraftMessages([]);
+    setVisibleMessages([]);
+    if (!streamConvIdRef.current) {
+      setMessages([]);
+    }
     setInputValue("");
     inputRef.current?.focus();
   }, [setMessages]);
@@ -930,21 +855,43 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     if (!msg || isBusy) return;
     setInputValue("");
 
+    const draftSeedMessages = draftMessages;
+    let targetConvId = convIdRef.current;
+    if (!targetConvId) {
+      try {
+        const conversation = await createConversation(msg);
+        targetConvId = conversation.id;
+        convIdRef.current = conversation.id;
+        setConversationId(conversation.id);
+        setActiveConvId(conversation.id);
+        if (draftSeedMessages.length > 0) {
+          updateConversationMessages(conversation.id, draftSeedMessages);
+          setDraftMessages([]);
+        }
+      } catch {
+        targetConvId = null;
+      }
+    }
+
+    const baseMessages = targetConvId
+      ? (conversationMessages[targetConvId] || draftSeedMessages)
+      : draftSeedMessages;
+
     // Optimistic UI: push the user's message immediately so the typing
     // indicator + bubble show up the moment the chip/Send is clicked.
     // /api/ai/advisor-action can take tens of seconds on a cold planner —
     // without this, the whole page looks frozen and users click the chip
     // a second time assuming nothing happened.
     const optimisticUserMsgId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: optimisticUserMsgId,
-        role: 'user',
-        parts: [{ type: 'text' as const, text: msg }],
-        createdAt: new Date(),
-      },
-    ]);
+    const optimisticUserMessage: AdvisorUiMessage = {
+      id: optimisticUserMsgId,
+      role: 'user',
+      parts: [{ type: 'text' as const, text: msg }],
+      createdAt: new Date(),
+    };
+    const optimisticMessages = [...baseMessages, optimisticUserMessage];
+    updateConversationMessages(targetConvId, optimisticMessages);
+    setVisibleMessages(optimisticMessages);
     setAdvisorActionPending(true);
 
     try {
@@ -954,7 +901,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         body: JSON.stringify({
           clubId,
           message: msg,
-          conversationId: convIdRef.current,
+          conversationId: targetConvId,
           guestTrialContext: pendingGuestTrialContextRef.current,
           referralContext: pendingReferralContextRef.current,
         }),
@@ -965,24 +912,27 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
         if (payload?.handled) {
           pendingGuestTrialContextRef.current = null;
           pendingReferralContextRef.current = null;
-          const nextConvId = payload.conversationId || convIdRef.current;
+          const nextConvId = payload.conversationId || targetConvId || convIdRef.current;
           if (nextConvId) {
+            convIdRef.current = nextConvId;
             setConversationId(nextConvId);
-            setActiveConvId(nextConvId);
           }
 
-          // User message already optimistically added — only append the
-          // assistant reply so we don't duplicate.
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: payload.assistantMessageId || crypto.randomUUID(),
-              role: 'assistant',
-              parts: [{ type: 'text' as const, text: payload.assistantMessage }],
-              createdAt: new Date(),
-              metadata: payload.assistantMetadata ?? undefined,
-            },
-          ]);
+          const resolvedConvId = nextConvId || targetConvId;
+          const assistantMessage: AdvisorUiMessage = {
+            id: payload.assistantMessageId || crypto.randomUUID(),
+            role: 'assistant',
+            parts: [{ type: 'text' as const, text: payload.assistantMessage }],
+            createdAt: new Date(),
+            metadata: payload.assistantMetadata ?? undefined,
+          };
+          updateConversationMessages(resolvedConvId, (prev) => {
+            const nextMessages = [...prev, assistantMessage];
+            if (activeConvIdRef.current === resolvedConvId || (!activeConvIdRef.current && !resolvedConvId)) {
+              setVisibleMessages(nextMessages);
+            }
+            return nextMessages;
+          });
           void refetchAdvisorDrafts();
           refreshConversations();
           setAdvisorActionPending(false);
@@ -1000,10 +950,19 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     // Fallback to the useChat stream path. Drop the optimistic user
     // message first — useChat appends its own, and duplicates would
     // leak into the DB conversation history on save.
-    setMessages((prev) => prev.filter((m) => m.id !== optimisticUserMsgId));
     pendingGuestTrialContextRef.current = null;
+    pendingReferralContextRef.current = null;
+    if (targetConvId) {
+      streamConvIdRef.current = targetConvId;
+      convIdRef.current = targetConvId;
+      setConversationId(targetConvId);
+      setMessages(baseMessages);
+    } else {
+      streamConvIdRef.current = null;
+      setMessages(baseMessages);
+    }
     sendMessage({ text: msg });
-  }, [clubId, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages]);
+  }, [clubId, conversationMessages, createConversation, draftMessages, inputValue, isBusy, refetchAdvisorDrafts, refreshConversations, sendMessage, setMessages, updateConversationMessages]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1014,41 +973,6 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     setInputValue(text);
     inputRef.current?.focus();
   }, []);
-
-  const groupedDrafts = useMemo(() => {
-    const buckets = new Map<string, AdvisorDraftWorkspaceItem[]>()
-    advisorDraftSections.forEach((section) => buckets.set(section.key, []))
-
-    for (const draft of advisorDrafts as AdvisorDraftWorkspaceItem[]) {
-      if (draft.kind === 'program_schedule') continue
-      const bucket = getAdvisorDraftBucket(draft.status)
-      buckets.get(bucket)?.push(draft)
-    }
-
-    return advisorDraftSections
-      .map((section) => ({
-        ...section,
-        drafts: buckets.get(section.key) || [],
-      }))
-      .filter((section) => section.drafts.length > 0)
-  }, [advisorDrafts]);
-
-  const programmingDrafts = useMemo(
-    () => (advisorDrafts as AdvisorDraftWorkspaceItem[]).filter((draft) => draft.kind === 'program_schedule').slice(0, 4),
-    [advisorDrafts],
-  );
-
-  const openDraftWorkspaceItem = useCallback((draft: AdvisorDraftWorkspaceItem) => {
-    if (draft.conversationId) {
-      void loadConversation(draft.conversationId)
-      return
-    }
-
-    startNewChat()
-    if (draft.originalIntent) {
-      draftIntoComposer(draft.originalIntent)
-    }
-  }, [draftIntoComposer, loadConversation, startNewChat]);
 
   return (
     <div className="flex gap-6 max-w-[1400px] mx-auto" style={{ height: "calc(100vh - 112px)" }}>
@@ -1074,10 +998,9 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             {conversations.map((conv) => {
               const isActive = activeConvId === conv.id;
               return (
-                <button
+                <div
                   key={conv.id}
-                  onClick={() => loadConversation(conv.id)}
-                  className="w-full text-left px-3 py-2.5 rounded-xl transition-all group"
+                  className="group rounded-xl transition-all"
                   style={{
                     background: isActive ? (isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.04)") : "transparent",
                     border: isActive ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
@@ -1085,325 +1008,34 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                   onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--hover)"; }}
                   onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs truncate flex-1" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
-                      {conv.title || 'New conversation'}
-                    </span>
+                  <div className="flex items-start gap-1 px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => loadConversation(conv.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="text-xs truncate" style={{ fontWeight: isActive ? 600 : 500, color: isActive ? "var(--heading)" : "var(--t2)" }}>
+                        {conv.title || 'New conversation'}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Delete conversation"
+                      disabled={deleteConversation.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConversation.mutate({ conversationId: conv.id });
+                      }}
+                      className="mt-0.5 rounded-lg p-1 opacity-0 transition-opacity group-hover:opacity-100 disabled:opacity-40"
+                      style={{ color: "var(--t4)" }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>{formatRelative(conv.updatedAt)}</div>
-                </button>
+                </div>
               );
             })}
-          </div>
-
-          <div className="pt-3" style={{ borderTop: "1px solid var(--divider)" }}>
-            <div className="flex items-center justify-between px-2 pb-2">
-              <div>
-                <h4 style={{ fontSize: "12px", fontWeight: 700, color: "var(--heading)" }}>Agent Drafts</h4>
-                <div className="text-[10px]" style={{ color: "var(--t4)" }}>
-                  {advisorDrafts.length} records in the agent workspace
-                </div>
-              </div>
-              <button
-                onClick={() => void refetchAdvisorDrafts()}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] transition-colors"
-                style={{ background: "var(--subtle)", color: "var(--t3)", fontWeight: 600 }}
-              >
-                <RotateCcw className="w-3 h-3" />
-                Refresh
-              </button>
-            </div>
-
-            {isDraftsLoading && (
-              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
-                Loading draft workspace…
-              </div>
-            )}
-
-            {!isDraftsLoading && groupedDrafts.length === 0 && (
-              <div className="px-2 py-4 text-[11px]" style={{ color: "var(--t4)" }}>
-                No agent drafts yet
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {programmingDrafts.length > 0 && (
-                <div>
-                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "#A78BFA", fontWeight: 700 }}>
-                    Programming Drafts
-                  </div>
-                  <div className="space-y-2">
-                    {programmingDrafts.map((draft) => {
-                      const preview = draft.metadata?.programmingPreview || null
-                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
-                      const statusStyles = getDraftStatusStyles(draft.status)
-                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
-                      const previewWindow = formatProgrammingWindow(preview || null)
-
-                      return (
-                        <button
-                          key={`programming-${draft.id}`}
-                          onClick={() => openDraftWorkspaceItem(draft)}
-                          className="w-full text-left px-3 py-3 rounded-xl transition-all"
-                          style={{
-                            background: isDraftActive ? (isDark ? "rgba(139,92,246,0.10)" : "rgba(139,92,246,0.05)") : "rgba(139,92,246,0.05)",
-                            border: isDraftActive ? "1px solid rgba(139,92,246,0.26)" : "1px solid rgba(139,92,246,0.12)",
-                          }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[11px]" style={{ color: "#C4B5FD", fontWeight: 700 }}>
-                                Draft-first schedule plan
-                              </div>
-                              <div className="text-xs mt-1 truncate" style={{ color: "var(--heading)", fontWeight: 700 }}>
-                                {preview?.primary.title || draft.title}
-                              </div>
-                            </div>
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
-                              style={{ ...statusStyles, fontWeight: 700 }}
-                            >
-                              {formatDraftStatus(draft.status)}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px]"
-                              style={{ background: "rgba(139,92,246,0.16)", color: "#DDD6FE", fontWeight: 700 }}
-                            >
-                              {preview ? `${1 + (preview.alternatives?.length || 0)} ideas` : 'Programming'}
-                            </span>
-                            {draft.selectedPlan === 'recommended' && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
-                              >
-                                Agent plan
-                              </span>
-                            )}
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px]"
-                              style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                            >
-                              Draft only
-                            </span>
-                            {opsSessionDrafts.length > 0 && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(16,185,129,0.12)", color: "#86EFAC", fontWeight: 700 }}
-                              >
-                                {opsSessionDrafts.length} ops ready
-                              </span>
-                            )}
-                          </div>
-
-                          {previewWindow && (
-                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                              {previewWindow}
-                            </div>
-                          )}
-
-                          {preview && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(255,255,255,0.04)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Programming preview
-                              </div>
-                              <div className="mt-1">
-                                {preview.primary.projectedOccupancy}% projected fill · {preview.primary.estimatedInterestedMembers} likely players · {preview.primary.confidence}/100 confidence
-                              </div>
-                              {opsSessionDrafts.length > 0 && (
-                                <div className="mt-1" style={{ color: "#67E8F9" }}>
-                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for scheduling review.
-                                </div>
-                              )}
-                              {preview.insights?.[0] && (
-                                <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                  {preview.insights[0]}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
-                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
-                            <span>{formatRelative(String(draft.updatedAt))}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {groupedDrafts.map((section) => (
-                <div key={section.key}>
-                  <div className="px-2 pb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: "var(--t4)", fontWeight: 700 }}>
-                    {section.label}
-                  </div>
-                  <div className="space-y-1">
-                    {section.drafts.map((draft) => {
-                      const statusStyles = getDraftStatusStyles(draft.status)
-                      const scheduleLabel = formatDraftSchedule(draft.scheduledFor, draft.timeZone)
-                      const isDraftActive = Boolean(draft.conversationId && draft.conversationId === activeConvId)
-                      const sandboxPreview = draft.metadata?.sandboxPreview || null
-                      const sandboxRecipients = sandboxPreview?.recipients || []
-                      const programmingPreview = draft.metadata?.programmingPreview || null
-                      const opsSessionDrafts = draft.metadata?.opsSessionDrafts || []
-                      const guestTrialContext = parseGuestTrialExecutionContext(draft.metadata?.guestTrialContext || null)
-                      const guestTrialWorkspaceSummary = formatGuestTrialWorkspaceSummary(guestTrialContext)
-                      const referralContext = parseReferralExecutionContext(draft.metadata?.referralContext || null)
-                      const referralWorkspaceSummary = formatReferralWorkspaceSummary(referralContext)
-                      const programmingWindow = formatProgrammingWindow(programmingPreview || null)
-                      const sandboxSummary = draft.status === 'sandboxed'
-                        ? `${sandboxPreview?.recipientCount || 0} eligible${sandboxPreview?.skippedCount ? `, ${sandboxPreview.skippedCount} skipped` : ''}`
-                        : null
-
-                      return (
-                        <button
-                          key={draft.id}
-                          onClick={() => openDraftWorkspaceItem(draft)}
-                          className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
-                          style={{
-                            background: isDraftActive ? (isDark ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.05)") : "var(--subtle)",
-                            border: isDraftActive ? "1px solid rgba(6,182,212,0.22)" : "1px solid var(--card-border)",
-                          }}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[11px]" style={{ color: "var(--t4)", fontWeight: 700 }}>
-                                {formatDraftKind(draft.kind)}
-                              </div>
-                              <div className="text-xs truncate mt-0.5" style={{ color: "var(--heading)", fontWeight: 700 }}>
-                                {draft.title}
-                              </div>
-                            </div>
-                            <span
-                              className="px-2 py-1 rounded-full text-[10px] shrink-0"
-                              style={{ ...statusStyles, fontWeight: 700 }}
-                            >
-                              {formatDraftStatus(draft.status)}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {draft.selectedPlan === 'recommended' && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(139,92,246,0.12)", color: "#C4B5FD", fontWeight: 700 }}
-                              >
-                                Agent plan
-                              </span>
-                            )}
-                            {draft.sandboxMode && (
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px]"
-                                style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                              >
-                                Sandbox
-                              </span>
-                            )}
-                            {guestTrialWorkspaceSummary && (
-                              <>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(6,182,212,0.12)", color: "#67E8F9", fontWeight: 700 }}
-                                >
-                                  {guestTrialWorkspaceSummary.stage}
-                                </span>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--t2)" }}
-                                >
-                                  {guestTrialWorkspaceSummary.detail}
-                                </span>
-                              </>
-                            )}
-                            {referralWorkspaceSummary && (
-                              <>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(245,158,11,0.12)", color: "#FCD34D", fontWeight: 700 }}
-                                >
-                                  {referralWorkspaceSummary.lane}
-                                </span>
-                                <span
-                                  className="px-2 py-1 rounded-full text-[10px]"
-                                  style={{ background: "rgba(245,158,11,0.10)", color: "#FDE68A", fontWeight: 700 }}
-                                >
-                                  {referralWorkspaceSummary.detail}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {(draft.summary || scheduleLabel) && (
-                            <div className="text-[11px] mt-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>
-                              {draft.summary || (scheduleLabel ? `Scheduled for ${scheduleLabel}` : '')}
-                            </div>
-                          )}
-
-                          {sandboxSummary && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(244,114,182,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Sandbox preview
-                              </div>
-                              <div className="mt-1">
-                                {sandboxSummary}
-                                {sandboxPreview?.scheduledLabel ? ` · ${sandboxPreview.scheduledLabel}` : ''}
-                              </div>
-                              {sandboxRecipients.length > 0 && (
-                                <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                  {sandboxRecipients.slice(0, 3).map((recipient) => recipient.name).join(', ')}
-                                  {sandboxPreview?.recipientCount && sandboxPreview.recipientCount > 3
-                                    ? ` +${sandboxPreview.recipientCount - 3} more`
-                                    : ''}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {!sandboxSummary && draft.kind === 'program_schedule' && programmingPreview && (
-                            <div
-                              className="mt-2 rounded-lg px-2.5 py-2 text-[11px]"
-                              style={{ background: "rgba(139,92,246,0.08)", color: "var(--t2)", lineHeight: 1.5 }}
-                            >
-                              <div style={{ fontWeight: 700, color: "var(--heading)" }}>
-                                Draft preview
-                              </div>
-                              <div className="mt-1">
-                                {programmingPreview.primary.title}
-                                {programmingWindow ? ` · ${programmingWindow}` : ''}
-                              </div>
-                              <div className="mt-1" style={{ color: "var(--t3)" }}>
-                                {programmingPreview.primary.projectedOccupancy}% projected fill · {programmingPreview.primary.estimatedInterestedMembers} likely players
-                                {programmingPreview.alternatives?.length ? ` · +${programmingPreview.alternatives.length} alternatives` : ''}
-                              </div>
-                              {opsSessionDrafts.length > 0 && (
-                                <div className="mt-1" style={{ color: "#67E8F9" }}>
-                                  {opsSessionDrafts.length} internal ops draft{opsSessionDrafts.length === 1 ? '' : 's'} ready for the club ops team
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2 text-[10px]" style={{ color: "var(--t4)" }}>
-                            <span>{draft.conversation?.title || 'Open in Advisor'}</span>
-                            <span>{formatRelative(String(draft.updatedAt))}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -1436,8 +1068,49 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+          {!activeConvId && !isBusy && (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
+                <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+              </div>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--heading)" }}>Ask me anything about your club</h3>
+              <p className="text-sm mb-6 max-w-md" style={{ color: "var(--t3)" }}>
+                I have access to your sessions, members, bookings, and revenue data. Ask me to analyze trends, build audiences, draft campaigns, or suggest strategies.
+              </p>
+              <div className="grid grid-cols-2 gap-2 max-w-lg">
+                {suggestedPrompts.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <button
+                      key={p.text}
+                      onClick={() => handleSend(p.text)}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left transition-all hover:scale-[1.02]"
+                      style={{
+                        background: "var(--subtle)",
+                        border: "1px solid var(--card-border)",
+                        color: "var(--t2)",
+                        fontWeight: 500,
+                      }}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
+                      <span>{p.text}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Empty state */}
-          {messages.length === 0 && !isBusy && (
+          {Boolean(activeConvId) && loadingConversationId === activeConvId && (
+            <div className="flex items-center justify-center h-full">
+              <div className="rounded-2xl px-4 py-3" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+                <TypingIndicator />
+              </div>
+            </div>
+          )}
+
+          {Boolean(activeConvId) && visibleMessages.length === 0 && !isBusy && loadingConversationId !== activeConvId && (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1))", border: "1px solid rgba(139,92,246,0.2)" }}>
                 <Sparkles className="w-8 h-8" style={{ color: isDark ? "#A78BFA" : "#7C3AED" }} />
@@ -1471,7 +1144,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           )}
 
           <AnimatePresence>
-            {messages.map((msg, msgIdx) => {
+            {visibleMessages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
               const action = msg.role === 'assistant'
                 ? getAdvisorActionFromMetadata((msg as any).metadata) || extractAdvisorAction(text)
@@ -1498,7 +1171,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               }
               // Skip assistant messages with no text/action/queue
               if (msg.role === 'assistant' && !textWithoutAction.trim() && !action && !pendingQueue) return null;
-              const isLastAssistant = msg.role === 'assistant' && msgIdx === messages.length - 1;
+              const isLastAssistant = msg.role === 'assistant' && msgIdx === visibleMessages.length - 1;
               const { cleanText, suggestions } = msg.role === 'assistant'
                 ? extractSuggestions(textWithoutAction)
                 : { cleanText: text, suggestions: [] };
@@ -1529,22 +1202,15 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                           lineHeight: 1.7,
                         }}
                       >
-                        {cleanText.split("\n").map((line, i) => {
-                          const boldRegex = /\*\*(.*?)\*\*/g;
-                          const parts = line.split(boldRegex);
-                          return (
-                            <p key={i} className={line === "" ? "h-2" : ""}>
-                              {parts.map((part, j) =>
-                                j % 2 === 1 ? (
-                                  <strong key={j} style={{ fontWeight: 700, color: "var(--heading)" }}>{part}</strong>
-                                ) : (
-                                  <span key={j}>{part}</span>
-                                )
-                              )}
-                            </p>
-                          );
-                        })}
-                      </div>
+                            <ChatRichText
+                              text={cleanText}
+                              className="space-y-1.5"
+                              lineClassName="whitespace-pre-wrap"
+                              linkClassName="font-semibold underline"
+                              linkStyle={{ color: "#67E8F9" }}
+                              strongStyle={{ fontWeight: 700, color: "var(--heading)" }}
+                            />
+                          </div>
                     )}
 
                     {msg.role === "assistant" && action && (
@@ -1656,7 +1322,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           </AnimatePresence>
 
           {/* Loading indicator when waiting for first response chunk */}
-          {isBusy && messages[messages.length - 1]?.role === 'user' && (
+          {isBusy && visibleMessages[visibleMessages.length - 1]?.role === 'user' && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
                 <Sparkles className="w-4 h-4 text-white" />

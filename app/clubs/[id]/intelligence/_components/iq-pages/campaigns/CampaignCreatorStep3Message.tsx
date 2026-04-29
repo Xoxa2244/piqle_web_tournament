@@ -1,17 +1,22 @@
 'use client'
 
-import React from 'react'
+import React, { useCallback, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react'
 import { useGenerateCampaignMessage } from '../../../_hooks/use-intelligence'
+import { CampaignAudiencePreviewList } from './CampaignAudiencePreviewList'
+import type { CampaignAudiencePreviewMember, CampaignMessageState } from './useCampaignCreator'
 
 interface Step3Props {
   clubId: string
   type: string
   channel: string
   audienceCount: number
-  message: { subject: string; body: string; smsBody: string }
-  onMessageChange: (msg: { subject: string; body: string; smsBody: string }) => void
+  audienceLabel: string
+  previewMembers: CampaignAudiencePreviewMember[]
+  message: CampaignMessageState
+  onMessageChange: (msg: CampaignMessageState) => void
+  onGeneratedMessage: (msg: CampaignMessageState) => void
   context?: {
     sessionTitle?: string
     riskSegment?: string
@@ -26,8 +31,11 @@ export function CampaignCreatorStep3Message({
   type,
   channel,
   audienceCount,
+  audienceLabel,
+  previewMembers,
   message,
   onMessageChange,
+  onGeneratedMessage,
   context,
   onContinue,
   onBack,
@@ -37,7 +45,7 @@ export function CampaignCreatorStep3Message({
   const showEmail = channel === 'email' || channel === 'both'
   const showSms = channel === 'sms' || channel === 'both'
 
-  const handleGenerate = () => {
+  const handleGenerate = useCallback(() => {
     generate.mutate(
       {
         clubId,
@@ -48,7 +56,7 @@ export function CampaignCreatorStep3Message({
       },
       {
         onSuccess: (data: any) => {
-          onMessageChange({
+          onGeneratedMessage({
             subject: data.subject ?? message.subject,
             body: data.body ?? data.emailBody ?? message.body,
             smsBody: data.smsBody ?? message.smsBody,
@@ -56,7 +64,18 @@ export function CampaignCreatorStep3Message({
         },
       }
     )
-  }
+  }, [audienceCount, channel, clubId, context, generate, message.body, message.smsBody, message.subject, onGeneratedMessage, type])
+
+  useEffect(() => {
+    const needsEmailDraft = showEmail && (!message.subject.trim() || !message.body.trim())
+    const needsSmsDraft = showSms && !message.smsBody.trim()
+
+    if (!audienceCount || generate.isPending || (!needsEmailDraft && !needsSmsDraft)) {
+      return
+    }
+
+    handleGenerate()
+  }, [audienceCount, generate.isPending, handleGenerate, message.body, message.smsBody, message.subject, showEmail, showSms])
 
   const canContinue = Boolean(
     (showEmail ? message.subject.trim() && message.body.trim() : true) &&
@@ -90,8 +109,8 @@ export function CampaignCreatorStep3Message({
       <div
         className="rounded-xl p-4 mb-4"
         style={{
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(6,182,212,0.05))',
-          border: '1px solid rgba(139,92,246,0.15)',
+          background: 'linear-gradient(135deg, #161E33, #111A2C)',
+          border: '1px solid rgba(139,92,246,0.22)',
         }}
       >
         <div className="flex items-center gap-2 mb-1.5">
@@ -103,6 +122,29 @@ export function CampaignCreatorStep3Message({
         <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
           AI can suggest the first version of the message, but you stay in control and can rewrite any part before launch.
         </p>
+      </div>
+
+      <div className="space-y-3 mb-4">
+        <div
+          className="rounded-xl p-4"
+          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+        >
+          <div className="text-[11px] mb-1" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+            Who will receive this campaign
+          </div>
+          <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 700 }}>
+            {audienceLabel || `${audienceCount} members`}
+          </div>
+          <div className="text-[11px] mt-1" style={{ color: 'var(--t4)' }}>
+            {audienceCount} recipient{audienceCount !== 1 ? 's' : ''} selected
+          </div>
+        </div>
+        <CampaignAudiencePreviewList
+          members={previewMembers}
+          title="Recipient preview"
+          emptyText="Recipients will appear here after the audience is selected"
+          compact
+        />
       </div>
 
       <div className="space-y-4">

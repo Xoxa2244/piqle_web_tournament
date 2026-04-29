@@ -16,6 +16,33 @@ function defineTool(config: { description: string; parameters: z.ZodObject<any>;
   return tool({ description: config.description, inputSchema: config.parameters, execute: config.execute } as any)
 }
 
+function formatDateKeyInTimeZone(date: Date, timeZone: string) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+function getMinutesInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+  return hour * 60 + minute
+}
+
+function parseTimeToMinutes(time: string | null | undefined) {
+  if (!time) return 0
+  const [hours, minutes] = time.split(':').map((value) => Number(value || 0))
+  return hours * 60 + minutes
+}
+
 export function createChatTools(clubId: string) {
   return {
     getMemberHealth: defineTool({
@@ -120,6 +147,7 @@ export function createChatTools(clubId: string) {
               trend: m.trend,
               daysSinceLastVisit: m.daysSinceLastBooking,
               totalBookings: m.totalBookings,
+              duprRating: m.member?.duprRatingDoubles ?? null,
             })),
           }
         } catch (err) {
@@ -134,19 +162,33 @@ export function createChatTools(clubId: string) {
         'Get upcoming sessions with occupancy info. Shows which sessions are underfilled and need attention. Use when the user asks about sessions, schedule, occupancy, or what needs filling.',
       parameters: z.object({
         onlyUnderfilled: z.boolean().optional().describe('Only return sessions below 50% capacity. Default: false'),
+        onlyOpenSpots: z.boolean().optional().describe('Only return sessions that still have at least 1 open spot. Default: false'),
+        dayScope: z.enum(['all', 'today', 'today_upcoming', 'tonight']).optional().describe('Filter to all sessions, all sessions on today, sessions later today, or tonight. Default: all'),
         limit: z.number().int().min(1).optional().describe('Max sessions to return. Default: 10'),
       }),
-      execute: async ({ onlyUnderfilled, limit }: { onlyUnderfilled?: boolean; limit?: number }) => {
+      execute: async ({ onlyUnderfilled, onlyOpenSpots, dayScope, limit }: { onlyUnderfilled?: boolean; onlyOpenSpots?: boolean; dayScope?: 'all' | 'today' | 'today_upcoming' | 'tonight'; limit?: number }) => {
         const uf = onlyUnderfilled ?? false
+        const openOnly = onlyOpenSpots ?? false
+        const scope = dayScope ?? 'all'
         const l = limit ?? 10
         try {
+          const club = await prisma.club.findUnique({
+            where: { id: clubId },
+            select: { automationSettings: true },
+          }).catch(() => null)
+          const clubTimeZone = ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) || 'America/New_York'
+          const now = new Date()
+          const todayKey = formatDateKeyInTimeZone(now, clubTimeZone)
+          const nowMinutes = getMinutesInTimeZone(now, clubTimeZone)
+          const queryFloor = new Date(now.getTime() - 36 * 60 * 60 * 1000)
+
           const sessions = await prisma.playSession.findMany({
             where: {
               clubId,
-              date: { gte: new Date() },
+              date: { gte: queryFloor },
             },
             orderBy: { date: 'asc' },
-            take: 30,
+            take: 120,
           })
 
           // Get booking counts separately
@@ -164,7 +206,15 @@ export function createChatTools(clubId: string) {
           let result = sessions.map(s => {
             const confirmed: number = countMap.get(s.id) || 0
             const occupancy = s.maxPlayers > 0 ? Math.round((confirmed / s.maxPlayers) * 100) : 0
+            const spotsRemaining = Math.max(0, s.maxPlayers - confirmed)
+            const sessionDateKey = formatDateKeyInTimeZone(s.date, clubTimeZone)
+            const startMinutes = parseTimeToMinutes(s.startTime)
+            const isToday = sessionDateKey === todayKey
+            const isLaterToday = isToday && startMinutes >= nowMinutes
+            const isTonight = isLaterToday && startMinutes >= 17 * 60
+            const isFutureDay = sessionDateKey > todayKey
             return {
+              sessionId: s.id,
               title: s.title,
               date: s.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
               time: `${s.startTime}–${s.endTime}`,
@@ -172,15 +222,34 @@ export function createChatTools(clubId: string) {
               confirmed,
               maxPlayers: s.maxPlayers,
               occupancy: `${occupancy}%`,
-              spotsRemaining: s.maxPlayers - confirmed,
+              spotsRemaining,
+              isToday,
+              isLaterToday,
+              isTonight,
+              isFutureDay,
+              eventUrl: `/clubs/${clubId}/intelligence/slot-filler?session=${encodeURIComponent(s.id)}`,
             }
           })
+
+          result = result.filter((session) => session.isToday || session.isFutureDay)
 
           if (uf) {
             result = result.filter(s => parseInt(s.occupancy) < 50)
           }
 
-          return { sessions: result.slice(0, l), total: result.length }
+          if (openOnly) {
+            result = result.filter((s) => s.spotsRemaining > 0)
+          }
+
+          if (scope === 'today') {
+            result = result.filter((s) => s.isToday)
+          } else if (scope === 'today_upcoming') {
+            result = result.filter((s) => s.isLaterToday)
+          } else if (scope === 'tonight') {
+            result = result.filter((s) => s.isTonight)
+          }
+
+          return { sessions: result.slice(0, l), total: result.length, timeZone: clubTimeZone, dayScope: scope }
         } catch (err) {
           console.error('[ChatTool] getUpcomingSessions failed:', err)
           return { error: 'Failed to load sessions.' }
@@ -190,13 +259,30 @@ export function createChatTools(clubId: string) {
 
     getClubMetrics: defineTool({
       description:
-        'Get key club metrics: total members, active members, bookings this month, average occupancy, revenue estimates. Use when the user asks about club performance, overview, numbers, or how the club is doing.',
+        'Get key club metrics aligned with the Dashboard: total followers, active players (confirmed booking in a session during the Dashboard period), bookings this week / this month, sessions, average court occupancy. Use when the user asks about club performance, overview, numbers, or how the club is doing. Note: "active players" here means people who actually played, not subscription status — for membership-status counts the user should look at the Members page.',
       parameters: z.object({}),
       execute: async () => {
         try {
           const now = new Date()
-          const d30 = new Date(now.getTime() - 30 * 86400000)
-          const d7 = new Date(now.getTime() - 7 * 86400000)
+          const currentEnd = now
+          let d30 = new Date(currentEnd.getTime() - 30 * 86400000)
+          const d7 = new Date(currentEnd.getTime() - 7 * 86400000)
+
+          // Mirror Dashboard V2's default historical-data fallback. Some
+          // demo/imported clubs have their latest completed sessions older
+          // than "today - 30d", so the Dashboard shifts its comparison window
+          // to the latest available completed session.
+          const latestSession = await prisma.playSession.findFirst({
+            where: { clubId, status: 'COMPLETED' },
+            orderBy: { date: 'desc' },
+            select: { date: true },
+          }).catch(() => null)
+
+          if (latestSession && new Date(latestSession.date) < d30) {
+            const latestDate = new Date(latestSession.date)
+            latestDate.setHours(23, 59, 59, 999)
+            d30 = new Date(latestDate.getTime() - 30 * 86400000)
+          }
 
           const [totalMembers, totalBookings30d, totalBookings7d, sessions30d] = await Promise.all([
             prisma.clubFollower.count({ where: { clubId } }),
@@ -215,11 +301,13 @@ export function createChatTools(clubId: string) {
               },
             }),
             prisma.playSession.findMany({
-              where: { clubId, date: { gte: d30, lte: now } },
+              where: { clubId, date: { gte: d30, lte: currentEnd } },
+              select: { id: true, maxPlayers: true, registeredCount: true },
             }),
           ])
 
-          // Get booking counts for these sessions
+          // Get booking counts for these sessions (used as fallback when
+          // CSV-imported sessions don't have a registeredCount).
           const sessionIds = sessions30d.map(s => s.id)
           const bookingCounts = sessionIds.length > 0
             ? await prisma.playSessionBooking.groupBy({
@@ -233,28 +321,50 @@ export function createChatTools(clubId: string) {
             : []
           const countMap = new Map(bookingCounts.map((b: any) => [b.sessionId, b._count._all as number]))
 
-          const totalCapacity = sessions30d.reduce((sum, s) => sum + s.maxPlayers, 0)
-          const totalFilled = sessions30d.reduce((sum, s) => sum + (countMap.get(s.id) || 0), 0)
-          const avgOccupancy = totalCapacity > 0 ? Math.round((totalFilled / totalCapacity) * 100) : 0
+          // Average per-session occupancy ratio — must match the formula
+          // in `getDashboardV2` (server/routers/intelligence.ts) so admins
+          // don't see "9% occupancy" in the Advisor and "67% occupancy" on
+          // the Dashboard for the same period. Each session contributes
+          // one ratio; ratios are averaged. This way a 16-spot Open Play
+          // and a 4-spot ball-machine slot get equal weight (the natural
+          // pickleball-club intuition), instead of capacity-weighted total.
+          const occRatios = sessions30d
+            .map((s) => {
+              const max = s.maxPlayers ?? 0
+              const reg = s.registeredCount ?? countMap.get(s.id) ?? 0
+              return max > 0 ? (reg / max) * 100 : null
+            })
+            .filter((v): v is number => v !== null)
+          const avgOccupancy = occRatios.length === 0
+            ? 0
+            : Math.round(occRatios.reduce((a, b) => a + b, 0) / occRatios.length)
 
-          // Active = booked at least once in last 30 days
-          const activeUsers = await prisma.playSessionBooking.groupBy({
+          // Active player = has at least one CONFIRMED booking attached to a
+          // session in the Dashboard period. This intentionally filters by
+          // playSession.date, not booking.created/bookedAt, matching
+          // getDashboardV2's "Active Players" card.
+          const activePlayers = await prisma.playSessionBooking.groupBy({
             by: ['userId'],
             where: {
-              playSession: { clubId },
               status: 'CONFIRMED',
-              bookedAt: { gte: d30 },
+              playSession: { clubId, date: { gte: d30, lte: currentEnd } },
             },
           })
 
           return {
-            totalMembers,
-            activeMembers: activeUsers.length,
-            inactiveMembers: totalMembers - activeUsers.length,
+            totalFollowers: totalMembers,
+            activePlayers30d: activePlayers.length,
+            inactiveFollowers30d: totalMembers - activePlayers.length,
             bookingsLast30Days: totalBookings30d,
             bookingsLast7Days: totalBookings7d,
             sessionsLast30Days: sessions30d.length,
             averageOccupancy: `${avgOccupancy}%`,
+            occupancyDefinition: 'mean of per-session (registered / maxPlayers) — matches Dashboard',
+            activePlayersDefinition: 'unique users with CONFIRMED bookings in sessions dated within the Dashboard period — matches Dashboard',
+            dashboardPeriod: {
+              from: d30.toISOString(),
+              to: currentEnd.toISOString(),
+            },
           }
         } catch (err) {
           console.error('[ChatTool] getClubMetrics failed:', err)
@@ -326,7 +436,7 @@ export function createChatTools(clubId: string) {
 
     getCourtOccupancy: defineTool({
       description:
-        'Get court occupancy breakdown by day of week and time slot. Shows which courts and time slots are busy vs empty. Use when the user asks about occupancy, court utilization, busy/quiet times, when courts are empty, Tuesday morning, peak hours, or anything about court usage patterns.',
+        'Get COURT-HOUR UTILIZATION breakdown by day of week and time slot — i.e. what % of available court-hours actually have a session scheduled. Use when the user asks about utilization, scheduling density, busy/quiet times, when courts are empty, Tuesday morning, peak hours, or court usage patterns. NOTE: this is "are courts being used at all" (scheduling supply), NOT "how full are sessions when they run" (per-session player occupancy). For player occupancy use getClubMetrics. The two metrics will diverge — a club can have low court-hour utilization (only a few sessions scheduled) but high per-session occupancy (those sessions are full).',
       parameters: z.object({
         days: z.number().int().optional().describe('Look back period in days. Default: 30'),
       }),
@@ -390,7 +500,8 @@ export function createChatTools(clubId: string) {
           return {
             period: `Last ${lookback} days`,
             totalCourts,
-            overallOccupancy: `${overallOccupancy}%`,
+            overallCourtHourUtilization: `${overallOccupancy}%`,
+            metricDefinition: 'court-hour utilization = (court-hours with any session) / (operating court-hours). Different from per-session player occupancy — see getClubMetrics for that.',
             busiestSlots: slotSummary.slice(0, 10),
             quietestSlots: slotSummary.slice(-10).reverse(),
             totalSessions: sessions.length,
@@ -404,35 +515,165 @@ export function createChatTools(clubId: string) {
 
     getMembershipBreakdown: defineTool({
       description:
-        'Get membership status breakdown: how many active, suspended, expired, no membership. Use when the user asks about membership, churn, who left, subscription status, or member retention.',
+        'Get membership SUBSCRIPTION status breakdown: how many followers have active / trial / expired / suspended / cancelled / guest / no-membership subscriptions. These are categorical subscription states from the club_management software (e.g. CourtReserve), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics.activePlayers30d.',
       parameters: z.object({}),
       execute: async () => {
         try {
-          const rows = await prisma.$queryRaw<Array<{ status: string; cnt: bigint }>>`
-            SELECT metadata->>'membershipStatus' as status, count(*) as cnt
-            FROM document_embeddings
-            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
-            GROUP BY metadata->>'membershipStatus'
-          `
-          const breakdown: Record<string, number> = {}
-          rows.forEach(r => { breakdown[r.status || 'Unknown'] = Number(r.cnt) })
+          const { normalizeMembership, resolveMembershipMappings } = await import('@/lib/ai/membership-intelligence')
+          const club = await prisma.club.findUnique({ where: { id: clubId }, select: { automationSettings: true } })
+          const membershipMappings = resolveMembershipMappings(club?.automationSettings)
 
-          // Also get membership types for active members
-          const types = await prisma.$queryRaw<Array<{ membership: string; cnt: bigint }>>`
-            SELECT metadata->>'membership' as membership, count(*) as cnt
-            FROM document_embeddings
-            WHERE club_id = ${clubId} AND content_type = 'member' AND source_table = 'csv_import'
-            AND metadata->>'membershipStatus' = 'Currently Active'
-            GROUP BY metadata->>'membership'
-            ORDER BY cnt DESC
-            LIMIT 10
+          // Pull membership_status + membership_type from the users table
+          // for every follower of this club. Earlier the tool scanned
+          // `document_embeddings (content_type='member', source_table='csv_import')`
+          // but on prod that source is empty for most clubs — the actual
+          // canonical source is `users.membership_status` populated by the
+          // CourtReserve sync. Tested on IPC North: 12,485 follower rows
+          // come back this way, matching the Integrations sync count.
+          const rows = await prisma.$queryRaw<Array<{
+            user_id: string
+            membership_status: string | null
+            membership_type: string | null
+          }>>`
+            SELECT cf.user_id, u.membership_status, u.membership_type
+            FROM club_followers cf
+            JOIN users u ON u.id = cf.user_id
+            WHERE cf.club_id = ${clubId}
           `
-          const membershipTypes = types.map(t => ({ type: t.membership, count: Number(t.cnt) }))
 
-          return { breakdown, membershipTypes }
+          const normalizedBreakdown: Record<string, number> = {
+            active: 0, trial: 0, expired: 0, cancelled: 0, suspended: 0, guest: 0, none: 0, unknown: 0,
+          }
+          const rawBreakdown: Record<string, number> = {}
+          const typeAmongActive: Record<string, number> = {}
+
+          for (const r of rows) {
+            const rawStatus = r.membership_status || 'Unknown'
+            rawBreakdown[rawStatus] = (rawBreakdown[rawStatus] || 0) + 1
+
+            const normalized = normalizeMembership({
+              membershipType: r.membership_type,
+              membershipStatus: r.membership_status,
+              membershipMappings,
+            })
+            const bucket = normalized.normalizedStatus in normalizedBreakdown ? normalized.normalizedStatus : 'unknown'
+            normalizedBreakdown[bucket]++
+
+            // Track membership type ONLY for normalized-active rows
+            if (normalized.normalizedStatus === 'active' && r.membership_type) {
+              typeAmongActive[r.membership_type] = (typeAmongActive[r.membership_type] || 0) + 1
+            }
+          }
+
+          const membershipTypes = Object.entries(typeAmongActive)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10)
+            .map(([type, count]) => ({ type, count }))
+
+          // Note: the Members page UI's "Active Players" tile is now aligned
+          // with Dashboard / Advisor booking activity. This tool still
+          // returns subscription-status counts, which intentionally answer a
+          // different question than recent play activity.
+          return {
+            totalFollowersScanned: rows.length,
+            activeSubscriptions: normalizedBreakdown.active,
+            byNormalizedStatus: normalizedBreakdown,
+            byRawStatus: rawBreakdown,
+            membershipTypesAmongActive: membershipTypes,
+            statusDefinition: 'Subscription category sourced from users.membership_status. This is different from recent play activity. For "people who actually played in the Dashboard period" use getClubMetrics.activePlayers30d.',
+          }
         } catch (err) {
           console.error('[ChatTool] getMembershipBreakdown failed:', err)
           return { error: 'Failed to load membership data.' }
+        }
+      },
+    }),
+
+    getRatedPlayers: defineTool({
+      description:
+        "Get players filtered by skill rating (DUPR for pickleball). Use when the user asks about rating brackets like '4.0+', '3.5-3.99', 'beginners', 'advanced players by rating', or 'how many players above X'. IMPORTANT: today we only ingest pickleball DUPR ratings from CourtReserve sync. UTR (tennis), Playtomic (padel), and other sport-specific rating systems are not yet integrated — for clubs whose primary sport is not pickleball, this tool returns an honest 'not yet integrated' notice instead of guessing.",
+      parameters: z.object({
+        minRating: z.number().optional().describe('Minimum rating, inclusive (e.g. 4.0)'),
+        maxRating: z.number().optional().describe('Maximum rating, exclusive (e.g. 4.5 to get 4.0-4.49 bracket)'),
+        limit: z.number().int().min(1).max(200).optional().describe('Max players to return. Default: 50'),
+      }),
+      execute: async ({ minRating, maxRating, limit }: { minRating?: number; maxRating?: number; limit?: number }) => {
+        try {
+          const club = await prisma.club.findUnique({ where: { id: clubId }, select: { automationSettings: true } })
+          const sportTypes: string[] = ((club?.automationSettings as any)?.intelligence?.sportTypes) || []
+          const primarySport = sportTypes[0] || 'pickleball'
+
+          // Multi-sport rating systems we know about, but don't ingest yet.
+          const SPORT_RATING_SYSTEM: Record<string, { system: string; integrated: boolean }> = {
+            pickleball: { system: 'DUPR', integrated: true },
+            tennis: { system: 'UTR', integrated: false },
+            padel: { system: 'Playtomic', integrated: false },
+            squash: { system: 'PSA / SquashLevels', integrated: false },
+            badminton: { system: 'BWF World Ranking', integrated: false },
+          }
+          const ratingMeta = SPORT_RATING_SYSTEM[primarySport.toLowerCase()] || { system: 'unknown', integrated: false }
+
+          if (!ratingMeta.integrated) {
+            return {
+              primarySport,
+              ratingSystem: ratingMeta.system,
+              integrated: false,
+              message: `Player ratings for ${primarySport} (${ratingMeta.system}) are not yet ingested into IQSport. Today we only sync DUPR for pickleball clubs via CourtReserve. To track ${ratingMeta.system}, an admin can enter ratings manually on each member profile, or we can add a connector — let the user know that's the limitation.`,
+            }
+          }
+
+          // pickleball / DUPR path
+          const where: any = {
+            clubFollows: { some: { clubId } },
+            duprRatingDoubles: { not: null },
+          }
+          if (minRating !== undefined || maxRating !== undefined) {
+            where.duprRatingDoubles = {}
+            if (minRating !== undefined) where.duprRatingDoubles.gte = minRating
+            if (maxRating !== undefined) where.duprRatingDoubles.lt = maxRating
+          }
+          const total = await prisma.user.count({ where })
+          const players = await prisma.user.findMany({
+            where,
+            select: { id: true, name: true, email: true, duprRatingDoubles: true },
+            orderBy: { duprRatingDoubles: 'desc' },
+            take: limit ?? 50,
+          })
+          // Also check how many followers HAVE any DUPR set, so we can
+          // distinguish "bracket filter returned nothing" from "we just
+          // don't have rating data on file at all".
+          const totalWithAnyRating = await prisma.user.count({
+            where: {
+              clubFollows: { some: { clubId } },
+              duprRatingDoubles: { not: null },
+            },
+          })
+          const totalFollowers = await prisma.clubFollower.count({ where: { clubId } })
+          let note: string
+          if (totalWithAnyRating === 0) {
+            note = `0 of ${totalFollowers} followers have a DUPR rating on file. CourtReserve sync does not pull DUPR ratings — admins would need to either (a) connect DUPR directly via the DUPR connector if available, (b) enter ratings manually on each member profile, or (c) leave them blank and rely on session skill_level for skill-based programming. Tell the user this honestly instead of guessing.`
+          } else if (total === 0) {
+            note = `${totalWithAnyRating} of ${totalFollowers} followers have any DUPR rating on file, but none match the requested bracket. The bracket may simply have no players at this club.`
+          } else {
+            note = `Returned the top ${players.length} of ${total} matching players, sorted by rating descending. ${totalWithAnyRating} of ${totalFollowers} total followers have any DUPR rating on file.`
+          }
+          return {
+            primarySport,
+            ratingSystem: 'DUPR',
+            integrated: true,
+            filter: { minRating, maxRating },
+            totalMatching: total,
+            totalWithAnyRating,
+            totalFollowers,
+            samplePlayers: players.map((p) => ({
+              name: p.name || p.email || 'Unknown',
+              dupr: p.duprRatingDoubles ? Number(p.duprRatingDoubles) : null,
+            })),
+            note,
+          }
+        } catch (err) {
+          console.error('[ChatTool] getRatedPlayers failed:', err)
+          return { error: 'Failed to load rated player data.' }
         }
       },
     }),

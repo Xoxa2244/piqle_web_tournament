@@ -96,7 +96,7 @@ const buildClubInviteEmailHtml = (args: {
     .map((part) => String(part ?? '').trim())
     .filter(Boolean)
     .join(', ')
-  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png?v=20260424`
   const clubImageUrl = clubLogoUrl || `${baseUrl}/tournament-placeholder.png`
 
   return `
@@ -183,7 +183,7 @@ const buildAdminInviteEmailHtml = (args: {
     .map((part) => String(part ?? '').trim())
     .filter(Boolean)
     .join(', ')
-  const logoUrl = `${baseUrl}/iqsport-email-logo.png`
+  const logoUrl = `${baseUrl}/iqsport-email-logo.png?v=20260424`
   const clubImageUrl = clubLogoUrl || `${baseUrl}/tournament-placeholder.png`
 
   return `

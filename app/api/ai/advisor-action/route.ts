@@ -250,6 +250,25 @@ async function getOrCreateConversation(opts: {
   return conversation.id
 }
 
+async function getExistingConversationId(opts: {
+  clubId: string
+  userId: string
+  conversationId?: string | null
+}) {
+  if (!opts.conversationId) return null
+
+  const existing = await prisma.aIConversation.findFirst({
+    where: {
+      id: opts.conversationId,
+      clubId: opts.clubId,
+      userId: opts.userId,
+    },
+    select: { id: true },
+  })
+
+  return existing?.id || null
+}
+
 async function getLastAdvisorAction(conversationId: string): Promise<AdvisorAction | null> {
   const priorMessages = await prisma.aIMessage.findMany({
     where: { conversationId, role: 'assistant' },
@@ -2068,10 +2087,12 @@ export async function POST(req: Request) {
       return Response.json({ error: 'clubId and message are required' }, { status: 400 })
     }
 
-    // Three independent lookups — verify access, fetch club context,
-    // and resolve/create conversation. Pre-fix these were sequential;
-    // they don't depend on each other so we run them in parallel.
-    const [access, clubContext, convId] = await profiler.span('access+club+conv (parallel)', () =>
+    // Verify access, fetch club context, and validate an existing
+    // conversation if one was provided. We intentionally do NOT create a
+    // new conversation yet — plain questions can fall through to
+    // /api/ai/chat, and creating here would leave duplicate empty threads
+    // in the sidebar.
+    const [access, clubContext, existingConvId] = await profiler.span('access+club+conv (parallel)', () =>
       Promise.all([
         verifyClubMembership(clubId, session.userId),
         prisma.club.findUnique({
@@ -2083,12 +2104,10 @@ export async function POST(req: Request) {
             country: true,
           },
         }),
-        getOrCreateConversation({
+        getExistingConversationId({
           clubId,
           userId: session.userId,
           conversationId,
-          titleSource: message,
-          language: detectLanguage(message),
         }),
       ]),
     )
@@ -2114,7 +2133,10 @@ export async function POST(req: Request) {
     // Memory (prior convo state) is needed to decide whether to even run
     // the intent planner. Plan runs in parallel when no pending
     // clarification exists — saves 1-3s on a common path.
-    const memory = await profiler.span('loadMemory', () => getAdvisorConversationMemory(convId))
+    let convId = existingConvId
+    const memory = convId
+      ? await profiler.span('loadMemory', () => getAdvisorConversationMemory(convId!))
+      : { state: null, lastAction: null }
     let effectiveMessage = message
     let plan = memory.state?.pendingClarification
       ? null
@@ -2595,6 +2617,14 @@ export async function POST(req: Request) {
 
     if (assistantMessage) {
       const assistantAction = extractAdvisorAction(assistantMessage)
+      convId = convId || await getOrCreateConversation({
+        clubId,
+        userId: session.userId,
+        conversationId,
+        titleSource: message,
+        language,
+      })
+
       const assistantRecord = await persistAdvisorExchange({
         clubId,
         userId: session.userId,
@@ -2667,12 +2697,12 @@ export async function POST(req: Request) {
           ? `You have 1 action waiting for approval:`
           : `You have ${items.length} action${items.length === 1 ? '' : 's'} waiting for approval${items.length > INLINE_CARD_LIMIT ? ` — showing the top ${INLINE_CARD_LIMIT} below` : ''}:`
         const overflow = items.length > INLINE_CARD_LIMIT
-          ? `\n\n[View all ${items.length} in Agent page](/clubs/${clubId}/intelligence/agent)`
+          ? `\n\n[View all ${items.length} in AI Advisor](/clubs/${clubId}/intelligence/advisor?focus=pending-queue)`
           : ''
 
         assistantMessage = withSuggested(
           `${headline}${buildPendingQueueTag(payload)}${overflow}`,
-          ['Stop all AI sending', 'What did the agent do today?', 'Open the agent page'],
+          ['Stop all AI sending', 'What did the agent do today?', 'Open AI Advisor'],
         )
       }
       assistantState = {
@@ -2704,8 +2734,8 @@ export async function POST(req: Request) {
           .map(([type, count]) => `• ${type}: ${count}`)
           .join('\n')
         assistantMessage = withSuggested(
-          `In the last 24 hours the agent logged ${logs.length} action${logs.length === 1 ? '' : 's'}:\n\n${summary}\n\nOpen the agent page for the full timeline: /clubs/${clubId}/intelligence/agent`,
-          ['What needs my approval?', 'Stop all AI sending', 'Open the agent page'],
+          `In the last 24 hours the agent logged ${logs.length} action${logs.length === 1 ? '' : 's'}:\n\n${summary}\n\nOpen AI Advisor for the full timeline: /clubs/${clubId}/intelligence/advisor`,
+          ['What needs my approval?', 'Stop all AI sending', 'Open AI Advisor'],
         )
       }
       assistantState = {
@@ -2824,7 +2854,7 @@ export async function POST(req: Request) {
             ? toRun[0].title || toRun[0].summary || humanizePendingType(toRun[0].type) || 'pending item'
             : `${successes} of ${toRun.length} pending action${toRun.length === 1 ? '' : 's'}`
           const failNote = failures > 0
-            ? `\n\n⚠️ ${failures} could not be updated — the Agent page will show them unchanged.`
+            ? `\n\n⚠️ ${failures} could not be updated — AI Advisor will show them unchanged.`
             : ''
           const overflowNote = outcome.items.length > BATCH_LIMIT
             ? `\n\n(${outcome.items.length - BATCH_LIMIT} more matched but weren't processed in this batch — run the same command again to continue.)`
@@ -2879,8 +2909,8 @@ export async function POST(req: Request) {
           return `${i + 1}. **${d.result}** on ${humanizePendingType(d.action) || d.action} (${age})${reasonBlurb}`
         }).join('\n')
         assistantMessage = withSuggested(
-          `Recent agent decisions:\n\n${lines}\n\nFor the full audit trail: /clubs/${clubId}/intelligence/agent`,
-          ['What needs my approval?', 'Show me recent activity', 'Open the agent page'],
+          `Recent agent decisions:\n\n${lines}\n\nFor the full audit trail: /clubs/${clubId}/intelligence/advisor`,
+          ['What needs my approval?', 'Show me recent activity', 'Open AI Advisor'],
         )
       }
       assistantState = {
@@ -3182,7 +3212,11 @@ export async function POST(req: Request) {
       let audienceDraft: AdvisorCampaignAction['audience']
       const shouldReuseAudience = plan.usePreviousCohort || isCampaignOnlyFollowUp(message)
       const activeMemory = shouldReuseAudience ? memory : null
-      const previousAction = activeMemory?.lastAction || (shouldReuseAudience ? await getLastAdvisorAction(convId) : null)
+      const previousAction = activeMemory?.lastAction || (
+        shouldReuseAudience && convId
+          ? await getLastAdvisorAction(convId)
+          : null
+      )
 
       if (activeMemory?.state?.currentAudience) {
         audienceDraft = activeMemory.state.currentAudience
@@ -3295,6 +3329,14 @@ export async function POST(req: Request) {
     }
 
     const assistantAction = extractAdvisorAction(assistantMessage)
+    convId = convId || await getOrCreateConversation({
+      clubId,
+      userId: session.userId,
+      conversationId,
+      titleSource: message,
+      language,
+    })
+
     const assistantRecord = await persistAdvisorExchange({
       clubId,
       userId: session.userId,

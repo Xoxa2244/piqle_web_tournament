@@ -9,11 +9,11 @@ import {
   Send, Plus, Trash2, Loader2,
   Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
+import { useSessionsCalendar } from '../../_hooks/use-intelligence'
+import { ChatRichText } from '../../_components/shared/ChatRichText'
 
 // ── Extract suggested follow-up questions ──
 function extractSuggestions(text: string): { cleanText: string; suggestions: string[] } {
@@ -43,6 +43,61 @@ function stripSuggestedTags(text: string): string {
     .replace(/<\/?suggested>/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd()
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function linkifySessionTitles(
+  text: string,
+  sessions: Array<{ id: string; title?: string | null; court?: string | null }>,
+  clubId: string
+): string {
+  if (!text || sessions.length === 0) return text
+
+  const candidates = sessions
+    .flatMap((session) => {
+      const title = (session.title || '').trim()
+      const court = (session.court || '').trim()
+      if (!title) return []
+
+      const variants = new Set<string>([title])
+      if (court && !title.toLowerCase().includes(court.toLowerCase())) {
+        variants.add(`${title} — ${court}`)
+        variants.add(`${title} - ${court}`)
+        variants.add(`${title} – ${court}`)
+      }
+
+      const url = `/clubs/${clubId}/intelligence/slot-filler?session=${encodeURIComponent(session.id)}`
+      return Array.from(variants).map((variant) => ({ variant, url }))
+    })
+    .sort((a, b) => b.variant.length - a.variant.length)
+
+  const lines = text.split('\n')
+
+  return lines
+    .map((line) => {
+      if (!line || line.includes('](')) return line
+
+      let linkedLine = line
+      for (const candidate of candidates) {
+        const boldVariant = `**${candidate.variant}**`
+        if (linkedLine.includes(boldVariant)) {
+          linkedLine = linkedLine.replace(boldVariant, `[${boldVariant}](${candidate.url})`)
+          break
+        }
+
+        const pattern = new RegExp(`(^|\\s|\\d+\\.\\s|[-*]\\s)(${escapeRegExp(candidate.variant)})(?=$|\\s|[:|])`)
+        if (pattern.test(linkedLine)) {
+          linkedLine = linkedLine.replace(pattern, (match, prefix, title) => `${prefix}[${title}](${candidate.url})`)
+          break
+        }
+      }
+
+      return linkedLine
+    })
+    .join('\n')
 }
 
 function getMessageText(message: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
@@ -79,6 +134,7 @@ type ChatViewProps = {
 export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { data: sessionsCalendarData } = useSessionsCalendar(clubId)
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
@@ -149,6 +205,11 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
     error,
     setMessages,
   } = useChat({ transport })
+
+  const linkableSessions = useMemo(() => {
+    const sessions = (sessionsCalendarData?.sessions ?? []) as Array<{ id: string; title?: string | null; court?: string | null }>
+    return sessions.filter((session) => Boolean(session?.id && session?.title))
+  }, [sessionsCalendarData])
 
   const isBusy = status === 'submitted' || status === 'streaming'
 
@@ -356,7 +417,9 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                     ? extractSuggestions(text)
                     : { cleanText: text, suggestions: [] }
                   // Safety net: strip any residual <suggested> tags before rendering
-                  const cleanText = message.role === 'assistant' ? stripSuggestedTags(rawClean) : rawClean
+                  const cleanText = message.role === 'assistant'
+                    ? linkifySessionTitles(stripSuggestedTags(rawClean), linkableSessions, clubId)
+                    : rawClean
                   return (
                     <div key={message.id} className={cn('mb-2', message.role === 'user' && 'flex justify-end')}>
                       {message.role === 'user' ? (
@@ -372,27 +435,14 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                             <span className="text-xs font-semibold text-muted-foreground">Piqle AI</span>
                           </div>
                           <div className="bg-muted/50 border rounded-2xl rounded-tl-md px-5 py-4">
-                            <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0">
-                              <ReactMarkdown
-                                components={{
-                                  a: ({ href, children }) => {
-                                    if (href?.startsWith('/')) {
-                                      return (
-                                        <Link href={href} className="text-lime-600 hover:underline font-medium">
-                                          {children}
-                                        </Link>
-                                      )
-                                    }
-                                    return (
-                                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">
-                                        {children}
-                                      </a>
-                                    )
-                                  },
-                                }}
-                              >
-                                {cleanText}
-                              </ReactMarkdown>
+                            <div className="text-sm leading-relaxed">
+                              <ChatRichText
+                                text={cleanText}
+                                className="space-y-1.5"
+                                lineClassName="whitespace-pre-wrap"
+                                linkClassName="text-lime-600 hover:underline font-medium"
+                                strongClassName="font-semibold"
+                              />
                             </div>
                           </div>
                           {isLastAssistant && suggestions.length > 0 && !isBusy && (

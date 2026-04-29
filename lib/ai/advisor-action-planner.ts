@@ -93,18 +93,81 @@ Rules:
 - If the user says later, schedule, tomorrow, tonight, next Tuesday, or names a future send time, use deliveryMode=send_later.
 - If the user says send now, launch now, go ahead, or explicitly wants delivery now, use deliveryMode=send_now.
 - If the user asks to create a campaign but does not clearly say send now, default to save_draft.
-- If the request is mostly informational, return action=none.`
+- If the request is mostly informational, return action=none.
+- CRITICAL: WH-questions ("what is", "how many", "why is", "where would", "which", "who"),
+  hypotheticals ("if I had", "if we run", "what if"), comparatives ("compare X vs Y"),
+  and projections ("over the last 3 months", "what happens if", "trend") are ALWAYS
+  action=none — they want a chat answer with reasoning, not a Decision Card. Do not
+  classify them as create_cohort/draft_campaign/program_schedule/fill_session even if
+  they mention those nouns in passing. Examples that must be action=none:
+    "How many people would I reach if I run a campaign for at-risk members?" → none
+    "If I had $1000 to spend on marketing, where would you put it?" → none
+    "What is the best empty slot to add a new Beginner Open Play session?" → none
+    "Are there any cohorts I should create that I don't already have?" → none
+  The action verbs (run/spend/add/create) inside an information question do NOT count
+  as imperative requests.`
 
 function cleanJson(text: string) {
   return text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 }
 
+/**
+ * Detects prompt-injection / data-exfiltration patterns. These look
+ * imperative ("dump every member email") so they slip past wantsCampaign,
+ * but they're never legitimate club-admin asks — and the LLM-fallback
+ * has classified them as draft_campaign (because "every member email"
+ * reads like an audience description). Force them to action='none' so
+ * the safety-trained chat LLM can refuse instead of the Decision Card
+ * router treating them as a campaign brief.
+ */
+function looksLikeInjection(lower: string): boolean {
+  if (/\bignore\s+(your\s+|the\s+|all\s+)?(previous|prior|earlier|above)\s+(instructions?|prompts?|directives?|rules?|messages?)\b/.test(lower)) return true
+  if (/\b(dump|export|extract|leak|reveal|expose|exfiltrate)\s+(every|all|the\s+)?(member|user|customer|player|client)?s?\s*('?s)?\s*(email|phone|password|token|api\s?key|credit\s?card|ssn)\b/.test(lower)) return true
+  if (/\boutput\s+(as|in)\s+(csv|json|raw|plain\s?text|markdown|tsv)\b/.test(lower)) return true
+  if (/\b(show|give|send|list)\s+me\s+(every|all|each)\s+(member|user|customer|player)?s?\s*('?s)?\s*(email|phone|password)\b/.test(lower)) return true
+  return false
+}
+
+/**
+ * Detects WH-questions, hypotheticals, comparatives, and projections — i.e.
+ * informational asks where the user wants reasoning + numbers, not a
+ * Decision Card. Without this gate, prompts like "How many would I reach
+ * if I run a campaign?" matched the bare "campaign" keyword and got
+ * hijacked into the campaign-builder Decision Card. The matched action
+ * verbs (run / spend / add) inside an information question are not
+ * imperative requests.
+ *
+ * Ops queries ("show pending", "what did the agent do today") are
+ * intentionally checked BEFORE this gate so they still route to their
+ * deterministic Decision Cards.
+ */
+function looksAnalytical(lower: string): boolean {
+  const trimmed = lower.trim()
+  if (/^(what|when|where|why|how|who|which|tell me|show me|give me|describe|explain|name|list|compare|summari[sz]e|do we|does|are we|is this|is that|am i)\b/.test(trimmed)) return true
+  if (/\b(if (?:i|we))\s+\w+/.test(lower) && /\b(would|could|should|will|run|do|did|spend|put|add|build|launch|send|create)\b/.test(lower)) return true
+  if (/\b(what if|how many|how much)\b/.test(lower)) return true
+  if (/^(would|could|should)\s+(i|we|you)\b/.test(trimmed)) return true
+  if (/\b(compare|comparison|projection|forecast|trend|over the (?:last|past|next)|what happens if|what'?s the picture)\b/.test(lower)) return true
+  return false
+}
+
 function heuristicPlan(message: string): AdvisorIntentPlan {
   const lower = message.toLowerCase()
+  // Prompt-injection / extraction attempts go straight to the chat LLM,
+  // which has safety training to refuse — never the Decision Card path.
+  if (looksLikeInjection(lower)) {
+    return { action: 'none', usePreviousCohort: false }
+  }
   const usePreviousCohort =
     /\b(that|this|those|these)\s+(cohort|segment|audience|group|list|members|players)\b/.test(lower) ||
     /\b(them|that list|this list|that audience|this audience)\b/.test(lower)
-  const wantsCampaign = /\b(campaign|email|sms|text|message|outreach|invite|reactivat|win[- ]?back|send|launch|draft|reach out)\b/.test(lower)
+  // wantsCampaign requires BOTH a target noun AND an explicit action verb.
+  // Single-token matches (e.g. "email" or "send") used to trigger campaign
+  // drafting on prompts like "dump every member email" or "where would you
+  // spend marketing dollars" — see Bug #3 from the 2026-04-25 audit.
+  const wantsCampaignTarget = /\b(campaign|email|sms|text|outreach|invite|reactivat|win[- ]?back|message)\b/.test(lower)
+  const wantsCampaignVerb = /\b(draft|send|launch|build|create|run|start|prepare|schedule|fire off|kick off|set ?up|approve|reach out)\b/.test(lower)
+  const wantsCampaign = wantsCampaignTarget && wantsCampaignVerb
   const wantsCohort = /\b(cohort|segment|audience|group|list)\b/.test(lower) && /\b(create|build|make|save|new|draft)\b/.test(lower)
   const wantsReactivation =
     /\b(reactivat|win[- ]?back|bring back|re-engage|inactive members?|inactive players?|lapsed members?|lapsed players?|churn(?:ed|ing)?)\b/.test(lower)
@@ -164,9 +227,14 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
 
   // "Why did you skip X?" / "show recent decisions" / "why was this
   // blocked?" — pulls from AgentDecisionRecord for audit clarity.
+  // Tightened from `(why|...) AND (agent|...|you|it)` because that hijacked
+  // any chat question containing "why" and "you" (e.g. "where would you
+  // put it and why?"). Now requires an explicit audit anchor (why-did /
+  // explain-why / skipped / blocked / decisions+show) AND a concrete
+  // entity ('you/it' alone are too generic to count).
   const wantsShowDecisions =
-    /\b(why|reasoning|decision|decisions|explain|because|skipped|blocked|reject(?:ed)?)\b/.test(lower) &&
-    /\b(agent|ai|last|recent|previously|earlier|you|it)\b/.test(lower)
+    /\b(why\s+(did|was|were|are|is)|explain\s+why|skipped|blocked|reject(?:ed)?|recent\s+decisions|show\s+(me\s+)?(recent\s+)?decisions|reasoning\s+(why|behind))\b/.test(lower) &&
+    /\b(agent|ai|automation|action|campaign|outreach|send|message|skip|block|reject)\b/.test(lower)
 
   let campaignType: z.infer<typeof advisorCampaignTypeEnum> | undefined
   if (/\b(reactivat|win[- ]?back|inactive|churn)\b/.test(lower)) campaignType = 'REACTIVATION'
@@ -200,6 +268,10 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
 
   // ── Ops intents first — "stop the agent" is unambiguous and should
   // never fall through to campaign drafting.
+  // (Cache-bust trailer 2026-04-26: Vercel was serving an older lambda
+  // that didn't include the analytical-gate / wantsShowDecisions
+  // tightening from the Bug #3 v1-v4 patch series. Touching this file
+  // forces a fresh build.)
   if (wantsKillSwitch) {
     return { action: 'ops_kill_switch', usePreviousCohort: false }
   }
@@ -222,6 +294,13 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   }
   if (wantsShowDecisions) {
     return { action: 'ops_show_decisions', audienceText: message, usePreviousCohort: false }
+  }
+
+  // Analytical-question gate. Defer to LLM (which is also tuned to return
+  // 'none' for info questions) rather than short-circuiting to a Decision
+  // Card. See looksAnalytical() docstring for rationale.
+  if (looksAnalytical(lower)) {
+    return { action: 'none', usePreviousCohort: false }
   }
 
   if (wantsCohort) {
@@ -317,8 +396,22 @@ export async function planAdvisorActionIntent(message: string): Promise<AdvisorI
   // "change quiet hours"), skip the LLM round-trip entirely — it saves
   // 2-5s on the critical path for the ~70% of prompts where our keyword
   // lexicon is unambiguous. The LLM is still consulted for genuinely
-  // ambiguous or analytical phrasing where `action === 'none'`.
+  // ambiguous phrasing where `action === 'none'`.
   if (fallback.action !== 'none') {
+    return fallback
+  }
+
+  // Skip-LLM path for clearly analytical questions ("how many would I
+  // reach", "if I had $1000 to spend", "what's the best slot to add")
+  // and prompt-injection attempts. The LLM-fallback historically
+  // misclassified these as create_cohort or draft_campaign because the
+  // explicit-rules in PLANNER_SYSTEM fire on bare nouns like "audience"
+  // / "session" / "every member email" — see Bug #3 from the 2026-04-25
+  // audit. Definitively returning 'none' keeps these prompts on the LLM
+  // chat path (which has safety training + read-only tools) instead of
+  // the Decision Card path.
+  const lowerMsg = message.toLowerCase()
+  if (looksLikeInjection(lowerMsg) || looksAnalytical(lowerMsg)) {
     return fallback
   }
 
