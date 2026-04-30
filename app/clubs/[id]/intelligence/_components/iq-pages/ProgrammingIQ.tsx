@@ -66,6 +66,10 @@ function formatWeekRange(weekStart: string): string {
   return `${sMon} – ${eMon}`
 }
 
+function hasDraftWarning(draft: GridDraft): boolean {
+  return (draft.metadata?.warnings?.length || 0) > 0
+}
+
 // ── Component ────────────────────────────────────────────────────────
 
 interface ProgrammingIQProps {
@@ -103,11 +107,19 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const liveSessions = useMemo(() => (gridData?.liveSessions ?? []) as any[], [gridData])
   const drafts = useMemo(() => ((gridData?.drafts ?? []) as any[]) as GridDraft[], [gridData])
   const publishableDrafts = useMemo(
-    () => drafts.filter((draft) => (draft.metadata?.warnings?.length || 0) === 0),
+    () => drafts.filter((draft) => !hasDraftWarning(draft)),
     [drafts],
   )
-  const otherIdeas = useMemo(
-    () => drafts.filter((draft) => (draft.metadata?.warnings?.length || 0) > 0),
+  const calendarDrafts = useMemo(
+    () => drafts.filter((draft) => !!draft.courtId),
+    [drafts],
+  )
+  const riskDrafts = useMemo(
+    () => drafts.filter((draft) => hasDraftWarning(draft)),
+    [drafts],
+  )
+  const unplacedIdeas = useMemo(
+    () => drafts.filter((draft) => !draft.courtId),
     [drafts],
   )
   const selectedPublishableIds = useMemo(
@@ -124,7 +136,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const stats = useMemo(() => {
     const suggested = publishableDrafts.length
     const liveKept = liveSessions.length
-    const saturations = otherIdeas.length
+    const saturations = riskDrafts.length
     // Blend live (registeredCount/maxPlayers) with drafts (projectedOccupancy).
     // Skipping live made the metric read 0% on weeks with no AI drafts.
     const liveOccs = liveSessions
@@ -141,7 +153,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       : Math.round(allOccs.reduce((s, v) => s + v, 0) / allOccs.length)
     const totalInvites = publishableDrafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
     return { suggested, liveKept, saturations, avgOccupancy, totalInvites }
-  }, [liveSessions, otherIdeas.length, publishableDrafts])
+  }, [liveSessions, publishableDrafts, riskDrafts.length])
 
   // Contact-policy preview: a rough "will admins spam their members?"
   // check. 3 invites/wk/member is the slot-filler default; the real
@@ -295,9 +307,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               <h1 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Programming IQ</h1>
               <p className="text-xs" style={{ color: 'var(--t4)' }}>
                 {publishableDrafts.length > 0
-                  ? 'Suggested weekly schedule, ranked by demand and club fit'
-                  : otherIdeas.length > 0
-                    ? 'No publish-ready suggestions yet — backup ideas are listed below'
+                  ? 'Suggested weekly schedule, with backup ideas marked in amber'
+                  : calendarDrafts.length > 0 || unplacedIdeas.length > 0
+                    ? 'No publish-ready suggestions yet — amber ideas show backup options and placement issues'
                     : 'Published schedule from your booking system — click Generate for suggested sessions'}
               </p>
             </div>
@@ -438,7 +450,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         <ProgrammingGrid
           courts={courts}
           liveSessions={liveSessions}
-          drafts={publishableDrafts}
+          drafts={calendarDrafts}
           weekStartDate={weekStart}
           selectedDraftIds={selectedDraftIds}
           onToggleSelect={handleToggleSelect}
@@ -446,7 +458,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         />
       )}
 
-      {!generating && otherIdeas.length > 0 && (
+      {!generating && unplacedIdeas.length > 0 && (
         <div
           className="rounded-2xl p-4 space-y-4"
           style={{ background: 'var(--card-bg)', border: '1px solid rgba(245,158,11,0.25)' }}
@@ -460,18 +472,18 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
             </div>
             <div>
               <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Other ideas
+                Unplaced ideas
               </div>
               <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
-                These slots stay out of the main suggestions because they carry audience saturation risk.
-                Review them only if you want backup options for the week.
+                These ideas could not be pinned to a court in the calendar.
+                Open them to review the warning, then reassign or edit if you still want to use them.
               </div>
             </div>
           </div>
 
           <div className="space-y-3">
-            {otherIdeas.map((draft) => {
-              const warningText = draft.metadata?.warnings?.join(' ') || 'This slot would over-target the same audience pool this week.'
+            {unplacedIdeas.map((draft) => {
+              const warningText = draft.metadata?.warnings?.join(' ') || 'This idea could not be placed into the calendar as-is.'
               const courtName = draft.courtId ? courtNamesById.get(draft.courtId) : null
               return (
                 <button
@@ -490,7 +502,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
                       </div>
                       <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
                         {draft.dayOfWeek} · {draft.startTime}–{draft.endTime}
-                        {courtName ? ` · ${courtName}` : ''}
+                        {courtName ? ` · ${courtName}` : ' · No court assigned'}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-[11px]">

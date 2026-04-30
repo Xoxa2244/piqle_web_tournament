@@ -226,11 +226,75 @@ describe('assignCourtsToProposals', () => {
       { courtId: 'court-1', startTime: '13:00', endTime: '14:00' },
     ]
     const onlyCourt1: SchedulerCourt[] = [COURTS[0]]
+    const liveConflict: SchedulerExistingSession[] = [{
+      id: 'live-late',
+      courtId: 'court-1',
+      date: new Date('2026-04-28T16:00:00Z'),
+      startTime: '22:00',
+      endTime: '23:30',
+      title: 'Late session',
+      format: 'OPEN_PLAY' as any,
+      skillLevel: 'INTERMEDIATE' as any,
+      maxPlayers: 8,
+      status: 'SCHEDULED',
+    }]
     const assignments = assignCourtsToProposals(
-      [proposal({ startTime: '22:00', endTime: '23:30' })],
-      onlyCourt1, [], tight, new Date('2026-04-27'),
+      [proposal({ dayOfWeek: 'Tuesday', startTime: '22:00', endTime: '23:30' })],
+      onlyCourt1, liveConflict, tight, new Date('2026-04-27'),
     )
     expect(assignments[0].failed).toBe('outside_hours')
+  })
+
+  it('falls back to an active free court when no observed court-hours window covers the slot', () => {
+    const eveningOnly: SchedulerHistoricalSession[] = [
+      { courtId: 'court-1', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-1', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-1', startTime: '20:00', endTime: '22:00' },
+      { courtId: 'court-2', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-2', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-2', startTime: '20:00', endTime: '22:00' },
+    ]
+    const assignments = assignCourtsToProposals(
+      [proposal({ dayOfWeek: 'Friday', startTime: '09:00', endTime: '10:30' })],
+      COURTS.slice(0, 2),
+      [],
+      eveningOnly,
+      new Date('2026-04-27'),
+    )
+    expect(assignments[0].failed).toBeUndefined()
+    expect(assignments[0].usedHoursFallback).toBe(true)
+    expect(['court-1', 'court-2']).toContain(assignments[0].courtId)
+  })
+
+  it('reports no_court when at least one court is open but all open courts conflict', () => {
+    const mixedHours: SchedulerHistoricalSession[] = [
+      { courtId: 'court-1', startTime: '08:00', endTime: '10:30' },
+      { courtId: 'court-1', startTime: '09:00', endTime: '11:00' },
+      { courtId: 'court-1', startTime: '10:00', endTime: '12:00' },
+      { courtId: 'court-2', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-2', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-2', startTime: '20:00', endTime: '22:00' },
+    ]
+    const live: SchedulerExistingSession[] = [{
+      id: 'live-open-court',
+      courtId: 'court-1',
+      date: new Date('2026-05-01T16:00:00Z'),
+      startTime: '09:00',
+      endTime: '10:30',
+      title: 'Busy',
+      format: 'OPEN_PLAY' as any,
+      skillLevel: 'INTERMEDIATE' as any,
+      maxPlayers: 8,
+      status: 'SCHEDULED',
+    }]
+    const assignments = assignCourtsToProposals(
+      [proposal({ dayOfWeek: 'Friday', startTime: '09:00', endTime: '10:30' })],
+      COURTS.slice(0, 2),
+      live,
+      mixedHours,
+      new Date('2026-04-27'),
+    )
+    expect(assignments[0].failed).toBe('no_court')
   })
 
   it('spreads cells across courts when demand is similar', () => {

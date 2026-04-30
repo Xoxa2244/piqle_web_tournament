@@ -342,6 +342,8 @@ interface CourtAssignment {
   isIndoor: boolean
   /** null when no court could hold this proposal without overlap. */
   failed?: 'no_court' | 'outside_hours'
+  /** Marks suggestions placed only after relaxing inferred court hours. */
+  usedHoursFallback?: boolean
 }
 
 /**
@@ -416,38 +418,39 @@ export function assignCourtsToProposals(
     })
 
     let picked: SchedulerCourt | null = null
-    let failReason: CourtAssignment['failed'] | undefined
+    let fallbackCourt: SchedulerCourt | null = null
+    let anyCourtWithinHours = false
+    let usedHoursFallback = false
     for (const candidate of courtCandidates) {
       const hours = hoursByCourt.get(candidate.id) || {
         earliestStart: DEFAULT_EARLIEST_START,
         latestEnd: DEFAULT_LATEST_END,
       }
+      const conflictReason = getCourtConflictReason({
+        courtId: candidate.id,
+        proposal,
+        liveByCourtDay,
+        assignedByCourtDay,
+      })
       // Outside court hours → skip this court.
       if (
         hhmmToMinutes(proposal.startTime) < hhmmToMinutes(hours.earliestStart)
         || hhmmToMinutes(proposal.endTime) > hhmmToMinutes(hours.latestEnd)
       ) {
-        failReason = failReason || 'outside_hours'
+        if (!fallbackCourt && !conflictReason) {
+          fallbackCourt = candidate
+        }
         continue
       }
-      // Conflict check: overlap with live PlaySession on this (court, dow)?
-      const liveKey = `${candidate.id}__${proposal.dayOfWeek}`
-      const liveOn = liveByCourtDay.get(liveKey) || []
-      const hasConflict = liveOn.some((s) =>
-        intervalsOverlap(proposal.startTime, proposal.endTime, s.startTime, s.endTime),
-      )
-      if (hasConflict) continue
-      // Conflict with a sibling assignment this run?
-      const assignedOn = assignedByCourtDay.get(liveKey) || []
-      const siblingClash = assignedOn.some((a) =>
-        intervalsOverlap(
-          proposal.startTime, proposal.endTime,
-          a.proposal.startTime, a.proposal.endTime,
-        ),
-      )
-      if (siblingClash) continue
+      anyCourtWithinHours = true
+      if (conflictReason) continue
       picked = candidate
       break
+    }
+
+    if (!picked && !anyCourtWithinHours && fallbackCourt) {
+      picked = fallbackCourt
+      usedHoursFallback = true
     }
 
     if (!picked) {
@@ -456,7 +459,7 @@ export function assignCourtsToProposals(
         courtId: '',
         courtName: '',
         isIndoor: false,
-        failed: failReason || 'no_court',
+        failed: anyCourtWithinHours ? 'no_court' : 'outside_hours',
       })
       continue
     }
@@ -466,6 +469,7 @@ export function assignCourtsToProposals(
       courtId: picked.id,
       courtName: picked.name,
       isIndoor: picked.isIndoor,
+      usedHoursFallback,
     }
     assignments.push(a)
     const liveKey = `${picked.id}__${proposal.dayOfWeek}`
@@ -525,6 +529,32 @@ function rankCourtsForProposal(args: {
     return a.court.name.localeCompare(b.court.name)
   })
   return scored.map((s) => s.court)
+}
+
+function getCourtConflictReason(args: {
+  courtId: string
+  proposal: AdvisorProgrammingProposalDraft
+  liveByCourtDay: Map<string, SchedulerExistingSession[]>
+  assignedByCourtDay: Map<string, CourtAssignment[]>
+}): 'live_overlap' | 'draft_overlap' | null {
+  const { courtId, proposal, liveByCourtDay, assignedByCourtDay } = args
+  const courtDayKey = `${courtId}__${proposal.dayOfWeek}`
+  const liveOn = liveByCourtDay.get(courtDayKey) || []
+  const hasLiveConflict = liveOn.some((session) =>
+    intervalsOverlap(proposal.startTime, proposal.endTime, session.startTime, session.endTime),
+  )
+  if (hasLiveConflict) return 'live_overlap'
+
+  const assignedOn = assignedByCourtDay.get(courtDayKey) || []
+  const hasDraftConflict = assignedOn.some((assignment) =>
+    intervalsOverlap(
+      proposal.startTime, proposal.endTime,
+      assignment.proposal.startTime, assignment.proposal.endTime,
+    ),
+  )
+  if (hasDraftConflict) return 'draft_overlap'
+
+  return null
 }
 
 function countSameSkillNearby(
@@ -920,7 +950,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       // of the publish-ready grid.
       const placementWarning =
         a.failed === 'outside_hours'
-          ? 'This idea could not be placed because no active court appears to be operating during that window.'
+          ? 'This idea could not be placed because no active court has observed operating hours covering that window.'
           : 'This idea could not be placed because every active court already has a conflicting live or suggested session in that window.'
       cells.push({
         key: `conflict__${a.proposal.id}`,
@@ -958,7 +988,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       projectedOccupancy: a.proposal.projectedOccupancy,
       estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
       confidence: a.proposal.confidence,
-      rationale: a.proposal.rationale,
+      rationale: a.usedHoursFallback
+        ? [
+            ...a.proposal.rationale,
+            'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+          ]
+        : a.proposal.rationale,
       warnings: a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
         ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
         : [],
