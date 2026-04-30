@@ -100,13 +100,29 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const courts = useMemo(() => (gridData?.courts ?? []) as any[], [gridData])
   const liveSessions = useMemo(() => (gridData?.liveSessions ?? []) as any[], [gridData])
   const drafts = useMemo(() => ((gridData?.drafts ?? []) as any[]) as GridDraft[], [gridData])
+  const publishableDrafts = useMemo(
+    () => drafts.filter((draft) => (draft.metadata?.warnings?.length || 0) === 0),
+    [drafts],
+  )
+  const otherIdeas = useMemo(
+    () => drafts.filter((draft) => (draft.metadata?.warnings?.length || 0) > 0),
+    [drafts],
+  )
+  const selectedPublishableIds = useMemo(
+    () => publishableDrafts.filter((draft) => selectedDraftIds.has(draft.id)).map((draft) => draft.id),
+    [publishableDrafts, selectedDraftIds],
+  )
+  const courtNamesById = useMemo(
+    () => new Map(courts.map((court: any) => [court.id, court.name])),
+    [courts],
+  )
 
   // Stats derived from the current grid. We keep these here (not in a
   // tRPC call) so switching weeks updates instantly without a round-trip.
   const stats = useMemo(() => {
-    const suggested = drafts.length
+    const suggested = publishableDrafts.length
     const liveKept = liveSessions.length
-    const saturations = drafts.filter((d) => (d.metadata?.warnings?.length || 0) > 0).length
+    const saturations = otherIdeas.length
     // Blend live (registeredCount/maxPlayers) with drafts (projectedOccupancy).
     // Skipping live made the metric read 0% on weeks with no AI drafts.
     const liveOccs = liveSessions
@@ -116,14 +132,14 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         return max > 0 ? (reg / max) * 100 : null
       })
       .filter((v): v is number => v !== null)
-    const draftOccs = drafts.map((d) => d.projectedOccupancy || 0)
+    const draftOccs = publishableDrafts.map((d) => d.projectedOccupancy || 0)
     const allOccs = [...liveOccs, ...draftOccs]
     const avgOccupancy = allOccs.length === 0
       ? 0
       : Math.round(allOccs.reduce((s, v) => s + v, 0) / allOccs.length)
-    const totalInvites = drafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
+    const totalInvites = publishableDrafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
     return { suggested, liveKept, saturations, avgOccupancy, totalInvites }
-  }, [drafts, liveSessions])
+  }, [liveSessions, otherIdeas.length, publishableDrafts])
 
   // Contact-policy preview: a rough "will admins spam their members?"
   // check. 3 invites/wk/member is the slot-filler default; the real
@@ -200,10 +216,10 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   }
 
   const handleSelectAll = () => {
-    if (selectedDraftIds.size === drafts.length) {
+    if (selectedPublishableIds.length === publishableDrafts.length) {
       setSelectedDraftIds(new Set())
     } else {
-      setSelectedDraftIds(new Set(drafts.map((d) => d.id)))
+      setSelectedDraftIds(new Set(publishableDrafts.map((d) => d.id)))
     }
   }
 
@@ -220,7 +236,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   }
 
   const handlePublish = async () => {
-    const ids = Array.from(selectedDraftIds)
+    const ids = selectedPublishableIds
     if (ids.length === 0) return
     // Step 1: bulk-approve (READY_FOR_OPS → SESSION_DRAFT).
     await new Promise((resolve) => {
@@ -259,9 +275,11 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
             <div>
               <h1 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Programming IQ</h1>
               <p className="text-xs" style={{ color: 'var(--t4)' }}>
-                {drafts.length > 0
-                  ? 'AI-generated weekly schedule, defended by 7 demand signals'
-                  : 'Live schedule from your booking system — click Generate for AI suggestions'}
+                {publishableDrafts.length > 0
+                  ? 'Suggested weekly schedule, ranked by demand and club fit'
+                  : otherIdeas.length > 0
+                    ? 'No publish-ready suggestions yet — backup ideas are listed below'
+                    : 'Published schedule from your booking system — click Generate for suggested sessions'}
               </p>
             </div>
           </div>
@@ -350,9 +368,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
       {/* [3] Stats ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={Calendar} label="Live kept" value={stats.liveKept} color="#3B82F6" />
-        <StatCard icon={Sparkles} label="New suggestions" value={stats.suggested} color="#8B5CF6" />
-        <StatCard icon={AlertTriangle} label="Saturation flags" value={stats.saturations} color="#F59E0B" />
+        <StatCard icon={Calendar} label="Published sessions" value={stats.liveKept} color="#64748B" />
+        <StatCard icon={Sparkles} label="Suggested sessions" value={stats.suggested} color="#8B5CF6" />
+        <StatCard icon={AlertTriangle} label="Audience risks" value={stats.saturations} color="#F59E0B" />
         <StatCard icon={TrendingUp} label="Avg occupancy" value={`${stats.avgOccupancy}%`} color="#10B981" />
       </div>
 
@@ -387,12 +405,85 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         <ProgrammingGrid
           courts={courts}
           liveSessions={liveSessions}
-          drafts={drafts}
+          drafts={publishableDrafts}
           weekStartDate={weekStart}
           selectedDraftIds={selectedDraftIds}
           onToggleSelect={handleToggleSelect}
           onSelectCell={setActiveCell}
         />
+      )}
+
+      {!generating && otherIdeas.length > 0 && (
+        <div
+          className="rounded-2xl p-4 space-y-4"
+          style={{ background: 'var(--card-bg)', border: '1px solid rgba(245,158,11,0.25)' }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(245,158,11,0.12)' }}
+            >
+              <AlertTriangle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+            </div>
+            <div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                Other ideas
+              </div>
+              <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                These slots stay out of the main suggestions because they carry audience saturation risk.
+                Review them only if you want backup options for the week.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {otherIdeas.map((draft) => {
+              const warningText = draft.metadata?.warnings?.join(' ') || 'This slot would over-target the same audience pool this week.'
+              const courtName = draft.courtId ? courtNamesById.get(draft.courtId) : null
+              return (
+                <button
+                  key={draft.id}
+                  onClick={() => setActiveCell({ kind: 'draft', draft })}
+                  className="w-full rounded-xl p-3 text-left transition-all hover:shadow-md"
+                  style={{
+                    background: 'rgba(245,158,11,0.08)',
+                    border: '1px solid rgba(245,158,11,0.22)',
+                  }}
+                >
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                        {draft.title}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                        {draft.dayOfWeek} · {draft.startTime}–{draft.endTime}
+                        {courtName ? ` · ${courtName}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <span
+                        className="px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED' }}
+                      >
+                        {draft.confidence}% confidence
+                      </span>
+                      <span
+                        className="px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(16,185,129,0.12)', color: '#047857' }}
+                      >
+                        {draft.projectedOccupancy}% occupancy
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-start gap-2 text-xs" style={{ color: '#B45309' }}>
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span>{warningText}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {!generating && courts.length === 0 && !gridQuery.isLoading && (
@@ -420,7 +511,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       )}
 
       {/* [6] Sticky footer ─────────────────────────────────────────── */}
-      {drafts.length > 0 && (
+      {publishableDrafts.length > 0 && (
         <div
           // Wider footer (max-w-2xl) so the long "0 of 30 selected" label
           // + Publish button fit without truncating "Publish" → "Pu...lish".
@@ -439,22 +530,22 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               className="px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-black/5"
               style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
             >
-              {selectedDraftIds.size === drafts.length ? 'Deselect all' : 'Select all'}
+              {selectedPublishableIds.length === publishableDrafts.length ? 'Deselect all' : 'Select all'}
             </button>
             <span className="text-xs" style={{ color: 'var(--t4)' }}>
-              {selectedDraftIds.size} of {drafts.length} selected
+              {selectedPublishableIds.length} of {publishableDrafts.length} selected
             </span>
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={handlePublish}
-                disabled={selectedDraftIds.size === 0 || publishMutation.isPending || bulkApproveMutation.isPending}
+                disabled={selectedPublishableIds.length === 0 || publishMutation.isPending || bulkApproveMutation.isPending}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
                 style={{ background: '#10B981', color: 'white' }}
               >
                 {publishMutation.isPending
                   ? <Loader2 className="w-4 h-4 animate-spin" />
                   : <Send className="w-4 h-4" />}
-                Publish {selectedDraftIds.size > 0 ? `(${selectedDraftIds.size})` : ''}
+                Publish {selectedPublishableIds.length > 0 ? `(${selectedPublishableIds.length})` : ''}
               </button>
             </div>
           </div>

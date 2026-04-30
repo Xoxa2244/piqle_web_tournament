@@ -3,9 +3,10 @@
  * Programming IQ — weekly grid view.
  *
  * Renders courts as tabs, each tab showing a 7-day × hourly grid. Cells
- * are colour-coded by kind (live / suggested / saturation / empty) so
- * admins can scan density at a glance. Click → onSelectCell fires so the
- * parent can open the reasoning + edit popover.
+ * are colour-coded by status (published / suggested) while skill lives
+ * in a smaller badge so the main fill always communicates state first.
+ * Click → onSelectCell fires so the parent can open the reasoning + edit
+ * popover.
  *
  * Multi-hour rendering — uses CSS Grid `gridRow: span N` so a 09:30–11:30
  * session is one tall cell that visually spans both 9a and 10a rows
@@ -120,8 +121,8 @@ function dayNameFromDate(date: Date | string, timezone = 'America/New_York'): st
  * Skill classifier that mirrors `ScheduleIQ.classifySkill` — many CR
  * sessions arrive with `skillLevel = ALL_LEVELS` but their `title` says
  * "Advanced 4.0+" or "(3.5 - 3.99)". Reading title + format + skill
- * recovers the right colour tier in those cases instead of falling back
- * to grey.
+ * recovers the right skill badge in those cases instead of falling back
+ * to a generic label.
  */
 type SkillTier = 'beginner' | 'casual' | 'intermediate' | 'competitive' | 'advanced' | 'all'
 
@@ -142,13 +143,49 @@ function classifyTier(opts: {
   return 'all'
 }
 
-const SKILL_COLORS: Record<SkillTier, string> = {
-  advanced: 'rgba(239,68,68,',     // red
-  competitive: 'rgba(139,92,246,', // violet
-  intermediate: 'rgba(59,130,246,', // blue
-  casual: 'rgba(6,182,212,',       // cyan
-  beginner: 'rgba(16,185,129,',    // green
-  all: 'rgba(148,163,184,',        // slate (fallback)
+const SKILL_BADGE_STYLES: Record<SkillTier, { background: string; border: string; text: string; accent: string; label: string }> = {
+  advanced: {
+    background: 'rgba(239,68,68,0.14)',
+    border: 'rgba(239,68,68,0.30)',
+    text: '#B91C1C',
+    accent: '#EF4444',
+    label: 'Advanced',
+  },
+  competitive: {
+    background: 'rgba(139,92,246,0.14)',
+    border: 'rgba(139,92,246,0.30)',
+    text: '#7C3AED',
+    accent: '#8B5CF6',
+    label: 'Competitive',
+  },
+  intermediate: {
+    background: 'rgba(59,130,246,0.14)',
+    border: 'rgba(59,130,246,0.30)',
+    text: '#1D4ED8',
+    accent: '#3B82F6',
+    label: 'Intermediate',
+  },
+  casual: {
+    background: 'rgba(6,182,212,0.14)',
+    border: 'rgba(6,182,212,0.30)',
+    text: '#0F766E',
+    accent: '#06B6D4',
+    label: 'Casual',
+  },
+  beginner: {
+    background: 'rgba(16,185,129,0.14)',
+    border: 'rgba(16,185,129,0.30)',
+    text: '#047857',
+    accent: '#10B981',
+    label: 'Beginner',
+  },
+  all: {
+    background: 'rgba(148,163,184,0.16)',
+    border: 'rgba(148,163,184,0.28)',
+    text: '#475569',
+    accent: '#94A3B8',
+    label: 'All levels',
+  },
 }
 
 function formatHour(h: number): string {
@@ -280,7 +317,7 @@ export function ProgrammingGrid({
               {c.isIndoor ? <Building2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
               {c.name}
               <span className="text-[10px] opacity-70">
-                ({byCourt.get(c.id)?.live.length || 0}L · {byCourt.get(c.id)?.draft.length || 0}AI)
+                ({byCourt.get(c.id)?.live.length || 0} pub · {byCourt.get(c.id)?.draft.length || 0} sug)
               </span>
             </button>
           )
@@ -402,9 +439,8 @@ export function ProgrammingGrid({
 
       {/* Footer legend */}
       <div className="px-4 py-2 flex items-center gap-4 text-xs" style={{ background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--card-border)', color: 'var(--t4)' }}>
-        <LegendPill color="rgba(148,163,184,0.25)" label="Live session" />
-        <LegendPill color="rgba(139,92,246,0.28)" label="AI suggestion" icon={<Sparkles className="w-3 h-3" style={{ color: '#A78BFA' }} />} />
-        <LegendPill color="rgba(245,158,11,0.28)" label="Saturation warning" icon={<AlertTriangle className="w-3 h-3" style={{ color: '#F59E0B' }} />} />
+        <LegendPill color="rgba(148,163,184,0.25)" label="Published session" />
+        <LegendPill color="rgba(139,92,246,0.28)" label="Suggested session" icon={<Sparkles className="w-3 h-3" style={{ color: '#A78BFA' }} />} />
         <span className="ml-auto">Week of {weekStartDate}</span>
       </div>
     </div>
@@ -417,17 +453,33 @@ function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () 
     format: session.format,
     title: session.title,
   })
-  const rgba = SKILL_COLORS[tier]
+  const skillBadge = SKILL_BADGE_STYLES[tier]
   return (
     <button
       onClick={onClick}
       className="w-full h-full text-left rounded-md px-2 py-1.5 transition-all hover:shadow-md flex flex-col justify-between"
       style={{
-        background: `${rgba}0.14)`,
-        border: `1px solid ${rgba}0.35)`,
+        background: 'rgba(148,163,184,0.10)',
+        border: '1px solid rgba(148,163,184,0.24)',
+        boxShadow: `inset 3px 0 0 ${skillBadge.accent}`,
         color: 'var(--heading)',
       }}
     >
+      <div className="flex items-start justify-between gap-2">
+        <span
+          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+          style={{
+            background: skillBadge.background,
+            border: `1px solid ${skillBadge.border}`,
+            color: skillBadge.text,
+          }}
+        >
+          {skillBadge.label}
+        </span>
+        <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--t4)' }}>
+          Published
+        </span>
+      </div>
       <div className="text-[11px] font-semibold leading-tight line-clamp-2">{session.title || 'Session'}</div>
       <div className="text-[10px] opacity-70 leading-tight">
         {session.startTime}–{session.endTime}
@@ -449,6 +501,12 @@ function DraftCell({
   onClick: () => void
 }) {
   const hasWarning = (draft.metadata?.warnings?.length || 0) > 0
+  const tier = classifyTier({
+    skillLevel: draft.skillLevel,
+    format: draft.format,
+    title: draft.title,
+  })
+  const skillBadge = SKILL_BADGE_STYLES[tier]
   // AI suggestions get a strong violet identity regardless of the
   // underlying skill tier, so admins always read them as "AI proposed
   // this" and never confuse them with live data. Saturation flag turns
@@ -486,13 +544,28 @@ function DraftCell({
             {draft.title}
           </span>
         </div>
+        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+          <span
+            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+            style={{
+              background: skillBadge.background,
+              border: `1px solid ${skillBadge.border}`,
+              color: skillBadge.text,
+            }}
+          >
+            {skillBadge.label}
+          </span>
+          <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: hasWarning ? '#B45309' : '#7C3AED' }}>
+            {hasWarning ? 'Audience risk' : 'Suggested'}
+          </span>
+        </div>
         <div className="text-[10px] opacity-70 leading-tight">
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
         {hasWarning && (
           <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#B45309' }}>
             <AlertTriangle className="w-2.5 h-2.5" />
-            saturated
+            audience saturation risk
           </div>
         )}
       </div>

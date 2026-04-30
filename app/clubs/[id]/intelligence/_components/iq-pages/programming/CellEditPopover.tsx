@@ -79,14 +79,14 @@ function LivePanel({
       <Header title={session.title || 'Session'} onClose={onClose} />
       <div className="p-5 space-y-4">
         <div className="text-xs uppercase font-semibold tracking-wide" style={{ color: 'var(--t4)' }}>
-          Live session
+          Published session
         </div>
         <KV label="Format" value={session.format || '—'} />
         <KV label="Skill" value={session.skillLevel || '—'} />
         <KV label="Time" value={`${session.startTime}–${session.endTime}`} />
         <KV label="Capacity" value={`${session.registeredCount ?? 0}/${session.maxPlayers ?? 0}`} />
         <div className="text-xs opacity-70 pt-4" style={{ color: 'var(--t4)' }}>
-          Live sessions are read-only here. Open the Schedule tab to edit.
+          Published sessions are read-only here. Open the Schedule tab to edit.
         </div>
       </div>
     </div>
@@ -145,7 +145,7 @@ function DraftPanel({
   return (
     <div>
       <Header
-        title="AI suggestion"
+        title="Suggested session"
         badge={`${draft.confidence}% confidence`}
         onClose={onClose}
         tone="suggestion"
@@ -185,7 +185,7 @@ function DraftPanel({
           >
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#B45309' }} />
             <div style={{ color: '#B45309' }}>
-              <div className="font-semibold mb-0.5">Pool saturation risk</div>
+              <div className="font-semibold mb-0.5">Audience saturation risk</div>
               {warnings.map((w, i) => <div key={i}>{w}</div>)}
             </div>
           </div>
