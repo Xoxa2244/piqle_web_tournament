@@ -78,8 +78,6 @@ interface ProgrammingGridProps {
   liveSessions: GridLiveSession[]
   drafts: GridDraft[]
   weekStartDate: string
-  selectedDraftIds: Set<string>
-  onToggleSelect: (draftId: string) => void
   onSelectCell: (selection: GridSelection) => void
 }
 
@@ -234,8 +232,6 @@ export function ProgrammingGrid({
   liveSessions,
   drafts,
   weekStartDate,
-  selectedDraftIds,
-  onToggleSelect,
   onSelectCell,
 }: ProgrammingGridProps) {
   const activeCourts = courts.filter((c) => c.isActive)
@@ -436,8 +432,6 @@ export function ProgrammingGrid({
               >
                 <DraftCell
                   draft={d}
-                  selected={selectedDraftIds.has(d.id)}
-                  onToggleSelect={() => onToggleSelect(d.id)}
                   onClick={() => onSelectCell({ kind: 'draft', draft: d })}
                 />
               </div>
@@ -466,7 +460,7 @@ export function ProgrammingGrid({
           swatchStyle={{ background: 'rgba(245,158,11,0.14)', border: '1.5px dashed rgba(245,158,11,0.55)' }}
           icon={<AlertTriangle className="w-3 h-3" style={{ color: '#D97706' }} />}
           title="Audience saturation risk"
-          description="Visible in the calendar, but excluded from bulk publish until reviewed."
+          description="Visible in the calendar, but kept as a backup idea until reviewed."
         />
         <span className="ml-auto text-[11px] pt-1">Week of {weekStartDate}</span>
       </div>
@@ -515,17 +509,12 @@ function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () 
 
 function DraftCell({
   draft,
-  selected,
-  onToggleSelect,
   onClick,
 }: {
   draft: GridDraft
-  selected: boolean
-  onToggleSelect: () => void
   onClick: () => void
 }) {
   const hasWarning = (draft.metadata?.warnings?.length || 0) > 0
-  const selectable = !hasWarning
   const tier = classifyTier({
     skillLevel: draft.skillLevel,
     format: draft.format,
@@ -534,33 +523,20 @@ function DraftCell({
   const skillBadge = SKILL_BADGE_STYLES[tier]
   const fill = hasWarning ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
   const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
-  const selectionOutline = hasWarning ? 'rgba(245,158,11,0.70)' : 'rgba(139,92,246,0.85)'
   return (
     <div
       className="w-full h-full rounded-md px-2 py-1.5 cursor-pointer transition-all hover:shadow-lg flex items-start gap-1"
       style={{
         background: fill,
         border: `1.5px dashed ${border}`,
-        outline: selected ? `2px solid ${selectionOutline}` : 'none',
-        outlineOffset: '-1px',
-        boxShadow: `${selected ? '0 0 12px rgba(139,92,246,0.32), ' : ''}inset 3px 0 0 ${skillBadge.accent}`,
+        boxShadow: `inset 3px 0 0 ${skillBadge.accent}`,
       }}
       onClick={onClick}
     >
-      {selectable ? (
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(e) => {
-            e.stopPropagation()
-            onToggleSelect()
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="mt-0.5 accent-violet-500 flex-shrink-0"
-          style={{ transform: 'scale(0.95)' }}
-        />
-      ) : (
+      {hasWarning ? (
         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#D97706' }} />
+      ) : (
+        <Sparkles className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#A78BFA' }} />
       )}
       <div className="min-w-0 flex-1 flex flex-col justify-between">
         <div className="flex items-start justify-between gap-2">

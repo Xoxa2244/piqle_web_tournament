@@ -10,7 +10,7 @@
  *   [3] Stats row      — 4 cards + contact-policy preview badge.
  *   [4] Main grid      — courts as tabs, 7-day × hourly matrix.
  *   [5] Cell popover   — right-side drawer with reasoning + edit form.
- *   [6] Sticky footer  — Approve Selected · Publish · Clear.
+ *   [6] Draft actions  — generate / regenerate / clear suggestions.
  *
  * Reuses:
  *   • tRPC procedures added in server/routers/intelligence.ts
@@ -21,16 +21,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
-  ShieldAlert, Users, TrendingUp, AlertTriangle, CheckCheck, Send,
+  ShieldAlert, TrendingUp, AlertTriangle,
   Loader2, Info, Clock, Trash2, X,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
   useGenerateProgrammingSchedule,
   useUpdateProgrammingGridCell,
-  useBulkApproveProgrammingGrid,
   useClearProgrammingScheduleDrafts,
-  usePublishProgrammingGrid,
   useIsDemo,
 } from '../../_hooks/use-intelligence'
 import { AILoadingAnimation } from './AILoadingAnimation'
@@ -80,7 +78,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const isDemo = useIsDemo()
   const [weekStart, setWeekStart] = useState<string>(() => toISODate(mondayOf(new Date())))
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
-  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
   const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
@@ -96,9 +93,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const gridQuery = useProgrammingScheduleGrid(clubId, weekStart)
   const generateMutation = useGenerateProgrammingSchedule()
   const updateCellMutation = useUpdateProgrammingGridCell()
-  const bulkApproveMutation = useBulkApproveProgrammingGrid()
   const clearDraftsMutation = useClearProgrammingScheduleDrafts()
-  const publishMutation = usePublishProgrammingGrid()
 
   const gridData = gridQuery.data
   // Memoize the derived slices so downstream hooks (stats, grid) don't
@@ -122,10 +117,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const unplacedIdeas = useMemo(
     () => drafts.filter((draft) => !draft.courtId),
     [drafts],
-  )
-  const selectedPublishableIds = useMemo(
-    () => publishableDrafts.filter((draft) => selectedDraftIds.has(draft.id)).map((draft) => draft.id),
-    [publishableDrafts, selectedDraftIds],
   )
   const courtNamesById = useMemo(
     () => new Map(courts.map((court: any) => [court.id, court.name])),
@@ -180,7 +171,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
   const handleGenerate = async () => {
     setGenerating(true)
-    setSelectedDraftIds(new Set())
     try {
       const result: any = await new Promise((resolve, reject) => {
         const mutation: any = generateMutation as any
@@ -217,25 +207,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     const d = new Date(weekStart)
     d.setDate(d.getDate() + days)
     setWeekStart(toISODate(mondayOf(d)))
-    setSelectedDraftIds(new Set())
     setActiveCell(null)
-  }
-
-  const handleToggleSelect = (draftId: string) => {
-    setSelectedDraftIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(draftId)) next.delete(draftId)
-      else next.add(draftId)
-      return next
-    })
-  }
-
-  const handleSelectAll = () => {
-    if (selectedPublishableIds.length === publishableDrafts.length) {
-      setSelectedDraftIds(new Set())
-    } else {
-      setSelectedDraftIds(new Set(publishableDrafts.map((d) => d.id)))
-    }
   }
 
   const handleSaveCell = (draftId: string, patch: any) => {
@@ -250,30 +222,8 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     )
   }
 
-  const handlePublish = async () => {
-    const ids = selectedPublishableIds
-    if (ids.length === 0) return
-    // Step 1: bulk-approve (READY_FOR_OPS → SESSION_DRAFT).
-    await new Promise((resolve) => {
-      (bulkApproveMutation as any).mutate({ clubId, draftIds: ids }, { onSuccess: resolve, onError: resolve })
-    })
-    // Step 2: publish SESSION_DRAFT → PlaySession.
-    ;(publishMutation as any).mutate(
-      { clubId, draftIds: ids, weekStartDate: weekStart },
-      {
-        onSuccess: async (result: any) => {
-          if (result?.counts?.published > 0) {
-            setSelectedDraftIds(new Set())
-            if ('refetch' in gridQuery) await (gridQuery as any).refetch?.()
-          }
-        },
-      },
-    )
-  }
-
   const handleClearSuggestions = async () => {
     if (drafts.length === 0) return
-    setSelectedDraftIds(new Set())
     setActiveCell(null)
     await new Promise((resolve) => {
       (clearDraftsMutation as any).mutate(
@@ -292,7 +242,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   // Reset draft preview state when switching to a week that hasn't been
   // generated yet — don't keep a prior run's stats.
   useEffect(() => {
-    setSelectedDraftIds(new Set())
     setActiveCell(null)
   }, [weekStart])
 
@@ -435,7 +384,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           <span>
             At current invite caps, each of <b>{memberPool}</b> eligible member{memberPool === 1 ? '' : 's'} would see ~
             <b>{contactPolicyBadge.ratio.toFixed(1)}</b> invites this week
-            {contactPolicyBadge.safe ? ' (safe)' : ' — review before publishing'}.
+            {contactPolicyBadge.safe ? ' (safe)' : ' — review these suggestions carefully'}.
           </span>
         </div>
       )}
@@ -454,8 +403,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           liveSessions={liveSessions}
           drafts={calendarDrafts}
           weekStartDate={weekStart}
-          selectedDraftIds={selectedDraftIds}
-          onToggleSelect={handleToggleSelect}
           onSelectCell={setActiveCell}
         />
       )}
@@ -569,48 +516,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           onSave={handleSaveCell}
           saving={updateCellMutation.isPending}
         />
-      )}
-
-      {/* [6] Sticky footer ─────────────────────────────────────────── */}
-      {publishableDrafts.length > 0 && (
-        <div
-          // Wider footer (max-w-2xl) so the long "0 of 30 selected" label
-          // + Publish button fit without truncating "Publish" → "Pu...lish".
-          // Solid fallback bg so footer doesn't go transparent on the
-          // iqsport theme (same fix as CellEditPopover).
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:rounded-2xl md:max-w-2xl mx-auto px-4 py-3 shadow-lg z-40"
-          style={{
-            background: 'var(--popover-bg, #0F172A)',
-            backgroundColor: 'var(--popover-bg, #0F172A)',
-            border: '1px solid var(--card-border)',
-          }}
-        >
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={handleSelectAll}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-black/5"
-              style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
-            >
-              {selectedPublishableIds.length === publishableDrafts.length ? 'Deselect all' : 'Select all'}
-            </button>
-            <span className="text-xs" style={{ color: 'var(--t4)' }}>
-              {selectedPublishableIds.length} of {publishableDrafts.length} selected
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={handlePublish}
-                disabled={selectedPublishableIds.length === 0 || publishMutation.isPending || bulkApproveMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
-                style={{ background: '#10B981', color: 'white' }}
-              >
-                {publishMutation.isPending
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Send className="w-4 h-4" />}
-                Publish {selectedPublishableIds.length > 0 ? `(${selectedPublishableIds.length})` : ''}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   )
