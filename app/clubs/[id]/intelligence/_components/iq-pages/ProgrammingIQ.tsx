@@ -22,7 +22,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, Users, TrendingUp, AlertTriangle, CheckCheck, Send,
-  Loader2, Info, Clock, Trash2,
+  Loader2, Info, Clock, Trash2, X,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
@@ -36,7 +36,6 @@ import {
 import { AILoadingAnimation } from './AILoadingAnimation'
 import { ProgrammingGrid, type GridSelection, type GridDraft } from './programming/ProgrammingGrid'
 import { CellEditPopover } from './programming/CellEditPopover'
-import ConfirmModal from '@/components/ConfirmModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -534,25 +533,18 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         </div>
       )}
 
-      <ConfirmModal
+      <ProgrammingClearSuggestionsModal
         open={showClearSuggestionsModal}
+        weekLabel={formatWeekRange(weekStart)}
+        publishableCount={publishableDrafts.length}
+        riskCount={riskDrafts.length}
+        unplacedCount={unplacedIdeas.length}
+        isPending={clearDraftsMutation.isPending}
         onClose={() => {
           if (clearDraftsMutation.isPending) return
           setShowClearSuggestionsModal(false)
         }}
         onConfirm={handleClearSuggestions}
-        isPending={clearDraftsMutation.isPending}
-        destructive
-        title="Clear suggested sessions?"
-        description={
-          `Remove all suggested sessions for ${formatWeekRange(weekStart)} from this calendar?\n\n` +
-          `• ${publishableDrafts.length} publish-ready suggestion${publishableDrafts.length === 1 ? '' : 's'}\n` +
-          `• ${riskDrafts.length} backup idea${riskDrafts.length === 1 ? '' : 's'} with audience risk\n` +
-          `• ${unplacedIdeas.length} unplaced idea${unplacedIdeas.length === 1 ? '' : 's'}\n\n` +
-          'Published sessions will stay in the calendar.'
-        }
-        confirmText={clearDraftsMutation.isPending ? 'Clearing…' : 'Clear suggestions'}
-        cancelText="Cancel"
       />
 
       {!generating && courts.length === 0 && !gridQuery.isLoading && (
@@ -647,6 +639,196 @@ function StatCard({
         <div className="text-xs" style={{ color: 'var(--t4)' }}>{label}</div>
       </div>
       <div className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>{value}</div>
+    </div>
+  )
+}
+
+function ProgrammingClearSuggestionsModal({
+  open,
+  weekLabel,
+  publishableCount,
+  riskCount,
+  unplacedCount,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  weekLabel: string
+  publishableCount: number
+  riskCount: number
+  unplacedCount: number
+  isPending: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  if (!open) return null
+
+  const summaryItems = [
+    {
+      label: 'Publish-ready suggestions',
+      value: publishableCount,
+      tone: 'violet',
+    },
+    {
+      label: 'Backup ideas with audience risk',
+      value: riskCount,
+      tone: 'amber',
+    },
+    {
+      label: 'Unplaced ideas',
+      value: unplacedCount,
+      tone: 'slate',
+    },
+  ] as const
+
+  return (
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-[rgba(6,10,24,0.78)] px-4 py-6 backdrop-blur-md"
+      onClick={isPending ? undefined : onClose}
+    >
+      <div
+        className="relative w-full max-w-xl overflow-hidden rounded-[28px] border border-white/12 bg-[#0D1224]/95 shadow-[0_24px_80px_rgba(3,8,24,0.55)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-300/60 to-transparent" />
+        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl" />
+
+        <div className="relative p-6 sm:p-7">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <div
+                className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.24em]"
+                style={{
+                  color: '#FDE68A',
+                  borderColor: 'rgba(245,158,11,0.22)',
+                  background: 'linear-gradient(135deg, rgba(180,83,9,0.18), rgba(124,58,237,0.14))',
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+                Draft Reset
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.22), rgba(239,68,68,0.18))',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <Trash2 className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    Clear suggested sessions?
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    Remove all draft suggestions for <span className="text-white">{weekLabel}</span>.
+                    Published sessions will stay in the calendar.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div
+            className="grid gap-3 rounded-2xl border border-white/8 bg-[rgba(15,23,42,0.62)] p-4 sm:grid-cols-3"
+            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+          >
+            {summaryItems.map((item) => {
+              const toneStyles = item.tone === 'violet'
+                ? {
+                    badgeBg: 'rgba(139,92,246,0.16)',
+                    badgeColor: '#C4B5FD',
+                  }
+                : item.tone === 'amber'
+                  ? {
+                      badgeBg: 'rgba(245,158,11,0.16)',
+                      badgeColor: '#FDE68A',
+                    }
+                  : {
+                      badgeBg: 'rgba(148,163,184,0.14)',
+                      badgeColor: '#CBD5E1',
+                    }
+
+              return (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-white/6 bg-black/10 p-4"
+                  style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}
+                >
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    {item.label}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-2xl font-semibold text-white">
+                      {item.value}
+                    </div>
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
+                      style={{
+                        background: toneStyles.badgeBg,
+                        color: toneStyles.badgeColor,
+                      }}
+                    >
+                      {item.value === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div
+            className="mt-4 rounded-2xl border border-amber-400/16 bg-[linear-gradient(135deg,rgba(120,53,15,0.18),rgba(76,29,149,0.12))] p-4"
+            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
+              <div className="text-sm leading-6 text-slate-200">
+                This will remove publish-ready suggestions, backup ideas, and unplaced ideas for this week.
+                You can generate a new draft immediately after clearing.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: 'linear-gradient(135deg, #F97316, #EF4444)',
+                boxShadow: '0 12px 30px rgba(239,68,68,0.22)',
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              {isPending ? 'Clearing…' : 'Clear suggestions'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
