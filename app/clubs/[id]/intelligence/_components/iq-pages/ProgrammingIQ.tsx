@@ -569,58 +569,27 @@ function ProgrammingClearSuggestionsModal({
 }) {
   if (!open) return null
 
-  const summaryItems = [
-    {
-      label: 'Publish-ready suggestions',
-      value: publishableCount,
-      tone: 'violet',
-    },
-    {
-      label: 'Backup ideas with audience risk',
-      value: riskCount,
-      tone: 'amber',
-    },
-    {
-      label: 'Unplaced ideas',
-      value: unplacedCount,
-      tone: 'slate',
-    },
-  ] as const
-
   return (
     <div
       className="fixed inset-0 z-[140] flex items-center justify-center bg-[rgba(6,10,24,0.78)] px-4 py-6 backdrop-blur-md"
       onClick={isPending ? undefined : onClose}
     >
       <div
-        className="relative w-full max-w-xl overflow-hidden rounded-[28px] border border-white/12 bg-[#0D1224]/95 shadow-[0_24px_80px_rgba(3,8,24,0.55)]"
+        className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-white/6 bg-[#0D1224]/95 shadow-[0_18px_60px_rgba(3,8,24,0.42)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-300/60 to-transparent" />
-        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl" />
+        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/8 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/8 blur-3xl" />
 
         <div className="relative p-6 sm:p-7">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div className="space-y-3">
-              <div
-                className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.24em]"
-                style={{
-                  color: '#FDE68A',
-                  borderColor: 'rgba(245,158,11,0.22)',
-                  background: 'linear-gradient(135deg, rgba(180,83,9,0.18), rgba(124,58,237,0.14))',
-                }}
-              >
-                <Trash2 className="h-3 w-3" />
-                Draft Reset
-              </div>
-
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-11 w-11 items-center justify-center rounded-2xl"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(245,158,11,0.22), rgba(239,68,68,0.18))',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.14))',
+                    border: '1px solid rgba(255,255,255,0.06)',
                   }}
                 >
                   <Trash2 className="h-5 w-5 text-white" />
@@ -648,65 +617,15 @@ function ProgrammingClearSuggestionsModal({
             </button>
           </div>
 
-          <div
-            className="grid gap-3 rounded-2xl border border-white/8 bg-[rgba(15,23,42,0.62)] p-4 sm:grid-cols-3"
-            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
-          >
-            {summaryItems.map((item) => {
-              const toneStyles = item.tone === 'violet'
-                ? {
-                    badgeBg: 'rgba(139,92,246,0.16)',
-                    badgeColor: '#C4B5FD',
-                  }
-                : item.tone === 'amber'
-                  ? {
-                      badgeBg: 'rgba(245,158,11,0.16)',
-                      badgeColor: '#FDE68A',
-                    }
-                  : {
-                      badgeBg: 'rgba(148,163,184,0.14)',
-                      badgeColor: '#CBD5E1',
-                    }
-
-              return (
-                <div
-                  key={item.label}
-                  className="rounded-2xl border border-white/6 bg-black/10 p-4"
-                  style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)' }}
-                >
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                    {item.label}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="text-2xl font-semibold text-white">
-                      {item.value}
-                    </div>
-                    <span
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium"
-                      style={{
-                        background: toneStyles.badgeBg,
-                        color: toneStyles.badgeColor,
-                      }}
-                    >
-                      {item.value === 1 ? 'item' : 'items'}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          <div
-            className="mt-4 rounded-2xl border border-amber-400/16 bg-[linear-gradient(135deg,rgba(120,53,15,0.18),rgba(76,29,149,0.12))] p-4"
-            style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
-          >
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
-              <div className="text-sm leading-6 text-slate-200">
-                This will remove publish-ready suggestions, backup ideas, and unplaced ideas for this week.
-                You can generate a new draft immediately after clearing.
-              </div>
-            </div>
+          <div className="space-y-2 text-sm leading-6 text-slate-300">
+            <p>
+              This will remove <span className="text-white">{publishableCount}</span> suggested session{publishableCount === 1 ? '' : 's'},
+              <span className="text-white"> {riskCount}</span> backup idea{riskCount === 1 ? '' : 's'},
+              and <span className="text-white"> {unplacedCount}</span> unplaced idea{unplacedCount === 1 ? '' : 's'} for this week.
+            </p>
+            <p className="text-slate-400">
+              You can generate a fresh draft immediately after clearing.
+            </p>
           </div>
 
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
