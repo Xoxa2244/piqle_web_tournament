@@ -892,6 +892,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     : plan.requested
       ? [plan.requested]
       : []
+  const selectionTargetCount = Math.max(targetCount, requestedProposals.length)
 
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
@@ -933,7 +934,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   // next candidate no longer clears the minimum business-quality bar.
   const eligible = selectBalancedProposals(
     expanded,
-    targetCount,
+    selectionTargetCount,
     regenerateRequest ? requestedProposals.map((proposal) => proposal.id) : [],
   )
 
@@ -1058,6 +1059,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     return !request.sessionId && !['matched', 'fulfilled', 'completed', 'closed', 'cancelled'].includes(status)
   }).length
   const insights = [...plan.insights]
+  if (regenerateRequest && requestedProposals.length > 0) {
+    insights.unshift(
+      `${requestedProposals.length} slot${requestedProposals.length === 1 ? '' : 's'} came directly from the admin request and were scored after generation.`,
+    )
+  }
   if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
     insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
   }

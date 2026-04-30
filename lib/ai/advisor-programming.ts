@@ -1507,9 +1507,38 @@ function rankProgrammingProposals(proposals: AdvisorProgrammingProposalDraft[]) 
   })
 }
 
+function findRequestedSeed(
+  spec: AdvisorProgrammingRequestSpec,
+  seedPool: AdvisorProgrammingProposalDraft[],
+) {
+  let best: AdvisorProgrammingProposalDraft | null = null
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (const candidate of seedPool) {
+    let score = 0
+
+    if (spec.dayOfWeek) score += candidate.dayOfWeek === spec.dayOfWeek ? 8 : -4
+    if (spec.startTime) {
+      score += candidate.startTime === spec.startTime ? 8 : -2
+    } else if (spec.timeSlot) {
+      score += candidate.timeSlot === spec.timeSlot ? 6 : -2
+    }
+    if (spec.format) score += candidate.format === spec.format ? 5 : -3
+    if (spec.skillLevel) score += candidate.skillLevel === spec.skillLevel ? 4 : -2
+
+    if (score > bestScore) {
+      best = candidate
+      bestScore = score
+    }
+  }
+
+  if (bestScore > 0) return best
+  return seedPool[0] || null
+}
+
 function buildRequestedProposal(opts: {
   spec: AdvisorProgrammingRequestSpec
-  recommended: AdvisorProgrammingProposalDraft | null
+  seed: AdvisorProgrammingProposalDraft | null
 }): AdvisorProgrammingProposalDraft | null {
   const hasMeaningfulSpec = Boolean(
     opts.spec.dayOfWeek ||
@@ -1521,14 +1550,14 @@ function buildRequestedProposal(opts: {
   )
   if (!hasMeaningfulSpec) return null
 
-  const recommended = opts.recommended
-  const format = opts.spec.format || recommended?.format || 'OPEN_PLAY'
-  const skillLevel = opts.spec.skillLevel || recommended?.skillLevel || 'INTERMEDIATE'
-  const timeSlot = opts.spec.timeSlot || recommended?.timeSlot || 'evening'
-  const dayOfWeek = opts.spec.dayOfWeek || recommended?.dayOfWeek || 'Wednesday'
+  const seed = opts.seed
+  const format = opts.spec.format || seed?.format || 'OPEN_PLAY'
+  const skillLevel = opts.spec.skillLevel || seed?.skillLevel || 'ALL_LEVELS'
+  const timeSlot = opts.spec.timeSlot || seed?.timeSlot || 'evening'
+  const dayOfWeek = opts.spec.dayOfWeek || seed?.dayOfWeek || 'Wednesday'
   const defaultWindow = defaultSlotWindow(timeSlot, format)
-  const startTime = opts.spec.startTime || recommended?.startTime || defaultWindow.startTime
-  const endTime = opts.spec.endTime || recommended?.endTime || defaultWindow.endTime
+  const startTime = opts.spec.startTime || seed?.startTime || defaultWindow.startTime
+  const endTime = opts.spec.endTime || seed?.endTime || defaultWindow.endTime
 
   return {
     id: buildProposalId({ dayOfWeek, timeSlot, format, skillLevel }),
@@ -1539,35 +1568,39 @@ function buildRequestedProposal(opts: {
     endTime,
     format,
     skillLevel,
-    maxPlayers: getRequestedMaxPlayers(format, opts.spec.maxPlayers || recommended?.maxPlayers),
-    projectedOccupancy: recommended
-      ? clamp(recommended.projectedOccupancy - 6, 42, 95)
+    maxPlayers: getRequestedMaxPlayers(format, opts.spec.maxPlayers || seed?.maxPlayers),
+    projectedOccupancy: seed
+      ? clamp(seed.projectedOccupancy - 6, 42, 95)
       : 58,
-    estimatedInterestedMembers: recommended
-      ? Math.max(4, recommended.estimatedInterestedMembers - 1)
+    estimatedInterestedMembers: seed
+      ? Math.max(4, seed.estimatedInterestedMembers - 1)
       : 6,
-    confidence: recommended
-      ? clamp(recommended.confidence - 7, 40, 95)
+    confidence: seed
+      ? clamp(seed.confidence - 7, 40, 95)
       : 56,
-    source: recommended?.source || 'fill_gap',
+    source: seed?.source || 'fill_gap',
     rationale: [
-      'This follows the exact programming shape requested in the conversation.',
-      'The agent can keep refining day, time, format, and skill before anything goes live.',
+      'This slot was created directly from the admin request before the week was ranked.',
+      'Confidence and occupancy below are the planner evaluation of this requested idea after generation.',
+      seed && (!opts.spec.format || !opts.spec.skillLevel)
+        ? 'Format or skill defaults were inferred from the strongest matching slot in the requested window.'
+        : 'Day, time, format, and skill can still be refined before anything goes live.',
     ],
   }
 }
 
 function buildRequestedProposals(opts: {
   spec: AdvisorProgrammingRequestSpec
-  recommended: AdvisorProgrammingProposalDraft | null
+  seedPool: AdvisorProgrammingProposalDraft[]
 }) {
   const requestedSpecs = expandAdvisorProgrammingRequest(opts.spec)
   const proposals: AdvisorProgrammingProposalDraft[] = []
 
   for (const spec of requestedSpecs) {
+    const seed = findRequestedSeed(spec, opts.seedPool)
     const proposal = buildRequestedProposal({
       spec,
-      recommended: opts.recommended,
+      seed,
     })
     if (!proposal || proposals.some((existing) => sameProposal(existing, proposal))) continue
     proposals.push(proposal)
@@ -1713,7 +1746,7 @@ export function buildAdvisorProgrammingPlan(opts: {
   const recommended = rankedBase[0] || null
   const requestedDrafts = buildRequestedProposals({
     spec: opts.request || {},
-    recommended,
+    seedPool: rankedBase,
   })
   const requestedWithConflicts = requestedDrafts.length > 0
     ? withProgrammingConflicts([...requestedDrafts, ...rankedBase], {
