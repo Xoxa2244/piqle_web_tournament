@@ -476,9 +476,6 @@ function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () 
         >
           {skillBadge.label}
         </span>
-        <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--t4)' }}>
-          Published
-        </span>
       </div>
       <div className="text-[11px] font-semibold leading-tight line-clamp-2">{session.title || 'Session'}</div>
       <div className="text-[10px] opacity-70 leading-tight">
@@ -507,22 +504,18 @@ function DraftCell({
     title: draft.title,
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
-  // AI suggestions get a strong violet identity regardless of the
-  // underlying skill tier, so admins always read them as "AI proposed
-  // this" and never confuse them with live data. Saturation flag turns
-  // the whole tile amber as a louder warning channel.
-  const fill = hasWarning ? 'rgba(245,158,11,0.20)' : 'rgba(139,92,246,0.22)'
-  const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.6)'
-  const accent = hasWarning ? '#F59E0B' : '#A78BFA'
+  const fill = 'rgba(148,163,184,0.10)'
+  const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
+  const selectionOutline = hasWarning ? 'rgba(245,158,11,0.70)' : 'rgba(139,92,246,0.85)'
   return (
     <div
       className="w-full h-full rounded-md px-2 py-1.5 cursor-pointer transition-all hover:shadow-lg flex items-start gap-1"
       style={{
         background: fill,
         border: `1.5px dashed ${border}`,
-        outline: selected ? '2px solid rgba(139,92,246,0.85)' : 'none',
+        outline: selected ? `2px solid ${selectionOutline}` : 'none',
         outlineOffset: '-1px',
-        boxShadow: selected ? '0 0 12px rgba(139,92,246,0.45)' : '0 0 0 transparent',
+        boxShadow: `${selected ? '0 0 12px rgba(139,92,246,0.32), ' : ''}inset 3px 0 0 ${skillBadge.accent}`,
       }}
       onClick={onClick}
     >
@@ -537,14 +530,8 @@ function DraftCell({
         className="mt-0.5 accent-violet-500 flex-shrink-0"
         style={{ transform: 'scale(0.95)' }}
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1">
-          <Sparkles className="w-3 h-3 flex-shrink-0" style={{ color: accent }} />
-          <span className="text-[11px] font-semibold leading-tight line-clamp-1" style={{ color: 'var(--heading)' }}>
-            {draft.title}
-          </span>
-        </div>
-        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+      <div className="min-w-0 flex-1 flex flex-col justify-between">
+        <div className="flex items-start justify-between gap-2">
           <span
             className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
             style={{
@@ -555,11 +542,11 @@ function DraftCell({
           >
             {skillBadge.label}
           </span>
-          <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: hasWarning ? '#B45309' : '#7C3AED' }}>
-            {hasWarning ? 'Audience risk' : 'Suggested'}
-          </span>
         </div>
-        <div className="text-[10px] opacity-70 leading-tight">
+        <div className="text-[11px] font-semibold leading-tight line-clamp-2 mt-1" style={{ color: 'var(--heading)' }}>
+          {draft.title}
+        </div>
+        <div className="text-[10px] opacity-70 leading-tight mt-1">
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
         {hasWarning && (
