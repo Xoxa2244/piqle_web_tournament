@@ -1420,6 +1420,36 @@ export function useBulkApproveProgrammingGrid() {
   return mutation
 }
 
+export function useClearProgrammingScheduleDrafts() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.clearProgrammingScheduleDrafts.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+          weekStartDate: variables.weekStartDate,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true, cleared: 0 }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true, cleared: 0 }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
 export function usePublishProgrammingGrid() {
   const utils = trpc.useUtils()
   const isDemo = useIsDemo()

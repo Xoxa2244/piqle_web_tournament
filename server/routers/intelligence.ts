@@ -8453,7 +8453,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const draftRows: any[] = []
       for (const cell of grid.cells) {
-        if (cell.kind !== 'suggested') continue
+        if (cell.kind === 'live' || cell.kind === 'empty') continue
         const row = await (ctx.prisma as any).opsSessionDraft.create({
           data: {
             clubId: input.clubId,
@@ -8474,13 +8474,14 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             estimatedInterestedMembers: cell.estimatedInterestedMembers || 0,
             confidence: cell.confidence || 50,
             note: (cell.rationale || []).join(' · ').slice(0, 1000),
-            courtId: cell.courtId,
+            courtId: cell.courtId || null,
             generationId: grid.generationId,
             metadata: {
               weekStartDate: input.weekStartDate,
               rationale: cell.rationale || [],
               warnings: cell.warnings || [],
               origin: 'programming_iq',
+              cellKind: cell.kind,
             },
           },
         }).catch((err: any) => {
@@ -8634,6 +8635,61 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         },
       })
       return { ok: true, approved: result.count }
+    }),
+
+  clearProgrammingScheduleDrafts: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const drafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          publishedPlaySessionId: null,
+        },
+        select: {
+          id: true,
+          metadata: true,
+        },
+        take: 500,
+      }).catch(() => [])
+
+      const idsToDelete = (drafts as any[])
+        .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+        .map((draft) => draft.id)
+
+      if (idsToDelete.length === 0) {
+        return { ok: true, cleared: 0 }
+      }
+
+      const result = await (ctx.prisma as any).opsSessionDraft.deleteMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: idsToDelete },
+        },
+      }).catch(() => ({ count: 0 }))
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqClear',
+        targetType: 'programming_generation',
+        targetId: input.weekStartDate,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Cleared ${result.count} programming suggestions for week ${input.weekStartDate}`,
+        metadata: {
+          weekStartDate: input.weekStartDate,
+          clearedDraftIds: idsToDelete,
+        },
+      })
+
+      return { ok: true, cleared: result.count }
     }),
 
   publishProgrammingGrid: protectedProcedure

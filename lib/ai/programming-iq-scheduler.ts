@@ -737,7 +737,6 @@ function selectBalancedProposals(
   const remaining = [...proposals]
   const selected: AdvisorProgrammingProposalDraft[] = []
   const MIN_SELECTION_SCORE = 62
-  const MIN_PINNED_SCORE = 54
 
   if (pinnedProposalIds.length > 0) {
     const pinnedSet = new Set(pinnedProposalIds)
@@ -745,7 +744,6 @@ function selectBalancedProposals(
 
     for (const proposal of pinned) {
       if (selected.length >= targetCount) break
-      if (getGreedySelectionScore(proposal, selected) < MIN_PINNED_SCORE) continue
       selected.push(proposal)
     }
 
@@ -865,8 +863,15 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   //    justifiably run on two courts). We treat projectedOccupancy as a
   //    proxy for "how much headroom is there to duplicate this slot".
   const expanded: AdvisorProgrammingProposalDraft[] = []
+  const seenExpandedIds = new Set<string>()
+  if (regenerateRequest && plan.requested) {
+    expanded.push(plan.requested)
+    seenExpandedIds.add(plan.requested.id)
+  }
   for (const proposal of rankedProposals) {
+    if (seenExpandedIds.has(proposal.id)) continue
     expanded.push(proposal)
+    seenExpandedIds.add(proposal.id)
     // Duplicate only when the underlying demand is extremely strong and
     // conflict risk is still comparatively low. This keeps us from
     // blindly splitting prime-time demand across two courts.
@@ -881,6 +886,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
         id: `${proposal.id}__dup`,
         confidence: Math.max(38, proposal.confidence - 14),
       })
+      seenExpandedIds.add(`${proposal.id}__dup`)
     }
     if (expanded.length >= targetCount * 2) break
   }
@@ -909,9 +915,31 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   let conflictCount = 0
   for (const a of assignments) {
     if (a.failed) {
-      // Proposal couldn't be placed — we surface this as a conflict cell
-      // on an implicit "placeholder" court so admins can still see the
-      // demand signal and consider adjusting.
+      // Proposal couldn't be placed — keep it as an off-grid idea so the
+      // admin still sees the demand signal and the reason it stayed out
+      // of the publish-ready grid.
+      const placementWarning =
+        a.failed === 'outside_hours'
+          ? 'This idea could not be placed because no active court appears to be operating during that window.'
+          : 'This idea could not be placed because every active court already has a conflicting live or suggested session in that window.'
+      cells.push({
+        key: `conflict__${a.proposal.id}`,
+        kind: 'conflict',
+        courtId: '',
+        courtName: 'Unassigned',
+        dayOfWeek: a.proposal.dayOfWeek,
+        startTime: a.proposal.startTime,
+        endTime: a.proposal.endTime,
+        title: a.proposal.title,
+        format: a.proposal.format,
+        skillLevel: a.proposal.skillLevel,
+        maxPlayers: a.proposal.maxPlayers,
+        projectedOccupancy: a.proposal.projectedOccupancy,
+        estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
+        confidence: a.proposal.confidence,
+        rationale: a.proposal.rationale,
+        warnings: [placementWarning, ...(a.proposal.conflict?.warnings || [])],
+      })
       conflictCount += 1
       continue
     }
@@ -989,6 +1017,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const insights = [...plan.insights]
   if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
     insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
+  }
+  if (conflictCount > 0) {
+    insights.unshift(`${conflictCount} requested or high-signal idea${conflictCount === 1 ? '' : 's'} could not be placed on an active court this week and were moved to Other ideas.`)
   }
 
   return {

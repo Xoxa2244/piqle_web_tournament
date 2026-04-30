@@ -22,13 +22,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, Users, TrendingUp, AlertTriangle, CheckCheck, Send,
-  Loader2, Info, Clock,
+  Loader2, Info, Clock, Trash2,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
   useGenerateProgrammingSchedule,
   useUpdateProgrammingGridCell,
   useBulkApproveProgrammingGrid,
+  useClearProgrammingScheduleDrafts,
   usePublishProgrammingGrid,
   useIsDemo,
 } from '../../_hooks/use-intelligence'
@@ -91,6 +92,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const generateMutation = useGenerateProgrammingSchedule()
   const updateCellMutation = useUpdateProgrammingGridCell()
   const bulkApproveMutation = useBulkApproveProgrammingGrid()
+  const clearDraftsMutation = useClearProgrammingScheduleDrafts()
   const publishMutation = usePublishProgrammingGrid()
 
   const gridData = gridQuery.data
@@ -256,6 +258,23 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     )
   }
 
+  const handleClearSuggestions = async () => {
+    if (drafts.length === 0) return
+    const confirmed = window.confirm(
+      `Remove all suggested sessions for the week of ${formatWeekRange(weekStart)} from this calendar?`,
+    )
+    if (!confirmed) return
+
+    setSelectedDraftIds(new Set())
+    setActiveCell(null)
+    await new Promise((resolve) => {
+      (clearDraftsMutation as any).mutate(
+        { clubId, weekStartDate: weekStart },
+        { onSuccess: resolve, onError: resolve },
+      )
+    })
+  }
+
   // Reset draft preview state when switching to a week that hasn't been
   // generated yet — don't keep a prior run's stats.
   useEffect(() => {
@@ -315,6 +334,20 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
               {generating ? 'Generating…' : drafts.length > 0 ? 'Regenerate' : 'Generate'}
             </button>
+
+            {drafts.length > 0 && (
+              <button
+                onClick={handleClearSuggestions}
+                disabled={clearDraftsMutation.isPending}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                style={{ color: '#B45309', border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}
+              >
+                {clearDraftsMutation.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+                Clear suggestions
+              </button>
+            )}
           </div>
         </div>
 
