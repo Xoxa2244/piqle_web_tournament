@@ -36,6 +36,7 @@ import {
 import { AILoadingAnimation } from './AILoadingAnimation'
 import { ProgrammingGrid, type GridSelection, type GridDraft } from './programming/ProgrammingGrid'
 import { CellEditPopover } from './programming/CellEditPopover'
+import ConfirmModal from '@/components/ConfirmModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null)
   const [generationInsights, setGenerationInsights] = useState<string[]>([])
   const [generationSummary, setGenerationSummary] = useState<{
@@ -272,17 +274,18 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
   const handleClearSuggestions = async () => {
     if (drafts.length === 0) return
-    const confirmed = window.confirm(
-      `Remove all suggested sessions for the week of ${formatWeekRange(weekStart)} from this calendar?`,
-    )
-    if (!confirmed) return
-
     setSelectedDraftIds(new Set())
     setActiveCell(null)
     await new Promise((resolve) => {
       (clearDraftsMutation as any).mutate(
         { clubId, weekStartDate: weekStart },
-        { onSuccess: resolve, onError: resolve },
+        {
+          onSuccess: () => {
+            setShowClearSuggestionsModal(false)
+            resolve(null)
+          },
+          onError: () => resolve(null),
+        },
       )
     })
   }
@@ -349,7 +352,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
             {drafts.length > 0 && (
               <button
-                onClick={handleClearSuggestions}
+                onClick={() => setShowClearSuggestionsModal(true)}
                 disabled={clearDraftsMutation.isPending}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
                 style={{ color: '#B45309', border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}
@@ -530,6 +533,27 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={showClearSuggestionsModal}
+        onClose={() => {
+          if (clearDraftsMutation.isPending) return
+          setShowClearSuggestionsModal(false)
+        }}
+        onConfirm={handleClearSuggestions}
+        isPending={clearDraftsMutation.isPending}
+        destructive
+        title="Clear suggested sessions?"
+        description={
+          `Remove all suggested sessions for ${formatWeekRange(weekStart)} from this calendar?\n\n` +
+          `• ${publishableDrafts.length} publish-ready suggestion${publishableDrafts.length === 1 ? '' : 's'}\n` +
+          `• ${riskDrafts.length} backup idea${riskDrafts.length === 1 ? '' : 's'} with audience risk\n` +
+          `• ${unplacedIdeas.length} unplaced idea${unplacedIdeas.length === 1 ? '' : 's'}\n\n` +
+          'Published sessions will stay in the calendar.'
+        }
+        confirmText={clearDraftsMutation.isPending ? 'Clearing…' : 'Clear suggestions'}
+        cancelText="Cancel"
+      />
 
       {!generating && courts.length === 0 && !gridQuery.isLoading && (
         <div
