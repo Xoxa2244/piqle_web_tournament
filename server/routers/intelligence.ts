@@ -8179,7 +8179,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const since60d = new Date()
       since60d.setDate(since60d.getDate() - 60)
 
-      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests] =
+      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests, followers] =
         await Promise.all([
           ctx.prisma.clubCourt.findMany({
             where: {
@@ -8254,6 +8254,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             take: 500,
             orderBy: { updatedAt: 'desc' },
           }).catch(() => []),
+          ctx.prisma.clubFollower.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              user: {
+                select: {
+                  skillLevel: true,
+                  dateOfBirth: true,
+                  gender: true,
+                },
+              },
+            },
+            take: 5000,
+          }).catch(() => []),
         ])
 
       const explicitUserIds = new Set(
@@ -8313,6 +8326,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const enrichedPreferences = [...(preferences as any[]), ...inferredRows]
 
+      const {
+        buildProgrammingAudienceProfileFromMembers,
+      } = await import('@/lib/ai/advisor-programming')
       const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.clubId },
@@ -8342,6 +8358,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const clubTimezone = (
         (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
       ) || 'America/New_York'
+      const audienceProfile = buildProgrammingAudienceProfileFromMembers(
+        (followers as Array<{ user?: { skillLevel?: string | null; dateOfBirth?: Date | null; gender?: string | null } | null }>)
+          .flatMap((follower) => follower.user ? [follower.user] : []),
+      )
 
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
@@ -8351,6 +8371,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         lastNDaysSessions: lastNDaysSessions as any,
         preferences: enrichedPreferences as any,
         interestRequests: interestRequests as any,
+        audienceProfile,
         contactPolicy: { inviteCapPerMemberPerWeek },
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,

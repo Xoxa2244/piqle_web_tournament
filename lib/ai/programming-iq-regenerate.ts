@@ -184,8 +184,10 @@ export function parseHint(raw: string): RegenerateHint {
  * completely wipe the heuristic output, just nudge the ranking. Admin
  * can always Reject suggestions they don't like.
  */
-const BOOST_MULTIPLIER = 1.25
-const PENALTY_MULTIPLIER = 0.7
+const BOOST_MULTIPLIER = 1.08
+const PENALTY_MULTIPLIER = 0.94
+const MIN_TOTAL_MULTIPLIER = 0.92
+const MAX_TOTAL_MULTIPLIER = 1.08
 
 /**
  * Apply a RegenerateHint to a list of proposals by scaling each
@@ -210,6 +212,7 @@ export function applyRegenerateHint(
     if (hint.penalizeDays.includes(p.dayOfWeek)) multiplier *= PENALTY_MULTIPLIER
     if (hint.boostTimeSlots.includes(p.timeSlot)) multiplier *= BOOST_MULTIPLIER
     if (hint.penalizeTimeSlots.includes(p.timeSlot)) multiplier *= PENALTY_MULTIPLIER
+    multiplier = Math.max(MIN_TOTAL_MULTIPLIER, Math.min(MAX_TOTAL_MULTIPLIER, multiplier))
 
     return {
       ...p,

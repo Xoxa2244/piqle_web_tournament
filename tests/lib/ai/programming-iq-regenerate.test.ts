@@ -142,29 +142,29 @@ describe('applyRegenerateHint', () => {
     expect(out[0].confidence).toBe(70)
   })
 
-  it('boosts matching format by 25%', () => {
+  it('boosts matching format gently', () => {
     const p = [proposal({ format: 'DRILL', confidence: 60 })]
     const out = applyRegenerateHint(p, { ...EMPTY_HINT, boostFormats: ['DRILL'] })
-    // 60 × 1.25 = 75
+    // 60 × 1.08 = 64.8 → 65
+    expect(out[0].confidence).toBe(65)
+  })
+
+  it('penalizes matching format gently', () => {
+    const p = [proposal({ format: 'OPEN_PLAY', confidence: 80 })]
+    const out = applyRegenerateHint(p, { ...EMPTY_HINT, penalizeFormats: ['OPEN_PLAY'] })
+    // 80 × 0.94 = 75.2 → 75
     expect(out[0].confidence).toBe(75)
   })
 
-  it('penalizes matching format by 30%', () => {
-    const p = [proposal({ format: 'OPEN_PLAY', confidence: 80 })]
-    const out = applyRegenerateHint(p, { ...EMPTY_HINT, penalizeFormats: ['OPEN_PLAY'] })
-    // 80 × 0.7 = 56
-    expect(out[0].confidence).toBe(56)
-  })
-
-  it('stacks multiple matching dimensions (boost format AND boost day)', () => {
+  it('caps stacked boosts so AI stays a modifier, not a rewrite', () => {
     const p = [proposal({ format: 'DRILL', dayOfWeek: 'Monday', confidence: 60 })]
     const out = applyRegenerateHint(p, {
       ...EMPTY_HINT,
       boostFormats: ['DRILL'],
       boostDays: ['Monday'],
     })
-    // 60 × 1.25 × 1.25 = 93.75 → 94
-    expect(out[0].confidence).toBe(94)
+    // 60 × 1.08 × 1.08 = 69.98 but total multiplier is capped at 1.08 → 65
+    expect(out[0].confidence).toBe(65)
   })
 
   it('sorts results by effective confidence descending', () => {
@@ -177,7 +177,24 @@ describe('applyRegenerateHint', () => {
       boostFormats: ['DRILL'],
       penalizeFormats: ['OPEN_PLAY'],
     })
-    // a: 90 × 0.7 = 63; b: 60 × 1.25 = 75 → b first
+    // a: 90 × 0.94 = 85; b: 60 × 1.08 = 65 → a stays first
+    expect(out[0].id).toBe('a')
+    expect(out[1].id).toBe('b')
+  })
+
+  it('can still reorder when several capped nudges accumulate against a weaker baseline', () => {
+    const proposals = [
+      proposal({ id: 'a', format: 'OPEN_PLAY', dayOfWeek: 'Friday', timeSlot: 'morning', confidence: 68 }),
+      proposal({ id: 'b', format: 'DRILL', dayOfWeek: 'Monday', timeSlot: 'evening', confidence: 64 }),
+    ]
+    const out = applyRegenerateHint(proposals, {
+      ...EMPTY_HINT,
+      boostFormats: ['DRILL'],
+      boostDays: ['Monday'],
+      boostTimeSlots: ['evening'],
+      penalizeFormats: ['OPEN_PLAY'],
+    })
+    // a: 68 × 0.94 = 64; b: capped at 64 × 1.08 = 69 → b first
     expect(out[0].id).toBe('b')
     expect(out[1].id).toBe('a')
   })
@@ -185,8 +202,8 @@ describe('applyRegenerateHint', () => {
   it('caps confidence at 100', () => {
     const p = [proposal({ format: 'DRILL', confidence: 90 })]
     const out = applyRegenerateHint(p, { ...EMPTY_HINT, boostFormats: ['DRILL'] })
-    // 90 × 1.25 = 112.5 → clamped to 100
-    expect(out[0].confidence).toBe(100)
+    // 90 × 1.08 = 97.2 → 97
+    expect(out[0].confidence).toBe(97)
   })
 
   it('does not match when hint uses wrong case (caller should upper-case)', () => {

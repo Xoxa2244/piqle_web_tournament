@@ -56,6 +56,65 @@ type ProgrammingDemandSignals = {
   interestSlotDemand: Map<string, number>
   interestFormatDemand: Map<PlaySessionFormat, number>
   interestRequestCount: number
+  profilePriorBlend: number
+}
+
+export type ProgrammingAudienceProfile = {
+  audienceSize: number
+  activeAudienceSize: number
+  membersWithSkill: number
+  membersWithAge: number
+  membersWithGender: number
+  skillCounts: Partial<Record<PlaySessionSkillLevel, number>>
+  ageBands: {
+    junior: number
+    youngAdult: number
+    adult: number
+    senior: number
+  }
+}
+
+type ProgrammingSignalReliability = {
+  history: number
+  preferences: number
+  interest: number
+  membershipFit: number
+  skillProfile: number
+  ageProfile: number
+  momentum: number
+  courtOps: number
+  weekday: number
+}
+
+type ProgrammingAdaptiveWeights = {
+  expand: {
+    historical: number
+    slotDemand: number
+    interest: number
+    membershipFit: number
+    skillProfile: number
+    ageTimeFit: number
+    momentum: number
+    courtHeadroom: number
+    weekdayStrength: number
+  }
+  gap: {
+    historical: number
+    slotDemand: number
+    interest: number
+    membershipFit: number
+    skillProfile: number
+    ageTimeFit: number
+    momentum: number
+    courtHeadroom: number
+    weekdayStrength: number
+  }
+}
+
+type ProgrammingWeightProfile = {
+  maturity: number
+  reliabilities: ProgrammingSignalReliability
+  weights: ProgrammingAdaptiveWeights
 }
 
 export type AdvisorProgrammingProposalSource = 'expand_peak' | 'fill_gap'
@@ -130,6 +189,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
+function lerp(start: number, end: number, amount: number) {
+  return start + (end - start) * amount
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -145,6 +208,13 @@ function average(values: number[]) {
 
 function addDemand<T>(map: Map<T, number>, key: T, amount: number) {
   map.set(key, (map.get(key) || 0) + amount)
+}
+
+function mergeDemandMap<T>(target: Map<T, number>, source: Map<T, number>, multiplier = 1) {
+  if (multiplier <= 0) return
+  for (const [key, amount] of Array.from(source.entries())) {
+    addDemand(target, key, amount * multiplier)
+  }
 }
 
 function maxMapValue<T>(map: Map<T, number>) {
@@ -188,6 +258,7 @@ function normalizeFormat(value?: string | null): PlaySessionFormat | undefined {
 function normalizeSkillLevel(value?: string | null): PlaySessionSkillLevel | undefined {
   const upper = value?.toUpperCase() || ''
   if (upper.includes('BEGINNER')) return 'BEGINNER'
+  if (upper.includes('CASUAL')) return 'BEGINNER'
   if (upper.includes('INTERMEDIATE')) return 'INTERMEDIATE'
   if (upper.includes('ADVANCED') || upper.includes('COMPETITIVE')) return 'ADVANCED'
   if (upper.includes('ALL')) return 'ALL_LEVELS'
@@ -357,9 +428,80 @@ function getInterestRequestSlots(value: unknown): TimeSlot[] {
   return TIME_SLOTS.filter((slot) => Boolean((value as Record<string, unknown>)[slot]))
 }
 
+function buildAudienceProfileDemandPrior(
+  audienceProfile?: ProgrammingAudienceProfile | null,
+) {
+  const slotDemand = new Map<string, number>()
+  const formatDemand = new Map<PlaySessionFormat, number>()
+  const skillDemand = new Map<PlaySessionSkillLevel, number>()
+
+  if (!audienceProfile || audienceProfile.audienceSize <= 0) {
+    return { slotDemand, formatDemand, skillDemand }
+  }
+
+  const audienceSize = Math.max(
+    audienceProfile.activeAudienceSize || audienceProfile.audienceSize,
+    1,
+  )
+  const skillMap = getProfileSkillDemandMap(audienceProfile)
+  const totalKnownSkill = Math.max(sumMapValues(skillMap), 0)
+  const skillFallback = totalKnownSkill > 0 ? 0 : audienceSize
+
+  const beginnerCount = (skillMap.get('BEGINNER') || 0) + skillFallback * 0.30
+  const intermediateCount = (skillMap.get('INTERMEDIATE') || 0) + skillFallback * 0.45
+  const advancedCount = (skillMap.get('ADVANCED') || 0) + skillFallback * 0.15
+  const allLevelsCount = (skillMap.get('ALL_LEVELS') || 0) + skillFallback * 0.10
+
+  addDemand(skillDemand, 'BEGINNER', beginnerCount)
+  addDemand(skillDemand, 'INTERMEDIATE', intermediateCount)
+  addDemand(skillDemand, 'ADVANCED', advancedCount)
+  addDemand(skillDemand, 'ALL_LEVELS', Math.max(allLevelsCount, audienceSize * 0.35))
+
+  addDemand(formatDemand, 'CLINIC', beginnerCount * 1.35 + intermediateCount * 0.45)
+  addDemand(formatDemand, 'OPEN_PLAY', beginnerCount * 1.00 + intermediateCount * 1.30 + advancedCount * 0.80)
+  addDemand(formatDemand, 'SOCIAL', beginnerCount * 0.75 + intermediateCount * 0.90 + allLevelsCount * 0.60)
+  addDemand(formatDemand, 'DRILL', beginnerCount * 0.40 + intermediateCount * 1.00 + advancedCount * 1.35)
+  addDemand(formatDemand, 'LEAGUE_PLAY', intermediateCount * 0.35 + advancedCount * 1.20)
+
+  const membersWithAge = Math.max(audienceProfile.membersWithAge, 1)
+  const juniorShare = audienceProfile.ageBands.junior / membersWithAge
+  const youngAdultShare = audienceProfile.ageBands.youngAdult / membersWithAge
+  const adultShare = audienceProfile.ageBands.adult / membersWithAge
+  const seniorShare = audienceProfile.ageBands.senior / membersWithAge
+  const slotVolume = clamp(audienceSize / 6, 1, 8)
+
+  const weekdayMorning = slotVolume * (0.35 + seniorShare * 0.70 + adultShare * 0.25)
+  const weekdayAfternoon = slotVolume * (0.25 + juniorShare * 0.75 + seniorShare * 0.15)
+  const weekdayEvening = slotVolume * (0.85 + youngAdultShare * 0.45 + adultShare * 0.25)
+  const fridayEvening = slotVolume * (0.70 + youngAdultShare * 0.30 + adultShare * 0.10)
+  const saturdayMorning = slotVolume * (0.85 + adultShare * 0.25 + youngAdultShare * 0.15 + juniorShare * 0.10)
+  const sundayMorning = slotVolume * (0.65 + adultShare * 0.20 + seniorShare * 0.20)
+  const weekendAfternoon = slotVolume * (0.45 + juniorShare * 0.30 + youngAdultShare * 0.20)
+
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday'] as DayOfWeek[]) {
+    addDemand(slotDemand, `${day}|morning`, weekdayMorning)
+    addDemand(slotDemand, `${day}|afternoon`, weekdayAfternoon)
+    addDemand(slotDemand, `${day}|evening`, weekdayEvening)
+  }
+
+  addDemand(slotDemand, 'Friday|morning', weekdayMorning * 0.85)
+  addDemand(slotDemand, 'Friday|afternoon', weekdayAfternoon * 0.90)
+  addDemand(slotDemand, 'Friday|evening', fridayEvening)
+  addDemand(slotDemand, 'Saturday|morning', saturdayMorning)
+  addDemand(slotDemand, 'Saturday|afternoon', weekendAfternoon)
+  addDemand(slotDemand, 'Saturday|evening', slotVolume * 0.40)
+  addDemand(slotDemand, 'Sunday|morning', sundayMorning)
+  addDemand(slotDemand, 'Sunday|afternoon', weekendAfternoon * 0.90)
+  addDemand(slotDemand, 'Sunday|evening', slotVolume * 0.35)
+
+  return { slotDemand, formatDemand, skillDemand }
+}
+
 function buildDemandSignals(
   preferences: ProgrammingPreferenceRow[],
   interestRequests: ProgrammingInterestRequestRow[] = [],
+  audienceProfile?: ProgrammingAudienceProfile | null,
+  historySessionCount = 0,
 ): ProgrammingDemandSignals {
   const { slotDemand, formatDemand, skillDemand } = buildPreferenceDemand(preferences)
   const interestSlotDemand = new Map<string, number>()
@@ -399,6 +541,24 @@ function buildDemandSignals(
     }
   }
 
+  const audienceSize = getAudienceSize(audienceProfile || undefined, preferences, interestRequests)
+  const explicitCoverage = clamp(
+    ((preferences.length + interestRequestCount) / audienceSize) / 0.35,
+    0,
+    1,
+  )
+  const historyCoverage = clamp(historySessionCount / 16, 0, 1)
+  const profilePriorBlend = audienceProfile
+    ? clamp((1 - explicitCoverage) * (1 - historyCoverage * 0.8), 0, 1)
+    : 0
+
+  if (profilePriorBlend > 0.05) {
+    const prior = buildAudienceProfileDemandPrior(audienceProfile)
+    mergeDemandMap(slotDemand, prior.slotDemand, profilePriorBlend)
+    mergeDemandMap(formatDemand, prior.formatDemand, profilePriorBlend)
+    mergeDemandMap(skillDemand, prior.skillDemand, profilePriorBlend)
+  }
+
   return {
     slotDemand,
     formatDemand,
@@ -406,6 +566,7 @@ function buildDemandSignals(
     interestSlotDemand,
     interestFormatDemand,
     interestRequestCount,
+    profilePriorBlend,
   }
 }
 
@@ -529,6 +690,334 @@ function getTopDemandKey<T extends string>(map: Map<T, number>, fallback: T) {
   return topKey
 }
 
+function sumMapValues<T>(map: Map<T, number>) {
+  return Array.from(map.values()).reduce((sum, value) => sum + value, 0)
+}
+
+function getAgeYears(value?: Date | string | null) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - date.getFullYear()
+  const birthdayPassed =
+    now.getMonth() > date.getMonth() ||
+    (now.getMonth() === date.getMonth() && now.getDate() >= date.getDate())
+  if (!birthdayPassed) age -= 1
+  return age >= 0 && age <= 110 ? age : null
+}
+
+export function buildProgrammingAudienceProfileFromMembers(
+  members: Array<{
+    skillLevel?: string | null
+    dateOfBirth?: Date | string | null
+    gender?: string | null
+  }>,
+): ProgrammingAudienceProfile {
+  const skillCounts: Partial<Record<PlaySessionSkillLevel, number>> = {}
+  const ageBands = {
+    junior: 0,
+    youngAdult: 0,
+    adult: 0,
+    senior: 0,
+  }
+
+  let membersWithSkill = 0
+  let membersWithAge = 0
+  let membersWithGender = 0
+
+  for (const member of members) {
+    const normalizedSkill = normalizeSkillLevel(member.skillLevel)
+    if (normalizedSkill) {
+      skillCounts[normalizedSkill] = (skillCounts[normalizedSkill] || 0) + 1
+      membersWithSkill += 1
+    }
+
+    const age = getAgeYears(member.dateOfBirth)
+    if (age !== null) {
+      membersWithAge += 1
+      if (age < 18) ageBands.junior += 1
+      else if (age < 35) ageBands.youngAdult += 1
+      else if (age < 55) ageBands.adult += 1
+      else ageBands.senior += 1
+    }
+
+    if (member.gender) membersWithGender += 1
+  }
+
+  return {
+    audienceSize: members.length,
+    activeAudienceSize: members.length,
+    membersWithSkill,
+    membersWithAge,
+    membersWithGender,
+    skillCounts,
+    ageBands,
+  }
+}
+
+function getAudienceSize(
+  audienceProfile: ProgrammingAudienceProfile | undefined,
+  preferences: ProgrammingPreferenceRow[],
+  interestRequests: ProgrammingInterestRequestRow[],
+) {
+  return Math.max(
+    audienceProfile?.activeAudienceSize || 0,
+    audienceProfile?.audienceSize || 0,
+    preferences.length,
+    interestRequests.length,
+    1,
+  )
+}
+
+function getProfileSkillDemandMap(audienceProfile?: ProgrammingAudienceProfile | null) {
+  const map = new Map<PlaySessionSkillLevel, number>()
+  if (!audienceProfile) return map
+  for (const [skill, count] of Object.entries(audienceProfile.skillCounts)) {
+    if (!skill || !count) continue
+    map.set(skill as PlaySessionSkillLevel, count)
+  }
+  return map
+}
+
+function getSkillProfileFitScore(input: {
+  skillLevel: PlaySessionSkillLevel
+  audienceProfile?: ProgrammingAudienceProfile | null
+}) {
+  const skillMap = getProfileSkillDemandMap(input.audienceProfile)
+  if (skillMap.size === 0) return 50
+  const peak = maxMapValue(skillMap)
+  if (input.skillLevel === 'ALL_LEVELS') {
+    return clamp(Math.round((sumMapValues(skillMap) / Math.max(skillMap.size, 1)) / peak * 100), 35, 100)
+  }
+  return clamp(Math.round(((skillMap.get(input.skillLevel) || 0) / peak) * 100), 30, 100)
+}
+
+function getAgeTimeFitScore(input: {
+  timeSlot: TimeSlot
+  dayOfWeek: DayOfWeek
+  audienceProfile?: ProgrammingAudienceProfile | null
+}) {
+  const profile = input.audienceProfile
+  if (!profile || profile.membersWithAge === 0) return 50
+
+  const total = Math.max(profile.membersWithAge, 1)
+  const juniorShare = profile.ageBands.junior / total
+  const youngAdultShare = profile.ageBands.youngAdult / total
+  const adultShare = profile.ageBands.adult / total
+  const seniorShare = profile.ageBands.senior / total
+  const weekend = input.dayOfWeek === 'Saturday' || input.dayOfWeek === 'Sunday'
+
+  let score = 50
+  if (input.timeSlot === 'morning') {
+    score += adultShare * 24 + seniorShare * 28 + (weekend ? youngAdultShare * 10 : 0)
+    score -= youngAdultShare * 8
+  } else if (input.timeSlot === 'afternoon') {
+    score += adultShare * 12 + seniorShare * 18 + (weekend ? juniorShare * 10 : 0)
+    score -= youngAdultShare * 4
+  } else {
+    score += youngAdultShare * 26 + juniorShare * 10 + (weekend ? 4 : 0)
+    score -= seniorShare * 8
+  }
+
+  return clamp(Math.round(score), 30, 85)
+}
+
+function normaliseWeightRecord<T extends string>(weights: Record<T, number>) {
+  const values = Object.values(weights) as number[]
+  const total = values.reduce((sum, value) => sum + value, 0)
+  if (total <= 0) return weights
+  return Object.fromEntries(
+    (Object.entries(weights) as Array<[T, number]>).map(([key, value]) => [key, value / total]),
+  ) as Record<T, number>
+}
+
+function computeProgrammingWeightProfile(opts: {
+  sessions: ProgrammingSessionRow[]
+  preferences: ProgrammingPreferenceRow[]
+  interestRequests: ProgrammingInterestRequestRow[]
+  comboStats: Map<string, ComboStat>
+  slotSupply: Map<string, SlotSupplyStat>
+  audienceProfile?: ProgrammingAudienceProfile | null
+  courtCount?: number
+}) {
+  const audienceSize = getAudienceSize(opts.audienceProfile || undefined, opts.preferences, opts.interestRequests)
+  const totalBookings = opts.sessions.reduce((sum, session) => sum + Math.max(0, session.registeredCount || 0), 0)
+  const historyReliability = clamp(
+    (opts.sessions.length / 24) * 0.55 +
+    (totalBookings / 180) * 0.35 +
+    (opts.comboStats.size / 10) * 0.10,
+    0,
+    1,
+  )
+  const preferenceReliability = clamp(
+    (opts.preferences.length / audienceSize) / 0.30,
+    0,
+    1,
+  )
+  const openInterestCount = opts.interestRequests.filter((request) => {
+    const status = (request.status || '').toLowerCase()
+    return !request.sessionId && !['matched', 'fulfilled', 'completed', 'closed', 'cancelled'].includes(status)
+  }).length
+  const interestReliability = clamp(
+    (openInterestCount / audienceSize) / 0.08,
+    0,
+    1,
+  )
+  const skillProfileReliability = clamp(
+    (opts.audienceProfile?.membersWithSkill || 0) / audienceSize,
+    0,
+    1,
+  )
+  const ageProfileReliability = clamp(
+    (opts.audienceProfile?.membersWithAge || 0) / audienceSize,
+    0,
+    1,
+  )
+  const maturity = historyReliability
+  const slotSignalReliability = clamp(
+    Math.max(preferenceReliability, interestReliability, opts.slotSupply.size > 0 ? 0.35 : 0),
+    0,
+    1,
+  )
+  const reliabilities: ProgrammingSignalReliability = {
+    history: historyReliability,
+    preferences: preferenceReliability,
+    interest: interestReliability,
+    membershipFit: clamp(preferenceReliability * 0.65 + skillProfileReliability * 0.35, 0, 1),
+    skillProfile: skillProfileReliability,
+    ageProfile: ageProfileReliability,
+    momentum: clamp(Math.max(historyReliability, slotSignalReliability * 0.6), 0, 1),
+    courtOps: opts.courtCount && opts.courtCount > 0 ? 1 : 0.6,
+    weekday: slotSignalReliability,
+  }
+
+  const expandBase = {
+    historical: lerp(0.18, 0.34, maturity),
+    slotDemand: lerp(0.16, 0.14, maturity),
+    interest: lerp(0.18, 0.14, maturity),
+    membershipFit: lerp(0.12, 0.12, maturity),
+    skillProfile: lerp(0.20, 0.08, maturity),
+    ageTimeFit: lerp(0.05, 0.02, maturity),
+    momentum: lerp(0.06, 0.08, maturity),
+    courtHeadroom: lerp(0.03, 0.05, maturity),
+    weekdayStrength: lerp(0.02, 0.03, maturity),
+  }
+  const gapBase = {
+    historical: lerp(0.10, 0.18, maturity),
+    slotDemand: lerp(0.22, 0.20, maturity),
+    interest: lerp(0.20, 0.18, maturity),
+    membershipFit: lerp(0.12, 0.12, maturity),
+    skillProfile: lerp(0.21, 0.08, maturity),
+    ageTimeFit: lerp(0.06, 0.02, maturity),
+    momentum: lerp(0.04, 0.08, maturity),
+    courtHeadroom: lerp(0.03, 0.08, maturity),
+    weekdayStrength: lerp(0.02, 0.06, maturity),
+  }
+
+  return {
+    maturity,
+    reliabilities,
+    weights: {
+      expand: normaliseWeightRecord({
+        historical: expandBase.historical * reliabilities.history,
+        slotDemand: expandBase.slotDemand * Math.max(reliabilities.weekday, opts.slotSupply.size > 0 ? 0.35 : 0),
+        interest: expandBase.interest * Math.max(reliabilities.interest, openInterestCount > 0 ? 0.35 : 0),
+        membershipFit: expandBase.membershipFit * reliabilities.membershipFit,
+        skillProfile: expandBase.skillProfile * reliabilities.skillProfile,
+        ageTimeFit: expandBase.ageTimeFit * reliabilities.ageProfile,
+        momentum: expandBase.momentum * reliabilities.momentum,
+        courtHeadroom: expandBase.courtHeadroom * reliabilities.courtOps,
+        weekdayStrength: expandBase.weekdayStrength * reliabilities.weekday,
+      }),
+      gap: normaliseWeightRecord({
+        historical: gapBase.historical * Math.max(reliabilities.history, opts.slotSupply.size > 0 ? 0.25 : 0),
+        slotDemand: gapBase.slotDemand * Math.max(reliabilities.weekday, 0.35),
+        interest: gapBase.interest * Math.max(reliabilities.interest, openInterestCount > 0 ? 0.4 : 0),
+        membershipFit: gapBase.membershipFit * reliabilities.membershipFit,
+        skillProfile: gapBase.skillProfile * reliabilities.skillProfile,
+        ageTimeFit: gapBase.ageTimeFit * reliabilities.ageProfile,
+        momentum: gapBase.momentum * Math.max(reliabilities.momentum, 0.35),
+        courtHeadroom: gapBase.courtHeadroom * reliabilities.courtOps,
+        weekdayStrength: gapBase.weekdayStrength * Math.max(reliabilities.weekday, 0.35),
+      }),
+    },
+  } satisfies ProgrammingWeightProfile
+}
+
+function getTopFormats(formatDemand: Map<PlaySessionFormat, number>) {
+  const fallback: PlaySessionFormat[] = ['OPEN_PLAY', 'CLINIC', 'DRILL', 'SOCIAL', 'LEAGUE_PLAY']
+  const ranked = Array.from(formatDemand.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([format]) => format)
+  return Array.from(new Set([...ranked, ...fallback])).slice(0, 3)
+}
+
+function getTopSkills(
+  skillDemand: Map<PlaySessionSkillLevel, number>,
+  audienceProfile?: ProgrammingAudienceProfile | null,
+) {
+  const scoreBySkill = new Map<PlaySessionSkillLevel, number>()
+  for (const [skill, score] of Array.from(skillDemand.entries())) {
+    addDemand(scoreBySkill, skill, score * 2)
+  }
+  const profileSkillDemand = getProfileSkillDemandMap(audienceProfile)
+  for (const [skill, score] of Array.from(profileSkillDemand.entries())) {
+    addDemand(scoreBySkill, skill, score)
+  }
+
+  const ranked = Array.from(scoreBySkill.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([skill]) => skill)
+  const includeAllLevels =
+    scoreBySkill.has('ALL_LEVELS') ||
+    profileSkillDemand.size >= 3
+  const fallback: PlaySessionSkillLevel[] = includeAllLevels
+    ? ['INTERMEDIATE', 'BEGINNER', 'ADVANCED', 'ALL_LEVELS']
+    : ['INTERMEDIATE', 'BEGINNER', 'ADVANCED']
+
+  return Array.from(
+    new Set([
+      ...ranked.filter((skill) => includeAllLevels || skill !== 'ALL_LEVELS'),
+      ...fallback,
+    ]),
+  ).slice(0, 3)
+}
+
+function getPrimarySlotCombo(opts: {
+  comboStats: Map<string, ComboStat>
+  dayOfWeek: DayOfWeek
+  timeSlot: TimeSlot
+}) {
+  return Array.from(opts.comboStats.values())
+    .filter((stat) => stat.dayOfWeek === opts.dayOfWeek && stat.timeSlot === opts.timeSlot)
+    .sort((left, right) => {
+      const rightAverageOccupancy = right.occupancySum / Math.max(right.sessionCount, 1)
+      const leftAverageOccupancy = left.occupancySum / Math.max(left.sessionCount, 1)
+      if (rightAverageOccupancy !== leftAverageOccupancy) {
+        return rightAverageOccupancy - leftAverageOccupancy
+      }
+      return right.sessionCount - left.sessionCount
+    })[0]
+}
+
+function getGapSlotSimilarityMultiplier(opts: {
+  primaryCombo?: ComboStat
+  format: PlaySessionFormat
+  skillLevel: PlaySessionSkillLevel
+}) {
+  if (!opts.primaryCombo) return 1
+  if (
+    opts.primaryCombo.format === opts.format &&
+    opts.primaryCombo.skillLevel === opts.skillLevel
+  ) return 1
+  if (
+    opts.primaryCombo.format === opts.format ||
+    opts.primaryCombo.skillLevel === opts.skillLevel
+  ) return 0.72
+  return 0.55
+}
+
 function buildExpandPeakProposals(opts: {
   comboStats: Map<string, ComboStat>
   slotDemand: Map<string, number>
@@ -536,6 +1025,8 @@ function buildExpandPeakProposals(opts: {
   formatDemand: Map<PlaySessionFormat, number>
   skillDemand: Map<PlaySessionSkillLevel, number>
   slotSupply: Map<string, SlotSupplyStat>
+  audienceProfile?: ProgrammingAudienceProfile | null
+  weightProfile: ProgrammingWeightProfile
   courtCount?: number
 }): AdvisorProgrammingProposalDraft[] {
   const proposals: AdvisorProgrammingProposalDraft[] = []
@@ -555,45 +1046,55 @@ function buildExpandPeakProposals(opts: {
     })
     const weekdayStrength = getRelativeDemandScore(slotKey, opts.slotDemand)
     const momentum = getRecencyMomentum(stat.latestDateMs, stat.recentSessionCount)
+    const skillProfileFit = getSkillProfileFitScore({
+      skillLevel: stat.skillLevel,
+      audienceProfile: opts.audienceProfile,
+    })
+    const ageTimeFit = getAgeTimeFitScore({
+      dayOfWeek: stat.dayOfWeek,
+      timeSlot: stat.timeSlot,
+      audienceProfile: opts.audienceProfile,
+    })
     const courtHeadroom = getCourtHeadroomScore({
       slotKey,
       slotSupply: opts.slotSupply,
       courtCount: opts.courtCount,
     })
-    // Score weights — tuned 2026-04-25 from a real-data walkthrough on
-    // IPC clubs:
-    //   - preferences (slotDemandScore) had 3.2× and was dominating
-    //     scoring; moved to 2.4 so historical fill + interest backlog
-    //     also matter
-    //   - interestBacklog raised to 3.5 (members explicitly opting in
-    //     for "notify me" is the cleanest demand signal we have)
-    //   - avgOccupancy raised to 0.8 (history is the most reliable
-    //     predictor; was being out-shouted by preferences)
-    //   - membershipFit raised to 0.4 so format/persona-mix matters more
-    //     than 0.18 noise; persona-aware programming was a stated goal
-    //     in the plan but was effectively muted
-    //   - sessionCount bonus reduced from min(×2, 10) to min(×1, 6) —
-    //     all IPC slots had 100+ historical sessions, so the +10 cap
-    //     was constant noise that didn't differentiate slots
-    //   - clamp lowered to [30, 95] from [45, 98] so low-signal slots
-    //     can rank visibly below high-signal ones (everything used to
-    //     pile up at 98)
+    const historicalScore = clamp(Math.round(avgOccupancy * Math.min(1, stat.sessionCount / 6)), 35, 100)
+    const scoreSignals = opts.weightProfile.weights.expand
     const score = clamp(
       Math.round(
-        avgOccupancy * 0.8
-        + slotDemandScore * 2.4
-        + interestBacklog * 3.5
-        + membershipFit * 0.4
-        + weekdayStrength * 0.12
-        + momentum * 0.1
-        + courtHeadroom * 0.08
-        + Math.min(stat.sessionCount * 1, 6),
+        historicalScore * scoreSignals.historical +
+        slotDemandScore * scoreSignals.slotDemand +
+        Math.min(100, interestBacklog * 18) * scoreSignals.interest +
+        membershipFit * scoreSignals.membershipFit +
+        skillProfileFit * scoreSignals.skillProfile +
+        ageTimeFit * scoreSignals.ageTimeFit +
+        momentum * scoreSignals.momentum +
+        courtHeadroom * scoreSignals.courtHeadroom +
+        weekdayStrength * scoreSignals.weekdayStrength,
       ),
-      30,
+      32,
       95,
-      )
-    const projectedOccupancy = clamp(Math.round(avgOccupancy + Math.min(slotDemandScore * 1.2 + interestBacklog * 1.5, 10)), 55, 95)
-    const estimatedInterestedMembers = Math.max(4, Math.round(slotDemandScore * 1.4 + interestBacklog * 1.6))
+    )
+    const projectedOccupancy = clamp(
+      Math.round(
+        avgOccupancy * 0.68 +
+        slotDemandScore * 0.18 +
+        Math.min(100, interestBacklog * 18) * 0.08 +
+        skillProfileFit * 0.06
+      ),
+      55,
+      95,
+    )
+    const estimatedInterestedMembers = Math.max(
+      4,
+      Math.round(
+        (projectedOccupancy / 100) * Math.max(stat.maxPlayersTotal / Math.max(stat.sessionCount, 1), 8) +
+        slotDemandScore * 0.08 +
+        interestBacklog * 0.9,
+      ),
+    )
     const defaultWindow = defaultSlotWindow(stat.timeSlot, stat.format)
 
     proposals.push({
@@ -616,7 +1117,7 @@ function buildExpandPeakProposals(opts: {
         interestBacklog > 0
           ? `${Math.round(interestBacklog)} notify-me demand signal${Math.round(interestBacklog) === 1 ? '' : 's'} are still waiting for a matching window here.`
           : `${courtHeadroom}% court headroom suggests this window can likely absorb another recurring option cleanly.`,
-        `${membershipFit}% of current member demand signals line up with this ${formatLabel(stat.format).toLowerCase()} / ${skillLabel(stat.skillLevel).toLowerCase()} shape.`,
+        `${membershipFit}% demand-fit and ${skillProfileFit}% skill-pool fit line up with this ${formatLabel(stat.format).toLowerCase()} / ${skillLabel(stat.skillLevel).toLowerCase()} shape.`,
         `Recent momentum is ${momentum >= 72 ? 'strong' : momentum >= 58 ? 'steady' : 'mixed'} for this window.`,
         'Adding another recurring option here should capture demand without changing live schedule yet.',
       ].slice(0, 4),
@@ -627,16 +1128,23 @@ function buildExpandPeakProposals(opts: {
 }
 
 function buildGapFillProposals(opts: {
+  comboStats: Map<string, ComboStat>
   slotDemand: Map<string, number>
   interestSlotDemand: Map<string, number>
   slotSupply: Map<string, SlotSupplyStat>
-  topFormat: PlaySessionFormat
-  topSkill: PlaySessionSkillLevel
   formatDemand: Map<PlaySessionFormat, number>
   skillDemand: Map<PlaySessionSkillLevel, number>
+  audienceProfile?: ProgrammingAudienceProfile | null
+  weightProfile: ProgrammingWeightProfile
   courtCount?: number
 }): AdvisorProgrammingProposalDraft[] {
   const proposals: AdvisorProgrammingProposalDraft[] = []
+  const candidateFormats = getTopFormats(opts.formatDemand)
+  const candidateSkills = getTopSkills(opts.skillDemand, opts.audienceProfile)
+  const hasFormatSignals = sumMapValues(opts.formatDemand) > 0
+  const hasSkillSignals = sumMapValues(opts.skillDemand) > 0
+  const peakFormatSignal = maxMapValue(opts.formatDemand)
+  const peakSkillSignal = maxMapValue(opts.skillDemand)
 
   for (const dayOfWeek of DAYS) {
     for (const timeSlot of TIME_SLOTS) {
@@ -645,83 +1153,140 @@ function buildGapFillProposals(opts: {
       const interestBacklog = opts.interestSlotDemand.get(slotKey) || 0
       const supply = opts.slotSupply.get(slotKey)
       const slotAvgOccupancy = supply ? average(supply.occupancyValues) : 0
+      const primaryCombo = getPrimarySlotCombo({
+        comboStats: opts.comboStats,
+        dayOfWeek,
+        timeSlot,
+      })
 
       if (demand < 3) continue
       if (supply && supply.sessionCount > 0 && slotAvgOccupancy < 68) continue
 
-      const membershipFit = getMembershipFitScore({
-        format: opts.topFormat,
-        skillLevel: opts.topSkill,
-        formatDemand: opts.formatDemand,
-        skillDemand: opts.skillDemand,
-      })
       const weekdayStrength = getRelativeDemandScore(slotKey, opts.slotDemand)
       const momentum = supply
         ? getRecencyMomentum(supply.latestDateMs, supply.recentSessionCount)
-        : clamp(58 + demand * 6, 52, 92)
+        : clamp(52 + demand * 8, 48, 88)
       const courtHeadroom = getCourtHeadroomScore({
         slotKey,
         slotSupply: opts.slotSupply,
         courtCount: opts.courtCount,
       })
-      const window = defaultSlotWindow(timeSlot, opts.topFormat)
-      const projectedOccupancy = clamp(
-        Math.round(58 + demand * 4 + interestBacklog * 1.8 + (supply ? Math.max(0, slotAvgOccupancy - 68) * 0.3 : 10)),
-        52,
-        92,
-      )
-      const confidence = clamp(
-        Math.round(
-          42
-          + demand * 4.2
-          + interestBacklog * 2.8
-          + membershipFit * 0.18
-          + weekdayStrength * 0.12
-          + momentum * 0.12
-          + courtHeadroom * 0.09
-          + (supply ? Math.max(0, slotAvgOccupancy - 70) * 0.35 : 10),
-        ),
-        48,
-        96,
-      )
-
-      proposals.push({
-        id: buildProposalId({
-          dayOfWeek,
-          timeSlot,
-          format: opts.topFormat,
-          skillLevel: opts.topSkill,
-        }),
-        title: buildProgrammingTitle({
-          dayOfWeek,
-          timeSlot,
-          format: opts.topFormat,
-          skillLevel: opts.topSkill,
-        }),
+      const ageTimeFit = getAgeTimeFitScore({
         dayOfWeek,
         timeSlot,
-        startTime: window.startTime,
-        endTime: window.endTime,
-        format: opts.topFormat,
-        skillLevel: opts.topSkill,
-        maxPlayers: getRequestedMaxPlayers(opts.topFormat),
-        projectedOccupancy,
-        estimatedInterestedMembers: Math.max(4, Math.round(demand * 1.7 + interestBacklog * 1.5)),
-        confidence,
-        source: 'fill_gap',
-        rationale: [
-          supply?.sessionCount
-            ? `${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()} sessions are already averaging ${Math.round(slotAvgOccupancy)}% full.`
-            : `No recent sessions are scheduled on ${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()}.`,
-          `${Math.round(demand)} member preference signals line up with this window.`,
-          interestBacklog > 0
-            ? `${Math.round(interestBacklog)} queued notify-me request${Math.round(interestBacklog) === 1 ? '' : 's'} are still waiting for this kind of slot.`
-            : `${courtHeadroom}% court headroom suggests this slot is operationally manageable if the club wants to test it.`,
-          `${membershipFit}% membership-fit score suggests this format and skill mix matches who currently wants to play.`,
-          `Weekday signal is ${weekdayStrength >= 72 ? 'strong' : weekdayStrength >= 58 ? 'steady' : 'emerging'} for this slot.`,
-          'This is a safe draft-only way to test new programming before publishing anything live.',
-        ].slice(0, 4),
+        audienceProfile: opts.audienceProfile,
       })
+
+      for (const format of candidateFormats) {
+        const formatSignal = opts.formatDemand.get(format) || 0
+        for (const skillLevel of candidateSkills) {
+          const skillSignal = opts.skillDemand.get(skillLevel) || 0
+          if (supply && supply.sessionCount > 0 && !opts.audienceProfile) {
+            if (
+              hasFormatSignals &&
+              formatSignal < peakFormatSignal * 0.45 &&
+              interestBacklog === 0
+            ) continue
+            if (
+              hasSkillSignals &&
+              skillLevel !== 'ALL_LEVELS' &&
+              skillSignal < peakSkillSignal * 0.45
+            ) continue
+          }
+
+          const membershipFit = getMembershipFitScore({
+            format,
+            skillLevel,
+            formatDemand: opts.formatDemand,
+            skillDemand: opts.skillDemand,
+          })
+          const skillProfileFit = getSkillProfileFitScore({
+            skillLevel,
+            audienceProfile: opts.audienceProfile,
+          })
+          const window = defaultSlotWindow(timeSlot, format)
+          const slotSimilarityMultiplier = getGapSlotSimilarityMultiplier({
+            primaryCombo,
+            format,
+            skillLevel,
+          })
+          const historicalScore = supply
+            ? clamp(
+              Math.round(slotAvgOccupancy * slotSimilarityMultiplier),
+              slotSimilarityMultiplier >= 1 ? 45 : 34,
+              slotSimilarityMultiplier >= 1 ? 92 : slotSimilarityMultiplier >= 0.72 ? 78 : 68,
+            )
+            : 50
+          const scoreSignals = opts.weightProfile.weights.gap
+          const projectedOccupancy = clamp(
+            Math.round(
+              historicalScore * 0.38 +
+              Math.min(100, demand * 16) * 0.26 +
+              Math.min(100, interestBacklog * 18) * 0.18 +
+              membershipFit * 0.10 +
+              skillProfileFit * 0.08
+            ),
+            52,
+            92,
+          )
+          const confidence = clamp(
+            Math.round(
+              historicalScore * scoreSignals.historical +
+              Math.min(100, demand * 16) * scoreSignals.slotDemand +
+              Math.min(100, interestBacklog * 18) * scoreSignals.interest +
+              membershipFit * scoreSignals.membershipFit +
+              skillProfileFit * scoreSignals.skillProfile +
+              ageTimeFit * scoreSignals.ageTimeFit +
+              momentum * scoreSignals.momentum +
+              courtHeadroom * scoreSignals.courtHeadroom +
+              weekdayStrength * scoreSignals.weekdayStrength
+            ),
+            44,
+            94,
+          )
+
+          proposals.push({
+            id: buildProposalId({
+              dayOfWeek,
+              timeSlot,
+              format,
+              skillLevel,
+            }),
+            title: buildProgrammingTitle({
+              dayOfWeek,
+              timeSlot,
+              format,
+              skillLevel,
+            }),
+            dayOfWeek,
+            timeSlot,
+            startTime: window.startTime,
+            endTime: window.endTime,
+            format,
+            skillLevel,
+            maxPlayers: getRequestedMaxPlayers(format),
+            projectedOccupancy,
+            estimatedInterestedMembers: Math.max(
+              4,
+              Math.round((projectedOccupancy / 100) * getRequestedMaxPlayers(format) + demand * 0.45 + interestBacklog * 0.9),
+            ),
+            confidence,
+            source: 'fill_gap',
+            rationale: [
+              supply?.sessionCount
+                ? `${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()} sessions are already averaging ${Math.round(slotAvgOccupancy)}% full.`
+                : `No recent sessions are scheduled on ${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()}.`,
+              `${Math.round(demand)} member-demand signals line up with this window.`,
+              interestBacklog > 0
+                ? `${Math.round(interestBacklog)} queued notify-me request${Math.round(interestBacklog) === 1 ? '' : 's'} are still waiting for this kind of slot.`
+                : `${courtHeadroom}% court headroom suggests this slot is operationally manageable if the club wants to test it.`,
+              `${membershipFit}% demand-fit and ${skillProfileFit}% skill-pool fit support this ${formatLabel(format).toLowerCase()} / ${skillLabel(skillLevel).toLowerCase()} mix.`,
+              `Weekday signal is ${weekdayStrength >= 72 ? 'strong' : weekdayStrength >= 58 ? 'steady' : 'emerging'} for this slot.`,
+              'This is a safe draft-only way to test new programming before publishing anything live.',
+            ].slice(0, 4),
+          })
+        }
+      }
     }
   }
 
@@ -888,16 +1453,21 @@ function withProgrammingConflicts(
 function getProgrammingProposalOperationalScore(proposal: AdvisorProgrammingProposalDraft) {
   const conflictPenalty = proposal.conflict
     ? (
-      riskWeight(proposal.conflict.overlapRisk) * 2 +
-      riskWeight(proposal.conflict.cannibalizationRisk) * 3 +
-      riskWeight(proposal.conflict.courtPressureRisk) * 2
+      (proposal.conflict.overlapRisk === 'high' ? 20 : proposal.conflict.overlapRisk === 'medium' ? 8 : 0) +
+      (proposal.conflict.cannibalizationRisk === 'high' ? 28 : proposal.conflict.cannibalizationRisk === 'medium' ? 12 : 0) +
+      (proposal.conflict.courtPressureRisk === 'high' ? 16 : proposal.conflict.courtPressureRisk === 'medium' ? 7 : 0)
     )
     : 0
+  const interestPressure = clamp(
+    Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
+    0,
+    100,
+  )
 
   return (
-    proposal.confidence * 1.2 +
-    proposal.projectedOccupancy * 0.45 +
-    proposal.estimatedInterestedMembers * 1.3 -
+    proposal.confidence * 1.0 +
+    proposal.projectedOccupancy * 0.55 +
+    interestPressure * 0.4 -
     conflictPenalty
   )
 }
@@ -985,12 +1555,17 @@ function buildInsights(opts: {
   formatDemand: Map<PlaySessionFormat, number>
   skillDemand: Map<PlaySessionSkillLevel, number>
   interestRequestCount: number
+  profilePriorBlend: number
   courtCount?: number
 }) {
   const insights: string[] = []
   const topProposal = opts.proposals[0]
   if (topProposal) {
     insights.push(`${topProposal.dayOfWeek} ${timeSlotLabel(topProposal.timeSlot).toLowerCase()} is the clearest programming opportunity right now.`)
+  }
+
+  if (opts.profilePriorBlend >= 0.5) {
+    insights.push('With limited schedule history and explicit preferences, member profile data is carrying more of this draft than usual.')
   }
 
   insights.push(`Most consistent member demand is clustering around ${formatLabel(opts.topFormat)} sessions.`)
@@ -1008,12 +1583,12 @@ function buildInsights(opts: {
     .sort((left, right) => right[1] - left[1])[0]
   if (strongestGap) {
     const [dayOfWeek, timeSlot] = strongestGap[0].split('|') as [DayOfWeek, TimeSlot]
-    insights.push(`${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()} has ${Math.round(strongestGap[1])} preference signals behind it.`)
+    insights.push(`${dayOfWeek} ${timeSlotLabel(timeSlot).toLowerCase()} has ${Math.round(strongestGap[1])} member-demand signals behind it.`)
   }
 
   const topFormatDemand = opts.formatDemand.get(opts.topFormat) || 0
   if (topFormatDemand > 0) {
-    insights.push(`${formatLabel(opts.topFormat)} has the cleanest membership-fit signal in current preferences.`)
+    insights.push(`${formatLabel(opts.topFormat)} has the cleanest membership-fit signal in the current demand mix.`)
   }
 
   if (opts.courtCount && opts.courtCount <= 2) {
@@ -1029,6 +1604,7 @@ export function buildAdvisorProgrammingPlan(opts: {
   sessions: ProgrammingSessionRow[]
   preferences: ProgrammingPreferenceRow[]
   interestRequests?: ProgrammingInterestRequestRow[]
+  audienceProfile?: ProgrammingAudienceProfile | null
   request?: AdvisorProgrammingRequestSpec | null
   limit?: number
   courtCount?: number
@@ -1040,9 +1616,24 @@ export function buildAdvisorProgrammingPlan(opts: {
     skillDemand,
     interestSlotDemand,
     interestRequestCount,
-  } = buildDemandSignals(opts.preferences, opts.interestRequests || [])
-  const topFormat = getTopDemandKey(formatDemand, 'OPEN_PLAY')
-  const topSkill = getTopDemandKey(skillDemand, 'INTERMEDIATE')
+    profilePriorBlend,
+  } = buildDemandSignals(
+    opts.preferences,
+    opts.interestRequests || [],
+    opts.audienceProfile,
+    opts.sessions.length,
+  )
+  const weightProfile = computeProgrammingWeightProfile({
+    sessions: opts.sessions,
+    preferences: opts.preferences,
+    interestRequests: opts.interestRequests || [],
+    comboStats,
+    slotSupply,
+    audienceProfile: opts.audienceProfile,
+    courtCount: opts.courtCount,
+  })
+  const topFormat = getTopFormats(formatDemand)[0] || 'OPEN_PLAY'
+  const topSkill = getTopSkills(skillDemand, opts.audienceProfile)[0] || 'INTERMEDIATE'
 
   const baseProposals = dedupeProposals([
     ...buildExpandPeakProposals({
@@ -1052,16 +1643,19 @@ export function buildAdvisorProgrammingPlan(opts: {
       formatDemand,
       skillDemand,
       slotSupply,
+      audienceProfile: opts.audienceProfile,
+      weightProfile,
       courtCount: opts.courtCount,
     }),
     ...buildGapFillProposals({
+      comboStats,
       slotDemand,
       interestSlotDemand,
       slotSupply,
-      topFormat,
-      topSkill,
       formatDemand,
       skillDemand,
+      audienceProfile: opts.audienceProfile,
+      weightProfile,
       courtCount: opts.courtCount,
     }),
   ])
@@ -1103,6 +1697,7 @@ export function buildAdvisorProgrammingPlan(opts: {
       formatDemand,
       skillDemand,
       interestRequestCount,
+      profilePriorBlend,
       courtCount: opts.courtCount,
     }),
   }
@@ -1112,7 +1707,7 @@ async function loadProgrammingData(prisma: any, clubId: string) {
   const since = new Date()
   since.setDate(since.getDate() - 60)
 
-  const [sessions, preferences, interestRequests, courtCount] = await Promise.all([
+  const [sessions, preferences, interestRequests, courtCount, followers] = await Promise.all([
     prisma.playSession.findMany({
       where: {
         clubId,
@@ -1161,6 +1756,19 @@ async function loadProgrammingData(prisma: any, clubId: string) {
     prisma.clubCourt.count({
       where: { clubId, isActive: true },
     }).catch(() => 0),
+    prisma.clubFollower.findMany({
+      where: { clubId },
+      select: {
+        user: {
+          select: {
+            skillLevel: true,
+            dateOfBirth: true,
+            gender: true,
+          },
+        },
+      },
+      take: 5000,
+    }).catch(() => []),
   ])
 
   return {
@@ -1168,6 +1776,10 @@ async function loadProgrammingData(prisma: any, clubId: string) {
     preferences: preferences as ProgrammingPreferenceRow[],
     interestRequests: interestRequests as ProgrammingInterestRequestRow[],
     courtCount: typeof courtCount === 'number' ? courtCount : 0,
+    audienceProfile: buildProgrammingAudienceProfileFromMembers(
+      (followers as Array<{ user?: { skillLevel?: string | null; dateOfBirth?: Date | null; gender?: string | null } | null }>)
+        .flatMap((follower) => follower.user ? [follower.user] : []),
+    ),
   }
 }
 
@@ -1184,6 +1796,7 @@ export async function getAdvisorProgrammingDraft(opts: {
     sessions: data.sessions,
     preferences: data.preferences,
     interestRequests: data.interestRequests,
+    audienceProfile: data.audienceProfile,
     request,
     limit: opts.limit || 3,
     courtCount: data.courtCount,

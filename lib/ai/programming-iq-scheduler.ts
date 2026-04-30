@@ -33,6 +33,7 @@ import { randomUUID } from 'crypto'
 import {
   buildAdvisorProgrammingPlan,
   type AdvisorProgrammingProposalDraft,
+  type ProgrammingAudienceProfile,
 } from './advisor-programming'
 import type {
   DayOfWeek,
@@ -138,6 +139,7 @@ export interface BuildWeeklyGridInput {
   }>
   preferences: SchedulerPreferenceRow[]
   interestRequests: SchedulerInterestRow[]
+  audienceProfile?: ProgrammingAudienceProfile | null
   contactPolicy: SchedulerContactPolicy
   /** Target total number of suggested cells (bounded by available capacity). */
   targetSuggestionCount?: number
@@ -620,6 +622,138 @@ function prettySkill(key: string): string {
   return map[key] || key.toLowerCase()
 }
 
+function isWeekend(dayOfWeek: DayOfWeek) {
+  return dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday'
+}
+
+function isPrimeTimeProposal(proposal: AdvisorProgrammingProposalDraft) {
+  return proposal.timeSlot === 'evening' || (isWeekend(proposal.dayOfWeek) && proposal.timeSlot === 'morning')
+}
+
+function getFormatSkillKey(proposal: AdvisorProgrammingProposalDraft) {
+  return `${proposal.format}__${proposal.skillLevel}`
+}
+
+function getSlotSignature(proposal: AdvisorProgrammingProposalDraft) {
+  return `${proposal.dayOfWeek}__${proposal.timeSlot}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
+}
+
+function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
+  const conflict = proposal.conflict
+  if (!conflict) return 0
+
+  let penalty = 0
+  penalty += conflict.overlapRisk === 'high' ? 20 : conflict.overlapRisk === 'medium' ? 8 : 0
+  penalty += conflict.cannibalizationRisk === 'high' ? 28 : conflict.cannibalizationRisk === 'medium' ? 12 : 0
+  penalty += conflict.courtPressureRisk === 'high' ? 16 : conflict.courtPressureRisk === 'medium' ? 7 : 0
+  return penalty
+}
+
+function canDuplicateProposal(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  const sameSlotSelected = selected.find((candidate) => getSlotSignature(candidate) === getSlotSignature(proposal))
+  if (!sameSlotSelected) return true
+  return (
+    proposal.projectedOccupancy >= 90 &&
+    proposal.conflict?.cannibalizationRisk === 'low' &&
+    proposal.conflict?.courtPressureRisk !== 'high'
+  )
+}
+
+function getPortfolioPenalty(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  let penalty = 0
+
+  const sameFormatSkillCount = selected.filter(
+    (candidate) => getFormatSkillKey(candidate) === getFormatSkillKey(proposal),
+  ).length
+  if (sameFormatSkillCount > 0) {
+    penalty += sameFormatSkillCount === 1 ? 10 : 10 + (sameFormatSkillCount - 1) * 14
+  }
+
+  const sameFormatCount = selected.filter((candidate) => candidate.format === proposal.format).length
+  if (sameFormatCount >= 2) {
+    penalty += (sameFormatCount - 1) * 6
+  }
+
+  const sameSlotCount = selected.filter(
+    (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
+  ).length
+  if (sameSlotCount > 0) {
+    if (!canDuplicateProposal(proposal, selected)) return 999
+    penalty += 14 * sameSlotCount
+  }
+
+  if (proposal.format === 'OPEN_PLAY' && isPrimeTimeProposal(proposal)) {
+    const primeOpenPlayCount = selected.filter(
+      (candidate) => candidate.format === 'OPEN_PLAY' && isPrimeTimeProposal(candidate),
+    ).length
+    if (primeOpenPlayCount >= 1) {
+      penalty += 12 * primeOpenPlayCount
+    }
+  }
+
+  return penalty
+}
+
+function getGreedySelectionScore(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  const interestPressure = Math.min(
+    100,
+    Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
+  )
+  return (
+    proposal.confidence * 1.0 +
+    proposal.projectedOccupancy * 0.55 +
+    interestPressure * 0.4 -
+    getConflictPenalty(proposal) -
+    getPortfolioPenalty(proposal, selected)
+  )
+}
+
+function selectBalancedProposals(
+  proposals: AdvisorProgrammingProposalDraft[],
+  targetCount: number,
+) {
+  const remaining = [...proposals]
+  const selected: AdvisorProgrammingProposalDraft[] = []
+  const MIN_SELECTION_SCORE = 62
+
+  while (selected.length < targetCount && remaining.length > 0) {
+    let bestIndex = -1
+    let bestScore = Number.NEGATIVE_INFINITY
+
+    for (let index = 0; index < remaining.length; index += 1) {
+      const score = getGreedySelectionScore(remaining[index], selected)
+      if (score > bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    }
+
+    if (bestIndex < 0 || bestScore < MIN_SELECTION_SCORE) break
+
+    selected.push(remaining[bestIndex])
+    remaining.splice(bestIndex, 1)
+  }
+
+  if (selected.length === 0 && proposals.length > 0) {
+    const fallback = [...proposals]
+      .sort((left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []))[0]
+    if (fallback && getGreedySelectionScore(fallback, []) >= 55) {
+      selected.push(fallback)
+    }
+  }
+
+  return selected
+}
+
 // ── buildWeeklyGrid ─────────────────────────────────────────────────
 
 /**
@@ -636,7 +770,6 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const generationId = randomUUID()
   const activeCourts = input.courts.filter((c) => c.isActive)
   const targetCount = input.targetSuggestionCount ?? Math.max(10, activeCourts.length * 6)
-  const DEMAND_THRESHOLD = 20
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
@@ -644,6 +777,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     sessions: input.lastNDaysSessions,
     preferences: input.preferences,
     interestRequests: input.interestRequests,
+    audienceProfile: input.audienceProfile,
     limit: Math.max(200, targetCount * 4),
     courtCount: activeCourts.length,
   })
@@ -668,23 +802,27 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const expanded: AdvisorProgrammingProposalDraft[] = []
   for (const proposal of rankedProposals) {
     expanded.push(proposal)
-    // Duplicate the top-scoring ~20% onto a second court when the pool
-    // clearly supports it. Gentle multiplier — we still filter by threshold.
-    if (proposal.projectedOccupancy >= 80 && expanded.length < targetCount) {
+    // Duplicate only when the underlying demand is extremely strong and
+    // conflict risk is still comparatively low. This keeps us from
+    // blindly splitting prime-time demand across two courts.
+    if (
+      proposal.projectedOccupancy >= 92 &&
+      proposal.conflict?.cannibalizationRisk === 'low' &&
+      proposal.conflict?.courtPressureRisk !== 'high' &&
+      expanded.length < targetCount * 2
+    ) {
       expanded.push({
         ...proposal,
         id: `${proposal.id}__dup`,
-        // second-instance confidence decays slightly so it ranks below
-        confidence: Math.max(40, proposal.confidence - 10),
+        confidence: Math.max(38, proposal.confidence - 14),
       })
     }
     if (expanded.length >= targetCount * 2) break
   }
 
-  // 3. Drop below-threshold proposals — prefer empty cell over forced.
-  const eligible = expanded.filter(
-    (p) => (p.projectedOccupancy + p.confidence) >= DEMAND_THRESHOLD,
-  ).slice(0, targetCount)
+  // 3. Greedy portfolio selection. We deliberately stop early when the
+  // next candidate no longer clears the minimum business-quality bar.
+  const eligible = selectBalancedProposals(expanded, targetCount)
 
   // 4. Bin-pack onto courts.
   const assignments = assignCourtsToProposals(

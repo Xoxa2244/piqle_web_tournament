@@ -33,7 +33,10 @@ import {
   type SchedulerPreferenceRow,
   type GridCell,
 } from '@/lib/ai/programming-iq-scheduler'
-import type { AdvisorProgrammingProposalDraft } from '@/lib/ai/advisor-programming'
+import {
+  buildProgrammingAudienceProfileFromMembers,
+  type AdvisorProgrammingProposalDraft,
+} from '@/lib/ai/advisor-programming'
 
 describe('time helpers', () => {
   it('hhmmToMinutes parses 24h format', () => {
@@ -332,6 +335,35 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(Array.isArray(out.cells)).toBe(true)
     expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
     expect(out.signalSummary.activeCourts).toBe(3) // 4 courts, 1 inactive
+  })
+
+  it('can draft starter programming from member profile data alone', () => {
+    const audienceProfile = buildProgrammingAudienceProfileFromMembers([
+      ...Array.from({ length: 16 }, () => ({
+        skillLevel: 'INTERMEDIATE',
+        dateOfBirth: new Date('1995-06-10'),
+      })),
+      ...Array.from({ length: 8 }, () => ({
+        skillLevel: 'BEGINNER',
+        dateOfBirth: new Date('1988-04-12'),
+      })),
+    ])
+
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: [],
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [],
+      interestRequests: [],
+      audienceProfile,
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 6,
+    })
+
+    expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
+    expect(out.insights.join(' ')).toContain('member profile data')
   })
 })
 

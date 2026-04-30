@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAdvisorProgrammingPlan,
+  buildProgrammingAudienceProfileFromMembers,
   parseAdvisorProgrammingRequest,
 } from '@/lib/ai/advisor-programming'
 
@@ -212,6 +213,33 @@ describe('advisor programming planning', () => {
     })
     expect(plan.recommended?.rationale.join(' ')).toContain('notify-me')
     expect(plan.insights.join(' ')).toContain('queued notify-me demand')
+  })
+
+  it('bootstraps programming suggestions from member profile when history is thin', () => {
+    const audienceProfile = buildProgrammingAudienceProfileFromMembers([
+      ...Array.from({ length: 18 }, () => ({
+        skillLevel: 'INTERMEDIATE',
+        dateOfBirth: new Date('1994-05-10'),
+      })),
+      ...Array.from({ length: 10 }, () => ({
+        skillLevel: 'BEGINNER',
+        dateOfBirth: new Date('1986-03-15'),
+      })),
+    ])
+
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [],
+      preferences: [],
+      audienceProfile,
+      courtCount: 2,
+      limit: 5,
+    })
+
+    expect(plan.recommended).toBeTruthy()
+    expect(plan.recommended?.source).toBe('fill_gap')
+    expect(plan.proposals.length).toBeGreaterThan(0)
+    expect(plan.proposals[0].confidence).toBeGreaterThanOrEqual(60)
+    expect(plan.insights.join(' ')).toContain('member profile data')
   })
 
   it('raises court pressure risk when the club has limited active courts', () => {
