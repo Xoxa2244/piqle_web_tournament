@@ -32,6 +32,7 @@
 import { randomUUID } from 'crypto'
 import {
   buildAdvisorProgrammingPlan,
+  parseAdvisorProgrammingRequest,
   type AdvisorProgrammingProposalDraft,
   type ProgrammingAudienceProfile,
 } from './advisor-programming'
@@ -151,6 +152,10 @@ export interface BuildWeeklyGridInput {
   /** Result of running `interpretRegeneratePrompt` on `regeneratePrompt`.
    *  Applied to the proposal set after scoring and before bin-packing. */
   regenerateHint?: import('./programming-iq-regenerate').RegenerateHint | null
+  /** Signatures from the currently visible suggestion set, so plain
+   *  Regenerate can explore a nearby variant instead of replaying the
+   *  exact same portfolio. */
+  previousSuggestionSignatures?: string[]
   /** Club's IANA timezone (`America/New_York` etc). Used to derive
    *  day-of-week from `date` columns that are stored as UTC midnights
    *  but represent local-day sessions. Without this, the conflict
@@ -638,6 +643,13 @@ function getSlotSignature(proposal: AdvisorProgrammingProposalDraft) {
   return `${proposal.dayOfWeek}__${proposal.timeSlot}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
 }
 
+function getSuggestionVariantSignature(proposal: Pick<
+  AdvisorProgrammingProposalDraft,
+  'dayOfWeek' | 'startTime' | 'format' | 'skillLevel'
+>) {
+  return `${proposal.dayOfWeek}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
+}
+
 function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
   const conflict = proposal.conflict
   if (!conflict) return 0
@@ -720,10 +732,29 @@ function getGreedySelectionScore(
 function selectBalancedProposals(
   proposals: AdvisorProgrammingProposalDraft[],
   targetCount: number,
+  pinnedProposalIds: string[] = [],
 ) {
   const remaining = [...proposals]
   const selected: AdvisorProgrammingProposalDraft[] = []
   const MIN_SELECTION_SCORE = 62
+  const MIN_PINNED_SCORE = 54
+
+  if (pinnedProposalIds.length > 0) {
+    const pinnedSet = new Set(pinnedProposalIds)
+    const pinned = remaining.filter((proposal) => pinnedSet.has(proposal.id))
+
+    for (const proposal of pinned) {
+      if (selected.length >= targetCount) break
+      if (getGreedySelectionScore(proposal, selected) < MIN_PINNED_SCORE) continue
+      selected.push(proposal)
+    }
+
+    for (let index = remaining.length - 1; index >= 0; index -= 1) {
+      if (pinnedSet.has(remaining[index].id)) {
+        remaining.splice(index, 1)
+      }
+    }
+  }
 
   while (selected.length < targetCount && remaining.length > 0) {
     let bestIndex = -1
@@ -754,6 +785,30 @@ function selectBalancedProposals(
   return selected
 }
 
+function diversifyAgainstPreviousSuggestions(
+  proposals: AdvisorProgrammingProposalDraft[],
+  previousSuggestionSignatures: string[],
+) {
+  if (previousSuggestionSignatures.length === 0) return proposals
+
+  const seen = new Set(previousSuggestionSignatures)
+  const diversified = proposals.map((proposal) => {
+    if (!seen.has(getSuggestionVariantSignature(proposal))) return proposal
+    return {
+      ...proposal,
+      confidence: Math.max(0, proposal.confidence - 12),
+      rationale: [
+        'Regenerate is exploring a nearby alternative instead of repeating the exact same slot mix.',
+        ...proposal.rationale,
+      ].slice(0, 4),
+    }
+  })
+
+  return diversified.sort(
+    (left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []),
+  )
+}
+
 // ── buildWeeklyGrid ─────────────────────────────────────────────────
 
 /**
@@ -770,6 +825,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const generationId = randomUUID()
   const activeCourts = input.courts.filter((c) => c.isActive)
   const targetCount = input.targetSuggestionCount ?? Math.max(10, activeCourts.length * 6)
+  const regenerateRequest = input.regeneratePrompt?.trim()
+    ? parseAdvisorProgrammingRequest(input.regeneratePrompt)
+    : null
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
@@ -778,6 +836,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     preferences: input.preferences,
     interestRequests: input.interestRequests,
     audienceProfile: input.audienceProfile,
+    request: regenerateRequest,
     limit: Math.max(200, targetCount * 4),
     courtCount: activeCourts.length,
   })
@@ -793,6 +852,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     // without pulling the LLM module into their dependency graph.
     const { applyRegenerateHint } = require('./programming-iq-regenerate')
     rankedProposals = applyRegenerateHint(plan.proposals, input.regenerateHint)
+  }
+  if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
+    rankedProposals = diversifyAgainstPreviousSuggestions(
+      rankedProposals,
+      input.previousSuggestionSignatures || [],
+    )
   }
 
   // 2. Synthesise same-slot variants across multiple courts where demand
@@ -822,7 +887,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
 
   // 3. Greedy portfolio selection. We deliberately stop early when the
   // next candidate no longer clears the minimum business-quality bar.
-  const eligible = selectBalancedProposals(expanded, targetCount)
+  const eligible = selectBalancedProposals(
+    expanded,
+    targetCount,
+    regenerateRequest && plan.requested ? [plan.requested.id] : [],
+  )
 
   // 4. Bin-pack onto courts.
   const assignments = assignCourtsToProposals(
@@ -913,6 +982,14 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const avgProjected = occupancyValues.length === 0
     ? 0
     : Math.round(occupancyValues.reduce((a, b) => a + b, 0) / occupancyValues.length)
+  const unmetInterestRequests = input.interestRequests.filter((request) => {
+    const status = String(request.status || '').toLowerCase()
+    return !request.sessionId && !['matched', 'fulfilled', 'completed', 'closed', 'cancelled'].includes(status)
+  }).length
+  const insights = [...plan.insights]
+  if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
+    insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
+  }
 
   return {
     generationId,
@@ -925,11 +1002,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       saturations: saturationCount,
       avgProjectedOccupancy: avgProjected,
     },
-    insights: plan.insights,
+    insights,
     signalSummary: {
       monthsOfBookingData: 2,
       preferencesCount: input.preferences.length,
-      unmetInterestRequests: input.interestRequests.filter((r) => r.status === 'UNMATCHED').length,
+      unmetInterestRequests,
       activeCourts: activeCourts.length,
     },
   }

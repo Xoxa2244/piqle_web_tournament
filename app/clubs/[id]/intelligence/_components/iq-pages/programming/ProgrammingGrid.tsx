@@ -504,7 +504,7 @@ function DraftCell({
     title: draft.title,
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
-  const fill = 'rgba(148,163,184,0.10)'
+  const fill = hasWarning ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
   const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
   const selectionOutline = hasWarning ? 'rgba(245,158,11,0.70)' : 'rgba(139,92,246,0.85)'
   return (

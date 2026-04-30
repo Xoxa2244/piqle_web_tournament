@@ -365,6 +365,85 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
     expect(out.insights.join(' ')).toContain('member profile data')
   })
+
+  it('treats plain regenerate as a nearby variant instead of replaying the exact same mix', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: Array.from({ length: 20 }, () => ({
+        title: 'Int Open Play',
+        date: new Date('2026-04-15'),
+        startTime: '19:00',
+        endTime: '20:30',
+        format: 'OPEN_PLAY' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 8,
+        registeredCount: 7,
+      })),
+      preferences: Array.from({ length: 30 }, () => ({
+        preferredDays: ['Monday', 'Tuesday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: true,
+        skillLevel: 'INTERMEDIATE' as any,
+        preferredFormats: ['OPEN_PLAY', 'CLINIC'],
+        targetSessionsPerWeek: 2,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 4,
+      previousSuggestionSignatures: ['Monday__18:00__OPEN_PLAY__INTERMEDIATE'],
+    })
+
+    expect(out.insights.join(' ')).toContain('nearby schedule variant')
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind === 'suggested' &&
+          cell.dayOfWeek === 'Monday' &&
+          cell.startTime === '18:00' &&
+          cell.format === 'OPEN_PLAY' &&
+          cell.skillLevel === 'INTERMEDIATE',
+      ),
+    ).toBe(false)
+  })
+
+  it('lets explicit regenerate prompts shape the requested slot', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: Array.from({ length: 14 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as any,
+        preferredFormats: ['CLINIC'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 2,
+      regeneratePrompt: 'Add a beginner clinic on Tuesday morning',
+    })
+
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Tuesday' &&
+          cell.format === 'CLINIC' &&
+          cell.skillLevel === 'BEGINNER',
+      ),
+    ).toBe(true)
+  })
 })
 
 // ── Helpers ────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest'
 import {
   parseHint,
   applyRegenerateHint,
+  buildHeuristicHintFromPrompt,
   type RegenerateHint,
 } from '@/lib/ai/programming-iq-regenerate'
 import type { AdvisorProgrammingProposalDraft } from '@/lib/ai/advisor-programming'
@@ -133,6 +134,22 @@ describe('parseHint', () => {
   })
 })
 
+describe('buildHeuristicHintFromPrompt', () => {
+  it('extracts directional format and timing hints without an LLM', () => {
+    const hint = buildHeuristicHintFromPrompt('Less open play, more drills on weekdays in the evening')
+    expect(hint.penalizeFormats).toContain('OPEN_PLAY')
+    expect(hint.boostFormats).toContain('DRILL')
+    expect(hint.boostDays).toEqual(expect.arrayContaining(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']))
+    expect(hint.boostTimeSlots).toContain('evening')
+  })
+
+  it('returns empty when the prompt has no recognizable scheduling intent', () => {
+    const hint = buildHeuristicHintFromPrompt('hello there')
+    expect(hint.boostFormats).toEqual([])
+    expect(hint.reasoning).toBe('')
+  })
+})
+
 // ── applyRegenerateHint ──────────────────────────────────────────────
 
 describe('applyRegenerateHint', () => {
@@ -145,15 +162,15 @@ describe('applyRegenerateHint', () => {
   it('boosts matching format gently', () => {
     const p = [proposal({ format: 'DRILL', confidence: 60 })]
     const out = applyRegenerateHint(p, { ...EMPTY_HINT, boostFormats: ['DRILL'] })
-    // 60 × 1.08 = 64.8 → 65
-    expect(out[0].confidence).toBe(65)
+    // 60 × 1.12 = 67.2 → 67
+    expect(out[0].confidence).toBe(67)
   })
 
   it('penalizes matching format gently', () => {
     const p = [proposal({ format: 'OPEN_PLAY', confidence: 80 })]
     const out = applyRegenerateHint(p, { ...EMPTY_HINT, penalizeFormats: ['OPEN_PLAY'] })
-    // 80 × 0.94 = 75.2 → 75
-    expect(out[0].confidence).toBe(75)
+    // 80 × 0.90 = 72
+    expect(out[0].confidence).toBe(72)
   })
 
   it('caps stacked boosts so AI stays a modifier, not a rewrite', () => {
@@ -163,8 +180,8 @@ describe('applyRegenerateHint', () => {
       boostFormats: ['DRILL'],
       boostDays: ['Monday'],
     })
-    // 60 × 1.08 × 1.08 = 69.98 but total multiplier is capped at 1.08 → 65
-    expect(out[0].confidence).toBe(65)
+    // 60 × 1.12 × 1.12 = 75.26 but total multiplier is capped at 1.18 → 71
+    expect(out[0].confidence).toBe(71)
   })
 
   it('sorts results by effective confidence descending', () => {
@@ -177,7 +194,7 @@ describe('applyRegenerateHint', () => {
       boostFormats: ['DRILL'],
       penalizeFormats: ['OPEN_PLAY'],
     })
-    // a: 90 × 0.94 = 85; b: 60 × 1.08 = 65 → a stays first
+    // a: 90 × 0.90 = 81; b: 60 × 1.12 = 67 → a stays first
     expect(out[0].id).toBe('a')
     expect(out[1].id).toBe('b')
   })
@@ -194,7 +211,7 @@ describe('applyRegenerateHint', () => {
       boostTimeSlots: ['evening'],
       penalizeFormats: ['OPEN_PLAY'],
     })
-    // a: 68 × 0.94 = 64; b: capped at 64 × 1.08 = 69 → b first
+    // a: 68 × 0.90 = 61; b: capped at 64 × 1.18 = 76 → b first
     expect(out[0].id).toBe('b')
     expect(out[1].id).toBe('a')
   })
@@ -202,8 +219,8 @@ describe('applyRegenerateHint', () => {
   it('caps confidence at 100', () => {
     const p = [proposal({ format: 'DRILL', confidence: 90 })]
     const out = applyRegenerateHint(p, { ...EMPTY_HINT, boostFormats: ['DRILL'] })
-    // 90 × 1.08 = 97.2 → 97
-    expect(out[0].confidence).toBe(97)
+    // 90 × 1.12 = 100.8 → 100
+    expect(out[0].confidence).toBe(100)
   })
 
   it('does not match when hint uses wrong case (caller should upper-case)', () => {

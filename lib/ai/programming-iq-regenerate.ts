@@ -55,6 +55,177 @@ const EMPTY_HINT: RegenerateHint = {
   reasoning: '',
 }
 
+const FORMAT_TERMS: Record<string, string[]> = {
+  OPEN_PLAY: ['open play', 'openplay'],
+  CLINIC: ['clinic', 'clinics'],
+  DRILL: ['drill', 'drills'],
+  LEAGUE_PLAY: ['league play', 'league', 'league night'],
+  SOCIAL: ['social', 'social play'],
+  TOURNAMENT: ['tournament', 'tournaments'],
+}
+
+const SKILL_TERMS: Record<string, string[]> = {
+  ALL_LEVELS: ['all levels', 'all-levels'],
+  BEGINNER: ['beginner', 'beginners', 'new player', 'new players', 'intro'],
+  CASUAL: ['casual'],
+  INTERMEDIATE: ['intermediate', '3.0', '3.5'],
+  COMPETITIVE: ['competitive'],
+  ADVANCED: ['advanced', '4.0', '4.5', '5.0'],
+}
+
+const POSITIVE_HINT_MARKERS = ['more', 'increase', 'boost', 'prioritize', 'focus on', 'add', 'extra']
+const NEGATIVE_HINT_MARKERS = ['less', 'fewer', 'reduce', 'avoid', 'decrease', 'cut', 'lower']
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasMarkerNearTerm(
+  prompt: string,
+  markers: string[],
+  terms: string[],
+) {
+  const markerGroup = markers.map(escapeRegex).join('|')
+  const termGroup = terms.map(escapeRegex).join('|')
+  const pattern = new RegExp(
+    `(?:\\b(?:${markerGroup})\\b.{0,40}\\b(?:${termGroup})\\b)|(?:\\b(?:${termGroup})\\b.{0,40}\\b(?:${markerGroup})\\b)`,
+    'i',
+  )
+  return pattern.test(prompt)
+}
+
+function includesAnyTerm(prompt: string, terms: string[]) {
+  return terms.some((term) => prompt.includes(term))
+}
+
+export function buildHeuristicHintFromPrompt(prompt: string): RegenerateHint {
+  const normalized = prompt.trim().toLowerCase()
+  if (!normalized) return EMPTY_HINT
+  const clauses = normalized
+    .split(/[,.;&]/)
+    .map((clause) => clause.trim())
+    .filter(Boolean)
+
+  const boostFormats = new Set<string>()
+  const penalizeFormats = new Set<string>()
+  const boostSkills = new Set<string>()
+  const penalizeSkills = new Set<string>()
+  const boostDays = new Set<string>()
+  const penalizeDays = new Set<string>()
+  const boostTimeSlots = new Set<'morning' | 'afternoon' | 'evening'>()
+  const penalizeTimeSlots = new Set<'morning' | 'afternoon' | 'evening'>()
+
+  const classifyClauses = (terms: string[]) => {
+    let mentioned = false
+    let positive = false
+    let negative = false
+
+    for (const clause of clauses) {
+      if (!includesAnyTerm(clause, terms)) continue
+      mentioned = true
+      const hasPositiveMarker = POSITIVE_HINT_MARKERS.some((marker) => clause.includes(marker))
+      const hasNegativeMarker = NEGATIVE_HINT_MARKERS.some((marker) => clause.includes(marker))
+      if (hasPositiveMarker) positive = true
+      if (hasNegativeMarker) negative = true
+      if (!hasPositiveMarker && !hasNegativeMarker) positive = true
+    }
+
+    return { mentioned, positive, negative }
+  }
+
+  for (const [format, terms] of Object.entries(FORMAT_TERMS)) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeFormats.add(format)
+      continue
+    }
+    if (verdict.positive) {
+      boostFormats.add(format)
+    }
+  }
+
+  for (const [skill, terms] of Object.entries(SKILL_TERMS)) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeSkills.add(skill)
+      continue
+    }
+    if (verdict.positive) {
+      boostSkills.add(skill)
+    }
+  }
+
+  const days = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ] as const
+  for (const day of days) {
+    const lower = day.toLowerCase()
+    const verdict = classifyClauses([lower])
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeDays.add(day)
+    } else if (verdict.positive) {
+      boostDays.add(day)
+    }
+  }
+
+  if (normalized.includes('weekday')) {
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const) {
+      boostDays.add(day)
+    }
+  }
+  if (normalized.includes('weekend')) {
+    for (const day of ['Saturday', 'Sunday'] as const) {
+      boostDays.add(day)
+    }
+  }
+
+  const timeTerms: Array<{
+    slot: 'morning' | 'afternoon' | 'evening'
+    terms: string[]
+  }> = [
+    { slot: 'morning', terms: ['morning', 'mornings', 'early', 'before work'] },
+    { slot: 'afternoon', terms: ['afternoon', 'afternoons', 'midday', 'lunch'] },
+    { slot: 'evening', terms: ['evening', 'evenings', 'night', 'after work'] },
+  ]
+
+  for (const { slot, terms } of timeTerms) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeTimeSlots.add(slot)
+    } else if (verdict.positive) {
+      boostTimeSlots.add(slot)
+    }
+  }
+
+  const hasDirectionalSignal =
+    boostFormats.size > 0 ||
+    penalizeFormats.size > 0 ||
+    boostSkills.size > 0 ||
+    penalizeSkills.size > 0 ||
+    boostDays.size > 0 ||
+    penalizeDays.size > 0 ||
+    boostTimeSlots.size > 0 ||
+    penalizeTimeSlots.size > 0
+
+  return {
+    boostFormats: Array.from(boostFormats),
+    penalizeFormats: Array.from(penalizeFormats),
+    boostSkills: Array.from(boostSkills),
+    penalizeSkills: Array.from(penalizeSkills),
+    boostDays: Array.from(boostDays),
+    penalizeDays: Array.from(penalizeDays),
+    boostTimeSlots: Array.from(boostTimeSlots),
+    penalizeTimeSlots: Array.from(penalizeTimeSlots),
+    reasoning: hasDirectionalSignal
+      ? 'Prompt reweighted with heuristic fallback.'
+      : '',
+  }
+}
+
 // ── LLM call ─────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You translate a club admin's freeform scheduling preference into a structured re-weighting hint for an AI scheduler.
@@ -102,8 +273,8 @@ export async function interpretRegeneratePrompt(
   // Skip when no API key is configured — tests/local dev without creds
   // should silently degrade, not throw.
   if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-    console.warn('[programming-iq] regenerate: no LLM credentials, skipping re-weight')
-    return EMPTY_HINT
+    console.warn('[programming-iq] regenerate: no LLM credentials, using heuristic fallback')
+    return buildHeuristicHintFromPrompt(prompt)
   }
 
   try {
@@ -123,7 +294,7 @@ export async function interpretRegeneratePrompt(
       '[programming-iq] regenerate LLM failed:',
       (err?.message || 'unknown').slice(0, 160),
     )
-    return EMPTY_HINT
+    return buildHeuristicHintFromPrompt(prompt)
   }
 }
 
@@ -184,10 +355,10 @@ export function parseHint(raw: string): RegenerateHint {
  * completely wipe the heuristic output, just nudge the ranking. Admin
  * can always Reject suggestions they don't like.
  */
-const BOOST_MULTIPLIER = 1.08
-const PENALTY_MULTIPLIER = 0.94
-const MIN_TOTAL_MULTIPLIER = 0.92
-const MAX_TOTAL_MULTIPLIER = 1.08
+const BOOST_MULTIPLIER = 1.12
+const PENALTY_MULTIPLIER = 0.90
+const MIN_TOTAL_MULTIPLIER = 0.86
+const MAX_TOTAL_MULTIPLIER = 1.18
 
 /**
  * Apply a RegenerateHint to a list of proposals by scaling each

@@ -517,21 +517,24 @@ function buildDemandSignals(
     const preferredDays = (request.preferredDays || [])
       .map((value) => DAYS.find((day) => day.toLowerCase() === String(value).toLowerCase()))
       .filter((value): value is DayOfWeek => !!value)
-    const slots = getInterestRequestSlots(request.preferredTimeSlots)
-    const fallbackSlots = slots.length > 0 ? slots : TIME_SLOTS
+    const explicitSlots = getInterestRequestSlots(request.preferredTimeSlots)
+    const fallbackSlots = explicitSlots.length > 0 ? explicitSlots : TIME_SLOTS
+    const dayTargets = preferredDays.length > 0 ? preferredDays : DAYS
+    const spreadDivisor =
+      (preferredDays.length > 0 ? 1 : dayTargets.length) *
+      (explicitSlots.length > 0 ? 1 : fallbackSlots.length)
+    const slotWeight = weight / Math.max(1, spreadDivisor)
     const normalizedFormats = (request.preferredFormats || [])
       .map((value) => normalizeFormat(value))
       .filter((value): value is PlaySessionFormat => !!value)
 
-    if (preferredDays.length === 0) continue
-
     interestRequestCount += 1
 
-    for (const dayOfWeek of preferredDays) {
+    for (const dayOfWeek of dayTargets) {
       for (const slot of fallbackSlots) {
         const key = `${dayOfWeek}|${slot}`
-        addDemand(slotDemand, key, weight)
-        addDemand(interestSlotDemand, key, weight)
+        addDemand(slotDemand, key, slotWeight)
+        addDemand(interestSlotDemand, key, slotWeight)
       }
     }
 

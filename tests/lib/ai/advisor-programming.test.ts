@@ -215,6 +215,43 @@ describe('advisor programming planning', () => {
     expect(plan.insights.join(' ')).toContain('queued notify-me demand')
   })
 
+  it('still uses interest requests when the member did not specify a day', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [],
+      preferences: Array.from({ length: 3 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: true,
+        skillLevel: 'ALL_LEVELS' as const,
+        preferredFormats: [],
+        targetSessionsPerWeek: 2,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [
+        {
+          preferredDays: [],
+          preferredFormats: ['Clinic'],
+          preferredTimeSlots: { morning: false, afternoon: false, evening: true },
+          status: 'pending',
+          sessionId: null,
+        },
+      ],
+      courtCount: 2,
+      limit: 5,
+    })
+
+    expect(
+      plan.proposals.some(
+        (proposal) =>
+          proposal.dayOfWeek === 'Tuesday' &&
+          proposal.format === 'CLINIC' &&
+          proposal.timeSlot === 'evening',
+      ),
+    ).toBe(true)
+    expect(plan.insights.join(' ')).toContain('notify-me')
+  })
+
   it('bootstraps programming suggestions from member profile when history is thin', () => {
     const audienceProfile = buildProgrammingAudienceProfileFromMembers([
       ...Array.from({ length: 18 }, () => ({

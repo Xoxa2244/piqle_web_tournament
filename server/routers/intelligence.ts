@@ -8363,6 +8363,29 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           .flatMap((follower) => follower.user ? [follower.user] : []),
       )
 
+      const existingProgrammingDrafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          publishedPlaySessionId: null,
+        },
+        select: {
+          dayOfWeek: true,
+          startTime: true,
+          format: true,
+          skillLevel: true,
+          metadata: true,
+        },
+        take: 200,
+      }).catch(() => [])
+
+      const previousSuggestionSignatures = !input.regeneratePrompt?.trim()
+        ? (existingProgrammingDrafts as any[])
+          .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+          .map((draft) => `${draft.dayOfWeek}__${draft.startTime}__${draft.format}__${draft.skillLevel}`)
+        : []
+
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
         courts,
@@ -8376,6 +8399,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,
         regenerateHint,
+        previousSuggestionSignatures,
         timezone: clubTimezone,
       })
 
@@ -8550,10 +8574,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         }).catch(() => 0),
       ])
 
+      const visibleDrafts = (drafts as any[]).filter((draft) => {
+        const draftWeekStart = (draft.metadata as any)?.weekStartDate
+        return !draftWeekStart || draftWeekStart === input.weekStartDate
+      })
+
       return {
         courts,
         liveSessions,
-        drafts,
+        drafts: visibleDrafts,
         memberCount,
       }
     }),
