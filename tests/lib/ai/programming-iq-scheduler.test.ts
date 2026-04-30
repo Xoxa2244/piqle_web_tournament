@@ -509,6 +509,67 @@ describe('buildWeeklyGrid — smoke', () => {
     ).toBe(true)
   })
 
+  it('pins multi-day morning regenerate requests instead of collapsing them into a fallback day', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [
+        ...Array.from({ length: 10 }, () => ({
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'INTERMEDIATE' as any,
+          preferredFormats: ['OPEN_PLAY'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        })),
+        ...Array.from({ length: 10 }, () => ({
+          preferredDays: ['Wednesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'INTERMEDIATE' as any,
+          preferredFormats: ['OPEN_PLAY'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        })),
+      ],
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 2,
+      regeneratePrompt: 'more morning sessions on tuesday and wednesday',
+    })
+
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Tuesday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(true)
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Wednesday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(true)
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Friday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(false)
+  })
+
   it('keeps unplaceable regenerate ideas visible as off-grid alternatives', () => {
     const busyTuesday = COURTS.filter((court) => court.isActive).map((court, index) => ({
       id: `live-${index}`,

@@ -20,6 +20,16 @@ describe('advisor programming request parsing', () => {
       maxPlayers: 8,
     })
   })
+
+  it('keeps all explicitly requested days when a prompt mentions multiple mornings', () => {
+    const parsed = parseAdvisorProgrammingRequest(
+      'more morning sessions on tuesday and wednesday',
+    )
+
+    expect(parsed.dayOfWeek).toBe('Tuesday')
+    expect(parsed.dayOfWeeks).toEqual(['Tuesday', 'Wednesday'])
+    expect(parsed.timeSlot).toBe('morning')
+  })
 })
 
 describe('advisor programming planning', () => {
@@ -113,6 +123,25 @@ describe('advisor programming planning', () => {
       skillLevel: 'BEGINNER',
     })
     expect(plan.proposals.length).toBeGreaterThan(1)
+  })
+
+  it('keeps multiple explicitly requested days at the front of the plan', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions,
+      preferences,
+      request: parseAdvisorProgrammingRequest('more morning sessions on tuesday and wednesday'),
+      limit: 4,
+    })
+
+    expect(plan.requestedAlternates.map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Tuesday',
+      'Wednesday',
+    ])
+    expect(plan.proposals.slice(0, 2).map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Tuesday',
+      'Wednesday',
+    ])
+    expect(plan.proposals.slice(0, 2).every((proposal) => proposal.timeSlot === 'morning')).toBe(true)
   })
 
   it('marks windows that could cannibalize existing sessions', () => {

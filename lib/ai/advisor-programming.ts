@@ -151,6 +151,7 @@ export type AdvisorProgrammingProposalDraft = {
 
 export type AdvisorProgrammingRequestSpec = Partial<{
   dayOfWeek: DayOfWeek
+  dayOfWeeks: DayOfWeek[]
   timeSlot: TimeSlot
   startTime: string
   endTime: string
@@ -352,8 +353,11 @@ export function parseAdvisorProgrammingRequest(
     ...(current || {}),
   }
 
-  const day = DAYS.find((candidate) => lower.includes(candidate.toLowerCase()))
-  if (day) next.dayOfWeek = day
+  const days = DAYS.filter((candidate) => lower.includes(candidate.toLowerCase()))
+  if (days.length > 0) {
+    next.dayOfWeek = days[0]
+    next.dayOfWeeks = days
+  }
 
   if (/\b(morning|before work|early)\b/.test(lower)) next.timeSlot = 'morning'
   else if (/\b(afternoon|midday|lunch)\b/.test(lower)) next.timeSlot = 'afternoon'
@@ -380,6 +384,21 @@ export function parseAdvisorProgrammingRequest(
   }
 
   return next
+}
+
+function expandAdvisorProgrammingRequest(spec: AdvisorProgrammingRequestSpec) {
+  const days = spec.dayOfWeeks && spec.dayOfWeeks.length > 0
+    ? spec.dayOfWeeks
+    : spec.dayOfWeek
+      ? [spec.dayOfWeek]
+      : []
+
+  if (days.length === 0) return [{ ...spec }]
+
+  return days.map((dayOfWeek) => ({
+    ...spec,
+    dayOfWeek,
+  }))
 }
 
 function buildPreferenceDemand(preferences: ProgrammingPreferenceRow[]) {
@@ -1538,6 +1557,25 @@ function buildRequestedProposal(opts: {
   }
 }
 
+function buildRequestedProposals(opts: {
+  spec: AdvisorProgrammingRequestSpec
+  recommended: AdvisorProgrammingProposalDraft | null
+}) {
+  const requestedSpecs = expandAdvisorProgrammingRequest(opts.spec)
+  const proposals: AdvisorProgrammingProposalDraft[] = []
+
+  for (const spec of requestedSpecs) {
+    const proposal = buildRequestedProposal({
+      spec,
+      recommended: opts.recommended,
+    })
+    if (!proposal || proposals.some((existing) => sameProposal(existing, proposal))) continue
+    proposals.push(proposal)
+  }
+
+  return proposals
+}
+
 function sameProposal(left?: AdvisorProgrammingProposalDraft | null, right?: AdvisorProgrammingProposalDraft | null) {
   if (!left || !right) return false
   return (
@@ -1547,6 +1585,10 @@ function sameProposal(left?: AdvisorProgrammingProposalDraft | null, right?: Adv
     left.skillLevel === right.skillLevel &&
     left.startTime === right.startTime
   )
+}
+
+function isDefined<T>(value: T | null | undefined): value is T {
+  return value != null
 }
 
 function buildInsights(opts: {
@@ -1669,26 +1711,36 @@ export function buildAdvisorProgrammingPlan(opts: {
   })
   const rankedBase = rankProgrammingProposals(annotatedBaseProposals)
   const recommended = rankedBase[0] || null
-  const requested = buildRequestedProposal({
+  const requestedDrafts = buildRequestedProposals({
     spec: opts.request || {},
     recommended,
   })
-  const annotatedRequested = requested
-    ? withProgrammingConflicts([requested, ...rankedBase], {
+  const requestedWithConflicts = requestedDrafts.length > 0
+    ? withProgrammingConflicts([...requestedDrafts, ...rankedBase], {
         comboStats,
         slotSupply,
         courtCount: opts.courtCount,
       })
-        .find((proposal) => sameProposal(proposal, requested)) || null
-    : null
+    : []
+  const annotatedRequested = requestedDrafts
+    .map((requested) =>
+      requestedWithConflicts.find((proposal) => sameProposal(proposal, requested)) || null,
+    )
+    .filter(isDefined)
 
-  const proposals = (annotatedRequested
-    ? [annotatedRequested, ...rankedBase.filter((proposal) => !sameProposal(proposal, annotatedRequested))]
+  const proposals = (annotatedRequested.length > 0
+    ? [
+        ...annotatedRequested,
+        ...rankedBase.filter(
+          (proposal) => !annotatedRequested.some((requested) => sameProposal(proposal, requested)),
+        ),
+      ]
     : rankedBase)
     .slice(0, Math.max(1, opts.limit || 3))
 
   return {
-    requested: annotatedRequested,
+    requested: annotatedRequested[0] || null,
+    requestedAlternates: annotatedRequested,
     recommended,
     proposals,
     insights: buildInsights({

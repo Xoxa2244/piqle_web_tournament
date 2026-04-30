@@ -887,6 +887,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       input.previousSuggestionSignatures || [],
     )
   }
+  const requestedProposals = plan.requestedAlternates?.length
+    ? plan.requestedAlternates
+    : plan.requested
+      ? [plan.requested]
+      : []
 
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
@@ -894,9 +899,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   //    proxy for "how much headroom is there to duplicate this slot".
   const expanded: AdvisorProgrammingProposalDraft[] = []
   const seenExpandedIds = new Set<string>()
-  if (regenerateRequest && plan.requested) {
-    expanded.push(plan.requested)
-    seenExpandedIds.add(plan.requested.id)
+  if (regenerateRequest && requestedProposals.length > 0) {
+    for (const requestedProposal of requestedProposals) {
+      if (seenExpandedIds.has(requestedProposal.id)) continue
+      expanded.push(requestedProposal)
+      seenExpandedIds.add(requestedProposal.id)
+    }
   }
   for (const proposal of rankedProposals) {
     if (seenExpandedIds.has(proposal.id)) continue
@@ -926,7 +934,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const eligible = selectBalancedProposals(
     expanded,
     targetCount,
-    regenerateRequest && plan.requested ? [plan.requested.id] : [],
+    regenerateRequest ? requestedProposals.map((proposal) => proposal.id) : [],
   )
 
   // 4. Bin-pack onto courts.
