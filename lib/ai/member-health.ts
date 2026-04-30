@@ -95,7 +95,7 @@ interface MemberHealthInput {
 
 // ── Segmentation Classifiers ──
 
-function classifyActivityLevel(confirmedLast30: number, daySpan: number = 30): ActivityLevel {
+export function classifyActivityLevel(confirmedLast30: number, daySpan: number = 30): ActivityLevel {
   const sessionsPerWeek = daySpan < 7
     ? confirmedLast30
     : confirmedLast30 / (daySpan / 7)
@@ -105,7 +105,7 @@ function classifyActivityLevel(confirmedLast30: number, daySpan: number = 30): A
   return 'occasional'
 }
 
-function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: number | null): EngagementTrend {
+export function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: number | null): EngagementTrend {
   if (daysSinceLast != null && daysSinceLast >= 21) return 'churning'
   if (prev30 === 0 && last30 > 0) return 'growing'
   if (prev30 === 0 && last30 === 0) return 'churning'
@@ -115,7 +115,7 @@ function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: 
   return 'stable'
 }
 
-function classifyValueTier(revenue: number, allRevenues: number[]): ValueTier {
+export function classifyValueTier(revenue: number, allRevenues: number[]): ValueTier {
   if (allRevenues.length === 0 || allRevenues.every(r => r === 0)) return 'low'
   const sorted = [...allRevenues].sort((a, b) => b - a) // descending
   const rank = sorted.findIndex(r => r <= revenue)
