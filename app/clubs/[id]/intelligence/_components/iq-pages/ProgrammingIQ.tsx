@@ -27,7 +27,6 @@ import {
 import {
   useProgrammingScheduleGrid,
   useGenerateProgrammingSchedule,
-  useUpdateProgrammingGridCell,
   useClearProgrammingScheduleDrafts,
   useAcceptProgrammingLiveReview,
   useDeclineProgrammingLiveReview,
@@ -128,7 +127,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
   const gridQuery = useProgrammingScheduleGrid(clubId, weekStart)
   const generateMutation = useGenerateProgrammingSchedule()
-  const updateCellMutation = useUpdateProgrammingGridCell()
   const clearDraftsMutation = useClearProgrammingScheduleDrafts()
   const acceptLiveReviewMutation = useAcceptProgrammingLiveReview()
   const declineLiveReviewMutation = useDeclineProgrammingLiveReview()
@@ -273,18 +271,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     setActiveCell(null)
   }
 
-  const handleSaveCell = (draftId: string, patch: any) => {
-    updateCellMutation.mutate(
-      { clubId, draftId, patch },
-      {
-        onSuccess: async () => {
-          if ('refetch' in gridQuery) await (gridQuery as any).refetch?.()
-          setActiveCell(null)
-        },
-      } as any,
-    )
-  }
-
   const handleClearSuggestions = async () => {
     if (drafts.length === 0) return
     setActiveCell(null)
@@ -302,26 +288,48 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     })
   }
 
-  const handleAcceptLiveReview = (draftId: string) => {
-    acceptLiveReviewMutation.mutate(
-      { clubId, draftId },
-      {
-        onSuccess: () => {
-          setActiveCell(null)
-        },
-      } as any,
-    )
+  const handleAcceptLiveReview = async (draftId: string) => {
+    try {
+      const mutation: any = acceptLiveReviewMutation as any
+      if (mutation.mutateAsync) {
+        await mutation.mutateAsync({ clubId, draftId })
+      } else {
+        await new Promise((resolve, reject) => {
+          mutation.mutate(
+            { clubId, draftId },
+            { onSuccess: resolve, onError: reject },
+          )
+        })
+      }
+      const refreshed = await (gridQuery as any).refetch?.()
+      const acceptedDraft = (refreshed?.data?.drafts || drafts).find((draft: GridDraft) => draft.id === draftId) || null
+      if (acceptedDraft) {
+        setActiveCell({ kind: 'draft', draft: acceptedDraft })
+      } else {
+        setActiveCell(null)
+      }
+    } catch (err) {
+      console.error('[ProgrammingIQ] accept live review failed:', err)
+    }
   }
 
-  const handleDeclineLiveReview = (draftId: string) => {
-    declineLiveReviewMutation.mutate(
-      { clubId, draftId },
-      {
-        onSuccess: () => {
-          setActiveCell(null)
-        },
-      } as any,
-    )
+  const handleDeclineLiveReview = async (draftId: string) => {
+    try {
+      const mutation: any = declineLiveReviewMutation as any
+      if (mutation.mutateAsync) {
+        await mutation.mutateAsync({ clubId, draftId })
+      } else {
+        await new Promise((resolve, reject) => {
+          mutation.mutate(
+            { clubId, draftId },
+            { onSuccess: resolve, onError: reject },
+          )
+        })
+      }
+      setActiveCell(null)
+    } catch (err) {
+      console.error('[ProgrammingIQ] decline live review failed:', err)
+    }
   }
 
   const togglePreset = (presetId: ProgrammingStrategyPresetId) => {
@@ -773,8 +781,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           selection={activeCell}
           courts={courts as any}
           onClose={() => setActiveCell(null)}
-          onSave={handleSaveCell}
-          saving={updateCellMutation.isPending}
           onAcceptLiveReview={handleAcceptLiveReview}
           onDeclineLiveReview={handleDeclineLiveReview}
           reviewMutating={acceptLiveReviewMutation.isPending || declineLiveReviewMutation.isPending}

@@ -8694,6 +8694,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         const liveSessionId = optimization?.liveSessionId || optimization?.before?.id
         if (!liveSessionId) continue
         const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
+        const isPlaceableDraft = Boolean(draft.courtId)
+        if (!isPlaceableDraft) continue
         const enrichedOptimization = {
           ...optimization,
           draftId: draft.id,
@@ -8703,7 +8705,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           acceptedLiveOptimizationSessionIds.add(liveSessionId)
         }
         const existing = bestLiveOptimizationBySessionId.get(liveSessionId)
-        if (!existing || Number(optimization?.scoreDelta || 0) > Number(existing?.scoreDelta || 0)) {
+        const existingAccepted = existing?.reviewDecision === 'accepted'
+        const nextAccepted = reviewDecision === 'accepted'
+        if (
+          !existing ||
+          (nextAccepted && !existingAccepted) ||
+          (nextAccepted === existingAccepted && Number(optimization?.scoreDelta || 0) > Number(existing?.scoreDelta || 0))
+        ) {
           bestLiveOptimizationBySessionId.set(liveSessionId, enrichedOptimization)
         }
       }
