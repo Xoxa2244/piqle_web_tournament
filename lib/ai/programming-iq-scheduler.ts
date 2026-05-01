@@ -41,6 +41,7 @@ import {
   computeProgrammingStrategyProfile,
   describeProgrammingRequestPriority,
   scoreProgrammingRequestMatch,
+  type ProgrammingBehaviorProfile,
   type ProgrammingRequestEvaluation,
   type ProgrammingStrategyPresetId,
 } from './programming-iq-strategy'
@@ -679,6 +680,7 @@ export function supplyDemandCheck(
   cells: GridCell[],
   preferences: SchedulerPreferenceRow[],
   policy: SchedulerContactPolicy,
+  behaviorProfile?: ProgrammingBehaviorProfile | null,
 ): Map<string, string> {
   const warnings = new Map<string, string>()
 
@@ -710,7 +712,8 @@ export function supplyDemandCheck(
     const pool = poolBySkill.get(skill) || 0
     if (pool <= 0) continue
     const invitesPerMember = inviteCapacity / pool
-    if (invitesPerMember > policy.inviteCapPerMemberPerWeek) {
+    const allowedInvitesPerMember = policy.inviteCapPerMemberPerWeek * Math.max(behaviorProfile?.saturationCapMultiplier ?? 1, 0.8)
+    if (invitesPerMember > allowedInvitesPerMember) {
       // Mark every suggested cell of this skill.
       for (const cell of cells) {
         if (cell.kind === 'suggested' && normaliseSkillKey(cell.skillLevel) === skill) {
@@ -805,11 +808,12 @@ function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
 function canDuplicateProposal(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
+  behaviorProfile: ProgrammingBehaviorProfile,
 ) {
   const sameSlotSelected = selected.find((candidate) => getSlotSignature(candidate) === getSlotSignature(proposal))
   if (!sameSlotSelected) return true
   return (
-    proposal.projectedOccupancy >= 90 &&
+    proposal.projectedOccupancy >= behaviorProfile.secondCourtDuplicationThreshold &&
     proposal.conflict?.cannibalizationRisk === 'low' &&
     proposal.conflict?.courtPressureRisk !== 'high'
   )
@@ -819,6 +823,7 @@ function canShareWindow(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
   pinnedProposalIds: Set<string>,
+  behaviorProfile: ProgrammingBehaviorProfile,
 ) {
   const sameWindowSelected = selected.filter(
     (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
@@ -829,7 +834,7 @@ function canShareWindow(
     (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
   )
   if (sameSlotSelected.length > 0) {
-    return sameWindowSelected.length === 1 && canDuplicateProposal(proposal, selected)
+    return sameWindowSelected.length === 1 && canDuplicateProposal(proposal, selected, behaviorProfile)
   }
 
   if (!pinnedProposalIds.has(proposal.id)) return false
@@ -845,6 +850,7 @@ function getPortfolioPenalty(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
   pinnedProposalIds: Set<string> = new Set<string>(),
+  behaviorProfile: ProgrammingBehaviorProfile,
 ) {
   let penalty = 0
 
@@ -852,27 +858,31 @@ function getPortfolioPenalty(
     (candidate) => getFormatSkillKey(candidate) === getFormatSkillKey(proposal),
   ).length
   if (sameFormatSkillCount > 0) {
-    penalty += sameFormatSkillCount === 1 ? 10 : 10 + (sameFormatSkillCount - 1) * 14
+    penalty += sameFormatSkillCount === 1
+      ? behaviorProfile.sameFormatSkillPenalty
+      : behaviorProfile.sameFormatSkillPenalty + (sameFormatSkillCount - 1) * behaviorProfile.sameFormatSkillExtraPenalty
   }
 
   const sameFormatCount = selected.filter((candidate) => candidate.format === proposal.format).length
   if (sameFormatCount >= 2) {
-    penalty += (sameFormatCount - 1) * 6
+    penalty += (sameFormatCount - 1) * behaviorProfile.sameFormatPenalty
   }
 
   const sameWindowCount = selected.filter(
     (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
   ).length
   if (sameWindowCount > 0) {
-    if (!canShareWindow(proposal, selected, pinnedProposalIds)) return 999
-    penalty += proposal.projectedOccupancy >= 90 ? 12 * sameWindowCount : 22 * sameWindowCount
+    if (!canShareWindow(proposal, selected, pinnedProposalIds, behaviorProfile)) return 999
+    penalty += proposal.projectedOccupancy >= behaviorProfile.secondCourtDuplicationThreshold
+      ? Math.round(behaviorProfile.sameWindowPenalty * 0.55) * sameWindowCount
+      : behaviorProfile.sameWindowPenalty * sameWindowCount
   }
 
   const sameSlotCount = selected.filter(
     (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
   ).length
   if (sameSlotCount > 0) {
-    if (!canDuplicateProposal(proposal, selected)) return 999
+    if (!canDuplicateProposal(proposal, selected, behaviorProfile)) return 999
     penalty += 14 * sameSlotCount
   }
 
@@ -881,30 +891,26 @@ function getPortfolioPenalty(
       (candidate) => candidate.format === 'OPEN_PLAY' && isPrimeTimeProposal(candidate),
     ).length
     if (primeOpenPlayCount >= 1) {
-      penalty += 12 * primeOpenPlayCount
+      penalty += behaviorProfile.primeOpenPlayPenalty * primeOpenPlayCount
     }
   }
 
-  return penalty
+  return Math.round(penalty * behaviorProfile.portfolioPenaltyMultiplier)
 }
 
 type SelectionScoringContext = {
   goalWeights: ReturnType<typeof computeProgrammingStrategyProfile>['goalWeights']
+  behaviorProfile: ProgrammingBehaviorProfile
   request: ReturnType<typeof parseAdvisorProgrammingRequest> | null
   pinnedProposalIds: Set<string>
-  fillIdleMode?: boolean
 }
-
-const MIN_SELECTION_SCORE = 62
-const FILL_IDLE_EXPERIMENT_SCORE = 56
-const FILL_IDLE_EXPERIMENT_LIMIT = 3
 
 function isFillIdleExperimentCandidate(
   proposal: AdvisorProgrammingProposalDraft,
   context: SelectionScoringContext,
 ) {
   return Boolean(
-    context.fillIdleMode &&
+    context.behaviorProfile.maxExperimentalSlots > 0 &&
     proposal.source === 'fill_gap' &&
     proposal.startTime < '17:00' &&
     proposal.conflict?.courtPressureRisk !== 'high' &&
@@ -922,11 +928,31 @@ function getGoalScores(
     Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
   )
   const conflictPenalty = getConflictPenalty(proposal)
-  const portfolioPenalty = getPortfolioPenalty(proposal, selected, context.pinnedProposalIds)
+  const portfolioPenalty = getPortfolioPenalty(
+    proposal,
+    selected,
+    context.pinnedProposalIds,
+    context.behaviorProfile,
+  )
   const blocked = portfolioPenalty >= 999
+  const isOffPeak = proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon'
+  const gapBehaviorAdjustment = proposal.source === 'fill_gap'
+    ? (
+      (context.behaviorProfile.noSupplyHistoricalScore - 50) +
+      (isOffPeak ? context.behaviorProfile.offPeakExplorationBonus : 0) -
+      Math.max(0, context.behaviorProfile.fillGapMinDemand - 3) * 12 -
+      Math.max(0, context.behaviorProfile.selectionScoreFloor - 62) * 4
+    )
+    : 0
   const demandFit = Math.max(
     0,
-    Math.min(100, proposal.confidence * 0.6 + proposal.projectedOccupancy * 0.2 + interestPressure * 0.2),
+    Math.min(
+      100,
+      proposal.confidence * 0.6 +
+      proposal.projectedOccupancy * 0.2 +
+      interestPressure * 0.2 +
+      gapBehaviorAdjustment,
+    ),
   )
   const utilization = Math.max(
     0,
@@ -934,7 +960,8 @@ function getGoalScores(
       100,
       proposal.projectedOccupancy * 0.7
       + (proposal.source === 'fill_gap' ? 16 : 6)
-      + (proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon' ? 8 : 0),
+      + (isOffPeak ? 8 : 0)
+      + gapBehaviorAdjustment * 0.45,
     ),
   )
   const utilizationAdjusted = isFillIdleExperimentCandidate(proposal, context)
@@ -1082,12 +1109,12 @@ function buildLiveOptimizations(input: {
     let chosenProposal: AdvisorProgrammingProposalDraft | null = null
     let chosenScore = Number.NEGATIVE_INFINITY
 
-    if (replacementCandidate && replacementDelta >= 10 && replacementScore >= MIN_SELECTION_SCORE) {
+    if (replacementCandidate && replacementDelta >= 10 && replacementScore >= input.context.behaviorProfile.selectionScoreFloor) {
       chosenType = 'replace'
       chosenProposal = replacementCandidate
       chosenScore = replacementScore
     }
-    if (moveCandidate && moveDelta >= 8 && moveScore >= MIN_SELECTION_SCORE && moveScore > chosenScore) {
+    if (moveCandidate && moveDelta >= 8 && moveScore >= input.context.behaviorProfile.selectionScoreFloor && moveScore > chosenScore) {
       chosenType = 'move'
       chosenProposal = moveCandidate
       chosenScore = moveScore
@@ -1181,15 +1208,16 @@ export function selectBalancedProposals(
 ) {
   const remaining = [...proposals]
   const selected: AdvisorProgrammingProposalDraft[] = []
+  const defaultProfile = computeProgrammingStrategyProfile({
+    selectedPresetIds: [],
+    inferredPresetIds: [],
+    hasRequest: false,
+  })
   const scoringContext = context || {
-    goalWeights: computeProgrammingStrategyProfile({
-      selectedPresetIds: [],
-      inferredPresetIds: [],
-      hasRequest: false,
-    }).goalWeights,
+    goalWeights: defaultProfile.goalWeights,
+    behaviorProfile: defaultProfile.behaviorProfile,
     request: null,
     pinnedProposalIds: new Set<string>(),
-    fillIdleMode: false,
   }
 
   if (pinnedProposalIds.length > 0) {
@@ -1227,9 +1255,12 @@ export function selectBalancedProposals(
       isFillIdleExperimentCandidate(proposal, scoringContext),
     ).length
     const bestMinScore = isFillIdleExperimentCandidate(bestProposal, scoringContext)
-      && relaxedFillIdleCount < FILL_IDLE_EXPERIMENT_LIMIT
-      ? FILL_IDLE_EXPERIMENT_SCORE
-      : MIN_SELECTION_SCORE
+      && relaxedFillIdleCount < scoringContext.behaviorProfile.maxExperimentalSlots
+      ? Math.min(
+        scoringContext.behaviorProfile.selectionScoreFloor,
+        scoringContext.behaviorProfile.experimentalScoreFloor,
+      )
+      : scoringContext.behaviorProfile.selectionScoreFloor
 
     if (bestScore < bestMinScore) break
 
@@ -1240,7 +1271,9 @@ export function selectBalancedProposals(
   if (selected.length === 0 && proposals.length > 0) {
     const fallback = [...proposals]
       .sort((left, right) => getGreedySelectionScore(right, [], scoringContext) - getGreedySelectionScore(left, [], scoringContext))[0]
-    const fallbackThreshold = fallback && isFillIdleExperimentCandidate(fallback, scoringContext) ? 52 : 55
+    const fallbackThreshold = fallback && isFillIdleExperimentCandidate(fallback, scoringContext)
+      ? Math.min(scoringContext.behaviorProfile.experimentalScoreFloor, 52)
+      : Math.max(55, scoringContext.behaviorProfile.selectionScoreFloor - 7)
     if (fallback && getGreedySelectionScore(fallback, [], scoringContext) >= fallbackThreshold) {
       selected.push(fallback)
     }
@@ -1268,17 +1301,20 @@ function diversifyAgainstPreviousSuggestions(
     }
   })
 
+  const defaultProfile = computeProgrammingStrategyProfile({
+    selectedPresetIds: [],
+    inferredPresetIds: [],
+    hasRequest: false,
+  })
+
   return diversified.sort(
     (left, right) =>
       getGreedySelectionScore(
         right,
         [],
         {
-          goalWeights: computeProgrammingStrategyProfile({
-            selectedPresetIds: [],
-            inferredPresetIds: [],
-            hasRequest: false,
-          }).goalWeights,
+          goalWeights: defaultProfile.goalWeights,
+          behaviorProfile: defaultProfile.behaviorProfile,
           request: null,
           pinnedProposalIds: new Set<string>(),
         },
@@ -1286,11 +1322,8 @@ function diversifyAgainstPreviousSuggestions(
         left,
         [],
         {
-          goalWeights: computeProgrammingStrategyProfile({
-            selectedPresetIds: [],
-            inferredPresetIds: [],
-            hasRequest: false,
-          }).goalWeights,
+          goalWeights: defaultProfile.goalWeights,
+          behaviorProfile: defaultProfile.behaviorProfile,
           request: null,
           pinnedProposalIds: new Set<string>(),
         },
@@ -1335,6 +1368,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     limit: Math.max(200, targetCount * 4),
     courtCount: activeCourts.length,
     strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
+    behaviorProfile: strategyProfile.behaviorProfile,
   })
 
   let rankedProposals = plan.proposals
@@ -1352,9 +1386,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const requestedProposalIds = new Set(requestedProposals.map((proposal) => proposal.id))
   const scoringContext: SelectionScoringContext = {
     goalWeights: strategyProfile.goalWeights,
+    behaviorProfile: strategyProfile.behaviorProfile,
     request: regenerateRequest,
     pinnedProposalIds: requestedProposalIds,
-    fillIdleMode: strategyProfile.appliedPresets.some((preset) => preset.id === 'FILL_IDLE_HOURS'),
   }
 
   const liveOptimizations = buildLiveOptimizations({
@@ -1392,7 +1426,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     // conflict risk is still comparatively low. This keeps us from
     // blindly splitting prime-time demand across two courts.
     if (
-      proposal.projectedOccupancy >= 92 &&
+      proposal.projectedOccupancy >= strategyProfile.behaviorProfile.secondCourtDuplicationThreshold &&
       proposal.conflict?.cannibalizationRisk === 'low' &&
       proposal.conflict?.courtPressureRisk !== 'high' &&
       expanded.length < targetCount * 2
@@ -1521,7 +1555,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   }
 
   // 7. Pool-saturation warnings across the combined cell set.
-  const saturationWarnings = supplyDemandCheck(cells, input.preferences, input.contactPolicy)
+  const saturationWarnings = supplyDemandCheck(
+    cells,
+    input.preferences,
+    input.contactPolicy,
+    strategyProfile.behaviorProfile,
+  )
   let saturationCount = 0
   for (const cell of cells) {
     const warning = saturationWarnings.get(cell.key)

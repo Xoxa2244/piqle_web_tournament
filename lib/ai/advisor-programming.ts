@@ -6,7 +6,11 @@ import type {
   PlaySessionSkillLevel,
   TimeSlot,
 } from '@/types/intelligence'
-import type { ProgrammingStrategyPresetId } from './programming-iq-strategy'
+import {
+  computeProgrammingStrategyProfile,
+  type ProgrammingBehaviorProfile,
+  type ProgrammingStrategyPresetId,
+} from './programming-iq-strategy'
 
 const DAYS: DayOfWeek[] = [
   'Monday',
@@ -1160,7 +1164,7 @@ function buildGapFillProposals(opts: {
   audienceProfile?: ProgrammingAudienceProfile | null
   weightProfile: ProgrammingWeightProfile
   courtCount?: number
-  fillIdleMode?: boolean
+  behaviorProfile?: ProgrammingBehaviorProfile | null
 }): AdvisorProgrammingProposalDraft[] {
   const proposals: AdvisorProgrammingProposalDraft[] = []
   const candidateFormats = getTopFormats(opts.formatDemand)
@@ -1169,6 +1173,7 @@ function buildGapFillProposals(opts: {
   const hasSkillSignals = sumMapValues(opts.skillDemand) > 0
   const peakFormatSignal = maxMapValue(opts.formatDemand)
   const peakSkillSignal = maxMapValue(opts.skillDemand)
+  const behaviorProfile = opts.behaviorProfile
 
   for (const dayOfWeek of DAYS) {
     for (const timeSlot of TIME_SLOTS) {
@@ -1177,8 +1182,8 @@ function buildGapFillProposals(opts: {
       const interestBacklog = opts.interestSlotDemand.get(slotKey) || 0
       const supply = opts.slotSupply.get(slotKey)
       const slotAvgOccupancy = supply ? average(supply.occupancyValues) : 0
-      const minDemand = opts.fillIdleMode ? 2 : 3
-      const minExistingOccupancy = opts.fillIdleMode ? 60 : 68
+      const minDemand = behaviorProfile?.fillGapMinDemand ?? 3
+      const minExistingOccupancy = behaviorProfile?.existingSlotMinOccupancy ?? 68
       const primaryCombo = getPrimarySlotCombo({
         comboStats: opts.comboStats,
         dayOfWeek,
@@ -1242,13 +1247,15 @@ function buildGapFillProposals(opts: {
               slotSimilarityMultiplier >= 1 ? 45 : 34,
               slotSimilarityMultiplier >= 1 ? 92 : slotSimilarityMultiplier >= 0.72 ? 78 : 68,
             )
-            : opts.fillIdleMode
-              ? 54
-              : 50
+            : behaviorProfile?.noSupplyHistoricalScore ?? 50
           const scoreSignals = opts.weightProfile.weights.gap
-          const idleExplorationBonus = opts.fillIdleMode
-            ? (timeSlot === 'morning' || timeSlot === 'afternoon' ? 6 : 0) + (!supply || supply.sessionCount === 0 ? 4 : 0)
-            : 0
+          const idleExplorationBonus =
+            (timeSlot === 'morning' || timeSlot === 'afternoon'
+              ? behaviorProfile?.offPeakExplorationBonus ?? 0
+              : 0)
+            + (!supply || supply.sessionCount === 0
+              ? behaviorProfile?.emptyWindowExplorationBonus ?? 0
+              : 0)
           const projectedOccupancy = clamp(
             Math.round(
               historicalScore * 0.38 +
@@ -1698,6 +1705,7 @@ export function buildAdvisorProgrammingPlan(opts: {
   limit?: number
   courtCount?: number
   strategyPresetIds?: ProgrammingStrategyPresetId[]
+  behaviorProfile?: ProgrammingBehaviorProfile | null
 }) {
   const { comboStats, slotSupply } = buildSessionStats(opts.sessions)
   const {
@@ -1724,7 +1732,15 @@ export function buildAdvisorProgrammingPlan(opts: {
   })
   const topFormat = getTopFormats(formatDemand)[0] || 'OPEN_PLAY'
   const topSkill = getTopSkills(skillDemand, opts.audienceProfile)[0] || 'INTERMEDIATE'
-  const fillIdleMode = (opts.strategyPresetIds || []).includes('FILL_IDLE_HOURS')
+  const behaviorProfile = opts.behaviorProfile || (
+    (opts.strategyPresetIds || []).length > 0
+      ? computeProgrammingStrategyProfile({
+          selectedPresetIds: opts.strategyPresetIds || [],
+          inferredPresetIds: [],
+          hasRequest: !!opts.request,
+        }).behaviorProfile
+      : null
+  )
 
   const baseProposals = dedupeProposals([
     ...buildExpandPeakProposals({
@@ -1748,7 +1764,7 @@ export function buildAdvisorProgrammingPlan(opts: {
       audienceProfile: opts.audienceProfile,
       weightProfile,
       courtCount: opts.courtCount,
-      fillIdleMode,
+      behaviorProfile,
     }),
   ])
   const annotatedBaseProposals = withProgrammingConflicts(baseProposals, {

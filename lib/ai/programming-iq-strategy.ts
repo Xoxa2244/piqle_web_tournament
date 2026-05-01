@@ -29,11 +29,31 @@ export type ProgrammingRequestVerdict =
 
 export type ProgrammingGoalWeights = Record<ProgrammingStrategyGoalId, number>
 
+export type ProgrammingBehaviorProfile = {
+  selectionScoreFloor: number
+  experimentalScoreFloor: number
+  maxExperimentalSlots: number
+  fillGapMinDemand: number
+  existingSlotMinOccupancy: number
+  noSupplyHistoricalScore: number
+  offPeakExplorationBonus: number
+  emptyWindowExplorationBonus: number
+  saturationCapMultiplier: number
+  sameFormatSkillPenalty: number
+  sameFormatSkillExtraPenalty: number
+  sameFormatPenalty: number
+  sameWindowPenalty: number
+  primeOpenPlayPenalty: number
+  portfolioPenaltyMultiplier: number
+  secondCourtDuplicationThreshold: number
+}
+
 export type ProgrammingPresetDefinition = {
   id: ProgrammingStrategyPresetId
   label: string
   description: string
   goalDeltas: Partial<ProgrammingGoalWeights>
+  behaviorDeltas: Partial<ProgrammingBehaviorProfile>
   keywords: string[]
 }
 
@@ -46,6 +66,7 @@ export type ProgrammingAppliedPreset = {
 
 export type ProgrammingStrategyProfile = {
   goalWeights: ProgrammingGoalWeights
+  behaviorProfile: ProgrammingBehaviorProfile
   appliedPresets: ProgrammingAppliedPreset[]
   selectedPresetIds: ProgrammingStrategyPresetId[]
   inferredPresetIds: ProgrammingStrategyPresetId[]
@@ -69,12 +90,39 @@ const BASE_GOAL_WEIGHTS: ProgrammingGoalWeights = {
   adminIntent: 0,
 }
 
+const BASE_BEHAVIOR_PROFILE: ProgrammingBehaviorProfile = {
+  selectionScoreFloor: 62,
+  experimentalScoreFloor: 56,
+  maxExperimentalSlots: 0,
+  fillGapMinDemand: 3,
+  existingSlotMinOccupancy: 68,
+  noSupplyHistoricalScore: 50,
+  offPeakExplorationBonus: 0,
+  emptyWindowExplorationBonus: 0,
+  saturationCapMultiplier: 1,
+  sameFormatSkillPenalty: 10,
+  sameFormatSkillExtraPenalty: 14,
+  sameFormatPenalty: 6,
+  sameWindowPenalty: 22,
+  primeOpenPlayPenalty: 12,
+  portfolioPenaltyMultiplier: 1,
+  secondCourtDuplicationThreshold: 92,
+}
+
 const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
   {
     id: 'FOLLOW_MEMBER_DEMAND',
     label: 'Follow member demand',
     description: 'Prioritize sessions that best match proven player demand.',
-    goalDeltas: { demandFit: 10, portfolioBalance: 4 },
+    goalDeltas: { demandFit: 12, portfolioBalance: 4 },
+    behaviorDeltas: {
+      selectionScoreFloor: 3,
+      fillGapMinDemand: 1,
+      existingSlotMinOccupancy: 4,
+      noSupplyHistoricalScore: -3,
+      saturationCapMultiplier: -0.05,
+      secondCourtDuplicationThreshold: -2,
+    },
     keywords: ['demand', 'popular', 'members want', 'best demand', 'highest demand'],
   },
   {
@@ -82,6 +130,17 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     label: 'Fill idle hours',
     description: 'Focus on empty court time and improve court utilization.',
     goalDeltas: { utilization: 12, operationalFit: 4 },
+    behaviorDeltas: {
+      selectionScoreFloor: -2,
+      experimentalScoreFloor: -2,
+      maxExperimentalSlots: 3,
+      fillGapMinDemand: -1,
+      existingSlotMinOccupancy: -8,
+      noSupplyHistoricalScore: 4,
+      offPeakExplorationBonus: 6,
+      emptyWindowExplorationBonus: 4,
+      saturationCapMultiplier: 0.12,
+    },
     keywords: ['idle', 'empty', 'utilization', 'morning', 'weekday morning', 'fill'],
   },
   {
@@ -89,6 +148,16 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     label: 'Protect audience',
     description: 'Avoid over-targeting the same players and reduce overlap.',
     goalDeltas: { audienceProtection: 14, portfolioBalance: 4 },
+    behaviorDeltas: {
+      selectionScoreFloor: 1,
+      saturationCapMultiplier: -0.12,
+      sameWindowPenalty: 8,
+      sameFormatSkillPenalty: 4,
+      sameFormatSkillExtraPenalty: 6,
+      primeOpenPlayPenalty: 6,
+      portfolioPenaltyMultiplier: 0.18,
+      secondCourtDuplicationThreshold: 4,
+    },
     keywords: ['overlap', 'saturation', 'protect', 'same players', 'avoid spam', 'audience'],
   },
   {
@@ -96,13 +165,32 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     label: 'Balance the week',
     description: 'Keep a healthier mix of skill levels, formats, and times.',
     goalDeltas: { portfolioBalance: 12, demandFit: 4 },
+    behaviorDeltas: {
+      selectionScoreFloor: 1,
+      sameFormatSkillPenalty: 4,
+      sameFormatSkillExtraPenalty: 6,
+      sameFormatPenalty: 4,
+      primeOpenPlayPenalty: 8,
+      portfolioPenaltyMultiplier: 0.18,
+    },
     keywords: ['balance', 'mix', 'variety', 'week', 'spread'],
   },
   {
     id: 'TEST_NEW_IDEAS',
     label: 'Test new ideas',
     description: 'Allow more experimental slots when you want to explore demand.',
-    goalDeltas: { utilization: 8, adminIntent: 6, demandFit: -4 },
+    goalDeltas: { utilization: 8, portfolioBalance: 2, demandFit: -6 },
+    behaviorDeltas: {
+      selectionScoreFloor: -4,
+      experimentalScoreFloor: -4,
+      maxExperimentalSlots: 4,
+      fillGapMinDemand: -1,
+      existingSlotMinOccupancy: -10,
+      noSupplyHistoricalScore: 6,
+      offPeakExplorationBonus: 8,
+      emptyWindowExplorationBonus: 6,
+      saturationCapMultiplier: 0.2,
+    },
     keywords: ['test', 'experiment', 'try', 'new idea', 'new ideas'],
   },
 ]
@@ -159,12 +247,14 @@ export function computeProgrammingStrategyProfile(opts: {
   )
 
   const weights: ProgrammingGoalWeights = { ...BASE_GOAL_WEIGHTS }
+  const behaviorProfile: ProgrammingBehaviorProfile = { ...BASE_BEHAVIOR_PROFILE }
   const appliedPresets: ProgrammingAppliedPreset[] = []
 
   for (const presetId of selectedPresetIds) {
     const preset = PRESET_BY_ID.get(presetId)
     if (!preset) continue
     applyGoalDeltas(weights, preset.goalDeltas)
+    applyBehaviorDeltas(behaviorProfile, preset.behaviorDeltas)
     appliedPresets.push({
       id: preset.id,
       label: preset.label,
@@ -177,6 +267,7 @@ export function computeProgrammingStrategyProfile(opts: {
     const preset = PRESET_BY_ID.get(presetId)
     if (!preset) continue
     applyGoalDeltas(weights, preset.goalDeltas)
+    applyBehaviorDeltas(behaviorProfile, preset.behaviorDeltas)
     appliedPresets.push({
       id: preset.id,
       label: preset.label,
@@ -195,6 +286,7 @@ export function computeProgrammingStrategyProfile(opts: {
 
   return {
     goalWeights: normalizeGoalWeights(weights),
+    behaviorProfile: normalizeBehaviorProfile(behaviorProfile),
     appliedPresets,
     selectedPresetIds,
     inferredPresetIds,
@@ -311,6 +403,18 @@ function applyGoalDeltas(
   }
 }
 
+function applyBehaviorDeltas(
+  target: ProgrammingBehaviorProfile,
+  deltas: Partial<ProgrammingBehaviorProfile>,
+) {
+  for (const [key, delta] of Object.entries(deltas) as Array<
+    [keyof ProgrammingBehaviorProfile, number | undefined]
+  >) {
+    if (typeof delta !== 'number') continue
+    ;(target as Record<keyof ProgrammingBehaviorProfile, number>)[key] += delta
+  }
+}
+
 function normalizeGoalWeights(weights: ProgrammingGoalWeights) {
   const safe: ProgrammingGoalWeights = {
     demandFit: Math.max(0, weights.demandFit),
@@ -333,8 +437,33 @@ function normalizeGoalWeights(weights: ProgrammingGoalWeights) {
   }
 }
 
+function normalizeBehaviorProfile(profile: ProgrammingBehaviorProfile): ProgrammingBehaviorProfile {
+  return {
+    selectionScoreFloor: clamp(Math.round(profile.selectionScoreFloor), 52, 72),
+    experimentalScoreFloor: clamp(Math.round(profile.experimentalScoreFloor), 48, 68),
+    maxExperimentalSlots: clamp(Math.round(profile.maxExperimentalSlots), 0, 6),
+    fillGapMinDemand: clamp(Math.round(profile.fillGapMinDemand), 1, 5),
+    existingSlotMinOccupancy: clamp(Math.round(profile.existingSlotMinOccupancy), 50, 80),
+    noSupplyHistoricalScore: clamp(Math.round(profile.noSupplyHistoricalScore), 45, 65),
+    offPeakExplorationBonus: clamp(Math.round(profile.offPeakExplorationBonus), 0, 12),
+    emptyWindowExplorationBonus: clamp(Math.round(profile.emptyWindowExplorationBonus), 0, 12),
+    saturationCapMultiplier: clamp(roundBehavior(profile.saturationCapMultiplier), 0.8, 1.3),
+    sameFormatSkillPenalty: clamp(Math.round(profile.sameFormatSkillPenalty), 6, 20),
+    sameFormatSkillExtraPenalty: clamp(Math.round(profile.sameFormatSkillExtraPenalty), 8, 24),
+    sameFormatPenalty: clamp(Math.round(profile.sameFormatPenalty), 3, 14),
+    sameWindowPenalty: clamp(Math.round(profile.sameWindowPenalty), 12, 34),
+    primeOpenPlayPenalty: clamp(Math.round(profile.primeOpenPlayPenalty), 6, 24),
+    portfolioPenaltyMultiplier: clamp(roundBehavior(profile.portfolioPenaltyMultiplier), 0.85, 1.3),
+    secondCourtDuplicationThreshold: clamp(Math.round(profile.secondCourtDuplicationThreshold), 84, 98),
+  }
+}
+
 function roundWeight(value: number) {
   return Math.round(value * 10) / 10
+}
+
+function roundBehavior(value: number) {
+  return Math.round(value * 100) / 100
 }
 
 function clamp(value: number, min: number, max: number) {

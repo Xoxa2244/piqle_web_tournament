@@ -729,15 +729,16 @@ describe('buildWeeklyGrid — smoke', () => {
   })
 
   it('lets Fill idle hours keep a few decent off-peak gap-fill experiments', () => {
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
     const fillIdleContext = {
-      goalWeights: computeProgrammingStrategyProfile({
-        selectedPresetIds: ['FILL_IDLE_HOURS'],
-        inferredPresetIds: [],
-        hasRequest: false,
-      }).goalWeights,
+      goalWeights: fillIdleProfile.goalWeights,
+      behaviorProfile: fillIdleProfile.behaviorProfile,
       request: null,
       pinnedProposalIds: new Set<string>(),
-      fillIdleMode: true,
     }
 
     const selected = selectBalancedProposals([
@@ -784,6 +785,130 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(selected.map((item) => item.id)).toEqual(
       expect.arrayContaining(['evening-strong', 'thu-offpeak-gap']),
     )
+  })
+
+  it('lets Test new ideas keep weaker off-peak experiments than Follow member demand', () => {
+    const testIdeasProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['TEST_NEW_IDEAS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const demandFirstProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FOLLOW_MEMBER_DEMAND'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const testIdeasContext = {
+      goalWeights: testIdeasProfile.goalWeights,
+      behaviorProfile: testIdeasProfile.behaviorProfile,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+    }
+    const demandFirstContext = {
+      goalWeights: demandFirstProfile.goalWeights,
+      behaviorProfile: demandFirstProfile.behaviorProfile,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+    }
+
+    const proposals = [
+      proposal({
+        id: 'weak-gap',
+        dayOfWeek: 'Wednesday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'CLINIC',
+        skillLevel: 'BEGINNER',
+        source: 'fill_gap',
+        confidence: 56,
+        projectedOccupancy: 53,
+        estimatedInterestedMembers: 5,
+      }),
+      proposal({
+        id: 'steady-evening',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 72,
+        projectedOccupancy: 67,
+        estimatedInterestedMembers: 8,
+      }),
+      proposal({
+        id: 'proven-afternoon',
+        dayOfWeek: 'Saturday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        source: 'expand_peak',
+        confidence: 66,
+        projectedOccupancy: 61,
+        estimatedInterestedMembers: 7,
+      }),
+    ]
+
+    const experimentalSelected = selectBalancedProposals(proposals, 2, [], testIdeasContext)
+    const demandSelected = selectBalancedProposals(proposals, 2, [], demandFirstContext)
+
+    expect(experimentalSelected.map((item) => item.id)).toContain('weak-gap')
+    expect(demandSelected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['steady-evening', 'proven-afternoon']),
+    )
+    expect(demandSelected.map((item) => item.id)).not.toContain('weak-gap')
+  })
+
+  it('tightens saturation tolerance when Protect audience is selected', () => {
+    const protectAudienceProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['PROTECT_AUDIENCE'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const cells = [
+      cellSuggested('c1', 'BEGINNER', 8),
+      {
+        ...cellSuggested('c2', 'BEGINNER', 8),
+        courtId: 'court-2',
+        courtName: 'Court 2',
+      },
+    ]
+    const preferences: SchedulerPreferenceRow[] = Array.from({ length: 8 }, () => ({
+      preferredDays: ['Tuesday'],
+      preferredTimeMorning: false,
+      preferredTimeAfternoon: false,
+      preferredTimeEvening: true,
+      skillLevel: 'BEGINNER',
+      preferredFormats: ['Clinic'],
+      targetSessionsPerWeek: 1,
+      notificationsOptOut: false,
+    }))
+
+    const protectWarnings = supplyDemandCheck(
+      cells,
+      preferences,
+      { inviteCapPerMemberPerWeek: 3 },
+      protectAudienceProfile.behaviorProfile,
+    )
+    const fillIdleWarnings = supplyDemandCheck(
+      cells,
+      preferences,
+      { inviteCapPerMemberPerWeek: 3 },
+      fillIdleProfile.behaviorProfile,
+    )
+
+    expect(protectWarnings.size).toBeGreaterThan(0)
+    expect(fillIdleWarnings.size).toBe(0)
   })
 })
 

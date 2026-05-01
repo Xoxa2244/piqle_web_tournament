@@ -4,6 +4,7 @@ import {
   buildProgrammingAudienceProfileFromMembers,
   parseAdvisorProgrammingRequest,
 } from '@/lib/ai/advisor-programming'
+import { computeProgrammingStrategyProfile } from '@/lib/ai/programming-iq-strategy'
 
 describe('advisor programming request parsing', () => {
   it('extracts day, time, format, skill, and max players from a request', () => {
@@ -306,6 +307,69 @@ describe('advisor programming planning', () => {
     expect(plan.proposals.length).toBeGreaterThan(0)
     expect(plan.proposals[0].confidence).toBeGreaterThanOrEqual(60)
     expect(plan.insights.join(' ')).toContain('member profile data')
+  })
+
+  it('lets exploratory presets surface weaker empty-window gap-fill ideas while demand-first stays conservative', () => {
+    const baseInput = {
+      sessions: [] as any[],
+      preferences: [
+        {
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'BEGINNER' as const,
+          preferredFormats: ['Clinic'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        },
+        {
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'BEGINNER' as const,
+          preferredFormats: ['Clinic'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        },
+      ],
+      audienceProfile: null,
+      courtCount: 2,
+      limit: 10,
+    }
+
+    const defaultPlan = buildAdvisorProgrammingPlan(baseInput)
+    const demandFirstProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FOLLOW_MEMBER_DEMAND'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const testIdeasProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['TEST_NEW_IDEAS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const demandFirstPlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: demandFirstProfile.behaviorProfile,
+    })
+    const experimentalPlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: testIdeasProfile.behaviorProfile,
+    })
+
+    const hasTuesdayMorning = (plan: ReturnType<typeof buildAdvisorProgrammingPlan>) =>
+      plan.proposals.some((proposal) =>
+        proposal.dayOfWeek === 'Tuesday'
+        && proposal.timeSlot === 'morning'
+        && proposal.source === 'fill_gap',
+      )
+
+    expect(hasTuesdayMorning(defaultPlan)).toBe(false)
+    expect(hasTuesdayMorning(demandFirstPlan)).toBe(false)
+    expect(hasTuesdayMorning(experimentalPlan)).toBe(true)
   })
 
   it('raises court pressure risk when the club has limited active courts', () => {
